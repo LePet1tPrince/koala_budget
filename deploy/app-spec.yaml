@@ -1,0 +1,86 @@
+databases:
+- cluster_name: koala-budget-db
+  engine: PG
+  name: koala-budget-db
+  production: true
+  version: "18"
+- cluster_name: koala-budget-redis
+  engine: VALKEY
+  name: koala-budget-redis
+  production: true
+  version: "8"
+name: koala-budget
+region: nyc
+services:
+- dockerfile_path: Dockerfile.web
+  envs:
+  - key: DATABASE_URL
+    scope: RUN_TIME
+    value: ${koala-budget-db.DATABASE_URL}
+  - key: DJANGO_SETTINGS_MODULE
+    scope: RUN_AND_BUILD_TIME
+    value: koala_budget.settings_production
+  - key: SECRET_KEY
+    scope: RUN_AND_BUILD_TIME
+    value: "django-insecure-fjqtZU1QtBEkPX8NRvIJVkxHmKoplgntxkamQCjQfntI1tT8ArDpouwVpvhD"
+  - key: REDIS_URL
+    scope: RUN_TIME
+    value: ${koala-budget-redis.DATABASE_URL}
+
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: LePet1tPrince/koala_budget
+  http_port: 8080
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  name: koala-budget-web
+  routes:
+  - path: /
+workers:
+- dockerfile_path: Dockerfile.web
+  envs:
+  - key: DATABASE_URL
+    scope: RUN_TIME
+    value: ${koala-budget-db.DATABASE_URL}
+  - key: DJANGO_SETTINGS_MODULE
+    scope: RUN_AND_BUILD_TIME
+    value: koala_budget.settings_production
+  - key: SECRET_KEY
+    scope: RUN_AND_BUILD_TIME
+    value: "django-insecure-fjqtZU1QtBEkPX8NRvIJVkxHmKoplgntxkamQCjQfntI1tT8ArDpouwVpvhD"
+  - key: REDIS_URL
+    scope: RUN_TIME
+    value: ${koala-budget-redis.DATABASE_URL}
+
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: LePet1tPrince/koala_budget
+  instance_count: 1
+  instance_size_slug: basic-xs
+  name: koala-budget-celery
+  run_command: celery -A koala_budget worker -l INFO --pool threads --concurrency 20
+- dockerfile_path: Dockerfile.web
+  envs:
+  - key: DATABASE_URL
+    scope: RUN_TIME
+    value: ${koala-budget-db.DATABASE_URL}
+  - key: DJANGO_SETTINGS_MODULE
+    scope: RUN_AND_BUILD_TIME
+    value: koala_budget.settings_production
+  - key: SECRET_KEY
+    scope: RUN_AND_BUILD_TIME
+    value: "django-insecure-fjqtZU1QtBEkPX8NRvIJVkxHmKoplgntxkamQCjQfntI1tT8ArDpouwVpvhD"
+  - key: REDIS_URL
+    scope: RUN_TIME
+    value: ${koala-budget-redis.DATABASE_URL}
+
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: LePet1tPrince/koala_budget
+  instance_count: 1
+  instance_size_slug: basic-xs
+  name: koala-budget-celery-beat
+  run_command: celery -A koala_budget beat -l INFO

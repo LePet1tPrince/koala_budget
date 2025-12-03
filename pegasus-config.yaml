@@ -1,0 +1,66 @@
+cli:
+  app_directory: apps
+  base_model: apps.utils.models.BaseModel
+  css_framework: tailwind
+  module_path: apps
+  template_directory: templates
+  use_teams: false
+default_context:
+  _pegasus_version: 2025.11.2
+  api_framework: drf
+  author_name: Timothy
+  bundler: vite
+  ci: github_actions
+  css_framework: tailwind
+  database: postgres
+  deploy_platform: digital_ocean_app_platform
+  description: Budgeting and expense tracking app for freelancers
+  docker_mode: full
+  docker_setup: default
+  domain_name: localhost:8000
+  email: timothylbender@gmail.com
+  enable_github_login: y
+  enable_google_login: y
+  enable_twitter_login: n
+  front_end_framework: react
+  github_username: LePet1tPrince
+  include_static_files: n
+  marketing_email_platform: none
+  plugins:
+  - chat
+  post_process: y
+  project_name: Koala Budget
+  project_slug: koala_budget
+  python_package_manager: uv
+  standalone_front_end: vite
+  stripe_payment_mode: checkout
+  subscription_billing_model: default
+  subscription_pricing_ui: in_app
+  type_checker: none
+  use_2fa: y
+  use_admin_docs: y
+  use_ai_rules_agents: y
+  use_ai_rules_claude: y
+  use_ai_rules_cursor: n
+  use_ai_rules_junie: n
+  use_api_auth: n
+  use_api_keys: y
+  use_async: y
+  use_auto_reload: y
+  use_celery: y
+  use_cloud_media_storage: n
+  use_dark_mode: y
+  use_debug_toolbar: n
+  use_ecommerce_example: n
+  use_examples: y
+  use_flowbite: n
+  use_health_checks: y
+  use_impersonation: y
+  use_sentry: y
+  use_shadcn: n
+  use_subscriptions: n
+  use_teams: n
+  use_teams_example: n
+  use_translations: y
+  use_wagtail: n
+  use_watchfiles: n

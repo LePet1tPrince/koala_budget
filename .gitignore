@@ -1,0 +1,30 @@
+.idea
+.vscode
+*.code-workspace
+*.pyc
+*~
+.venv
+/.vite/
+venv
+db.sqlite3
+.sass-cache/
+celerybeat-schedule
+koala_budget/localsettings.py
+koala_budget/local.py
+static_root/
+node_modules/
+# ai assistants
+.claude/settings.local.json
+openapitools.json
+media/
+docs/_build
+_dist/
+.env
+.env.production
+.DS_Store
+.direnv
+.envrc
+# compiled static files are built in dev/deploy
+static/css/
+static/js/
+static/.vite/
