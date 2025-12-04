@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/stable/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 import environ
@@ -68,6 +69,7 @@ THIRD_PARTY_APPS = [
     "celery_progress",
     "hijack",  # "login as" functionality
     "hijack.contrib.admin",  # hijack buttons in the admin
+    "djstripe",  # stripe integration
     "whitenoise.runserver_nostatic",  # whitenoise runserver
     "waffle",
     "health_check",
@@ -84,10 +86,14 @@ PEGASUS_APPS = [
 
 # Put your project-specific apps here
 PROJECT_APPS = [
+    "apps.subscriptions.apps.SubscriptionConfig",
     "apps.users.apps.UserConfig",
     "apps.dashboard.apps.DashboardConfig",
     "apps.api.apps.APIConfig",
+    "apps.utils",
     "apps.web",
+    "apps.teams.apps.TeamConfig",
+    "apps.teams_example.apps.TeamsExampleConfig",
     "apps.chat",
     "apps.ai.apps.AiConfig",
 ]
@@ -108,6 +114,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "apps.teams.middleware.TeamsMiddleware",
     "apps.web.middleware.locale.UserLocaleMiddleware",
     "apps.web.middleware.locale.UserTimezoneMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -145,6 +152,8 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.web.context_processors.project_meta",
+                "apps.teams.context_processors.team",
+                "apps.teams.context_processors.user_teams",
                 # this line can be removed if not using google analytics
                 "apps.web.context_processors.google_analytics_id",
             ],
@@ -202,7 +211,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Allauth setup
 
-ACCOUNT_ADAPTER = "apps.users.adapter.EmailAsUsernameAdapter"
+ACCOUNT_ADAPTER = "apps.teams.adapter.AcceptInvitationAdapter"
 HEADLESS_ADAPTER = "apps.users.adapter.CustomHeadlessAdapter"
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
@@ -223,7 +232,7 @@ ACCOUNT_LOGIN_BY_CODE_ENABLED = True
 ACCOUNT_USER_DISPLAY = lambda user: user.get_display_name()  # noqa: E731
 
 ACCOUNT_FORMS = {
-    "signup": "apps.users.forms.TermsSignupForm",
+    "signup": "apps.teams.forms.TeamSignupForm",
 }
 SOCIALACCOUNT_FORMS = {
     "signup": "apps.users.forms.CustomSocialSignupForm",
@@ -475,6 +484,9 @@ CHANNEL_LAYERS = {
 # A list of tokens that can be used to access the health check endpoint
 HEALTH_CHECK_TOKENS = env.list("HEALTH_CHECK_TOKENS", default="")
 
+# Waffle config
+
+WAFFLE_FLAG_MODEL = "teams.Flag"
 
 # Pegasus config
 
@@ -501,6 +513,31 @@ GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", default="")
 # more here: https://daisyui.com/docs/themes/
 LIGHT_THEME = "light"
 DARK_THEME = "dark"
+
+# Stripe config
+# modeled to be the same as https://github.com/dj-stripe/dj-stripe
+# Note: don"t edit these values here - edit them in your .env file or environment variables!
+# The defaults are provided to prevent crashes if your keys don"t match the expected format.
+STRIPE_LIVE_PUBLIC_KEY = env("STRIPE_LIVE_PUBLIC_KEY", default="pk_live_***")
+STRIPE_LIVE_SECRET_KEY = env("STRIPE_LIVE_SECRET_KEY", default="sk_live_***")
+STRIPE_TEST_PUBLIC_KEY = env("STRIPE_TEST_PUBLIC_KEY", default="pk_test_***")
+STRIPE_TEST_SECRET_KEY = env("STRIPE_TEST_SECRET_KEY", default="sk_test_***")
+# Change to True in production
+STRIPE_LIVE_MODE = env.bool("STRIPE_LIVE_MODE", False)
+
+# djstripe settings
+
+DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"  # change to "djstripe_id" if not a new installation
+DJSTRIPE_SUBSCRIBER_MODEL = "teams.Team"
+DJSTRIPE_SUBSCRIBER_MODEL_REQUEST_CALLBACK = lambda request: request.team  # noqa E731
+
+SILENCED_SYSTEM_CHECKS = [
+    "djstripe.I002",  # Pegasus uses the same settings as dj-stripe for keys, so don't complain they are here
+]
+
+if "test" in sys.argv:
+    # Silence unnecessary warnings in tests
+    SILENCED_SYSTEM_CHECKS.append("djstripe.I002")
 
 
 # AI Chat Setup

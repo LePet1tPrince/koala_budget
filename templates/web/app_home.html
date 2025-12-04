@@ -13,7 +13,7 @@
                 {% translate "This is your application's logged in home page." %}
             </h2>
             <p>
-                Now go make something great!
+              {% blocktranslate trimmed with team_name=team.name %}You're logged into the "{{ team_name }}" Team.{% endblocktranslate %}
             </p>
         </div>
     </div>

@@ -7,6 +7,7 @@
 @import './app/tailwind/app-components.css';
 @import './app/tailwind/chat-components.css';
 @import './app/tailwind/chat-components.utilities.css';
+@import './app/tailwind/subscription-components.css';
 @import './pegasus/tailwind.css';
 
 @config "../../tailwind.config.js";

@@ -18,3 +18,11 @@ urlpatterns = [
     path("simulate_error/", views.simulate_error),
     path("health/", views.HealthCheck.as_view(), name="health_check"),
 ]
+
+
+team_urlpatterns = (
+    [
+        path("", views.team_home, name="home"),
+    ],
+    "web_team",
+)

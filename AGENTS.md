@@ -151,8 +151,23 @@ npm run build     # Run type checks and build for production
 
 #### Django models
 
-- All Django models should extend `apps.utils.models.BaseModel` (which adds `created_at` and `updated_at` fields).
+- All Django models should extend `apps.utils.models.BaseModel` (which adds `created_at` and `updated_at` fields) or `apps.teams.models.BaseTeamModel` (which also adds a `team`) if owned by a team.
+- Models that extend `BaseTeamModel` should use the `for_team` model manager for queries that require team filtering. This will apply the team filter automatically based on the global team context. See `apps.teams.context.get_current_team`.
 - The project's user model is `apps.users.models.CustomUser` and should be imported directly.
+- The `Team` model is like a virtual tenant and most data access / functionality happens within
+  the context of a `Team`.
+
+#### Django URLs, Views and Teams
+
+- Many apps have a `urls.py` with a `urlpatterns` and a `team_urlpatterns` value.
+  The `urlpatterns` are for views that happen outside the context of a `Team` model.
+  `team_urlpatterns` are for views that happen within the context of a `Team`.
+- Anything in `team_urlpatterns` will have URLs of the format `/a/<team_slug>/<app_path>/<pattern>/`.
+- Any view referenced by `team_urlpatterns` must contain `team_slug` as the first argument.
+- For team-based views, the `@login_and_team_required` and `@team_admin_required` decorators
+  can be used to ensure the user is logged in and can access the associated team.
+- If not specified, assume that a given url/view belongs within the context of a team
+  (and follows the above guidance)
 
 ## Django Template Coding Guidelines for HTML files
 

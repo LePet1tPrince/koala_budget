@@ -22,6 +22,12 @@
           {% if form.password2 %}
             {% render_field form.password2 %}
           {% endif %}
+          {% if invitation %}
+            <input type="hidden" name="invitation_id" value="{{ invitation.id }}">
+            {{ form.invitation_id.errors }}
+          {% else %}
+            {% render_field form.team_name %}
+          {% endif %}
           {% render_field form.terms_agreement %}
           <div class="relative overflow-hidden">
             {% render_field form.phone_number_x %}

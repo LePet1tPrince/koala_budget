@@ -8,6 +8,7 @@
     {% translate "Dashboard" %}
   </a>
 </li>
+{% include "web/components/team_nav.html" %}
 <li>
   <a href="{% url 'chat:chat_home' %}" {% if active_tab == 'ai-chat' %}class="menu-active"{% endif %}>
     <i class="fa-solid fa-robot h-4 w-4"></i>

@@ -23,11 +23,22 @@ from django.views.generic import RedirectView
 from django.views.i18n import JavaScriptCatalog
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
+from apps.subscriptions.urls import team_urlpatterns as subscriptions_team_urls
+from apps.teams.urls import team_urlpatterns as single_team_urls
 from apps.web.sitemaps import StaticViewSitemap
+from apps.web.urls import team_urlpatterns as web_team_urls
 
 sitemaps = {
     "static": StaticViewSitemap(),
 }
+
+# urls that are unique to using a team should go here
+team_urlpatterns = [
+    path("", include(web_team_urls)),
+    path("subscription/", include(subscriptions_team_urls)),
+    path("team/", include(single_team_urls)),
+    path("example/", include("apps.teams_example.urls")),
+]
 
 urlpatterns = [
     path("__reload__/", include("django_browser_reload.urls")),
@@ -39,9 +50,12 @@ urlpatterns = [
     path("i18n/", include("django.conf.urls.i18n")),
     path("jsi18n/", JavaScriptCatalog.as_view(), name="javascript-catalog"),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="django.contrib.sitemaps.views.sitemap"),
+    path("a/<slug:team_slug>/", include(team_urlpatterns)),
     path("accounts/", include("allauth.urls")),
     path("_allauth/", include("allauth.headless.urls")),
     path("users/", include("apps.users.urls")),
+    path("subscriptions/", include("apps.subscriptions.urls")),
+    path("teams/", include("apps.teams.urls")),
     path("", include("apps.web.urls")),
     path("pegasus/", include("pegasus.apps.examples.urls")),
     path("pegasus/employees/", include("pegasus.apps.employees.urls")),
@@ -52,6 +66,8 @@ urlpatterns = [
     # Optional UI - you may wish to remove one of these depending on your preference
     path("api/schema/swagger-ui/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/schema/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    # djstripe urls - for webhooks
+    path("stripe/", include("djstripe.urls", namespace="djstripe")),
     # hijack urls for impersonation
     path("hijack/", include("hijack.urls", namespace="hijack")),
     path("chat/", include("apps.chat.urls")),
