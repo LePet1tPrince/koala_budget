@@ -1,10 +1,10 @@
 cli:
   app_directory: apps
-  base_model: apps.utils.models.BaseModel
+  base_model: apps.teams.models.BaseTeamModel
   css_framework: tailwind
   module_path: apps
   template_directory: templates
-  use_teams: false
+  use_teams: true
 default_context:
   _pegasus_version: 2025.11.2
   api_framework: drf
@@ -58,9 +58,9 @@ default_context:
   use_impersonation: y
   use_sentry: y
   use_shadcn: n
-  use_subscriptions: n
-  use_teams: n
-  use_teams_example: n
+  use_subscriptions: y
+  use_teams: y
+  use_teams_example: y
   use_translations: y
   use_wagtail: n
   use_watchfiles: n

@@ -1,0 +1,14 @@
+{% extends "web/app/app_base.html" %}
+{% load static %}
+{% load django_vite %}
+{% block app %}
+<div id="manage-team-content"></div>
+{{ user_json|json_script:'user-details' }}
+{{ team_json|json_script:'team' }}
+{{ api_urls|json_script:'api-urls' }}
+{{ server_url|json_script:'server-url' }}
+{% endblock %}
+{% block page_js %}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/teams/edit-team.jsx' %}
+{% endblock %}

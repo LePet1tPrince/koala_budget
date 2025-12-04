@@ -26,6 +26,8 @@ export default defineConfig({
         'site-tailwind-css': path.resolve(__dirname, './assets/styles/site-tailwind.css'),
         'site': path.resolve(__dirname, './assets/javascript/site.js'),
         'app': path.resolve(__dirname, './assets/javascript/app.js'),
+        'teams': path.resolve(__dirname, './assets/javascript/teams/teams.jsx'),
+        'edit-team': path.resolve(__dirname, './assets/javascript/teams/edit-team.jsx'),
         'pegasus': path.resolve(__dirname, './assets/javascript/pegasus/pegasus.js'),
         'react-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/react/react-object-lifecycle.jsx'),
         'vue-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/vue/vue-object-lifecycle.js'),

@@ -40,6 +40,7 @@ dependencies = [
     "celery[redis]",
     "channels",
     "channels_redis",
+    "dj-stripe>=2.9,<2.10",
     "django-allauth[socialaccount,mfa,headless]>=65.13.0",
     "django-anymail[mailgun]", # email services
     "django-browser-reload",
@@ -61,9 +62,11 @@ dependencies = [
     "openai",
     "psycopg2-binary",
     "pydantic-ai>=1.0",
+    "python-dateutil",
     "redis",
     "requests",
     "sentry-sdk[django]>=2.33.2",
+    "stripe<12.0",
     "whitenoise[brotli]",
 ]
 

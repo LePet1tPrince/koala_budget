@@ -1,0 +1,31 @@
+{% load i18n %}
+<div class="table-responsive">
+  <table class="table pg-table">
+    <thead>
+    <tr>
+      <th>{% translate "Team Name" %}</th>
+      <th/>
+    </tr>
+    </thead>
+    <tbody>
+    {% for invitation in invitations %}
+      <tr>
+        <td>{{ invitation.team_name }}</td>
+        <td class="pg-inline-buttons pg-justify-content-end">
+          {% if not invitation.verified %}
+          <a class="pg-button-secondary mx-1" href="{% url 'account_email' %}">
+            {% blocktranslate trimmed with email=invitation.email %}
+              Verify "{{ email }}" to accept
+            {% endblocktranslate %}
+          </a>
+          {% else %}
+          <a class="pg-button-secondary mx-1" href="{% url 'teams:accept_invitation' invitation.id %}">
+            {% translate "View Invitation" %}
+          </a>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
