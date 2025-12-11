@@ -4,18 +4,30 @@ Admin configuration for budgeting app.
 
 from django.contrib import admin
 
-from .models import Account, Budget, Goal, Payee, Transaction
+from .models import Account, AccountType, Budget, Goal, Payee, Transaction
+
+
+@admin.register(AccountType)
+class AccountTypeAdmin(admin.ModelAdmin):
+    """Admin for AccountType model."""
+
+    list_display = ["type_name", "subtype_name", "team"]
+    list_filter = ["type_name", "team"]
+    search_fields = ["type_name", "subtype_name"]
+    ordering = ["type_name", "subtype_name"]
+    readonly_fields = ["created_at", "updated_at"]
 
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
     """Admin for Account model."""
 
-    list_display = ["account_number", "name", "account_type", "balance", "team", "in_bank_feed"]
-    list_filter = ["account_type", "in_bank_feed", "team"]
+    list_display = ["account_number", "name", "account_type", "subtype", "has_feed", "team"]
+    list_filter = ["account_type", "subtype", "has_feed", "team"]
     search_fields = ["name", "account_number"]
     ordering = ["account_number"]
-    readonly_fields = ["balance", "created_at", "updated_at"]
+    readonly_fields = ["created_at", "updated_at"]
+    autocomplete_fields = ["account_type", "subtype"]
 
 
 @admin.register(Payee)
@@ -33,12 +45,12 @@ class PayeeAdmin(admin.ModelAdmin):
 class TransactionAdmin(admin.ModelAdmin):
     """Admin for Transaction model."""
 
-    list_display = ["date", "payee", "amount", "account", "category", "team"]
-    list_filter = ["date", "team"]
+    list_display = ["date_posted", "payee", "amount", "account", "category", "status", "is_cleared", "team"]
+    list_filter = ["date_posted", "status", "is_cleared", "is_reconciled", "import_method", "team"]
     search_fields = ["payee__name", "notes"]
-    ordering = ["-date", "-created_at"]
+    ordering = ["-date_posted", "-created_at"]
     readonly_fields = ["created_at", "updated_at"]
-    date_hierarchy = "date"
+    date_hierarchy = "date_posted"
     autocomplete_fields = ["payee", "account", "category"]
 
 
@@ -46,11 +58,11 @@ class TransactionAdmin(admin.ModelAdmin):
 class BudgetAdmin(admin.ModelAdmin):
     """Admin for Budget model."""
 
-    list_display = ["month", "category", "budgeted_amount", "actual_amount", "available_amount", "team"]
+    list_display = ["month", "category", "budget", "team"]
     list_filter = ["month", "team"]
-    search_fields = ["category__name", "category_name"]
+    search_fields = ["category__name"]
     ordering = ["-month", "category__account_number"]
-    readonly_fields = ["actual_amount", "available_amount", "category_name", "created_at", "updated_at"]
+    readonly_fields = ["created_at", "updated_at"]
     date_hierarchy = "month"
     autocomplete_fields = ["category"]
 

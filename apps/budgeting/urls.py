@@ -11,6 +11,7 @@ app_name = "budgeting"
 
 # API router for ViewSets
 router = DefaultRouter()
+router.register(r"account-types", views.AccountTypeViewSet, basename="account-type")
 router.register(r"accounts", views.AccountViewSet, basename="account")
 router.register(r"payees", views.PayeeViewSet, basename="payee")
 router.register(r"transactions", views.TransactionViewSet, basename="transaction")

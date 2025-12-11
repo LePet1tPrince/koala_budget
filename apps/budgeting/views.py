@@ -13,9 +13,10 @@ from rest_framework.response import Response
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from . import selectors, services
-from .models import Account, Budget, Goal, Payee, Transaction
+from .models import Account, AccountType, Budget, Goal, Payee, Transaction
 from .serializers import (
     AccountSerializer,
+    AccountTypeSerializer,
     BalanceSheetReportSerializer,
     BudgetPerformanceReportSerializer,
     BudgetSerializer,
@@ -24,6 +25,27 @@ from .serializers import (
     PayeeSerializer,
     TransactionSerializer,
 )
+
+
+@extend_schema_view(
+    create=extend_schema(operation_id="budgeting_account_types_create"),
+    list=extend_schema(operation_id="budgeting_account_types_list"),
+    retrieve=extend_schema(operation_id="budgeting_account_types_retrieve"),
+    update=extend_schema(operation_id="budgeting_account_types_update"),
+    partial_update=extend_schema(operation_id="budgeting_account_types_partial_update"),
+    destroy=extend_schema(operation_id="budgeting_account_types_destroy"),
+)
+class AccountTypeViewSet(viewsets.ModelViewSet):
+    """ViewSet for AccountType model."""
+
+    serializer_class = AccountTypeSerializer
+    permission_classes = [TeamModelAccessPermissions]
+
+    def get_queryset(self):
+        return AccountType.for_team.all()
+
+    def perform_create(self, serializer):
+        serializer.save(team=self.request.team)
 
 
 @extend_schema_view(

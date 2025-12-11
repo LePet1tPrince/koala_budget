@@ -5,11 +5,30 @@ Keep these simple - just data transformation, no business logic.
 
 from rest_framework import serializers
 
-from .models import Account, Budget, Goal, Payee, Transaction
+from .models import Account, AccountType, Budget, Goal, Payee, Transaction
+
+
+class AccountTypeSerializer(serializers.ModelSerializer):
+    """Serializer for AccountType model."""
+
+    class Meta:
+        model = AccountType
+        fields = [
+            "id",
+            "type_name",
+            "subtype_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
 
 
 class AccountSerializer(serializers.ModelSerializer):
     """Serializer for Account model."""
+
+    account_balance = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    account_type_name = serializers.CharField(source="account_type.type_name", read_only=True)
+    subtype_name = serializers.CharField(source="subtype.subtype_name", read_only=True)
 
     class Meta:
         model = Account
@@ -18,12 +37,15 @@ class AccountSerializer(serializers.ModelSerializer):
             "name",
             "account_number",
             "account_type",
-            "in_bank_feed",
-            "balance",
+            "account_type_name",
+            "subtype",
+            "subtype_name",
+            "has_feed",
+            "account_balance",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["balance", "created_at", "updated_at"]
+        read_only_fields = ["account_balance", "account_type_name", "subtype_name", "created_at", "updated_at"]
 
 
 class PayeeSerializer(serializers.ModelSerializer):
@@ -38,20 +60,20 @@ class PayeeSerializer(serializers.ModelSerializer):
 class TransactionSerializer(serializers.ModelSerializer):
     """Serializer for Transaction model."""
 
-    payee_name = serializers.CharField(source="payee.name", read_only=True)
+    payee_name = serializers.CharField(source="payee.name", read_only=True, allow_null=True)
     account_name = serializers.CharField(source="account.name", read_only=True)
     account_number = serializers.IntegerField(source="account.account_number", read_only=True)
-    category_name = serializers.CharField(source="category.name", read_only=True)
-    category_number = serializers.IntegerField(source="category.account_number", read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True, allow_null=True)
+    category_number = serializers.IntegerField(source="category.account_number", read_only=True, allow_null=True)
 
     class Meta:
         model = Transaction
         fields = [
             "id",
-            "date",
+            "date_posted",
+            "amount",
             "payee",
             "payee_name",
-            "amount",
             "account",
             "account_name",
             "account_number",
@@ -59,6 +81,11 @@ class TransactionSerializer(serializers.ModelSerializer):
             "category_name",
             "category_number",
             "notes",
+            "imported_on",
+            "import_method",
+            "status",
+            "is_cleared",
+            "is_reconciled",
             "created_at",
             "updated_at",
         ]
@@ -76,8 +103,9 @@ class TransactionSerializer(serializers.ModelSerializer):
 class BudgetSerializer(serializers.ModelSerializer):
     """Serializer for Budget model."""
 
-    category_name = serializers.CharField(read_only=True)
-    category_type = serializers.CharField(source="category.account_type", read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    actual = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    available = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
 
     class Meta:
         model = Budget
@@ -86,14 +114,13 @@ class BudgetSerializer(serializers.ModelSerializer):
             "month",
             "category",
             "category_name",
-            "category_type",
-            "budgeted_amount",
-            "actual_amount",
-            "available_amount",
+            "budget",
+            "actual",
+            "available",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["actual_amount", "available_amount", "category_name", "category_type", "created_at", "updated_at"]
+        read_only_fields = ["actual", "available", "category_name", "created_at", "updated_at"]
 
 
 class GoalSerializer(serializers.ModelSerializer):
