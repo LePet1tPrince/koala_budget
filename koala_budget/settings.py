@@ -96,6 +96,8 @@ PROJECT_APPS = [
     "apps.teams_example.apps.TeamsExampleConfig",
     "apps.chat",
     "apps.ai.apps.AiConfig",
+    # "apps.budgeting.apps.BudgetingConfig",
+    "apps.transactions.apps.TransactionsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS

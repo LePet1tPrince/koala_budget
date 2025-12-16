@@ -1,0 +1,100 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Transactions" %}</li>
+  </ol>
+</nav>
+
+<section class="app-card">
+  <h3 class="pg-subtitle">{% translate "Transactions Overview" %}</h3>
+  <p class="text-gray-600 mb-6">
+    {% translate "Manage your accounts, account groups, and payees." %}
+  </p>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <!-- Account Groups Card -->
+    <div class="card bg-base-200 shadow-md">
+      <div class="card-body">
+        <h4 class="card-title text-lg">
+          <i class="fa fa-folder h-5 w-5 mr-2"></i>
+          {% translate "Account Groups" %}
+        </h4>
+        <p class="text-sm text-gray-600">
+          {% translate "Organize accounts by type (assets, liabilities, income, expenses, equity)." %}
+        </p>
+        <div class="card-actions justify-end mt-4">
+          <a href="{% url 'transactions:accountgroup_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+            {% translate "View All" %}
+          </a>
+          <a href="{% url 'transactions:accountgroup_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
+            {% translate "New Group" %}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accounts Card -->
+    <div class="card bg-base-200 shadow-md">
+      <div class="card-body">
+        <h4 class="card-title text-lg">
+          <i class="fa fa-university h-5 w-5 mr-2"></i>
+          {% translate "Accounts" %}
+        </h4>
+        <p class="text-sm text-gray-600">
+          {% translate "Track your financial accounts including bank accounts, credit cards, and more." %}
+        </p>
+        <div class="card-actions justify-end mt-4">
+          <a href="{% url 'transactions:account_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+            {% translate "View All" %}
+          </a>
+          <a href="{% url 'transactions:account_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
+            {% translate "New Account" %}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payees Card -->
+    <div class="card bg-base-200 shadow-md">
+      <div class="card-body">
+        <h4 class="card-title text-lg">
+          <i class="fa fa-users h-5 w-5 mr-2"></i>
+          {% translate "Payees" %}
+        </h4>
+        <p class="text-sm text-gray-600">
+          {% translate "Manage the people and organizations you pay or receive money from." %}
+        </p>
+        <div class="card-actions justify-end mt-4">
+          <a href="{% url 'transactions:payee_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+            {% translate "View All" %}
+          </a>
+          <a href="{% url 'transactions:payee_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
+            {% translate "New Payee" %}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quick Stats Section (Optional - can be enhanced later) -->
+<section class="app-card mt-6">
+  <h4 class="pg-subtitle">{% translate "Quick Stats" %}</h4>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">{% translate "Account Groups" %}</div>
+      <div class="stat-value text-2xl">{{ account_groups_count }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">{% translate "Accounts" %}</div>
+      <div class="stat-value text-2xl">{{ accounts_count }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">{% translate "Payees" %}</div>
+      <div class="stat-value text-2xl">{{ payees_count }}</div>
+    </div>
+  </div>
+</section>
+{% endblock %}
