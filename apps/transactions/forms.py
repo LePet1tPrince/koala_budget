@@ -39,4 +39,3 @@ class PayeeForm(forms.ModelForm):
     class Meta:
         model = Payee
         fields = ["name"]
-

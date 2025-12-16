@@ -67,18 +67,22 @@ def get_balance_sheet(team) -> dict:
     """
     accounts = Account.for_team.all()
 
-    assets = accounts.filter(account_type="asset").values("name", "account_number", "balance").order_by("account_number")
+    assets = (
+        accounts.filter(account_type="asset").values("name", "account_number", "balance").order_by("account_number")
+    )
 
     liabilities = (
         accounts.filter(account_type="liability").values("name", "account_number", "balance").order_by("account_number")
     )
 
-    equity = accounts.filter(Q(account_type="equity") | Q(account_type="opening_balance_equity")).values(
-        "name", "account_number", "balance"
-    ).order_by("account_number")
+    equity = (
+        accounts.filter(Q(account_type="equity") | Q(account_type="opening_balance_equity"))
+        .values("name", "account_number", "balance")
+        .order_by("account_number")
+    )
 
     total_assets = sum(a["balance"] for a in assets) if assets else Decimal("0")
-    total_liabilities = sum(l["balance"] for l in liabilities) if liabilities else Decimal("0")
+    total_liabilities = sum(liability["balance"] for liability in liabilities) if liabilities else Decimal("0")
     total_equity = sum(e["balance"] for e in equity) if equity else Decimal("0")
 
     return {
@@ -163,10 +167,7 @@ def get_transactions_for_month(team, month: date):
     year = month.year
     month_num = month.month
 
-    if month_num == 12:
-        next_month = date(year + 1, 1, 1)
-    else:
-        next_month = date(year, month_num + 1, 1)
+    next_month = date(year + 1, 1, 1) if month_num == 12 else date(year, month_num + 1, 1)
 
     return (
         Transaction.for_team.filter(date__gte=month, date__lt=next_month)

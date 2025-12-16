@@ -4,7 +4,7 @@ Only handles simple calculated fields to avoid complexity.
 Transaction balance updates are handled by services for better control.
 """
 
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import pre_save
 from django.dispatch import receiver
 
 from .models import Budget, Goal

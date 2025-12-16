@@ -61,13 +61,9 @@ class Account(BaseTeamModel):
     def account_balance(self):
         """Calculate account balance from transactions."""
         # Sum transactions where this account is the account field
-        account_total = (
-            self.transactions.aggregate(total=Sum("amount"))["total"] or 0
-        )
+        account_total = self.transactions.aggregate(total=Sum("amount"))["total"] or 0
         # Sum transactions where this account is the category field
-        category_total = (
-            self.categorized_transactions.aggregate(total=Sum("amount"))["total"] or 0
-        )
+        category_total = self.categorized_transactions.aggregate(total=Sum("amount"))["total"] or 0
         return account_total + category_total
 
 
@@ -195,9 +191,7 @@ class Budget(BaseTeamModel):
             team=self.team,
             date_posted__gte=month_start,
             date_posted__lt=month_end,
-        ).filter(
-            Q(account=self.category) | Q(category=self.category)
-        )
+        ).filter(Q(account=self.category) | Q(category=self.category))
 
         return transactions.aggregate(total=Sum("amount"))["total"] or 0
 

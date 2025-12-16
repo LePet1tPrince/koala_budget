@@ -22,13 +22,11 @@ def update_account_balance(account_id: int) -> None:
     account = Account.objects.get(id=account_id)
 
     # Sum transactions where this is the account (debits)
-    account_total = (
-        Transaction.objects.filter(account=account).aggregate(total=Sum("amount"))["total"] or Decimal("0")
-    )
+    account_total = Transaction.objects.filter(account=account).aggregate(total=Sum("amount"))["total"] or Decimal("0")
 
     # Sum transactions where this is the category (credits)
-    category_total = (
-        Transaction.objects.filter(category=account).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    category_total = Transaction.objects.filter(category=account).aggregate(total=Sum("amount"))["total"] or Decimal(
+        "0"
     )
 
     # Balance = debits - credits
@@ -50,18 +48,12 @@ def update_budget_actuals(budget_id: int) -> None:
     year = month_start.year
     month_num = month_start.month
 
-    if month_num == 12:
-        month_end = date(year + 1, 1, 1)
-    else:
-        month_end = date(year, month_num + 1, 1)
+    month_end = date(year + 1, 1, 1) if month_num == 12 else date(year, month_num + 1, 1)
 
     # Get all transactions for this category in this month
-    actual = (
-        Transaction.objects.filter(category=budget.category, date__gte=month_start, date__lt=month_end).aggregate(
-            total=Sum("amount")
-        )["total"]
-        or Decimal("0")
-    )
+    actual = Transaction.objects.filter(category=budget.category, date__gte=month_start, date__lt=month_end).aggregate(
+        total=Sum("amount")
+    )["total"] or Decimal("0")
 
     budget.actual_amount = actual
     budget.available_amount = budget.budgeted_amount - actual

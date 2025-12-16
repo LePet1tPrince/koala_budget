@@ -1,10 +1,7 @@
 from django.db import models
-from django.db.models import Sum
 from django.urls import reverse
-from django.utils.translation import gettext
 
-from apps.teams.models import BaseTeamModel, Team
-
+from apps.teams.models import BaseTeamModel
 
 # Account type constants - shared across models
 ACCOUNT_TYPE_ASSET = "asset"
@@ -48,6 +45,7 @@ class Account(BaseTeamModel):
     Account model for tracking financial accounts.
     Can be assets, liabilities, income, expenses, or equity.
     """
+
     account_id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
     account_number = models.IntegerField(help_text="Account number (1000s for assets, 2000s for liabilities, etc.)")
