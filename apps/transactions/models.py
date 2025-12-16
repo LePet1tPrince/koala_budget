@@ -44,19 +44,17 @@ class Account(BaseTeamModel):
     """
     Account model for tracking financial accounts.
     Can be assets, liabilities, income, expenses, or equity.
+    Account type is determined by the associated account_group.
     """
 
     account_id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
     account_number = models.IntegerField(help_text="Account number (1000s for assets, 2000s for liabilities, etc.)")
-    account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES)
     account_group = models.ForeignKey(
         AccountGroup,
         on_delete=models.PROTECT,
         related_name="accounts",
         help_text="Account group classification",
-        null=True,
-        blank=True,
     )
     has_feed = models.BooleanField(default=False, help_text="Whether this account has a bank feed")
 

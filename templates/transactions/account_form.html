@@ -16,12 +16,16 @@
 <section class="app-card">
   <h3 class="pg-subtitle">{% if account %}{% translate "Edit" %} {{ account.name }}{% else %}{% translate "New Account" %}{% endif %}</h3>
   <form method="post">{% csrf_token %}
-      {% render_form_fields form %}
-      <div class="flex gap-2">
-        <input type="submit" class="pg-button-primary" value="{% translate 'Save' %}">
-        <a href="{% url 'transactions:account_list' request.team.slug %}" class="pg-button-secondary">{% translate "Cancel" %}</a>
+    {% render_form_fields form %}
+    {% if form.non_field_errors %}
+      <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+        {{ form.non_field_errors }}
       </div>
+    {% endif %}
+    <div class="flex gap-2">
+      <input type="submit" class="pg-button-primary" value="{% translate 'Save' %}">
+      <a href="{% url 'transactions:account_list' request.team.slug %}" class="pg-button-secondary">{% translate "Cancel" %}</a>
+    </div>
   </form>
 </section>
 {% endblock %}
-

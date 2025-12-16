@@ -26,14 +26,12 @@
     </div>
     <div>
       <dt class="font-semibold">{% translate "Type" %}</dt>
-      <dd>{{ account.get_account_type_display }}</dd>
+      <dd>{{ account.account_group.get_account_type_display }}</dd>
     </div>
-    {% if account.account_group %}
     <div>
       <dt class="font-semibold">{% translate "Account Group" %}</dt>
       <dd><a href="{{ account.account_group.get_absolute_url }}" class="link">{{ account.account_group.name }}</a></dd>
     </div>
-    {% endif %}
     <div>
       <dt class="font-semibold">{% translate "Has Bank Feed" %}</dt>
       <dd>{% if account.has_feed %}{% translate "Yes" %}{% else %}{% translate "No" %}{% endif %}</dd>
@@ -45,4 +43,3 @@
   </dl>
 </section>
 {% endblock %}
-
