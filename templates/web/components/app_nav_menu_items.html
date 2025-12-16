@@ -3,6 +3,12 @@
   <span>{% translate "Application" %}</span>
 </li>
 <li>
+  <a href="{% url 'transactions:transactions_home' request.team.slug %}" {% if active_tab == 'transactions' %}class="menu-active"{% endif %}>
+    <i class="fa fa-home h-4 w-4"></i>
+    {% translate "Transactions" %}
+  </a>
+</li>
+<li>
   <a href="{% url 'web:home' %}" {% if active_tab == 'dashboard' %}class="menu-active"{% endif %}>
     <i class="fa fa-home h-4 w-4"></i>
     {% translate "Dashboard" %}

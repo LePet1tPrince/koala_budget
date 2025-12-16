@@ -1,0 +1,48 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Account Groups" %}</li>
+  </ol>
+</nav>
+<section class="app-card">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="pg-subtitle">{% translate "Account Groups" %}</h3>
+    <a href="{% url 'transactions:accountgroup_create' request.team.slug %}" class="pg-button-primary">
+      {% translate "New Account Group" %}
+    </a>
+  </div>
+  {% if object_list %}
+    <div class="overflow-x-auto">
+      <table class="table table-zebra w-full">
+        <thead>
+          <tr>
+            <th>{% translate "Name" %}</th>
+            <th>{% translate "Type" %}</th>
+            <th>{% translate "Description" %}</th>
+            <th>{% translate "Actions" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for accountgroup in object_list %}
+            <tr>
+              <td><a href="{{ accountgroup.get_absolute_url }}" class="link">{{ accountgroup.name }}</a></td>
+              <td>{{ accountgroup.get_account_type_display }}</td>
+              <td>{{ accountgroup.description|truncatewords:10 }}</td>
+              <td>
+                <a href="{% url 'transactions:accountgroup_update' request.team.slug accountgroup.pk %}" class="pg-button-secondary pg-button-sm">
+                  {% translate "Edit" %}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-gray-500">{% translate "No account groups yet." %} <a href="{% url 'transactions:accountgroup_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+  {% endif %}
+</section>
+{% endblock %}
+

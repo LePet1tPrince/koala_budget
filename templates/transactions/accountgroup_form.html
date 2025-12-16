@@ -1,0 +1,27 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li><a href="{% url 'transactions:accountgroup_list' request.team.slug %}">{% translate "Account Groups" %}</a></li>
+    {% if accountgroup %}
+    <li><a href="{{ accountgroup.get_absolute_url }}">{{ accountgroup.name }}</a></li>
+    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Edit" %}</li>
+    {% else %}
+    <li class="pg-breadcrumb-active" aria-current="page">{% translate "New" %}</li>
+    {% endif %}
+  </ol>
+</nav>
+<section class="app-card">
+  <h3 class="pg-subtitle">{% if accountgroup %}{% translate "Edit" %} {{ accountgroup.name }}{% else %}{% translate "New Account Group" %}{% endif %}</h3>
+  <form method="post">{% csrf_token %}
+      {% render_form_fields form %}
+      <div class="flex gap-2">
+        <input type="submit" class="pg-button-primary" value="{% translate 'Save' %}">
+        <a href="{% url 'transactions:accountgroup_list' request.team.slug %}" class="pg-button-secondary">{% translate "Cancel" %}</a>
+      </div>
+  </form>
+</section>
+{% endblock %}
+

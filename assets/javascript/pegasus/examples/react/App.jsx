@@ -1,16 +1,17 @@
-import React, {useState, useEffect} from "react";
 import {
   BrowserRouter,
-  Routes,
-  Route,
   Link,
-  useParams, useRoutes,
+  Route,
+  Routes,
+  useParams,
+  useRoutes,
 } from "react-router-dom";
+import React, {useEffect, useState} from "react";
+
 import EditAddEmployeeWidget from "./EditAddEmployeeWidget";
 import EmployeeTableRow from "./EmployeeTableRow";
-import LoadingScreen from "../../../utilities/Loading";
 import LoadError from "../../../utilities/LoadError";
-
+import LoadingScreen from "../../../utilities/Loading";
 
 const EmptyEmployeeList = function(props) {
   return (
@@ -39,6 +40,7 @@ const EmptyEmployeeList = function(props) {
 const EmployeeList = function(props) {
   return (
     <section className="app-card">
+      NOW THIS IS THE SECTION
       <h3 className="pg-subtitle">All Employees</h3>
       <div className='table-responsive'>
         <table className="table pg-table">
