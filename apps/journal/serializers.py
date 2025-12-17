@@ -7,6 +7,15 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.accounts.models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_TYPE_INCOME,
+    ACCOUNT_TYPE_LIABILITY,
+    Account,
+    Payee,
+)
+
 from .models import JournalEntry, JournalLine
 
 
@@ -138,3 +147,235 @@ class JournalEntrySerializer(serializers.ModelSerializer):
 
         return instance
 
+
+class SimpleTransactionSerializer(serializers.Serializer):
+    """
+    Simplified transaction serializer for easy client-side usage.
+    Converts between simple transaction format and journal entry format.
+
+    Simple format:
+    - date: transaction date
+    - account: the account money is moving from/to (e.g., bank account)
+    - category: the category account (e.g., groceries, salary)
+    - amount: positive amount
+    - description: transaction description
+    - payee: optional payee ID
+
+    This gets converted to a journal entry with 2 lines based on account types.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    date = serializers.DateField()
+    account = serializers.PrimaryKeyRelatedField(
+        queryset=Account.objects.none(),  # Will be set in __init__
+        help_text="The account money is moving from/to (e.g., bank account)",
+    )
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=Account.objects.none(),  # Will be set in __init__
+        help_text="The category account (e.g., groceries, salary)",
+    )
+    amount = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0.01"))
+    description = serializers.CharField()
+    payee = serializers.PrimaryKeyRelatedField(
+        queryset=Payee.objects.none(),  # Will be set in __init__
+        required=False,
+        allow_null=True,
+    )
+
+    # Read-only fields from journal entry
+    account_name = serializers.CharField(read_only=True)
+    category_name = serializers.CharField(read_only=True)
+    payee_name = serializers.CharField(read_only=True, allow_null=True)
+    status = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    def __init__(self, *args, **kwargs):
+        """Initialize with team context for querysets."""
+        super().__init__(*args, **kwargs)
+        # Get team from context
+        request = self.context.get("request")
+        if request and hasattr(request, "team"):
+            self.fields["account"].queryset = Account.for_team.all()
+            self.fields["category"].queryset = Account.for_team.all()
+            self.fields["payee"].queryset = Payee.for_team.all()
+
+    def _determine_debit_credit(self, account, category, amount):
+        """
+        Determine which account gets debited and which gets credited.
+
+        Double-entry bookkeeping rules:
+        - Assets increase with debits, decrease with credits
+        - Liabilities increase with credits, decrease with debits
+        - Income increases with credits, decreases with debits
+        - Expenses increase with debits, decrease with credits
+        - Equity increases with credits, decrease with debits
+
+        For a simple transaction:
+        - If spending money (expense): Debit expense, Credit asset
+        - If receiving money (income): Debit asset, Credit income
+        - If transferring between assets: Debit destination, Credit source
+        - If paying off liability: Debit liability, Credit asset
+        - If borrowing (liability): Debit asset, Credit liability
+        """
+        account_type = account.account_group.account_type
+        category_type = category.account_group.account_type
+
+        # Determine which line gets debit and which gets credit
+        if category_type == ACCOUNT_TYPE_EXPENSE:
+            # Spending money: Debit expense, Credit asset/liability
+            return (category, account, amount, Decimal("0")), (account, category, Decimal("0"), amount)
+        elif category_type == ACCOUNT_TYPE_INCOME:
+            # Receiving money: Debit asset, Credit income
+            return (account, category, amount, Decimal("0")), (category, account, Decimal("0"), amount)
+        elif account_type == ACCOUNT_TYPE_ASSET and category_type == ACCOUNT_TYPE_ASSET:
+            # Transfer between assets: Debit destination, Credit source
+            return (category, account, amount, Decimal("0")), (account, category, Decimal("0"), amount)
+        elif account_type == ACCOUNT_TYPE_ASSET and category_type == ACCOUNT_TYPE_LIABILITY:
+            # Paying off liability: Debit liability, Credit asset
+            return (category, account, amount, Decimal("0")), (account, category, Decimal("0"), amount)
+        elif account_type == ACCOUNT_TYPE_LIABILITY and category_type == ACCOUNT_TYPE_ASSET:
+            # Borrowing: Debit asset, Credit liability
+            return (category, account, amount, Decimal("0")), (account, category, Decimal("0"), amount)
+        else:
+            # Default: treat category as the "to" account
+            return (category, account, amount, Decimal("0")), (account, category, Decimal("0"), amount)
+
+    def create(self, validated_data):
+        """Create a journal entry from simple transaction data."""
+        request = self.context.get("request")
+        team = request.team
+
+        account = validated_data["account"]
+        category = validated_data["category"]
+        amount = validated_data["amount"]
+
+        # Determine debit/credit for each line
+        line1_data, line2_data = self._determine_debit_credit(account, category, amount)
+
+        # Create journal entry
+        journal_entry = JournalEntry.objects.create(
+            team=team,
+            entry_date=validated_data["date"],
+            description=validated_data["description"],
+            payee=validated_data.get("payee"),
+            source=JournalEntry.SOURCE_MANUAL,
+            status=JournalEntry.STATUS_DRAFT,
+        )
+
+        # Create journal lines
+        line1_account, _, line1_dr, line1_cr = line1_data
+        line2_account, _, line2_dr, line2_cr = line2_data
+
+        JournalLine.objects.create(
+            journal_entry=journal_entry,
+            team=team,
+            account=line1_account,
+            dr_amount=line1_dr,
+            cr_amount=line1_cr,
+        )
+
+        JournalLine.objects.create(
+            journal_entry=journal_entry,
+            team=team,
+            account=line2_account,
+            dr_amount=line2_dr,
+            cr_amount=line2_cr,
+        )
+
+        return journal_entry
+
+    def update(self, instance, validated_data):
+        """Update a journal entry from simple transaction data."""
+        account = validated_data["account"]
+        category = validated_data["category"]
+        amount = validated_data["amount"]
+
+        # Update journal entry fields
+        instance.entry_date = validated_data["date"]
+        instance.description = validated_data["description"]
+        instance.payee = validated_data.get("payee")
+        instance.save()
+
+        # Delete existing lines
+        instance.lines.all().delete()
+
+        # Determine debit/credit for each line
+        line1_data, line2_data = self._determine_debit_credit(account, category, amount)
+
+        # Create new journal lines
+        line1_account, _, line1_dr, line1_cr = line1_data
+        line2_account, _, line2_dr, line2_cr = line2_data
+
+        JournalLine.objects.create(
+            journal_entry=instance,
+            team=instance.team,
+            account=line1_account,
+            dr_amount=line1_dr,
+            cr_amount=line1_cr,
+        )
+
+        JournalLine.objects.create(
+            journal_entry=instance,
+            team=instance.team,
+            account=line2_account,
+            dr_amount=line2_dr,
+            cr_amount=line2_cr,
+        )
+
+        return instance
+
+    def to_representation(self, instance):
+        """Convert journal entry to simple transaction format."""
+        # Get the two lines
+        lines = list(instance.lines.all())
+        if len(lines) != 2:
+            # If not exactly 2 lines, can't represent as simple transaction
+            # Return basic info
+            return {
+                "id": instance.id,
+                "date": instance.entry_date,
+                "description": instance.description,
+                "amount": instance.total_debits,
+                "status": instance.status,
+                "created_at": instance.created_at,
+                "updated_at": instance.updated_at,
+            }
+
+        # Determine which line is the account and which is the category
+        # We'll use the account types to figure this out
+        line1, line2 = lines
+        account_line = None
+        category_line = None
+
+        # Try to identify which is the "main" account (asset/liability)
+        # and which is the category (expense/income)
+        line1_type = line1.account.account_group.account_type
+        line2_type = line2.account.account_group.account_type
+
+        if line1_type in [ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY]:
+            account_line = line1
+            category_line = line2
+        elif line2_type in [ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY]:
+            account_line = line2
+            category_line = line1
+        else:
+            # Both are same type, just pick first as account
+            account_line = line1
+            category_line = line2
+
+        return {
+            "id": instance.id,
+            "date": instance.entry_date,
+            "account": account_line.account.account_id,
+            "account_name": account_line.account.name,
+            "category": category_line.account.account_id,
+            "category_name": category_line.account.name,
+            "amount": str(account_line.amount),
+            "description": instance.description,
+            "payee": instance.payee.payee_id if instance.payee else None,
+            "payee_name": instance.payee.name if instance.payee else None,
+            "status": instance.status,
+            "created_at": instance.created_at,
+            "updated_at": instance.updated_at,
+        }
