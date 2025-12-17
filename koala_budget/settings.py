@@ -98,6 +98,7 @@ PROJECT_APPS = [
     "apps.ai.apps.AiConfig",
     # "apps.budgeting.apps.BudgetingConfig",
     "apps.accounts.apps.AccountsConfig",
+    "apps.journal.apps.JournalConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
