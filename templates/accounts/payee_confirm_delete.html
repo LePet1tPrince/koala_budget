@@ -3,7 +3,7 @@
 {% block app %}
 <nav aria-label="breadcrumbs">
   <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'transactions:payee_list' request.team.slug %}">{% translate "Payees" %}</a></li>
+    <li><a href="{% url 'accounts:payee_list' request.team.slug %}">{% translate "Payees" %}</a></li>
     <li><a href="{{ payee.get_absolute_url }}">{{ payee.name }}</a></li>
     <li class="pg-breadcrumb-active" aria-current="page">{% translate "Delete" %}</li>
   </ol>
@@ -19,4 +19,3 @@
   </form>
 </section>
 {% endblock %}
-

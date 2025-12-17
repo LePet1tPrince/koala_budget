@@ -1,16 +1,16 @@
 """
-URL configuration for transactions app.
+URL configuration for accounts app.
 """
 
 from django.urls import path
 
 from . import views
 
-app_name = "transactions"
+app_name = "accounts"
 
 urlpatterns = [
     # Home
-    path("", views.TransactionsHomeView.as_view(), name="transactions_home"),
+    path("", views.AccountsHomeView.as_view(), name="accounts_home"),
     # Account Group URLs
     path("account-groups/", views.AccountGroupListView.as_view(), name="accountgroup_list"),
     path("account-groups/new/", views.AccountGroupCreateView.as_view(), name="accountgroup_create"),

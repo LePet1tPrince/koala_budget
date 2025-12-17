@@ -39,7 +39,7 @@ team_urlpatterns = [
     path("team/", include(single_team_urls)),
     path("example/", include("apps.teams_example.urls")),
     # path("budgeting/", include("apps.budgeting.urls")),
-    path("transactions/", include("apps.transactions.urls")),
+    path("accounts/", include("apps.accounts.urls")),
 ]
 
 urlpatterns = [

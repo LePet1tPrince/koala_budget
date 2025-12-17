@@ -9,7 +9,7 @@
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
     <h3 class="pg-subtitle">{% translate "Account Groups" %}</h3>
-    <a href="{% url 'transactions:accountgroup_create' request.team.slug %}" class="pg-button-primary">
+    <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="pg-button-primary">
       {% translate "New Account Group" %}
     </a>
   </div>
@@ -31,7 +31,7 @@
               <td>{{ accountgroup.get_account_type_display }}</td>
               <td>{{ accountgroup.description|truncatewords:10 }}</td>
               <td>
-                <a href="{% url 'transactions:accountgroup_update' request.team.slug accountgroup.pk %}" class="pg-button-secondary pg-button-sm">
+                <a href="{% url 'accounts:accountgroup_update' request.team.slug accountgroup.pk %}" class="pg-button-secondary pg-button-sm">
                   {% translate "Edit" %}
                 </a>
               </td>
@@ -41,8 +41,7 @@
       </table>
     </div>
   {% else %}
-    <p class="text-gray-500">{% translate "No account groups yet." %} <a href="{% url 'transactions:accountgroup_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <p class="text-gray-500">{% translate "No account groups yet." %} <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
   {% endif %}
 </section>
 {% endblock %}
-

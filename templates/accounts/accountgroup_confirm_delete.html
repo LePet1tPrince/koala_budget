@@ -3,7 +3,7 @@
 {% block app %}
 <nav aria-label="breadcrumbs">
   <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'transactions:accountgroup_list' request.team.slug %}">{% translate "Account Groups" %}</a></li>
+    <li><a href="{% url 'accounts:accountgroup_list' request.team.slug %}">{% translate "Account Groups" %}</a></li>
     <li><a href="{{ accountgroup.get_absolute_url }}">{{ accountgroup.name }}</a></li>
     <li class="pg-breadcrumb-active" aria-current="page">{% translate "Delete" %}</li>
   </ol>
@@ -19,4 +19,3 @@
   </form>
 </section>
 {% endblock %}
-

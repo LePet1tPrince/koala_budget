@@ -9,7 +9,7 @@
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
     <h3 class="pg-subtitle">{% translate "Accounts" %}</h3>
-    <a href="{% url 'transactions:account_create' request.team.slug %}" class="pg-button-primary">
+    <a href="{% url 'accounts:account_create' request.team.slug %}" class="pg-button-primary">
       {% translate "New Account" %}
     </a>
   </div>
@@ -35,7 +35,7 @@
               <td><a href="{{ account.account_group.get_absolute_url }}" class="link">{{ account.account_group.name }}</a></td>
               <td>{% if account.has_feed %}✓{% else %}-{% endif %}</td>
               <td>
-                <a href="{% url 'transactions:account_update' request.team.slug account.pk %}" class="pg-button-secondary pg-button-sm">
+                <a href="{% url 'accounts:account_update' request.team.slug account.pk %}" class="pg-button-secondary pg-button-sm">
                   {% translate "Edit" %}
                 </a>
               </td>
@@ -45,7 +45,7 @@
       </table>
     </div>
   {% else %}
-    <p class="text-gray-500">{% translate "No accounts yet." %} <a href="{% url 'transactions:account_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <p class="text-gray-500">{% translate "No accounts yet." %} <a href="{% url 'accounts:account_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
   {% endif %}
 </section>
 {% endblock %}

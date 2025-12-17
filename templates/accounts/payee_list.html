@@ -9,7 +9,7 @@
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
     <h3 class="pg-subtitle">{% translate "Payees" %}</h3>
-    <a href="{% url 'transactions:payee_create' request.team.slug %}" class="pg-button-primary">
+    <a href="{% url 'accounts:payee_create' request.team.slug %}" class="pg-button-primary">
       {% translate "New Payee" %}
     </a>
   </div>
@@ -27,7 +27,7 @@
             <tr>
               <td><a href="{{ payee.get_absolute_url }}" class="link">{{ payee.name }}</a></td>
               <td>
-                <a href="{% url 'transactions:payee_update' request.team.slug payee.pk %}" class="pg-button-secondary pg-button-sm">
+                <a href="{% url 'accounts:payee_update' request.team.slug payee.pk %}" class="pg-button-secondary pg-button-sm">
                   {% translate "Edit" %}
                 </a>
               </td>
@@ -37,8 +37,7 @@
       </table>
     </div>
   {% else %}
-    <p class="text-gray-500">{% translate "No payees yet." %} <a href="{% url 'transactions:payee_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <p class="text-gray-500">{% translate "No payees yet." %} <a href="{% url 'accounts:payee_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
   {% endif %}
 </section>
 {% endblock %}
-

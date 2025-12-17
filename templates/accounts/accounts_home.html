@@ -3,12 +3,12 @@
 {% block app %}
 <nav aria-label="breadcrumbs">
   <ol class="pg-breadcrumbs">
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Transactions" %}</li>
+    <li class="pg-breadcrumb-active" aria-current="page">{% translate "accounts" %}</li>
   </ol>
 </nav>
 
 <section class="app-card">
-  <h3 class="pg-subtitle">{% translate "Transactions Overview" %}</h3>
+  <h3 class="pg-subtitle">{% translate "accounts Overview" %}</h3>
   <p class="text-gray-600 mb-6">
     {% translate "Manage your accounts, account groups, and payees." %}
   </p>
@@ -25,10 +25,10 @@
           {% translate "Organize accounts by type (assets, liabilities, income, expenses, equity)." %}
         </p>
         <div class="card-actions justify-end mt-4">
-          <a href="{% url 'transactions:accountgroup_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+          <a href="{% url 'accounts:accountgroup_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
             {% translate "View All" %}
           </a>
-          <a href="{% url 'transactions:accountgroup_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
+          <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
             {% translate "New Group" %}
           </a>
         </div>
@@ -46,10 +46,10 @@
           {% translate "Track your financial accounts including bank accounts, credit cards, and more." %}
         </p>
         <div class="card-actions justify-end mt-4">
-          <a href="{% url 'transactions:account_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+          <a href="{% url 'accounts:account_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
             {% translate "View All" %}
           </a>
-          <a href="{% url 'transactions:account_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
+          <a href="{% url 'accounts:account_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
             {% translate "New Account" %}
           </a>
         </div>
@@ -67,10 +67,10 @@
           {% translate "Manage the people and organizations you pay or receive money from." %}
         </p>
         <div class="card-actions justify-end mt-4">
-          <a href="{% url 'transactions:payee_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+          <a href="{% url 'accounts:payee_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
             {% translate "View All" %}
           </a>
-          <a href="{% url 'transactions:payee_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
+          <a href="{% url 'accounts:payee_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
             {% translate "New Payee" %}
           </a>
         </div>

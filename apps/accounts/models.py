@@ -37,7 +37,7 @@ class AccountGroup(BaseTeamModel):
         return self.name
 
     def get_absolute_url(self):
-        return reverse("transactions:accountgroup_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("accounts:accountgroup_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
 
 
 class Account(BaseTeamModel):
@@ -66,12 +66,12 @@ class Account(BaseTeamModel):
         return f"{self.account_number} - {self.name}"
 
     def get_absolute_url(self):
-        return reverse("transactions:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
 
     # @property
     # def account_balance(self):
-    #     """Calculate account balance from transactions."""
-    #     # Sum transactions where this account is the account field
+    #     """Calculate account balance from accounts."""
+    #     # Sum accounts where this account is the account field
     #     account_total = (
     #         self.transactions.aggregate(total=Sum("amount"))["total"] or 0
     #     )
@@ -98,4 +98,4 @@ class Payee(BaseTeamModel):
         return self.name
 
     def get_absolute_url(self):
-        return reverse("transactions:payee_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("accounts:payee_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})

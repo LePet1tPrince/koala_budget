@@ -1,5 +1,5 @@
 """
-Forms for transactions app.
+Forms for accounts app.
 """
 
 from django import forms

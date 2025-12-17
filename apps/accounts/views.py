@@ -1,5 +1,5 @@
 """
-Views for transactions app.
+Views for accounts app.
 """
 
 from django.urls import reverse
@@ -12,16 +12,16 @@ from .forms import AccountForm, AccountGroupForm, PayeeForm
 from .models import Account, AccountGroup, Payee
 
 
-# Transactions Home View
-class TransactionsHomeView(LoginAndTeamRequiredMixin, TemplateView):
-    """Home page for transactions app."""
+# Accounts Home View
+class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
+    """Home page for accounts app."""
 
-    template_name = "transactions/transactions_home.html"
+    template_name = "accounts/accounts_home.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["active_tab"] = "transactions"
-        context["page_title"] = _("Transactions | {team}").format(team=self.request.team)
+        context["active_tab"] = "accounts"
+        context["page_title"] = _("accounts | {team}").format(team=self.request.team)
         # Add counts for quick stats
         context["account_groups_count"] = AccountGroup.for_team.count()
         context["accounts_count"] = Account.for_team.count()
@@ -37,7 +37,7 @@ class AccountGroupViewMixin(LoginAndTeamRequiredMixin):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["active_tab"] = "transactions"
+        context["active_tab"] = "accounts"
         context["page_title"] = _("Account Groups | {team}").format(team=self.request.team)
         return context
 
@@ -74,7 +74,7 @@ class AccountGroupDeleteView(AccountGroupViewMixin, DeleteView):
     """Delete an account group."""
 
     def get_success_url(self):
-        return reverse("transactions:accountgroup_list", args=[self.request.team.slug])
+        return reverse("accounts:accountgroup_list", args=[self.request.team.slug])
 
 
 # Account Views
@@ -85,7 +85,7 @@ class AccountViewMixin(LoginAndTeamRequiredMixin):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["active_tab"] = "transactions"
+        context["active_tab"] = "accounts"
         context["page_title"] = _("Accounts | {team}").format(team=self.request.team)
         return context
 
@@ -132,7 +132,7 @@ class AccountDeleteView(AccountViewMixin, DeleteView):
     """Delete an account."""
 
     def get_success_url(self):
-        return reverse("transactions:account_list", args=[self.request.team.slug])
+        return reverse("accounts:account_list", args=[self.request.team.slug])
 
 
 # Payee Views
@@ -143,7 +143,7 @@ class PayeeViewMixin(LoginAndTeamRequiredMixin):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["active_tab"] = "transactions"
+        context["active_tab"] = "accounts"
         context["page_title"] = _("Payees | {team}").format(team=self.request.team)
         return context
 
@@ -180,4 +180,4 @@ class PayeeDeleteView(PayeeViewMixin, DeleteView):
     """Delete a payee."""
 
     def get_success_url(self):
-        return reverse("transactions:payee_list", args=[self.request.team.slug])
+        return reverse("accounts:payee_list", args=[self.request.team.slug])

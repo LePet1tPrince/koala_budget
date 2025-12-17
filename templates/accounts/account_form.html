@@ -4,7 +4,7 @@
 {% block app %}
 <nav aria-label="breadcrumbs">
   <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'transactions:account_list' request.team.slug %}">{% translate "Accounts" %}</a></li>
+    <li><a href="{% url 'accounts:account_list' request.team.slug %}">{% translate "Accounts" %}</a></li>
     {% if account %}
     <li><a href="{{ account.get_absolute_url }}">{{ account.name }}</a></li>
     <li class="pg-breadcrumb-active" aria-current="page">{% translate "Edit" %}</li>
@@ -24,7 +24,7 @@
     {% endif %}
     <div class="flex gap-2">
       <input type="submit" class="pg-button-primary" value="{% translate 'Save' %}">
-      <a href="{% url 'transactions:account_list' request.team.slug %}" class="pg-button-secondary">{% translate "Cancel" %}</a>
+      <a href="{% url 'accounts:account_list' request.team.slug %}" class="pg-button-secondary">{% translate "Cancel" %}</a>
     </div>
   </form>
 </section>

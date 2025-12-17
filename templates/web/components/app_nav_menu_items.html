@@ -4,9 +4,9 @@
 </li>
 {% if request.team %}
 <li>
-  <a href="{% url 'transactions:transactions_home' request.team.slug %}" {% if active_tab == 'transactions' %}class="menu-active"{% endif %}>
+  <a href="{% url 'accounts:accounts_home' request.team.slug %}" {% if active_tab == 'accounts' %}class="menu-active"{% endif %}>
     <i class="fa fa-home h-4 w-4"></i>
-    {% translate "Transactions" %}
+    {% translate "Accounts" %}
   </a>
 </li>
 {% endif %}

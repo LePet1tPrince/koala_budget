@@ -3,7 +3,7 @@
 {% block app %}
 <nav aria-label="breadcrumbs">
   <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'transactions:account_list' request.team.slug %}">{% translate "Accounts" %}</a></li>
+    <li><a href="{% url 'accounts:account_list' request.team.slug %}">{% translate "Accounts" %}</a></li>
     <li class="pg-breadcrumb-active" aria-current="page">{{ account.name }}</li>
   </ol>
 </nav>
@@ -11,10 +11,10 @@
   <div class="flex justify-between items-center mb-4">
     <h3 class="pg-subtitle">{{ account.name }}</h3>
     <div class="flex gap-2">
-      <a href="{% url 'transactions:account_update' request.team.slug account.pk %}" class="pg-button-primary">
+      <a href="{% url 'accounts:account_update' request.team.slug account.pk %}" class="pg-button-primary">
         {% translate "Edit" %}
       </a>
-      <a href="{% url 'transactions:account_delete' request.team.slug account.pk %}" class="pg-button-danger">
+      <a href="{% url 'accounts:account_delete' request.team.slug account.pk %}" class="pg-button-danger">
         {% translate "Delete" %}
       </a>
     </div>
