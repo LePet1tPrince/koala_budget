@@ -14,6 +14,8 @@ router = DefaultRouter()
 router.register(r"journal-entries", views.JournalEntryViewSet, basename="journal-entry")
 router.register(r"transactions", views.SimpleTransactionViewSet, basename="transaction")
 
+# URL patterns (all journal URLs are team-based)
 urlpatterns = [
+    path("", views.journal_home, name="journal_home"),
     path("api/", include(router.urls)),
 ]

@@ -1,14 +1,19 @@
 """
-API views for journal app.
-Provides REST API endpoints for journal entries and lines.
+Views for journal app.
+Provides both template views and REST API endpoints for journal entries and lines.
 """
 
 from django.db.models import Count
+from django.shortcuts import render
+from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.accounts.models import Account, Payee
+from apps.accounts.serializers import AccountSerializer, PayeeSerializer
+from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from .models import JournalEntry
@@ -16,12 +21,12 @@ from .serializers import JournalEntrySerializer, SimpleTransactionSerializer
 
 
 @extend_schema_view(
-    create=extend_schema(operation_id="journal_entries_create"),
-    list=extend_schema(operation_id="journal_entries_list"),
-    retrieve=extend_schema(operation_id="journal_entries_retrieve"),
-    update=extend_schema(operation_id="journal_entries_update"),
-    partial_update=extend_schema(operation_id="journal_entries_partial_update"),
-    destroy=extend_schema(operation_id="journal_entries_destroy"),
+    create=extend_schema(operation_id="journal_entries_create", tags=["journal"]),
+    list=extend_schema(operation_id="journal_entries_list", tags=["journal"]),
+    retrieve=extend_schema(operation_id="journal_entries_retrieve", tags=["journal"]),
+    update=extend_schema(operation_id="journal_entries_update", tags=["journal"]),
+    partial_update=extend_schema(operation_id="journal_entries_partial_update", tags=["journal"]),
+    destroy=extend_schema(operation_id="journal_entries_destroy", tags=["journal"]),
 )
 class JournalEntryViewSet(viewsets.ModelViewSet):
     """
@@ -88,12 +93,12 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 
 
 @extend_schema_view(
-    create=extend_schema(operation_id="simple_transactions_create"),
-    list=extend_schema(operation_id="simple_transactions_list"),
-    retrieve=extend_schema(operation_id="simple_transactions_retrieve"),
-    update=extend_schema(operation_id="simple_transactions_update"),
-    partial_update=extend_schema(operation_id="simple_transactions_partial_update"),
-    destroy=extend_schema(operation_id="simple_transactions_destroy"),
+    create=extend_schema(operation_id="simple_transactions_create", tags=["journal"]),
+    list=extend_schema(operation_id="simple_transactions_list", tags=["journal"]),
+    retrieve=extend_schema(operation_id="simple_transactions_retrieve", tags=["journal"]),
+    update=extend_schema(operation_id="simple_transactions_update", tags=["journal"]),
+    partial_update=extend_schema(operation_id="simple_transactions_partial_update", tags=["journal"]),
+    destroy=extend_schema(operation_id="simple_transactions_destroy", tags=["journal"]),
 )
 class SimpleTransactionViewSet(viewsets.ModelViewSet):
     """
@@ -127,3 +132,46 @@ class SimpleTransactionViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         """Update transaction with team context."""
         serializer.save()
+
+
+# Template Views
+
+
+@login_and_team_required
+def journal_home(request, team_slug):
+    """
+    Main journal page view.
+    Displays accounts with bank feeds and transactions table.
+    """
+    # Get accounts with bank feeds
+    accounts_with_feeds = Account.for_team.filter(has_feed=True).select_related("account_group").order_by("name")
+
+    # Serialize accounts for React
+    accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
+
+    # Get all accounts and payees for dropdowns
+    all_accounts = Account.for_team.all().order_by("account_number")
+    all_payees = Payee.for_team.all().order_by("name")
+
+    all_accounts_data = AccountSerializer(all_accounts, many=True).data
+    all_payees_data = PayeeSerializer(all_payees, many=True).data
+
+    # API URLs
+    api_urls = {
+        "transactions_list": f"/a/{team_slug}/journal/api/transactions/",
+        "transactions_detail": f"/a/{team_slug}/journal/api/transactions/{{id}}/",
+    }
+
+    return render(
+        request,
+        "journal/journal_home.html",
+        {
+            "active_tab": "journal",
+            "page_title": _("Journal | {team}").format(team=request.team),
+            "accounts": accounts_data,
+            "all_accounts": all_accounts_data,
+            "all_payees": all_payees_data,
+            "api_urls": api_urls,
+            "team_slug": team_slug,
+        },
+    )
