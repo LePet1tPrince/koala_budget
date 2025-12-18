@@ -89,11 +89,24 @@ const JournalApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => 
       console.error('Error message:', err.message);
       console.error('Error stack:', err.stack);
 
-      // If it's a response error, log the response details
+      // If it's a ResponseError from the API client, extract the response body
       if (err.response) {
         console.error('Response status:', err.response.status);
         console.error('Response headers:', err.response.headers);
-        console.error('Response data:', err.response.data);
+
+        // Try to read the response body as JSON
+        try {
+          const errorData = await err.response.json();
+          console.error('Response data (parsed):', errorData);
+        } catch (parseErr) {
+          // If JSON parsing fails, try to read as text
+          try {
+            const errorText = await err.response.text();
+            console.error('Response data (text):', errorText);
+          } catch (textErr) {
+            console.error('Could not read response body');
+          }
+        }
       }
 
       // If it's a request error

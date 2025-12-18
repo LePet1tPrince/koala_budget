@@ -175,7 +175,7 @@ class SimpleTransactionSerializer(serializers.Serializer):
         help_text="The category account (e.g., groceries, salary)",
     )
     amount = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0.01"))
-    description = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
     payee = serializers.PrimaryKeyRelatedField(
         queryset=Payee.objects.none(),  # Will be set in __init__
         required=False,
