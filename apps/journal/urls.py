@@ -12,7 +12,6 @@ app_name = "journal"
 # API router for ViewSets
 router = DefaultRouter()
 router.register(r"journal-entries", views.JournalEntryViewSet, basename="journal-entry")
-router.register(r"transactions", views.SimpleTransactionViewSet, basename="transaction")
 router.register(r"lines", views.SimpleLineViewSet, basename="line")
 
 # URL patterns (all journal URLs are team-based)

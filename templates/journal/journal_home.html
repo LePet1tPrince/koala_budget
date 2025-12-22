@@ -6,11 +6,11 @@
 {% block app %}
   <nav aria-label="breadcrumbs">
     <ol class="pg-breadcrumbs">
-      <li class="pg-breadcrumb-active" aria-current="page">{% translate "Journal" %}</li>
+      <li class="pg-breadcrumb-active" aria-current="page">{% translate "Journal Lines" %}</li>
     </ol>
   </nav>
 
-  <div id="journal-app"></div>
+  <div id="line-app"></div>
 
   {{ accounts|json_script:'accounts' }}
   {{ all_accounts|json_script:'all-accounts' }}
@@ -24,5 +24,5 @@
     const SERVER_URL_BASE = "{{ request.scheme }}://{{ request.get_host }}";
   </script>
   {% vite_react_refresh %}
-  {% vite_asset 'assets/javascript/journal/react/journal-app.jsx' %}
+  {% vite_asset 'assets/javascript/journal/react/line-app.jsx' %}
 {% endblock %}

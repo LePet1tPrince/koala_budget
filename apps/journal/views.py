@@ -17,7 +17,7 @@ from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from .models import JournalEntry, JournalLine
-from .serializers import JournalEntrySerializer, SimpleLineSerializer, SimpleTransactionSerializer
+from .serializers import JournalEntrySerializer, SimpleLineSerializer
 
 
 @extend_schema_view(
@@ -90,48 +90,6 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(journal_entry)
         return Response(serializer.data)
-
-
-@extend_schema_view(
-    create=extend_schema(operation_id="simple_transactions_create", tags=["journal"]),
-    list=extend_schema(operation_id="simple_transactions_list", tags=["journal"]),
-    retrieve=extend_schema(operation_id="simple_transactions_retrieve", tags=["journal"]),
-    update=extend_schema(operation_id="simple_transactions_update", tags=["journal"]),
-    partial_update=extend_schema(operation_id="simple_transactions_partial_update", tags=["journal"]),
-    destroy=extend_schema(operation_id="simple_transactions_destroy", tags=["journal"]),
-)
-class SimpleTransactionViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for simplified transaction interface.
-    Provides CRUD operations for transactions using a simple format
-    that gets converted to journal entries behind the scenes.
-
-    This is designed for client applications that want a simple
-    transaction model without dealing with double-entry bookkeeping.
-    """
-
-    serializer_class = SimpleTransactionSerializer
-    permission_classes = [TeamModelAccessPermissions]
-
-    def get_queryset(self):
-        """
-        Get journal entries for the current team.
-        Only returns entries with exactly 2 lines (simple transactions).
-        """
-        return (
-            JournalEntry.for_team.select_related("payee")
-            .prefetch_related("lines__account__account_group")
-            .annotate(line_count=Count("lines"))
-            .filter(line_count=2)
-        )
-
-    def perform_create(self, serializer):
-        """Create transaction with team context."""
-        serializer.save()
-
-    def perform_update(self, serializer):
-        """Update transaction with team context."""
-        serializer.save()
 
 
 @extend_schema_view(
