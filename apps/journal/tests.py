@@ -59,7 +59,7 @@ class SimpleTransactionAPITest(TestCase):
             "category": self.groceries_account.account_id,
             "amount": "50.00",
             "description": "Bought groceries",
-            "payee": self.payee.payee_id,
+            "payee": self.payee.id,
         }
 
         response = self.client.post(f"/a/{self.team.slug}/journal/api/transactions/", data, format="json")

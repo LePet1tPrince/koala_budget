@@ -3,47 +3,47 @@ import React, { useEffect, useState } from 'react';
 
 import AccountCard from './AccountCard';
 import { JournalApi } from 'api-client';
-import TransactionTable from './TransactionTable';
+import LineTable from './LineTable';
 import { getApiConfiguration } from '../../api';
 
 /**
- * JournalApp - Main application component
- * Manages account selection and transaction CRUD operations
+ * LineApp - Main application component for managing lines
+ * Manages account selection and line CRUD operations
  */
-const JournalApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
+const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [transactions, setTransactions] = useState([]);
+  const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Create API client instance
   const apiClient = new JournalApi(getApiConfiguration(SERVER_URL_BASE));
 
-  // Load transactions when account is selected
+  // Load lines when account is selected
   useEffect(() => {
     if (selectedAccount) {
-      loadTransactions();
+      loadLines();
     } else {
-      setTransactions([]);
+      setLines([]);
     }
   }, [selectedAccount]);
 
-  const loadTransactions = async () => {
+  const loadLines = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.simpleTransactionsList({
+      const response = await apiClient.simpleLinesList({
         teamSlug: teamSlug,
         // Note: The API doesn't support filtering by account yet, so we'll filter client-side
       });
-      // Filter transactions by selected account
-      const filteredTransactions = response.results.filter(
-        (t) => t.account === selectedAccount.account_id
+      // Filter lines by selected account
+      const filteredLines = response.results.filter(
+        (l) => l.account === selectedAccount.account_id
       );
-      setTransactions(filteredTransactions);
+      setLines(filteredLines);
     } catch (err) {
-      console.error('Failed to load transactions:', err);
-      setError(gettext('Failed to load transactions'));
+      console.error('Failed to load lines:', err);
+      setError(gettext('Failed to load lines'));
     } finally {
       setLoading(false);
     }
@@ -53,12 +53,12 @@ const JournalApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => 
     setSelectedAccount(account);
   };
 
-  const handleAddTransaction = async (transactionData) => {
+  const handleAddLine = async (lineData) => {
     try {
       // Convert date string to Date object for the API client
       const apiData = {
-        ...transactionData,
-        date: new Date(transactionData.date),
+        ...lineData,
+        date: new Date(lineData.date),
       };
 
       // Convert empty string payee to null
@@ -66,22 +66,30 @@ const JournalApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => 
         apiData.payee = null;
       }
 
-      const newTransaction = await apiClient.simpleTransactionsCreate({
+      // Convert empty string inflow/outflow to 0
+      if (apiData.inflow === '' || apiData.inflow === null || apiData.inflow === undefined) {
+        apiData.inflow = '0';
+      }
+      if (apiData.outflow === '' || apiData.outflow === null || apiData.outflow === undefined) {
+        apiData.outflow = '0';
+      }
+
+      const newLine = await apiClient.simpleLinesCreate({
         teamSlug: teamSlug,
-        simpleTransaction: apiData,
+        simpleLine: apiData,
       });
 
-      setTransactions([...transactions, newTransaction]);
+      setLines([...lines, newLine]);
     } catch (err) {
-      console.error('Failed to add transaction:', err);
+      console.error('Failed to add line:', err);
       throw err;
     }
   };
 
-  const handleUpdateTransaction = async (transactionId, transactionData) => {
+  const handleUpdateLine = async (lineId, lineData) => {
     try {
       // Convert date string to Date object if present
-      const apiData = { ...transactionData };
+      const apiData = { ...lineData };
       if (apiData.date && typeof apiData.date === 'string') {
         apiData.date = new Date(apiData.date);
       }
@@ -91,29 +99,37 @@ const JournalApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => 
         apiData.payee = null;
       }
 
-      const updatedTransaction = await apiClient.simpleTransactionsPartialUpdate({
+      // Convert empty string inflow/outflow to 0
+      if (apiData.inflow === '' || apiData.inflow === null || apiData.inflow === undefined) {
+        apiData.inflow = '0';
+      }
+      if (apiData.outflow === '' || apiData.outflow === null || apiData.outflow === undefined) {
+        apiData.outflow = '0';
+      }
+
+      const updatedLine = await apiClient.simpleLinesPartialUpdate({
         teamSlug: teamSlug,
-        id: transactionId,
-        patchedSimpleTransaction: apiData,
+        id: lineId,
+        patchedSimpleLine: apiData,
       });
-      setTransactions(
-        transactions.map((t) => (t.id === transactionId ? updatedTransaction : t))
+      setLines(
+        lines.map((l) => (l.line_id === lineId ? updatedLine : l))
       );
     } catch (err) {
-      console.error('Failed to update transaction:', err);
+      console.error('Failed to update line:', err);
       throw err;
     }
   };
 
-  const handleDeleteTransaction = async (transactionId) => {
+  const handleDeleteLine = async (lineId) => {
     try {
-      await apiClient.simpleTransactionsDestroy({
+      await apiClient.simpleLinesDestroy({
         teamSlug: teamSlug,
-        id: transactionId,
+        id: lineId,
       });
-      setTransactions(transactions.filter((t) => t.id !== transactionId));
+      setLines(lines.filter((l) => l.line_id !== lineId));
     } catch (err) {
-      console.error('Failed to delete transaction:', err);
+      console.error('Failed to delete line:', err);
       throw err;
     }
   };
@@ -144,11 +160,11 @@ const JournalApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => 
         )}
       </section>
 
-      {/* Transactions Table */}
+      {/* Lines Table */}
       {selectedAccount && (
         <section className="app-card">
           <h2 className="pg-subtitle mb-4">
-            {gettext('Transactions for')} {selectedAccount.name}
+            {gettext('Lines for')} {selectedAccount.name}
           </h2>
           {error && (
             <div className="alert alert-error mb-4">
@@ -161,14 +177,14 @@ const JournalApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => 
               <span className="loading loading-spinner loading-lg"></span>
             </div>
           ) : (
-            <TransactionTable
-              transactions={transactions}
+            <LineTable
+              lines={lines}
               selectedAccount={selectedAccount}
               allAccounts={allAccounts}
               allPayees={allPayees}
-              onAdd={handleAddTransaction}
-              onUpdate={handleUpdateTransaction}
-              onDelete={handleDeleteTransaction}
+              onAdd={handleAddLine}
+              onUpdate={handleUpdateLine}
+              onDelete={handleDeleteLine}
             />
           )}
         </section>
@@ -177,4 +193,4 @@ const JournalApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => 
   );
 };
 
-export default JournalApp;
+export default LineApp;

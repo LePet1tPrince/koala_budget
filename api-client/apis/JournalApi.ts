@@ -17,9 +17,12 @@ import * as runtime from '../runtime';
 import type {
   JournalEntry,
   PaginatedJournalEntryList,
+  PaginatedSimpleLineList,
   PaginatedSimpleTransactionList,
   PatchedJournalEntry,
+  PatchedSimpleLine,
   PatchedSimpleTransaction,
+  SimpleLine,
   SimpleTransaction,
 } from '../models/index';
 import {
@@ -27,12 +30,18 @@ import {
     JournalEntryToJSON,
     PaginatedJournalEntryListFromJSON,
     PaginatedJournalEntryListToJSON,
+    PaginatedSimpleLineListFromJSON,
+    PaginatedSimpleLineListToJSON,
     PaginatedSimpleTransactionListFromJSON,
     PaginatedSimpleTransactionListToJSON,
     PatchedJournalEntryFromJSON,
     PatchedJournalEntryToJSON,
+    PatchedSimpleLineFromJSON,
+    PatchedSimpleLineToJSON,
     PatchedSimpleTransactionFromJSON,
     PatchedSimpleTransactionToJSON,
+    SimpleLineFromJSON,
+    SimpleLineToJSON,
     SimpleTransactionFromJSON,
     SimpleTransactionToJSON,
 } from '../models/index';
@@ -67,6 +76,38 @@ export interface JournalEntriesUpdateRequest {
     id: number;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
+}
+
+export interface SimpleLinesCreateRequest {
+    teamSlug: string;
+    simpleLine: Omit<SimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
+}
+
+export interface SimpleLinesDestroyRequest {
+    id: number;
+    teamSlug: string;
+}
+
+export interface SimpleLinesListRequest {
+    teamSlug: string;
+    page?: number;
+}
+
+export interface SimpleLinesPartialUpdateRequest {
+    id: number;
+    teamSlug: string;
+    patchedSimpleLine?: Omit<PatchedSimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
+}
+
+export interface SimpleLinesRetrieveRequest {
+    id: number;
+    teamSlug: string;
+}
+
+export interface SimpleLinesUpdateRequest {
+    id: number;
+    teamSlug: string;
+    simpleLine: Omit<SimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
 }
 
 export interface SimpleTransactionsCreateRequest {
@@ -397,6 +438,300 @@ export class JournalApi extends runtime.BaseAPI {
      */
     async journalEntriesUpdate(requestParameters: JournalEntriesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<JournalEntry> {
         const response = await this.journalEntriesUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesCreateRaw(requestParameters: SimpleLinesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling simpleLinesCreate().'
+            );
+        }
+
+        if (requestParameters['simpleLine'] == null) {
+            throw new runtime.RequiredError(
+                'simpleLine',
+                'Required parameter "simpleLine" was null or undefined when calling simpleLinesCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/lines/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SimpleLineToJSON(requestParameters['simpleLine']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SimpleLineFromJSON(jsonValue));
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesCreate(requestParameters: SimpleLinesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
+        const response = await this.simpleLinesCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesDestroyRaw(requestParameters: SimpleLinesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling simpleLinesDestroy().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling simpleLinesDestroy().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesDestroy(requestParameters: SimpleLinesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.simpleLinesDestroyRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesListRaw(requestParameters: SimpleLinesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedSimpleLineList>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling simpleLinesList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/lines/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedSimpleLineListFromJSON(jsonValue));
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesList(requestParameters: SimpleLinesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedSimpleLineList> {
+        const response = await this.simpleLinesListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesPartialUpdateRaw(requestParameters: SimpleLinesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling simpleLinesPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling simpleLinesPartialUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedSimpleLineToJSON(requestParameters['patchedSimpleLine']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SimpleLineFromJSON(jsonValue));
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesPartialUpdate(requestParameters: SimpleLinesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
+        const response = await this.simpleLinesPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesRetrieveRaw(requestParameters: SimpleLinesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling simpleLinesRetrieve().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling simpleLinesRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SimpleLineFromJSON(jsonValue));
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesRetrieve(requestParameters: SimpleLinesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
+        const response = await this.simpleLinesRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesUpdateRaw(requestParameters: SimpleLinesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling simpleLinesUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling simpleLinesUpdate().'
+            );
+        }
+
+        if (requestParameters['simpleLine'] == null) {
+            throw new runtime.RequiredError(
+                'simpleLine',
+                'Required parameter "simpleLine" was null or undefined when calling simpleLinesUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PUT',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SimpleLineToJSON(requestParameters['simpleLine']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SimpleLineFromJSON(jsonValue));
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     */
+    async simpleLinesUpdate(requestParameters: SimpleLinesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
+        const response = await this.simpleLinesUpdateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -87,7 +87,7 @@ class Payee(BaseTeamModel):
     Payee model for tracking who transactions are with.
     """
 
-    payee_id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
 
     class Meta:
