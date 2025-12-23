@@ -183,38 +183,27 @@ ACTIVE_PLAN_INTERVALS = [
 # with plans on your side
 ACTIVE_PRODUCTS = [
     ProductMetadata(
-        stripe_id="",
-        slug="starter",
-        name=_("Starter"),
-        description=_("For hobbyists and side-projects"),
-        features=[
-            _("Up to 100 Widgets"),
-            _("Unlimited Widget Editing"),
-        ],
-    ),
-    ProductMetadata(
-        stripe_id="",
-        slug="standard",
-        name=_("Standard"),
-        description=_("For small businesses and teams"),
+        stripe_id="prod_Td3eBXSmaVkVL4",
+        slug="subscription",
+        name=_("Koala Budget Subscription"),
+        description=_(""),
         is_default=True,
         features=[
-            _("Up to 500 Widgets"),
-            _("Unlimited Widget Editing"),
-            _("Advanced Widget Editing Features"),
+            _("Categorizing Transactionjs"),
+            _("Budgeting"),
         ],
     ),
-    ProductMetadata(
-        stripe_id="",
-        slug="premium",
-        name=_("Premium"),
-        description=_("For small businesses and teams"),
-        features=[
-            _("Unlimited Widgets"),
-            _("All Features"),
-            _("Priority Support and Training"),
-        ],
-    ),
+    # ProductMetadata(
+    #     stripe_id="prod_Td16s3nnE4lniM",
+    #     slug="monthly",
+    #     name=_("Monthly Plan"),
+    #     description=_("Pay Monthly"),
+    #     features=[
+    #         _("Up to 500 Widgets"),
+    #         _("Unlimited Widget Editing"),
+    #         _("Advanced Widget Editing Features"),
+    #     ],
+    # ),
 ]
 
 ACTIVE_PRODUCTS_BY_ID = {p.stripe_id: p for p in ACTIVE_PRODUCTS}

@@ -3,7 +3,7 @@ from django.core.mail import send_mail
 from pydantic_ai.toolsets import FunctionToolset
 
 
-async def send_email(email: str, subject: str, body: str) -> bool:
+async def send_email(email: str, subject: str, body: str) -> None:
     """Send an email to a recipient.
 
     Args:

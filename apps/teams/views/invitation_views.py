@@ -96,8 +96,6 @@ class SignupAfterInvite(SignupView):
 
         # Mark the email as verified since it was used in the invitation
         if settings.ACCOUNT_EMAIL_VERIFICATION != "none" and hasattr(self, "user") and self.invitation:
-            from allauth.account.models import EmailAddress
-
             email_address = EmailAddress.objects.filter(user=self.user, email=self.invitation.email).first()
             if email_address:
                 email_address.set_verified(commit=True)

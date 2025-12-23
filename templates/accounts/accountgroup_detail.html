@@ -1,0 +1,50 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li><a href="{% url 'accounts:accountgroup_list' request.team.slug %}">{% translate "Account Groups" %}</a></li>
+    <li class="pg-breadcrumb-active" aria-current="page">{{ accountgroup.name }}</li>
+  </ol>
+</nav>
+<section class="app-card">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="pg-subtitle">{{ accountgroup.name }}</h3>
+    <div class="flex gap-2">
+      <a href="{% url 'accounts:accountgroup_update' request.team.slug accountgroup.pk %}" class="pg-button-primary">
+        {% translate "Edit" %}
+      </a>
+      <a href="{% url 'accounts:accountgroup_delete' request.team.slug accountgroup.pk %}" class="pg-button-danger">
+        {% translate "Delete" %}
+      </a>
+    </div>
+  </div>
+  <dl class="grid grid-cols-1 gap-4">
+    <div>
+      <dt class="font-semibold">{% translate "Type" %}</dt>
+      <dd>{{ accountgroup.get_account_type_display }}</dd>
+    </div>
+    {% if accountgroup.description %}
+    <div>
+      <dt class="font-semibold">{% translate "Description" %}</dt>
+      <dd>{{ accountgroup.description }}</dd>
+    </div>
+    {% endif %}
+    <div>
+      <dt class="font-semibold">{% translate "Created" %}</dt>
+      <dd>{{ accountgroup.created_at }}</dd>
+    </div>
+  </dl>
+</section>
+
+{% if accountgroup.accounts.exists %}
+<section class="app-card mt-4">
+  <h4 class="pg-subtitle">{% translate "Accounts in this Group" %}</h4>
+  <ul class="list-disc list-inside">
+    {% for account in accountgroup.accounts.all %}
+      <li><a href="{{ account.get_absolute_url }}" class="link">{{ account }}</a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

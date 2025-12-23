@@ -39,7 +39,8 @@ team_urlpatterns = [
     path("team/", include(single_team_urls)),
     path("example/", include("apps.teams_example.urls")),
     # path("budgeting/", include("apps.budgeting.urls")),
-    path("transactions/", include("apps.transactions.urls")),
+    path("accounts/", include("apps.accounts.urls")),
+    path("journal/", include("apps.journal.urls")),
 ]
 
 urlpatterns = [
@@ -74,3 +75,6 @@ urlpatterns = [
     path("hijack/", include("hijack.urls", namespace="hijack")),
     path("chat/", include("apps.chat.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+if settings.ENABLE_DEBUG_TOOLBAR:
+    urlpatterns.append(path("__debug__/", include("debug_toolbar.urls")))

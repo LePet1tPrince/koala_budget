@@ -28,7 +28,7 @@ log = logging.getLogger("koala_budget.subscription")
 def subscription(request, team_slug):
     # non-admins aren't allowed to manage team subscriptions
     if not is_admin(request.user, request.team):
-        return TemplateResponse(request, "subscriptions/no_subsription_access.html")
+        return TemplateResponse(request, "subscriptions/no_subscription_access.html")
 
     subscription_holder = request.team
     if subscription_holder.has_active_subscription():

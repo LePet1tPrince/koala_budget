@@ -13,13 +13,6 @@
  */
 
 import { mapValues } from '../runtime';
-import type { StatusEnum } from './StatusEnum';
-import {
-    StatusEnumFromJSON,
-    StatusEnumFromJSONTyped,
-    StatusEnumToJSON,
-    StatusEnumToJSONTyped,
-} from './StatusEnum';
 import type { SubscriptionItem } from './SubscriptionItem';
 import {
     SubscriptionItemFromJSON,
@@ -27,6 +20,13 @@ import {
     SubscriptionItemToJSON,
     SubscriptionItemToJSONTyped,
 } from './SubscriptionItem';
+import type { SubscriptionStatusEnum } from './SubscriptionStatusEnum';
+import {
+    SubscriptionStatusEnumFromJSON,
+    SubscriptionStatusEnumFromJSONTyped,
+    SubscriptionStatusEnumToJSON,
+    SubscriptionStatusEnumToJSONTyped,
+} from './SubscriptionStatusEnum';
 
 /**
  * A serializer for Subscriptions which uses the SubscriptionWrapper object under the hood
@@ -86,10 +86,10 @@ export interface Subscription {
      * * `past_due` - Past due
      * * `trialing` - Trialing
      * * `unpaid` - Unpaid
-     * @type {StatusEnum}
+     * @type {SubscriptionStatusEnum}
      * @memberof Subscription
      */
-    status: StatusEnum;
+    status: SubscriptionStatusEnum;
     /**
      * The quantity applied to this subscription. This value will be `null` for multi-plan subscriptions
      * @type {number}
@@ -137,7 +137,7 @@ export function SubscriptionFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'currentPeriodStart': (new Date(json['current_period_start'])),
         'currentPeriodEnd': (new Date(json['current_period_end'])),
         'cancelAtPeriodEnd': json['cancel_at_period_end'] == null ? undefined : json['cancel_at_period_end'],
-        'status': StatusEnumFromJSON(json['status']),
+        'status': SubscriptionStatusEnumFromJSON(json['status']),
         'quantity': json['quantity'] == null ? undefined : json['quantity'],
         'items': ((json['items'] as Array<any>).map(SubscriptionItemFromJSON)),
     };
@@ -161,7 +161,7 @@ export function SubscriptionFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'current_period_start': ((value['currentPeriodStart']).toISOString()),
         'current_period_end': ((value['currentPeriodEnd']).toISOString()),
         'cancel_at_period_end': value['cancelAtPeriodEnd'],
-        'status': StatusEnumToJSON(value['status']),
+        'status': SubscriptionStatusEnumToJSON(value['status']),
         'quantity': value['quantity'],
         'items': ((value['items'] as Array<any>).map(SubscriptionItemToJSON)),
     };

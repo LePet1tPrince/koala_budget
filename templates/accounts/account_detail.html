@@ -1,0 +1,53 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li><a href="{% url 'accounts:account_list' request.team.slug %}">{% translate "Accounts" %}</a></li>
+    <li class="pg-breadcrumb-active" aria-current="page">{{ account.name }}</li>
+  </ol>
+</nav>
+<section class="app-card">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="pg-subtitle">{{ account.name }}</h3>
+    <div class="flex gap-2">
+      <a href="{% url 'accounts:account_update' request.team.slug account.pk %}" class="pg-button-primary">
+        {% translate "Edit" %}
+      </a>
+      <a href="{% url 'accounts:account_delete' request.team.slug account.pk %}" class="pg-button-danger">
+        {% translate "Delete" %}
+      </a>
+    </div>
+  </div>
+  <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <dt class="font-semibold">{% translate "Account Number" %}</dt>
+      <dd>{{ account.account_number }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Type" %}</dt>
+      <dd>{{ account.account_group.get_account_type_display }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Account Group" %}</dt>
+      <dd><a href="{{ account.account_group.get_absolute_url }}" class="link">{{ account.account_group.name }}</a></dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Has Bank Feed" %}</dt>
+      <dd>{% if account.has_feed %}{% translate "Yes" %}{% else %}{% translate "No" %}{% endif %}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Created" %}</dt>
+      <dd>{{ account.created_at }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Journal Lines" %}</dt>
+      <dd>{{ account.journal_lines.count }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Account Balance" %}</dt>
+      <dd>{{ account.account_balance }}</dd>
+    </div>
+  </dl>
+</section>
+{% endblock %}

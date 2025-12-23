@@ -30,6 +30,7 @@ SECRET_KEY = env("SECRET_KEY", default="django-insecure-SyXGhP7KmQaBYkcHFP7DUyzh
 
 # SECURITY WARNING: don"t run with debug turned on in production!
 DEBUG = env.bool("DEBUG", default=True)
+ENABLE_DEBUG_TOOLBAR = env.bool("ENABLE_DEBUG_TOOLBAR", default=False) and "test" not in sys.argv
 
 # Note: It is not recommended to set ALLOWED_HOSTS to "*" in production
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["*"])
@@ -45,6 +46,7 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.sitemaps",
     "django.contrib.messages",
+    "django.contrib.postgres",
     "django.contrib.staticfiles",
     "django.contrib.sites",
     "django.forms",
@@ -97,7 +99,8 @@ PROJECT_APPS = [
     "apps.chat",
     "apps.ai.apps.AiConfig",
     # "apps.budgeting.apps.BudgetingConfig",
-    "apps.transactions.apps.TransactionsConfig",
+    "apps.accounts.apps.AccountsConfig",
+    "apps.journal.apps.JournalConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -125,6 +128,20 @@ MIDDLEWARE = [
     "waffle.middleware.WaffleMiddleware",
 ]
 
+if ENABLE_DEBUG_TOOLBAR:
+    MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
+    INSTALLED_APPS.append("debug_toolbar")
+    INTERNAL_IPS = ["127.0.0.1"]
+    try:
+        import socket
+
+        # get hostname for Docker environments
+        # See https://django-debug-toolbar.readthedocs.io/en/latest/installation.html#configure-internal-ips
+        hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
+        # add discovered IPs plus some common defaults
+        INTERNAL_IPS += [ip[: ip.rfind(".")] + ".1" for ip in ips] + ["192.168.65.1", "10.0.2.2"]
+    except OSError as e:
+        print(f"{e} while attempting to resolve system hostname. Using INTERNAL_IPS={INTERNAL_IPS}")
 
 if DEBUG:
     INSTALLED_APPS.append("django_browser_reload")
@@ -505,7 +522,7 @@ PROJECT_METADATA = {
 # set this to True in production to have URLs generated with https instead of http
 USE_HTTPS_IN_ABSOLUTE_URLS = env.bool("USE_HTTPS_IN_ABSOLUTE_URLS", default=False)
 
-ADMINS = [("Timothy", "timothylbender@gmail.com")]
+ADMINS = ["timothylbender@gmail.com"]
 
 # Add your google analytics ID to the environment to connect to Google Analytics
 GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", default="")
