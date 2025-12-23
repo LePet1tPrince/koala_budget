@@ -33,7 +33,7 @@ class Chat(BaseModel):
     )
     chat_type = models.CharField(max_length=30, choices=ChatTypes.choices, default=ChatTypes.CHAT)
     agent_type = models.CharField(blank=True, max_length=30, choices=get_agent_type_choices, default="")
-    name = models.CharField(max_length=100, default="Unnamed Chat")
+    name = models.CharField(max_length=100, default=_("Unnamed Chat"))
 
     def __str__(self):
         return f"{self.name} ({self.user})"

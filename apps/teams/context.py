@@ -1,17 +1,21 @@
 import contextlib
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
+from typing import TYPE_CHECKING
 
 import sentry_sdk
 
-_context = ContextVar("team")
+if TYPE_CHECKING:
+    from apps.teams.models import Team
+
+_context: ContextVar["Team | None"] = ContextVar("team", default=None)
 
 
 class EmptyTeamContextException(Exception):
     pass
 
 
-def get_current_team():
+def get_current_team() -> "Team | None":
     """
     Util to get the team that has been set in the current thread/context using `set_current_team`.
 
@@ -19,9 +23,10 @@ def get_current_team():
     """
     with contextlib.suppress(LookupError):
         return _context.get()
+    return None
 
 
-def set_current_team(team) -> Token:
+def set_current_team(team: "Team | None") -> Token:
     """
     Utils to set a team in the current thread/context.
     Used in a middleware once a user is logged in.
@@ -52,7 +57,7 @@ def unset_current_team(token: Token | None = None):
 
 
 @contextmanager
-def current_team(team):
+def current_team(team: "Team | None"):
     """Context manager used for setting the team outside requests where the team is set automatically."""
     token = set_current_team(team)
     try:
