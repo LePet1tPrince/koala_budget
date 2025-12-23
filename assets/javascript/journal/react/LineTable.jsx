@@ -186,7 +186,7 @@ const LineTable = ({
         },
       },
       {
-        accessorKey: 'category_name',
+        accessorKey: 'category',
         header: gettext('Category'),
         cell: ({ row, getValue }) => {
           if (editingRow === row.id) {
@@ -205,7 +205,9 @@ const LineTable = ({
               </select>
             );
           }
-          return getValue();
+          const categoryId = getValue();
+          const account = allAccounts.find((a) => a.account_id === categoryId);
+          return account ? `${account.account_number} - ${account.name}` : '';
         },
       },
       {
