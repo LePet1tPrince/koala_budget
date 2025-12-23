@@ -3,7 +3,6 @@ Views for journal app.
 Provides both template views and REST API endpoints for journal entries and lines.
 """
 
-from django.db.models import Count
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -46,7 +45,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         serializer.save(team=self.request.team)
 
     @action(detail=True, methods=["post"])
-    def post_entry(self, request, pk=None):
+    def post_entry(self, request, pk=None, team_slug=None):
         """
         Post a draft journal entry (change status to posted).
         Only draft entries can be posted.
@@ -72,7 +71,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
-    def void_entry(self, request, pk=None):
+    def void_entry(self, request, pk=None, team_slug=None):
         """
         Void a posted journal entry.
         Only posted entries can be voided.

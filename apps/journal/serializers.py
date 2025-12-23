@@ -8,10 +8,6 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounts.models import (
-    ACCOUNT_TYPE_ASSET,
-    ACCOUNT_TYPE_EXPENSE,
-    ACCOUNT_TYPE_INCOME,
-    ACCOUNT_TYPE_LIABILITY,
     Account,
     Payee,
 )
