@@ -341,6 +341,35 @@ class SimpleLineAPITest(TestCase):
             self.assertEqual(income_line.dr_amount, Decimal("0.00"))
             self.assertEqual(income_line.cr_amount, Decimal("1000.00"))
 
+    def test_create_transaction_with_no_category(self):
+        """Test createing a transaction with no category."""
+        with current_team(self.team):
+            data = {
+                "date": "2025-12-17",
+                "account": self.bank_account.account_id,
+                "category": None,
+                "inflow": "1000.00",
+                "outflow": "0.00",
+                "description": "Monthly salary",
+            }
+
+            response = self.client.post(f"/a/{self.team.slug}/journal/api/lines/", data, format="json")
+
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+            # Verify journal entry
+            journal_entry = JournalEntry.objects.first()
+            self.assertEqual(journal_entry.description, "Monthly salary")
+
+            # Check that bank is debited and income is credited
+            bank_line = journal_entry.lines.get(account=self.bank_account)
+            income_line = journal_entry.lines.get(account=None)
+
+            self.assertEqual(bank_line.dr_amount, Decimal("1000.00"))
+            self.assertEqual(bank_line.cr_amount, Decimal("0.00"))
+            self.assertEqual(income_line.dr_amount, Decimal("0.00"))
+            self.assertEqual(income_line.cr_amount, Decimal("1000.00"))
+
     def test_list_lines(self):
         """Test listing simple lines."""
         with current_team(self.team):
