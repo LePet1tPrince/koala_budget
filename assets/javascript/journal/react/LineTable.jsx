@@ -8,6 +8,8 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 
+import { formatCurrency } from '../../utilities/currency';
+
 /**
  * LineTable component - displays and edits lines using TanStack Table
  */
@@ -36,13 +38,6 @@ const LineTable = ({
     is_reconciled: false,
   });
 
-  // Format currency
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
 
   // Format date for display
   const formatDate = (dateString) => {

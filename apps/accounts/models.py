@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Sum
 from django.urls import reverse
 
 from apps.teams.models import BaseTeamModel
@@ -68,18 +69,14 @@ class Account(BaseTeamModel):
     def get_absolute_url(self):
         return reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
 
-    # @property
-    # def account_balance(self):
-    #     """Calculate account balance from accounts."""
-    #     # Sum accounts where this account is the account field
-    #     account_total = (
-    #         self.transactions.aggregate(total=Sum("amount"))["total"] or 0
-    #     )
-    #     # Sum transactions where this account is the category field
-    #     category_total = (
-    #         self.categorized_transactions.aggregate(total=Sum("amount"))["total"] or 0
-    #     )
-    #     return account_total + category_total
+    @property
+    def account_balance(self):
+        """Calculate account balance from accounts."""
+        # Sum accounts where this account is the account field
+        dr_total = self.journal_lines.aggregate(total=Sum("dr_amount"))["total"] or 0
+        # Sum accounts where this account is the category field
+        cr_total = self.journal_lines.aggregate(total=Sum("cr_amount"))["total"] or 0
+        return dr_total - cr_total
 
 
 class Payee(BaseTeamModel):

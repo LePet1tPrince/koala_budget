@@ -40,6 +40,14 @@
       <dt class="font-semibold">{% translate "Created" %}</dt>
       <dd>{{ account.created_at }}</dd>
     </div>
+    <div>
+      <dt class="font-semibold">{% translate "Journal Lines" %}</dt>
+      <dd>{{ account.journal_lines.count }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Account Balance" %}</dt>
+      <dd>{{ account.account_balance }}</dd>
+    </div>
   </dl>
 </section>
 {% endblock %}

@@ -1,5 +1,6 @@
 /* globals gettext */
 import React from 'react';
+import { formatCurrency } from '../../utilities/currency';
 
 /**
  * AccountCard component - displays an account with bank feed
@@ -21,11 +22,14 @@ const AccountCard = ({ account, isSelected, onClick }) => {
             </span>
           )}
         </h3>
-        <p className="text-sm text-base-content/70">
+        {/* <p className="text-sm text-base-content/70">
           {gettext('Account #')}{account.account_number}
-        </p>
+        </p> */}
         <p className="text-xs text-base-content/60">
           {account.account_group_name}
+        </p>
+        <p className="text-xs text-base-content/60">
+        {formatCurrency(account.account_balance)}
         </p>
       </div>
     </div>
@@ -33,4 +37,3 @@ const AccountCard = ({ account, isSelected, onClick }) => {
 };
 
 export default AccountCard;
-

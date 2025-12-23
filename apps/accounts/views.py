@@ -114,7 +114,10 @@ class AccountCreateView(AccountViewMixin, CreateView):
 class AccountDetailView(AccountViewMixin, DetailView):
     """View details of an account."""
 
-    pass
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["journal_lines"] = self.object.journal_lines.all()
+        return context
 
 
 class AccountUpdateView(AccountViewMixin, UpdateView):
