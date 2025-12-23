@@ -34,8 +34,8 @@ const LineTable = ({
     outflow: '',
     description: '',
     payee: '',
-    is_cleared: false,
-    is_reconciled: false,
+    isCleared: false,
+    isReconciled: false,
   });
 
   // Date range filter state (YYYY-MM-DD strings)
@@ -49,9 +49,9 @@ const LineTable = ({
   };
 
   // Format date for input field (YYYY-MM-DD)
-  const formatDateForInput = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
+  const formatDateForInput = (dateVal) => {
+    if (!dateVal) return '';
+    const date = dateVal instanceof Date ? dateVal : new Date(dateVal);
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -103,8 +103,8 @@ const LineTable = ({
       outflow: original.outflow ?? '',
       description: original.description ?? '',
       payee: original.payee ?? '',
-      is_cleared: !!original.is_cleared,
-      is_reconciled: !!original.is_reconciled,
+      isCleared: !!original.isCleared,
+      isReconciled: !!original.isReconciled,
     });
 
     return (
@@ -185,23 +185,23 @@ const LineTable = ({
           <input
             type="checkbox"
             className="checkbox checkbox-sm"
-            checked={!!local.is_cleared}
-            onChange={(e) => setLocal({ ...local, is_cleared: e.target.checked })}
+            checked={!!local.isCleared}
+            onChange={(e) => setLocal({ ...local, isCleared: e.target.checked })}
           />
         </td>
         <td className="text-center">
           <input
             type="checkbox"
             className="checkbox checkbox-sm"
-            checked={!!local.is_reconciled}
-            onChange={(e) => setLocal({ ...local, is_reconciled: e.target.checked })}
+            checked={!!local.isReconciled}
+            onChange={(e) => setLocal({ ...local, isReconciled: e.target.checked })}
           />
         </td>
         <td>
           <div className="flex gap-1">
             <button
               className="btn btn-sm btn-success"
-              onClick={() => handleEditSave(original.line_id, local)}
+              onClick={() => handleEditSave(original.lineId, local)}
             >
               <i className="fa fa-check" />
             </button>
@@ -255,8 +255,8 @@ const LineTable = ({
         outflow: '',
         description: '',
         payee: '',
-        is_cleared: false,
-        is_reconciled: false,
+        isCleared: false,
+        isReconciled: false,
       });
     } catch (error) {
       console.error('Failed to add line:', error);
@@ -266,9 +266,9 @@ const LineTable = ({
 
   // Handle delete
   const handleDelete = async (row) => {
-    if (confirm(gettext('Are you sure you want to delete this line?'))) {
+      if (confirm(gettext('Are you sure you want to delete this line?'))) {
       try {
-        await onDelete(row.original.line_id);
+        await onDelete(row.original.lineId);
       } catch (error) {
         console.error('Failed to delete line:', error);
         alert(gettext('Failed to delete line'));
@@ -320,12 +320,12 @@ const LineTable = ({
         cell: ({ getValue }) => getPayeeName(getValue()),
       },
       {
-        accessorKey: 'is_cleared',
+        accessorKey: 'isCleared',
         header: gettext('Cleared'),
         cell: ({ getValue }) => (getValue() ? <i className="fa fa-check text-success"></i> : ''),
       },
       {
-        accessorKey: 'is_reconciled',
+        accessorKey: 'isReconciled',
         header: gettext('Reconciled'),
         cell: ({ getValue }) => (getValue() ? <i className="fa fa-check text-success"></i> : ''),
       },
@@ -373,7 +373,7 @@ const LineTable = ({
   const table = useReactTable({
     data: filteredLines,
     columns,
-    getRowId: (row) => row.line_id,
+    getRowId: (row) => row.lineId,
     state: {
       sorting,
     },
@@ -531,8 +531,8 @@ const LineTable = ({
                   <input
                     type="checkbox"
                     className="checkbox"
-                    checked={newLine.is_cleared}
-                    onChange={(e) => setNewLine({ ...newLine, is_cleared: e.target.checked })}
+                    checked={newLine.isCleared}
+                    onChange={(e) => setNewLine({ ...newLine, isCleared: e.target.checked })}
                   />
                 </label>
               </div>
@@ -542,8 +542,8 @@ const LineTable = ({
                   <input
                     type="checkbox"
                     className="checkbox"
-                    checked={newLine.is_reconciled}
-                    onChange={(e) => setNewLine({ ...newLine, is_reconciled: e.target.checked })}
+                    checked={newLine.isReconciled}
+                    onChange={(e) => setNewLine({ ...newLine, isReconciled: e.target.checked })}
                   />
                 </label>
               </div>

@@ -136,24 +136,24 @@ const DateRangePicker = ({ startDate, endDate, onApply }) => {
   };
 
   return (
-    <div className="relative inline-block" ref={containerRef}>
+    <div className="relative inline-flex items-center" ref={containerRef}>
       <button
         type="button"
         className="btn btn-outline btn-sm normal-case"
         onClick={handleToggle}
       >
         <span className="mr-2">{getDisplayText()}</span>
-        {(startDate || endDate) && (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm ml-2"
-            onClick={handleClear}
-            aria-label={gettext('Clear date range')}
-          >
-            <i className="fa fa-times" />
-          </button>
-        )}
       </button>
+      {(startDate || endDate) && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm ml-2"
+          onClick={handleClear}
+          aria-label={gettext('Clear date range')}
+        >
+          <i className="fa fa-times" />
+        </button>
+      )}
 
       {open && (
         <div className="absolute z-50 mt-2 w-96 bg-base-100 shadow-lg rounded-md p-4 border">

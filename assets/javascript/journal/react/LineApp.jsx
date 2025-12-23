@@ -113,7 +113,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
         patchedSimpleLine: apiData,
       });
       setLines(
-        lines.map((l) => (l.line_id === lineId ? updatedLine : l))
+        lines.map((l) => (l.lineId === lineId ? updatedLine : l))
       );
     } catch (err) {
       console.error('Failed to update line:', err);
@@ -127,7 +127,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
         teamSlug: teamSlug,
         id: lineId,
       });
-      setLines(lines.filter((l) => l.line_id !== lineId));
+      setLines(lines.filter((l) => l.lineId !== lineId));
     } catch (err) {
       console.error('Failed to delete line:', err);
       throw err;
