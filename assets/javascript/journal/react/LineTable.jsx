@@ -8,6 +8,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 
+import DateRangePicker from '../../common/DateRangePicker';
 import { formatCurrency } from '../../utilities/currency';
 
 /**
@@ -24,7 +25,6 @@ const LineTable = ({
 }) => {
   const [sorting, setSorting] = useState([]);
   const [editingRow, setEditingRow] = useState(null);
-  const [editData, setEditData] = useState({});
   const [isAdding, setIsAdding] = useState(false);
   const [newLine, setNewLine] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -37,6 +37,10 @@ const LineTable = ({
     is_cleared: false,
     is_reconciled: false,
   });
+
+  // Date range filter state (YYYY-MM-DD strings)
+  const [filterStart, setFilterStart] = useState('');
+  const [filterEnd, setFilterEnd] = useState('');
 
 
   // Format date for display
@@ -70,25 +74,13 @@ const LineTable = ({
   // Handle edit start
   const handleEditStart = (row) => {
     setEditingRow(row.id);
-    setEditData({
-      date: formatDateForInput(row.original.date),
-      account: row.original.account,
-      category: row.original.category,
-      inflow: row.original.inflow,
-      outflow: row.original.outflow,
-      description: row.original.description,
-      payee: row.original.payee || '',
-      is_cleared: row.original.is_cleared,
-      is_reconciled: row.original.is_reconciled,
-    });
   };
 
-  // Handle edit save
-  const handleEditSave = async (row) => {
+  // Handle edit save (called from RowEditor with updated values)
+  const handleEditSave = async (rowId, updatedData) => {
     try {
-      await onUpdate(row.original.line_id, editData);
+      await onUpdate(rowId, updatedData);
       setEditingRow(null);
-      setEditData({});
     } catch (error) {
       console.error('Failed to update line:', error);
       alert(gettext('Failed to update line'));
@@ -98,7 +90,131 @@ const LineTable = ({
   // Handle edit cancel
   const handleEditCancel = () => {
     setEditingRow(null);
-    setEditData({});
+  };
+
+  // RowEditor component: local state for editing a single row to avoid
+  // recreating column definitions on every keystroke.
+  const RowEditor = ({ original }) => {
+    const [local, setLocal] = useState({
+      date: formatDateForInput(original.date),
+      account: original.account,
+      category: original.category,
+      inflow: original.inflow ?? '',
+      outflow: original.outflow ?? '',
+      description: original.description ?? '',
+      payee: original.payee ?? '',
+      is_cleared: !!original.is_cleared,
+      is_reconciled: !!original.is_reconciled,
+    });
+
+    return (
+      <>
+        <td>
+          <input
+            type="date"
+            className="input input-sm input-bordered w-full"
+            value={local.date}
+            onChange={(e) => setLocal({ ...local, date: e.target.value })}
+          />
+        </td>
+        <td>
+          <select
+            className="select select-sm select-bordered w-full"
+            value={local.category}
+            onChange={(e) => setLocal({ ...local, category: parseInt(e.target.value) })}
+          >
+            <option value="">{gettext('Select category')}</option>
+            {allAccounts.map((account) => (
+              <option key={account.account_id} value={account.account_id}>
+                {account.account_number} - {account.name}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td>
+          <input
+            type="number"
+            step="0.01"
+            className="input input-sm input-bordered w-full"
+            value={local.inflow}
+            onChange={(e) => setLocal((p) => ({ ...p, inflow: e.target.value }))}
+            onBlur={() => {
+              if (local.inflow && parseFloat(local.inflow) > 0) {
+                setLocal((p) => ({ ...p, outflow: '0' }));
+              }
+            }}
+          />
+        </td>
+        <td>
+          <input
+            type="number"
+            step="0.01"
+            className="input input-sm input-bordered w-full"
+            value={local.outflow}
+            onChange={(e) => setLocal((p) => ({ ...p, outflow: e.target.value }))}
+            onBlur={() => {
+              if (local.outflow && parseFloat(local.outflow) > 0) {
+                setLocal((p) => ({ ...p, inflow: '0' }));
+              }
+            }}
+          />
+        </td>
+        <td>
+          <input
+            type="text"
+            className="input input-sm input-bordered w-full"
+            value={local.description}
+            onChange={(e) => setLocal({ ...local, description: e.target.value })}
+          />
+        </td>
+        <td>
+          <select
+            className="select select-sm select-bordered w-full"
+            value={local.payee}
+            onChange={(e) => setLocal({ ...local, payee: e.target.value ? parseInt(e.target.value) : '' })}
+          >
+            <option value="">{gettext('None')}</option>
+            {allPayees.map((payee) => (
+              <option key={payee.id} value={payee.id}>
+                {payee.name}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td className="text-center">
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={!!local.is_cleared}
+            onChange={(e) => setLocal({ ...local, is_cleared: e.target.checked })}
+          />
+        </td>
+        <td className="text-center">
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={!!local.is_reconciled}
+            onChange={(e) => setLocal({ ...local, is_reconciled: e.target.checked })}
+          />
+        </td>
+        <td>
+          <div className="flex gap-1">
+            <button
+              className="btn btn-sm btn-success"
+              onClick={() => handleEditSave(original.line_id, local)}
+            >
+              <i className="fa fa-check" />
+            </button>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={handleEditCancel}
+            >
+              <i className="fa fa-times" />
+            </button>
+          </div>
+        </td>
+      </>
+    );
   };
 
   // Handle add line
@@ -166,40 +282,12 @@ const LineTable = ({
       {
         accessorKey: 'date',
         header: gettext('Date'),
-        cell: ({ row, getValue }) => {
-          if (editingRow === row.id) {
-            return (
-              <input
-                type="date"
-                className="input input-sm input-bordered w-full"
-                value={editData.date}
-                onChange={(e) => setEditData({ ...editData, date: e.target.value })}
-              />
-            );
-          }
-          return formatDate(getValue());
-        },
+        cell: ({ getValue }) => formatDate(getValue()),
       },
       {
         accessorKey: 'category',
         header: gettext('Category'),
-        cell: ({ row, getValue }) => {
-          if (editingRow === row.id) {
-            return (
-              <select
-                className="select select-sm select-bordered w-full"
-                value={editData.category}
-                onChange={(e) => setEditData({ ...editData, category: parseInt(e.target.value) })}
-              >
-                <option value="">{gettext('Select category')}</option>
-                {allAccounts.map((account) => (
-                  <option key={account.account_id} value={account.account_id}>
-                    {account.account_number} - {account.name}
-                  </option>
-                ))}
-              </select>
-            );
-          }
+        cell: ({ getValue }) => {
           const categoryId = getValue();
           const account = allAccounts.find((a) => a.account_id === categoryId);
           return account ? `${account.account_number} - ${account.name}` : '';
@@ -208,28 +296,7 @@ const LineTable = ({
       {
         accessorKey: 'inflow',
         header: gettext('Inflow'),
-        cell: ({ row, getValue }) => {
-          if (editingRow === row.id) {
-            return (
-              <input
-                type="number"
-                step="0.01"
-                className="input input-sm input-bordered w-full"
-                value={editData.inflow}
-                onChange={(e) => {
-                  const newValue = e.target.value;
-                  setEditData({ ...editData, inflow: newValue });
-                }}
-                onBlur={(e) => {
-                  const newValue = e.target.value;
-                  // Clear outflow if inflow has a value
-                  if (newValue && parseFloat(newValue) > 0) {
-                    setEditData({ ...editData, inflow: newValue, outflow: '0' });
-                  }
-                }}
-              />
-            );
-          }
+        cell: ({ getValue }) => {
           const value = getValue();
           return value && parseFloat(value) > 0 ? formatCurrency(value) : '';
         },
@@ -237,28 +304,7 @@ const LineTable = ({
       {
         accessorKey: 'outflow',
         header: gettext('Outflow'),
-        cell: ({ row, getValue }) => {
-          if (editingRow === row.id) {
-            return (
-              <input
-                type="number"
-                step="0.01"
-                className="input input-sm input-bordered w-full"
-                value={editData.outflow}
-                onChange={(e) => {
-                  const newValue = e.target.value;
-                  setEditData({ ...editData, outflow: newValue });
-                }}
-                onBlur={(e) => {
-                  const newValue = e.target.value;
-                  // Clear inflow if outflow has a value
-                  if (newValue && parseFloat(newValue) > 0) {
-                    setEditData({ ...editData, outflow: newValue, inflow: '0' });
-                  }
-                }}
-              />
-            );
-          }
+        cell: ({ getValue }) => {
           const value = getValue();
           return value && parseFloat(value) > 0 ? formatCurrency(value) : '';
         },
@@ -266,124 +312,66 @@ const LineTable = ({
       {
         accessorKey: 'description',
         header: gettext('Description'),
-        cell: ({ row, getValue }) => {
-          if (editingRow === row.id) {
-            return (
-              <input
-                type="text"
-                className="input input-sm input-bordered w-full"
-                value={editData.description}
-                onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-              />
-            );
-          }
-          return getValue();
-        },
+        cell: ({ getValue }) => getValue(),
       },
       {
         accessorKey: 'payee',
         header: gettext('Payee'),
-        cell: ({ row, getValue }) => {
-          if (editingRow === row.id) {
-            return (
-              <select
-                className="select select-sm select-bordered w-full"
-                value={editData.payee}
-                onChange={(e) => setEditData({ ...editData, payee: e.target.value ? parseInt(e.target.value) : null })}
-              >
-                <option value="">{gettext('None')}</option>
-                {allPayees.map((payee) => (
-                  <option key={payee.id} value={payee.id}>
-                    {payee.name}
-                  </option>
-                ))}
-              </select>
-            );
-          }
-          return getPayeeName(getValue());
-        },
+        cell: ({ getValue }) => getPayeeName(getValue()),
       },
       {
         accessorKey: 'is_cleared',
         header: gettext('Cleared'),
-        cell: ({ row, getValue }) => {
-          if (editingRow === row.id) {
-            return (
-              <input
-                type="checkbox"
-                className="checkbox checkbox-sm"
-                checked={editData.is_cleared}
-                onChange={(e) => setEditData({ ...editData, is_cleared: e.target.checked })}
-              />
-            );
-          }
-          return getValue() ? <i className="fa fa-check text-success"></i> : '';
-        },
+        cell: ({ getValue }) => (getValue() ? <i className="fa fa-check text-success"></i> : ''),
       },
       {
         accessorKey: 'is_reconciled',
         header: gettext('Reconciled'),
-        cell: ({ row, getValue }) => {
-          if (editingRow === row.id) {
-            return (
-              <input
-                type="checkbox"
-                className="checkbox checkbox-sm"
-                checked={editData.is_reconciled}
-                onChange={(e) => setEditData({ ...editData, is_reconciled: e.target.checked })}
-              />
-            );
-          }
-          return getValue() ? <i className="fa fa-check text-success"></i> : '';
-        },
+        cell: ({ getValue }) => (getValue() ? <i className="fa fa-check text-success"></i> : ''),
       },
       {
         id: 'actions',
         header: gettext('Actions'),
-        cell: ({ row }) => {
-          if (editingRow === row.id) {
-            return (
-              <div className="flex gap-1">
-                <button
-                  className="btn btn-sm btn-success"
-                  onClick={() => handleEditSave(row)}
-                >
-                  <i className="fa fa-check"></i>
-                </button>
-                <button
-                  className="btn btn-sm btn-ghost"
-                  onClick={handleEditCancel}
-                >
-                  <i className="fa fa-times"></i>
-                </button>
-              </div>
-            );
-          }
-          return (
-            <div className="flex gap-1">
-              <button
-                className="btn btn-sm btn-ghost"
-                onClick={() => handleEditStart(row)}
-              >
-                <i className="fa fa-edit"></i>
-              </button>
-              <button
-                className="btn btn-sm btn-error btn-ghost"
-                onClick={() => handleDelete(row)}
-              >
-                <i className="fa fa-trash"></i>
-              </button>
-            </div>
-          );
-        },
+        cell: ({ row }) => (
+          <div className="flex gap-1">
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => handleEditStart(row)}
+            >
+              <i className="fa fa-edit"></i>
+            </button>
+            <button
+              className="btn btn-sm btn-error btn-ghost"
+              onClick={() => handleDelete(row)}
+            >
+              <i className="fa fa-trash"></i>
+            </button>
+          </div>
+        ),
       },
     ],
-    [editingRow, editData, allAccounts, allPayees]
+    [allAccounts, allPayees]
   );
 
   // Create table instance
+  // Filter lines by selected date range before passing to the table
+  const filteredLines = useMemo(() => {
+    if (!filterStart && !filterEnd) return lines;
+    const s = filterStart ? new Date(filterStart) : null;
+    const e = filterEnd ? new Date(filterEnd) : null;
+    // make end of day inclusive
+    const eInclusive = e ? new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999) : null;
+    return lines.filter((l) => {
+      if (!l.date) return false;
+      const d = new Date(l.date);
+      if (s && d < s) return false;
+      if (eInclusive && d > eInclusive) return false;
+      return true;
+    });
+  }, [lines, filterStart, filterEnd]);
+
   const table = useReactTable({
-    data: lines,
+    data: filteredLines,
     columns,
     getRowId: (row) => row.line_id,
     state: {
@@ -411,6 +399,19 @@ const LineTable = ({
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <DateRangePicker
+            startDate={filterStart}
+            endDate={filterEnd}
+            onApply={(s, e) => {
+              setFilterStart(s);
+              setFilterEnd(e);
+            }}
+          />
+        </div>
+        <div className="text-sm text-gray-500">{filteredLines.length} {gettext('lines')}</div>
+      </div>
       {/* Add Line Button */}
       {!isAdding && (
         <button
@@ -592,13 +593,22 @@ const LineTable = ({
                 </td>
               </tr>
             ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-                  ))}
-                </tr>
-              ))
+              table.getRowModel().rows.map((row) => {
+                if (editingRow === row.id) {
+                  return (
+                    <tr key={row.id}>
+                      <RowEditor original={row.original} />
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={row.id}>
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
