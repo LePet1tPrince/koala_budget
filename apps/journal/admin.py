@@ -16,7 +16,17 @@ class JournalLineInline(admin.TabularInline):
 class JournalEntryAdmin(admin.ModelAdmin):
     """Admin for JournalEntry model."""
 
-    list_display = ["id", "entry_date", "payee", "description_short", "status", "total_debits", "total_credits", "is_balanced", "team"]
+    list_display = [
+        "id",
+        "entry_date",
+        "payee",
+        "description_short",
+        "status",
+        "total_debits",
+        "total_credits",
+        "is_balanced",
+        "team",
+    ]
     list_filter = ["status", "source", "entry_date", "team"]
     search_fields = ["description", "payee__name"]
     ordering = ["-entry_date", "-created_at"]
@@ -26,22 +36,27 @@ class JournalEntryAdmin(admin.ModelAdmin):
     inlines = [JournalLineInline]
 
     fieldsets = (
-        (None, {
-            "fields": ("entry_date", "payee", "description", "status", "source", "team")
-        }),
-        ("Totals", {
-            "fields": ("total_debits", "total_credits", "is_balanced"),
-            "classes": ("collapse",),
-        }),
-        ("Metadata", {
-            "fields": ("created_at", "updated_at"),
-            "classes": ("collapse",),
-        }),
+        (None, {"fields": ("entry_date", "payee", "description", "status", "source", "team")}),
+        (
+            "Totals",
+            {
+                "fields": ("total_debits", "total_credits", "is_balanced"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
     )
 
     def description_short(self, obj):
         """Return shortened description for list display."""
         return obj.description[:50] + "..." if len(obj.description) > 50 else obj.description
+
     description_short.short_description = "Description"
 
     def save_formset(self, request, form, formset, change):
@@ -67,14 +82,18 @@ class JournalLineAdmin(admin.ModelAdmin):
     autocomplete_fields = ["journal_entry", "account", "team"]
 
     fieldsets = (
-        (None, {
-            "fields": ("journal_entry", "account", "dr_amount", "cr_amount", "amount")
-        }),
-        ("Status", {
-            "fields": ("is_cleared", "is_reconciled", "team"),
-        }),
-        ("Metadata", {
-            "fields": ("created_at", "updated_at"),
-            "classes": ("collapse",),
-        }),
+        (None, {"fields": ("journal_entry", "account", "dr_amount", "cr_amount", "amount")}),
+        (
+            "Status",
+            {
+                "fields": ("is_cleared", "is_reconciled", "team"),
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
     )

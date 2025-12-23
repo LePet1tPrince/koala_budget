@@ -3,7 +3,14 @@ from decimal import Decimal
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account, AccountGroup, Payee
+from apps.accounts.models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_TYPE_INCOME,
+    Account,
+    AccountGroup,
+    Payee,
+)
 from apps.teams.models import Team
 from apps.users.models import CustomUser
 

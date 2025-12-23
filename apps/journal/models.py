@@ -78,9 +78,7 @@ class JournalEntry(BaseTeamModel):
             total_credits = self.lines.aggregate(total=Sum("cr_amount"))["total"] or Decimal("0")
 
             if total_debits != total_credits:
-                raise ValidationError(
-                    f"Journal entry must balance. Debits: {total_debits}, Credits: {total_credits}"
-                )
+                raise ValidationError(f"Journal entry must balance. Debits: {total_debits}, Credits: {total_credits}")
 
     @property
     def total_debits(self):

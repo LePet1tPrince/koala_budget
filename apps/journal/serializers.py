@@ -110,9 +110,7 @@ class JournalEntrySerializer(serializers.ModelSerializer):
 
         if total_debits != total_credits:
             raise serializers.ValidationError(
-                {
-                    "lines": f"Journal entry must balance. Total debits: {total_debits}, Total credits: {total_credits}"
-                }
+                {"lines": f"Journal entry must balance. Total debits: {total_debits}, Total credits: {total_credits}"}
             )
 
         return data
@@ -146,8 +144,6 @@ class JournalEntrySerializer(serializers.ModelSerializer):
                 JournalLine.objects.create(journal_entry=instance, team=instance.team, **line_data)
 
         return instance
-
-
 
 
 class SimpleLineSerializer(serializers.Serializer):
@@ -186,12 +182,8 @@ class SimpleLineSerializer(serializers.Serializer):
         help_text="The category account (for the sibling line)",
     )
     category_name = serializers.SerializerMethodField()
-    inflow = serializers.DecimalField(
-        max_digits=15, decimal_places=2, min_value=Decimal("0"), default=Decimal("0")
-    )
-    outflow = serializers.DecimalField(
-        max_digits=15, decimal_places=2, min_value=Decimal("0"), default=Decimal("0")
-    )
+    inflow = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0"), default=Decimal("0"))
+    outflow = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0"), default=Decimal("0"))
     description = serializers.CharField(allow_blank=True)
     payee = serializers.PrimaryKeyRelatedField(
         queryset=Payee.objects.none(),  # Will be set in __init__

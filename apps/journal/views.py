@@ -123,9 +123,9 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         Get journal lines for the current team.
         Optimized with select_related and prefetch_related for performance.
         """
-        return JournalLine.for_team.select_related(
-            "account", "journal_entry", "journal_entry__payee"
-        ).prefetch_related("journal_entry__lines__account")
+        return JournalLine.for_team.select_related("account", "journal_entry", "journal_entry__payee").prefetch_related(
+            "journal_entry__lines__account"
+        )
 
     def perform_create(self, serializer):
         """Create line with team context."""
@@ -191,9 +191,7 @@ def journal_lines(request, team_slug):
     Displays accounts with bank feeds and lines table.
     """
     # Get accounts with bank feeds
-    accounts_with_feeds = (
-        Account.for_team.filter(has_feed=True).select_related("account_group").order_by("name")
-    )
+    accounts_with_feeds = Account.for_team.filter(has_feed=True).select_related("account_group").order_by("name")
 
     # Serialize accounts for React
     accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
