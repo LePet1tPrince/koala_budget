@@ -23,9 +23,10 @@ def get_discounted_price(amount: decimal.Decimal, coupon: Coupon) -> decimal.Dec
     elif coupon.percent_off:
         # todo
         return amount * (1 - (coupon.percent_off / 100))
+    return amount
 
 
-def get_friendly_currency_amount(price: Price, currency: str = None):
+def get_friendly_currency_amount(price: Price, currency: str | None = None) -> str:
     # modified from djstripe's version to only include sigil or currency, but not both
     # and handle multiple currencies
     if not currency:

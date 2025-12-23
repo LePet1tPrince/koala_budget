@@ -115,7 +115,7 @@ class BaseTeamModel(BaseModel):
     team = models.ForeignKey(Team, verbose_name=gettext("Team"), on_delete=models.CASCADE)
 
     # Default unfiltered manager
-    # Having the default manager unfiltered is import and for Django Admin and anywhere
+    # Having the default manager unfiltered is useful for the Django Admin and anywhere
     # else where the queryset is not easily customizable.
     # See https://docs.djangoproject.com/en/stable/topics/db/managers/#default-managers
     objects = models.Manager()

@@ -1,10 +1,10 @@
-import datetime
 import uuid
 
 from dateutil.relativedelta import relativedelta
 from django.contrib.messages.storage import default_storage
 from django.contrib.sessions.backends.file import SessionStore
 from django.test import RequestFactory
+from django.utils import timezone
 from djstripe import enums
 from djstripe.models import Customer, Plan, Price, Product, Subscription, SubscriptionItem
 
@@ -27,13 +27,14 @@ def create_subscription_for_team(subscription_holder: Team, product: ProductMeta
 
 
 def create_subscription(customer, product):
+    now = timezone.now()
     subscription = Subscription.objects.create(
         id=_make_stripe_id("subscription"),
         collection_method=enums.InvoiceCollectionMethod.charge_automatically,
         livemode=False,
         status=enums.SubscriptionStatus.active,
-        current_period_start=datetime.datetime.utcnow() - relativedelta(months=1),
-        current_period_end=datetime.datetime.utcnow() + relativedelta(months=1),
+        current_period_start=now - relativedelta(months=1),
+        current_period_end=now + relativedelta(months=1),
         customer=customer,
     )
     plan = Plan.objects.create(
