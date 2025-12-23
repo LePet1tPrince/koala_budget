@@ -45,7 +45,7 @@ class _ActiveSubscriptionRequired:
             return self.f(request, *args, **kwargs)
 
 
-def active_subscription_required(function=None, limit_to_plans: list[str] = None):
+def active_subscription_required(function=None, limit_to_plans: list[str] | None = None):
     """
     Prevents accessing a view unless the user has an active subscription.
     You can optionally limit to a list of plans (by slug) which should allow access
