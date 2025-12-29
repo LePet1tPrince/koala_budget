@@ -6,6 +6,7 @@ from django.db.models import Sum
 from django.urls import reverse
 
 from apps.teams.models import BaseTeamModel
+from apps.budget.models import Budget
 
 
 class JournalEntry(BaseTeamModel):
@@ -108,38 +109,47 @@ class JournalLine(BaseTeamModel):
         related_name="lines",
         help_text="The journal entry this line belongs to",
     )
+
     account = models.ForeignKey(
         "accounts.Account",
         on_delete=models.PROTECT,
         related_name="journal_lines",
         help_text="The account being debited or credited",
     )
+
     dr_amount = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal("0"),
         help_text="Debit amount (sum of debits must equal sum of credits)",
     )
+
     cr_amount = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal("0"),
         help_text="Credit amount (sum of credits must equal sum of debits)",
     )
+
     is_cleared = models.BooleanField(default=False, help_text="Whether this line has cleared the bank")
     is_reconciled = models.BooleanField(default=False, help_text="Whether this line has been reconciled")
 
     # Budget foreign key - commented out until Budget model is ready
-    # budget = models.ForeignKey(
-    #     "budgeting.Budget",
-    #     on_delete=models.SET_NULL,
-    #     related_name="journal_lines",
-    #     null=True,
-    #     blank=True,
-    #     help_text="Link to budget based on account_id and journal entry date month",
-    # )
+    budget = models.ForeignKey(
+        "budget.Budget",
+        on_delete=models.SET_NULL,
+        related_name="journal_lines",
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="Link to budget based on account_id and journal entry date month",
+    )
 
     class Meta:
+        indexes = [
+            models.Index(fields=["team", "date_posted"]),
+            models.Index(fields=["account", "date_posted"]),
+        ]
         ordering = ["id"]
         verbose_name = "Journal Line"
         verbose_name_plural = "Journal Lines"
@@ -164,6 +174,32 @@ class JournalLine(BaseTeamModel):
         # Ensure amounts are not negative
         if self.dr_amount < 0 or self.cr_amount < 0:
             raise ValidationError("Debit and credit amounts cannot be negative.")
+
+    ## Budget Auto linking
+
+    def _calculate_budget(self):
+        """
+        Calculate the budget based on the account and entry date.
+        """
+        if not self.date_posted:
+            return None
+
+        month_start = self.date_posted.replace(day=1)
+
+        return (
+            Budget.objects
+            .filter(
+                team=self.team,
+                category=self.account,
+                month=month_start,
+            )
+            .first()
+        )
+
+    def save(self, *args, **kwargs):
+        """Automatically link to budget based on account and entry date."""
+        self.budget = self._calculate_budget()
+        super().save(*args, **kwargs)
 
     @property
     def amount(self):
