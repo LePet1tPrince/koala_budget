@@ -8,7 +8,7 @@ from apps.teams.models import BaseTeamModel
 from apps.accounts.models import Account
 
 
-class BudgetQuerySet(models.Queryset):
+class BudgetQuerySet(models.QuerySet):
     def with_actual_amount(self):
         """Annotate queryset with actual amount."""
         return self.annotate(

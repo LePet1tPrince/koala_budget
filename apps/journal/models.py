@@ -146,10 +146,11 @@ class JournalLine(BaseTeamModel):
     )
 
     class Meta:
-        indexes = [
-            models.Index(fields=["team", "date_posted"]),
-            models.Index(fields=["account", "date_posted"]),
-        ]
+        ## No date_posted field in journal_line. That's in journal_entry. Can we incorporate that?
+        # indexes = [
+        #     models.Index(fields=["team", "date_posted"]),
+        #     models.Index(fields=["account", "date_posted"]),
+        # ]
         ordering = ["id"]
         verbose_name = "Journal Line"
         verbose_name_plural = "Journal Lines"
