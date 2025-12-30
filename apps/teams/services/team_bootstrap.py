@@ -2,7 +2,6 @@ from django.db import transaction
 from apps.accounts.models import AccountGroup, Account, Payee
 from apps.budget.models import Budget
 from apps.journal.models import JournalEntry, JournalLine
-from django.db import transaction
 
 from datetime import date
 from decimal import Decimal
