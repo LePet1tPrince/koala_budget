@@ -7,9 +7,8 @@ from datetime import date
 from .helpers import create_default_team_for_user, get_open_invitations_for_user
 from .invitations import get_invitation_id_from_request, process_invitation
 from .models import Invitation, Team
-from .services.team_bootstrap import bootstrap_team
-from apps.teams.services.template_engine import apply_template
-from apps.teams.services.template_budget import PERSONAL_BUDGET_TEMPLATE
+from .services.template_engine import apply_template
+from .services.template_budget import PERSONAL_BUDGET_TEMPLATE
 
 
 @receiver(user_signed_up)

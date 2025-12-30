@@ -37,6 +37,7 @@ def apply_template(team, template, month_start):
         account, _ = Account.objects.get_or_create(
             team=team,
             account_number=a["number"],
+            has_feed=a.get("has_feed", False),
             defaults={
                 "name": a["name"],
                 "account_group": group_map[a["group"]],

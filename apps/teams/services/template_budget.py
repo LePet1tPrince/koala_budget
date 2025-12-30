@@ -23,12 +23,12 @@ PERSONAL_BUDGET_TEMPLATE = {
 
     "accounts": [
         # Assets (1000s)
-        {"number": 1000, "name": "Chequing Account", "group": "Bank Accounts"},
-        {"number": 1100, "name": "Savings Account", "group": "Bank Accounts"},
+        {"number": 1000, "name": "Chequing Account", "group": "Bank Accounts", "has_feed": True},
+        {"number": 1100, "name": "Savings Account", "group": "Bank Accounts", "has_feed": True},
         {"number": 1200, "name": "Investment Account", "group": "Investment Accounts"},
 
         # Liabilities (2000s)
-        {"number": 2000, "name": "Credit Card", "group": "Credit Cards"},
+        {"number": 2000, "name": "Credit Card", "group": "Credit Cards", "has_feed": True},
         {"number": 2100, "name": "Line of Credit", "group": "Other Debt"},
         {"number": 2200, "name": "Mortgage", "group": "Loans & Mortgages"},
 
