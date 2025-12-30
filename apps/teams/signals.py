@@ -2,11 +2,14 @@ from allauth.account.signals import user_signed_up
 from django.db.models.signals import post_save
 from django.db import transaction
 from django.dispatch import receiver
+from datetime import date
 
 from .helpers import create_default_team_for_user, get_open_invitations_for_user
 from .invitations import get_invitation_id_from_request, process_invitation
 from .models import Invitation, Team
 from .services.team_bootstrap import bootstrap_team
+from apps.teams.services.template_engine import apply_template
+from apps.teams.services.template_budget import PERSONAL_BUDGET_TEMPLATE
 
 
 @receiver(user_signed_up)
@@ -33,4 +36,10 @@ def bootstrap_team_on_create(sender, instance, created, **kwargs):
     if not created:
         return
 
-    transaction.on_commit(lambda: bootstrap_team(instance))
+    month_start = date.today().replace(day=1)
+
+    apply_template(
+        team=instance,
+        template=PERSONAL_BUDGET_TEMPLATE,
+        month_start=month_start,
+    )
