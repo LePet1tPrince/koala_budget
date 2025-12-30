@@ -1,9 +1,12 @@
 from allauth.account.signals import user_signed_up
+from django.db.models.signals import post_save
+from django.db import transaction
 from django.dispatch import receiver
 
 from .helpers import create_default_team_for_user, get_open_invitations_for_user
 from .invitations import get_invitation_id_from_request, process_invitation
-from .models import Invitation
+from .models import Invitation, Team
+from .services.team_bootstrap import bootstrap_team
 
 
 @receiver(user_signed_up)
@@ -24,3 +27,10 @@ def add_user_to_team(request, user, **kwargs):
         # If the sign up was from a social account, there may not be a default team, so create one unless
         # the user has open invitations
         create_default_team_for_user(user)
+
+@receiver(post_save, sender=Team)
+def bootstrap_team_on_create(sender, instance, created, **kwargs):
+    if not created:
+        return
+
+    transaction.on_commit(lambda: bootstrap_team(instance))
