@@ -182,10 +182,10 @@ class JournalLine(BaseTeamModel):
         """
         Calculate the budget based on the account and entry date.
         """
-        if not self.date_posted:
+        if not self.journal_entry or not self.journal_entry.entry_date:
             return None
 
-        month_start = self.date_posted.replace(day=1)
+        month_start = self.journal_entry.entry_date.replace(day=1)
 
         return (
             Budget.objects
