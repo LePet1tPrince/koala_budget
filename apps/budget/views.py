@@ -1,49 +1,112 @@
+from datetime import date
+
 from django.shortcuts import render
 from rest_framework import viewsets
-from drf_spectacular.utils import extend_schema, extend_schema_view
-from .models import Budget
-from .serializers import BudgetListSerializer
+from django.utils.translation import gettext_lazy as _
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
+from .services import BudgetService
+from .serializers import BudgetSerializer
+from .models import Budget
+# from .serializers import BudgetListSerializer
+
+# @extend_schema_view(
+#     create=extend_schema(operation_id="budgets_create", tags=["budget"]),
+#     list=extend_schema(operation_id="budgets_list", tags=["budget"]),
+#     retrieve=extend_schema(operation_id="budgets_retrieve", tags=["budget"]),
+#     update=extend_schema(operation_id="budgets_update", tags=["budget"]),
+#     partial_update=extend_schema(operation_id="budgets_partial_update", tags=["budget"]),
+#     destroy=extend_schema(operation_id="budgets_destroy", tags=["budget"]),
+# )
+# class BudgetViewSet(viewsets.ModelViewSet):
+#     """
+#     ViewSet for Budget model.
+#     Provides CRUD operations for budgets with nested lines.
+#     """
+
+#     serializer_class = BudgetListSerializer
+#     permission_classes = [TeamModelAccessPermissions]
+
+
+#     def get_queryset(self):
+#         """Get budgets for the current team with optimized queries."""
+#         qs = (
+#             Budget.objects.filter(team=self.request.user.team)
+#             .with_actual_amount()
+#             .prefetch_related(
+#                 "journal_lines",
+#                 "journal_lines__journal_entry",
+#                 )
+#         )
+
+#         month = self.request.query_params.get("month")
+#         if month:
+#             qs = qs.filter(month=month)
+#         return qs
+
+#     def perform_create(self, serializer):
+#         """Create Budget with team context."""
+#         serializer.save(team=self.request.team)
+
+
+# apps/budget/api/views.py
+
+
+
 @extend_schema_view(
     create=extend_schema(operation_id="budgets_create", tags=["budget"]),
-    list=extend_schema(operation_id="budgets_list", tags=["budget"]),
-    retrieve=extend_schema(operation_id="budgets_retrieve", tags=["budget"]),
-    update=extend_schema(operation_id="budgets_update", tags=["budget"]),
-    partial_update=extend_schema(operation_id="budgets_partial_update", tags=["budget"]),
-    destroy=extend_schema(operation_id="budgets_destroy", tags=["budget"]),
+    list=extend_schema(operation_id="budgets_list", tags=["budget"],
+            parameters=[
+            OpenApiParameter(
+                name="month",
+                description="Budget month (first day of month, YYYY-MM-01)",
+                required=True,
+                type=str,
+                location=OpenApiParameter.QUERY,
+            )
+            ],
+            ),
+    # retrieve=extend_schema(operation_id="budgets_retrieve", tags=["budget"]),
+    # update=extend_schema(operation_id="budgets_update", tags=["budget"]),
+    # partial_update=extend_schema(operation_id="budgets_partial_update", tags=["budget"]),
+    # destroy=extend_schema(operation_id="budgets_destroy", tags=["budget"]),
 )
-class BudgetViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Budget model.
-    Provides CRUD operations for budgets with nested lines.
-    """
+class BudgetViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
 
-    serializer_class = BudgetListSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    def list(self, request, **kwargs):
+        month_str = request.query_params.get("month")
+        if not month_str:
+            return Response(
+                {"detail": "month query param required (YYYY-MM-01)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        month = date.fromisoformat(month_str)
 
-    def get_queryset(self):
-        """Get budgets for the current team with optimized queries."""
-        qs = (
-            Budget.objects.filter(team=self.request.user.team)
-            .with_actual_amount()
-            .prefetch_related(
-                "journal_lines",
-                "journal_lines__journal_entry",
-                )
+        service = BudgetService(team=request.team)
+        rows = service.build_budget_rows(month)
+
+        return Response(rows)
+
+    def create(self, request):
+        serializer = BudgetSerializer(
+            data=request.data,
+            context={"request": request},
         )
+        serializer.is_valid(raise_exception=True)
+        budget = serializer.save()
 
-        month = self.request.query_params.get("month")
-        if month:
-            qs = qs.filter(month=month)
-        return qs
-
-    def perform_create(self, serializer):
-        """Create Budget with team context."""
-        serializer.save(team=self.request.team)
-
+        return Response(
+            BudgetSerializer(budget).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 
@@ -81,7 +144,7 @@ def budget_home(request, team_slug):
             # "accounts": accounts_data,
             # "all_accounts": all_accounts_data,
             # "all_payees": all_payees_data,
-            # "api_urls": api_urls,
+            "api_urls": api_urls,
             # "team_slug": team_slug,
         },
     )
