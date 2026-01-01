@@ -126,11 +126,16 @@ def budget_month_view(request, team_slug):
     month = month.replace(day=1)
 
     service = BudgetService(request.team)
-    rows = []
 
     categories = Account.for_team.filter(
         account_group__account_type__in=("expense", "income"),
     ).select_related("account_group").order_by("account_group__name", "account_number")
+
+    # Group categories by account_group
+    from collections import defaultdict
+    from decimal import Decimal
+
+    grouped_data = defaultdict(lambda: {"rows": [], "subtotals": {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}})
 
     for category in categories:
         budget, _ = Budget.objects.get_or_create(
@@ -140,13 +145,34 @@ def budget_month_view(request, team_slug):
             defaults={"budget_amount": 0},
         )
 
-        rows.append({
+        budgeted = service.budgeted(category, month)
+        actual = service.actual(category, month)
+        available = service.available(category, month)
+
+        group_name = category.account_group.name
+
+        grouped_data[group_name]["rows"].append({
             "category": category,
             "form": BudgetAmountForm(instance=budget),
-            "budgeted": service.budgeted(category, month),
-            "actual": service.actual(category, month),
-            "available": service.available(category, month),
+            "budgeted": budgeted,
+            "actual": actual,
+            "available": available,
         })
+
+        # Add to subtotals
+        grouped_data[group_name]["subtotals"]["budgeted"] += budgeted
+        grouped_data[group_name]["subtotals"]["actual"] += actual
+        grouped_data[group_name]["subtotals"]["available"] += available
+
+    # Convert to list of tuples for template
+    groups = [(name, data) for name, data in grouped_data.items()]
+
+    # Calculate grand totals across all groups
+    grand_totals = {
+        "budgeted": sum(data["subtotals"]["budgeted"] for _, data in groups),
+        "actual": sum(data["subtotals"]["actual"] for _, data in groups),
+        "available": sum(data["subtotals"]["available"] for _, data in groups),
+    }
 
     if request.method == "POST":
         budget_id = request.POST.get("budget_id")
@@ -164,7 +190,8 @@ def budget_month_view(request, team_slug):
             "active_tab": "budget",
             "page_title": f"Budget | {request.team}",
             "month": month,
-            "rows": rows,
+            "groups": groups,
+            "grand_totals": grand_totals,
             "prev_month": month - relativedelta(months=1),
             "next_month": month + relativedelta(months=1),
         },

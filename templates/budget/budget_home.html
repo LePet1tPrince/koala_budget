@@ -27,7 +27,7 @@
 
     <!-- Budget Table -->
     <div class="overflow-x-auto bg-base-100 rounded-lg shadow">
-      <table class="table table-zebra w-full">
+      <table class="table w-full">
         <thead>
           <tr>
             <th>{% translate "Category" %}</th>
@@ -38,39 +38,69 @@
           </tr>
         </thead>
         <tbody>
-          {% for row in rows %}
-          <tr>
-            <td>
-              <div class="font-medium">{{ row.category.name }}</div>
-              <div class="text-sm text-gray-500">{{ row.category.account_group.name }}</div>
-            </td>
+          {% for group_name, group_data in groups %}
+            <!-- Group Header -->
+            <tr class="bg-base-200">
+              <td colspan="5" class="font-bold text-lg">{{ group_name }}</td>
+            </tr>
 
-            <td class="text-right">
-              <form method="post" class="inline-flex items-center gap-2" id="budget-form-{{ row.form.instance.id }}">
-                {% csrf_token %}
-                <input type="hidden" name="budget_id" value="{{ row.form.instance.id }}">
-                <div class="form-control w-32">
-                  {{ row.form.budget_amount }}
-                </div>
-              </form>
-            </td>
+            <!-- Group Rows -->
+            {% for row in group_data.rows %}
+            <tr>
+              <td class="pl-8">
+                <div class="font-medium">{{ row.category.name }}</div>
+                <div class="text-sm text-gray-500">{{ row.category.account_number }}</div>
+              </td>
 
-            <td class="text-right">
-              <span class="font-mono">{{ row.actual|floatformat:2 }}</span>
-            </td>
+              <td class="text-right">
+                <form method="post" class="inline-flex items-center gap-2" id="budget-form-{{ row.form.instance.id }}">
+                  {% csrf_token %}
+                  <input type="hidden" name="budget_id" value="{{ row.form.instance.id }}">
+                  <div class="form-control w-32">
+                    {{ row.form.budget_amount }}
+                  </div>
+                </form>
+              </td>
 
-            <td class="text-right">
-              <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}">
-                {{ row.available|floatformat:2 }}
-              </span>
-            </td>
+              <td class="text-right">
+                <span class="font-mono">{{ row.actual|floatformat:2 }}</span>
+              </td>
 
-            <td class="text-center">
-              <button type="submit" form="budget-form-{{ row.form.instance.id }}" class="btn btn-primary btn-sm">
-                {% translate "Save" %}
-              </button>
-            </td>
-          </tr>
+              <td class="text-right">
+                <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}">
+                  {{ row.available|floatformat:2 }}
+                </span>
+              </td>
+
+              <td class="text-center">
+                <button type="submit" form="budget-form-{{ row.form.instance.id }}" class="btn btn-primary btn-sm">
+                  {% translate "Save" %}
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+
+            <!-- Group Subtotal -->
+            <tr class="bg-base-200 font-bold">
+              <td class="pl-8">{% translate "Subtotal" %} - {{ group_name }}</td>
+              <td class="text-right">
+                <span class="font-mono">{{ group_data.subtotals.budgeted|floatformat:2 }}</span>
+              </td>
+              <td class="text-right">
+                <span class="font-mono">{{ group_data.subtotals.actual|floatformat:2 }}</span>
+              </td>
+              <td class="text-right">
+                <span class="font-mono {% if group_data.subtotals.available < 0 %}text-error{% elif group_data.subtotals.available > 0 %}text-success{% endif %}">
+                  {{ group_data.subtotals.available|floatformat:2 }}
+                </span>
+              </td>
+              <td></td>
+            </tr>
+
+            <!-- Spacer row between groups -->
+            <tr class="h-2">
+              <td colspan="5"></td>
+            </tr>
           {% empty %}
           <tr>
             <td colspan="5" class="text-center text-gray-500 py-8">
@@ -80,15 +110,18 @@
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr class="font-bold">
-            <td>{% translate "Total" %}</td>
+          <tr class="bg-primary text-primary-content font-bold text-lg">
+            <td>{% translate "Grand Total" %}</td>
             <td class="text-right">
-              {% widthratio rows|length 1 1 as row_count %}
-              <span class="font-mono">
-                {{ rows|length|add:"0" }}
-              </span>
+              <span class="font-mono">{{ grand_totals.budgeted|floatformat:2 }}</span>
             </td>
-            <td colspan="3"></td>
+            <td class="text-right">
+              <span class="font-mono">{{ grand_totals.actual|floatformat:2 }}</span>
+            </td>
+            <td class="text-right">
+              <span class="font-mono">{{ grand_totals.available|floatformat:2 }}</span>
+            </td>
+            <td></td>
           </tr>
         </tfoot>
       </table>
