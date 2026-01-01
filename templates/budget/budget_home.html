@@ -6,23 +6,112 @@
 {% block app %}
   <nav aria-label="breadcrumbs">
     <ol class="pg-breadcrumbs">
-      <li class="pg-breadcrumb-active" aria-current="page">{% translate "Journal Lines" %}</li>
+      <li class="pg-breadcrumb-active" aria-current="page">{% translate "Budget" %}</li>
     </ol>
   </nav>
 
-  <div id="line-app"></div>
+  <div class="container mx-auto px-4 py-6">
+    <!-- Header with Month Navigation -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">{% translate "Budget" %} – {{ month|date:"F Y" }}</h1>
 
-  {% comment %} {{ accounts|json_script:'accounts' }}
-  {{ all_accounts|json_script:'all-accounts' }}
-  {{ all_payees|json_script:'all-payees' }}
-  {{ api_urls|json_script:'api-urls' }}
-  {{ team_slug|json_script:'team-slug' }} {% endcomment %}
+      <div class="flex gap-2">
+        <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
+          ← {% translate "Previous" %}
+        </a>
+        <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
+          {% translate "Next" %} →
+        </a>
+      </div>
+    </div>
+
+    <!-- Budget Table -->
+    <div class="overflow-x-auto bg-base-100 rounded-lg shadow">
+      <table class="table table-zebra w-full">
+        <thead>
+          <tr>
+            <th>{% translate "Category" %}</th>
+            <th class="text-right">{% translate "Budgeted" %}</th>
+            <th class="text-right">{% translate "Actual" %}</th>
+            <th class="text-right">{% translate "Available" %}</th>
+            <th class="text-center">{% translate "Action" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>
+              <div class="font-medium">{{ row.category.name }}</div>
+              <div class="text-sm text-gray-500">{{ row.category.account_group.name }}</div>
+            </td>
+
+            <td class="text-right">
+              <form method="post" class="inline-flex items-center gap-2" id="budget-form-{{ row.form.instance.id }}">
+                {% csrf_token %}
+                <input type="hidden" name="budget_id" value="{{ row.form.instance.id }}">
+                <div class="form-control w-32">
+                  {{ row.form.budget_amount }}
+                </div>
+              </form>
+            </td>
+
+            <td class="text-right">
+              <span class="font-mono">{{ row.actual|floatformat:2 }}</span>
+            </td>
+
+            <td class="text-right">
+              <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}">
+                {{ row.available|floatformat:2 }}
+              </span>
+            </td>
+
+            <td class="text-center">
+              <button type="submit" form="budget-form-{{ row.form.instance.id }}" class="btn btn-primary btn-sm">
+                {% translate "Save" %}
+              </button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="text-center text-gray-500 py-8">
+              {% translate "No budget categories found. Please add income or expense accounts first." %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="font-bold">
+            <td>{% translate "Total" %}</td>
+            <td class="text-right">
+              {% widthratio rows|length 1 1 as row_count %}
+              <span class="font-mono">
+                {{ rows|length|add:"0" }}
+              </span>
+            </td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- Info Box -->
+    <div class="alert alert-info mt-6">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+      <div>
+        <h3 class="font-bold">{% translate "How it works" %}</h3>
+        <div class="text-sm">
+          {% translate "Available = Budget (this month) - Actual (this month) + Available (previous month). Unspent budget rolls forward to future months." %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    /* Custom styling for budget input fields */
+    .budget-input {
+      @apply input input-bordered input-sm w-full text-right font-mono;
+    }
+  </style>
 {% endblock %}
-
-{% comment %} {% block page_js %}
-  <script>
-    const SERVER_URL_BASE = "{{ request.scheme }}://{{ request.get_host }}";
-  </script>
-  {% vite_react_refresh %}
-  {% vite_asset 'assets/javascript/journal/react/line-app.jsx' %}
-{% endblock %} {% endcomment %}

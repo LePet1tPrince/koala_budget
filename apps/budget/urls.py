@@ -13,9 +13,8 @@ app_name = "budget"
 router = DefaultRouter()
 router.register(r"budget", views.BudgetViewSet, basename="budget")
 
-# URL patterns (all journal URLs are team-based)
+# URL patterns (all budget URLs are team-based)
 urlpatterns = [
-    path("", views.budget_home, name="budget_home"),
-    # path("lines/", views.budget, name="journal_lines"),
+    path("", views.budget_month_view, name="budget_home"),
     path("api/", include(router.urls)),
 ]

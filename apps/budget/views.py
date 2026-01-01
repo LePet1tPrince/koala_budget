@@ -10,52 +10,12 @@ from rest_framework.permissions import IsAuthenticated
 
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
+from apps.accounts.models import Account
 
 from .services import BudgetService
 from .serializers import BudgetSerializer
 from .models import Budget
 # from .serializers import BudgetListSerializer
-
-# @extend_schema_view(
-#     create=extend_schema(operation_id="budgets_create", tags=["budget"]),
-#     list=extend_schema(operation_id="budgets_list", tags=["budget"]),
-#     retrieve=extend_schema(operation_id="budgets_retrieve", tags=["budget"]),
-#     update=extend_schema(operation_id="budgets_update", tags=["budget"]),
-#     partial_update=extend_schema(operation_id="budgets_partial_update", tags=["budget"]),
-#     destroy=extend_schema(operation_id="budgets_destroy", tags=["budget"]),
-# )
-# class BudgetViewSet(viewsets.ModelViewSet):
-#     """
-#     ViewSet for Budget model.
-#     Provides CRUD operations for budgets with nested lines.
-#     """
-
-#     serializer_class = BudgetListSerializer
-#     permission_classes = [TeamModelAccessPermissions]
-
-
-#     def get_queryset(self):
-#         """Get budgets for the current team with optimized queries."""
-#         qs = (
-#             Budget.objects.filter(team=self.request.user.team)
-#             .with_actual_amount()
-#             .prefetch_related(
-#                 "journal_lines",
-#                 "journal_lines__journal_entry",
-#                 )
-#         )
-
-#         month = self.request.query_params.get("month")
-#         if month:
-#             qs = qs.filter(month=month)
-#         return qs
-
-#     def perform_create(self, serializer):
-#         """Create Budget with team context."""
-#         serializer.save(team=self.request.team)
-
-
-# apps/budget/api/views.py
 
 
 
@@ -72,10 +32,7 @@ from .models import Budget
             )
             ],
             ),
-    # retrieve=extend_schema(operation_id="budgets_retrieve", tags=["budget"]),
-    # update=extend_schema(operation_id="budgets_update", tags=["budget"]),
-    # partial_update=extend_schema(operation_id="budgets_partial_update", tags=["budget"]),
-    # destroy=extend_schema(operation_id="budgets_destroy", tags=["budget"]),
+
 )
 class BudgetViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -146,5 +103,69 @@ def budget_home(request, team_slug):
             # "all_payees": all_payees_data,
             "api_urls": api_urls,
             # "team_slug": team_slug,
+        },
+    )
+
+
+from django.utils.dateparse import parse_date
+from .forms import BudgetAmountForm
+from .services import BudgetService
+from django.shortcuts import render, redirect
+from dateutil.relativedelta import relativedelta
+
+
+
+@login_and_team_required
+def budget_month_view(request, team_slug):
+    month_param = request.GET.get("month")
+    if month_param:
+        month = parse_date(month_param)
+    else:
+        month = date.today().replace(day=1)
+
+    month = month.replace(day=1)
+
+    service = BudgetService(request.team)
+    rows = []
+
+    categories = Account.for_team.filter(
+        account_group__account_type__in=("expense", "income"),
+    ).select_related("account_group").order_by("account_group__name", "account_number")
+
+    for category in categories:
+        budget, _ = Budget.objects.get_or_create(
+            team=request.team,
+            category=category,
+            month=month,
+            defaults={"budget_amount": 0},
+        )
+
+        rows.append({
+            "category": category,
+            "form": BudgetAmountForm(instance=budget),
+            "budgeted": service.budgeted(category, month),
+            "actual": service.actual(category, month),
+            "available": service.available(category, month),
+        })
+
+    if request.method == "POST":
+        budget_id = request.POST.get("budget_id")
+        budget = Budget.objects.get(id=budget_id, team=request.team)
+
+        form = BudgetAmountForm(request.POST, instance=budget)
+        if form.is_valid():
+            form.save()
+            return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
+
+    return render(
+        request,
+        "budget/budget_home.html",
+        {
+            "active_tab": "budget",
+            "page_title": f"Budget | {request.team}",
+            "month": month,
+            "rows": rows,
+            "prev_month": month - relativedelta(months=1),
+            "next_month": month + relativedelta(months=1),
         },
     )

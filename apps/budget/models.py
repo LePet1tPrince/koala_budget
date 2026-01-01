@@ -60,4 +60,4 @@ class Budget(BaseTeamModel):
                 "Budget.actual_amount is not available. "
                 "Call Budget.objects.with_actual_amount() first."
                 )
-        return self.budget_amount - self.actual
+        return self.budget_amount - actual
