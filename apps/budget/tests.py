@@ -7,10 +7,6 @@ from datetime import date
 from decimal import Decimal
 
 from django.test import TestCase
-from django.core.exceptions import ValidationError
-from django.forms import ModelForm
-from rest_framework import status
-from rest_framework.test import APIClient
 
 from apps.accounts.models import Account, AccountGroup, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
 from apps.journal.models import JournalEntry, JournalLine
@@ -22,8 +18,6 @@ from apps.users.models import CustomUser
 from .models import Budget
 from .forms import BudgetAmountForm
 from .services import BudgetService
-from .serializers import BudgetSerializer
-
 
 class BudgetModelTest(TestCase):
     """Tests for Budget model."""
@@ -379,135 +373,37 @@ class BudgetAmountFormTest(TestCase):
         self.assertTrue(form.is_valid())
         self.assertEqual(form.cleaned_data["budget_amount"], Decimal("123.45"))
 
-
-class BudgetAPITest(TestCase):
-    """Test the Budget API endpoints."""
-
-    @classmethod
-    def setUpTestData(cls):
-        """Set up test data for all tests."""
-        cls.team = Team.objects.create(name="API Test Team", slug="api-test-team")
-        cls.user = CustomUser.objects.create_user(username="apitestr", password="testpass123")
-        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
-
-        cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="API Expenses", account_type=ACCOUNT_TYPE_EXPENSE
-        )
-        cls.income_group = AccountGroup.objects.create(
-            team=cls.team, name="API Income", account_type=ACCOUNT_TYPE_INCOME
-        )
-        cls.expense_account = Account.objects.create(
-            team=cls.team, name="API Groceries", account_number=4003, account_group=cls.expense_group
-        )
-        cls.income_account = Account.objects.create(
-            team=cls.team, name="API Salary", account_number=3002, account_group=cls.income_group
-        )
-
-    def setUp(self):
-        """Set up for each test."""
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
-
-    def test_list_budgets_requires_month(self):
-        """Test that list budgets requires month parameter."""
-        response = self.client.get(f"/a/{self.team.slug}/budget/api/budget/")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_list_budgets_with_month(self):
-        """Test listing budgets for a specific month."""
-        # Create some budgets
-        Budget.objects.create(
-            team=self.team,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-        Budget.objects.create(
-            team=self.team,
-            month=date(2025, 12, 1),
-            category=self.income_account,
-            budget_amount=Decimal("1500.00"),
-        )
-
-        response = self.client.get(f"/a/{self.team.slug}/budget/api/budget/?month=2025-12-01")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        # Should return 2 budget rows
-        self.assertEqual(len(response.data), 2)
-
-    def test_create_budget(self):
-        """Test creating a budget via API."""
-        data = {
-            "category_id": self.expense_account.account_id,
-            "month": "2025-12-01",
-            "budget_amount": "500.00",
-        }
-
-        response = self.client.post(f"/a/{self.team.slug}/budget/api/budget/", data, format="json")
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        # Verify budget was created
-        budget = Budget.objects.get(team=self.team, category=self.expense_account, month="2025-12-01")
-        self.assertEqual(budget.budget_amount, Decimal("500.00"))
-
-    def test_create_duplicate_budget_updates(self):
-        """Test creating duplicate budget updates existing one."""
-        # Create initial budget
-        Budget.objects.create(
+    def test_form_blank_input_converts_to_zero(self):
+        """Test form converts blank input to 0."""
+        budget = Budget.objects.create(
             team=self.team,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
         )
 
-        # Try to create another for same month/category
-        data = {
-            "category_id": self.expense_account.account_id,
-            "month": "2025-12-01",
-            "budget_amount": "750.00",
-        }
+        # Test empty string
+        form_data = {"budget_amount": ""}
+        form = BudgetAmountForm(data=form_data, instance=budget)
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data["budget_amount"], Decimal("0"))
 
-        response = self.client.post(f"/a/{self.team.slug}/budget/api/budget/", data, format="json")
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Test missing field (None)
+        form_data = {}
+        form = BudgetAmountForm(data=form_data, instance=budget)
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data["budget_amount"], Decimal("0"))
 
-        # Should still be only one budget, updated
-        budgets = Budget.objects.filter(team=self.team, category=self.expense_account, month="2025-12-01")
-        self.assertEqual(budgets.count(), 1)
-        self.assertEqual(budgets.first().budget_amount, Decimal("750.00"))
-
-
-class BudgetSerializerTest(TestCase):
-    """Tests for BudgetSerializer."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.team = Team.objects.create(name="Serializer Test Team", slug="serializer-test-team")
-        cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Serializer Expenses", account_type=ACCOUNT_TYPE_EXPENSE
-        )
-        cls.expense_account = Account.objects.create(
-            team=cls.team, name="Serializer Groceries", account_number=4004, account_group=cls.expense_group
+    def test_form_field_not_required(self):
+        """Test that budget_amount field is not required."""
+        budget = Budget.objects.create(
+            team=self.team,
+            month=date(2025, 12, 1),
+            category=self.expense_account,
+            budget_amount=Decimal("500.00"),
         )
 
-    def test_serializer_create(self):
-        """Test serializer create method."""
-        from rest_framework.test import APIRequestFactory
-        from apps.teams.models import Team
-
-        factory = APIRequestFactory()
-        request = factory.post("/fake-url/")
-        request.team = self.team
-
-        serializer = BudgetSerializer(data={
-            "category_id": self.expense_account.account_id,
-            "month": "2025-12-01",
-            "budget_amount": "500.00",
-        }, context={"request": request})
-
-        self.assertTrue(serializer.is_valid())
-        budget = serializer.save()
-
-        self.assertEqual(budget.budget_amount, Decimal("500.00"))
-        self.assertEqual(budget.category, self.expense_account)
-        self.assertEqual(budget.month, date(2025, 12, 1))
-        self.assertEqual(budget.team, self.team)
+        form_data = {}  # No budget_amount field
+        form = BudgetAmountForm(data=form_data, instance=budget)
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data["budget_amount"], Decimal("0"))

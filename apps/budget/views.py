@@ -1,79 +1,18 @@
 from datetime import date
 
-from django.shortcuts import render
-from rest_framework import viewsets
-from django.utils.translation import gettext_lazy as _
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-
-from apps.teams.decorators import login_and_team_required
-from apps.teams.permissions import TeamModelAccessPermissions
-from apps.accounts.models import Account
-
-from .services import BudgetService
-from .serializers import BudgetSerializer
-from .models import Budget
-# from .serializers import BudgetListSerializer
-
-
-
-@extend_schema_view(
-    create=extend_schema(operation_id="budgets_create", tags=["budget"]),
-    list=extend_schema(operation_id="budgets_list", tags=["budget"],
-            parameters=[
-            OpenApiParameter(
-                name="month",
-                description="Budget month (first day of month, YYYY-MM-01)",
-                required=True,
-                type=str,
-                location=OpenApiParameter.QUERY,
-            )
-            ],
-            ),
-
-)
-class BudgetViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
-
-    def list(self, request, **kwargs):
-        month_str = request.query_params.get("month")
-        if not month_str:
-            return Response(
-                {"detail": "month query param required (YYYY-MM-01)"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        month = date.fromisoformat(month_str)
-
-        service = BudgetService(team=request.team)
-        rows = service.build_budget_rows(month)
-
-        return Response(rows)
-
-    def create(self, request):
-        serializer = BudgetSerializer(
-            data=request.data,
-            context={"request": request},
-        )
-        serializer.is_valid(raise_exception=True)
-        budget = serializer.save()
-
-        return Response(
-            BudgetSerializer(budget).data,
-            status=status.HTTP_201_CREATED,
-        )
-
-
-
-
-
-from django.utils.dateparse import parse_date
-from .forms import BudgetAmountForm
-from .services import BudgetService
-from django.shortcuts import render, redirect
 from dateutil.relativedelta import relativedelta
+
+from django.shortcuts import redirect, render
+from django.utils.dateparse import parse_date
+from django.utils.translation import gettext_lazy as _
+
+from apps.accounts.models import Account
+from apps.teams.decorators import login_and_team_required
+
+from .forms import BudgetAmountForm
+from .models import Budget
+from .services import BudgetService
+
 
 
 

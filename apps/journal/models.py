@@ -1,5 +1,7 @@
 from decimal import Decimal
+from datetime import date
 
+from django.utils.dateparse import parse_date
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Sum
@@ -185,7 +187,11 @@ class JournalLine(BaseTeamModel):
         if not self.journal_entry or not self.journal_entry.entry_date:
             return None
 
-        month_start = self.journal_entry.entry_date.replace(day=1)
+        entry_date = self.journal_entry.entry_date
+        if isinstance(entry_date, str):
+            entry_date = parse_date(entry_date)
+
+        month_start = entry_date.replace(day=1)
 
         return (
             Budget.objects
