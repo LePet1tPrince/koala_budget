@@ -67,44 +67,6 @@ class BudgetViewSet(viewsets.ViewSet):
 
 
 
-@login_and_team_required
-def budget_home(request, team_slug):
-    """
-    Main journal page view.
-    Displays accounts with bank feeds and transactions table.
-    """
-    # Get accounts with bank feeds
-    # accounts_with_feeds = Account.for_team.filter(has_feed=True).select_related("account_group").order_by("name")
-
-    # # Serialize accounts for React
-    # accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
-
-    # # Get all accounts and payees for dropdowns
-    # all_accounts = Account.for_team.all().order_by("account_number")
-    # all_payees = Payee.for_team.all().order_by("name")
-
-    # all_accounts_data = AccountSerializer(all_accounts, many=True).data
-    # all_payees_data = PayeeSerializer(all_payees, many=True).data
-
-    # API URLs
-    api_urls = {
-        "budget_list": f"/a/{team_slug}/budget/api/budget/",
-        # "transactions_detail": f"/a/{team_slug}/journal/api/transactions/{{id}}/",
-    }
-
-    return render(
-        request,
-        "budget/budget_home.html",
-        {
-            "active_tab": "budget",
-            "page_title": _("Budget | {team}").format(team=request.team),
-            # "accounts": accounts_data,
-            # "all_accounts": all_accounts_data,
-            # "all_payees": all_payees_data,
-            "api_urls": api_urls,
-            # "team_slug": team_slug,
-        },
-    )
 
 
 from django.utils.dateparse import parse_date

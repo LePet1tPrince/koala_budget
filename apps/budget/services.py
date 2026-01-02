@@ -30,9 +30,18 @@ class BudgetService:
     def actual(self, category, month):
         """
         Calculate actual spending/income for a category in a given month.
-        Returns the net amount (debits - credits) for the account in that month.
+        For expense accounts: debits - credits (net spending)
+        For income accounts: credits - debits (net income)
         """
         start, end = self.month_bounds(month)
+
+        # Determine calculation based on account type
+        if category.account_group.account_type == "income":
+            # For income: credits - debits
+            actual_expression = Sum("cr_amount") - Sum("dr_amount")
+        else:
+            # For expenses/assets/liabilities: debits - credits
+            actual_expression = Sum("dr_amount") - Sum("cr_amount")
 
         qs = (
             JournalLine.objects
@@ -43,9 +52,7 @@ class BudgetService:
                 account=category,
             )
             .values("account_id")
-            .annotate(
-                actual=Sum("dr_amount") - Sum("cr_amount")
-            )
+            .annotate(actual=actual_expression)
             .order_by("account_id")
         )
 
@@ -68,6 +75,7 @@ class BudgetService:
         """
         Calculate available amount for a category in a given month.
         Formula: Budget(this month) - Actual(this month) + Available(previous month)
+        For income accounts: Actual(this month) - Budget(this month) + Available(previous month)
         This creates a recursive calculation where unspent budget rolls forward.
         """
         # Get previous month
@@ -104,23 +112,33 @@ class BudgetService:
 
         # If this is the first month with budget/activity, no previous available
         if month <= first_month:
-            return self.budgeted(category, month) - self.actual(category, month)
+            # Calculate based on account type
+            budget = self.budgeted(category, month)
+            actual = self.actual(category, month)
+            if category.account_group.account_type == "income":
+                return actual - budget
+            else:
+                return budget - actual
 
-        # Recursive case: Budget - Actual + Available from previous month
+        # Recursive case: Budget - Actual + Available from previous month (or Actual - Budget for income)
         prev_available = self.available(category, prev_month)
         current_budget = self.budgeted(category, month)
         current_actual = self.actual(category, month)
 
-        return current_budget - current_actual + prev_available
+        if category.account_group.account_type == "income":
+            return current_actual - current_budget + prev_available
+        else:
+            return current_budget - current_actual + prev_available
 
     def get_actuals_by_category(self, month):
         """
-        Get actual amounts for all expense categories in a given month.
+        Get actual amounts for all expense and income categories in a given month.
         Returns a dictionary mapping account_id to actual amount.
         """
         start, end = self.month_bounds(month)
 
-        qs = (
+        # Get expense accounts: dr - cr
+        expense_qs = (
             JournalLine.objects
             .filter(
                 team=self.team,
@@ -129,15 +147,30 @@ class BudgetService:
                 account__account_group__account_type="expense",
             )
             .values("account_id")
-            .annotate(
-                actual=Sum("dr_amount") - Sum("cr_amount")
-            )
+            .annotate(actual=Sum("dr_amount") - Sum("cr_amount"))
         )
 
-        return {
-            row["account_id"]: row["actual"] or Decimal("0")
-            for row in qs
-        }
+        # Get income accounts: cr - dr
+        income_qs = (
+            JournalLine.objects
+            .filter(
+                team=self.team,
+                journal_entry__entry_date__gte=start,
+                journal_entry__entry_date__lt=end,
+                account__account_group__account_type="income",
+            )
+            .values("account_id")
+            .annotate(actual=Sum("cr_amount") - Sum("dr_amount"))
+        )
+
+        # Combine results
+        result = {}
+        for row in expense_qs:
+            result[row["account_id"]] = row["actual"] or Decimal("0")
+        for row in income_qs:
+            result[row["account_id"]] = row["actual"] or Decimal("0")
+
+        return result
 
     def get_budgets_by_category(self, month):
         """
@@ -161,7 +194,7 @@ class BudgetService:
             Account.objects
             .filter(
                 team=self.team,
-                account_group__account_type="expense",
+                account_group__account_type__in=("expense", "income"),
             )
             .select_related("account_group")
             .order_by("account_number")
@@ -182,6 +215,12 @@ class BudgetService:
 
             actual = actuals.get(account.pk, Decimal("0"))
 
+            # Calculate available based on account type
+            if account.account_group.account_type == "income":
+                available = actual - budgeted
+            else:
+                available = budgeted - actual
+
             rows.append({
                 "category_id": account.pk,
                 "category_name": account.name,
@@ -190,7 +229,7 @@ class BudgetService:
                 "budget_id": budget.id if budget else None,
                 "budgeted": budgeted,
                 "actual": actual,
-                "available": budgeted - actual,
+                "available": available,
             })
 
         return rows
