@@ -22,6 +22,8 @@ class JournalLineSerializer(serializers.ModelSerializer):
     account_number = serializers.IntegerField(source="account.account_number", read_only=True)
     amount = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
 
+    direction = serializers.SerializerMethodField()
+
     class Meta:
         model = JournalLine
         fields = [
@@ -34,12 +36,22 @@ class JournalLineSerializer(serializers.ModelSerializer):
             "amount",
             "is_cleared",
             "is_reconciled",
-            # "budget",  # Uncomment when Budget model is ready
+            "budget",
+            "direction",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["account_name", "account_number", "amount", "created_at", "updated_at"]
+        read_only_fields = ["account_name",
+                            "account_number",
+                            "amount",
+                            "budget",
+                            "direction",
+                            "created_at",
+                            "updated_at"
+        ]
 
+    def get_direction(self, obj):
+        return "DR" if obj.dr_amount > 0 else "CR"
     def validate(self, data):
         """Validate that line has either debit or credit, not both or neither."""
         dr_amount = data.get("dr_amount", Decimal("0"))
@@ -58,6 +70,8 @@ class JournalLineSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Debit and credit amounts cannot be negative.")
 
         return data
+
+
 
 
 class JournalEntrySerializer(serializers.ModelSerializer):

@@ -98,7 +98,7 @@ PROJECT_APPS = [
     "apps.teams_example.apps.TeamsExampleConfig",
     "apps.chat",
     "apps.ai.apps.AiConfig",
-    # "apps.budgeting.apps.BudgetingConfig",
+    "apps.budget.apps.BudgetConfig",
     "apps.accounts.apps.AccountsConfig",
     "apps.journal.apps.JournalConfig",
 ]
@@ -618,3 +618,7 @@ LOGGING = {
         },
     },
 }
+
+
+# Populate team account with default data
+BOOTSTRAP_TEAM_ON_CREATE = True
