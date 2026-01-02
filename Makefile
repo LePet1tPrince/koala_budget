@@ -51,7 +51,10 @@ dbshell: ## Get a Database shell
 	@docker compose exec db psql -U postgres koala_budget
 
 test: ## Run Django tests
-	@docker compose run --rm web python manage.py test ${ARGS}
+	@docker compose run --rm \
+		-e DJANGO_SETTINGS_MODULE=koala_budget.settings_test \
+		web python manage.py test ${ARGS}
+
 
 init: setup-env start-bg migrations migrate  ## Quickly get up and running (start containers and bootstrap DB)
 
