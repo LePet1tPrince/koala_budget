@@ -1,0 +1,182 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+
+{% block app %}
+<section class="app-card">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="pg-title">{% translate "Balance Sheet" %}</h1>
+    <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline">
+      <i class="fa fa-arrow-left mr-2"></i>
+      {% translate "Back to Reports" %}
+    </a>
+  </div>
+
+  <!-- Form Section -->
+  <div class="bg-base-200 p-4 rounded-lg mb-6">
+    <form method="get" class="flex flex-col sm:flex-row gap-4 items-end">
+      <div class="form-control flex-1">
+        <label class="label">
+          <span class="label-text">{% translate "As of Date" %}</span>
+        </label>
+        {% render_field form.as_of_date class="input input-bordered" %}
+      </div>
+      <div class="form-control">
+        <button type="submit" class="btn btn-primary">
+          {% translate "Generate Report" %}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {% if report_data %}
+  <!-- Report Section -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Assets Section -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title text-info">
+          <i class="fa fa-coins"></i>
+          {% translate "Assets" %}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Account" %}</th>
+                <th class="text-right">{% translate "Balance" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in report_data.assets %}
+              <tr>
+                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="2" class="text-center text-gray-500">{% translate "No asset accounts with balances" %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td>{% translate "Total Assets" %}</td>
+                <td class="text-right text-info">{{ report_data.total_assets|floatformat:2 }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Liabilities Section -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title text-warning">
+          <i class="fa fa-credit-card"></i>
+          {% translate "Liabilities" %}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Account" %}</th>
+                <th class="text-right">{% translate "Balance" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in report_data.liabilities %}
+              <tr>
+                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="2" class="text-center text-gray-500">{% translate "No liability accounts with balances" %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td>{% translate "Total Liabilities" %}</td>
+                <td class="text-right text-warning">{{ report_data.total_liabilities|floatformat:2 }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Equity Section -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title text-secondary">
+          <i class="fa fa-building"></i>
+          {% translate "Equity" %}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Account" %}</th>
+                <th class="text-right">{% translate "Balance" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in report_data.equity %}
+              <tr>
+                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="2" class="text-center text-gray-500">{% translate "No equity accounts with balances" %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td>{% translate "Total Equity" %}</td>
+                <td class="text-right text-secondary">{{ report_data.total_equity|floatformat:2 }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Section -->
+  <div class="card bg-base-100 shadow-lg mt-6">
+    <div class="card-body">
+      <h2 class="card-title">
+        <i class="fa fa-balance-scale"></i>
+        {% translate "Balance Sheet Summary" %}
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="stat bg-info bg-opacity-10 rounded-lg p-4">
+          <div class="stat-title">{% translate "Total Assets" %}</div>
+          <div class="stat-value text-info">{{ report_data.total_assets|floatformat:2 }}</div>
+        </div>
+        <div class="stat bg-warning bg-opacity-10 rounded-lg p-4">
+          <div class="stat-title">{% translate "Total Liabilities" %}</div>
+          <div class="stat-value text-warning">{{ report_data.total_liabilities|floatformat:2 }}</div>
+        </div>
+        <div class="stat bg-secondary bg-opacity-10 rounded-lg p-4">
+          <div class="stat-title">{% translate "Net Worth" %}</div>
+          <div class="stat-value text-secondary">{{ report_data.net_worth|floatformat:2 }}</div>
+        </div>
+      </div>
+      {% if as_of_date %}
+      <p class="text-sm text-gray-600 mt-4">
+        {% blocktranslate with date=as_of_date|date:"M j, Y" %}
+        As of {{ date }}
+        {% endblocktranslate %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

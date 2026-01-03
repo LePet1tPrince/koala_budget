@@ -1,0 +1,152 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+{% load django_vite %}
+
+{% block app %}
+<section class="app-card">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="pg-title">{% translate "Net Worth Trend" %}</h1>
+    <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline">
+      <i class="fa fa-arrow-left mr-2"></i>
+      {% translate "Back to Reports" %}
+    </a>
+  </div>
+
+  <!-- Form Section -->
+  <div class="bg-base-200 p-4 rounded-lg mb-6">
+    <form method="get" class="flex flex-col sm:flex-row gap-4 items-end">
+      <div class="form-control flex-1">
+        <label class="label">
+          <span class="label-text">{% translate "Number of Months" %}</span>
+        </label>
+        {% render_field form.num_months class="input input-bordered" %}
+        <label class="label">
+          <span class="label-text-alt text-gray-500">{{ form.num_months.help_text }}</span>
+        </label>
+      </div>
+      <div class="form-control">
+        <button type="submit" class="btn btn-primary">
+          {% translate "Generate Report" %}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {% if report_data %}
+  <!-- Chart Section -->
+  <div class="card bg-base-100 shadow-lg mb-6">
+    <div class="card-body">
+      <h2 class="card-title">
+        <i class="fa fa-chart-area"></i>
+        {% translate "Net Worth Over Time" %}
+      </h2>
+      <div class="w-full">
+        <canvas id="net-worth-chart" class="w-full" style="max-height: 400px;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Table Section -->
+  <div class="card bg-base-100 shadow-lg">
+    <div class="card-body">
+      <h2 class="card-title">
+        <i class="fa fa-table"></i>
+        {% translate "Monthly Data" %}
+      </h2>
+      <div class="overflow-x-auto">
+        <table class="table table-zebra w-full">
+          <thead>
+            <tr>
+              <th>{% translate "Month" %}</th>
+              <th class="text-right">{% translate "Net Worth" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in report_data %}
+            <tr>
+              <td>{{ item.date|date:"M Y" }}</td>
+              <td class="text-right {% if item.net_worth >= 0 %}text-success{% else %}text-error{% endif %}">
+                {{ item.net_worth|floatformat:2 }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block page_js %}
+{% if report_data %}
+{{ report_data|json_script:'net-worth-data' }}
+{% vite_asset 'assets/javascript/app.js' %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const netWorthData = JSON.parse(document.getElementById('net-worth-data').textContent);
+
+    // Prepare data for Chart.js
+    const labels = netWorthData.map(item => {
+      const date = new Date(item.date);
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+    });
+
+    const data = netWorthData.map(item => parseFloat(item.net_worth));
+
+    const ctx = document.getElementById('net-worth-chart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Net Worth',
+          data: data,
+          borderColor: 'rgb(59, 130, 246)',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return 'Net Worth: $' + context.parsed.y.toFixed(2);
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: false,
+            ticks: {
+              callback: function(value) {
+                return '$' + value.toFixed(2);
+              }
+            }
+          },
+          x: {
+            display: true,
+            title: {
+              display: true,
+              text: 'Month'
+            }
+          }
+        }
+      }
+    });
+  });
+</script>
+{% endif %}
+{% endblock %}
