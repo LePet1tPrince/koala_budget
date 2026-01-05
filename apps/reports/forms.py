@@ -7,8 +7,10 @@ from django.utils.translation import gettext_lazy as _
 class IncomeStatementForm(forms.Form):
     PERIOD_CHOICES = [
         ('this_month', _('This Month')),
+        ('last_month', _('Last Month')),
         ('last_3_months', _('Last 3 Months')),
         ('this_year', _('This Year')),
+        ('last_year', _('Last Year')),
         ('custom', _('Custom Date Range')),
     ]
 
@@ -50,19 +52,27 @@ class IncomeStatementForm(forms.Form):
     def get_date_range(self):
         period = self.cleaned_data['period']
         today = date.today()
-
+        ## The filter should be the first day you want to include
+        ## and the end date is the first day you want to EXCLUDE.
+        current_month_first = today.replace(day=1)
         if period == 'this_month':
-            start_date = today.replace(day=1)
+            start_date = current_month_first
+            end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        elif period == 'last_month':
+            start_date = (current_month_first - timedelta(days=1)).replace(day=1)
             end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
         elif period == 'last_3_months':
-            end_date = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            start_date = (end_date - timedelta(days=90)).replace(day=1)
+            start_date = (current_month_first - timedelta(days=80)).replace(day=1)
+            end_date = current_month_first - timedelta(days=1)
         elif period == 'this_year':
             start_date = today.replace(month=1, day=1)
             end_date = today.replace(month=12, day=31)
+        elif period == 'last_year':
+            start_date = today.replace(year=today.year - 1).replace(month=1, day=1)
+            end_date = today.replace(month=1, day=1) - timedelta(days=1)
         else:  # custom
             start_date = self.cleaned_data['start_date']
-            end_date = self.cleaned_data['end_date']
+            end_date = self.cleaned_data['end_date'] + timedelta(days=1)
 
         return start_date, end_date
 

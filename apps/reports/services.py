@@ -33,7 +33,7 @@ class ReportService:
         journal_lines = JournalLine.objects.filter(
             team=self.team,
             journal_entry__entry_date__range=(start_date, end_date),
-            journal_entry__status='posted'
+            # journal_entry__status='posted'
         ).select_related('account', 'account__account_group')
 
         income_data = []
@@ -106,7 +106,7 @@ class ReportService:
         journal_lines = JournalLine.objects.filter(
             team=self.team,
             journal_entry__entry_date__lte=as_of_date,
-            journal_entry__status='posted'
+            # journal_entry__status='posted'
         ).select_related('account', 'account__account_group')
 
         asset_data = []
