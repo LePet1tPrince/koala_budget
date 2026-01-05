@@ -21,6 +21,12 @@
     {% translate "Budget" %}
   </a>
 </li>
+<li>
+  <a href="{% url 'reports:reports_home' request.team.slug %}" {% if active_tab == 'reports' %}class="menu-active"{% endif %}>
+    <i class="fa fa-chart-bar h-4 w-4"></i>
+    {% translate "Reports" %}
+  </a>
+</li>
 {% endif %}
 <li>
   <a href="{% url 'web:home' %}" {% if active_tab == 'dashboard' %}class="menu-active"{% endif %}>

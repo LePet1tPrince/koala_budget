@@ -1,0 +1,172 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+{% load django_vite %}
+{% load static %}
+
+{% block app %}
+<section class="app-card">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="pg-title">{% translate "Income Statement" %}</h1>
+    <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline">
+      <i class="fa fa-arrow-left mr-2"></i>
+      {% translate "Back to Reports" %}
+    </a>
+  </div>
+  <div>
+    <H1>DEBUG INFO</H1>
+    <p>Start Date: {{ start_date }}</p>
+    <p>End Date: {{ end_date }}</p>
+    <p>Report Data: {{ report_data }}</p>
+    <p> this is new data again </p>
+  </div>
+
+  <!-- Form Section -->
+  <div class="bg-base-200 p-4 rounded-lg mb-6">
+    <form method="get" class="space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">{% translate "Time Period" %}</span>
+          </label>
+          {% render_field form.period class="radio radio-primary" %}
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">{% translate "Start Date" %}</span>
+          </label>
+          {% render_field form.start_date class="input input-bordered" %}
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">{% translate "End Date" %}</span>
+          </label>
+          {% render_field form.end_date class="input input-bordered" %}
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">&nbsp;</span>
+          </label>
+          <button type="submit" class="btn btn-primary w-full">
+            {% translate "Generate Report" %}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {% if report_data %}
+  <!-- Report Section -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Income Section -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title text-success">
+          <i class="fa fa-arrow-up"></i>
+          {% translate "Income" %}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Account" %}</th>
+                <th class="text-right">{% translate "Amount" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in report_data.income %}
+              <tr>
+                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="2" class="text-center text-gray-500">{% translate "No income data for this period" %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td>{% translate "Total Income" %}</td>
+                <td class="text-right text-success">{{ report_data.total_income|floatformat:2 }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Expenses Section -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title text-error">
+          <i class="fa fa-arrow-down"></i>
+          {% translate "Expenses" %}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Account" %}</th>
+                <th class="text-right">{% translate "Amount" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in report_data.expenses %}
+              <tr>
+                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="2" class="text-center text-gray-500">{% translate "No expense data for this period" %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td>{% translate "Total Expenses" %}</td>
+                <td class="text-right text-error">{{ report_data.total_expenses|floatformat:2 }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Section -->
+  <div class="card bg-base-100 shadow-lg mt-6">
+    <div class="card-body">
+      <h2 class="card-title">
+        <i class="fa fa-calculator"></i>
+        {% translate "Summary" %}
+      </h2>
+      <div class="stats stats-vertical lg:stats-horizontal shadow">
+        <div class="stat">
+          <div class="stat-title">{% translate "Total Income" %}</div>
+          <div class="stat-value text-success">{{ report_data.total_income|floatformat:2 }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">{% translate "Total Expenses" %}</div>
+          <div class="stat-value text-error">{{ report_data.total_expenses|floatformat:2 }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">{% translate "Net Profit" %}</div>
+          <div class="stat-value {% if report_data.net_profit >= 0 %}text-success{% else %}text-error{% endif %}">
+            {{ report_data.net_profit|floatformat:2 }}
+          </div>
+        </div>
+      </div>
+      {% if start_date and end_date %}
+      <p class="text-sm text-gray-600 mt-4">
+        {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" %}
+        Report period: {{ start }} to {{ end }}
+        {% endblocktranslate %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

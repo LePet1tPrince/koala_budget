@@ -1,5 +1,7 @@
 import * as JsCookie from "js-cookie";
+
 import { DashboardCharts as AppDashboardCharts } from './dashboard/dashboard-charts';
+
 export { AppDashboardCharts as DashboardCharts };
 export const Cookies = JsCookie.default;
 

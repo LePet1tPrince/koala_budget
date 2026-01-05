@@ -42,6 +42,7 @@ team_urlpatterns = [
     path("accounts/", include("apps.accounts.urls")),
     path("journal/", include("apps.journal.urls")),
     path("budget/", include("apps.budget.urls")),
+    path("reports/", include("apps.reports.urls")),
 
 ]
 
