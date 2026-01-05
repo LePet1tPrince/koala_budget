@@ -123,8 +123,15 @@ class ReportService:
             account = line.account
             account_type = account.account_group.account_type
 
-            # Calculate account balance: debits - credits
-            amount = line.dr_amount - line.cr_amount
+            # Calculate account balance based on account type
+            # Assets: debit balances are positive (dr - cr)
+            # Liabilities/Equity: credit balances are positive (cr - dr)
+            if account_type in [ACCOUNT_TYPE_ASSET]:
+                amount = line.dr_amount - line.cr_amount
+            elif account_type in [ACCOUNT_TYPE_LIABILITY, ACCOUNT_TYPE_EQUITY]:
+                amount = line.cr_amount - line.dr_amount
+            else:
+                continue  # Skip other account types
 
             if account not in account_balances:
                 account_balances[account] = Decimal('0')
