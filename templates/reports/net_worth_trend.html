@@ -18,12 +18,15 @@
     <form method="get" class="flex flex-col sm:flex-row gap-4 items-end">
       <div class="form-control flex-1">
         <label class="label">
-          <span class="label-text">{% translate "Number of Months" %}</span>
+          <span class="label-text">{% translate "Start Month" %}</span>
         </label>
-        {% render_field form.num_months class="input input-bordered" %}
+        {% render_field form.start_month class="input input-bordered" %}
+      </div>
+      <div class="form-control flex-1">
         <label class="label">
-          <span class="label-text-alt text-gray-500">{{ form.num_months.help_text }}</span>
+          <span class="label-text">{% translate "End Month" %}</span>
         </label>
+        {% render_field form.end_month class="input input-bordered" %}
       </div>
       <div class="form-control">
         <button type="submit" class="btn btn-primary">

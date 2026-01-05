@@ -86,14 +86,21 @@ def net_worth_trend(request, team_slug):
     Net Worth Trend report view.
     """
     service = ReportService(request.team)
-    form = NetWorthTrendForm(request.GET or None)
+
+    # Only bind form with GET data if there are query parameters (form submitted)
+    # This prevents validation errors from showing on initial page load
+    form_data = request.GET if request.GET else None
+    form = NetWorthTrendForm(form_data)
 
     report_data = None
-    num_months = None
+    start_date = None
+    end_date = None
 
-    if form.is_valid():
-        num_months = form.cleaned_data['num_months']
-        report_data = service.get_net_worth_trend_data(num_months)
+    # Only process form if it has been submitted (has GET data) and is valid
+    if form_data and form.is_valid():
+        start_date = form.cleaned_data['start_date']
+        end_date = form.cleaned_data['end_date']
+        report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
 
     return render(
         request,
@@ -103,6 +110,7 @@ def net_worth_trend(request, team_slug):
             "page_title": _("Net Worth Trend"),
             "form": form,
             "report_data": report_data,
-            "num_months": num_months,
+            "start_date": start_date,
+            "end_date": end_date,
         },
     )

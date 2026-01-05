@@ -192,3 +192,36 @@ class ReportService:
             current_date = (current_date + timedelta(days=32)).replace(day=1)
 
         return trend_data
+
+    def get_net_worth_trend_data_by_date_range(self, start_date, end_date):
+        """
+        Calculate net worth trend data for the given date range, showing monthly data.
+
+        Returns:
+            list: [{'date': date, 'net_worth': Decimal}, ...]
+        """
+        trend_data = []
+
+        # Calculate net worth for each month end within the date range
+        current_date = start_date.replace(day=1)
+        while current_date <= end_date:
+            month_end = (current_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+            # Don't calculate months beyond the end date
+            if month_end > end_date:
+                month_end = end_date
+
+            balance_data = self.get_balance_sheet_data(month_end)
+            trend_data.append({
+                'date': month_end,
+                'net_worth': balance_data['net_worth'],
+            })
+
+            # Move to next month
+            current_date = (current_date + timedelta(days=32)).replace(day=1)
+
+            # Prevent infinite loop if we somehow go beyond end_date
+            if current_date > end_date and month_end >= end_date:
+                break
+
+        return trend_data
