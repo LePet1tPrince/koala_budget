@@ -1,0 +1,72 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li class="pg-breadcrumb-active" aria-current="page">{% translate "goals" %}</li>
+  </ol>
+</nav>
+
+<section class="app-card">
+  <h3 class="pg-subtitle">{% translate "Goals Overview" %}</h3>
+  <p class="text-gray-600 mb-6">
+    {% translate "Set and track your financial goals to achieve your financial objectives." %}
+  </p>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Goals Card -->
+    <div class="card bg-base-200 shadow-md">
+      <div class="card-body">
+        <h4 class="card-title text-lg">
+          <i class="fa fa-bullseye h-5 w-5 mr-2"></i>
+          {% translate "Goals" %}
+        </h4>
+        <p class="text-sm text-gray-600">
+          {% translate "Create and track your savings goals, from emergency funds to dream vacations." %}
+        </p>
+        <div class="card-actions justify-end mt-4">
+          <a href="{% url 'goals:goal_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+            {% translate "View All" %}
+          </a>
+          <a href="{% url 'goals:goal_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
+            {% translate "New Goal" %}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress Card -->
+    <div class="card bg-base-200 shadow-md">
+      <div class="card-body">
+        <h4 class="card-title text-lg">
+          <i class="fa fa-chart-line h-5 w-5 mr-2"></i>
+          {% translate "Progress Tracking" %}
+        </h4>
+        <p class="text-sm text-gray-600">
+          {% translate "Monitor your progress towards achieving your financial goals." %}
+        </p>
+        <div class="card-actions justify-end mt-4">
+          <a href="{% url 'goals:goal_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+            {% translate "View Progress" %}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quick Stats Section -->
+<section class="app-card mt-6">
+  <h4 class="pg-subtitle">{% translate "Quick Stats" %}</h4>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">{% translate "Active Goals" %}</div>
+      <div class="stat-value text-2xl">{{ goals_count }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">{% translate "Goals Completed" %}</div>
+      <div class="stat-value text-2xl">0</div>
+    </div>
+  </div>
+</section>
+{% endblock %}
