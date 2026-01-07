@@ -3,8 +3,7 @@
 {% block app %}
 <nav aria-label="breadcrumbs">
   <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'goals:goals_home' request.team.slug %}">{% translate "Goals" %}</a></li>
-    <li><a href="{% url 'goals:goal_list' request.team.slug %}">{% translate "All Goals" %}</a></li>
+    <li><a href="{% url 'goals:goals_home' request.team.slug %}">{% translate "All Goals" %}</a></li>
     <li class="pg-breadcrumb-active" aria-current="page">{{ object.name }}</li>
   </ol>
 </nav>

@@ -3,70 +3,102 @@
 {% block app %}
 <nav aria-label="breadcrumbs">
   <ol class="pg-breadcrumbs">
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "goals" %}</li>
+    {% comment %} <li><a href="{% url 'goals:goals_home' request.team.slug %}">{% translate "Goals" %}</a></li> {% endcomment %}
+    <li class="pg-breadcrumb-active" aria-current="page">{% translate "All Goals" %}</li>
   </ol>
 </nav>
 
-<section class="app-card">
-  <h3 class="pg-subtitle">{% translate "Goals Overview" %}</h3>
+<!-- Financial Summary Card -->
+<section class="app-card mb-6">
+  <h3 class="pg-subtitle">{% translate "Financial Overview" %}</h3>
   <p class="text-gray-600 mb-6">
-    {% translate "Set and track your financial goals to achieve your financial objectives." %}
+    {% translate "Track how your money is allocated between budgets and goals." %}
   </p>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <!-- Goals Card -->
-    <div class="card bg-base-200 shadow-md">
-      <div class="card-body">
-        <h4 class="card-title text-lg">
-          <i class="fa fa-bullseye h-5 w-5 mr-2"></i>
-          {% translate "Goals" %}
-        </h4>
-        <p class="text-sm text-gray-600">
-          {% translate "Create and track your savings goals, from emergency funds to dream vacations." %}
-        </p>
-        <div class="card-actions justify-end mt-4">
-          <a href="{% url 'goals:goal_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
-            {% translate "View All" %}
-          </a>
-          <a href="{% url 'goals:goal_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
-            {% translate "New Goal" %}
-          </a>
-        </div>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <!-- Net Worth -->
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">
+        {% translate "Net Worth" %}
       </div>
+      <div class="stat-value text-2xl text-success">${{ net_worth|floatformat:2 }}</div>
+      <div class="stat-desc">{% translate "Total assets minus liabilities" %}</div>
     </div>
 
-    <!-- Progress Card -->
-    <div class="card bg-base-200 shadow-md">
-      <div class="card-body">
-        <h4 class="card-title text-lg">
-          <i class="fa fa-chart-line h-5 w-5 mr-2"></i>
-          {% translate "Progress Tracking" %}
-        </h4>
-        <p class="text-sm text-gray-600">
-          {% translate "Monitor your progress towards achieving your financial goals." %}
-        </p>
-        <div class="card-actions justify-end mt-4">
-          <a href="{% url 'goals:goal_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
-            {% translate "View Progress" %}
-          </a>
-        </div>
+    <!-- Budgeted Available -->
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">{% translate "Budget Available" %}</div>
+      <div class="stat-value text-2xl text-info">${{ grand_total_available|floatformat:2 }}</div>
+      <div class="stat-desc">{% translate "Current month budget surplus" %}</div>
+    </div>
+
+    <!-- Left to Allocate -->
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">{% translate "Left to Allocate" %}</div>
+      <div class="stat-value text-2xl {% if left_to_allocate > 0 %}text-warning{% else %}text-success{% endif %}">
+        ${{ left_to_allocate|floatformat:2 }}
+      </div>
+      <div class="stat-desc">
+        {% if left_to_allocate > 0 %}
+          {% translate "Consider allocating to goals" %}
+        {% else %}
+          {% translate "Well allocated!" %}
+        {% endif %}
       </div>
     </div>
+  </div>
+
+  <div class="mt-4 text-sm text-gray-600">
+    <strong>{% translate "Calculation" %}:</strong> {% translate "Net Worth" %} - {% translate "Budget Available" %} - {% translate "Goals Saved" %} (${{ goals_saved_total|floatformat:2 }})
   </div>
 </section>
 
-<!-- Quick Stats Section -->
-<section class="app-card mt-6">
-  <h4 class="pg-subtitle">{% translate "Quick Stats" %}</h4>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-    <div class="stat bg-base-200 rounded-lg p-4">
-      <div class="stat-title">{% translate "Active Goals" %}</div>
-      <div class="stat-value text-2xl">{{ goals_count }}</div>
-    </div>
-    <div class="stat bg-base-200 rounded-lg p-4">
-      <div class="stat-title">{% translate "Goals Completed" %}</div>
-      <div class="stat-value text-2xl">0</div>
-    </div>
+<section class="app-card">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="pg-subtitle">{% translate "Goals" %}</h3>
+    <a href="{% url 'goals:goal_create' request.team.slug %}" class="pg-button-primary">
+      {% translate "New Goal" %}
+    </a>
   </div>
+  {% if object_list %}
+    <div class="overflow-x-auto">
+      <table class="table table-zebra w-full">
+        <thead>
+          <tr>
+            <th>{% translate "Name" %}</th>
+            <th>{% translate "Goal Amount" %}</th>
+            <th>{% translate "Saved Amount" %}</th>
+            <th>{% translate "Progress" %}</th>
+            <th>{% translate "Target Date" %}</th>
+            <th>{% translate "Actions" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for goal in object_list %}
+            <tr>
+              <td><a href="{{ goal.get_absolute_url }}" class="link">{{ goal.name }}</a></td>
+              <td>${{ goal.goal_amount|floatformat:2 }}</td>
+              <td>${{ goal.saved_amount|floatformat:2 }}</td>
+              <td>
+                {% widthratio goal.saved_amount goal.goal_amount 100 as progress %}
+                <div class="flex items-center gap-2">
+                  <progress class="progress progress-primary w-20" value="{{ progress }}" max="100"></progress>
+                  <span class="text-sm">{{ progress|floatformat:1 }}%</span>
+                </div>
+              </td>
+              <td>{% if goal.target_date %}{{ goal.target_date|date:"M j, Y" }}{% else %}-{% endif %}</td>
+              <td>
+                <a href="{% url 'goals:goal_update' request.team.slug goal.pk %}" class="pg-button-secondary pg-button-sm">
+                  {% translate "Edit" %}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-gray-500">{% translate "No goals yet." %} <a href="{% url 'goals:goal_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+  {% endif %}
 </section>
 {% endblock %}
