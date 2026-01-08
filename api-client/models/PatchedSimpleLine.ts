@@ -123,6 +123,12 @@ export interface PatchedSimpleLine {
     isReconciled?: boolean;
     /**
      * 
+     * @type {boolean}
+     * @memberof PatchedSimpleLine
+     */
+    isArchived?: boolean;
+    /**
+     * 
      * @type {string}
      * @memberof PatchedSimpleLine
      */
@@ -178,6 +184,7 @@ export function PatchedSimpleLineFromJSONTyped(json: any, ignoreDiscriminator: b
         'payeeName': json['payee_name'] == null ? undefined : json['payee_name'],
         'isCleared': json['is_cleared'] == null ? undefined : json['is_cleared'],
         'isReconciled': json['is_reconciled'] == null ? undefined : json['is_reconciled'],
+        'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
         'source': json['source'] == null ? undefined : json['source'],
         'status': json['status'] == null ? undefined : json['status'],
         'createdAt': json['created_at'] == null ? undefined : (new Date(json['created_at'])),
@@ -205,6 +212,7 @@ export function PatchedSimpleLineFromJSONTyped(json: any, ignoreDiscriminator: b
         'payee': value['payee'],
         'is_cleared': value['isCleared'],
         'is_reconciled': value['isReconciled'],
+        'is_archived': value['isArchived'],
     };
 }
 

@@ -12,7 +12,7 @@ import {
   LastPage as LastPageIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { Alert, Autocomplete, Snackbar, TextField } from '@mui/material';
+import { Alert, Autocomplete, Snackbar, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 /* globals gettext */
 import React, { useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
@@ -44,6 +44,9 @@ const LineTableMaterial = ({
     message: '',
     severity: 'info', // 'success', 'error', 'warning', 'info'
   });
+
+  // Filter state for Feed/Reconciled/Archived toggle
+  const [filterMode, setFilterMode] = useState('feed');
 
   // Create MUI theme that adapts to existing theme
   const theme = useMemo(() => {
@@ -93,21 +96,39 @@ const LineTableMaterial = ({
     return lookup;
   }, [allPayees]);
 
-  // Filter lines by selected date range
+  // Filter lines by selected date range and filter mode
   const filteredLines = useMemo(() => {
-    if (!filterStart && !filterEnd) return lines;
-    const s = filterStart ? new Date(filterStart) : null;
-    const e = filterEnd ? new Date(filterEnd) : null;
-    // make end of day inclusive
-    const eInclusive = e ? new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999) : null;
-    return lines.filter((l) => {
-      if (!l.date) return false;
-      const d = new Date(l.date);
-      if (s && d < s) return false;
-      if (eInclusive && d > eInclusive) return false;
-      return true;
-    });
-  }, [lines, filterStart, filterEnd]);
+    let filtered = lines;
+
+    // Apply filter mode (Feed/Reconciled/Archived)
+    if (filterMode === 'feed') {
+      // Feed: not reconciled and not archived
+      filtered = filtered.filter((l) => !l.isReconciled && !l.isArchived);
+    } else if (filterMode === 'reconciled') {
+      // Reconciled: reconciled and not archived
+      filtered = filtered.filter((l) => l.isReconciled && !l.isArchived);
+    } else if (filterMode === 'archived') {
+      // Archived: archived
+      filtered = filtered.filter((l) => l.isArchived);
+    }
+
+    // Apply date range filter
+    if (filterStart || filterEnd) {
+      const s = filterStart ? new Date(filterStart) : null;
+      const e = filterEnd ? new Date(filterEnd) : null;
+      // make end of day inclusive
+      const eInclusive = e ? new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999) : null;
+      filtered = filtered.filter((l) => {
+        if (!l.date) return false;
+        const d = new Date(l.date);
+        if (s && d < s) return false;
+        if (eInclusive && d > eInclusive) return false;
+        return true;
+      });
+    }
+
+    return filtered;
+  }, [lines, filterStart, filterEnd, filterMode]);
 
   // Define columns for Material-Table
   const columns = [
@@ -210,18 +231,6 @@ const LineTableMaterial = ({
       field: 'payee',
       lookup: payeeLookup,
       emptyValue: '',
-    },
-    {
-      title: gettext('Cleared'),
-      field: 'isCleared',
-      type: 'boolean',
-      render: (rowData) => rowData.isCleared ? <CheckIcon color="success" /> : '',
-    },
-    {
-      title: gettext('Reconciled'),
-      field: 'isReconciled',
-      type: 'boolean',
-      render: (rowData) => rowData.isReconciled ? <CheckIcon color="success" /> : '',
     },
   ];
 
@@ -335,6 +344,25 @@ const LineTableMaterial = ({
   return (
     <ThemeProvider theme={theme}>
       <div className="space-y-4">
+        {/* Filter Mode Toggle */}
+        <div className="flex items-center justify-center">
+          <ToggleButtonGroup
+            color="primary"
+            value={filterMode}
+            exclusive
+            onChange={(_event, newMode) => {
+              if (newMode !== null) {
+                setFilterMode(newMode);
+              }
+            }}
+            aria-label="Transaction filter"
+          >
+            <ToggleButton value="feed">{gettext('Feed')}</ToggleButton>
+            <ToggleButton value="reconciled">{gettext('Reconciled')}</ToggleButton>
+            <ToggleButton value="archived">{gettext('Archived')}</ToggleButton>
+          </ToggleButtonGroup>
+        </div>
+
         {/* Date Range Filter */}
         <div className="flex items-center justify-between">
           <div>
