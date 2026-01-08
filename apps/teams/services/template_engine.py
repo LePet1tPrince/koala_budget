@@ -1,3 +1,5 @@
+from dateutil.relativedelta import relativedelta
+
 from django.db import transaction
 from django.utils.timezone import now
 
@@ -58,26 +60,28 @@ def apply_template(team, template, month_start):
     # -------------------------
     # Sample Journal Entries
     # -------------------------
-    for entry in template.get("sample_entries", []):
-        je, created = JournalEntry.objects.get_or_create(
-            team=team,
-            entry_date=month_start,
-            description=entry["description"],
-            defaults={
-                "payee": payee_map.get(entry.get("payee")),
-                "status": JournalEntry.STATUS_POSTED,
-                "source": JournalEntry.SOURCE_MANUAL,
-            },
-        )
-
-        if not created:
-            continue
-
-        for line in entry["lines"]:
-            JournalLine.objects.create(
+    for _ in range(18): # do the same transactions every month for the last 12 months
+        month_start = month_start - relativedelta(months=1)
+        for entry in template.get("sample_entries", []):
+            je, created = JournalEntry.objects.get_or_create(
                 team=team,
-                journal_entry=je,
-                account=account_map[line["account"]],
-                dr_amount=line.get("dr", 0),
-                cr_amount=line.get("cr", 0),
+                entry_date=month_start,
+                description=entry["description"],
+                defaults={
+                    "payee": payee_map.get(entry.get("payee")),
+                    "status": JournalEntry.STATUS_POSTED,
+                    "source": JournalEntry.SOURCE_MANUAL,
+                },
             )
+
+            if not created:
+                continue
+
+            for line in entry["lines"]:
+                JournalLine.objects.create(
+                    team=team,
+                    journal_entry=je,
+                    account=account_map[line["account"]],
+                    dr_amount=line.get("dr", 0),
+                    cr_amount=line.get("cr", 0),
+                )

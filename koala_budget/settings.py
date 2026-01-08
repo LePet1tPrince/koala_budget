@@ -101,6 +101,8 @@ PROJECT_APPS = [
     "apps.budget.apps.BudgetConfig",
     "apps.accounts.apps.AccountsConfig",
     "apps.journal.apps.JournalConfig",
+    "apps.goals.apps.GoalsConfig",
+    "apps.reports.apps.ReportsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -622,3 +624,9 @@ LOGGING = {
 
 # Populate team account with default data
 BOOTSTRAP_TEAM_ON_CREATE = True
+
+# settings.py
+ICON_PICKER_PATH = 'static/images/icons'
+
+# default icon color
+ICON_PICKER_COLOR = "#00bcc9"

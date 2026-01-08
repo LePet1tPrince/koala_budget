@@ -1,0 +1,76 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li><a href="{% url 'goals:goals_home' request.team.slug %}">{% translate "All Goals" %}</a></li>
+    <li class="pg-breadcrumb-active" aria-current="page">{{ object.name }}</li>
+  </ol>
+</nav>
+<section class="app-card">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="pg-subtitle">{{ object.name }}</h3>
+    <div class="flex gap-2">
+      <a href="{% url 'goals:goal_update' request.team.slug object.pk %}" class="pg-button-primary">
+        {% translate "Edit" %}
+      </a>
+      <a href="{% url 'goals:goal_delete' request.team.slug object.pk %}" class="pg-button-danger">
+        {% translate "Delete" %}
+      </a>
+    </div>
+  </div>
+
+  <!-- Progress Section -->
+  <div class="bg-base-200 p-6 rounded-lg mb-6">
+    <h4 class="text-lg font-semibold mb-4">{% translate "Progress" %}</h4>
+    {% widthratio object.saved_amount object.goal_amount 100 as progress %}
+    <div class="flex items-center gap-4 mb-2">
+      <div class="flex-1">
+        <progress class="progress progress-primary w-full" value="{{ progress }}" max="100"></progress>
+      </div>
+      <span class="text-2xl font-bold">{{ progress|floatformat:1 }}%</span>
+    </div>
+    <div class="flex justify-between text-sm text-gray-600">
+      <span>${{ object.saved_amount|floatformat:2 }} {% translate "saved" %}</span>
+      <span>${{ object.goal_amount|floatformat:2 }} {% translate "goal" %}</span>
+    </div>
+    {% if remaining_amount > 0 %}
+      <div class="mt-2 text-sm text-gray-600">
+        {% translate "Remaining" %}: ${{ remaining_amount|floatformat:2 }}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Details Section -->
+  <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <dt class="font-semibold">{% translate "Goal Amount" %}</dt>
+      <dd>${{ object.goal_amount|floatformat:2 }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Saved Amount" %}</dt>
+      <dd>${{ object.saved_amount|floatformat:2 }}</dd>
+    </div>
+    {% if object.target_date %}
+    <div>
+      <dt class="font-semibold">{% translate "Target Date" %}</dt>
+      <dd>{{ object.target_date|date:"M j, Y" }}</dd>
+    </div>
+    {% endif %}
+    {% if object.description %}
+    <div class="md:col-span-2">
+      <dt class="font-semibold">{% translate "Description" %}</dt>
+      <dd class="mt-1">{{ object.description }}</dd>
+    </div>
+    {% endif %}
+    <div>
+      <dt class="font-semibold">{% translate "Created" %}</dt>
+      <dd>{{ object.created_at|date:"M j, Y" }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Last Updated" %}</dt>
+      <dd>{{ object.updated_at|date:"M j, Y" }}</dd>
+    </div>
+  </dl>
+</section>
+{% endblock %}
