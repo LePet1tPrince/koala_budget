@@ -6,13 +6,14 @@
 <li>
   <a href="{% url 'accounts:accounts_home' request.team.slug %}" {% if active_tab == 'accounts' %}class="menu-active"{% endif %}>
     <i class="fa fa-home h-4 w-4"></i>
-    {% translate "Accounts" %}
+    {% translate "Set Up" %}
   </a>
 </li>
+
 <li>
   <a href="{% url 'journal:journal_home' request.team.slug %}" {% if active_tab == 'journal' %}class="menu-active"{% endif %}>
     <i class="fa fa-book h-4 w-4"></i>
-    {% translate "Journal" %}
+    {% translate "Categorize" %}
   </a>
 </li>
 <li>
