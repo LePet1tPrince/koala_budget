@@ -135,6 +135,9 @@ class JournalLine(BaseTeamModel):
 
     is_cleared = models.BooleanField(default=False, help_text="Whether this line has cleared the bank")
     is_reconciled = models.BooleanField(default=False, help_text="Whether this line has been reconciled")
+    is_archived = models.BooleanField(
+        default=False, help_text="Whether this line has been archived"
+    )
 
     # Budget foreign key - commented out until Budget model is ready
     budget = models.ForeignKey(

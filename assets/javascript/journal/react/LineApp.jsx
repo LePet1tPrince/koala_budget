@@ -1,9 +1,10 @@
 /* globals gettext */
+
 import React, { useEffect, useState } from 'react';
 
 import AccountCard from './AccountCard';
 import { JournalApi } from 'api-client';
-import LineTable from './LineTable';
+import LineTable from './LineTableMaterial';
 import { getApiConfiguration } from '../../api';
 
 /**

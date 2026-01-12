@@ -203,6 +203,7 @@ class SimpleLineSerializer(serializers.Serializer):
     payee_name = serializers.SerializerMethodField()
     is_cleared = serializers.BooleanField(default=False)
     is_reconciled = serializers.BooleanField(default=False)
+    is_archived = serializers.BooleanField(default=False)
     source = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
@@ -285,6 +286,7 @@ class SimpleLineSerializer(serializers.Serializer):
             cr_amount=outflow,
             is_cleared=validated_data.get("is_cleared", False),
             is_reconciled=validated_data.get("is_reconciled", False),
+            is_archived=validated_data.get("is_archived", False),
         )
 
         # Create the sibling line (category account) with opposite amounts
@@ -318,6 +320,7 @@ class SimpleLineSerializer(serializers.Serializer):
         instance.cr_amount = outflow
         instance.is_cleared = validated_data.get("is_cleared", False)
         instance.is_reconciled = validated_data.get("is_reconciled", False)
+        instance.is_archived = validated_data.get("is_archived", False)
         instance.save()
 
         # Update or create the sibling line
@@ -359,6 +362,7 @@ class SimpleLineSerializer(serializers.Serializer):
             "payee_name": instance.journal_entry.payee.name if instance.journal_entry.payee else None,
             "is_cleared": instance.is_cleared,
             "is_reconciled": instance.is_reconciled,
+            "is_archived": instance.is_archived,
             "source": instance.journal_entry.source,
             "status": instance.journal_entry.status,
             "created_at": instance.created_at,
