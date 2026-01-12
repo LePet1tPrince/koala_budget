@@ -9,10 +9,10 @@
 - React components are built using TypeScript and communicate with Django via a REST API.
 - JavaScript files are kept in the `/assets/` folder and built by vite.
   JavaScript code is typically loaded via the static files framework inside Django templates using `django-vite`.
-- There is also a standalone React front end in the `/frontend/` folder, which uses its own Vite build.
+- Ignore the a standalone React front end in the `/frontend/` folder, which uses its own Vite build.
 - APIs use Django Rest Framework, and JavaScript code that interacts with APIs uses an
   auto-generated OpenAPI-schema-baesd client.
-- The front end uses Tailwind (Version 4) and DaisyUI.
+- The front end uses Tailwind (Version 4) and DaisyUI. Some components use Material UI. Make sure to confirm which style is being used in a given component.
 - The main database is Postgres.
 - Celery is used for background jobs and scheduled tasks.
 - Redis is used as the default cache, and the message broker for Celery (if enabled).
@@ -156,6 +156,50 @@ npm run build     # Run type checks and build for production
 - The project's user model is `apps.users.models.CustomUser` and should be imported directly.
 - The `Team` model is like a virtual tenant and most data access / functionality happens within
   the context of a `Team`.
+
+##### Key Application Models and Views
+
+**apps.accounts** - Manages the chart of accounts and transactional counterparties.
+
+Models:
+- `Account` - Represents a financial account (asset, liability, income, expense, or equity) with account type determined by its associated AccountGroup. Includes `account_number` (1000s for assets, 2000s for liabilities, etc.) and an optional `has_feed` flag for bank integrations. Has a property `account_balance` that calculates balance from journal lines.
+- `AccountGroup` - Organizes accounts by type (asset, liability, income, expense, equity) and includes a description. Enforces unique names per team.
+- `Payee` - Tracks who transactions are with. Simple model with name and unique constraint per team.
+
+Views:
+- `AccountsHomeView` - Home page displaying quick stats (account groups count, accounts count, payees count).
+- Account/AccountGroup/Payee CRUD views - Standard Django class-based views (CreateView, UpdateView, DeleteView, DetailView, ListView) with `LoginAndTeamRequiredMixin` and team context.
+
+**apps.journal** - Implements double-entry bookkeeping with journal entries and lines.
+
+Models:
+- `JournalEntry` - Represents a balanced double-entry transaction with entry_date, optional payee, description, source (manual, import, bank_match, recurring), and status (draft, posted, void). Extends `BaseTeamModel`. Has validation ensuring total debits equal total credits. Includes properties `total_debits`, `total_credits`, and `is_balanced`.
+- `JournalLine` - Individual debit/credit line in a journal entry. Each line has either a `dr_amount` or `cr_amount` (not both). Includes `is_cleared` and `is_reconciled` flags. Stores optional FK to Budget for auto-linking based on account and entry date. Validates that only one of debit or credit is used.
+
+Views:
+- `JournalEntryViewSet` - REST API viewset providing CRUD for journal entries with custom actions `post_entry` (draft→posted) and `void_entry` (posted→void). Only balanced entries can be posted.
+- `SimpleLineViewSet` - REST API viewset for simplified line interface presenting transactions from a single account perspective (like a bank register). Creates/updates journal entries with exactly 2 lines (main line with specified account, sibling line with category account using opposite amounts). Destroying a line deletes the entire journal entry.
+- `journal_home` - Template view for main journal page displaying accounts and transactions.
+
+**apps.budget** - Monthly budget planning and tracking.
+
+Models:
+- `Budget` - Represents a monthly budget for an income/expense category (Account). Has `month` (first day of month), `category` FK to Account, and `budget_amount`. Unique constraint on team/month/category combination. Ordered by month (descending) then account number.
+
+Views:
+- `budget_month_view` - Template view displaying a budget month with categories grouped by account group. Shows budgeted, actual, and available amounts with subtotals per group and grand totals. Allows form submission to update budget amounts for each category.
+
+Services:
+- `BudgetService` - Service class providing methods: `budgeted(category, month)`, `actual(category, month)`, and `available(category, month)` for calculations used in views and elsewhere.
+
+**apps.goals** - Financial goal tracking and savings planning.
+
+Models:
+- `Goal` - Represents a financial goal with `name`, `description`, `goal_amount`, optional `target_date`, and `saved_amount`. Extends `BaseTeamModel`. Has property to calculate remaining amount.
+
+Views:
+- `GoalsHomeView` - Home/list page for goals. Calculates net worth from journal lines (sum of asset/liability debits - credits), grand total available from budget service, sum of saved amounts across all goals, and left to allocate (net_worth - available - saved). Lists all goals with context including counts and financial calculations.
+- Goal CRUD views - Standard class-based views (CreateView, UpdateView, DeleteView, DetailView) with `LoginAndTeamRequiredMixin` and team context.
 
 #### Django URLs, Views and Teams
 
