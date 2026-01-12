@@ -1,9 +1,11 @@
 /* globals gettext */
+
 import React, { useEffect, useState } from 'react';
 
 import AccountCard from './AccountCard';
 import { JournalApi } from 'api-client';
 import LineTable from './LineTable';
+import PlaidLinkButton from './PlaidLinkButton';
 import { getApiConfiguration } from '../../api';
 
 /**
@@ -15,6 +17,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Create API client instance
   const apiClient = new JournalApi(getApiConfiguration(SERVER_URL_BASE));
@@ -51,6 +54,82 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
 
   const handleAccountSelect = (account) => {
     setSelectedAccount(account);
+  };
+
+  /**
+   * Helper function to get CSRF token
+   */
+  const getCsrfToken = () => {
+    const cookieMatch = document.cookie.match(/csrftoken=([^;]+)/);
+    if (cookieMatch) {
+      return cookieMatch[1];
+    }
+    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    return csrfInput ? csrfInput.value : '';
+  };
+
+  /**
+   * Refresh bank feed data from Plaid
+   */
+  const handleRefresh = async () => {
+    if (!selectedAccount) return;
+
+    setRefreshing(true);
+    setError(null);
+
+    try {
+      // First, get the Plaid account for this ledger account
+      const plaidAccountResponse = await fetch(
+        `/a/${teamSlug}/plaid/api/accounts/?account=${selectedAccount.account_id}`
+      );
+
+      if (!plaidAccountResponse.ok) {
+        throw new Error('Failed to fetch Plaid account');
+      }
+
+      const plaidAccountsData = await plaidAccountResponse.json();
+
+      if (plaidAccountsData.results && plaidAccountsData.results.length > 0) {
+        const plaidAccount = plaidAccountsData.results[0];
+
+        // Trigger sync task for this Plaid item
+        const syncResponse = await fetch(
+          `/a/${teamSlug}/plaid/api/items/${plaidAccount.item}/sync/`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCsrfToken(),
+            },
+          }
+        );
+
+        if (!syncResponse.ok) {
+          throw new Error('Failed to sync transactions');
+        }
+
+        // Wait a moment for sync to complete, then reload lines
+        setTimeout(() => {
+          loadLines();
+          setRefreshing(false);
+        }, 2000);
+      } else {
+        // No Plaid account linked to this ledger account
+        setError(gettext('This account is not linked to a bank feed.'));
+        setRefreshing(false);
+      }
+    } catch (err) {
+      console.error('Failed to refresh:', err);
+      setError(gettext('Failed to refresh bank feed. Please try again.'));
+      setRefreshing(false);
+    }
+  };
+
+  /**
+   * Handle successful Plaid Link - reload page to show new accounts
+   */
+  const handlePlaidSuccess = () => {
+    window.location.reload();
   };
 
   const handleAddLine = async (lineData) => {
@@ -138,12 +217,19 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
     <div className="space-y-6">
       {/* Account Selection Cards */}
       <section className="app-card">
-        <h2 className="pg-subtitle mb-4">{gettext('Select Account')}</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
+          <PlaidLinkButton
+            teamSlug={teamSlug}
+            allAccounts={allAccounts}
+            onSuccess={handlePlaidSuccess}
+          />
+        </div>
         {accounts.length === 0 ? (
           <div className="alert alert-warning">
             <i className="fa fa-exclamation-triangle"></i>
             <span>
-              {gettext('No accounts with bank feeds found. Please add an account with a bank feed to get started.')}
+              {gettext('No accounts with bank feeds found. Please link a bank account to get started.')}
             </span>
           </div>
         ) : (
@@ -163,9 +249,28 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
       {/* Lines Table */}
       {selectedAccount && (
         <section className="app-card">
-          <h2 className="pg-subtitle mb-4">
-            {gettext('Lines for')} {selectedAccount.name}
-          </h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="pg-subtitle">
+              {gettext('Lines for')} {selectedAccount.name}
+            </h2>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              className="btn btn-outline btn-sm"
+            >
+              {refreshing ? (
+                <>
+                  <span className="loading loading-spinner loading-xs"></span>
+                  {gettext('Refreshing...')}
+                </>
+              ) : (
+                <>
+                  <i className="fa fa-refresh mr-2"></i>
+                  {gettext('Refresh')}
+                </>
+              )}
+            </button>
+          </div>
           {error && (
             <div className="alert alert-error mb-4">
               <i className="fa fa-exclamation-circle"></i>

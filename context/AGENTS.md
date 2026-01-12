@@ -201,6 +201,69 @@ Views:
 - `GoalsHomeView` - Home/list page for goals. Calculates net worth from journal lines (sum of asset/liability debits - credits), grand total available from budget service, sum of saved amounts across all goals, and left to allocate (net_worth - available - saved). Lists all goals with context including counts and financial calculations.
 - Goal CRUD views - Standard class-based views (CreateView, UpdateView, DeleteView, DetailView) with `LoginAndTeamRequiredMixin` and team context.
 
+**apps.plaid** - Plaid bank feed integration for importing and categorizing bank transactions.
+
+Architecture Philosophy:
+- **The bank feed is a task list, not the ledger.** Plaid transactions are stored as staging objects (`ImportedTransaction`) and only converted to ledger entries (`JournalEntry`) when the user categorizes them.
+- **Unified Bank Feed API** - Single endpoint combines both ledger transactions (`JournalLine`) and uncategorized Plaid imports into one feed for display.
+- **Lazy Categorization** - Journal entries are created only when user explicitly categorizes a transaction, preserving double-entry bookkeeping integrity.
+
+Models:
+- `PlaidItem` - Represents a Plaid connection to a financial institution. Stores `plaid_item_id` (Plaid's unique ID), `access_token` (for Plaid API calls - TODO: encrypt in production), `institution_name`, `cursor` (for incremental transaction sync), and `is_active` flag. Extends `BaseTeamModel`.
+- `PlaidAccount` - Links a Plaid account to a ledger Account. Stores `plaid_account_id`, FK to `PlaidItem`, optional FK to `Account` (ledger account - set by user), `name`, `mask` (last 4 digits), `type` (depository/credit), and `subtype` (checking/savings). Extends `BaseTeamModel`.
+- `ImportedTransaction` - Staging area for Plaid transactions before categorization. Stores transaction details (`plaid_transaction_id`, `amount`, `date`, `authorized_date`, `name`, `merchant_name`), categorization hints (`personal_finance_category`, `category_confidence`, `payment_channel`), optional FK to `JournalEntry` (set when categorized), and full `raw` JSON from Plaid. Extends `BaseTeamModel`. Amount convention: positive = outflow, negative = inflow (Plaid's convention).
+
+Views & API Endpoints:
+- `BankFeedViewSet` - Unified bank feed API at `/a/{team}/plaid/api/bank-feed/`
+  - `GET /` - Returns combined feed of ledger transactions and uncategorized Plaid imports for a given account. Query param: `account` (account ID). Returns `BankFeedRowSerializer` data with unified format.
+  - `POST /categorize/` - Batch categorize transactions. Body: `rows` (list of row IDs), `category` (account ID). Creates journal entries for Plaid transactions or updates category for ledger transactions.
+- `create_link_token_view` - `POST /a/{team}/plaid/api/link-token/` - Creates Plaid Link token for frontend initialization. Returns `{"link_token": "..."}`.
+- `exchange_public_token_view` - `POST /a/{team}/plaid/api/exchange-token/` - Exchanges public token from Plaid Link for access token. Body: `public_token`, `institution_id`, `accounts`. Creates `PlaidItem` and `PlaidAccount` records. Returns created item and accounts.
+- `PlaidItemViewSet` - CRUD for Plaid items at `/a/{team}/plaid/api/items/`
+- `PlaidAccountViewSet` - CRUD for Plaid accounts at `/a/{team}/plaid/api/accounts/`
+- `ImportedTransactionViewSet` - Read-only view of imported transactions at `/a/{team}/plaid/api/transactions/`
+
+Serializers:
+- `BankFeedRowSerializer` - Unified format for both ledger and Plaid transactions. Fields: `id`, `source` (ledger/plaid), `date`, `description`, `account`, `category`, `inflow`, `outflow`, `is_pending`, `is_cleared`, `payment_channel`, `confidence`, `journal_line_id`, `imported_transaction_id`, `is_editable`.
+- `journal_line_to_feed_row(line)` - Adapter function converting `JournalLine` to bank feed row format. Extracts data from line, parent journal entry, and sibling line.
+- `imported_tx_to_feed_row(tx)` - Adapter function converting `ImportedTransaction` to bank feed row format. Converts Plaid amount convention to inflow/outflow.
+- Standard model serializers: `PlaidItemSerializer`, `PlaidAccountSerializer`, `ImportedTransactionSerializer`
+
+Services (`services.py`):
+- `get_plaid_client()` - Returns configured Plaid API client using settings `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`.
+- `create_link_token(user_id, client_name)` - Creates Plaid Link token for initializing Plaid Link in frontend.
+- `exchange_public_token(public_token)` - Exchanges public token for access token and item ID.
+- `get_accounts(access_token)` - Fetches account details from Plaid.
+- `get_institution(institution_id)` - Fetches institution details from Plaid.
+- `sync_transactions(access_token, cursor)` - Syncs transactions using Plaid's `/transactions/sync` endpoint with cursor-based pagination. Returns added, modified, removed transactions and next cursor.
+
+Background Tasks (`tasks.py`):
+- `sync_plaid_transactions(plaid_item_id)` - Celery task to sync transactions for a specific Plaid item. Uses cursor-based pagination to fetch all new/modified/removed transactions. Calls processor functions for each transaction type.
+- `sync_all_plaid_items()` - Celery task to sync all active Plaid items. Can be scheduled with Celery Beat for periodic syncing.
+- `process_added_transaction(plaid_item, tx_data)` - Creates `ImportedTransaction` from Plaid transaction data. Skips if already exists.
+- `process_modified_transaction(plaid_item, tx_data)` - Updates existing `ImportedTransaction` if not yet categorized (journal_entry is null). Otherwise treats as new.
+- `process_removed_transaction(plaid_item, tx_data)` - Deletes `ImportedTransaction` if not yet categorized (journal_entry is null).
+
+Helper Functions (`views.py`):
+- `create_journal_from_import(imported_tx_id, category_account, team)` - Creates a balanced `JournalEntry` with 2 lines from an `ImportedTransaction`. Links the import to the journal entry. Converts Plaid amount convention to proper debits/credits. Sets source to `SOURCE_IMPORT`.
+- `update_simple_line_category(journal_line_id, category_account, team)` - Updates the category (sibling line's account) for an existing simple journal entry. Only works for 2-line entries.
+
+Configuration:
+- Settings: `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` (sandbox/development/production URL)
+- Dependencies: `plaid-python==38.0.0`, `django-encrypted-model-fields==0.6.5` (for future encryption)
+- URLs: Registered at `/a/{team}/plaid/` in main URL config
+
+Admin:
+- Full Django admin interface for `PlaidItem`, `PlaidAccount`, and `ImportedTransaction` with search, filtering, and autocomplete.
+
+Integration Notes:
+- All models extend `BaseTeamModel` for multi-tenancy support
+- Uses `for_team` manager for team-scoped queries
+- Preserves double-entry bookkeeping when creating journal entries from imports
+- Transaction amounts follow Plaid convention in `ImportedTransaction` (positive=outflow) but are converted to proper debit/credit in journal entries
+- Categorized transactions are linked to journal entries via FK, preventing duplicate categorization
+- Modified/removed Plaid transactions only affect uncategorized imports; categorized transactions are preserved in the ledger
+
 #### Django URLs, Views and Teams
 
 - Many apps have a `urls.py` with a `urlpatterns` and a `team_urlpatterns` value.

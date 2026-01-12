@@ -59,7 +59,7 @@ services:
     command: npm run dev -- --host
     volumes:
       - .:/code
-      - /code/node_modules
+      - vite_node_modules:/code/node_modules
     ports:
       - "5173:5173"
     restart: unless-stopped
@@ -110,3 +110,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  vite_node_modules:

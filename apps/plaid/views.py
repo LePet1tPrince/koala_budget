@@ -109,19 +109,25 @@ class BankFeedViewSet(viewsets.ViewSet):
             )
 
         # Process each row
-        for row in rows:
-            if row["source"] == "plaid":
-                create_journal_from_import(
-                    imported_tx_id=row["imported_transaction_id"],
-                    category_account=category_account,
-                    team=request.team,
-                )
-            elif row["source"] == "ledger":
-                update_simple_line_category(
-                    journal_line_id=row["journal_line_id"],
-                    category_account=category_account,
-                    team=request.team,
-                )
+        try:
+            for row in rows:
+                if row["source"] == "plaid":
+                    create_journal_from_import(
+                        imported_tx_id=row["imported_transaction_id"],
+                        category_account=category_account,
+                        team=request.team,
+                    )
+                elif row["source"] == "ledger":
+                    update_simple_line_category(
+                        journal_line_id=row["journal_line_id"],
+                        category_account=category_account,
+                        team=request.team,
+                    )
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -134,12 +140,22 @@ def create_journal_from_import(imported_tx_id: int, category_account: Account, t
     """
     Create a JournalEntry from an ImportedTransaction.
     Links the transaction to the journal entry.
+
+    Raises:
+        ValueError: If the PlaidAccount is not mapped to a ledger account
     """
     # Get the imported transaction
     imported_tx = ImportedTransaction.objects.select_related("plaid_account", "plaid_account__account").get(
         id=imported_tx_id,
         team=team,
     )
+
+    # Validate that the Plaid account is mapped to a ledger account
+    if not imported_tx.plaid_account.is_mapped:
+        raise ValueError(
+            f"Cannot categorize transaction: Plaid account '{imported_tx.plaid_account.name}' "
+            f"is not mapped to a ledger account. Please map the account first."
+        )
 
     # Create journal entry
     journal_entry = JournalEntry.objects.create(
@@ -238,16 +254,61 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return PlaidItem.for_team.all()
 
+    @extend_schema(
+        operation_id="plaid_items_sync",
+        tags=["plaid"],
+        request=None,
+        responses={200: {"type": "object", "properties": {"task_id": {"type": "string"}, "status": {"type": "string"}}}},
+    )
+    @action(detail=True, methods=["post"])
+    def sync(self, request, pk=None):
+        """
+        Trigger transaction sync for this Plaid item.
+        Starts a background Celery task to sync transactions from Plaid.
+
+        Validates that all accounts are mapped before syncing.
+        """
+        from .tasks import sync_plaid_transactions
+
+        plaid_item = self.get_object()
+
+        # Check if all accounts are mapped to ledger accounts
+        unmapped_accounts = plaid_item.accounts.filter(account__isnull=True)
+        if unmapped_accounts.exists():
+            return Response(
+                {
+                    "error": "Cannot sync transactions. Please map all bank accounts to ledger accounts first.",
+                    "unmapped_accounts": PlaidAccountSerializer(unmapped_accounts, many=True).data,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Trigger Celery task
+        task = sync_plaid_transactions.delay(plaid_item.id)
+
+        return Response(
+            {
+                "task_id": task.id,
+                "status": "syncing",
+                "message": "Transaction sync started",
+            }
+        )
+
 
 @extend_schema_view(
     list=extend_schema(operation_id="plaid_accounts_list", tags=["plaid"]),
     retrieve=extend_schema(operation_id="plaid_accounts_retrieve", tags=["plaid"]),
+    partial_update=extend_schema(operation_id="plaid_accounts_partial_update", tags=["plaid"]),
 )
-class PlaidAccountViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for PlaidAccount model (read-only)."""
+class PlaidAccountViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for PlaidAccount model.
+    Allows updating the 'account' field to map Plaid accounts to ledger accounts.
+    """
 
     serializer_class = PlaidAccountSerializer
     permission_classes = [TeamModelAccessPermissions]
+    http_method_names = ["get", "patch"]  # Only allow GET and PATCH
 
     def get_queryset(self):
         return PlaidAccount.for_team.select_related("item", "account").all()

@@ -59,6 +59,8 @@ class PlaidAccount(BaseTeamModel):
     account = models.ForeignKey(
         "accounts.Account",
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name="plaid_accounts",
         help_text="Ledger account this Plaid account feeds into",
     )
@@ -74,7 +76,21 @@ class PlaidAccount(BaseTeamModel):
         verbose_name_plural = "Plaid Accounts"
 
     def __str__(self):
-        return f"{self.name} ({self.mask}) → {self.account.name}"
+        if self.account:
+            return f"{self.name} ({self.mask}) → {self.account.name}"
+        return f"{self.name} ({self.mask}) [Unmapped]"
+
+    @property
+    def is_mapped(self):
+        """Check if this Plaid account is mapped to a ledger account."""
+        return self.account is not None
+
+    def can_sync_transactions(self):
+        """
+        Check if this account is ready to sync transactions.
+        Requires both a mapped ledger account and an active Plaid item.
+        """
+        return self.is_mapped and self.item.is_active
 
 
 class ImportedTransaction(BaseTeamModel):
