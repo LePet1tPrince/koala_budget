@@ -261,7 +261,7 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
         responses={200: {"type": "object", "properties": {"task_id": {"type": "string"}, "status": {"type": "string"}}}},
     )
     @action(detail=True, methods=["post"])
-    def sync(self, request, pk=None):
+    def sync(self, request, pk=None, team_slug=None):
         """
         Trigger transaction sync for this Plaid item.
         Starts a background Celery task to sync transactions from Plaid.

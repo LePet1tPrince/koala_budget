@@ -10,6 +10,19 @@ from apps.teams.context import set_current_team
 
 from .models import ImportedTransaction, PlaidAccount, PlaidItem
 from .services import sync_transactions
+from datetime import date, datetime
+from decimal import Decimal
+
+def json_safe(value):
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [json_safe(v) for v in value]
+    return value
 
 
 @shared_task
@@ -75,7 +88,11 @@ def sync_plaid_transactions(plaid_item_id: int):
     except PlaidItem.DoesNotExist:
         return {"success": False, "error": "PlaidItem not found"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        import traceback
+        print(traceback.format_exc())
+        print(type(e), e)
+        raise
+
 
 
 @transaction.atomic
@@ -119,9 +136,19 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
         category_confidence=tx_data.get("personal_finance_category", {}).get("confidence_level"),
         payment_channel=tx_data.get("payment_channel"),
         transaction_type=tx_data.get("transaction_type"),
-        location=tx_data.get("location"),
-        merchant_metadata=tx_data.get("merchant_metadata"),
-        raw=tx_data,
+        location = json_safe(
+            tx_data.get("location").to_dict()
+            if tx_data.get("location")
+            else None
+        ),
+        merchant_metadata = json_safe(
+            tx_data.get("merchant_metadata").to_dict()
+            if tx_data.get("merchant_metadata")
+            else None
+        ),
+        raw = json_safe(
+            tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data
+        )
     )
 
 
@@ -145,7 +172,7 @@ def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
             imported_tx.pending = tx_data.get("pending", False)
             imported_tx.name = tx_data["name"]
             imported_tx.merchant_name = tx_data.get("merchant_name")
-            imported_tx.raw = tx_data
+            imported_tx.raw = tx_data.to_dict() if hasattr(tx_data, 'to_dict') else tx_data
             imported_tx.save()
 
     except ImportedTransaction.DoesNotExist:
