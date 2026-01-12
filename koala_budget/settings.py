@@ -103,6 +103,7 @@ PROJECT_APPS = [
     "apps.journal.apps.JournalConfig",
     "apps.goals.apps.GoalsConfig",
     "apps.reports.apps.ReportsConfig",
+    "apps.plaid.apps.PlaidConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -559,6 +560,24 @@ SILENCED_SYSTEM_CHECKS = [
 if "test" in sys.argv:
     # Silence unnecessary warnings in tests
     SILENCED_SYSTEM_CHECKS.append("djstripe.I002")
+
+
+# Plaid config
+# Note: don't edit these values here - edit them in your .env file or environment variables!
+PLAID_CLIENT_ID = env("PLAID_CLIENT_ID", default="")
+PLAID_SECRET = env("PLAID_SECRET", default="")
+# Environment: sandbox, development, or production
+PLAID_ENV = env("PLAID_ENV", default="https://sandbox.plaid.com")
+
+# django-encrypted-model-fields configuration
+# Generate a proper Fernet key from the SECRET_KEY
+# In production, set FIELD_ENCRYPTION_KEY in your .env file to a proper Fernet key
+# You can generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+import base64
+import hashlib
+
+_default_key = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest())
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default=_default_key.decode())
 
 
 # AI Chat Setup
