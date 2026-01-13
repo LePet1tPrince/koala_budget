@@ -9,7 +9,6 @@ import { createRoot } from 'react-dom/client';
 const accounts = JSON.parse(document.getElementById('accounts').textContent);
 const allAccounts = JSON.parse(document.getElementById('all-accounts').textContent);
 const allPayees = JSON.parse(document.getElementById('all-payees').textContent);
-const apiUrls = JSON.parse(document.getElementById('api-urls').textContent);
 const teamSlug = JSON.parse(document.getElementById('team-slug').textContent);
 
 // Mount the React app
@@ -20,8 +19,6 @@ root.render(
     accounts={accounts}
     allAccounts={allAccounts}
     allPayees={allPayees}
-    apiUrls={apiUrls}
     teamSlug={teamSlug}
   />
 );
-

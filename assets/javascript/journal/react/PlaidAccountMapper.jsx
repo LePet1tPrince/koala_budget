@@ -1,25 +1,14 @@
 /* globals gettext */
 
 import React, { useState } from 'react';
-
-/**
- * Helper function to get CSRF token from cookies or DOM
- */
-function getCsrfToken() {
-  const cookieMatch = document.cookie.match(/csrftoken=([^;]+)/);
-  if (cookieMatch) {
-    return cookieMatch[1];
-  }
-  const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
-  return csrfInput ? csrfInput.value : '';
-}
+import { apiRequest, handleApiError } from './utils';
 
 /**
  * PlaidAccountMapper - Modal component for mapping Plaid accounts to ledger accounts
- * 
+ *
  * After linking a bank account via Plaid, users need to map each Plaid account
  * to an existing ledger account in their chart of accounts.
- * 
+ *
  * Props:
  * - teamSlug: The team slug for API calls
  * - plaidAccounts: Array of newly created Plaid accounts
@@ -61,33 +50,25 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, onComplet
 
     try {
       // Update each Plaid account with its mapped ledger account
-      const updatePromises = Object.entries(mappings).map(([plaidAccountId, ledgerAccountId]) => {
-        return fetch(`/a/${teamSlug}/plaid/api/accounts/${plaidAccountId}/`, {
+      const updatePromises = Object.entries(mappings).map(async ([plaidAccountId, ledgerAccountId]) => {
+        const response = await apiRequest(`/a/${teamSlug}/plaid/api/accounts/${plaidAccountId}/`, {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCsrfToken(),
-          },
           body: JSON.stringify({
             account: ledgerAccountId
           }),
         });
+        await handleApiError(response, gettext('Failed to save account mapping'));
+        return response;
       });
 
-      const responses = await Promise.all(updatePromises);
-      
-      // Check if all requests were successful
-      const allSuccessful = responses.every(response => response.ok);
-      
-      if (!allSuccessful) {
-        throw new Error('Some account mappings failed to save');
-      }
+      await Promise.all(updatePromises);
 
       // Success! Call the completion callback
       onComplete();
     } catch (err) {
       console.error('Error saving mappings:', err);
-      setError(gettext('Failed to save account mappings. Please try again.'));
+      setError(err.message);
+    } finally {
       setSaving(false);
     }
   };
@@ -114,7 +95,7 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, onComplet
         <p className="text-sm text-base-content/70 mb-6">
           {gettext('Connect each bank account from Plaid to an account in your chart of accounts.')}
         </p>
-        
+
         {error && (
           <div className="alert alert-error mb-4">
             <i className="fa fa-exclamation-circle"></i>
@@ -168,15 +149,15 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, onComplet
         </div>
 
         <div className="modal-action">
-          <button 
-            className="btn btn-ghost" 
+          <button
+            className="btn btn-ghost"
             onClick={onCancel}
             disabled={saving}
           >
             {gettext('Cancel')}
           </button>
-          <button 
-            className="btn btn-primary" 
+          <button
+            className="btn btn-primary"
             onClick={handleSave}
             disabled={saving || Object.keys(mappings).length !== plaidAccounts.length}
           >
@@ -196,4 +177,3 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, onComplet
 };
 
 export default PlaidAccountMapper;
-

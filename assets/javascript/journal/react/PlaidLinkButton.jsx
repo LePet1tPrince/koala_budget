@@ -1,23 +1,10 @@
 /* globals gettext */
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { apiRequest, handleApiError } from './utils';
 
 import PlaidAccountMapper from './PlaidAccountMapper';
 import { usePlaidLink } from 'react-plaid-link';
-
-/**
- * Helper function to get CSRF token from cookies or DOM
- */
-function getCsrfToken() {
-  // Try to get from cookie first
-  const cookieMatch = document.cookie.match(/csrftoken=([^;]+)/);
-  if (cookieMatch) {
-    return cookieMatch[1];
-  }
-  // Fallback to hidden input
-  const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
-  return csrfInput ? csrfInput.value : '';
-}
 
 /**
  * PlaidLinkButton - Component to handle Plaid Link integration
@@ -43,23 +30,17 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/a/${teamSlug}/plaid/api/link-token/`, {
+      const response = await apiRequest(`/a/${teamSlug}/plaid/api/link-token/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCsrfToken(),
-        },
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to create link token');
-      }
-
+      await handleApiError(response, gettext('Failed to initialize Plaid Link. Please try again.'));
       const data = await response.json();
       setLinkToken(data.link_token);
     } catch (err) {
       console.error('Error fetching link token:', err);
-      setError(gettext('Failed to initialize Plaid Link. Please try again.'));
+      setError(err.message);
+    } finally {
       setLoading(false);
     }
   };
@@ -71,12 +52,8 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess }) => {
   const onPlaidSuccess = useCallback(async (public_token, metadata) => {
     setLoading(true);
     try {
-      const response = await fetch(`/a/${teamSlug}/plaid/api/exchange-token/`, {
+      const response = await apiRequest(`/a/${teamSlug}/plaid/api/exchange-token/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCsrfToken(),
-        },
         body: JSON.stringify({
           public_token,
           institution_id: metadata.institution.institution_id,
@@ -84,19 +61,16 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess }) => {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to exchange token');
-      }
-
+      await handleApiError(response, gettext('Failed to link account. Please try again.'));
       const data = await response.json();
 
       // Show account mapper with the newly created Plaid accounts
       setNewPlaidAccounts(data.accounts || []);
       setShowMapper(true);
-      setLoading(false);
     } catch (err) {
       console.error('Error exchanging token:', err);
-      setError(gettext('Failed to link account. Please try again.'));
+      setError(err.message);
+    } finally {
       setLoading(false);
     }
   }, [teamSlug]);

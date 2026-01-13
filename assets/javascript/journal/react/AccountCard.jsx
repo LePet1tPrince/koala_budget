@@ -1,4 +1,5 @@
 /* globals gettext */
+
 import React from 'react';
 import { formatCurrency } from '../../utilities/currency';
 
@@ -22,9 +23,6 @@ const AccountCard = ({ account, isSelected, onClick }) => {
             </span>
           )}
         </h3>
-        {/* <p className="text-sm text-base-content/70">
-          {gettext('Account #')}{account.account_number}
-        </p> */}
         <p className="text-xs text-base-content/60">
           {account.account_group_name}
         </p>

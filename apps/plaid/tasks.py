@@ -25,6 +25,7 @@ def json_safe(value):
     return value
 
 
+
 @shared_task
 def sync_plaid_transactions(plaid_item_id: int):
     """

@@ -1,6 +1,8 @@
 /* globals gettext */
 import React, { useState } from 'react';
+
 import { formatCurrency } from '../../utilities/currency';
+import { formatDate } from './utils';
 
 /**
  * BankFeedTable component - displays bank feed data (ledger + Plaid transactions)
@@ -15,11 +17,6 @@ const BankFeedTable = ({
 }) => {
   const [selectedRows, setSelectedRows] = useState([]);
   const [categoryAccount, setCategoryAccount] = useState('');
-
-  // Format date for display
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString();
-  };
 
   // Handle row selection for categorization
   const handleRowSelect = (row, isSelected) => {
@@ -47,7 +44,7 @@ const BankFeedTable = ({
   };
 
   // Filter out only uncategorized Plaid transactions for categorization
-  const uncategorizedPlaidRows = lines.filter(line => 
+  const uncategorizedPlaidRows = lines.filter(line =>
     line.source === 'plaid' && !line.category
   );
 

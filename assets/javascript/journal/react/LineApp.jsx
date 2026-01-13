@@ -1,6 +1,7 @@
 /* globals gettext */
 
 import React, { useEffect, useState } from 'react';
+import { apiRequest, handleApiError } from './utils';
 
 import AccountCard from './AccountCard';
 import BankFeedTable from './BankFeedTable';
@@ -31,19 +32,16 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
     setError(null);
     try {
       // Use the new bank feed API endpoint that combines ledger and Plaid data
-      const response = await fetch(
+      const response = await apiRequest(
         `/a/${teamSlug}/plaid/api/bank-feed/?account=${selectedAccount.account_id}`
       );
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      await handleApiError(response, gettext('Failed to load lines'));
       const data = await response.json();
       setLines(data);
     } catch (err) {
       console.error('Failed to load lines:', err);
-      setError(gettext('Failed to load lines'));
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -51,18 +49,6 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
 
   const handleAccountSelect = (account) => {
     setSelectedAccount(account);
-  };
-
-  /**
-   * Helper function to get CSRF token
-   */
-  const getCsrfToken = () => {
-    const cookieMatch = document.cookie.match(/csrftoken=([^;]+)/);
-    if (cookieMatch) {
-      return cookieMatch[1];
-    }
-    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
-    return csrfInput ? csrfInput.value : '';
   };
 
   /**
@@ -76,34 +62,23 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
 
     try {
       // First, get the Plaid account for this ledger account
-      const plaidAccountResponse = await fetch(
+      const plaidAccountResponse = await apiRequest(
         `/a/${teamSlug}/plaid/api/accounts/?account=${selectedAccount.account_id}`
       );
 
-      if (!plaidAccountResponse.ok) {
-        throw new Error('Failed to fetch Plaid account');
-      }
-
+      await handleApiError(plaidAccountResponse, 'Failed to fetch Plaid account');
       const plaidAccountsData = await plaidAccountResponse.json();
 
       if (plaidAccountsData.results && plaidAccountsData.results.length > 0) {
         const plaidAccount = plaidAccountsData.results[0];
 
         // Trigger sync task for this Plaid item
-        const syncResponse = await fetch(
+        const syncResponse = await apiRequest(
           `/a/${teamSlug}/plaid/api/items/${plaidAccount.item}/sync/`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRFToken': getCsrfToken(),
-            },
-          }
+          { method: 'POST' }
         );
 
-        if (!syncResponse.ok) {
-          throw new Error('Failed to sync transactions');
-        }
+        await handleApiError(syncResponse, 'Failed to sync transactions');
 
         // Wait a moment for sync to complete, then reload lines
         setTimeout(() => {
@@ -134,14 +109,10 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
    */
   const handleCategorize = async (rows, categoryAccountId) => {
     try {
-      const response = await fetch(
+      const response = await apiRequest(
         `/a/${teamSlug}/plaid/api/bank-feed/categorize/`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCsrfToken(),
-          },
           body: JSON.stringify({
             rows: rows,
             category_account_id: categoryAccountId,
@@ -149,10 +120,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
         }
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to categorize transactions');
-      }
+      await handleApiError(response, 'Failed to categorize transactions');
 
       // Reload the bank feed to show updated data
       await loadLines();
