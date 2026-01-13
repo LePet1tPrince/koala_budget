@@ -32,7 +32,6 @@ export default defineConfig({
         'react-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/react/react-object-lifecycle.jsx'),
         'vue-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/vue/vue-object-lifecycle.js'),
         'chat': path.resolve(__dirname, './assets/javascript/chat/chat.jsx'),
-        'journal-app': path.resolve(__dirname, './assets/javascript/journal/react/journal-app.jsx'),
       },
       output: {
         // Output JS bundles to js/ directory with -bundle suffix

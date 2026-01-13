@@ -42,6 +42,7 @@
     "js-cookie": "^3.0.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-plaid-link": "^4.1.1",
     "react-router-dom": "^7.9.6",
     "tailwindcss": "^4.1.17",
     "vue": "^3.5.25"

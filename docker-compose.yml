@@ -59,7 +59,7 @@ services:
     command: npm run dev -- --host
     volumes:
       - .:/code
-      - /code/node_modules
+      - vite_node_modules:/code/node_modules
     ports:
       - "5173:5173"
     restart: unless-stopped
@@ -97,16 +97,18 @@ services:
   #   ports:
   #     - 5174:5174
 
-  # flower:
-  #   image: mher/flower
-  #   environment:
-  #     - CELERY_BROKER_URL=redis://redis:6379
-  #   command: celery flower
-  #   ports:
-  #     - 5555:5555
-  #   depends_on:
-  #     - redis
+  flower:
+    image: mher/flower
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379
+    command: celery flower
+    ports:
+      - 5555:5555
+    depends_on:
+      - redis
+      - celery
 
 volumes:
   postgres_data:
   redis_data:
+  vite_node_modules:
