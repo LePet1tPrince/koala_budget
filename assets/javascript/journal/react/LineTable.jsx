@@ -1,4 +1,5 @@
 /* globals gettext */
+
 import React, { useMemo, useState } from 'react';
 import {
   flexRender,
@@ -12,16 +13,15 @@ import DateRangePicker from '../../common/DateRangePicker';
 import { formatCurrency } from '../../utilities/currency';
 
 /**
- * LineTable component - displays and edits lines using TanStack Table
+ * LineTable component - displays bank feed data using TanStack Table
  */
 const LineTable = ({
   lines,
   selectedAccount,
   allAccounts,
   allPayees,
-  onAdd,
-  onUpdate,
-  onDelete,
+  onCategorize,
+  onEditLedger,
 }) => {
   const [sorting, setSorting] = useState([]);
   const [editingRow, setEditingRow] = useState(null);

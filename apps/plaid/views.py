@@ -6,7 +6,7 @@ Provides bank feed API, Plaid Link integration, and account management.
 from decimal import Decimal
 
 from django.db import transaction
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -28,7 +28,19 @@ from .services import create_link_token, exchange_public_token, get_accounts, ge
 
 
 @extend_schema_view(
-    list=extend_schema(operation_id="bank_feed_list", tags=["plaid"]),
+    list=extend_schema(
+        operation_id="bank_feed_list",
+        tags=["plaid"],
+        parameters=[
+            OpenApiParameter(
+                name="account",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                description="Ledger account ID to filter bank feed by",
+                required=True,
+            ),
+        ],
+    ),
 )
 class BankFeedViewSet(viewsets.ViewSet):
     """

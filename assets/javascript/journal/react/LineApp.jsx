@@ -3,24 +3,19 @@
 import React, { useEffect, useState } from 'react';
 
 import AccountCard from './AccountCard';
-import { JournalApi } from 'api-client';
-import LineTable from './LineTable';
+import BankFeedTable from './BankFeedTable';
 import PlaidLinkButton from './PlaidLinkButton';
-import { getApiConfiguration } from '../../api';
 
 /**
  * LineApp - Main application component for managing lines
- * Manages account selection and line CRUD operations
+ * Manages account selection and bank feed operations
  */
-const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
+const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Create API client instance
-  const apiClient = new JournalApi(getApiConfiguration(SERVER_URL_BASE));
 
   // Load lines when account is selected
   useEffect(() => {
@@ -35,15 +30,17 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.simpleLinesList({
-        teamSlug: teamSlug,
-        // Note: The API doesn't support filtering by account yet, so we'll filter client-side
-      });
-      // Filter lines by selected account
-      const filteredLines = response.results.filter(
-        (l) => l.account === selectedAccount.account_id
+      // Use the new bank feed API endpoint that combines ledger and Plaid data
+      const response = await fetch(
+        `/a/${teamSlug}/plaid/api/bank-feed/?account=${selectedAccount.account_id}`
       );
-      setLines(filteredLines);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setLines(data);
     } catch (err) {
       console.error('Failed to load lines:', err);
       setError(gettext('Failed to load lines'));
@@ -132,84 +129,48 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
     window.location.reload();
   };
 
-  const handleAddLine = async (lineData) => {
+  /**
+   * Categorize bank feed rows (for Plaid transactions)
+   */
+  const handleCategorize = async (rows, categoryAccountId) => {
     try {
-      // Convert date string to Date object for the API client
-      const apiData = {
-        ...lineData,
-        date: new Date(lineData.date),
-      };
-
-      // Convert empty string payee to null
-      if (apiData.payee === '') {
-        apiData.payee = null;
-      }
-
-      // Convert empty string inflow/outflow to 0
-      if (apiData.inflow === '' || apiData.inflow === null || apiData.inflow === undefined) {
-        apiData.inflow = '0';
-      }
-      if (apiData.outflow === '' || apiData.outflow === null || apiData.outflow === undefined) {
-        apiData.outflow = '0';
-      }
-
-      const newLine = await apiClient.simpleLinesCreate({
-        teamSlug: teamSlug,
-        simpleLine: apiData,
-      });
-
-      setLines([...lines, newLine]);
-    } catch (err) {
-      console.error('Failed to add line:', err);
-      throw err;
-    }
-  };
-
-  const handleUpdateLine = async (lineId, lineData) => {
-    try {
-      // Convert date string to Date object if present
-      const apiData = { ...lineData };
-      if (apiData.date && typeof apiData.date === 'string') {
-        apiData.date = new Date(apiData.date);
-      }
-
-      // Convert empty string payee to null
-      if (apiData.payee === '') {
-        apiData.payee = null;
-      }
-
-      // Convert empty string inflow/outflow to 0
-      if (apiData.inflow === '' || apiData.inflow === null || apiData.inflow === undefined) {
-        apiData.inflow = '0';
-      }
-      if (apiData.outflow === '' || apiData.outflow === null || apiData.outflow === undefined) {
-        apiData.outflow = '0';
-      }
-
-      const updatedLine = await apiClient.simpleLinesPartialUpdate({
-        teamSlug: teamSlug,
-        id: lineId,
-        patchedSimpleLine: apiData,
-      });
-      setLines(
-        lines.map((l) => (l.lineId === lineId ? updatedLine : l))
+      const response = await fetch(
+        `/a/${teamSlug}/plaid/api/bank-feed/categorize/`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+          },
+          body: JSON.stringify({
+            rows: rows,
+            category_account_id: categoryAccountId,
+          }),
+        }
       );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to categorize transactions');
+      }
+
+      // Reload the bank feed to show updated data
+      await loadLines();
     } catch (err) {
-      console.error('Failed to update line:', err);
+      console.error('Failed to categorize:', err);
       throw err;
     }
   };
 
-  const handleDeleteLine = async (lineId) => {
-    try {
-      await apiClient.simpleLinesDestroy({
-        teamSlug: teamSlug,
-        id: lineId,
-      });
-      setLines(lines.filter((l) => l.lineId !== lineId));
-    } catch (err) {
-      console.error('Failed to delete line:', err);
-      throw err;
+  /**
+   * Handle editing ledger transactions (redirect to journal entry edit)
+   */
+  const handleEditLedgerTransaction = (row) => {
+    if (row.source === 'ledger' && row.journal_line_id) {
+      // For now, we'll just reload the data
+      // In the future, this could open an edit modal or redirect to journal entry edit
+      console.log('Edit ledger transaction:', row);
+      // TODO: Implement ledger transaction editing
     }
   };
 
@@ -282,14 +243,13 @@ const LineApp = ({ accounts, allAccounts, allPayees, apiUrls, teamSlug }) => {
               <span className="loading loading-spinner loading-lg"></span>
             </div>
           ) : (
-            <LineTable
+            <BankFeedTable
               lines={lines}
               selectedAccount={selectedAccount}
               allAccounts={allAccounts}
               allPayees={allPayees}
-              onAdd={handleAddLine}
-              onUpdate={handleUpdateLine}
-              onDelete={handleDeleteLine}
+              onCategorize={handleCategorize}
+              onEditLedger={handleEditLedgerTransaction}
             />
           )}
         </section>
