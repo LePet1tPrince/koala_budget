@@ -475,6 +475,9 @@ CACHES = {
 CELERY_BROKER_URL = CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
+FLOWER_URL = "http://localhost:5555"
+FLOWER_URL_PREFIX = "flower"
+
 # Add tasks to this dict and run `python manage.py bootstrap_celery_tasks` to create them
 SCHEDULED_TASKS = {
     "test-celerybeat": {
