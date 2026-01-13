@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { apiRequest, handleApiError } from './utils';
 
 import AccountCard from './AccountCard';
+import AccountGrid from './AccountGrid';
 import BankFeedTable from './BankFeedTable';
 import PlaidLinkButton from './PlaidLinkButton';
 
@@ -162,16 +163,19 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
             </span>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {accounts.map((account) => (
-              <AccountCard
-                key={account.account_id}
-                account={account}
-                isSelected={selectedAccount?.account_id === account.account_id}
-                onClick={handleAccountSelect}
-              />
-            ))}
-          </div>
+          <AccountGrid accounts={accounts}
+             selectedAccount={selectedAccount}
+             handleAccountSelect={handleAccountSelect}  />
+          // <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          //   {accounts.map((account) => (
+          //     <AccountCard
+          //       key={account.account_id}
+          //       account={account}
+          //       isSelected={selectedAccount?.account_id === account.account_id}
+          //       onClick={handleAccountSelect}
+          //     />
+          //   ))}
+          // </div>
         )}
       </section>
 
