@@ -13,45 +13,47 @@
       {% translate "Back to Reports" %}
     </a>
   </div>
-  <div>
-    <H1>DEBUG INFO</H1>
-    <p>Start Date: {{ start_date }}</p>
-    <p>End Date: {{ end_date }}</p>
-    <p>Report Data: {{ report_data }}</p>
-    <p> this is new data again </p>
-  </div>
 
   <!-- Form Section -->
   <div class="bg-base-200 p-4 rounded-lg mb-6">
     <form method="get" class="space-y-4">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+      <!-- Period Selection -->
+      <div>
+        <label class="label">
+          <span class="label-text font-semibold">
+            {% translate "Report period" %}
+          </span>
+        </label>
+        {% render_field form.period %}
+      </div>
+
+      <!-- Date Range -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
         <div class="form-control">
           <label class="label">
-            <span class="label-text">{% translate "Time Period" %}</span>
+            <span class="label-text">{% translate "Start date" %}</span>
           </label>
-          {% render_field form.period class="radio radio-primary" %}
+          {% render_field form.start_date %}
         </div>
+
         <div class="form-control">
           <label class="label">
-            <span class="label-text">{% translate "Start Date" %}</span>
+            <span class="label-text">{% translate "End date" %}</span>
           </label>
-          {% render_field form.start_date class="input input-bordered" %}
+          {% render_field form.end_date %}
         </div>
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">{% translate "End Date" %}</span>
-          </label>
-          {% render_field form.end_date class="input input-bordered" %}
-        </div>
+
         <div class="form-control">
           <label class="label">
             <span class="label-text">&nbsp;</span>
           </label>
           <button type="submit" class="btn btn-primary w-full">
-            {% translate "Generate Report" %}
+            {% translate "Run report" %}
           </button>
         </div>
       </div>
+
     </form>
   </div>
 
@@ -76,7 +78,7 @@
             <tbody>
               {% for item in report_data.income %}
               <tr>
-                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.account_id %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.account_number }} - {{ item.account.name }}</a></td>
                 <td class="text-right">{{ item.amount|floatformat:2 }}</td>
               </tr>
               {% empty %}
@@ -114,7 +116,7 @@
             <tbody>
               {% for item in report_data.expenses %}
               <tr>
-                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.account_id %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.account_number }} - {{ item.account.name }}</a></td>
                 <td class="text-right">{{ item.amount|floatformat:2 }}</td>
               </tr>
               {% empty %}
@@ -159,9 +161,9 @@
         </div>
       </div>
       {% if start_date and end_date %}
-      <p class="text-sm text-gray-600 mt-4">
+      <p class="text-sm text-gray-600 mt-2">
         {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" %}
-        Report period: {{ start }} to {{ end }}
+          Showing {{ start }} – {{ end }}
         {% endblocktranslate %}
       </p>
       {% endif %}

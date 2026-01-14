@@ -1,0 +1,117 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+{% load django_vite %}
+{% load static %}
+
+{% block app %}
+<section class="app-card">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="pg-title">{% translate "Account Activity" %}</h1>
+    <button onclick="window.location.href='{% url 'reports:income_statement' request.team.slug %}?{{ request.GET.urlencode }}'" class="btn btn-primary">
+      <i class="fa fa-arrow-left mr-2"></i>
+      {% translate "Back to Summary" %}
+    </button>
+  </div>
+
+  {% if account %}
+  <div class="mb-6">
+    <h2 class="text-xl font-bold">{{ account.account_number }} - {{ account.name }}</h2>
+    <p class="text-sm text-gray-600">{{ account.account_group.name }} ({{ account.account_group.account_type }})</p>
+  </div>
+  {% endif %}
+
+  <!-- Form Section -->
+  <div class="bg-base-200 p-4 rounded-lg mb-6">
+    <form method="get" class="space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">{% translate "Time Period" %}</span>
+          </label>
+          {% render_field form.period class="radio radio-primary" %}
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">{% translate "Start Date" %}</span>
+          </label>
+          {% render_field form.start_date class="input input-bordered" %}
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">{% translate "End Date" %}</span>
+          </label>
+          {% render_field form.end_date class="input input-bordered" %}
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">&nbsp;</span>
+          </label>
+          <button type="submit" class="btn btn-primary w-full">
+            {% translate "Update Report" %}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {% if report_data %}
+  <!-- Transactions Section -->
+  <div class="card bg-base-100 shadow-lg">
+    <div class="card-body">
+      <h2 class="card-title">
+        <i class="fa fa-list"></i>
+        {% translate "Transactions" %}
+      </h2>
+      <div class="overflow-x-auto">
+        <table class="table table-zebra w-full">
+          <thead>
+            <tr>
+              <th>{% translate "Date" %}</th>
+              <th>{% translate "Payee" %}</th>
+              <th>{% translate "Memo" %}</th>
+              <th class="text-right">{% translate "Amount" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for transaction in report_data.transactions %}
+            <tr>
+              <td>{{ transaction.date|date:"M j, Y" }}</td>
+              <td>{{ transaction.payee }}</td>
+              <td>{{ transaction.memo }}</td>
+              <td class="text-right {% if transaction.amount >= 0 %}text-success{% else %}text-error{% endif %}">{{ transaction.amount|floatformat:2 }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="4" class="text-center text-gray-500">{% translate "No transactions for this account in the selected period" %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="font-bold">
+              <td colspan="3">{% translate "Total" %}</td>
+              <td class="text-right {% if report_data.total >= 0 %}text-success{% else %}text-error{% endif %}">{{ report_data.total|floatformat:2 }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% if start_date and end_date %}
+  <p class="text-sm text-gray-600 mt-4">
+    {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" %}
+    Report period: {{ start }} to {{ end }}
+    {% endblocktranslate %}
+  </p>
+  {% endif %}
+  {% else %}
+  <div class="alert alert-warning">
+    <div>
+      <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+      <span>{% translate "Account not found or no data available." %}</span>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
