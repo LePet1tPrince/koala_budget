@@ -21,38 +21,8 @@
   </div>
   {% endif %}
 
-  <!-- Form Section -->
   <div class="bg-base-200 p-4 rounded-lg mb-6">
-    <form method="get" class="space-y-4">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">{% translate "Time Period" %}</span>
-          </label>
-          {% render_field form.period class="radio radio-primary" %}
-        </div>
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">{% translate "Start Date" %}</span>
-          </label>
-          {% render_field form.start_date class="input input-bordered" %}
-        </div>
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">{% translate "End Date" %}</span>
-          </label>
-          {% render_field form.end_date class="input input-bordered" %}
-        </div>
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">&nbsp;</span>
-          </label>
-          <button type="submit" class="btn btn-primary w-full">
-            {% translate "Update Report" %}
-          </button>
-        </div>
-      </div>
-    </form>
+    <div id="date-range-picker"></div>
   </div>
 
   {% if report_data %}
@@ -114,4 +84,12 @@
   </div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block page_js %}
+<script>
+   const SERVER_URL_BASE = "{{ request.scheme }}://{{ request.get_host }}";
+</script>
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
 {% endblock %}
