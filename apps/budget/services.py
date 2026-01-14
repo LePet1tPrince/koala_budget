@@ -2,8 +2,9 @@
 
 from datetime import date
 from decimal import Decimal
+
 from dateutil.relativedelta import relativedelta
-from django.db.models import Sum, F
+from django.db.models import Sum
 
 from apps.accounts.models import Account
 from apps.budget.models import Budget

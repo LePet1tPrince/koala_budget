@@ -9,7 +9,15 @@ from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.accounts.models import Account, AccountGroup, ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EQUITY, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_LIABILITY
+from apps.accounts.models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_EQUITY,
+    ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_TYPE_INCOME,
+    ACCOUNT_TYPE_LIABILITY,
+    Account,
+    AccountGroup,
+)
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN

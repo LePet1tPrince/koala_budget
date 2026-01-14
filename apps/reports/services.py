@@ -1,10 +1,13 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Sum
-from django.utils.translation import gettext_lazy as _
-
-from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EQUITY, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_LIABILITY
+from apps.accounts.models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_EQUITY,
+    ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_TYPE_INCOME,
+    ACCOUNT_TYPE_LIABILITY,
+)
 from apps.journal.models import JournalLine
 
 
@@ -199,6 +202,68 @@ class ReportService:
             current_date = (current_date + timedelta(days=32)).replace(day=1)
 
         return trend_data
+
+    def get_account_activity(self, account, start_date=None, end_date=None):
+        """
+        Get detailed activity for a specific account within a date range.
+
+        Returns:
+            dict: {
+                'account': Account,
+                'transactions': [{'date': date, 'payee': str, 'memo': str, 'amount': Decimal}, ...],
+                'total': Decimal
+            }
+        """
+        from django.db.models import Case, DecimalField, F, When
+
+        # Build the queryset
+        queryset = JournalLine.objects.filter(
+            team=self.team,
+            account=account,
+        ).select_related('journal_entry', 'journal_entry__payee')
+
+        # Apply date filter if provided
+        if start_date and end_date:
+            queryset = queryset.filter(
+                journal_entry__entry_date__range=(start_date, end_date)
+            )
+
+        # Determine account type for sign logic
+        account_type = account.account_group.account_type
+
+        # Annotate signed amount based on account type
+        if account_type == ACCOUNT_TYPE_INCOME:
+            # Income: credits increase income
+            signed_amount = F('cr_amount') - F('dr_amount')
+        elif account_type == ACCOUNT_TYPE_EXPENSE:
+            # Expenses: debits increase expenses
+            signed_amount = F('dr_amount') - F('cr_amount')
+        else:
+            # For other account types, use debit - credit (asset/liability/equity logic)
+            signed_amount = F('dr_amount') - F('cr_amount')
+
+        transactions = queryset.annotate(
+            signed_amount=signed_amount
+        ).order_by('journal_entry__entry_date')
+
+        # Build transaction list
+        transaction_list = []
+        total = Decimal('0')
+
+        for line in transactions:
+            transaction_list.append({
+                'date': line.journal_entry.entry_date,
+                'payee': line.journal_entry.payee.name if line.journal_entry.payee else '',
+                'memo': line.journal_entry.description,
+                'amount': line.signed_amount,
+            })
+            total += line.signed_amount
+
+        return {
+            'account': account,
+            'transactions': transaction_list,
+            'total': total,
+        }
 
     def get_net_worth_trend_data_by_date_range(self, start_date, end_date):
         """

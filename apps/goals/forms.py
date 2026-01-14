@@ -2,6 +2,7 @@ from django import forms
 
 from .models import Goal
 
+
 class GoalForm(forms.ModelForm):
     """Form for creating and editing goals."""
 

@@ -1,8 +1,11 @@
 # apps/budget/forms.py
 
-from django import forms
 from decimal import Decimal
+
+from django import forms
+
 from .models import Budget
+
 
 class BudgetAmountForm(forms.ModelForm):
     budget_amount = forms.DecimalField(

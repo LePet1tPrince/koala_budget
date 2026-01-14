@@ -1,15 +1,15 @@
-from django.conf import settings
-from allauth.account.signals import user_signed_up
-from django.db.models.signals import post_save
-from django.db import transaction
-from django.dispatch import receiver
 from datetime import date
+
+from allauth.account.signals import user_signed_up
+from django.conf import settings
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 from .helpers import create_default_team_for_user, get_open_invitations_for_user
 from .invitations import get_invitation_id_from_request, process_invitation
 from .models import Invitation, Team
-from .services.template_engine import apply_template
 from .services.template_budget import PERSONAL_BUDGET_TEMPLATE
+from .services.template_engine import apply_template
 
 
 @receiver(user_signed_up)

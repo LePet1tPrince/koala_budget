@@ -6,7 +6,7 @@ Provides bank feed API, Plaid Link integration, and account management.
 from decimal import Decimal
 
 from django.db import transaction
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response

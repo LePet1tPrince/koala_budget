@@ -6,75 +6,68 @@ from django.utils.translation import gettext_lazy as _
 
 class IncomeStatementForm(forms.Form):
     PERIOD_CHOICES = [
-        ('this_month', _('This Month')),
-        ('last_month', _('Last Month')),
-        ('last_3_months', _('Last 3 Months')),
-        ('this_year', _('This Year')),
-        ('last_year', _('Last Year')),
-        ('custom', _('Custom Date Range')),
+        ("this_month", _("This month")),
+        ("last_month", _("Last month")),
+        ("this_year", _("This year")),
+        ("custom", _("Custom")),
     ]
 
     period = forms.ChoiceField(
         choices=PERIOD_CHOICES,
-        initial='this_month',
+        required=False,
+        initial="this_month",
         widget=forms.RadioSelect,
-        label=_('Time Period')
     )
 
     start_date = forms.DateField(
-        widget=forms.DateInput(attrs={'type': 'date'}),
         required=False,
-        label=_('Start Date')
+        label=_("Start date"),
+        widget=forms.DateInput(
+            attrs={
+                "type": "date",
+                "class": "input input-bordered w-full",
+            }
+        ),
     )
 
     end_date = forms.DateField(
-        widget=forms.DateInput(attrs={'type': 'date'}),
         required=False,
-        label=_('End Date')
+        label=_("End date"),
+        widget=forms.DateInput(
+            attrs={
+                "type": "date",
+                "class": "input input-bordered w-full",
+            }
+        ),
     )
 
-    def clean(self):
-        cleaned_data = super().clean()
-        period = cleaned_data.get('period')
-        start_date = cleaned_data.get('start_date')
-        end_date = cleaned_data.get('end_date')
-
-        if period == 'custom':
-            if not start_date:
-                raise forms.ValidationError(_('Start date is required for custom period'))
-            if not end_date:
-                raise forms.ValidationError(_('End date is required for custom period'))
-            if start_date and end_date and start_date > end_date:
-                raise forms.ValidationError(_('Start date must be before end date'))
-
-        return cleaned_data
-
     def get_date_range(self):
-        period = self.cleaned_data['period']
+        """
+        Resolve the effective start and end dates based on the selected period.
+        Preset periods override manually entered dates unless 'custom' is selected.
+        """
         today = date.today()
-        ## The filter should be the first day you want to include
-        ## and the end date is the first day you want to EXCLUDE.
-        current_month_first = today.replace(day=1)
-        if period == 'this_month':
-            start_date = current_month_first
-            end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-        elif period == 'last_month':
-            start_date = (current_month_first - timedelta(days=1)).replace(day=1)
-            end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-        elif period == 'last_3_months':
-            start_date = (current_month_first - timedelta(days=80)).replace(day=1)
-            end_date = current_month_first - timedelta(days=1)
-        elif period == 'this_year':
-            start_date = today.replace(month=1, day=1)
-            end_date = today.replace(month=12, day=31)
-        elif period == 'last_year':
-            start_date = today.replace(year=today.year - 1).replace(month=1, day=1)
-            end_date = today.replace(month=1, day=1) - timedelta(days=1)
-        else:  # custom
-            start_date = self.cleaned_data['start_date']
-            end_date = self.cleaned_data['end_date'] + timedelta(days=1)
+        period = self.cleaned_data.get("period")
+        start = self.cleaned_data.get("start_date")
+        end = self.cleaned_data.get("end_date")
 
-        return start_date, end_date
+        if period == "this_month":
+            start = today.replace(day=1)
+            end = today
+
+        elif period == "last_month":
+            first_this_month = today.replace(day=1)
+            end = first_this_month - timedelta(days=1)
+            start = end.replace(day=1)
+
+        elif period == "this_year":
+            start = today.replace(month=1, day=1)
+            end = today
+
+        elif period == "custom" and start and end:
+            pass  # use provided values
+
+        return start, end
 
 
 class BalanceSheetForm(forms.Form):

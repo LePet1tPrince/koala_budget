@@ -1,9 +1,7 @@
 from dateutil.relativedelta import relativedelta
-
 from django.db import transaction
-from django.utils.timezone import now
 
-from apps.accounts.models import AccountGroup, Account, Payee
+from apps.accounts.models import Account, AccountGroup, Payee
 from apps.journal.models import JournalEntry, JournalLine
 
 
