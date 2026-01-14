@@ -1,13 +1,9 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
-{% load form_tags %}
 {% load django_vite %}
 {% load static %}
 
 {% block app %}
-<div>
-    <div id="date-range-picker"></div>
-  </div>
 <section class="app-card">
   <div class="flex justify-between items-center mb-6">
     <h1 class="pg-title">{% translate "Income Statement" %}</h1>
@@ -18,47 +14,9 @@
   </div>
 
 
-  <!-- Form Section -->
+  <!-- Date Range Picker Section -->
   <div class="bg-base-200 p-4 rounded-lg mb-6">
-    <form method="get" class="space-y-4">
-
-      <!-- Period Selection -->
-      <div>
-        <label class="label">
-          <span class="label-text font-semibold">
-            {% translate "Report period" %}
-          </span>
-        </label>
-        {% render_field form.period %}
-      </div>
-
-      <!-- Date Range -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">{% translate "Start date" %}</span>
-          </label>
-          {% render_field form.start_date %}
-        </div>
-
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">{% translate "End date" %}</span>
-          </label>
-          {% render_field form.end_date %}
-        </div>
-
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">&nbsp;</span>
-          </label>
-          <button type="submit" class="btn btn-primary w-full">
-            {% translate "Run report" %}
-          </button>
-        </div>
-      </div>
-
-    </form>
+    <div id="date-range-picker"></div>
   </div>
 
   {% if report_data %}

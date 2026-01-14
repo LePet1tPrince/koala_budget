@@ -1,61 +1,58 @@
 import React, { useEffect, useState } from 'react';
+import { endOfMonth, format, startOfMonth } from 'date-fns';
 
 import DateRangePickerMUI from '../common/DateRangePickerMUI';
 import { createRoot } from 'react-dom/client';
 
-// Component that integrates with Django form
+// Component that integrates with URL parameters
 const DateRangePickerWrapper = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-
-  // Get initial values from Django form fields
-  useEffect(() => {
-    const startInput = document.querySelector('input[name="start_date"]');
-    const endInput = document.querySelector('input[name="end_date"]');
-
-    if (startInput) {
-      setStartDate(startInput.value || '');
-    }
-    if (endInput) {
-      setEndDate(endInput.value || '');
-    }
-  }, []);
 
   // Handle date range changes
   const handleDateRangeApply = (newStartDate, newEndDate) => {
     setStartDate(newStartDate);
     setEndDate(newEndDate);
 
-    // Update the Django form fields
-    const startInput = document.querySelector('input[name="start_date"]');
-    const endInput = document.querySelector('input[name="end_date"]');
+    // Build URL with query parameters (only start_date and end_date)
+    const url = new URL(window.location);
+    url.searchParams.set('start_date', newStartDate);
+    url.searchParams.set('end_date', newEndDate);
+    // Remove period parameter if it exists
+    url.searchParams.delete('period');
 
-    if (startInput) {
-      startInput.value = newStartDate;
-      // Trigger change event so Django form validation works
-      startInput.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    if (endInput) {
-      endInput.value = newEndDate;
-      // Trigger change event so Django form validation works
-      endInput.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    // Auto-submit the form to update the report
-    const form = document.querySelector('form[method="get"]');
-    if (form) {
-      // Set period to 'custom' when using date picker
-      const periodRadios = form.querySelectorAll('input[name="period"]');
-      const customRadio = Array.from(periodRadios).find(radio => radio.value === 'custom');
-      if (customRadio) {
-        customRadio.checked = true;
-        customRadio.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-
-      // Submit the form
-      form.submit();
-    }
+    // Navigate to the new URL (triggers page reload with report)
+    window.location.href = url.toString();
   };
+
+  // Get initial values from URL parameters or set defaults
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlStartDate = urlParams.get('start_date');
+    const urlEndDate = urlParams.get('end_date');
+
+    if (urlStartDate && urlEndDate) {
+      // Use dates from URL
+      setStartDate(urlStartDate);
+      setEndDate(urlEndDate);
+    } else {
+      // Set default to current month and auto-load report
+      const now = new Date();
+      const startOfCurrentMonth = startOfMonth(now);
+      const endOfCurrentMonth = endOfMonth(now);
+
+      const defaultStart = format(startOfCurrentMonth, 'yyyy-MM-dd');
+      const defaultEnd = format(endOfCurrentMonth, 'yyyy-MM-dd');
+
+      setStartDate(defaultStart);
+      setEndDate(defaultEnd);
+
+      // Auto-load report with default dates
+      setTimeout(() => {
+        handleDateRangeApply(defaultStart, defaultEnd);
+      }, 100); // Small delay to ensure component is mounted
+    }
+  }, [handleDateRangeApply]);
 
   return (
     <DateRangePickerMUI
