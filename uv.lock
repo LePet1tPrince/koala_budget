@@ -1813,7 +1813,6 @@ requires-dist = [
     { name = "django-browser-reload" },
     { name = "django-celery-beat", git = "https://github.com/celery/django-celery-beat?rev=bd429063cbb227c00905e7693c38895e44ff8e47" },
     { name = "django-cors-headers" },
-    { name = "django-encrypted-model-fields", specifier = ">=0.6.5" },
     { name = "django-environ" },
     { name = "django-health-check" },
     { name = "django-hijack" },

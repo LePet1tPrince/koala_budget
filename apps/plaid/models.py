@@ -3,9 +3,9 @@ Plaid integration models.
 Stores Plaid items, accounts, and imported transactions.
 """
 
-from decimal import Decimal
 
 from django.db import models
+
 from apps.teams.models import BaseTeamModel
 
 

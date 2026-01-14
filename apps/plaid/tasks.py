@@ -3,6 +3,9 @@ Celery tasks for Plaid app.
 Handles background transaction syncing and updates.
 """
 
+from datetime import date, datetime
+from decimal import Decimal
+
 from celery import shared_task
 from django.db import transaction
 
@@ -10,8 +13,7 @@ from apps.teams.context import set_current_team
 
 from .models import ImportedTransaction, PlaidAccount, PlaidItem
 from .services import sync_transactions
-from datetime import date, datetime
-from decimal import Decimal
+
 
 def json_safe(value):
     if isinstance(value, (date, datetime)):

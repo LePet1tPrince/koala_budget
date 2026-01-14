@@ -1,7 +1,7 @@
 from django.db import models
 
-from apps.teams.models import BaseTeamModel
 from apps.accounts.models import Account
+from apps.teams.models import BaseTeamModel
 
 
 class BudgetQuerySet(models.QuerySet):

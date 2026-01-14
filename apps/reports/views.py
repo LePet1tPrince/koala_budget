@@ -81,6 +81,46 @@ def balance_sheet(request, team_slug):
 
 
 @login_and_team_required
+def account_activity(request, team_slug, account_id):
+    """
+    Account activity drill-down view showing detailed transactions for a specific account.
+    """
+    from apps.accounts.models import Account
+
+    service = ReportService(request.team)
+    form = IncomeStatementForm(request.GET or None)
+
+    account = None
+    report_data = None
+    start_date = None
+    end_date = None
+
+    try:
+        account = Account.objects.get(team=request.team, account_id=account_id)
+    except Account.DoesNotExist:
+        # Handle account not found
+        pass
+
+    if account and form.is_valid():
+        start_date, end_date = form.get_date_range()
+        report_data = service.get_account_activity(account, start_date, end_date)
+
+    return render(
+        request,
+        "reports/account_activity.html",
+        {
+            "active_tab": "reports",
+            "page_title": _("Account Activity"),
+            "form": form,
+            "account": account,
+            "report_data": report_data,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    )
+
+
+@login_and_team_required
 def net_worth_trend(request, team_slug):
     """
     Net Worth Trend report view.

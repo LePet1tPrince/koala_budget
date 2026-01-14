@@ -8,12 +8,11 @@ from decimal import Decimal
 from django.db import models
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
-from django.views.generic import CreateView, DeleteView, DetailView, ListView, TemplateView, UpdateView
+from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY
 from apps.budget.services import BudgetService
 from apps.journal.models import JournalLine
-from apps.reports.services import ReportService
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
 from .forms import GoalForm
