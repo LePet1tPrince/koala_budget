@@ -5,6 +5,9 @@
 {% load static %}
 
 {% block app %}
+<div>
+    <div id="date-range-picker"></div>
+  </div>
 <section class="app-card">
   <div class="flex justify-between items-center mb-6">
     <h1 class="pg-title">{% translate "Income Statement" %}</h1>
@@ -13,6 +16,7 @@
       {% translate "Back to Reports" %}
     </a>
   </div>
+
 
   <!-- Form Section -->
   <div class="bg-base-200 p-4 rounded-lg mb-6">
@@ -171,4 +175,12 @@
   </div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block page_js %}
+<script>
+   const SERVER_URL_BASE = "{{ request.scheme }}://{{ request.get_host }}";
+</script>
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
 {% endblock %}
