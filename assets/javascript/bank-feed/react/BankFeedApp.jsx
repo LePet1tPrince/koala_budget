@@ -11,8 +11,15 @@ import PlaidLinkButton from './PlaidLinkButton';
 /**
  * BankFeedApp - Main application component for managing bank feed transactions
  * Works with the bank_feed.BankTransaction model
+ *
+ * @param {Object} props
+ * @param {Array} props.accounts - Accounts with bank feeds
+ * @param {Array} props.allAccounts - All accounts for dropdowns
+ * @param {Array} props.allPayees - All payees for dropdowns
+ * @param {string} props.teamSlug - Team slug for URLs
+ * @param {Object} props.apiClient - BankFeedApiClient instance
  */
-const BankFeedApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
+const BankFeedApp = ({ accounts, allAccounts, allPayees, teamSlug, apiClient }) => {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -32,13 +39,10 @@ const BankFeedApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
     setLoading(true);
     setError(null);
     try {
-      // Use the bank-feed API endpoint for BankTransaction model
-      const response = await apiRequest(
-        `/a/${teamSlug}/bank-feed/api/transactions/?account=${selectedAccount.account_id}`
-      );
-
-      await handleApiError(response, gettext('Failed to load transactions'));
-      const data = await response.json();
+      // Use the API client to fetch transactions
+      const data = await apiClient.listTransactions({
+        account: selectedAccount.account_id,
+      });
       // Handle paginated response
       setTransactions(data.results || data);
     } catch (err) {
@@ -111,18 +115,8 @@ const BankFeedApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
    */
   const handleCategorize = async (rows, categoryAccountId) => {
     try {
-      const response = await apiRequest(
-        `/a/${teamSlug}/plaid/api/bank-feed/categorize/`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            rows: rows,
-            category_account_id: categoryAccountId,
-          }),
-        }
-      );
-
-      await handleApiError(response, 'Failed to categorize transactions');
+      // Use the API client to categorize transactions
+      await apiClient.categorizeTransactions(rows, categoryAccountId);
 
       // Reload the bank feed to show updated data
       await loadTransactions();

@@ -6,8 +6,8 @@ Provides bank feed API, Plaid Link integration, and account management.
 from decimal import Decimal
 
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import status, viewsets
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
@@ -351,7 +351,14 @@ class ImportedTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     operation_id="plaid_create_link_token",
     tags=["plaid"],
     request=None,
-    responses={200: {"type": "object", "properties": {"link_token": {"type": "string"}}}},
+    responses={
+        200: inline_serializer(
+            name="CreateLinkTokenResponse",
+            fields={
+                "link_token": serializers.CharField(),
+            },
+        )
+    },
 )
 @api_view(["POST"])
 @permission_classes([TeamModelAccessPermissions])
@@ -373,15 +380,24 @@ def create_link_token_view(request, team_slug=None):
 @extend_schema(
     operation_id="plaid_exchange_public_token",
     tags=["plaid"],
-    request={
-        "type": "object",
-        "properties": {
-            "public_token": {"type": "string"},
-            "institution_id": {"type": "string"},
-            "accounts": {"type": "array", "items": {"type": "object"}},
+    request=inline_serializer(
+        name="ExchangePublicTokenRequest",
+        fields={
+            "public_token": serializers.CharField(),
+            "institution_id": serializers.CharField(),
+            "accounts": serializers.ListField(child=serializers.DictField(), required=False),
         },
+    ),
+    responses={
+        200: inline_serializer(
+            name="ExchangePublicTokenResponse",
+            fields={
+                "success": serializers.BooleanField(),
+                "item_id": serializers.IntegerField(),
+                "accounts": PlaidAccountSerializer(many=True),
+            },
+        )
     },
-    responses={200: {"type": "object", "properties": {"success": {"type": "boolean"}}}},
 )
 @api_view(["POST"])
 @permission_classes([TeamModelAccessPermissions])

@@ -46,6 +46,19 @@ class BankTransactionSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at"]
 
 
+class TransactionRowSerializer(serializers.Serializer):
+    """Serializer for a transaction row in categorize request."""
+
+    id = serializers.IntegerField(help_text="Transaction ID")
+
+
+class CategorizeTransactionsRequestSerializer(serializers.Serializer):
+    """Serializer for categorize transactions request body."""
+
+    rows = TransactionRowSerializer(many=True, help_text="List of transactions to categorize")
+    category_account_id = serializers.IntegerField(help_text="ID of the category account")
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.

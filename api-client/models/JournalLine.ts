@@ -74,6 +74,12 @@ export interface JournalLine {
      */
     isReconciled?: boolean;
     /**
+     * Date this line was reconciled to a bank statement
+     * @type {Date}
+     * @memberof JournalLine
+     */
+    reconciledDate?: Date | null;
+    /**
      * Link to budget based on account_id and journal entry date month
      * @type {number}
      * @memberof JournalLine
@@ -134,6 +140,7 @@ export function JournalLineFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'amount': json['amount'],
         'isCleared': json['is_cleared'] == null ? undefined : json['is_cleared'],
         'isReconciled': json['is_reconciled'] == null ? undefined : json['is_reconciled'],
+        'reconciledDate': json['reconciled_date'] == null ? undefined : (new Date(json['reconciled_date'])),
         'budget': json['budget'],
         'direction': json['direction'],
         'createdAt': (new Date(json['created_at'])),
@@ -157,6 +164,7 @@ export function JournalLineFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'cr_amount': value['crAmount'],
         'is_cleared': value['isCleared'],
         'is_reconciled': value['isReconciled'],
+        'reconciled_date': value['reconciledDate'] == null ? undefined : ((value['reconciledDate'] as any).toISOString().substring(0,10)),
     };
 }
 

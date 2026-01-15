@@ -81,3 +81,83 @@ export async function handleApiError(response, defaultMessage = 'API request fai
   }
 }
 
+/**
+ * Bank Feed API Client
+ * Provides typed methods for interacting with the bank-feed API endpoints.
+ * This follows the same pattern as the generated api-client.
+ */
+export class BankFeedApiClient {
+  /**
+   * Create a new BankFeedApiClient
+   * @param {string} teamSlug - The team slug for API URLs
+   */
+  constructor(teamSlug) {
+    this.teamSlug = teamSlug;
+    this.baseUrl = `/a/${teamSlug}/bank-feed/api`;
+  }
+
+  /**
+   * List bank transactions with optional filters
+   * @param {Object} params - Query parameters
+   * @param {number} [params.account] - Filter by account ID
+   * @param {string} [params.source] - Filter by source (plaid, csv, manual)
+   * @param {string} [params.dateFrom] - Filter by date from (YYYY-MM-DD)
+   * @param {string} [params.dateTo] - Filter by date to (YYYY-MM-DD)
+   * @param {boolean} [params.isCategorized] - Filter by categorization status
+   * @param {boolean} [params.pending] - Filter by pending status
+   * @returns {Promise<Object>} Paginated transaction list
+   */
+  async listTransactions(params = {}) {
+    const queryParams = new URLSearchParams();
+
+    if (params.account) queryParams.append('account', params.account);
+    if (params.source) queryParams.append('source', params.source);
+    if (params.dateFrom) queryParams.append('date_from', params.dateFrom);
+    if (params.dateTo) queryParams.append('date_to', params.dateTo);
+    if (params.isCategorized !== undefined) queryParams.append('is_categorized', params.isCategorized);
+    if (params.pending !== undefined) queryParams.append('pending', params.pending);
+
+    const url = `${this.baseUrl}/transactions/?${queryParams.toString()}`;
+    const response = await apiRequest(url);
+    await handleApiError(response, 'Failed to list transactions');
+    return response.json();
+  }
+
+  /**
+   * Get a single bank transaction by ID
+   * @param {number} id - Transaction ID
+   * @returns {Promise<Object>} Transaction data
+   */
+  async getTransaction(id) {
+    const response = await apiRequest(`${this.baseUrl}/transactions/${id}/`);
+    await handleApiError(response, 'Failed to get transaction');
+    return response.json();
+  }
+
+  /**
+   * Categorize one or more bank transactions
+   * @param {Array<{id: number}>} rows - Array of transaction objects with id field
+   * @param {number} categoryAccountId - ID of the category account
+   * @returns {Promise<void>}
+   */
+  async categorizeTransactions(rows, categoryAccountId) {
+    const response = await apiRequest(`${this.baseUrl}/transactions/categorize/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        rows: rows,
+        category_account_id: categoryAccountId,
+      }),
+    });
+    await handleApiError(response, 'Failed to categorize transactions');
+    // 204 No Content response
+  }
+}
+
+/**
+ * Create a BankFeedApiClient instance
+ * @param {string} teamSlug - The team slug
+ * @returns {BankFeedApiClient} API client instance
+ */
+export function getBankFeedApiClient(teamSlug) {
+  return new BankFeedApiClient(teamSlug);
+}

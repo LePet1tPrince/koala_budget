@@ -4,19 +4,24 @@ Provides API endpoints for imported transactions.
 """
 
 from datetime import datetime
+from decimal import Decimal
 
+from django.db import transaction
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import viewsets
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from apps.accounts.models import Account, Payee
 from apps.accounts.serializers import AccountSerializer, PayeeSerializer
+from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from .models import BankTransaction
-from .serializers import BankTransactionSerializer
+from .serializers import BankTransactionSerializer, CategorizeTransactionsRequestSerializer
 
 
 @extend_schema_view(
@@ -140,6 +145,143 @@ class BankTransactionViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(pending=False)
 
         return queryset
+
+    @extend_schema(
+        operation_id="bank_feed_transactions_categorize",
+        tags=["bank-feed"],
+        request=CategorizeTransactionsRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"])
+    def categorize(self, request, team_slug=None):
+        """
+        Categorize one or more bank transactions.
+        Creates journal entries linking the bank account to the category account.
+
+        Body:
+        - rows: List of transaction objects with 'id' field
+        - category_account_id: ID of the category account
+        """
+        rows = request.data.get("rows", [])
+        category_account_id = request.data.get("category_account_id")
+
+        if not rows or not category_account_id:
+            return Response(
+                {"error": "rows and category_account_id are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verify category account exists and belongs to team
+        try:
+            category_account = Account.for_team.get(account_id=category_account_id)
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Category account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Process each row
+        try:
+            for row in rows:
+                tx_id = row.get("id")
+                if tx_id:
+                    self._create_journal_from_bank_transaction(
+                        transaction_id=tx_id,
+                        category_account=category_account,
+                        team=request.team,
+                    )
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @transaction.atomic
+    def _create_journal_from_bank_transaction(self, transaction_id: int, category_account: Account, team):
+        """
+        Create a JournalEntry from a BankTransaction.
+        Links the transaction to the journal entry.
+
+        Raises:
+            ValueError: If the transaction doesn't have a linked account
+        """
+        # Get the bank transaction
+        bank_tx = BankTransaction.objects.select_related(
+            "plaid_account",
+            "plaid_account__account",
+        ).get(id=transaction_id, team=team)
+
+        # Get the bank account (either from plaid_account mapping or direct account field)
+        if bank_tx.source == BankTransaction.SOURCE_PLAID:
+            if not bank_tx.plaid_account or not bank_tx.plaid_account.account:
+                raise ValueError(
+                    f"Cannot categorize transaction: Plaid account is not mapped to a ledger account."
+                )
+            bank_account = bank_tx.plaid_account.account
+        else:
+            # For non-Plaid sources, we need an account field on BankTransaction
+            # Check if there's a direct account link
+            if hasattr(bank_tx, "account") and bank_tx.account:
+                bank_account = bank_tx.account
+            elif bank_tx.plaid_account and bank_tx.plaid_account.account:
+                bank_account = bank_tx.plaid_account.account
+            else:
+                raise ValueError("Cannot categorize transaction: No bank account linked.")
+
+        # Create journal entry
+        journal_entry = JournalEntry.objects.create(
+            team=team,
+            entry_date=bank_tx.date,
+            description=bank_tx.description,
+            source=JournalEntry.SOURCE_IMPORT,
+            status=JournalEntry.STATUS_DRAFT,
+        )
+
+        # Calculate amounts (Plaid convention: positive = outflow, negative = inflow)
+        amount = abs(bank_tx.amount)
+        is_inflow = bank_tx.amount < 0
+
+        # Create journal lines
+        if is_inflow:
+            # Money coming in: debit bank account, credit category
+            JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=bank_account,
+                dr_amount=amount,
+                cr_amount=Decimal("0"),
+            )
+            JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=category_account,
+                dr_amount=Decimal("0"),
+                cr_amount=amount,
+            )
+        else:
+            # Money going out: credit bank account, debit category
+            JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=bank_account,
+                dr_amount=Decimal("0"),
+                cr_amount=amount,
+            )
+            JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=category_account,
+                dr_amount=amount,
+                cr_amount=Decimal("0"),
+            )
+
+        # Link the bank transaction to the journal entry
+        bank_tx.journal_entry = journal_entry
+        bank_tx.save()
+
+        return journal_entry
 
 
 # Template Views
