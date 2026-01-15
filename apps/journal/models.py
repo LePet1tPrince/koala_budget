@@ -134,6 +134,11 @@ class JournalLine(BaseTeamModel):
 
     is_cleared = models.BooleanField(default=False, help_text="Whether this line has cleared the bank")
     is_reconciled = models.BooleanField(default=False, help_text="Whether this line has been reconciled")
+    reconciled_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date this line was reconciled to a bank statement",
+    )
     is_archived = models.BooleanField(
         default=False, help_text="Whether this line has been archived"
     )

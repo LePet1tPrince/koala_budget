@@ -36,18 +36,20 @@ class JournalLineSerializer(serializers.ModelSerializer):
             "amount",
             "is_cleared",
             "is_reconciled",
+            "reconciled_date",
             "budget",
             "direction",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["account_name",
-                            "account_number",
-                            "amount",
-                            "budget",
-                            "direction",
-                            "created_at",
-                            "updated_at"
+        read_only_fields = [
+            "account_name",
+            "account_number",
+            "amount",
+            "budget",
+            "direction",
+            "created_at",
+            "updated_at",
         ]
 
     def get_direction(self, obj):
@@ -203,6 +205,7 @@ class SimpleLineSerializer(serializers.Serializer):
     payee_name = serializers.SerializerMethodField()
     is_cleared = serializers.BooleanField(default=False)
     is_reconciled = serializers.BooleanField(default=False)
+    reconciled_date = serializers.DateField(allow_null=True, required=False)
     is_archived = serializers.BooleanField(default=False)
     source = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
@@ -286,6 +289,7 @@ class SimpleLineSerializer(serializers.Serializer):
             cr_amount=outflow,
             is_cleared=validated_data.get("is_cleared", False),
             is_reconciled=validated_data.get("is_reconciled", False),
+            reconciled_date=validated_data.get("reconciled_date"),
             is_archived=validated_data.get("is_archived", False),
         )
 
@@ -320,6 +324,7 @@ class SimpleLineSerializer(serializers.Serializer):
         instance.cr_amount = outflow
         instance.is_cleared = validated_data.get("is_cleared", False)
         instance.is_reconciled = validated_data.get("is_reconciled", False)
+        instance.reconciled_date = validated_data.get("reconciled_date")
         instance.is_archived = validated_data.get("is_archived", False)
         instance.save()
 
@@ -359,9 +364,12 @@ class SimpleLineSerializer(serializers.Serializer):
             "outflow": instance.cr_amount,
             "description": instance.journal_entry.description,
             "payee": instance.journal_entry.payee.id if instance.journal_entry.payee else None,
-            "payee_name": instance.journal_entry.payee.name if instance.journal_entry.payee else None,
+            "payee_name": (
+                instance.journal_entry.payee.name if instance.journal_entry.payee else None
+            ),
             "is_cleared": instance.is_cleared,
             "is_reconciled": instance.is_reconciled,
+            "reconciled_date": instance.reconciled_date,
             "is_archived": instance.is_archived,
             "source": instance.journal_entry.source,
             "status": instance.journal_entry.status,

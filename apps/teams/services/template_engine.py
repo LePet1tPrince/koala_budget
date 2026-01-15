@@ -2,7 +2,7 @@ from dateutil.relativedelta import relativedelta
 from django.db import transaction
 
 from apps.accounts.models import Account, AccountGroup, Payee
-from apps.journal.models import JournalEntry, JournalLine
+from apps.bank_feed.models import BankTransaction
 
 
 @transaction.atomic
@@ -56,30 +56,38 @@ def apply_template(team, template, month_start):
         payee_map[name] = payee
 
     # -------------------------
-    # Sample Journal Entries
+    # Sample Bank Transactions
     # -------------------------
-    for _ in range(18): # do the same transactions every month for the last 12 months
+    for _ in range(18): # do the same transactions every month for the last 18 months
         month_start = month_start - relativedelta(months=1)
         for entry in template.get("sample_entries", []):
-            je, created = JournalEntry.objects.get_or_create(
-                team=team,
-                entry_date=month_start,
-                description=entry["description"],
-                defaults={
-                    "payee": payee_map.get(entry.get("payee")),
-                    "status": JournalEntry.STATUS_POSTED,
-                    "source": JournalEntry.SOURCE_MANUAL,
-                },
-            )
-
-            if not created:
-                continue
+            # Find the bank account involved in this transaction
+            bank_account = None
+            amount = 0
 
             for line in entry["lines"]:
-                JournalLine.objects.create(
+                account = account_map[line["account"]]
+                if account.has_feed:
+                    bank_account = account
+                    # Determine amount and sign based on transaction type
+                    dr_amount = line.get("dr", 0)
+                    cr_amount = line.get("cr", 0)
+
+                    if dr_amount > 0:
+                        # Debit to bank account = outflow (negative)
+                        amount = -dr_amount
+                    elif cr_amount > 0:
+                        # Credit to bank account = inflow (positive)
+                        amount = cr_amount
+
+            if bank_account:
+                BankTransaction.objects.get_or_create(
                     team=team,
-                    journal_entry=je,
-                    account=account_map[line["account"]],
-                    dr_amount=line.get("dr", 0),
-                    cr_amount=line.get("cr", 0),
+                    date=month_start,
+                    description=entry["description"],
+                    amount=amount,
+                    source=BankTransaction.SOURCE_SYSTEM,
+                    defaults={
+                        "merchant_name": entry.get("payee"),
+                    },
                 )

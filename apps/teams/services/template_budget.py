@@ -54,7 +54,6 @@ PERSONAL_BUDGET_TEMPLATE = {
         "Credit Card Company",
         "Investment Provider",
     ],
-
     "sample_entries": [
         {
             "description": "Paycheque",
