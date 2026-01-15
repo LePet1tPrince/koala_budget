@@ -28,6 +28,7 @@ class BankTransactionSerializer(serializers.ModelSerializer):
             "plaid_account",
             "plaid_account_details",
             "amount",
+            "account",
             "iso_currency_code",
             "date",
             "authorized_date",

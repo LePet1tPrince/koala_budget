@@ -1,0 +1,211 @@
+/* globals gettext */
+
+import React, { useEffect, useState } from 'react';
+import { apiRequest, handleApiError } from './utils';
+
+import AccountCard from './AccountCard';
+import AccountGrid from './AccountGrid';
+import BankTransactionTable from './BankTransactionTable';
+import PlaidLinkButton from './PlaidLinkButton';
+
+/**
+ * BankFeedApp - Main application component for managing bank feed transactions
+ * Works with the bank_feed.BankTransaction model
+ */
+const BankFeedApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Load transactions when account is selected
+  useEffect(() => {
+    if (selectedAccount) {
+      loadTransactions();
+    } else {
+      setTransactions([]);
+    }
+  }, [selectedAccount]);
+
+  const loadTransactions = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Use the bank-feed API endpoint for BankTransaction model
+      const response = await apiRequest(
+        `/a/${teamSlug}/bank-feed/api/transactions/?account=${selectedAccount.account_id}`
+      );
+
+      await handleApiError(response, gettext('Failed to load transactions'));
+      const data = await response.json();
+      // Handle paginated response
+      setTransactions(data.results || data);
+    } catch (err) {
+      console.error('Failed to load transactions:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAccountSelect = (account) => {
+    setSelectedAccount(account);
+  };
+
+  /**
+   * Refresh bank feed data from Plaid
+   */
+  const handleRefresh = async () => {
+    if (!selectedAccount) return;
+
+    setRefreshing(true);
+    setError(null);
+
+    try {
+      // First, get the Plaid account for this ledger account
+      const plaidAccountResponse = await apiRequest(
+        `/a/${teamSlug}/plaid/api/accounts/?account=${selectedAccount.account_id}`
+      );
+
+      await handleApiError(plaidAccountResponse, 'Failed to fetch Plaid account');
+      const plaidAccountsData = await plaidAccountResponse.json();
+
+      if (plaidAccountsData.results && plaidAccountsData.results.length > 0) {
+        const plaidAccount = plaidAccountsData.results[0];
+
+        // Trigger sync task for this Plaid item
+        const syncResponse = await apiRequest(
+          `/a/${teamSlug}/plaid/api/items/${plaidAccount.item}/sync/`,
+          { method: 'POST' }
+        );
+
+        await handleApiError(syncResponse, 'Failed to sync transactions');
+
+        // Wait a moment for sync to complete, then reload transactions
+        setTimeout(() => {
+          loadTransactions();
+          setRefreshing(false);
+        }, 2000);
+      } else {
+        // No Plaid account linked to this ledger account
+        setError(gettext('This account is not linked to a bank feed.'));
+        setRefreshing(false);
+      }
+    } catch (err) {
+      console.error('Failed to refresh:', err);
+      setError(gettext('Failed to refresh bank feed. Please try again.'));
+      setRefreshing(false);
+    }
+  };
+
+  /**
+   * Handle successful Plaid Link - reload page to show new accounts
+   */
+  const handlePlaidSuccess = () => {
+    window.location.reload();
+  };
+
+  /**
+   * Categorize bank feed transactions
+   */
+  const handleCategorize = async (rows, categoryAccountId) => {
+    try {
+      const response = await apiRequest(
+        `/a/${teamSlug}/plaid/api/bank-feed/categorize/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            rows: rows,
+            category_account_id: categoryAccountId,
+          }),
+        }
+      );
+
+      await handleApiError(response, 'Failed to categorize transactions');
+
+      // Reload the bank feed to show updated data
+      await loadTransactions();
+    } catch (err) {
+      console.error('Failed to categorize:', err);
+      throw err;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Account Selection Cards */}
+      <section className="app-card">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
+          <PlaidLinkButton
+            teamSlug={teamSlug}
+            allAccounts={allAccounts}
+            onSuccess={handlePlaidSuccess}
+          />
+        </div>
+        {accounts.length === 0 ? (
+          <div className="alert alert-warning">
+            <i className="fa fa-exclamation-triangle"></i>
+            <span>
+              {gettext('No accounts with bank feeds found. Please link a bank account to get started.')}
+            </span>
+          </div>
+        ) : (
+          <AccountGrid accounts={accounts}
+             selectedAccount={selectedAccount}
+             handleAccountSelect={handleAccountSelect}  />
+        )}
+      </section>
+
+      {/* Transactions Table */}
+      {selectedAccount && (
+        <section className="app-card">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="pg-subtitle">
+              {gettext('Transactions for')} {selectedAccount.name}
+            </h2>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              className="btn btn-outline btn-sm"
+            >
+              {refreshing ? (
+                <>
+                  <span className="loading loading-spinner loading-xs"></span>
+                  {gettext('Refreshing...')}
+                </>
+              ) : (
+                <>
+                  <i className="fa fa-refresh mr-2"></i>
+                  {gettext('Refresh')}
+                </>
+              )}
+            </button>
+          </div>
+          {error && (
+            <div className="alert alert-error mb-4">
+              <i className="fa fa-exclamation-circle"></i>
+              <span>{error}</span>
+            </div>
+          )}
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <span className="loading loading-spinner loading-lg"></span>
+            </div>
+          ) : (
+            <BankTransactionTable
+              transactions={transactions}
+              selectedAccount={selectedAccount}
+              allAccounts={allAccounts}
+              allPayees={allPayees}
+              onCategorize={handleCategorize}
+            />
+          )}
+        </section>
+      )}
+    </div>
+  );
+};
+
+export default BankFeedApp;

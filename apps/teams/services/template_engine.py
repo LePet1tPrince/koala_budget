@@ -85,6 +85,7 @@ def apply_template(team, template, month_start):
                     team=team,
                     date=month_start,
                     description=entry["description"],
+                    account=bank_account,
                     amount=amount,
                     source=BankTransaction.SOURCE_SYSTEM,
                     defaults={

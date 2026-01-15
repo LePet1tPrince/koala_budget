@@ -15,5 +15,6 @@ router.register(r"transactions", views.BankTransactionViewSet, basename="bank-fe
 
 # URL patterns (all bank_feed URLs are team-based)
 urlpatterns = [
+    path("", views.bank_feed_home, name="bank_feed_home"),
     path("api/", include(router.urls)),
 ]

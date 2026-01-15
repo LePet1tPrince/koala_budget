@@ -42,6 +42,13 @@ class BankTransaction(BaseTeamModel):
         help_text="Source of this imported transaction (plaid, csv, manual)",
     )
 
+    account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.CASCADE,
+        related_name="bank_transactions",
+        help_text="The account this transaction belongs to",
+    )
+
     # Plaid-specific fields (only populated when source='plaid')
     plaid_transaction_id = models.CharField(
         max_length=255,
