@@ -83,8 +83,8 @@ class BankTransaction(BaseTeamModel):
 
     class Meta:
         ordering = ["-posted_date", "-created_at"]
-        verbose_name = "Imported Transaction"
-        verbose_name_plural = "Imported Transactions"
+        verbose_name = "Bank Transaction"
+        verbose_name_plural = "Bank Transactions"
         indexes = [
             models.Index(fields=["journal_entry"]),
             models.Index(fields=["posted_date"]),
