@@ -6,7 +6,13 @@ Provides bank feed API, Plaid Link integration, and account management.
 from decimal import Decimal
 
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import serializers as drf_serializers
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -373,15 +379,25 @@ def create_link_token_view(request, team_slug=None):
 @extend_schema(
     operation_id="plaid_exchange_public_token",
     tags=["plaid"],
-    request={
-        "type": "object",
-        "properties": {
-            "public_token": {"type": "string"},
-            "institution_id": {"type": "string"},
-            "accounts": {"type": "array", "items": {"type": "object"}},
+    request=inline_serializer(
+        name="ExchangePublicTokenRequest",
+        fields={
+            "public_token": drf_serializers.CharField(),
+            "institution_id": drf_serializers.CharField(),
+            "accounts": drf_serializers.ListField(
+                child=drf_serializers.DictField(),
+                required=False,
+            ),
         },
+    ),
+    responses={
+        200: inline_serializer(
+            name="ExchangePublicTokenResponse",
+            fields={
+                "success": drf_serializers.BooleanField(),
+            },
+        ),
     },
-    responses={200: {"type": "object", "properties": {"success": {"type": "boolean"}}}},
 )
 @api_view(["POST"])
 @permission_classes([TeamModelAccessPermissions])

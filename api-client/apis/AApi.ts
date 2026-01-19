@@ -34,6 +34,10 @@ export interface AJournalApiJournalEntriesVoidEntryCreateRequest {
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
 
+export interface APlaidApiBankFeedCategorizeCreateRequest {
+    teamSlug: string;
+}
+
 /**
  * 
  */
@@ -151,6 +155,45 @@ export class AApi extends runtime.BaseAPI {
     async aJournalApiJournalEntriesVoidEntryCreate(requestParameters: AJournalApiJournalEntriesVoidEntryCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<JournalEntry> {
         const response = await this.aJournalApiJournalEntriesVoidEntryCreateRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * Categorize one or more bank feed rows. Body: - rows: List of row objects with \'source\' and \'id\' fields - category_account_id: ID of the category account
+     */
+    async aPlaidApiBankFeedCategorizeCreateRaw(requestParameters: APlaidApiBankFeedCategorizeCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling aPlaidApiBankFeedCategorizeCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/plaid/api/bank-feed/categorize/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Categorize one or more bank feed rows. Body: - rows: List of row objects with \'source\' and \'id\' fields - category_account_id: ID of the category account
+     */
+    async aPlaidApiBankFeedCategorizeCreate(requestParameters: APlaidApiBankFeedCategorizeCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.aPlaidApiBankFeedCategorizeCreateRaw(requestParameters, initOverrides);
     }
 
 }
