@@ -9,16 +9,22 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import AccountSerializer
 from apps.journal.models import JournalLine
-from apps.plaid.serializers import PlaidAccountSerializer, PlaidItemSerializer, PlaidTransactionSerializer
+from apps.plaid.serializers import PlaidTransactionSerializer
 
 from .models import BankTransaction
 
 class BankTransactionSerializer(serializers.ModelSerializer):
     """Serializer for BankTransaction model."""
 
-    plaid_account_details = PlaidAccountSerializer(source="plaid_account", read_only=True)
+    # Nested PlaidTransaction details (accessed via reverse relation)
+    plaid_transaction = PlaidTransactionSerializer(read_only=True)
     is_categorized = serializers.BooleanField(read_only=True)
-    pending = PlaidTransactionSerializer(source="plaid_transaction__pending", read_only=True)
+
+    # Computed fields from PlaidTransaction (if it exists)
+    pending = serializers.SerializerMethodField()
+    plaid_category = serializers.SerializerMethodField()
+    plaid_category_confidence = serializers.SerializerMethodField()
+    payment_channel = serializers.SerializerMethodField()
 
     class Meta:
         model = BankTransaction
@@ -36,10 +42,35 @@ class BankTransactionSerializer(serializers.ModelSerializer):
             "payment_channel",
             "journal_entry",
             "is_categorized",
+            "plaid_transaction",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+    def get_pending(self, obj):
+        """Get pending status from PlaidTransaction if it exists."""
+        if hasattr(obj, "plaid_transaction"):
+            return obj.plaid_transaction.pending
+        return False
+
+    def get_plaid_category(self, obj):
+        """Get Plaid category from PlaidTransaction if it exists."""
+        if hasattr(obj, "plaid_transaction"):
+            return obj.plaid_transaction.personal_finance_category
+        return None
+
+    def get_plaid_category_confidence(self, obj):
+        """Get Plaid category confidence from PlaidTransaction if it exists."""
+        if hasattr(obj, "plaid_transaction"):
+            return obj.plaid_transaction.category_confidence
+        return None
+
+    def get_payment_channel(self, obj):
+        """Get payment channel from PlaidTransaction if it exists."""
+        if hasattr(obj, "plaid_transaction"):
+            return obj.plaid_transaction.payment_channel
+        return None
 
 
 class TransactionRowSerializer(serializers.Serializer):
@@ -161,7 +192,7 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
 
 def imported_tx_to_feed_row(tx: BankTransaction) -> dict:
     """
-    Convert an BankTransaction to a BankFeedRow dict.
+    Convert a BankTransaction to a BankFeedRow dict.
     Only called for uncategorized transactions (journal_entry is null).
     """
     amount = abs(tx.amount)
@@ -170,24 +201,28 @@ def imported_tx_to_feed_row(tx: BankTransaction) -> dict:
     inflow = amount if tx.amount < 0 else Decimal("0")
     outflow = amount if tx.amount > 0 else Decimal("0")
 
-    # Get account from plaid_account if available, otherwise None
-    account = tx.plaid_account.account if tx.plaid_account else None
+    # Get Plaid-specific fields from the related PlaidTransaction if it exists
+    plaid_tx = getattr(tx, "plaid_transaction", None)
+    authorized_date = plaid_tx.authorized_date if plaid_tx else None
+    is_pending = plaid_tx.pending if plaid_tx else False
+    payment_channel = plaid_tx.payment_channel if plaid_tx else None
+    category_confidence = plaid_tx.category_confidence if plaid_tx else None
 
     return {
-        "id": f"plaid-{tx.id}",
-        "source": "plaid",
-        "date": tx.date,
-        "authorized_date": tx.authorized_date,
-        "description": tx.name,
+        "id": f"{tx.source}-{tx.id}",
+        "source": tx.source,
+        "date": tx.posted_date,
+        "authorized_date": authorized_date,
+        "description": tx.description,
         "merchant_name": tx.merchant_name,
-        "account": account,
+        "account": tx.account,
         "category": None,  # Uncategorized
         "inflow": inflow,
         "outflow": outflow,
-        "is_pending": tx.pending,
+        "is_pending": is_pending,
         "is_cleared": False,
-        "payment_channel": tx.payment_channel,
-        "confidence": tx.category_confidence,
+        "payment_channel": payment_channel,
+        "confidence": category_confidence,
         "journal_line_id": None,
         "imported_transaction_id": tx.id,
         "is_editable": True,

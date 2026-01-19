@@ -89,10 +89,11 @@ class BankTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = BankTransaction.objects.filter(team=self.request.team).select_related(
-            "plaid_account",
-            "plaid_account__account",
-            "journal_entry",
             "account",
+            "journal_entry",
+            "plaid_transaction",
+            "plaid_transaction__plaid_account",
+            "plaid_transaction__plaid_account__account",
         )
 
         # Apply filters from query params
@@ -103,20 +104,18 @@ class BankTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         if source:
             queryset = queryset.filter(source=source)
 
-        # Filter by account (plaid_account__account_id)
+        # Filter by account
         account = params.get("account")
         if account:
-            if source == BankTransaction.SOURCE_PLAID:
-                queryset = queryset.filter(plaid_account__account_id=account)
-            else:
-                queryset = queryset.filter(account_id=account)
+            # BankTransaction always has a direct account FK
+            queryset = queryset.filter(account_id=account)
 
         # Filter by date range
         date_from = params.get("date_from")
         if date_from:
             try:
                 date_from = datetime.strptime(date_from, "%Y-%m-%d").date()
-                queryset = queryset.filter(date__gte=date_from)
+                queryset = queryset.filter(posted_date__gte=date_from)
             except ValueError:
                 pass  # Ignore invalid date format
 
@@ -124,7 +123,7 @@ class BankTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         if date_to:
             try:
                 date_to = datetime.strptime(date_to, "%Y-%m-%d").date()
-                queryset = queryset.filter(date__lte=date_to)
+                queryset = queryset.filter(posted_date__lte=date_to)
             except ValueError:
                 pass  # Ignore invalid date format
 
@@ -136,13 +135,13 @@ class BankTransactionViewSet(viewsets.ReadOnlyModelViewSet):
             elif is_categorized.lower() == "false":
                 queryset = queryset.filter(journal_entry__isnull=True)
 
-        # Filter by pending status
+        # Filter by pending status (only applicable for Plaid transactions)
         pending = params.get("pending")
         if pending is not None:
             if pending.lower() == "true":
-                queryset = queryset.filter(pending=True)
+                queryset = queryset.filter(plaid_transaction__pending=True)
             elif pending.lower() == "false":
-                queryset = queryset.filter(pending=False)
+                queryset = queryset.filter(plaid_transaction__pending=False)
 
         return queryset
 
@@ -209,31 +208,21 @@ class BankTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         """
         # Get the bank transaction
         bank_tx = BankTransaction.objects.select_related(
-            "plaid_account",
-            "plaid_account__account",
+            "account",
+            "plaid_transaction",
+            "plaid_transaction__plaid_account",
+            "plaid_transaction__plaid_account__account",
         ).get(id=transaction_id, team=team)
 
-        # Get the bank account (either from plaid_account mapping or direct account field)
-        if bank_tx.source == BankTransaction.SOURCE_PLAID:
-            if not bank_tx.plaid_account or not bank_tx.plaid_account.account:
-                raise ValueError(
-                    f"Cannot categorize transaction: Plaid account is not mapped to a ledger account."
-                )
-            bank_account = bank_tx.plaid_account.account
-        else:
-            # For non-Plaid sources, we need an account field on BankTransaction
-            # Check if there's a direct account link
-            if hasattr(bank_tx, "account") and bank_tx.account:
-                bank_account = bank_tx.account
-            elif bank_tx.plaid_account and bank_tx.plaid_account.account:
-                bank_account = bank_tx.plaid_account.account
-            else:
-                raise ValueError("Cannot categorize transaction: No bank account linked.")
+        # Get the bank account - BankTransaction always has a direct account FK
+        if not bank_tx.account:
+            raise ValueError("Cannot categorize transaction: No bank account linked.")
+        bank_account = bank_tx.account
 
         # Create journal entry
         journal_entry = JournalEntry.objects.create(
             team=team,
-            entry_date=bank_tx.date,
+            entry_date=bank_tx.posted_date,
             description=bank_tx.description,
             source=JournalEntry.SOURCE_IMPORT,
             status=JournalEntry.STATUS_DRAFT,

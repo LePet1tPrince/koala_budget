@@ -22,7 +22,7 @@ class BankTransactionAdmin(admin.ModelAdmin):
         "created_at",
     ]
     list_filter = ["source", "team", "posted_date"]
-    search_fields = ["description", "merchant_name", "plaid_transaction_id"]
+    search_fields = ["description", "merchant_name", "plaid_transaction__plaid_transaction_id"]
     readonly_fields = ["created_at", "updated_at"]
     autocomplete_fields = ["team", "journal_entry"]
     date_hierarchy = "posted_date"
