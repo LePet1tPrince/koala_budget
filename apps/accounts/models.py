@@ -25,7 +25,6 @@ class AccountGroup(BaseTeamModel):
     Account Group model for tracking account groups.
     """
 
-    account_group_id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES)
     description = models.TextField(blank=True)
@@ -48,9 +47,10 @@ class Account(BaseTeamModel):
     Account type is determined by the associated account_group.
     """
 
-    account_id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
-    account_number = models.IntegerField(help_text="Account number (1000s for assets, 2000s for liabilities, etc.)")
+    account_number = models.CharField(
+        max_length=20,
+        help_text="Account number (1000s for assets, 2000s for liabilities, etc.)")
     account_group = models.ForeignKey(
         AccountGroup,
         on_delete=models.PROTECT,
@@ -70,7 +70,7 @@ class Account(BaseTeamModel):
         return reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
 
     @property
-    def account_balance(self):
+    def balance(self):
         """Calculate account balance from accounts."""
         # Sum accounts where this account is the account field
         dr_total = self.journal_lines.aggregate(total=Sum("dr_amount"))["total"] or 0
@@ -84,7 +84,6 @@ class Payee(BaseTeamModel):
     Payee model for tracking who transactions are with.
     """
 
-    id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
 
     class Meta:
