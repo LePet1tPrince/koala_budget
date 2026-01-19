@@ -46,6 +46,8 @@ team_urlpatterns = [
     path("reports/", include("apps.reports.urls")),
     path("plaid/", include("apps.plaid.urls")),
     path("bank-feed/", include("apps.bank_feed.urls")),
+    path("testing/", include("apps.testing.urls")),
+
 ]
 
 urlpatterns = [

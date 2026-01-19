@@ -1,0 +1,19 @@
+{% extends "testing/testing_base.html" %}
+{% load static %}
+{% load django_vite %}
+{% load i18n %}
+
+{% block app %}
+{% comment %}
+  <section class="app-card">
+    <h1 class="pg-title">{% translate "Testing" %}</h1>
+  </section>
+
+
+
+  {{ account_groups_count|json_script:'account_groups_count' }}
+  {{ all_accounts|json_script:'all-accounts' }}
+  {{ all_payees|json_script:'all-payees' }}
+  {{ api_urls|json_script:'api-urls' }}
+  {{ team_slug|json_script:'team-slug' }} {% endcomment %}
+{% endblock %}
