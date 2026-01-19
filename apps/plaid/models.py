@@ -27,7 +27,6 @@ class PlaidItem(BaseTeamModel):
         null=True,
         help_text="Cursor for incremental transaction sync",
     )
-    is_active = models.BooleanField(default=True, help_text="Whether this item is currently active")
 
     class Meta:
         ordering = ["-created_at"]
@@ -43,7 +42,6 @@ class PlaidAccount(BaseTeamModel):
     Maps a Plaid account to a ledger Account.
     Each Plaid account feeds transactions into a specific ledger account.
     """
-
     plaid_account_id = models.CharField(
         max_length=255,
         unique=True,
@@ -93,10 +91,10 @@ class PlaidAccount(BaseTeamModel):
         return self.is_mapped and self.item.is_active
 
 
-class ImportedTransaction(BaseTeamModel):
+class PlaidTransaction(BaseTeamModel):
     """
-    Staging model for transactions imported from Plaid.
-    These become JournalEntry records when the user categorizes them.
+    This model add's extra context to the bank app's bank transactions just for plaid transactions.
+
     """
 
     plaid_transaction_id = models.CharField(
@@ -104,6 +102,13 @@ class ImportedTransaction(BaseTeamModel):
         unique=True,
         help_text="Plaid's unique identifier for this transaction",
     )
+    bank_transaction = models.OneToOneField(
+        "bank_feed.BankTransaction",
+        on_delete=models.CASCADE,
+        related_name="plaid_transaction",
+        help_text="The bank transaction this plaid transaction is linked to",
+    )
+
     plaid_account = models.ForeignKey(
         PlaidAccount,
         on_delete=models.CASCADE,
@@ -111,12 +116,6 @@ class ImportedTransaction(BaseTeamModel):
         help_text="The Plaid account this transaction belongs to",
     )
 
-    # Amount and currency
-    amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        help_text="Transaction amount (positive = outflow, negative = inflow in Plaid's convention)",
-    )
     iso_currency_code = models.CharField(max_length=10, null=True, blank=True, help_text="ISO currency code")
     unofficial_currency_code = models.CharField(
         max_length=10,
@@ -126,7 +125,6 @@ class ImportedTransaction(BaseTeamModel):
     )
 
     # Dates
-    date = models.DateField(help_text="Transaction date")
     authorized_date = models.DateField(null=True, blank=True, help_text="Authorization date")
 
     # Pending status
@@ -137,10 +135,6 @@ class ImportedTransaction(BaseTeamModel):
         blank=True,
         help_text="ID of the pending transaction this replaces",
     )
-
-    # Description and merchant
-    name = models.CharField(max_length=255, help_text="Transaction description")
-    merchant_name = models.CharField(max_length=255, null=True, blank=True, help_text="Merchant name")
 
     # Plaid categorization
     personal_finance_category = models.CharField(
@@ -169,27 +163,14 @@ class ImportedTransaction(BaseTeamModel):
     location = models.JSONField(null=True, blank=True, help_text="Transaction location data")
     merchant_metadata = models.JSONField(null=True, blank=True, help_text="Merchant metadata")
 
-    raw = models.JSONField(help_text="Raw transaction data from Plaid")
-
-    # Link to journal entry (null = uncategorized)
-    journal_entry = models.ForeignKey(
-        "journal.JournalEntry",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="imported_transactions",
-        help_text="Journal entry created from this transaction (null = uncategorized)",
-    )
-
     class Meta:
-        ordering = ["-date", "-created_at"]
-        verbose_name = "Imported Transaction"
-        verbose_name_plural = "Imported Transactions"
+        ordering = ["-bank_transaction__posted_date"]
+        verbose_name = "Plaid Transaction"
+        verbose_name_plural = "Plaid Transactions"
         indexes = [
-            models.Index(fields=["plaid_account", "journal_entry"]),
-            models.Index(fields=["date"]),
+            models.Index(fields=["plaid_account"]),
             models.Index(fields=["pending"]),
         ]
 
     def __str__(self):
-        return f"{self.date} - {self.name} - ${self.amount}"
+        return f"{self.bank_transaction.date} - {self.bank_transaction.name} - ${self.bank_transaction.amount}"

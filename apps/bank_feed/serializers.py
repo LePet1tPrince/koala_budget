@@ -1,6 +1,6 @@
 """
-Serializers for Plaid app.
-Includes the unified BankFeedRow serializer and adapter functions.
+Serializers for bank_feed app.
+Provides serializers for BankTransaction and adapter functions for bank feed rows.
 """
 
 from decimal import Decimal
@@ -9,105 +9,111 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import AccountSerializer
 from apps.journal.models import JournalLine
+from apps.plaid.serializers import PlaidAccountSerializer, PlaidItemSerializer, PlaidTransactionSerializer
 
-from .models import PlaidTransaction, PlaidAccount, PlaidItem
+from .models import BankTransaction
 
-
-class PlaidItemSerializer(serializers.ModelSerializer):
-    """Serializer for PlaidItem model."""
-
-    class Meta:
-        model = PlaidItem
-        fields = [
-            "id",
-            "plaid_item_id",
-            "institution_name",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["created_at", "updated_at"]
-
-
-class PlaidAccountSerializer(serializers.ModelSerializer):
-    """Serializer for PlaidAccount model."""
-
-    account_details = AccountSerializer(source="account", read_only=True)
-    item_details = PlaidItemSerializer(source="item", read_only=True)
-
-    class Meta:
-        model = PlaidAccount
-        fields = [
-            "id",
-            "plaid_account_id",
-            "item",
-            "item_details",
-            "account",
-            "account_details",
-            "name",
-            "mask",
-            "subtype",
-            "type",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["created_at", "updated_at"]
-
-
-class PlaidTransactionSerializer(serializers.ModelSerializer):
-    """Serializer for PlaidTransaction model."""
+class BankTransactionSerializer(serializers.ModelSerializer):
+    """Serializer for BankTransaction model."""
 
     plaid_account_details = PlaidAccountSerializer(source="plaid_account", read_only=True)
+    is_categorized = serializers.BooleanField(read_only=True)
+    pending = PlaidTransactionSerializer(source="plaid_transaction__pending", read_only=True)
 
     class Meta:
-        model = PlaidTransaction
+        model = BankTransaction
         fields = [
             "id",
-            "plaid_transaction_id",
-            "plaid_account",
-            "plaid_account_details",
-            "iso_currency_code",
-            "authorized_date",
+            "source",
+            "amount",
+            "account",
+            "posted_date",
             "pending",
-            "personal_finance_category",
-            "category_confidence",
+            "description",
+            "merchant_name",
+            "plaid_category",
+            "plaid_category_confidence",
             "payment_channel",
+            "journal_entry",
+            "is_categorized",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+
+class TransactionRowSerializer(serializers.Serializer):
+    """Serializer for a transaction row in categorize request."""
+
+    id = serializers.IntegerField(help_text="Transaction ID")
+
+
+class CategorizeTransactionsRequestSerializer(serializers.Serializer):
+    """Serializer for categorize transactions request body."""
+
+    rows = TransactionRowSerializer(many=True, help_text="List of transactions to categorize")
+    category_account_id = serializers.IntegerField(help_text="ID of the category account")
 
 
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.
     This is NOT a model - it's a projection that combines data from
-    JournalLine (ledger) and PlaidTransaction (Plaid staging).
+    JournalLine (ledger) and BankTransaction (bank feed staging).
     """
 
     id = serializers.CharField(help_text="Composite ID: 'ledger-{id}' or 'plaid-{id}'")
-    source = serializers.ChoiceField(choices=["ledger", "plaid"], help_text="Source of this row")
+    source = serializers.ChoiceField(
+        choices=["ledger", "plaid", "csv", "system"],
+        help_text="Source of this row",
+    )
 
     date = serializers.DateField(help_text="Transaction date")
-    authorized_date = serializers.DateField(allow_null=True, help_text="Authorization date (Plaid only)")
+    authorized_date = serializers.DateField(
+        allow_null=True,
+        help_text="Authorization date (Plaid only)",
+    )
 
     description = serializers.CharField(help_text="Transaction description")
     merchant_name = serializers.CharField(allow_null=True, help_text="Merchant name")
 
     account = AccountSerializer(help_text="The account this transaction affects")
-    category = AccountSerializer(allow_null=True, help_text="Category account (null if uncategorized)")
+    category = AccountSerializer(
+        allow_null=True,
+        help_text="Category account (null if uncategorized)",
+    )
 
-    inflow = serializers.DecimalField(max_digits=12, decimal_places=2, help_text="Money coming in")
-    outflow = serializers.DecimalField(max_digits=12, decimal_places=2, help_text="Money going out")
+    inflow = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Money coming in",
+    )
+    outflow = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Money going out",
+    )
 
     is_pending = serializers.BooleanField(help_text="Whether transaction is pending")
     is_cleared = serializers.BooleanField(help_text="Whether transaction is cleared")
 
-    payment_channel = serializers.CharField(allow_null=True, help_text="Payment channel (Plaid)")
-    confidence = serializers.CharField(allow_null=True, help_text="Categorization confidence")
+    payment_channel = serializers.CharField(
+        allow_null=True,
+        help_text="Payment channel (Plaid)",
+    )
+    confidence = serializers.CharField(
+        allow_null=True,
+        help_text="Categorization confidence",
+    )
 
-    journal_line_id = serializers.IntegerField(allow_null=True, help_text="ID of journal line (if ledger)")
-    imported_transaction_id = serializers.IntegerField(allow_null=True, help_text="ID of imported tx (if Plaid)")
+    journal_line_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="ID of journal line (if ledger)",
+    )
+    imported_transaction_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="ID of imported tx (if bank feed)",
+    )
 
     is_editable = serializers.BooleanField(help_text="Whether this row can be edited")
 
@@ -130,6 +136,9 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
     inflow = line.dr_amount if line.dr_amount > 0 else Decimal("0")
     outflow = line.cr_amount if line.cr_amount > 0 else Decimal("0")
 
+    # Derive is_cleared from reconciled_date (backwards compatible API)
+    is_cleared = bool(line.reconciled_date) or line.is_cleared
+
     return {
         "id": f"ledger-{line.id}",
         "source": "ledger",
@@ -142,7 +151,6 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
         "inflow": inflow,
         "outflow": outflow,
         "is_pending": False,
-        "is_cleared": line.is_cleared,
         "payment_channel": None,
         "confidence": "manual",
         "journal_line_id": line.id,
@@ -151,9 +159,9 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
     }
 
 
-def imported_tx_to_feed_row(tx: PlaidTransaction) -> dict:
+def imported_tx_to_feed_row(tx: BankTransaction) -> dict:
     """
-    Convert a PlaidTransaction to a BankFeedRow dict.
+    Convert an BankTransaction to a BankFeedRow dict.
     Only called for uncategorized transactions (journal_entry is null).
     """
     amount = abs(tx.amount)
@@ -162,6 +170,9 @@ def imported_tx_to_feed_row(tx: PlaidTransaction) -> dict:
     inflow = amount if tx.amount < 0 else Decimal("0")
     outflow = amount if tx.amount > 0 else Decimal("0")
 
+    # Get account from plaid_account if available, otherwise None
+    account = tx.plaid_account.account if tx.plaid_account else None
+
     return {
         "id": f"plaid-{tx.id}",
         "source": "plaid",
@@ -169,7 +180,7 @@ def imported_tx_to_feed_row(tx: PlaidTransaction) -> dict:
         "authorized_date": tx.authorized_date,
         "description": tx.name,
         "merchant_name": tx.merchant_name,
-        "account": tx.plaid_account.account,
+        "account": account,
         "category": None,  # Uncategorized
         "inflow": inflow,
         "outflow": outflow,

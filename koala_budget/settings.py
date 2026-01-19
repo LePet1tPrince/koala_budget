@@ -104,6 +104,7 @@ PROJECT_APPS = [
     "apps.goals.apps.GoalsConfig",
     "apps.reports.apps.ReportsConfig",
     "apps.plaid.apps.PlaidConfig",
+    "apps.bank_feed.apps.BankFeedConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS

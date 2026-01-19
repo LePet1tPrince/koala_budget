@@ -15,10 +15,10 @@ from apps.accounts.models import Account
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.permissions import TeamModelAccessPermissions
 
-from .models import ImportedTransaction, PlaidAccount, PlaidItem
+from .models import PlaidTransaction, PlaidAccount, PlaidItem
 from .serializers import (
     BankFeedRowSerializer,
-    ImportedTransactionSerializer,
+    PlaidTransactionSerializer,
     PlaidAccountSerializer,
     PlaidItemSerializer,
     imported_tx_to_feed_row,
@@ -73,7 +73,7 @@ class BankFeedViewSet(viewsets.ViewSet):
         )
 
         # Get uncategorized imported transactions for this account
-        imported = ImportedTransaction.objects.filter(
+        imported = PlaidTransaction.objects.filter(
             team=request.team,
             plaid_account__account_id=account_id,
             journal_entry__isnull=True,  # Only uncategorized
@@ -150,14 +150,14 @@ class BankFeedViewSet(viewsets.ViewSet):
 @transaction.atomic
 def create_journal_from_import(imported_tx_id: int, category_account: Account, team):
     """
-    Create a JournalEntry from an ImportedTransaction.
+    Create a JournalEntry from an PlaidTransaction.
     Links the transaction to the journal entry.
 
     Raises:
         ValueError: If the PlaidAccount is not mapped to a ledger account
     """
     # Get the imported transaction
-    imported_tx = ImportedTransaction.objects.select_related("plaid_account", "plaid_account__account").get(
+    imported_tx = PlaidTransaction.objects.select_related("plaid_account", "plaid_account__account").get(
         id=imported_tx_id,
         team=team,
     )
@@ -330,14 +330,14 @@ class PlaidAccountViewSet(viewsets.ModelViewSet):
     list=extend_schema(operation_id="imported_transactions_list", tags=["plaid"]),
     retrieve=extend_schema(operation_id="imported_transactions_retrieve", tags=["plaid"]),
 )
-class ImportedTransactionViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for ImportedTransaction model (read-only)."""
+class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for PlaidTransaction model (read-only)."""
 
-    serializer_class = ImportedTransactionSerializer
+    serializer_class = PlaidTransactionSerializer
     permission_classes = [TeamModelAccessPermissions]
 
     def get_queryset(self):
-        return ImportedTransaction.objects.filter(team=self.request.team).select_related(
+        return PlaidTransaction.objects.filter(team=self.request.team).select_related(
             "plaid_account",
             "plaid_account__account",
             "journal_entry",
