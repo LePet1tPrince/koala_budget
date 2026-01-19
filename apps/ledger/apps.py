@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class JournalConfig(AppConfig):
+class LedgerConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.journal"
+    name = "apps.ledger"

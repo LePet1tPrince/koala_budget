@@ -170,7 +170,7 @@ class PlaidTransaction(BaseTeamModel):
         verbose_name = "Plaid Transaction"
         verbose_name_plural = "Plaid Transactions"
         indexes = [
-            models.Index(fields=["plaid_account", "journal_entry"]),
+            models.Index(fields=["plaid_account"]),
             models.Index(fields=["pending"]),
         ]
 

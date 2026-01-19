@@ -13,7 +13,7 @@ class AccountGroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = AccountGroup
         fields = [
-            "account_group_id",
+            "id",
             "name",
             "account_type",
             "description",
@@ -33,7 +33,7 @@ class AccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
         fields = [
-            "account_id",
+            "id",
             "name",
             "account_number",
             "account_group",
@@ -41,7 +41,7 @@ class AccountSerializer(serializers.ModelSerializer):
             "account_type",
             "has_feed",
             "journal_lines",
-            "account_balance",
+            "balance",
             "created_at",
             "updated_at",
         ]

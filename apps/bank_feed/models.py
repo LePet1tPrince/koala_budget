@@ -43,7 +43,7 @@ class BankTransaction(BaseTeamModel):
 
     # Link to journal entry (null = uncategorized)
     journal_entry = models.ForeignKey(
-        "journal.JournalEntry",
+        "ledger.JournalEntry",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -88,7 +88,6 @@ class BankTransaction(BaseTeamModel):
         indexes = [
             models.Index(fields=["journal_entry"]),
             models.Index(fields=["posted_date"]),
-            models.Index(fields=["pending"]),
             models.Index(fields=["source"]),
         ]
 

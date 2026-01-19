@@ -8,7 +8,7 @@ class JournalLineInline(admin.TabularInline):
 
     model = JournalLine
     extra = 2
-    fields = ["account", "dr_amount", "cr_amount", "is_cleared", "is_reconciled"]
+    fields = ["account", "dr_amount", "cr_amount", "is_reconciled"]
     autocomplete_fields = ["account"]
 
 
@@ -74,8 +74,8 @@ class JournalEntryAdmin(admin.ModelAdmin):
 class JournalLineAdmin(admin.ModelAdmin):
     """Admin for JournalLine model."""
 
-    list_display = ["id", "journal_entry", "account", "dr_amount", "cr_amount", "is_cleared", "is_reconciled", "team"]
-    list_filter = ["is_cleared", "is_reconciled", "team"]
+    list_display = ["id", "journal_entry", "account", "dr_amount", "cr_amount", "is_reconciled", "team"]
+    list_filter = ["is_reconciled", "team", "is_active"]
     search_fields = ["journal_entry__description", "account__name"]
     ordering = ["journal_entry", "id"]
     readonly_fields = ["created_at", "updated_at", "amount"]

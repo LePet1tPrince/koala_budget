@@ -100,6 +100,7 @@ PROJECT_APPS = [
     "apps.ai.apps.AiConfig",
     "apps.budget.apps.BudgetConfig",
     "apps.accounts.apps.AccountsConfig",
+    "apps.ledger.apps.LedgerConfig",
     "apps.journal.apps.JournalConfig",
     "apps.goals.apps.GoalsConfig",
     "apps.reports.apps.ReportsConfig",

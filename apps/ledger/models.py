@@ -161,7 +161,7 @@ class JournalLine(BaseTeamModel):
         indexes = [
             models.Index(fields=["account"]),
             models.Index(fields=["journal_entry"]),
-            models.Index(fields=["is_cleared", "is_reconciled", "is_archived"]),
+            models.Index(fields=["is_reconciled", "is_archived"]),
             models.Index(fields=["budget"]),
         ]
 
