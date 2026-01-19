@@ -26,17 +26,6 @@ class JournalEntry(BaseTeamModel):
         (STATUS_VOID, "Void"),
     ]
 
-    SOURCE_MANUAL = "manual"
-    SOURCE_IMPORT = "import"
-    SOURCE_BANK_MATCH = "bank_match"
-    SOURCE_RECURRING = "recurring"
-
-    SOURCE_CHOICES = [
-        (SOURCE_MANUAL, "Manual Entry"),
-        (SOURCE_IMPORT, "Import"),
-        (SOURCE_BANK_MATCH, "Bank Match"),
-        (SOURCE_RECURRING, "Recurring Entry"),
-    ]
 
     entry_date = models.DateField(help_text="Date of the journal entry")
     payee = models.ForeignKey(
@@ -48,14 +37,7 @@ class JournalEntry(BaseTeamModel):
         help_text="Optional payee for this entry",
     )
     description = models.TextField(help_text="Description of the journal entry")
-    ## can probably drop this as the source can be derived from the source
-    ## of the linked banktransaction.
-    source = models.CharField(
-        max_length=20,
-        choices=SOURCE_CHOICES,
-        default=SOURCE_MANUAL,
-        help_text="Source of this journal entry",
-    )
+
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
@@ -138,7 +120,6 @@ class JournalLine(BaseTeamModel):
         help_text="Credit amount (sum of credits must equal sum of debits)",
     )
 
-    is_cleared = models.BooleanField(default=False, help_text="Whether this line has cleared the bank")
     is_reconciled = models.BooleanField(default=False, help_text="Whether this line has been reconciled")
     reconciled_date = models.DateField(
         null=True,
@@ -149,7 +130,6 @@ class JournalLine(BaseTeamModel):
         default=False, help_text="Whether this line has been archived"
     )
 
-    # Budget foreign key - commented out until Budget model is ready
     budget = models.ForeignKey(
         "budget.Budget",
         on_delete=models.SET_NULL,
@@ -161,11 +141,6 @@ class JournalLine(BaseTeamModel):
     )
 
     class Meta:
-        ## No date_posted field in journal_line. That's in journal_entry. Can we incorporate that?
-        # indexes = [
-        #     models.Index(fields=["team", "date_posted"]),
-        #     models.Index(fields=["account", "date_posted"]),
-        # ]
         ordering = ["id"]
         verbose_name = "Journal Line"
         verbose_name_plural = "Journal Lines"
