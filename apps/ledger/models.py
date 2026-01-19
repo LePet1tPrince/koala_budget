@@ -26,6 +26,17 @@ class JournalEntry(BaseTeamModel):
         (STATUS_VOID, "Void"),
     ]
 
+    SOURCE_MANUAL = "manual"
+    SOURCE_BANK = "bank"
+    SOURCE_RULE = "rule"
+    SOURCE_ADJUSTMENT = "adjustment"
+
+    SOURCE_CHOICES = [
+        (SOURCE_MANUAL, "Manual"),
+        (SOURCE_BANK, "Bank"),
+        (SOURCE_RULE, "Rule"),
+        (SOURCE_ADJUSTMENT, "Adjustment"),
+    ]
 
     entry_date = models.DateField(help_text="Date of the journal entry")
     payee = models.ForeignKey(
@@ -43,6 +54,13 @@ class JournalEntry(BaseTeamModel):
         choices=STATUS_CHOICES,
         default=STATUS_DRAFT,
         help_text="Status of the journal entry",
+    )
+
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_MANUAL,
+        help_text="Source of this journal entry",
     )
 
     class Meta:
@@ -91,7 +109,6 @@ class JournalLine(BaseTeamModel):
     Journal Line model representing individual debit/credit lines in a journal entry.
     Each line must have either a debit or credit amount (not both).
     """
-
     journal_entry = models.ForeignKey(
         JournalEntry,
         on_delete=models.CASCADE,
@@ -125,9 +142,6 @@ class JournalLine(BaseTeamModel):
         null=True,
         blank=True,
         help_text="Date this line was reconciled to a bank statement",
-    )
-    is_archived = models.BooleanField(
-        default=False, help_text="Whether this line has been archived"
     )
 
     budget = models.ForeignKey(

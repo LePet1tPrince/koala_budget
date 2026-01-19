@@ -98,6 +98,12 @@ class PlaidTransaction(BaseTeamModel):
     This model add's extra context to the bank app's bank transactions just for plaid transactions.
 
     """
+
+    plaid_transaction_id = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text="Plaid's unique identifier for this transaction",
+    )
     bank_transaction = models.OneToOneField(
         "bank_feed.BankTransaction",
         on_delete=models.CASCADE,
@@ -105,11 +111,6 @@ class PlaidTransaction(BaseTeamModel):
         help_text="The bank transaction this plaid transaction is linked to",
     )
 
-    plaid_transaction_id = models.CharField(
-        max_length=255,
-        unique=True,
-        help_text="Plaid's unique identifier for this transaction",
-    )
     plaid_account = models.ForeignKey(
         PlaidAccount,
         on_delete=models.CASCADE,
