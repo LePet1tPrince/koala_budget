@@ -83,7 +83,7 @@ class CategorizeTransactionsRequestSerializer(serializers.Serializer):
     """Serializer for categorize transactions request body."""
 
     rows = TransactionRowSerializer(many=True, help_text="List of transactions to categorize")
-    category_account_id = serializers.IntegerField(help_text="ID of the category account")
+    category_id = serializers.IntegerField(help_text="ID of the category account")
 
 
 class BankFeedRowSerializer(serializers.Serializer):
@@ -171,7 +171,7 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
     is_cleared = bool(line.reconciled_date) or line.is_cleared
 
     return {
-        "id": f"ledger-{line.id}",
+        "id": line.id,
         "source": "ledger",
         "posted_date": line.journal_entry.entry_date,
         "authorized_date": None,
@@ -218,7 +218,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
                 break
 
     return {
-        "id": f"{tx.source}-{tx.id}",
+        "id": tx.id,
         "source": tx.source,
         "posted_date": tx.posted_date,
         "authorized_date": authorized_date,
