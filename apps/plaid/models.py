@@ -86,9 +86,9 @@ class PlaidAccount(BaseTeamModel):
     def can_sync_transactions(self):
         """
         Check if this account is ready to sync transactions.
-        Requires both a mapped ledger account and an active Plaid item.
+        Requires a mapped ledger account.
         """
-        return self.is_mapped and self.item.is_active
+        return self.is_mapped
 
 
 class PlaidTransaction(BaseTeamModel):

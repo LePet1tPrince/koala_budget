@@ -64,7 +64,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
     try {
       // First, get the Plaid account for this ledger account
       const plaidAccountResponse = await apiRequest(
-        `/a/${teamSlug}/plaid/api/accounts/?account=${selectedAccount.id}`
+        `/a/${teamSlug}/plaid/api/accounts/${selectedAccount.id}`
       );
 
       await handleApiError(plaidAccountResponse, 'Failed to fetch Plaid account');
