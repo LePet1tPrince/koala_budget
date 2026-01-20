@@ -160,8 +160,8 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
             team=team,
             entry_date=bank_tx.posted_date,
             description=bank_tx.description,
-            source=JournalEntry.SOURCE_IMPORT,
-            status=JournalEntry.STATUS_DRAFT,
+            source=bank_tx.source,
+            status=JournalEntry.STATUS_POSTED,
         )
 
         # Calculate amounts (Plaid convention: positive = outflow, negative = inflow)

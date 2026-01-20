@@ -158,7 +158,7 @@ const LineTableMaterial = ({
       field: 'category',
       render: (rowData) => {
         const category = rowData.category;
-        return category ? `${category.account_number} - ${category.name}` : gettext('Uncategorized');
+        return category ? gettext(category.name) : gettext('Uncategorized');
       },
       validate: (rowData) => rowData.category ? true : { isValid: false, helperText: gettext('Category is required') },
       editComponent: (props) => {
