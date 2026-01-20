@@ -189,27 +189,29 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
    */
   const handleUpdateLine = async (lineId, lineData) => {
     try {
-      // For manual transactions, update the journal entry
-      // This would typically use the journal API
-      // For now, this is a placeholder - actual implementation depends on API
-      console.log('Update line:', lineId, lineData);
+      // If a category is being set and the transaction isn't already categorized,
+      // use the categorize API to create a journal entry
+      if (lineData.category && !lineData.journal_entry_id) {
+        const response = await apiRequest(
+          `/a/${teamSlug}/bankfeed/api/feed/categorize/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              rows: [{ id: lineId }],
+              category_id: lineData.category,
+            }),
+          }
+        );
 
-      // Parse the composite ID to determine the type
-      const [source, id] = lineId.split('-');
-
-      if (source === 'manual' || source === 'csv') {
-        // Update manual transaction via journal API
-        // This is complex as it requires updating the journal entry
-        throw new Error('Updating manual transactions not yet implemented');
-      } else if (source === 'plaid') {
-        // Plaid transactions are typically read-only
-        throw new Error('Cannot update Plaid transactions');
-      } else if (source === 'ledger') {
-        // Update ledger transaction
-        throw new Error('Updating ledger transactions not yet implemented');
+        await handleApiError(response, 'Failed to categorize transaction');
+        await loadLines();
+        return;
       }
 
-      await loadLines();
+      // For already categorized transactions or transactions without categories,
+      // we may need a different approach (e.g., update the existing journal entry)
+      throw new Error('Updating already categorized transactions not yet implemented');
+
     } catch (err) {
       console.error('Failed to update line:', err);
       throw err;

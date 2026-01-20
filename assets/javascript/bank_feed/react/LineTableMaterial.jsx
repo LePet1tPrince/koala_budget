@@ -18,6 +18,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
 import MaterialTable from '@material-table/core';
+import { ProperCase } from './utils';
 import { formatCurrency } from '../../utilities/currency';
 
 /* globals gettext */
@@ -248,17 +249,17 @@ const LineTableMaterial = ({
       field: 'source',
       render: (rowData) => {
         const source = rowData.source;
-        let label = source;
+        let label = ProperCase(source);
         let color = 'gray';
 
         if (source === 'plaid') {
-          label = 'Bank';
+          // label = 'Plaid';
           color = 'blue';
         } else if (source === 'ledger') {
-          label = 'Ledger';
+          // label = 'Ledger';
           color = 'green';
         } else if (source === 'manual') {
-          label = 'Manual';
+          // label = 'Manual';
           color = 'orange';
         }
 
@@ -333,15 +334,7 @@ const LineTableMaterial = ({
     }
 
     try {
-      // For categorization of Plaid transactions, use the existing categorize API
-      if (oldData.source === 'plaid' && !oldData.category && newData.category) {
-        // This is categorizing a Plaid transaction
-        // We need to call the categorize API instead of update
-        // But since this component doesn't have onCategorize, we'll throw an error for now
-        throw new Error('Categorization of Plaid transactions should use the categorize feature');
-      }
-
-      // For other updates (manual transactions), prepare data for API
+      // Prepare data for API
       const lineData = {
         date: newData.posted_date,
         category: newData.category?.id || newData.category,
@@ -349,6 +342,7 @@ const LineTableMaterial = ({
         outflow: newData.outflow || '',
         description: newData.description || '',
         payee: '', // Not used in bank feed format
+        source: newData.source,
       };
 
       await onUpdate(oldData.id, lineData);
@@ -472,7 +466,7 @@ const LineTableMaterial = ({
               },
             },
             pagination: {
-              labelRowsSelect: gettext('lines'),
+              labelDisplayedRows: gettext('lines'),
               labelDisplayedRows: '{from}-{to} ' + gettext('of') + ' {count}',
               firstTooltip: gettext('First Page'),
               previousTooltip: gettext('Previous Page'),

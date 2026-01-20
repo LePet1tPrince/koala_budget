@@ -1,3 +1,4 @@
+
 /**
  * Utility functions for journal React components
  */
@@ -79,4 +80,14 @@ export async function handleApiError(response, defaultMessage = 'API request fai
     }
     throw new Error(errorMessage);
   }
+}
+
+
+/**
+ * Capitalize first letter of string
+ * @param {string} val - String to capitalize
+ * @returns {string} Capitalized string
+ */
+export function ProperCase(val) {
+    return String(val).charAt(0).toUpperCase() + String(val).slice(1);
 }
