@@ -209,30 +209,30 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
         return journal_entry
 
 
-@extend_schema_view(
-    list=extend_schema(
-        operation_id="bank_feed_feed",
-        tags=["bank-feed"],
-        parameters=[
-            OpenApiParameter(
-                name="account",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                description="Ledger account ID to filter bank feed by",
-                required=True,
-            ),
-        ],
-    ),
-)
-class BankFeedViewSet(viewsets.ViewSet):
-    """
-    Unified bank feed API.
-    Uses BankTransaction as the base unit, combining uncategorized BankTransactions
-    (extended with PlaidTransaction data when applicable) and categorized BankTransactions
-    showing category from linked JournalEntry.
-    """
+# @extend_schema_view(
+#     list=extend_schema(
+#         operation_id="bank_feed_feed",
+#         tags=["bank-feed"],
+#         parameters=[
+#             OpenApiParameter(
+#                 name="account",
+#                 type=int,
+#                 location=OpenApiParameter.QUERY,
+#                 description="Ledger account ID to filter bank feed by",
+#                 required=True,
+#             ),
+#         ],
+#     ),
+# )
+# class BankFeedViewSet(viewsets.ViewSet):
+#     """
+#     Unified bank feed API.
+#     Uses BankTransaction as the base unit, combining uncategorized BankTransactions
+#     (extended with PlaidTransaction data when applicable) and categorized BankTransactions
+#     showing category from linked JournalEntry.
+#     """
 
-    permission_classes = [TeamModelAccessPermissions]
+#     permission_classes = [TeamModelAccessPermissions]
 
     def list(self, request, team_slug=None):
         """
@@ -242,166 +242,164 @@ class BankFeedViewSet(viewsets.ViewSet):
         """
         bank_transactions = self.get_queryset()
 
-        # Convert to feed rows
-        rows = []
-        for tx in bank_transactions:
-            rows.append(bank_transaction_to_feed_row(tx))
+        # Convert queryset to feed row dicts
+        rows = [bank_transaction_to_feed_row(tx) for tx in bank_transactions]
 
         # Sort by date (most recent first)
-        rows.sort(key=lambda r: r["date"], reverse=True)
+        rows.sort(key=lambda r: r["posted_date"], reverse=True)
 
         serializer = BankFeedRowSerializer(rows, many=True)
         return Response(serializer.data)
 
-    def retrieve(self, request, pk=None, team_slug=None):
-        """
-        Get bank feed for a specific account.
-        pk: Account ID
-        """
-        # Filter transactions by the account ID (pk)
-        bank_transactions = BankTransaction.objects.filter(
-            team=request.team,
-            account_id=pk,
-        ).select_related(
-            "account",
-            "journal_entry",
-            "plaid_transaction",
-            "plaid_transaction__plaid_account",
-            "plaid_transaction__plaid_account__account",
-        )
+#     def retrieve(self, request, pk=None, team_slug=None):
+#         """
+#         Get bank feed for a specific account.
+#         pk: Account ID
+#         """
+#         # Filter transactions by the account ID (pk)
+#         bank_transactions = BankTransaction.objects.filter(
+#             team=request.team,
+#             account_id=pk,
+#         ).select_related(
+#             "account",
+#             "journal_entry",
+#             "plaid_transaction",
+#             "plaid_transaction__plaid_account",
+#             "plaid_transaction__plaid_account__account",
+#         )
 
-        # Convert to feed rows
-        rows = []
-        for tx in bank_transactions:
-            rows.append(bank_transaction_to_feed_row(tx))
+#         # Convert to feed rows
+#         rows = []
+#         for tx in bank_transactions:
+#             rows.append(bank_transaction_to_feed_row(tx))
 
-        # Sort by date (most recent first)
-        rows.sort(key=lambda r: r["date"], reverse=True)
+#         # Sort by date (most recent first)
+#         rows.sort(key=lambda r: r["date"], reverse=True)
 
-        serializer = BankFeedRowSerializer(rows, many=True)
-        return Response(serializer.data)
+#         serializer = BankFeedRowSerializer(rows, many=True)
+#         return Response(serializer.data)
 
-    @action(detail=False, methods=["post"])
-    def categorize(self, request, team_slug=None):
-        """
-        Categorize one or more bank feed rows.
-        Body:
-        - rows: List of row objects with 'id' field
-        - category_id: ID of the category account
-        """
-        rows = request.data.get("rows", [])
-        category_account_id = request.data.get("category_account_id")
+#     @action(detail=False, methods=["post"])
+#     def categorize(self, request, team_slug=None):
+#         """
+#         Categorize one or more bank feed rows.
+#         Body:
+#         - rows: List of row objects with 'id' field
+#         - category_id: ID of the category account
+#         """
+#         rows = request.data.get("rows", [])
+#         category_account_id = request.data.get("category_account_id")
 
-        if not rows or not category_account_id:
-            return Response(
-                {"error": "rows and category_id are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+#         if not rows or not category_account_id:
+#             return Response(
+#                 {"error": "rows and category_id are required"},
+#                 status=status.HTTP_400_BAD_REQUEST,
+#             )
 
-        # Verify category account exists and belongs to team
-        try:
-            category_account = Account.for_team.get(id=category_account_id)
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Category account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+#         # Verify category account exists and belongs to team
+#         try:
+#             category_account = Account.for_team.get(id=category_account_id)
+#         except Account.DoesNotExist:
+#             return Response(
+#                 {"error": "Category account not found"},
+#                 status=status.HTTP_404_NOT_FOUND,
+#             )
 
-        # Process each row
-        try:
-            for row in rows:
-                tx_id = row.get("id")
-                if tx_id:
-                    self._create_journal_from_bank_transaction(
-                        transaction_id=tx_id,
-                        category_account=category_account,
-                        team=request.team,
-                    )
-        except ValueError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+#         # Process each row
+#         try:
+#             for row in rows:
+#                 tx_id = row.get("id")
+#                 if tx_id:
+#                     self._create_journal_from_bank_transaction(
+#                         transaction_id=tx_id,
+#                         category_account=category_account,
+#                         team=request.team,
+#                     )
+#         except ValueError as e:
+#             return Response(
+#                 {"error": str(e)},
+#                 status=status.HTTP_400_BAD_REQUEST,
+#             )
 
-        return Response(status=status.HTTP_204_NO_CONTENT)
+#         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @transaction.atomic
-    def _create_journal_from_bank_transaction(self, transaction_id: int, category_account: Account, team):
-        """
-        Create a JournalEntry from a BankTransaction.
-        Links the transaction to the journal entry.
+#     @transaction.atomic
+#     def _create_journal_from_bank_transaction(self, transaction_id: int, category_account: Account, team):
+#         """
+#         Create a JournalEntry from a BankTransaction.
+#         Links the transaction to the journal entry.
 
-        Raises:
-            ValueError: If the transaction doesn't have a linked account
-        """
-        # Get the bank transaction
-        bank_tx = BankTransaction.objects.select_related(
-            "account",
-            "plaid_transaction",
-            "plaid_transaction__plaid_account",
-            "plaid_transaction__plaid_account__account",
-        ).get(id=transaction_id, team=team)
+#         Raises:
+#             ValueError: If the transaction doesn't have a linked account
+#         """
+#         # Get the bank transaction
+#         bank_tx = BankTransaction.objects.select_related(
+#             "account",
+#             "plaid_transaction",
+#             "plaid_transaction__plaid_account",
+#             "plaid_transaction__plaid_account__account",
+#         ).get(id=transaction_id, team=team)
 
-        # Get the bank account - BankTransaction always has a direct account FK
-        if not bank_tx.account:
-            raise ValueError("Cannot categorize transaction: No bank account linked.")
-        bank_account = bank_tx.account
+#         # Get the bank account - BankTransaction always has a direct account FK
+#         if not bank_tx.account:
+#             raise ValueError("Cannot categorize transaction: No bank account linked.")
+#         bank_account = bank_tx.account
 
-        # Create journal entry
-        journal_entry = JournalEntry.objects.create(
-            team=team,
-            entry_date=bank_tx.posted_date,
-            description=bank_tx.description,
-            source=JournalEntry.SOURCE_IMPORT,
-            status=JournalEntry.STATUS_DRAFT,
-        )
+#         # Create journal entry
+#         journal_entry = JournalEntry.objects.create(
+#             team=team,
+#             entry_date=bank_tx.posted_date,
+#             description=bank_tx.description,
+#             source=JournalEntry.SOURCE_IMPORT,
+#             status=JournalEntry.STATUS_DRAFT,
+#         )
 
-        # Calculate amounts (Plaid convention: positive = outflow, negative = inflow)
-        amount = abs(bank_tx.amount)
-        is_inflow = bank_tx.amount < 0
+#         # Calculate amounts (Plaid convention: positive = outflow, negative = inflow)
+#         amount = abs(bank_tx.amount)
+#         is_inflow = bank_tx.amount < 0
 
-        # Create journal lines
-        if is_inflow:
-            # Money coming in: debit bank account, credit category
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=bank_account,
-                dr_amount=amount,
-                cr_amount=Decimal("0"),
-            )
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=category_account,
-                dr_amount=Decimal("0"),
-                cr_amount=amount,
-            )
-        else:
-            # Money going out: credit bank account, debit category
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=bank_account,
-                dr_amount=Decimal("0"),
-                cr_amount=amount,
-            )
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=category_account,
-                dr_amount=amount,
-                cr_amount=Decimal("0"),
-            )
+#         # Create journal lines
+#         if is_inflow:
+#             # Money coming in: debit bank account, credit category
+#             JournalLine.objects.create(
+#                 journal_entry=journal_entry,
+#                 team=team,
+#                 account=bank_account,
+#                 dr_amount=amount,
+#                 cr_amount=Decimal("0"),
+#             )
+#             JournalLine.objects.create(
+#                 journal_entry=journal_entry,
+#                 team=team,
+#                 account=category_account,
+#                 dr_amount=Decimal("0"),
+#                 cr_amount=amount,
+#             )
+#         else:
+#             # Money going out: credit bank account, debit category
+#             JournalLine.objects.create(
+#                 journal_entry=journal_entry,
+#                 team=team,
+#                 account=bank_account,
+#                 dr_amount=Decimal("0"),
+#                 cr_amount=amount,
+#             )
+#             JournalLine.objects.create(
+#                 journal_entry=journal_entry,
+#                 team=team,
+#                 account=category_account,
+#                 dr_amount=amount,
+#                 cr_amount=Decimal("0"),
+#             )
 
-        # Link the bank transaction to the journal entry
-        bank_tx.journal_entry = journal_entry
-        bank_tx.save()
+#         # Link the bank transaction to the journal entry
+#         bank_tx.journal_entry = journal_entry
+#         bank_tx.save()
 
-        return journal_entry
+#         return journal_entry
 
 
-# Template Views
+# # Template Views
 
 
 @login_and_team_required

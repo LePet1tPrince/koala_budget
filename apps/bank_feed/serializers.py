@@ -99,7 +99,7 @@ class BankFeedRowSerializer(serializers.Serializer):
         help_text="Source of this row",
     )
 
-    date = serializers.DateField(help_text="Transaction date")
+    posted_date = serializers.DateField(help_text="Transaction date")
     authorized_date = serializers.DateField(
         allow_null=True,
         help_text="Authorization date (Plaid only)",
@@ -137,10 +137,10 @@ class BankFeedRowSerializer(serializers.Serializer):
         help_text="Categorization confidence",
     )
 
-    journal_line_id = serializers.IntegerField(
-        allow_null=True,
-        help_text="ID of journal line (if ledger)",
-    )
+    # journal_line_id = serializers.IntegerField(
+    #     allow_null=True,
+    #     help_text="ID of journal line (if ledger)",
+    # )
     imported_transaction_id = serializers.IntegerField(
         allow_null=True,
         help_text="ID of imported tx (if bank feed)",
@@ -173,7 +173,7 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
     return {
         "id": f"ledger-{line.id}",
         "source": "ledger",
-        "date": line.journal_entry.entry_date,
+        "posted_date": line.journal_entry.entry_date,
         "authorized_date": None,
         "description": line.journal_entry.description,
         "merchant_name": line.journal_entry.payee.name if line.journal_entry.payee else None,
@@ -220,7 +220,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     return {
         "id": f"{tx.source}-{tx.id}",
         "source": tx.source,
-        "date": tx.posted_date,
+        "posted_date": tx.posted_date,
         "authorized_date": authorized_date,
         "description": tx.description,
         "merchant_name": tx.merchant_name,
