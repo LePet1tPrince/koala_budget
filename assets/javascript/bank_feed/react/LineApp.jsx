@@ -34,7 +34,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
     try {
       // Use the new bank feed API endpoint that combines ledger and Plaid data
       const response = await apiRequest(
-        `/a/${teamSlug}/plaid/api/bank-feed/?account=${selectedAccount.account_id}`
+        `/a/${teamSlug}/bankfeed/api/feed/?account=${selectedAccount.id}`
       );
 
       await handleApiError(response, gettext('Failed to load lines'));
@@ -64,7 +64,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
     try {
       // First, get the Plaid account for this ledger account
       const plaidAccountResponse = await apiRequest(
-        `/a/${teamSlug}/plaid/api/accounts/?account=${selectedAccount.account_id}`
+        `/a/${teamSlug}/plaid/api/accounts/?account=${selectedAccount.id}`
       );
 
       await handleApiError(plaidAccountResponse, 'Failed to fetch Plaid account');
@@ -111,12 +111,12 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
   const handleCategorize = async (rows, categoryAccountId) => {
     try {
       const response = await apiRequest(
-        `/a/${teamSlug}/plaid/api/bank-feed/categorize/`,
+        `/a/${teamSlug}/bankfeed/api/feed/categorize/`,
         {
           method: 'POST',
           body: JSON.stringify({
             rows: rows,
-            category_account_id: categoryAccountId,
+            category_id: categoryAccountId,
           }),
         }
       );
@@ -169,9 +169,9 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
           // <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           //   {accounts.map((account) => (
           //     <AccountCard
-          //       key={account.account_id}
+          //       key={account.id}
           //       account={account}
-          //       isSelected={selectedAccount?.account_id === account.account_id}
+          //       isSelected={selectedAccount?.id === account.id}
           //       onClick={handleAccountSelect}
           //     />
           //   ))}

@@ -154,21 +154,23 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
 def imported_tx_to_feed_row(tx: PlaidTransaction) -> dict:
     """
     Convert a PlaidTransaction to a BankFeedRow dict.
-    Only called for uncategorized transactions (journal_entry is null).
+    Only called for uncategorized transactions (bank_transaction.journal_entry is null).
     """
-    amount = abs(tx.amount)
+    # Access the related BankTransaction for common fields
+    bank_tx = tx.bank_transaction
+    amount = abs(bank_tx.amount)
 
     # Plaid convention: positive = outflow, negative = inflow
-    inflow = amount if tx.amount < 0 else Decimal("0")
-    outflow = amount if tx.amount > 0 else Decimal("0")
+    inflow = amount if bank_tx.amount < 0 else Decimal("0")
+    outflow = amount if bank_tx.amount > 0 else Decimal("0")
 
     return {
         "id": f"plaid-{tx.id}",
         "source": "plaid",
-        "date": tx.date,
+        "date": bank_tx.posted_date,
         "authorized_date": tx.authorized_date,
-        "description": tx.name,
-        "merchant_name": tx.merchant_name,
+        "description": bank_tx.description,
+        "merchant_name": bank_tx.merchant_name,
         "account": tx.plaid_account.account,
         "category": None,  # Uncategorized
         "inflow": inflow,

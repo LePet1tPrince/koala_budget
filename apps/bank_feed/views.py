@@ -29,72 +29,44 @@ from .serializers import (
     journal_line_to_feed_row,
 )
 
-
 @extend_schema_view(
     list=extend_schema(
-        operation_id="bank_feed_transactions_list",
+        operation_id="bank_feed_feed_list",
         tags=["bank-feed"],
         parameters=[
-            OpenApiParameter(
-                name="source",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="Filter by source (plaid, csv, manual)",
-                required=False,
-            ),
             OpenApiParameter(
                 name="account",
                 type=int,
                 location=OpenApiParameter.QUERY,
-                description="Filter by ledger account ID",
-                required=False,
-            ),
-            OpenApiParameter(
-                name="date_from",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="Filter by date (from), format: YYYY-MM-DD",
-                required=False,
-            ),
-            OpenApiParameter(
-                name="date_to",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="Filter by date (to), format: YYYY-MM-DD",
-                required=False,
-            ),
-            OpenApiParameter(
-                name="is_categorized",
-                type=bool,
-                location=OpenApiParameter.QUERY,
-                description="Filter by categorization status",
-                required=False,
-            ),
-            OpenApiParameter(
-                name="pending",
-                type=bool,
-                location=OpenApiParameter.QUERY,
-                description="Filter by pending status",
+                description="Ledger account ID to filter bank feed by",
                 required=False,
             ),
         ],
     ),
     retrieve=extend_schema(
-        operation_id="bank_feed_transactions_retrieve",
+        operation_id="bank_feed_feed_retrieve",
         tags=["bank-feed"],
     ),
 )
-class BankTransactionViewSet(viewsets.ReadOnlyModelViewSet):
+class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    ViewSet for BankTransaction model.
-    Provides read-only access to imported transactions from all sources (Plaid, CSV, manual).
+    Unified bank feed API.
+    Uses BankTransaction as the base unit, combining uncategorized BankTransactions
+    (extended with PlaidTransaction data when applicable) and categorized BankTransactions
+    showing category from linked JournalEntry.
+
+    - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions
+    - GET /a/{team_slug}/bankfeed/api/feed/{id}/ - Get transactions for specific account
     """
 
-    serializer_class = BankTransactionSerializer
+    serializer_class = BankFeedRowSerializer
     permission_classes = [TeamModelAccessPermissions]
 
     def get_queryset(self):
-        queryset = BankTransaction.objects.filter(team=self.request.team).select_related(
+        """Get all BankTransactions, optionally filtered by account."""
+        queryset = BankTransaction.objects.filter(
+            team=self.request.team,
+        ).select_related(
             "account",
             "journal_entry",
             "plaid_transaction",
@@ -102,52 +74,10 @@ class BankTransactionViewSet(viewsets.ReadOnlyModelViewSet):
             "plaid_transaction__plaid_account__account",
         )
 
-        # Apply filters from query params
-        params = self.request.query_params
-
-        # Filter by source
-        source = params.get("source")
-        if source:
-            queryset = queryset.filter(source=source)
-
-        # Filter by account
-        account = params.get("account")
-        if account:
-            # BankTransaction always has a direct account FK
-            queryset = queryset.filter(account_id=account)
-
-        # Filter by date range
-        date_from = params.get("date_from")
-        if date_from:
-            try:
-                date_from = datetime.strptime(date_from, "%Y-%m-%d").date()
-                queryset = queryset.filter(posted_date__gte=date_from)
-            except ValueError:
-                pass  # Ignore invalid date format
-
-        date_to = params.get("date_to")
-        if date_to:
-            try:
-                date_to = datetime.strptime(date_to, "%Y-%m-%d").date()
-                queryset = queryset.filter(posted_date__lte=date_to)
-            except ValueError:
-                pass  # Ignore invalid date format
-
-        # Filter by categorization status
-        is_categorized = params.get("is_categorized")
-        if is_categorized is not None:
-            if is_categorized.lower() == "true":
-                queryset = queryset.filter(journal_entry__isnull=False)
-            elif is_categorized.lower() == "false":
-                queryset = queryset.filter(journal_entry__isnull=True)
-
-        # Filter by pending status (only applicable for Plaid transactions)
-        pending = params.get("pending")
-        if pending is not None:
-            if pending.lower() == "true":
-                queryset = queryset.filter(plaid_transaction__pending=True)
-            elif pending.lower() == "false":
-                queryset = queryset.filter(plaid_transaction__pending=False)
+        # Filter by account if provided in query params
+        account_id = self.request.query_params.get("account")
+        if account_id:
+            queryset = queryset.filter(account_id=account_id)
 
         return queryset
 
@@ -306,22 +236,32 @@ class BankFeedViewSet(viewsets.ViewSet):
 
     def list(self, request, team_slug=None):
         """
-        Get unified bank feed for an account.
+        Get unified bank feed, optionally filtered by account.
         Query params:
-        - account: Account ID to filter by (required)
+        - account: Account ID to filter by (optional)
         """
-        id = request.query_params.get("account")
+        bank_transactions = self.get_queryset()
 
-        if not id:
-            return Response(
-                {"error": "account parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Convert to feed rows
+        rows = []
+        for tx in bank_transactions:
+            rows.append(bank_transaction_to_feed_row(tx))
 
-        # Get all BankTransactions for this account (both categorized and uncategorized)
+        # Sort by date (most recent first)
+        rows.sort(key=lambda r: r["date"], reverse=True)
+
+        serializer = BankFeedRowSerializer(rows, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, pk=None, team_slug=None):
+        """
+        Get bank feed for a specific account.
+        pk: Account ID
+        """
+        # Filter transactions by the account ID (pk)
         bank_transactions = BankTransaction.objects.filter(
             team=request.team,
-            id=id,
+            account_id=pk,
         ).select_related(
             "account",
             "journal_entry",
@@ -332,10 +272,8 @@ class BankFeedViewSet(viewsets.ViewSet):
 
         # Convert to feed rows
         rows = []
-
         for tx in bank_transactions:
             rows.append(bank_transaction_to_feed_row(tx))
-
 
         # Sort by date (most recent first)
         rows.sort(key=lambda r: r["date"], reverse=True)
@@ -362,7 +300,7 @@ class BankFeedViewSet(viewsets.ViewSet):
 
         # Verify category account exists and belongs to team
         try:
-            category_account = Account.for_team.get(account_id=category_account_id)
+            category_account = Account.for_team.get(id=category_account_id)
         except Account.DoesNotExist:
             return Response(
                 {"error": "Category account not found"},

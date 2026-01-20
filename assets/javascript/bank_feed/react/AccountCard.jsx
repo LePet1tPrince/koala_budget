@@ -27,7 +27,7 @@ const AccountCard = ({ account, isSelected, onClick }) => {
           {account.account_group_name}
         </p>
         <p className="text-xs text-base-content/60">
-        {formatCurrency(account.account_balance)}
+        {formatCurrency(account.balance)}
         </p>
       </div>
     </div>

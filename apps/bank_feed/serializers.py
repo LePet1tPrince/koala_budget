@@ -190,10 +190,10 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
     }
 
 
-def imported_tx_to_feed_row(tx: BankTransaction) -> dict:
+def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     """
     Convert a BankTransaction to a BankFeedRow dict.
-    Only called for uncategorized transactions (journal_entry is null).
+    Shows BankTransaction data + category from JournalEntry if categorized.
     """
     amount = abs(tx.amount)
 
@@ -208,6 +208,15 @@ def imported_tx_to_feed_row(tx: BankTransaction) -> dict:
     payment_channel = plaid_tx.payment_channel if plaid_tx else None
     category_confidence = plaid_tx.category_confidence if plaid_tx else None
 
+    # Get category from JournalEntry if categorized
+    category = None
+    if tx.journal_entry:
+        # Find the category account (the one that's not the bank account)
+        for line in tx.journal_entry.lines.all():
+            if line.account != tx.account:
+                category = line.account
+                break
+
     return {
         "id": f"{tx.source}-{tx.id}",
         "source": tx.source,
@@ -216,14 +225,14 @@ def imported_tx_to_feed_row(tx: BankTransaction) -> dict:
         "description": tx.description,
         "merchant_name": tx.merchant_name,
         "account": tx.account,
-        "category": None,  # Uncategorized
+        "category": category,
         "inflow": inflow,
         "outflow": outflow,
         "is_pending": is_pending,
-        "is_cleared": False,
+        "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
         "payment_channel": payment_channel,
-        "confidence": category_confidence,
+        "confidence": "manual" if tx.journal_entry else category_confidence,
         "journal_line_id": None,
         "imported_transaction_id": tx.id,
-        "is_editable": True,
+        "is_editable": not tx.journal_entry,  # Can't edit categorized transactions
     }

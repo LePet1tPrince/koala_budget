@@ -13,13 +13,20 @@ import {
   Search as SearchIcon,
 } from '@mui/icons-material';
 import { Alert, Autocomplete, Snackbar, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
-/* globals gettext */
 import React, { useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
 import MaterialTable from '@material-table/core';
 import { formatCurrency } from '../../utilities/currency';
+
+/* globals gettext */
+
+
+
+
+
+
 
 /**
  * LineTableMaterial component - displays and edits lines using Material-Table
@@ -80,7 +87,7 @@ const LineTableMaterial = ({
   // Create options array for Autocomplete (grouped by account number first letter)
   const categoryOptions = useMemo(() => {
     return allAccounts.map((account) => ({
-      id: account.account_id,
+      id: account.id,
       label: `${account.account_number} - ${account.name}`,
       accountNumber: account.account_number,
       name: account.name,
@@ -144,7 +151,7 @@ const LineTableMaterial = ({
       field: 'category',
       render: (rowData) => {
         const categoryId = rowData.category;
-        const account = allAccounts.find((a) => a.account_id === categoryId);
+        const account = allAccounts.find((a) => a.id === categoryId);
         return account ? `${account.account_number} - ${account.name}` : '';
       },
       validate: (rowData) => rowData.category ? true : { isValid: false, helperText: gettext('Category is required') },
@@ -270,7 +277,7 @@ const LineTableMaterial = ({
       // Prepare data for API
       const lineData = {
         date: newData.date,
-        account: selectedAccount?.account_id || '',
+        account: selectedAccount?.id || '',
         category: newData.category,
         inflow: newData.inflow || '',
         outflow: newData.outflow || '',

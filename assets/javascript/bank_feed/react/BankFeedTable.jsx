@@ -1,4 +1,5 @@
 /* globals gettext */
+
 import React, { useState } from 'react';
 
 import { formatCurrency } from '../../utilities/currency';
@@ -68,7 +69,7 @@ const BankFeedTable = ({
               >
                 <option value="">{gettext('Select category...')}</option>
                 {allAccounts.map((account) => (
-                  <option key={account.account_id} value={account.account_id}>
+                  <option key={account.id} value={account.id}>
                     {account.name}
                   </option>
                 ))}

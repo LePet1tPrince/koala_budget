@@ -16,9 +16,9 @@ function AccountGrid({ accounts, selectedAccount, handleAccountSelect }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {visibleAccounts.map((account) => (
           <AccountCard
-            key={account.account_id}
+            key={account.id}
             account={account}
-            isSelected={selectedAccount?.account_id === account.account_id}
+            isSelected={selectedAccount?.id === account.id}
             onClick={handleAccountSelect}
           />
         ))}
@@ -40,9 +40,9 @@ function AccountGrid({ accounts, selectedAccount, handleAccountSelect }) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {hiddenAccounts.map((account) => (
               <AccountCard
-                key={account.account_id}
+                key={account.id}
                 account={account}
-                isSelected={selectedAccount?.account_id === account.account_id}
+                isSelected={selectedAccount?.id === account.id}
                 onClick={handleAccountSelect}
               />
             ))}

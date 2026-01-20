@@ -11,7 +11,8 @@ app_name = "bank_feed"
 
 # API router for ViewSets
 router = DefaultRouter()
-router.register(r"transactions", views.BankTransactionViewSet, basename="bank-feed-transaction")
+# router.register(r"transactions", views.BankTransactionViewSet, basename="bank-feed-transaction")
+router.register(r"feed", views.BankFeedViewSet, basename="bank-feed")
 
 # URL patterns (all bank_feed URLs are team-based)
 urlpatterns = [

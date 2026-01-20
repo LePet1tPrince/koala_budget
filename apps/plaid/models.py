@@ -173,4 +173,4 @@ class PlaidTransaction(BaseTeamModel):
         ]
 
     def __str__(self):
-        return f"{self.bank_transaction.date} - {self.bank_transaction.name} - ${self.bank_transaction.amount}"
+        return f"{self.bank_transaction.posted_date} - {self.bank_transaction.description} - ${self.bank_transaction.amount}"
