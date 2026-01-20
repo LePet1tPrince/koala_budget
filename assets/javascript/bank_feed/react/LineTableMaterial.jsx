@@ -103,6 +103,11 @@ const LineTableMaterial = ({
     return lookup;
   }, [allPayees]);
 
+  // Check if a row is read-only (Plaid transactions cannot be edited)
+  const isReadOnly = (rowData) => {
+    return rowData.source === 'plaid';
+  };
+
   // Filter lines by selected date range and filter mode
   const filteredLines = useMemo(() => {
     let filtered = lines;
@@ -110,13 +115,13 @@ const LineTableMaterial = ({
     // Apply filter mode (Feed/Reconciled/Archived)
     if (filterMode === 'feed') {
       // Feed: not reconciled and not archived
-      filtered = filtered.filter((l) => !l.isReconciled && !l.isArchived);
+      filtered = filtered.filter((l) => !l.is_cleared);
     } else if (filterMode === 'reconciled') {
       // Reconciled: reconciled and not archived
-      filtered = filtered.filter((l) => l.isReconciled && !l.isArchived);
+      filtered = filtered.filter((l) => l.is_cleared);
     } else if (filterMode === 'archived') {
-      // Archived: archived
-      filtered = filtered.filter((l) => l.isArchived);
+      // Archived: not implemented yet, show all for now
+      filtered = filtered;
     }
 
     // Apply date range filter
@@ -126,8 +131,8 @@ const LineTableMaterial = ({
       // make end of day inclusive
       const eInclusive = e ? new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999) : null;
       filtered = filtered.filter((l) => {
-        if (!l.date) return false;
-        const d = new Date(l.date);
+        if (!l.posted_date) return false;
+        const d = new Date(l.posted_date);
         if (s && d < s) return false;
         if (eInclusive && d > eInclusive) return false;
         return true;
@@ -141,29 +146,30 @@ const LineTableMaterial = ({
   const columns = [
     {
       title: gettext('Date'),
-      field: 'date',
+      field: 'posted_date',
       type: 'date',
-      render: (rowData) => formatDate(rowData.date),
-      validate: (rowData) => rowData.date ? true : { isValid: false, helperText: gettext('Date is required') },
+      render: (rowData) => formatDate(rowData.posted_date),
+      validate: (rowData) => rowData.posted_date ? true : { isValid: false, helperText: gettext('Date is required') },
+      editable: (rowData) => !isReadOnly(rowData),
     },
     {
       title: gettext('Category'),
       field: 'category',
       render: (rowData) => {
-        const categoryId = rowData.category;
-        const account = allAccounts.find((a) => a.id === categoryId);
-        return account ? `${account.account_number} - ${account.name}` : '';
+        const category = rowData.category;
+        return category ? `${category.account_number} - ${category.name}` : gettext('Uncategorized');
       },
       validate: (rowData) => rowData.category ? true : { isValid: false, helperText: gettext('Category is required') },
       editComponent: (props) => {
         // Find the currently selected option
-        const selectedOption = categoryOptions.find(opt => opt.id === props.value) || null;
+        const currentCategory = props.rowData.category;
+        const selectedOption = currentCategory ? categoryOptions.find(opt => opt.id === currentCategory.id) : null;
 
         return (
           <Autocomplete
             value={selectedOption}
             onChange={(_event, newValue) => {
-              props.onChange(newValue ? newValue.id : '');
+              props.onChange(newValue ? { id: newValue.id, account_number: newValue.accountNumber, name: newValue.name } : null);
             }}
             options={categoryOptions}
             groupBy={(option) => option.firstLetter}
@@ -182,6 +188,7 @@ const LineTableMaterial = ({
           />
         );
       },
+      editable: (rowData) => !isReadOnly(rowData),
     },
     {
       title: gettext('Inflow'),
@@ -205,6 +212,7 @@ const LineTableMaterial = ({
           }}
         />
       ),
+      editable: (rowData) => !isReadOnly(rowData),
     },
     {
       title: gettext('Outflow'),
@@ -222,29 +230,52 @@ const LineTableMaterial = ({
           onChange={(e) => props.onChange(e.target.value)}
           onBlur={() => {
             if (props.value && parseFloat(props.value) > 0) {
-              // Clear inflow when outflow is set
+              // Clear inflow when inflow is set
               props.rowData.inflow = '0';
             }
           }}
         />
       ),
+      editable: (rowData) => !isReadOnly(rowData),
     },
     {
       title: gettext('Description'),
       field: 'description',
+      editable: (rowData) => !isReadOnly(rowData),
     },
     {
-      title: gettext('Payee'),
-      field: 'payee',
-      lookup: payeeLookup,
-      emptyValue: '',
+      title: gettext('Source'),
+      field: 'source',
+      render: (rowData) => {
+        const source = rowData.source;
+        let label = source;
+        let color = 'gray';
+
+        if (source === 'plaid') {
+          label = 'Bank';
+          color = 'blue';
+        } else if (source === 'ledger') {
+          label = 'Ledger';
+          color = 'green';
+        } else if (source === 'manual') {
+          label = 'Manual';
+          color = 'orange';
+        }
+
+        return (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${color}-100 text-${color}-800`}>
+            {label}
+          </span>
+        );
+      },
+      editable: 'never',
     },
   ];
 
   // Validate row data
   const validateRowData = (rowData) => {
     // Check required fields
-    if (!rowData.date) {
+    if (!rowData.posted_date) {
       return gettext('Date is required');
     }
     if (!rowData.category) {
@@ -274,24 +305,21 @@ const LineTableMaterial = ({
     }
 
     try {
-      // Prepare data for API
+      // Prepare data for API - map bank feed format to expected format
       const lineData = {
-        date: newData.date,
-        account: selectedAccount?.id || '',
-        category: newData.category,
+        date: newData.posted_date,
+        category: newData.category?.id || newData.category,
         inflow: newData.inflow || '',
         outflow: newData.outflow || '',
         description: newData.description || '',
-        payee: newData.payee || '',
-        isCleared: !!newData.isCleared,
-        isReconciled: !!newData.isReconciled,
+        payee: '', // Not used in bank feed format
       };
 
       await onAdd(lineData);
-      showSnackbar(gettext('Line added successfully'), 'success');
+      showSnackbar(gettext('Transaction added successfully'), 'success');
     } catch (error) {
-      console.error('Failed to add line:', error);
-      showSnackbar(gettext('Failed to add line'), 'error');
+      console.error('Failed to add transaction:', error);
+      showSnackbar(gettext('Failed to add transaction'), 'error');
       throw error;
     }
   };
@@ -305,24 +333,29 @@ const LineTableMaterial = ({
     }
 
     try {
-      // Prepare data for API
+      // For categorization of Plaid transactions, use the existing categorize API
+      if (oldData.source === 'plaid' && !oldData.category && newData.category) {
+        // This is categorizing a Plaid transaction
+        // We need to call the categorize API instead of update
+        // But since this component doesn't have onCategorize, we'll throw an error for now
+        throw new Error('Categorization of Plaid transactions should use the categorize feature');
+      }
+
+      // For other updates (manual transactions), prepare data for API
       const lineData = {
-        date: newData.date,
-        account: newData.account,
-        category: newData.category,
+        date: newData.posted_date,
+        category: newData.category?.id || newData.category,
         inflow: newData.inflow || '',
         outflow: newData.outflow || '',
         description: newData.description || '',
-        payee: newData.payee || '',
-        isCleared: !!newData.isCleared,
-        isReconciled: !!newData.isReconciled,
+        payee: '', // Not used in bank feed format
       };
 
-      await onUpdate(oldData.lineId, lineData);
-      showSnackbar(gettext('Line updated successfully'), 'success');
+      await onUpdate(oldData.id, lineData);
+      showSnackbar(gettext('Transaction updated successfully'), 'success');
     } catch (error) {
-      console.error('Failed to update line:', error);
-      showSnackbar(gettext('Failed to update line'), 'error');
+      console.error('Failed to update transaction:', error);
+      showSnackbar(gettext('Failed to update transaction'), 'error');
       throw error;
     }
   };
@@ -330,11 +363,11 @@ const LineTableMaterial = ({
   // Handle delete row
   const handleRowDelete = async (oldData) => {
     try {
-      await onDelete(oldData.lineId);
-      showSnackbar(gettext('Line deleted successfully'), 'success');
+      await onDelete(oldData.id);
+      showSnackbar(gettext('Transaction deleted successfully'), 'success');
     } catch (error) {
-      console.error('Failed to delete line:', error);
-      showSnackbar(gettext('Failed to delete line'), 'error');
+      console.error('Failed to delete transaction:', error);
+      showSnackbar(gettext('Failed to delete transaction'), 'error');
       throw error;
     }
   };

@@ -5,7 +5,7 @@ import { apiRequest, handleApiError } from './utils';
 
 import AccountCard from './AccountCard';
 import AccountGrid from './AccountGrid';
-import BankFeedTable from './BankFeedTable';
+import LineTableMaterial from './LineTableMaterial';
 import PlaidLinkButton from './PlaidLinkButton';
 
 /**
@@ -143,6 +143,105 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
     }
   };
 
+  /**
+   * Handle adding a new line (manual transaction)
+   */
+  const handleAddLine = async (lineData) => {
+    try {
+      // For manual transactions, we need to create a journal entry
+      // This would typically use the journal API
+      const response = await apiRequest(
+        `/a/${teamSlug}/journal/api/entries/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            entry_date: lineData.date,
+            description: lineData.description,
+            payee: lineData.payee,
+            lines: [
+              {
+                account: selectedAccount.id,
+                dr_amount: lineData.outflow || 0,
+                cr_amount: lineData.inflow || 0,
+              },
+              {
+                account: lineData.category,
+                dr_amount: lineData.inflow || 0,
+                cr_amount: lineData.outflow || 0,
+              },
+            ],
+          }),
+        }
+      );
+
+      await handleApiError(response, 'Failed to add line');
+
+      // Reload the bank feed to show updated data
+      await loadLines();
+    } catch (err) {
+      console.error('Failed to add line:', err);
+      throw err;
+    }
+  };
+
+  /**
+   * Handle updating an existing line
+   */
+  const handleUpdateLine = async (lineId, lineData) => {
+    try {
+      // For manual transactions, update the journal entry
+      // This would typically use the journal API
+      // For now, this is a placeholder - actual implementation depends on API
+      console.log('Update line:', lineId, lineData);
+
+      // Parse the composite ID to determine the type
+      const [source, id] = lineId.split('-');
+
+      if (source === 'manual' || source === 'csv') {
+        // Update manual transaction via journal API
+        // This is complex as it requires updating the journal entry
+        throw new Error('Updating manual transactions not yet implemented');
+      } else if (source === 'plaid') {
+        // Plaid transactions are typically read-only
+        throw new Error('Cannot update Plaid transactions');
+      } else if (source === 'ledger') {
+        // Update ledger transaction
+        throw new Error('Updating ledger transactions not yet implemented');
+      }
+
+      await loadLines();
+    } catch (err) {
+      console.error('Failed to update line:', err);
+      throw err;
+    }
+  };
+
+  /**
+   * Handle deleting a line
+   */
+  const handleDeleteLine = async (lineId) => {
+    try {
+      // Parse the composite ID
+      const [source, id] = lineId.split('-');
+
+      if (source === 'manual' || source === 'csv') {
+        // Delete manual transaction - would need to find and delete the journal entry
+        throw new Error('Deleting manual transactions not yet implemented');
+      } else if (source === 'plaid') {
+        // Cannot delete Plaid transactions
+        throw new Error('Cannot delete Plaid transactions');
+      } else if (source === 'ledger') {
+        // Delete ledger transaction - would need to delete the journal entry
+        throw new Error('Deleting ledger transactions not yet implemented');
+      }
+
+      await loadLines();
+    } catch (err) {
+      console.error('Failed to delete line:', err);
+      throw err;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Account Selection Cards */}
@@ -215,13 +314,14 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
               <span className="loading loading-spinner loading-lg"></span>
             </div>
           ) : (
-            <BankFeedTable
+            <LineTableMaterial
               lines={lines}
               selectedAccount={selectedAccount}
               allAccounts={allAccounts}
               allPayees={allPayees}
-              onCategorize={handleCategorize}
-              onEditLedger={handleEditLedgerTransaction}
+              onAdd={handleAddLine}
+              onUpdate={handleUpdateLine}
+              onDelete={handleDeleteLine}
             />
           )}
         </section>

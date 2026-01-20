@@ -45,14 +45,12 @@ const BankFeedTable = ({
   };
 
   // Filter out only uncategorized Plaid transactions for categorization
-  const uncategorizedPlaidRows = lines.filter(line =>
-    line.source === 'plaid' && !line.category
-  );
+  const uncategorizedRows = lines.filter(line => !line.category);
 
   return (
     <div className="space-y-4">
       {/* Categorization Controls */}
-      {uncategorizedPlaidRows.length > 0 && (
+      {uncategorizedRows.length > 0 && (
         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
           <h3 className="text-sm font-medium text-blue-900 mb-3">
             {gettext('Categorize Transactions')}
@@ -96,12 +94,12 @@ const BankFeedTable = ({
                   type="checkbox"
                   onChange={(e) => {
                     if (e.target.checked) {
-                      setSelectedRows(uncategorizedPlaidRows);
+                      setSelectedRows(uncategorizedRows);
                     } else {
                       setSelectedRows([]);
                     }
                   }}
-                  checked={selectedRows.length === uncategorizedPlaidRows.length && uncategorizedPlaidRows.length > 0}
+                  checked={selectedRows.length === uncategorizedRows.length && uncategorizedRows.length > 0}
                 />
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
