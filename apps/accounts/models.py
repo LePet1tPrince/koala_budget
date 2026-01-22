@@ -1,8 +1,12 @@
+from decimal import Decimal
+
 from django.db import models
 from django.db.models import Sum
 from django.urls import reverse
 
 from apps.teams.models import BaseTeamModel
+
+from .querysets import AccountQuerySet, AccountTeamScopedManager
 
 # Account type constants - shared across models
 ACCOUNT_TYPE_ASSET = "asset"
@@ -59,6 +63,10 @@ class Account(BaseTeamModel):
     )
     has_feed = models.BooleanField(default=False, help_text="Whether this account has a bank feed")
 
+    # Override managers to use AccountQuerySet for optimized balance queries
+    objects = AccountQuerySet.as_manager()
+    for_team = AccountTeamScopedManager()
+
     class Meta:
         ordering = ["account_number"]
         unique_together = ["team", "account_number"]
@@ -71,11 +79,12 @@ class Account(BaseTeamModel):
 
     @property
     def balance(self):
-        """Calculate account balance from accounts."""
-        # Sum accounts where this account is the account field
-        dr_total = self.journal_lines.aggregate(total=Sum("dr_amount"))["total"] or 0
-        # Sum accounts where this account is the category field
-        cr_total = self.journal_lines.aggregate(total=Sum("cr_amount"))["total"] or 0
+        """Return annotated balance if available, otherwise calculate."""
+        if hasattr(self, '_balance'):
+            return self._balance or Decimal('0')
+        # Fallback for non-annotated queries
+        dr_total = self.journal_lines.aggregate(total=Sum("dr_amount"))["total"] or Decimal('0')
+        cr_total = self.journal_lines.aggregate(total=Sum("cr_amount"))["total"] or Decimal('0')
         return dr_total - cr_total
 
 
