@@ -80,40 +80,40 @@ class AccountModelTest(TestCase):
         """Test creating an account."""
         with current_team(self.team):
             account = Account.objects.create(
-                team=self.team, name="Checking Account", account_number=1000, account_group=self.account_group
+                team=self.team, name="Checking Account", account_number="1000", account_group=self.account_group
             )
             self.assertEqual(account.name, "Checking Account")
-            self.assertEqual(account.account_number, 1000)
+            self.assertEqual(account.account_number, "1000")
             self.assertEqual(str(account), "1000 - Checking Account")
 
     def test_account_ordering(self):
         """Test that accounts are ordered by account_number."""
         with current_team(self.team):
-            Account.objects.create(team=self.team, name="Second", account_number=2000, account_group=self.account_group)
-            Account.objects.create(team=self.team, name="First", account_number=1000, account_group=self.account_group)
+            Account.objects.create(team=self.team, name="Second", account_number="2000", account_group=self.account_group)
+            Account.objects.create(team=self.team, name="First", account_number="1000", account_group=self.account_group)
             accounts = list(Account.for_team.all())
-            self.assertEqual(accounts[0].account_number, 1000)
-            self.assertEqual(accounts[1].account_number, 2000)
+            self.assertEqual(accounts[0].account_number, '1000')
+            self.assertEqual(accounts[1].account_number, "2000")
 
     def test_account_unique_together(self):
         """Test that team and account_number must be unique together."""
-        Account.objects.create(team=self.team, name="Account 1", account_number=1000, account_group=self.account_group)
+        Account.objects.create(team=self.team, name="Account 1", account_number="1000", account_group=self.account_group)
         with self.assertRaises(IntegrityError):
             Account.objects.create(
-                team=self.team, name="Account 2", account_number=1000, account_group=self.account_group
+                team=self.team, name="Account 2", account_number="1000", account_group=self.account_group
             )
 
     def test_account_has_feed_default(self):
         """Test that has_feed defaults to False."""
         account = Account.objects.create(
-            team=self.team, name="Test Account", account_number=1000, account_group=self.account_group
+            team=self.team, name="Test Account", account_number="1000", account_group=self.account_group
         )
         self.assertFalse(account.has_feed)
 
     def test_get_absolute_url(self):
         """Test get_absolute_url method."""
         account = Account.objects.create(
-            team=self.team, name="Test Account", account_number=1000, account_group=self.account_group
+            team=self.team, name="Test Account", account_number="1000", account_group=self.account_group
         )
         expected_url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
         self.assertEqual(account.get_absolute_url(), expected_url)
@@ -190,7 +190,7 @@ class AccountFormTest(TestCase):
         """Test form with valid data."""
         form_data = {
             "name": "Test Account",
-            "account_number": 1000,
+            "account_number": "1000",
             "account_type": ACCOUNT_TYPE_ASSET,
             "account_group": self.account_group.pk,
             "has_feed": False,
@@ -214,7 +214,7 @@ class AccountFormTest(TestCase):
         )
         form_data = {
             "name": "Test Account",
-            "account_number": 1000,
+            "account_number": "1000",
             "account_type": ACCOUNT_TYPE_ASSET,
             "account_group": expense_group.pk,
             "has_feed": False,
@@ -233,7 +233,7 @@ class AccountFormTest(TestCase):
         )
         form_data = {
             "name": "Test Account",
-            "account_number": 1000,
+            "account_number": "1000",
             "account_type": ACCOUNT_TYPE_ASSET,
             "account_group": self.account_group.pk,
         }
@@ -385,7 +385,7 @@ class AccountViewTest(TestCase):
         """Test account list view."""
         with current_team(self.team):
             Account.objects.create(
-                team=self.team, name="Checking", account_number=1000, account_group=self.account_group
+                team=self.team, name="Checking", account_number="1000", account_group=self.account_group
             )
 
         url = reverse("accounts:account_list", kwargs={"team_slug": self.team.slug})
@@ -405,7 +405,7 @@ class AccountViewTest(TestCase):
         url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug})
         data = {
             "name": "New Account",
-            "account_number": 1000,
+            "account_number": "1000",
             "account_type": ACCOUNT_TYPE_ASSET,
             "account_group": self.account_group.pk,
             "has_feed": False,
@@ -418,7 +418,7 @@ class AccountViewTest(TestCase):
     def test_account_detail_view(self):
         """Test account detail view."""
         account = Account.objects.create(
-            team=self.team, name="Test Account", account_number=1000, account_group=self.account_group
+            team=self.team, name="Test Account", account_number="1000", account_group=self.account_group
         )
         url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
         response = self.client.get(url)
@@ -428,12 +428,12 @@ class AccountViewTest(TestCase):
     def test_account_update_view(self):
         """Test account update view."""
         account = Account.objects.create(
-            team=self.team, name="Old Name", account_number=1000, account_group=self.account_group
+            team=self.team, name="Old Name", account_number="1000", account_group=self.account_group
         )
         url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": account.pk})
         data = {
             "name": "New Name",
-            "account_number": 1000,
+            "account_number": "1000",
             "account_type": ACCOUNT_TYPE_ASSET,
             "account_group": self.account_group.pk,
             "has_feed": True,
@@ -447,7 +447,7 @@ class AccountViewTest(TestCase):
     def test_account_delete_view(self):
         """Test account delete view."""
         account = Account.objects.create(
-            team=self.team, name="To Delete", account_number=1000, account_group=self.account_group
+            team=self.team, name="To Delete", account_number="1000", account_group=self.account_group
         )
         url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account.pk})
         response = self.client.post(url)
@@ -557,10 +557,10 @@ class TeamIsolationTest(TestCase):
         group2 = AccountGroup.objects.create(team=self.team2, name="Group 2", account_type=ACCOUNT_TYPE_ASSET)
 
         with current_team(self.team1):
-            Account.objects.create(team=self.team1, name="Team 1 Account", account_number=1000, account_group=group1)
+            Account.objects.create(team=self.team1, name="Team 1 Account", account_number="1000", account_group=group1)
 
         with current_team(self.team2):
-            Account.objects.create(team=self.team2, name="Team 2 Account", account_number=1000, account_group=group2)
+            Account.objects.create(team=self.team2, name="Team 2 Account", account_number="1000", account_group=group2)
 
         with current_team(self.team1):
             accounts = list(Account.for_team.all())

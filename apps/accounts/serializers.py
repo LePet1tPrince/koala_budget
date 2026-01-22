@@ -13,14 +13,16 @@ class AccountGroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = AccountGroup
         fields = [
-            "account_group_id",
+            "id",
             "name",
             "account_type",
             "description",
             "created_at",
             "updated_at",
+            "is_archived",
+            "archived_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at","archived_at"]
 
 
 class AccountSerializer(serializers.ModelSerializer):
@@ -33,7 +35,7 @@ class AccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
         fields = [
-            "account_id",
+            "id",
             "name",
             "account_number",
             "account_group",
@@ -41,13 +43,38 @@ class AccountSerializer(serializers.ModelSerializer):
             "account_type",
             "has_feed",
             "journal_lines",
-            "account_balance",
+            "balance",
             "created_at",
             "updated_at",
+            "is_archived",
+            "archived_at",
         ]
         read_only_fields = ["account_group_name", "account_type",
                             "created_at", "updated_at",
-                            "journal_lines","account_balance"]
+                            "journal_lines","balance","archived_at"]
+
+class SimpleAccountSerializer(serializers.ModelSerializer):
+    """Serializer for Account model."""
+
+    account_group_name = serializers.CharField(source="account_group.name", read_only=True)
+    account_type = serializers.CharField(source="account_group.account_type", read_only=True)
+
+    class Meta:
+        model = Account
+        fields = [
+            "id",
+            "name",
+            "account_number",
+            "account_group",
+            "account_group_name",
+            "account_type",
+            "has_feed",
+            "is_archived",
+            "archived_at",
+        ]
+        read_only_fields = ["account_group_name", "account_type",
+                            "archived_at"]
+
 
 
 class PayeeSerializer(serializers.ModelSerializer):

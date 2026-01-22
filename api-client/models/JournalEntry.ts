@@ -20,6 +20,13 @@ import {
     JournalLineToJSON,
     JournalLineToJSONTyped,
 } from './JournalLine';
+import type { JournalEntrySourceEnum } from './JournalEntrySourceEnum';
+import {
+    JournalEntrySourceEnumFromJSON,
+    JournalEntrySourceEnumFromJSONTyped,
+    JournalEntrySourceEnumToJSON,
+    JournalEntrySourceEnumToJSONTyped,
+} from './JournalEntrySourceEnum';
 import type { JournalEntryStatusEnum } from './JournalEntryStatusEnum';
 import {
     JournalEntryStatusEnumFromJSON,
@@ -27,13 +34,6 @@ import {
     JournalEntryStatusEnumToJSON,
     JournalEntryStatusEnumToJSONTyped,
 } from './JournalEntryStatusEnum';
-import type { SourceEnum } from './SourceEnum';
-import {
-    SourceEnumFromJSON,
-    SourceEnumFromJSONTyped,
-    SourceEnumToJSON,
-    SourceEnumToJSONTyped,
-} from './SourceEnum';
 
 /**
  * Serializer for JournalEntry model with nested lines.
@@ -79,10 +79,10 @@ export interface JournalEntry {
      * * `import` - Import
      * * `bank_match` - Bank Match
      * * `recurring` - Recurring Entry
-     * @type {SourceEnum}
+     * @type {JournalEntrySourceEnum}
      * @memberof JournalEntry
      */
-    source?: SourceEnum;
+    source?: JournalEntrySourceEnum;
     /**
      * Status of the journal entry
      * 
@@ -165,7 +165,7 @@ export function JournalEntryFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'payee': json['payee'] == null ? undefined : json['payee'],
         'payeeName': json['payee_name'],
         'description': json['description'],
-        'source': json['source'] == null ? undefined : SourceEnumFromJSON(json['source']),
+        'source': json['source'] == null ? undefined : JournalEntrySourceEnumFromJSON(json['source']),
         'status': json['status'] == null ? undefined : JournalEntryStatusEnumFromJSON(json['status']),
         'lines': ((json['lines'] as Array<any>).map(JournalLineFromJSON)),
         'totalDebits': json['total_debits'],
@@ -190,7 +190,7 @@ export function JournalEntryFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'entry_date': ((value['entryDate']).toISOString().substring(0,10)),
         'payee': value['payee'],
         'description': value['description'],
-        'source': SourceEnumToJSON(value['source']),
+        'source': JournalEntrySourceEnumToJSON(value['source']),
         'status': JournalEntryStatusEnumToJSON(value['status']),
         'lines': ((value['lines'] as Array<any>).map(JournalLineToJSON)),
     };

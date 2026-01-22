@@ -10,7 +10,7 @@ from rest_framework import serializers
 from apps.accounts.serializers import AccountSerializer
 from apps.journal.models import JournalLine
 
-from .models import ImportedTransaction, PlaidAccount, PlaidItem
+from .models import PlaidTransaction, PlaidAccount, PlaidItem
 
 
 class PlaidItemSerializer(serializers.ModelSerializer):
@@ -54,29 +54,24 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at"]
 
 
-class ImportedTransactionSerializer(serializers.ModelSerializer):
-    """Serializer for ImportedTransaction model."""
+class PlaidTransactionSerializer(serializers.ModelSerializer):
+    """Serializer for PlaidTransaction model."""
 
     plaid_account_details = PlaidAccountSerializer(source="plaid_account", read_only=True)
 
     class Meta:
-        model = ImportedTransaction
+        model = PlaidTransaction
         fields = [
             "id",
             "plaid_transaction_id",
             "plaid_account",
             "plaid_account_details",
-            "amount",
             "iso_currency_code",
-            "date",
             "authorized_date",
             "pending",
-            "name",
-            "merchant_name",
             "personal_finance_category",
             "category_confidence",
             "payment_channel",
-            "journal_entry",
             "created_at",
             "updated_at",
         ]
@@ -87,7 +82,7 @@ class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.
     This is NOT a model - it's a projection that combines data from
-    JournalLine (ledger) and ImportedTransaction (Plaid staging).
+    JournalLine (ledger) and PlaidTransaction (Plaid staging).
     """
 
     id = serializers.CharField(help_text="Composite ID: 'ledger-{id}' or 'plaid-{id}'")
@@ -156,24 +151,26 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
     }
 
 
-def imported_tx_to_feed_row(tx: ImportedTransaction) -> dict:
+def imported_tx_to_feed_row(tx: PlaidTransaction) -> dict:
     """
-    Convert an ImportedTransaction to a BankFeedRow dict.
-    Only called for uncategorized transactions (journal_entry is null).
+    Convert a PlaidTransaction to a BankFeedRow dict.
+    Only called for uncategorized transactions (bank_transaction.journal_entry is null).
     """
-    amount = abs(tx.amount)
+    # Access the related BankTransaction for common fields
+    bank_tx = tx.bank_transaction
+    amount = abs(bank_tx.amount)
 
     # Plaid convention: positive = outflow, negative = inflow
-    inflow = amount if tx.amount < 0 else Decimal("0")
-    outflow = amount if tx.amount > 0 else Decimal("0")
+    inflow = amount if bank_tx.amount < 0 else Decimal("0")
+    outflow = amount if bank_tx.amount > 0 else Decimal("0")
 
     return {
         "id": f"plaid-{tx.id}",
         "source": "plaid",
-        "date": tx.date,
+        "date": bank_tx.posted_date,
         "authorized_date": tx.authorized_date,
-        "description": tx.name,
-        "merchant_name": tx.merchant_name,
+        "description": bank_tx.description,
+        "merchant_name": bank_tx.merchant_name,
         "account": tx.plaid_account.account,
         "category": None,  # Uncategorized
         "inflow": inflow,
@@ -186,4 +183,3 @@ def imported_tx_to_feed_row(tx: ImportedTransaction) -> dict:
         "imported_transaction_id": tx.id,
         "is_editable": True,
     }
-

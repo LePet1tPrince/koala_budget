@@ -11,7 +11,8 @@ from django.db import transaction
 
 from apps.teams.context import set_current_team
 
-from .models import ImportedTransaction, PlaidAccount, PlaidItem
+from .models import PlaidTransaction, PlaidAccount, PlaidItem
+from apps.bank_feed.models import BankTransaction
 from .services import sync_transactions
 
 
@@ -37,6 +38,7 @@ def sync_plaid_transactions(plaid_item_id: int):
     Args:
         plaid_item_id: ID of the PlaidItem to sync
     """
+    print("STARTING THE PLAID SYNC")
     try:
         plaid_item = PlaidItem.objects.select_related("team").get(id=plaid_item_id)
 
@@ -102,7 +104,7 @@ def sync_plaid_transactions(plaid_item_id: int):
 def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
     """
     Process a newly added transaction from Plaid.
-    Creates an ImportedTransaction record.
+    Creates BankTransaction and PlaidTransaction records.
     """
     # Get the plaid account
     plaid_account = PlaidAccount.objects.filter(
@@ -110,48 +112,56 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
         plaid_account_id=tx_data["account_id"],
     ).first()
 
-    if not plaid_account:
-        # Skip if account not found (shouldn't happen)
+    if not plaid_account or not plaid_account.account:
+        # Skip if account not found or not mapped to ledger account
         return
 
     # Check if transaction already exists
-    if ImportedTransaction.objects.filter(
+    if PlaidTransaction.objects.filter(
         plaid_transaction_id=tx_data["transaction_id"]
     ).exists():
         return
 
-    # Create imported transaction
-    ImportedTransaction.objects.create(
+    # Create bank transaction
+    bank_transaction = BankTransaction.objects.create(
+        team=plaid_item.team,
+        account=plaid_account.account,
+        amount=tx_data["amount"],
+        posted_date=tx_data["date"],
+        description=tx_data["name"],
+        merchant_name=tx_data.get("merchant_name"),
+        source=BankTransaction.SOURCE_PLAID,
+        raw=json_safe(
+            tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data
+        )
+    )
+
+    # Create plaid transaction
+    PlaidTransaction.objects.create(
         team=plaid_item.team,
         plaid_transaction_id=tx_data["transaction_id"],
+        bank_transaction=bank_transaction,
         plaid_account=plaid_account,
-        amount=tx_data["amount"],
         iso_currency_code=tx_data.get("iso_currency_code"),
         unofficial_currency_code=tx_data.get("unofficial_currency_code"),
-        date=tx_data["date"],
         authorized_date=tx_data.get("authorized_date"),
         pending=tx_data.get("pending", False),
         pending_transaction_id=tx_data.get("pending_transaction_id"),
-        name=tx_data["name"],
-        merchant_name=tx_data.get("merchant_name"),
         personal_finance_category=tx_data.get("personal_finance_category", {}).get("primary"),
         personal_finance_category_id=tx_data.get("personal_finance_category", {}).get("detailed"),
         category_confidence=tx_data.get("personal_finance_category", {}).get("confidence_level"),
         payment_channel=tx_data.get("payment_channel"),
         transaction_type=tx_data.get("transaction_type"),
-        location = json_safe(
+        location=json_safe(
             tx_data.get("location").to_dict()
             if tx_data.get("location")
             else None
         ),
-        merchant_metadata = json_safe(
+        merchant_metadata=json_safe(
             tx_data.get("merchant_metadata").to_dict()
             if tx_data.get("merchant_metadata")
             else None
         ),
-        raw = json_safe(
-            tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data
-        )
     )
 
 
@@ -159,26 +169,48 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
 def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
     """
     Process a modified transaction from Plaid.
-    Updates the existing ImportedTransaction record.
+    Updates the existing BankTransaction and PlaidTransaction records.
     """
     try:
-        imported_tx = ImportedTransaction.objects.get(
+        plaid_tx = PlaidTransaction.objects.select_related('bank_transaction').get(
             plaid_transaction_id=tx_data["transaction_id"],
             team=plaid_item.team,
         )
 
         # Only update if not yet categorized (journal_entry is null)
-        if imported_tx.journal_entry is None:
-            imported_tx.amount = tx_data["amount"]
-            imported_tx.date = tx_data["date"]
-            imported_tx.authorized_date = tx_data.get("authorized_date")
-            imported_tx.pending = tx_data.get("pending", False)
-            imported_tx.name = tx_data["name"]
-            imported_tx.merchant_name = tx_data.get("merchant_name")
-            imported_tx.raw = tx_data.to_dict() if hasattr(tx_data, 'to_dict') else tx_data
-            imported_tx.save()
+        if plaid_tx.bank_transaction.journal_entry is None:
+            # Update bank transaction
+            plaid_tx.bank_transaction.amount = tx_data["amount"]
+            plaid_tx.bank_transaction.posted_date = tx_data["date"]
+            plaid_tx.bank_transaction.description = tx_data["name"]
+            plaid_tx.bank_transaction.merchant_name = tx_data.get("merchant_name")
+            plaid_tx.bank_transaction.raw = json_safe(
+                tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data
+            )
+            plaid_tx.bank_transaction.save()
 
-    except ImportedTransaction.DoesNotExist:
+            # Update plaid transaction
+            plaid_tx.authorized_date = tx_data.get("authorized_date")
+            plaid_tx.pending = tx_data.get("pending", False)
+            plaid_tx.pending_transaction_id = tx_data.get("pending_transaction_id")
+            plaid_tx.personal_finance_category = tx_data.get("personal_finance_category", {}).get("primary")
+            plaid_tx.personal_finance_category_id = tx_data.get("personal_finance_category", {}).get("detailed")
+            plaid_tx.category_confidence = tx_data.get("personal_finance_category", {}).get("confidence_level")
+            plaid_tx.payment_channel = tx_data.get("payment_channel")
+            plaid_tx.transaction_type = tx_data.get("transaction_type")
+            plaid_tx.location = json_safe(
+                tx_data.get("location").to_dict()
+                if tx_data.get("location")
+                else None
+            )
+            plaid_tx.merchant_metadata = json_safe(
+                tx_data.get("merchant_metadata").to_dict()
+                if tx_data.get("merchant_metadata")
+                else None
+            )
+            plaid_tx.save()
+
+    except PlaidTransaction.DoesNotExist:
         # If not found, treat as new
         process_added_transaction(plaid_item, tx_data)
 
@@ -187,19 +219,20 @@ def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
 def process_removed_transaction(plaid_item: PlaidItem, tx_data: dict):
     """
     Process a removed transaction from Plaid.
-    Deletes the ImportedTransaction if it hasn't been categorized.
+    Deletes the BankTransaction and PlaidTransaction if it hasn't been categorized.
     """
     try:
-        imported_tx = ImportedTransaction.objects.get(
+        plaid_tx = PlaidTransaction.objects.select_related('bank_transaction').get(
             plaid_transaction_id=tx_data["transaction_id"],
             team=plaid_item.team,
         )
 
         # Only delete if not yet categorized (journal_entry is null)
-        if imported_tx.journal_entry is None:
-            imported_tx.delete()
+        if plaid_tx.bank_transaction.journal_entry is None:
+            # Delete bank transaction (this will cascade to plaid transaction due to OneToOneField)
+            plaid_tx.bank_transaction.delete()
 
-    except ImportedTransaction.DoesNotExist:
+    except PlaidTransaction.DoesNotExist:
         # Already deleted or never existed
         pass
 
@@ -207,13 +240,13 @@ def process_removed_transaction(plaid_item: PlaidItem, tx_data: dict):
 @shared_task
 def sync_all_plaid_items():
     """
-    Sync transactions for all active Plaid items.
+    Sync transactions for all Plaid items.
     This can be run on a schedule (e.g., every hour).
     """
-    active_items = PlaidItem.objects.filter(is_active=True)
+    all_items = PlaidItem.objects.all()
 
     results = []
-    for item in active_items:
+    for item in all_items:
         result = sync_plaid_transactions.delay(item.id)
         results.append({"item_id": item.id, "task_id": result.id})
 

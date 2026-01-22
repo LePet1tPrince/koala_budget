@@ -6,7 +6,13 @@ Provides bank feed API, Plaid Link integration, and account management.
 from decimal import Decimal
 
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import serializers as drf_serializers
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -15,133 +21,13 @@ from apps.accounts.models import Account
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.permissions import TeamModelAccessPermissions
 
-from .models import ImportedTransaction, PlaidAccount, PlaidItem
+from .models import PlaidTransaction, PlaidAccount, PlaidItem
 from .serializers import (
-    BankFeedRowSerializer,
-    ImportedTransactionSerializer,
+    PlaidTransactionSerializer,
     PlaidAccountSerializer,
     PlaidItemSerializer,
-    imported_tx_to_feed_row,
-    journal_line_to_feed_row,
 )
 from .services import create_link_token, exchange_public_token, get_accounts, get_institution
-
-
-@extend_schema_view(
-    list=extend_schema(
-        operation_id="bank_feed_list",
-        tags=["plaid"],
-        parameters=[
-            OpenApiParameter(
-                name="account",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                description="Ledger account ID to filter bank feed by",
-                required=True,
-            ),
-        ],
-    ),
-)
-class BankFeedViewSet(viewsets.ViewSet):
-    """
-    Unified bank feed API.
-    Combines ledger transactions (JournalLine) and uncategorized Plaid transactions
-    into a single feed for a given account.
-    """
-
-    permission_classes = [TeamModelAccessPermissions]
-
-    def list(self, request, team_slug=None):
-        """
-        Get unified bank feed for an account.
-        Query params:
-        - account: Account ID to filter by (required)
-        """
-        account_id = request.query_params.get("account")
-
-        if not account_id:
-            return Response(
-                {"error": "account parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Get ledger lines for this account
-        ledger_lines = (
-            JournalLine.for_team.filter(account_id=account_id)
-            .select_related("account", "journal_entry", "journal_entry__payee")
-            .prefetch_related("journal_entry__lines__account")
-        )
-
-        # Get uncategorized imported transactions for this account
-        imported = ImportedTransaction.objects.filter(
-            team=request.team,
-            plaid_account__account_id=account_id,
-            journal_entry__isnull=True,  # Only uncategorized
-        ).select_related("plaid_account", "plaid_account__account")
-
-        # Convert to feed rows
-        rows = []
-
-        for line in ledger_lines:
-            rows.append(journal_line_to_feed_row(line))
-
-        for tx in imported:
-            rows.append(imported_tx_to_feed_row(tx))
-
-        # Sort by date (most recent first)
-        rows.sort(key=lambda r: r["date"], reverse=True)
-
-        serializer = BankFeedRowSerializer(rows, many=True)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=["post"])
-    def categorize(self, request, team_slug=None):
-        """
-        Categorize one or more bank feed rows.
-        Body:
-        - rows: List of row objects with 'source' and 'id' fields
-        - category_account_id: ID of the category account
-        """
-        rows = request.data.get("rows", [])
-        category_account_id = request.data.get("category_account_id")
-
-        if not rows or not category_account_id:
-            return Response(
-                {"error": "rows and category_account_id are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Verify category account exists and belongs to team
-        try:
-            category_account = Account.for_team.get(account_id=category_account_id)
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Category account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # Process each row
-        try:
-            for row in rows:
-                if row["source"] == "plaid":
-                    create_journal_from_import(
-                        imported_tx_id=row["imported_transaction_id"],
-                        category_account=category_account,
-                        team=request.team,
-                    )
-                elif row["source"] == "ledger":
-                    update_simple_line_category(
-                        journal_line_id=row["journal_line_id"],
-                        category_account=category_account,
-                        team=request.team,
-                    )
-        except ValueError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # Helper Functions
@@ -150,14 +36,14 @@ class BankFeedViewSet(viewsets.ViewSet):
 @transaction.atomic
 def create_journal_from_import(imported_tx_id: int, category_account: Account, team):
     """
-    Create a JournalEntry from an ImportedTransaction.
+    Create a JournalEntry from an PlaidTransaction.
     Links the transaction to the journal entry.
 
     Raises:
         ValueError: If the PlaidAccount is not mapped to a ledger account
     """
     # Get the imported transaction
-    imported_tx = ImportedTransaction.objects.select_related("plaid_account", "plaid_account__account").get(
+    imported_tx = PlaidTransaction.objects.select_related("plaid_account", "plaid_account__account").get(
         id=imported_tx_id,
         team=team,
     )
@@ -330,14 +216,14 @@ class PlaidAccountViewSet(viewsets.ModelViewSet):
     list=extend_schema(operation_id="imported_transactions_list", tags=["plaid"]),
     retrieve=extend_schema(operation_id="imported_transactions_retrieve", tags=["plaid"]),
 )
-class ImportedTransactionViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for ImportedTransaction model (read-only)."""
+class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for PlaidTransaction model (read-only)."""
 
-    serializer_class = ImportedTransactionSerializer
+    serializer_class = PlaidTransactionSerializer
     permission_classes = [TeamModelAccessPermissions]
 
     def get_queryset(self):
-        return ImportedTransaction.objects.filter(team=self.request.team).select_related(
+        return PlaidTransaction.objects.filter(team=self.request.team).select_related(
             "plaid_account",
             "plaid_account__account",
             "journal_entry",
@@ -373,15 +259,25 @@ def create_link_token_view(request, team_slug=None):
 @extend_schema(
     operation_id="plaid_exchange_public_token",
     tags=["plaid"],
-    request={
-        "type": "object",
-        "properties": {
-            "public_token": {"type": "string"},
-            "institution_id": {"type": "string"},
-            "accounts": {"type": "array", "items": {"type": "object"}},
+    request=inline_serializer(
+        name="ExchangePublicTokenRequest",
+        fields={
+            "public_token": drf_serializers.CharField(),
+            "institution_id": drf_serializers.CharField(),
+            "accounts": drf_serializers.ListField(
+                child=drf_serializers.DictField(),
+                required=False,
+            ),
         },
+    ),
+    responses={
+        200: inline_serializer(
+            name="ExchangePublicTokenResponse",
+            fields={
+                "success": drf_serializers.BooleanField(),
+            },
+        ),
     },
-    responses={200: {"type": "object", "properties": {"success": {"type": "boolean"}}}},
 )
 @api_view(["POST"])
 @permission_classes([TeamModelAccessPermissions])
