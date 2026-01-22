@@ -1,7 +1,7 @@
 /* globals gettext */
 
 import React, { useState } from 'react';
-import { apiRequest, handleApiError } from './utils';
+import { apiRequest, handleApiError } from '../utils';
 
 /**
  * PlaidAccountMapper - Modal component for mapping Plaid accounts to ledger accounts

@@ -52,11 +52,6 @@ import {
     PlaidTransactionToJSON,
 } from '../models/index';
 
-export interface BankFeedListRequest {
-    account: number;
-    teamSlug: string;
-}
-
 export interface ImportedTransactionsListRequest {
     teamSlug: string;
     page?: number;
@@ -111,56 +106,6 @@ export interface PlaidItemsSyncRequest {
  * 
  */
 export class PlaidApi extends runtime.BaseAPI {
-
-    /**
-     * Get unified bank feed for an account. Query params: - account: Account ID to filter by (required)
-     */
-    async bankFeedListRaw(requestParameters: BankFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        if (requestParameters['account'] == null) {
-            throw new runtime.RequiredError(
-                'account',
-                'Required parameter "account" was null or undefined when calling bankFeedList().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedList().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        if (requestParameters['account'] != null) {
-            queryParameters['account'] = requestParameters['account'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/bank-feed/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * Get unified bank feed for an account. Query params: - account: Account ID to filter by (required)
-     */
-    async bankFeedList(requestParameters: BankFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedListRaw(requestParameters, initOverrides);
-    }
 
     /**
      * ViewSet for PlaidTransaction model (read-only).

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 
 import { formatCurrency } from '../../utilities/currency';
-import { formatDate } from './utils';
+import { formatDate } from '../utils';
 
 /**
  * BankFeedTable component - displays bank feed data (ledger + Plaid transactions)

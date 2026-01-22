@@ -18,7 +18,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
 import MaterialTable from '@material-table/core';
-import { ProperCase } from './utils';
+import { ProperCase } from '../utils';
 import { formatCurrency } from '../../utilities/currency';
 
 /* globals gettext */

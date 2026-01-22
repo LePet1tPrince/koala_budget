@@ -1,7 +1,7 @@
 /* globals gettext */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { apiRequest, handleApiError } from './utils';
+import { apiRequest, handleApiError } from '../utils';
 
 import PlaidAccountMapper from './PlaidAccountMapper';
 import { usePlaidLink } from 'react-plaid-link';

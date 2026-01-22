@@ -2,8 +2,8 @@
 /* eslint-disable */
 export * from './Account';
 export * from './AggregateEmployeeData';
-export * from './BankTransaction';
-export * from './BankTransactionSourceEnum';
+export * from './BankFeedRow';
+export * from './BankFeedRowSourceEnum';
 export * from './CategorizeTransactionsRequest';
 export * from './DepartmentEnum';
 export * from './Employee';
@@ -16,7 +16,7 @@ export * from './JournalEntryStatusEnum';
 export * from './JournalLine';
 export * from './Membership';
 export * from './OpenInvitation';
-export * from './PaginatedBankTransactionList';
+export * from './PaginatedBankFeedRowList';
 export * from './PaginatedEmployeeList';
 export * from './PaginatedInvitationList';
 export * from './PaginatedJournalEntryList';
@@ -38,6 +38,7 @@ export * from './PlaidItemsSync200Response';
 export * from './PlaidTransaction';
 export * from './Price';
 export * from './RoleEnum';
+export * from './SimpleAccount';
 export * from './SimpleLine';
 export * from './Subscription';
 export * from './SubscriptionItem';

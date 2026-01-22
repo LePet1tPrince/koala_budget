@@ -9,8 +9,8 @@ apis/index.ts
 index.ts
 models/Account.ts
 models/AggregateEmployeeData.ts
-models/BankTransaction.ts
-models/BankTransactionSourceEnum.ts
+models/BankFeedRow.ts
+models/BankFeedRowSourceEnum.ts
 models/CategorizeTransactionsRequest.ts
 models/DepartmentEnum.ts
 models/Employee.ts
@@ -23,7 +23,7 @@ models/JournalEntryStatusEnum.ts
 models/JournalLine.ts
 models/Membership.ts
 models/OpenInvitation.ts
-models/PaginatedBankTransactionList.ts
+models/PaginatedBankFeedRowList.ts
 models/PaginatedEmployeeList.ts
 models/PaginatedInvitationList.ts
 models/PaginatedJournalEntryList.ts
@@ -45,6 +45,7 @@ models/PlaidItemsSync200Response.ts
 models/PlaidTransaction.ts
 models/Price.ts
 models/RoleEnum.ts
+models/SimpleAccount.ts
 models/SimpleLine.ts
 models/Subscription.ts
 models/SubscriptionItem.ts

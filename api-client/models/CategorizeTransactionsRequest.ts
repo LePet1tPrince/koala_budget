@@ -38,7 +38,7 @@ export interface CategorizeTransactionsRequest {
      * @type {number}
      * @memberof CategorizeTransactionsRequest
      */
-    categoryAccountId: number;
+    categoryId: number;
 }
 
 /**
@@ -46,7 +46,7 @@ export interface CategorizeTransactionsRequest {
  */
 export function instanceOfCategorizeTransactionsRequest(value: object): value is CategorizeTransactionsRequest {
     if (!('rows' in value) || value['rows'] === undefined) return false;
-    if (!('categoryAccountId' in value) || value['categoryAccountId'] === undefined) return false;
+    if (!('categoryId' in value) || value['categoryId'] === undefined) return false;
     return true;
 }
 
@@ -61,7 +61,7 @@ export function CategorizeTransactionsRequestFromJSONTyped(json: any, ignoreDisc
     return {
         
         'rows': ((json['rows'] as Array<any>).map(TransactionRowFromJSON)),
-        'categoryAccountId': json['category_account_id'],
+        'categoryId': json['category_id'],
     };
 }
 
@@ -77,7 +77,7 @@ export function CategorizeTransactionsRequestFromJSONTyped(json: any, ignoreDisc
     return {
         
         'rows': ((value['rows'] as Array<any>).map(TransactionRowToJSON)),
-        'category_account_id': value['categoryAccountId'],
+        'category_id': value['categoryId'],
     };
 }
 

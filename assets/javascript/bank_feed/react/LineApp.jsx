@@ -1,7 +1,7 @@
 /* globals gettext */
 
 import React, { useEffect, useState } from 'react';
-import { apiRequest, handleApiError } from './utils';
+import { apiRequest, handleApiError } from '../utils';
 
 import AccountCard from './AccountCard';
 import AccountGrid from './AccountGrid';

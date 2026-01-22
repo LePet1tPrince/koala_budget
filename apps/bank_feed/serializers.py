@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.accounts.serializers import AccountSerializer
+from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
 from apps.journal.models import JournalLine
 from apps.plaid.serializers import PlaidTransactionSerializer
 
@@ -108,8 +108,9 @@ class BankFeedRowSerializer(serializers.Serializer):
     description = serializers.CharField(help_text="Transaction description")
     merchant_name = serializers.CharField(allow_null=True, help_text="Merchant name")
 
-    account = AccountSerializer(help_text="The account this transaction affects")
-    category = AccountSerializer(
+    # account = AccountSerializer(help_text="The account this transaction affects")
+    account = SimpleAccountSerializer(help_text="The account this transaction affects")
+    category = SimpleAccountSerializer(
         allow_null=True,
         help_text="Category account (null if uncategorized)",
     )

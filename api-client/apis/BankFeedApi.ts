@@ -15,38 +15,33 @@
 
 import * as runtime from '../runtime';
 import type {
-  BankTransaction,
+  BankFeedRow,
   CategorizeTransactionsRequest,
-  PaginatedBankTransactionList,
+  PaginatedBankFeedRowList,
 } from '../models/index';
 import {
-    BankTransactionFromJSON,
-    BankTransactionToJSON,
+    BankFeedRowFromJSON,
+    BankFeedRowToJSON,
     CategorizeTransactionsRequestFromJSON,
     CategorizeTransactionsRequestToJSON,
-    PaginatedBankTransactionListFromJSON,
-    PaginatedBankTransactionListToJSON,
+    PaginatedBankFeedRowListFromJSON,
+    PaginatedBankFeedRowListToJSON,
 } from '../models/index';
+
+export interface BankFeedFeedListRequest {
+    teamSlug: string;
+    account?: number;
+    page?: number;
+}
+
+export interface BankFeedFeedRetrieveRequest {
+    id: string;
+    teamSlug: string;
+}
 
 export interface BankFeedTransactionsCategorizeRequest {
     teamSlug: string;
     categorizeTransactionsRequest: CategorizeTransactionsRequest;
-}
-
-export interface BankFeedTransactionsListRequest {
-    teamSlug: string;
-    account?: number;
-    dateFrom?: string;
-    dateTo?: string;
-    isCategorized?: boolean;
-    page?: number;
-    pending?: boolean;
-    source?: string;
-}
-
-export interface BankFeedTransactionsRetrieveRequest {
-    id: string;
-    teamSlug: string;
 }
 
 /**
@@ -55,7 +50,102 @@ export interface BankFeedTransactionsRetrieveRequest {
 export class BankFeedApi extends runtime.BaseAPI {
 
     /**
-     * Categorize one or more bank transactions. Creates journal entries linking the bank account to the category account.  Body: - rows: List of transaction objects with \'id\' field - category_account_id: ID of the category account
+     * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional)
+     */
+    async bankFeedFeedListRaw(requestParameters: BankFeedFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedFeedList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedBankFeedRowListFromJSON(jsonValue));
+    }
+
+    /**
+     * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional)
+     */
+    async bankFeedFeedList(requestParameters: BankFeedFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedBankFeedRowList> {
+        const response = await this.bankFeedFeedListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions - GET /a/{team_slug}/bankfeed/api/feed/{id}/ - Get transactions for specific account
+     */
+    async bankFeedFeedRetrieveRaw(requestParameters: BankFeedFeedRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling bankFeedFeedRetrieve().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedFeedRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => BankFeedRowFromJSON(jsonValue));
+    }
+
+    /**
+     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions - GET /a/{team_slug}/bankfeed/api/feed/{id}/ - Get transactions for specific account
+     */
+    async bankFeedFeedRetrieve(requestParameters: BankFeedFeedRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BankFeedRow> {
+        const response = await this.bankFeedFeedRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Categorize one or more bank transactions. Creates journal entries linking the bank account to the category account.  Body: - rows: List of transaction objects with \'id\' field - category_id: ID of the category account
      */
     async bankFeedTransactionsCategorizeRaw(requestParameters: BankFeedTransactionsCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['teamSlug'] == null) {
@@ -86,7 +176,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/transactions/categorize/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/bankfeed/api/feed/categorize/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -97,125 +187,10 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Categorize one or more bank transactions. Creates journal entries linking the bank account to the category account.  Body: - rows: List of transaction objects with \'id\' field - category_account_id: ID of the category account
+     * Categorize one or more bank transactions. Creates journal entries linking the bank account to the category account.  Body: - rows: List of transaction objects with \'id\' field - category_id: ID of the category account
      */
     async bankFeedTransactionsCategorize(requestParameters: BankFeedTransactionsCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedTransactionsCategorizeRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     * ViewSet for BankTransaction model. Provides read-only access to imported transactions from all sources (Plaid, CSV, manual).
-     */
-    async bankFeedTransactionsListRaw(requestParameters: BankFeedTransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankTransactionList>> {
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedTransactionsList().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        if (requestParameters['account'] != null) {
-            queryParameters['account'] = requestParameters['account'];
-        }
-
-        if (requestParameters['dateFrom'] != null) {
-            queryParameters['date_from'] = requestParameters['dateFrom'];
-        }
-
-        if (requestParameters['dateTo'] != null) {
-            queryParameters['date_to'] = requestParameters['dateTo'];
-        }
-
-        if (requestParameters['isCategorized'] != null) {
-            queryParameters['is_categorized'] = requestParameters['isCategorized'];
-        }
-
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
-
-        if (requestParameters['pending'] != null) {
-            queryParameters['pending'] = requestParameters['pending'];
-        }
-
-        if (requestParameters['source'] != null) {
-            queryParameters['source'] = requestParameters['source'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/transactions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedBankTransactionListFromJSON(jsonValue));
-    }
-
-    /**
-     * ViewSet for BankTransaction model. Provides read-only access to imported transactions from all sources (Plaid, CSV, manual).
-     */
-    async bankFeedTransactionsList(requestParameters: BankFeedTransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedBankTransactionList> {
-        const response = await this.bankFeedTransactionsListRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * ViewSet for BankTransaction model. Provides read-only access to imported transactions from all sources (Plaid, CSV, manual).
-     */
-    async bankFeedTransactionsRetrieveRaw(requestParameters: BankFeedTransactionsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankTransaction>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling bankFeedTransactionsRetrieve().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedTransactionsRetrieve().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/transactions/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => BankTransactionFromJSON(jsonValue));
-    }
-
-    /**
-     * ViewSet for BankTransaction model. Provides read-only access to imported transactions from all sources (Plaid, CSV, manual).
-     */
-    async bankFeedTransactionsRetrieve(requestParameters: BankFeedTransactionsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BankTransaction> {
-        const response = await this.bankFeedTransactionsRetrieveRaw(requestParameters, initOverrides);
-        return await response.value();
     }
 
 }
