@@ -54,7 +54,7 @@ const LineTableMaterial = ({
   });
 
   // Filter state for Feed/Reconciled/Archived toggle
-  const [filterMode, setFilterMode] = useState('feed');
+  const [filterMode, setFilterMode] = useState('to_review');
 
   // Create MUI theme that adapts to existing theme
   const theme = useMemo(() => {
@@ -116,15 +116,15 @@ const LineTableMaterial = ({
     let filtered = lines;
 
     // Apply filter mode (Feed/Reconciled/Archived)
-    if (filterMode === 'feed') {
-      // Feed: not reconciled and not archived
-      filtered = filtered.filter((l) => !l.isCleared);
-    } else if (filterMode === 'reconciled') {
+    if (filterMode === 'to_review') {
+      // To Review: not reconciled and not archived
+      filtered = filtered.filter((l) => !l.isReconciled && !l.isArchived);
+    } else if (filterMode === 'completed') {
       // Reconciled: reconciled and not archived
-      filtered = filtered.filter((l) => l.isCleared);
+      filtered = filtered.filter((l) => l.isReconciled && !l.isArchived);
     } else if (filterMode === 'archived') {
       // Archived: not implemented yet, show all for now
-      filtered = filtered;
+      filtered = filtered.filter((l) => l.isArchived);
     }
 
     // Apply date range filter
@@ -393,7 +393,7 @@ const LineTableMaterial = ({
             }}
             aria-label="Transaction filter"
           >
-            <ToggleButton value="feed">{gettext('Feed')}</ToggleButton>
+            <ToggleButton value="to_review">{gettext('To Review')}</ToggleButton>
             <ToggleButton value="reconciled">{gettext('Reconciled')}</ToggleButton>
             <ToggleButton value="archived">{gettext('Archived')}</ToggleButton>
           </ToggleButtonGroup>
