@@ -3,11 +3,8 @@ Views for Plaid app.
 Provides bank feed API, Plaid Link integration, and account management.
 """
 
-from decimal import Decimal
-
 from django.db import transaction
 from drf_spectacular.utils import (
-    OpenApiParameter,
     extend_schema,
     extend_schema_view,
     inline_serializer,
@@ -17,8 +14,6 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.accounts.models import Account
-from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from .models import PlaidTransaction, PlaidAccount, PlaidItem
@@ -28,112 +23,6 @@ from .serializers import (
     PlaidItemSerializer,
 )
 from .services import create_link_token, exchange_public_token, get_accounts, get_institution
-
-
-# Helper Functions
-
-
-@transaction.atomic
-def create_journal_from_import(imported_tx_id: int, category_account: Account, team):
-    """
-    Create a JournalEntry from an PlaidTransaction.
-    Links the transaction to the journal entry.
-
-    Raises:
-        ValueError: If the PlaidAccount is not mapped to a ledger account
-    """
-    # Get the imported transaction
-    imported_tx = PlaidTransaction.objects.select_related("plaid_account", "plaid_account__account").get(
-        id=imported_tx_id,
-        team=team,
-    )
-
-    # Validate that the Plaid account is mapped to a ledger account
-    if not imported_tx.plaid_account.is_mapped:
-        raise ValueError(
-            f"Cannot categorize transaction: Plaid account '{imported_tx.plaid_account.name}' "
-            f"is not mapped to a ledger account. Please map the account first."
-        )
-
-    # Create journal entry
-    journal_entry = JournalEntry.objects.create(
-        team=team,
-        entry_date=imported_tx.date,
-        description=imported_tx.name,
-        source=JournalEntry.SOURCE_IMPORT,
-        status=JournalEntry.STATUS_DRAFT,
-    )
-
-    # Calculate amounts (Plaid: positive = outflow, negative = inflow)
-    amount = abs(imported_tx.amount)
-    is_inflow = imported_tx.amount < 0
-
-    # Create main line (bank account)
-    if is_inflow:
-        # Money coming in: debit bank account
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            team=team,
-            account=imported_tx.plaid_account.account,
-            dr_amount=amount,
-            cr_amount=Decimal("0"),
-        )
-        # Credit category account
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            team=team,
-            account=category_account,
-            dr_amount=Decimal("0"),
-            cr_amount=amount,
-        )
-    else:
-        # Money going out: credit bank account
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            team=team,
-            account=imported_tx.plaid_account.account,
-            dr_amount=Decimal("0"),
-            cr_amount=amount,
-        )
-        # Debit category account
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            team=team,
-            account=category_account,
-            dr_amount=amount,
-            cr_amount=Decimal("0"),
-        )
-
-    # Link the imported transaction to the journal entry
-    imported_tx.journal_entry = journal_entry
-    imported_tx.save()
-
-    return journal_entry
-
-
-@transaction.atomic
-def update_simple_line_category(journal_line_id: int, category_account: Account, team):
-    """
-    Update the category of an existing simple journal entry.
-    Updates the sibling line's account.
-    """
-    # Get the journal line
-    line = JournalLine.for_team.select_related("journal_entry").prefetch_related("journal_entry__lines").get(
-        id=journal_line_id,
-        team=team,
-    )
-
-    # Get all lines for this journal entry
-    all_lines = list(line.journal_entry.lines.all())
-
-    # Only update if there are exactly 2 lines
-    if len(all_lines) == 2:
-        # Find the sibling line
-        sibling = all_lines[0] if all_lines[1].id == line.id else all_lines[1]
-
-        # Update the sibling's account to the new category
-        sibling.account = category_account
-        sibling.save()
 
 
 # ViewSets for Plaid models
