@@ -225,7 +225,13 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
         rows.sort(key=lambda r: r["posted_date"], reverse=True)
 
         serializer = BankFeedRowSerializer(rows, many=True)
-        return Response(serializer.data)
+        # Return paginated format expected by generated API client
+        return Response({
+            "count": len(rows),
+            "next": None,
+            "previous": None,
+            "results": serializer.data,
+        })
 
 
 

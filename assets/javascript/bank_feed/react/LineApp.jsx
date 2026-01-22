@@ -36,7 +36,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
         teamSlug: teamSlug,
         account: selectedAccount.id,
       });
-      setLines(data);
+      setLines(data.results || []);
     } catch (err) {
       console.error('Failed to load lines:', err);
       setError(err.message || gettext('Failed to load lines'));
