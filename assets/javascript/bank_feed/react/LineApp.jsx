@@ -1,7 +1,6 @@
 /* globals gettext */
 
 import React, { useEffect, useState } from 'react';
-import { apiRequest, handleApiError } from '../utils';
 
 import AccountCard from './AccountCard';
 import AccountGrid from './AccountGrid';
@@ -12,7 +11,7 @@ import PlaidLinkButton from './PlaidLinkButton';
  * LineApp - Main application component for managing lines
  * Manages account selection and bank feed operations
  */
-const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
+const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, plaidClient, journalClient }) => {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -32,17 +31,15 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
     setLoading(true);
     setError(null);
     try {
-      // Use the new bank feed API endpoint that combines ledger and Plaid data
-      const response = await apiRequest(
-        `/a/${teamSlug}/bankfeed/api/feed/?account=${selectedAccount.id}`
-      );
-
-      await handleApiError(response, gettext('Failed to load lines'));
-      const data = await response.json();
+      // Use the bank feed API client
+      const data = await bankFeedClient.bankFeedFeedList({
+        teamSlug: teamSlug,
+        account: selectedAccount.id,
+      });
       setLines(data);
     } catch (err) {
       console.error('Failed to load lines:', err);
-      setError(err.message);
+      setError(err.message || gettext('Failed to load lines'));
     } finally {
       setLoading(false);
     }
@@ -62,24 +59,22 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
     setError(null);
 
     try {
-      // First, get the Plaid account for this ledger account
-      const plaidAccountResponse = await apiRequest(
-        `/a/${teamSlug}/plaid/api/accounts/${selectedAccount.id}`
+      // First, get all Plaid accounts and find one mapped to this ledger account
+      const plaidAccountsData = await plaidClient.plaidAccountsList({
+        teamSlug: teamSlug,
+      });
+
+      // Find Plaid account mapped to the selected ledger account
+      const plaidAccount = plaidAccountsData.results?.find(
+        (pa) => pa.account === selectedAccount.id
       );
 
-      await handleApiError(plaidAccountResponse, 'Failed to fetch Plaid account');
-      const plaidAccountsData = await plaidAccountResponse.json();
-
-      if (plaidAccountsData.results && plaidAccountsData.results.length > 0) {
-        const plaidAccount = plaidAccountsData.results[0];
-
+      if (plaidAccount) {
         // Trigger sync task for this Plaid item
-        const syncResponse = await apiRequest(
-          `/a/${teamSlug}/plaid/api/items/${plaidAccount.item}/sync/`,
-          { method: 'POST' }
-        );
-
-        await handleApiError(syncResponse, 'Failed to sync transactions');
+        await plaidClient.plaidItemsSync({
+          teamSlug: teamSlug,
+          id: plaidAccount.item,
+        });
 
         // Wait a moment for sync to complete, then reload lines
         setTimeout(() => {
@@ -110,18 +105,13 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
    */
   const handleCategorize = async (rows, categoryAccountId) => {
     try {
-      const response = await apiRequest(
-        `/a/${teamSlug}/bankfeed/api/feed/categorize/`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            rows: rows,
-            category_id: categoryAccountId,
-          }),
-        }
-      );
-
-      await handleApiError(response, 'Failed to categorize transactions');
+      await bankFeedClient.bankFeedTransactionsCategorize({
+        teamSlug: teamSlug,
+        categorizeTransactionsRequest: {
+          rows: rows,
+          categoryId: categoryAccountId,
+        },
+      });
 
       // Reload the bank feed to show updated data
       await loadLines();
@@ -148,33 +138,19 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
    */
   const handleAddLine = async (lineData) => {
     try {
-      // For manual transactions, we need to create a journal entry
-      // This would typically use the journal API
-      const response = await apiRequest(
-        `/a/${teamSlug}/journal/api/entries/`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            entry_date: lineData.date,
-            description: lineData.description,
-            payee: lineData.payee,
-            lines: [
-              {
-                account: selectedAccount.id,
-                dr_amount: lineData.outflow || 0,
-                cr_amount: lineData.inflow || 0,
-              },
-              {
-                account: lineData.category,
-                dr_amount: lineData.inflow || 0,
-                cr_amount: lineData.outflow || 0,
-              },
-            ],
-          }),
-        }
-      );
-
-      await handleApiError(response, 'Failed to add line');
+      // Use the simple lines API which creates a 2-line journal entry
+      await journalClient.simpleLinesCreate({
+        teamSlug: teamSlug,
+        simpleLine: {
+          entryDate: lineData.date,
+          description: lineData.description,
+          payee: lineData.payee,
+          account: selectedAccount.id,
+          category: lineData.category,
+          inflow: lineData.inflow || '0',
+          outflow: lineData.outflow || '0',
+        },
+      });
 
       // Reload the bank feed to show updated data
       await loadLines();
@@ -192,18 +168,13 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
       // If a category is being set and the transaction isn't already categorized,
       // use the categorize API to create a journal entry
       if (lineData.category && !lineData.journal_entry_id) {
-        const response = await apiRequest(
-          `/a/${teamSlug}/bankfeed/api/feed/categorize/`,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              rows: [{ id: lineId }],
-              category_id: lineData.category,
-            }),
-          }
-        );
-
-        await handleApiError(response, 'Failed to categorize transaction');
+        await bankFeedClient.bankFeedTransactionsCategorize({
+          teamSlug: teamSlug,
+          categorizeTransactionsRequest: {
+            rows: [{ id: lineId }],
+            categoryId: lineData.category,
+          },
+        });
         await loadLines();
         return;
       }
@@ -254,6 +225,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug }) => {
             teamSlug={teamSlug}
             allAccounts={allAccounts}
             onSuccess={handlePlaidSuccess}
+            plaidClient={plaidClient}
           />
         </div>
         {accounts.length === 0 ? (

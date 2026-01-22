@@ -1,7 +1,6 @@
 /* globals gettext */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { apiRequest, handleApiError } from '../utils';
 
 import PlaidAccountMapper from './PlaidAccountMapper';
 import { usePlaidLink } from 'react-plaid-link';
@@ -16,7 +15,7 @@ import { usePlaidLink } from 'react-plaid-link';
  * 4. Exchanges the public_token for an access_token on the backend
  * 5. Triggers the account mapping flow
  */
-const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess }) => {
+const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
   const [linkToken, setLinkToken] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -30,16 +29,13 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiRequest(`/a/${teamSlug}/plaid/api/link-token/`, {
-        method: 'POST',
+      const data = await plaidClient.plaidCreateLinkToken({
+        teamSlug: teamSlug,
       });
-
-      await handleApiError(response, gettext('Failed to initialize Plaid Link. Please try again.'));
-      const data = await response.json();
-      setLinkToken(data.link_token);
+      setLinkToken(data.linkToken);
     } catch (err) {
       console.error('Error fetching link token:', err);
-      setError(err.message);
+      setError(err.message || gettext('Failed to initialize Plaid Link. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -52,28 +48,25 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess }) => {
   const onPlaidSuccess = useCallback(async (public_token, metadata) => {
     setLoading(true);
     try {
-      const response = await apiRequest(`/a/${teamSlug}/plaid/api/exchange-token/`, {
-        method: 'POST',
-        body: JSON.stringify({
-          public_token,
-          institution_id: metadata.institution.institution_id,
+      const data = await plaidClient.plaidExchangePublicToken({
+        teamSlug: teamSlug,
+        exchangePublicTokenRequest: {
+          publicToken: public_token,
+          institutionId: metadata.institution.institution_id,
           accounts: metadata.accounts,
-        }),
+        },
       });
-
-      await handleApiError(response, gettext('Failed to link account. Please try again.'));
-      const data = await response.json();
 
       // Show account mapper with the newly created Plaid accounts
       setNewPlaidAccounts(data.accounts || []);
       setShowMapper(true);
     } catch (err) {
       console.error('Error exchanging token:', err);
-      setError(err.message);
+      setError(err.message || gettext('Failed to link account. Please try again.'));
     } finally {
       setLoading(false);
     }
-  }, [teamSlug]);
+  }, [teamSlug, plaidClient]);
 
   /**
    * Handle Plaid Link exit (user closed without completing)
@@ -156,6 +149,7 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess }) => {
           teamSlug={teamSlug}
           plaidAccounts={newPlaidAccounts}
           ledgerAccounts={allAccounts}
+          plaidClient={plaidClient}
           onComplete={() => {
             setShowMapper(false);
             setLinkToken(null);
