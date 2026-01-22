@@ -15,7 +15,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import Account, Payee
-from apps.accounts.serializers import AccountSerializer, PayeeSerializer
+from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer, PayeeSerializer
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
@@ -254,7 +254,7 @@ def bank_feed_home(request, team_slug):
     all_accounts = Account.for_team.all().order_by("account_number")
     all_payees = Payee.for_team.all().order_by("name")
 
-    all_accounts_data = AccountSerializer(all_accounts, many=True).data
+    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
     all_payees_data = PayeeSerializer(all_payees, many=True).data
 
     # API URLs
