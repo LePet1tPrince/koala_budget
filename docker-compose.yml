@@ -49,20 +49,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-  vite:
-    build:
-      context: .
-      dockerfile: Dockerfile.vite
-      args:
-        MY_UID: ${MY_UID:-1000}
-        MY_GID: ${MY_GID:-1000}
-    command: npm run dev -- --host
-    volumes:
-      - .:/code
-      - vite_node_modules:/code/node_modules
-    ports:
-      - "5173:5173"
-    restart: unless-stopped
+  # vite:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.vite
+  #     args:
+  #       MY_UID: ${MY_UID:-1000}
+  #       MY_GID: ${MY_GID:-1000}
+  #   command: npm run dev -- --host
+  #   volumes:
+  #     - .:/code
+  #     - vite_node_modules:/code/node_modules
+  #   ports:
+  #     - "5173:5173"
+  #   restart: unless-stopped
   celery:
     build:
       context: .

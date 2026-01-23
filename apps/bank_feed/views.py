@@ -15,7 +15,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import Account, Payee
-from apps.accounts.serializers import AccountSerializer, PayeeSerializer
+from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer, PayeeSerializer
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
@@ -225,7 +225,13 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
         rows.sort(key=lambda r: r["posted_date"], reverse=True)
 
         serializer = BankFeedRowSerializer(rows, many=True)
-        return Response(serializer.data)
+        # Return paginated format expected by generated API client
+        return Response({
+            "count": len(rows),
+            "next": None,
+            "previous": None,
+            "results": serializer.data,
+        })
 
 
 
@@ -238,17 +244,17 @@ def bank_feed_home(request, team_slug):
     Main bank feed page view.
     Displays accounts with bank feeds and bank transactions table.
     """
-    # Get accounts with bank feeds
-    accounts_with_feeds = Account.for_team.filter(has_feed=True).select_related("account_group").order_by("name")
+    # Get accounts with bank feeds (with_balance() avoids N+1 queries)
+    accounts_with_feeds = Account.for_team.filter(has_feed=True).with_balance().select_related("account_group").order_by("name")
 
     # Serialize accounts for React
     accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
 
     # Get all accounts and payees for dropdowns
-    all_accounts = Account.for_team.all().order_by("account_number")
+    all_accounts = Account.for_team.select_related("account_group").order_by("account_number")
     all_payees = Payee.for_team.all().order_by("name")
 
-    all_accounts_data = AccountSerializer(all_accounts, many=True).data
+    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
     all_payees_data = PayeeSerializer(all_payees, many=True).data
 
     # API URLs

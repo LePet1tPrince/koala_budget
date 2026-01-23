@@ -2,7 +2,7 @@ from dateutil.relativedelta import relativedelta
 from django.db import transaction
 
 from apps.accounts.models import Account, AccountGroup, Payee
-from apps.journal.models import JournalEntry, JournalLine
+from apps.bank_feed.models import BankTransaction
 
 
 @transaction.atomic
@@ -56,30 +56,19 @@ def apply_template(team, template, month_start):
         payee_map[name] = payee
 
     # -------------------------
-    # Sample Journal Entries
+    # Sample Bank Transactions
     # -------------------------
-    for _ in range(18): # do the same transactions every month for the last 12 months
+    for _ in range(18):  # do the same transactions every month for the last 18 months
         month_start = month_start - relativedelta(months=1)
-        for entry in template.get("sample_entries", []):
-            je, created = JournalEntry.objects.get_or_create(
+        for txn in template.get("sample_transactions", []):
+            BankTransaction.objects.get_or_create(
                 team=team,
-                entry_date=month_start,
-                description=entry["description"],
+                account=account_map[txn["account"]],
+                posted_date=month_start,
+                amount=txn["amount"],
+                description=txn["description"],
                 defaults={
-                    "payee": payee_map.get(entry.get("payee")),
-                    "status": JournalEntry.STATUS_POSTED,
-                    "source": JournalEntry.SOURCE_MANUAL,
+                    "merchant_name": txn.get("merchant_name"),
+                    "source": BankTransaction.SOURCE_SYSTEM,
                 },
             )
-
-            if not created:
-                continue
-
-            for line in entry["lines"]:
-                JournalLine.objects.create(
-                    team=team,
-                    journal_entry=je,
-                    account=account_map[line["account"]],
-                    dr_amount=line.get("dr", 0),
-                    cr_amount=line.get("cr", 0),
-                )

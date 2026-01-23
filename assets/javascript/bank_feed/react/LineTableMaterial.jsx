@@ -54,7 +54,7 @@ const LineTableMaterial = ({
   });
 
   // Filter state for Feed/Reconciled/Archived toggle
-  const [filterMode, setFilterMode] = useState('feed');
+  const [filterMode, setFilterMode] = useState('to_review');
 
   // Create MUI theme that adapts to existing theme
   const theme = useMemo(() => {
@@ -79,10 +79,11 @@ const LineTableMaterial = ({
     setSnackbar({ ...snackbar, open: false });
   };
 
-  // Format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString();
+  // Format date for display (handles both Date objects and strings)
+  const formatDate = (dateValue) => {
+    if (!dateValue) return '';
+    const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+    return date.toLocaleDateString();
   };
 
   // Create options array for Autocomplete (grouped by account number first letter)
@@ -111,18 +112,19 @@ const LineTableMaterial = ({
 
   // Filter lines by selected date range and filter mode
   const filteredLines = useMemo(() => {
+    if (!Array.isArray(lines)) return [];
     let filtered = lines;
 
     // Apply filter mode (Feed/Reconciled/Archived)
-    if (filterMode === 'feed') {
-      // Feed: not reconciled and not archived
-      filtered = filtered.filter((l) => !l.is_cleared);
-    } else if (filterMode === 'reconciled') {
+    if (filterMode === 'to_review') {
+      // To Review: not reconciled and not archived
+      filtered = filtered.filter((l) => !l.isReconciled && !l.isArchived);
+    } else if (filterMode === 'completed') {
       // Reconciled: reconciled and not archived
-      filtered = filtered.filter((l) => l.is_cleared);
+      filtered = filtered.filter((l) => l.isReconciled && !l.isArchived);
     } else if (filterMode === 'archived') {
       // Archived: not implemented yet, show all for now
-      filtered = filtered;
+      filtered = filtered.filter((l) => l.isArchived);
     }
 
     // Apply date range filter
@@ -132,8 +134,8 @@ const LineTableMaterial = ({
       // make end of day inclusive
       const eInclusive = e ? new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999) : null;
       filtered = filtered.filter((l) => {
-        if (!l.posted_date) return false;
-        const d = new Date(l.posted_date);
+        if (!l.postedDate) return false;
+        const d = l.postedDate instanceof Date ? l.postedDate : new Date(l.postedDate);
         if (s && d < s) return false;
         if (eInclusive && d > eInclusive) return false;
         return true;
@@ -147,10 +149,10 @@ const LineTableMaterial = ({
   const columns = [
     {
       title: gettext('Date'),
-      field: 'posted_date',
+      field: 'postedDate',
       type: 'date',
-      render: (rowData) => formatDate(rowData.posted_date),
-      validate: (rowData) => rowData.posted_date ? true : { isValid: false, helperText: gettext('Date is required') },
+      render: (rowData) => formatDate(rowData.postedDate),
+      validate: (rowData) => rowData.postedDate ? true : { isValid: false, helperText: gettext('Date is required') },
       editable: (rowData) => !isReadOnly(rowData),
     },
     {
@@ -276,7 +278,7 @@ const LineTableMaterial = ({
   // Validate row data
   const validateRowData = (rowData) => {
     // Check required fields
-    if (!rowData.posted_date) {
+    if (!rowData.postedDate) {
       return gettext('Date is required');
     }
     if (!rowData.category) {
@@ -308,7 +310,7 @@ const LineTableMaterial = ({
     try {
       // Prepare data for API - map bank feed format to expected format
       const lineData = {
-        date: newData.posted_date,
+        date: newData.postedDate,
         category: newData.category?.id || newData.category,
         inflow: newData.inflow || '',
         outflow: newData.outflow || '',
@@ -336,7 +338,7 @@ const LineTableMaterial = ({
     try {
       // Prepare data for API
       const lineData = {
-        date: newData.posted_date,
+        date: newData.postedDate,
         category: newData.category?.id || newData.category,
         inflow: newData.inflow || '',
         outflow: newData.outflow || '',
@@ -391,7 +393,7 @@ const LineTableMaterial = ({
             }}
             aria-label="Transaction filter"
           >
-            <ToggleButton value="feed">{gettext('Feed')}</ToggleButton>
+            <ToggleButton value="to_review">{gettext('To Review')}</ToggleButton>
             <ToggleButton value="reconciled">{gettext('Reconciled')}</ToggleButton>
             <ToggleButton value="archived">{gettext('Archived')}</ToggleButton>
           </ToggleButtonGroup>

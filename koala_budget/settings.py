@@ -647,6 +647,7 @@ LOGGING = {
 
 # Populate team account with default data
 BOOTSTRAP_TEAM_ON_CREATE = True
+STRICT_TEAM_CONTEXT = True
 
 # settings.py
 ICON_PICKER_PATH = 'static/images/icons'

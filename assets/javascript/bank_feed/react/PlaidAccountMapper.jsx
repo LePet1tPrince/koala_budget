@@ -1,7 +1,6 @@
 /* globals gettext */
 
 import React, { useState } from 'react';
-import { apiRequest, handleApiError } from '../utils';
 
 /**
  * PlaidAccountMapper - Modal component for mapping Plaid accounts to ledger accounts
@@ -13,10 +12,11 @@ import { apiRequest, handleApiError } from '../utils';
  * - teamSlug: The team slug for API calls
  * - plaidAccounts: Array of newly created Plaid accounts
  * - ledgerAccounts: Array of all available ledger accounts
+ * - plaidClient: The Plaid API client
  * - onComplete: Callback when mapping is complete
  * - onCancel: Callback when user cancels
  */
-const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, onComplete, onCancel }) => {
+const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, plaidClient, onComplete, onCancel }) => {
   const [mappings, setMappings] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -51,14 +51,13 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, onComplet
     try {
       // Update each Plaid account with its mapped ledger account
       const updatePromises = Object.entries(mappings).map(async ([plaidAccountId, ledgerAccountId]) => {
-        const response = await apiRequest(`/a/${teamSlug}/plaid/api/accounts/${plaidAccountId}/`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            account: ledgerAccountId
-          }),
+        return plaidClient.plaidAccountsPartialUpdate({
+          teamSlug: teamSlug,
+          id: parseInt(plaidAccountId, 10),
+          patchedPlaidAccount: {
+            account: parseInt(ledgerAccountId, 10),
+          },
         });
-        await handleApiError(response, gettext('Failed to save account mapping'));
-        return response;
       });
 
       await Promise.all(updatePromises);
@@ -67,7 +66,7 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, onComplet
       onComplete();
     } catch (err) {
       console.error('Error saving mappings:', err);
-      setError(err.message);
+      setError(err.message || gettext('Failed to save account mapping'));
     } finally {
       setSaving(false);
     }

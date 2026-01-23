@@ -55,30 +55,24 @@ PERSONAL_BUDGET_TEMPLATE = {
         "Investment Provider",
     ],
 
-    "sample_entries": [
+    "sample_transactions": [
         {
-            "description": "Paycheque",
-            "payee": "Employer",
-            "lines": [
-                {"account": 1000, "dr": Decimal("3000.00")},
-                {"account": 4000, "cr": Decimal("3000.00")},
-            ],
+            "account": 2000,
+            "amount": -50.00,
+            "description": "Grocery Store",
+            "merchant_name": "Whole Foods",
         },
         {
-            "description": "Monthly Rent",
-            "payee": "Rent / Mortgage",
-            "lines": [
-                {"account": 5000, "dr": Decimal("1500.00")},
-                {"account": 1000, "cr": Decimal("1500.00")},
-            ],
+            "account": 1000,
+            "amount": 1000.00,
+            "description": "Salary Pay",
+            "merchant_name": "Employer",
         },
         {
-            "description": "Groceries",
-            "payee": "Grocery Store",
-            "lines": [
-                {"account": 5200, "dr": Decimal("250.00")},
-                {"account": 2000, "cr": Decimal("250.00")},
-            ],
+            "account": 1000,
+            "amount": -20.00,
+            "description": "Cell Phone",
+            "merchant_name": "Telco",
         },
     ],
 }
