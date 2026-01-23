@@ -1,6 +1,5 @@
 /* globals gettext */
 
-import Cookies from 'js-cookie';
 import React, { useState } from 'react';
 
 import Step1FileUpload from './Step1FileUpload';
@@ -9,22 +8,16 @@ import Step3CategoryMapping from './Step3CategoryMapping';
 import Step4Preview from './Step4Preview';
 
 /**
- * Get CSRF token for fetch requests
- */
-const getCSRFToken = () => Cookies.get('csrftoken');
-
-/**
  * CSVUploadWizard - Multi-step wizard for uploading bank transactions from CSV/Excel
  *
  * Props:
- * - teamSlug: The team slug for API calls
  * - selectedAccount: The bank account to upload transactions to
  * - allAccounts: All available accounts for category mapping
- * - bankFeedClient: The bank feed API client
+ * - uploadApi: Upload API helpers (uploadParse, uploadPreview, uploadConfirm)
  * - onComplete: Callback when import is complete
  * - onCancel: Callback when user cancels
  */
-const CSVUploadWizard = ({ teamSlug, selectedAccount, allAccounts, bankFeedClient, onComplete, onCancel }) => {
+const CSVUploadWizard = ({ selectedAccount, allAccounts, uploadApi, onComplete, onCancel }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState(null);
 
@@ -43,6 +36,7 @@ const CSVUploadWizard = ({ teamSlug, selectedAccount, allAccounts, bankFeedClien
     outflow: null,
   });
   const [amountType, setAmountType] = useState('single'); // 'single' or 'dual'
+  const [hasHeaders, setHasHeaders] = useState(true);
 
   // Step 3 state
   const [categoryMappings, setCategoryMappings] = useState({});
@@ -59,23 +53,7 @@ const CSVUploadWizard = ({ teamSlug, selectedAccount, allAccounts, bankFeedClien
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', uploadedFile);
-
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_parse/`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': getCSRFToken(),
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(gettext('Failed to parse file'));
-      }
-
-      const result = await response.json();
+      const result = await uploadApi.uploadParse(uploadedFile);
 
       if (result.error) {
         throw new Error(result.error);
@@ -92,32 +70,20 @@ const CSVUploadWizard = ({ teamSlug, selectedAccount, allAccounts, bankFeedClien
   /**
    * Handle column mapping (Step 2)
    */
-  const handleColumnMappingComplete = async (mapping, amtType) => {
+  const handleColumnMappingComplete = async (mapping, amtType, fileHasHeaders) => {
     setColumnMapping(mapping);
     setAmountType(amtType);
+    setHasHeaders(fileHasHeaders);
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('account_id', selectedAccount.id);
-      formData.append('column_mapping', JSON.stringify(mapping));
-      formData.append('category_mappings', JSON.stringify([]));
+      const result = await uploadApi.uploadPreview(
+        file,
+        selectedAccount.id,
+        { ...mapping, has_headers: fileHasHeaders },
+        []
+      );
 
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_preview/`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': getCSRFToken(),
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(gettext('Failed to preview transactions'));
-      }
-
-      const result = await response.json();
       setPreviewResult(result);
 
       // If there are unmapped categories, go to step 3, otherwise skip to step 4
@@ -146,26 +112,13 @@ const CSVUploadWizard = ({ teamSlug, selectedAccount, allAccounts, bankFeedClien
         account_id: accountId,
       }));
 
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('account_id', selectedAccount.id);
-      formData.append('column_mapping', JSON.stringify(columnMapping));
-      formData.append('category_mappings', JSON.stringify(categoryMappingsList));
+      const result = await uploadApi.uploadPreview(
+        file,
+        selectedAccount.id,
+        { ...columnMapping, has_headers: hasHeaders },
+        categoryMappingsList
+      );
 
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_preview/`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': getCSRFToken(),
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(gettext('Failed to preview transactions'));
-      }
-
-      const result = await response.json();
       setPreviewResult(result);
       setCurrentStep(4);
     } catch (err) {
@@ -181,25 +134,12 @@ const CSVUploadWizard = ({ teamSlug, selectedAccount, allAccounts, bankFeedClien
     setError(null);
 
     try {
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_confirm/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCSRFToken(),
-        },
-        body: JSON.stringify({
-          account_id: selectedAccount.id,
-          transactions: transactionsToImport,
-          skip_duplicates: skipDuplicates,
-        }),
-        credentials: 'include',
-      });
+      const result = await uploadApi.uploadConfirm(
+        selectedAccount.id,
+        transactionsToImport,
+        skipDuplicates
+      );
 
-      if (!response.ok) {
-        throw new Error(gettext('Failed to import transactions'));
-      }
-
-      const result = await response.json();
       onComplete(result);
     } catch (err) {
       console.error('Import error:', err);

@@ -4,7 +4,7 @@
 import LineApp from './LineApp';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { getBankFeedApiClient, getPlaidApiClient, getJournalApiClient } from '../bank_feed';
+import { getBankFeedApiClient, getPlaidApiClient, getJournalApiClient, getUploadApiHelpers } from '../bank_feed';
 
 // Get data from Django template
 const accounts = JSON.parse(document.getElementById('accounts').textContent);
@@ -16,6 +16,7 @@ const teamSlug = JSON.parse(document.getElementById('team-slug').textContent);
 const bankFeedClient = getBankFeedApiClient(SERVER_URL_BASE);
 const plaidClient = getPlaidApiClient(SERVER_URL_BASE);
 const journalClient = getJournalApiClient(SERVER_URL_BASE);
+const uploadApi = getUploadApiHelpers(teamSlug);
 
 // Mount the React app
 const domContainer = document.querySelector('#line-app');
@@ -29,5 +30,6 @@ root.render(
     bankFeedClient={bankFeedClient}
     plaidClient={plaidClient}
     journalClient={journalClient}
+    uploadApi={uploadApi}
   />
 );

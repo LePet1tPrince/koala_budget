@@ -12,7 +12,7 @@ import { CSVUploadWizard } from './CSVUploadWizard';
  * LineApp - Main application component for managing lines
  * Manages account selection and bank feed operations
  */
-const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, plaidClient, journalClient }) => {
+const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -318,10 +318,9 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
       {/* CSV Upload Wizard Modal */}
       {showUploadWizard && selectedAccount && (
         <CSVUploadWizard
-          teamSlug={teamSlug}
           selectedAccount={selectedAccount}
           allAccounts={allAccounts}
-          bankFeedClient={bankFeedClient}
+          uploadApi={uploadApi}
           onComplete={(result) => {
             setShowUploadWizard(false);
             // Reload lines to show newly imported transactions

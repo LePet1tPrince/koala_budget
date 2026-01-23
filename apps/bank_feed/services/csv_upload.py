@@ -293,7 +293,7 @@ def match_category(category_name: str, team) -> Account | None:
     return account
 
 
-def get_all_rows_from_csv(file: BinaryIO) -> list[list[str]]:
+def get_all_rows_from_csv(file: BinaryIO, has_headers: bool = True) -> list[list[str]]:
     """Read all data rows from a CSV file."""
     content = file.read()
     encoding = detect_encoding(content)
@@ -310,10 +310,12 @@ def get_all_rows_from_csv(file: BinaryIO) -> list[list[str]]:
     if not rows:
         return []
 
-    return rows[1:]  # Skip header row
+    if has_headers:
+        return rows[1:]  # Skip header row
+    return rows  # Return all rows including first row
 
 
-def get_all_rows_from_excel(file: BinaryIO) -> list[list[str]]:
+def get_all_rows_from_excel(file: BinaryIO, has_headers: bool = True) -> list[list[str]]:
     """Read all data rows from an Excel file."""
     workbook = load_workbook(filename=file, read_only=True, data_only=True)
     sheet = workbook.active
@@ -329,7 +331,9 @@ def get_all_rows_from_excel(file: BinaryIO) -> list[list[str]]:
     if not rows:
         return []
 
-    return rows[1:]  # Skip header row
+    if has_headers:
+        return rows[1:]  # Skip header row
+    return rows  # Return all rows including first row
 
 
 def preview_transactions(
@@ -355,6 +359,7 @@ def preview_transactions(
                 "amount": 4,  # for single amount column
                 "inflow": 4,  # for dual amount columns
                 "outflow": 5,  # for dual amount columns
+                "has_headers": True,  # whether first row is headers
             }
         category_mappings: Dict mapping category names to account IDs
         team: The team object
@@ -366,11 +371,12 @@ def preview_transactions(
     from apps.bank_feed.models import BankTransaction
 
     filename_lower = filename.lower()
+    has_headers = column_mapping.get("has_headers", True)
 
     if filename_lower.endswith((".xlsx", ".xls")):
-        rows = get_all_rows_from_excel(file)
+        rows = get_all_rows_from_excel(file, has_headers=has_headers)
     elif filename_lower.endswith(".csv"):
-        rows = get_all_rows_from_csv(file)
+        rows = get_all_rows_from_csv(file, has_headers=has_headers)
     else:
         return PreviewResult(
             transactions=[],
