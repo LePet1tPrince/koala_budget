@@ -27,7 +27,13 @@ from .serializers import (
     BankFeedRowSerializer,
     bank_transaction_to_feed_row,
     journal_line_to_feed_row,
+    UploadParseResponseSerializer,
+    UploadPreviewRequestSerializer,
+    UploadPreviewResponseSerializer,
+    UploadConfirmRequestSerializer,
+    UploadConfirmResponseSerializer,
 )
+from .services.csv_upload import parse_file, preview_transactions, create_transactions
 
 @extend_schema_view(
     list=extend_schema(
@@ -233,6 +239,176 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
             "results": serializer.data,
         })
 
+    @extend_schema(
+        operation_id="bank_feed_upload_parse",
+        tags=["bank-feed"],
+        request={"multipart/form-data": {"type": "object", "properties": {"file": {"type": "string", "format": "binary"}}}},
+        responses={200: UploadParseResponseSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="upload_parse")
+    def upload_parse(self, request, team_slug=None):
+        """
+        Parse an uploaded CSV/Excel file and return headers + sample rows.
+        Used in step 1 of the upload wizard.
+
+        Request: multipart/form-data with 'file' field
+        Response: headers, sample_rows, total_rows
+        """
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "No file provided"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        uploaded_file = request.FILES["file"]
+        result = parse_file(uploaded_file, uploaded_file.name)
+
+        serializer = UploadParseResponseSerializer(result.__dict__)
+        return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="bank_feed_upload_preview",
+        tags=["bank-feed"],
+        request={"multipart/form-data": {"type": "object", "properties": {
+            "file": {"type": "string", "format": "binary"},
+            "account_id": {"type": "integer"},
+            "column_mapping": {"type": "string"},
+            "category_mappings": {"type": "string"},
+        }}},
+        responses={200: UploadPreviewResponseSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="upload_preview")
+    def upload_preview(self, request, team_slug=None):
+        """
+        Apply column mapping to uploaded file and return parsed transactions.
+        Used in step 2-3 of the upload wizard.
+
+        Request: multipart/form-data with file and mapping data
+        Response: parsed transactions, unmapped categories, error count, duplicate count
+        """
+        import json
+
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "No file provided"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        uploaded_file = request.FILES["file"]
+
+        # Parse JSON fields from form data
+        try:
+            account_id = int(request.data.get("account_id"))
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "Invalid account_id"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            column_mapping = json.loads(request.data.get("column_mapping", "{}"))
+        except json.JSONDecodeError:
+            return Response(
+                {"error": "Invalid column_mapping JSON"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            category_mappings_list = json.loads(request.data.get("category_mappings", "[]"))
+            # Convert list of {category_name, account_id} to dict
+            category_mappings = {
+                item["category_name"]: item["account_id"]
+                for item in category_mappings_list
+            }
+        except (json.JSONDecodeError, KeyError):
+            category_mappings = {}
+
+        # Verify account belongs to team
+        try:
+            Account.for_team.get(id=account_id)
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        result = preview_transactions(
+            file=uploaded_file,
+            filename=uploaded_file.name,
+            column_mapping=column_mapping,
+            category_mappings=category_mappings,
+            team=request.team,
+            account_id=account_id,
+        )
+
+        # Convert dataclass objects to dicts for serializer
+        transactions_data = [
+            {
+                "row_number": tx.row_number,
+                "date": tx.date,
+                "description": tx.description,
+                "payee": tx.payee,
+                "category": tx.category,
+                "amount": tx.amount,
+                "error": tx.error,
+                "matched_category_id": tx.matched_category_id,
+                "is_potential_duplicate": tx.is_potential_duplicate,
+            }
+            for tx in result.transactions
+        ]
+
+        response_data = {
+            "transactions": transactions_data,
+            "unmapped_categories": result.unmapped_categories,
+            "error_count": result.error_count,
+            "duplicate_count": result.duplicate_count,
+        }
+
+        serializer = UploadPreviewResponseSerializer(response_data)
+        return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="bank_feed_upload_confirm",
+        tags=["bank-feed"],
+        request=UploadConfirmRequestSerializer,
+        responses={200: UploadConfirmResponseSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="upload_confirm")
+    def upload_confirm(self, request, team_slug=None):
+        """
+        Create BankTransaction records from confirmed transactions.
+        Used in step 4 of the upload wizard.
+
+        Request: account_id, transactions list, skip_duplicates flag
+        Response: created_count, skipped_count, error_count
+        """
+        serializer = UploadConfirmRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        account_id = data["account_id"]
+        transactions = data["transactions"]
+        skip_duplicates = data.get("skip_duplicates", True)
+
+        # Verify account belongs to team
+        try:
+            Account.for_team.get(id=account_id)
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        result = create_transactions(
+            transactions=transactions,
+            team=request.team,
+            account_id=account_id,
+            skip_duplicates=skip_duplicates,
+        )
+
+        response_serializer = UploadConfirmResponseSerializer(result)
+        return Response(response_serializer.data)
 
 
 # # Template Views

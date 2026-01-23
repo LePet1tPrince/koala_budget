@@ -6,6 +6,7 @@ import AccountCard from './AccountCard';
 import AccountGrid from './AccountGrid';
 import LineTableMaterial from './LineTableMaterial';
 import PlaidLinkButton from './PlaidLinkButton';
+import { CSVUploadWizard } from './CSVUploadWizard';
 
 /**
  * LineApp - Main application component for managing lines
@@ -17,6 +18,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showUploadWizard, setShowUploadWizard] = useState(false);
 
   // Load lines when account is selected
   useEffect(() => {
@@ -221,12 +223,14 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
       <section className="app-card">
         <div className="flex justify-between items-center mb-4">
           <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
-          <PlaidLinkButton
-            teamSlug={teamSlug}
-            allAccounts={allAccounts}
-            onSuccess={handlePlaidSuccess}
-            plaidClient={plaidClient}
-          />
+          <div className="flex gap-2">
+            <PlaidLinkButton
+              teamSlug={teamSlug}
+              allAccounts={allAccounts}
+              onSuccess={handlePlaidSuccess}
+              plaidClient={plaidClient}
+            />
+          </div>
         </div>
         {accounts.length === 0 ? (
           <div className="alert alert-warning">
@@ -259,23 +263,33 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
             <h2 className="pg-subtitle">
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing || loading}
-              className="btn btn-outline btn-sm"
-            >
-              {refreshing ? (
-                <>
-                  <span className="loading loading-spinner loading-xs"></span>
-                  {gettext('Refreshing...')}
-                </>
-              ) : (
-                <>
-                  <i className="fa fa-refresh mr-2"></i>
-                  {gettext('Refresh')}
-                </>
-              )}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowUploadWizard(true)}
+                disabled={loading}
+                className="btn btn-outline btn-sm"
+              >
+                <i className="fa fa-upload mr-2"></i>
+                {gettext('Upload CSV/Excel')}
+              </button>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing || loading}
+                className="btn btn-outline btn-sm"
+              >
+                {refreshing ? (
+                  <>
+                    <span className="loading loading-spinner loading-xs"></span>
+                    {gettext('Refreshing...')}
+                  </>
+                ) : (
+                  <>
+                    <i className="fa fa-refresh mr-2"></i>
+                    {gettext('Refresh')}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           {error && (
             <div className="alert alert-error mb-4">
@@ -299,6 +313,22 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
             />
           )}
         </section>
+      )}
+
+      {/* CSV Upload Wizard Modal */}
+      {showUploadWizard && selectedAccount && (
+        <CSVUploadWizard
+          teamSlug={teamSlug}
+          selectedAccount={selectedAccount}
+          allAccounts={allAccounts}
+          bankFeedClient={bankFeedClient}
+          onComplete={(result) => {
+            setShowUploadWizard(false);
+            // Reload lines to show newly imported transactions
+            loadLines();
+          }}
+          onCancel={() => setShowUploadWizard(false)}
+        />
       )}
     </div>
   );
