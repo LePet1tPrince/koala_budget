@@ -125,7 +125,7 @@ const LineTableMaterial = ({
     if (filterMode === 'to_review') {
       // To Review: not reconciled and not archived
       filtered = filtered.filter((l) => !isReconciled(l) && !isArchived(l));
-    } else if (filterMode === 'completed') {
+    } else if (filterMode === 'reconciled') {
       // Reconciled: reconciled and not archived
       filtered = filtered.filter((l) => isReconciled(l) && !isArchived(l));
     } else if (filterMode === 'archived') {

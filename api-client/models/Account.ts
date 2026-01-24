@@ -63,12 +63,6 @@ export interface Account {
     hasFeed?: boolean;
     /**
      * 
-     * @type {Array<number>}
-     * @memberof Account
-     */
-    readonly journalLines: Array<number>;
-    /**
-     * 
      * @type {string}
      * @memberof Account
      */
@@ -109,7 +103,6 @@ export function instanceOfAccount(value: object): value is Account {
     if (!('accountGroup' in value) || value['accountGroup'] === undefined) return false;
     if (!('accountGroupName' in value) || value['accountGroupName'] === undefined) return false;
     if (!('accountType' in value) || value['accountType'] === undefined) return false;
-    if (!('journalLines' in value) || value['journalLines'] === undefined) return false;
     if (!('balance' in value) || value['balance'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
@@ -134,7 +127,6 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
         'accountGroupName': json['account_group_name'],
         'accountType': json['account_type'],
         'hasFeed': json['has_feed'] == null ? undefined : json['has_feed'],
-        'journalLines': json['journal_lines'],
         'balance': json['balance'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
@@ -147,7 +139,7 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
       return AccountToJSONTyped(json, false);
   }
 
-  export function AccountToJSONTyped(value?: Omit<Account, 'id'|'account_group_name'|'account_type'|'journal_lines'|'balance'|'created_at'|'updated_at'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function AccountToJSONTyped(value?: Omit<Account, 'id'|'account_group_name'|'account_type'|'balance'|'created_at'|'updated_at'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

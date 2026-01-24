@@ -16,17 +16,80 @@
 import * as runtime from '../runtime';
 import type {
   BankFeedRow,
+  BatchCategorizeRequest,
+  BatchIds,
+  BatchMoveAccountRequest,
+  BatchSetDescriptionRequest,
+  BatchSetPayeeRequest,
   CategorizeTransactionsRequest,
   PaginatedBankFeedRowList,
+  UploadConfirmRequest,
+  UploadConfirmResponse,
+  UploadParseResponse,
+  UploadPreviewResponse,
 } from '../models/index';
 import {
     BankFeedRowFromJSON,
     BankFeedRowToJSON,
+    BatchCategorizeRequestFromJSON,
+    BatchCategorizeRequestToJSON,
+    BatchIdsFromJSON,
+    BatchIdsToJSON,
+    BatchMoveAccountRequestFromJSON,
+    BatchMoveAccountRequestToJSON,
+    BatchSetDescriptionRequestFromJSON,
+    BatchSetDescriptionRequestToJSON,
+    BatchSetPayeeRequestFromJSON,
+    BatchSetPayeeRequestToJSON,
     CategorizeTransactionsRequestFromJSON,
     CategorizeTransactionsRequestToJSON,
     PaginatedBankFeedRowListFromJSON,
     PaginatedBankFeedRowListToJSON,
+    UploadConfirmRequestFromJSON,
+    UploadConfirmRequestToJSON,
+    UploadConfirmResponseFromJSON,
+    UploadConfirmResponseToJSON,
+    UploadParseResponseFromJSON,
+    UploadParseResponseToJSON,
+    UploadPreviewResponseFromJSON,
+    UploadPreviewResponseToJSON,
 } from '../models/index';
+
+export interface BankFeedBatchArchiveRequest {
+    teamSlug: string;
+    batchIds: BatchIds;
+}
+
+export interface BankFeedBatchCategorizeRequest {
+    teamSlug: string;
+    batchCategorizeRequest: BatchCategorizeRequest;
+}
+
+export interface BankFeedBatchDuplicateRequest {
+    teamSlug: string;
+    batchIds: BatchIds;
+    page?: number;
+}
+
+export interface BankFeedBatchMoveAccountRequest {
+    teamSlug: string;
+    batchMoveAccountRequest: BatchMoveAccountRequest;
+}
+
+export interface BankFeedBatchSetDescriptionRequest {
+    teamSlug: string;
+    batchSetDescriptionRequest: BatchSetDescriptionRequest;
+}
+
+export interface BankFeedBatchSetPayeeRequest {
+    teamSlug: string;
+    batchSetPayeeRequest: BatchSetPayeeRequest;
+}
+
+export interface BankFeedBatchUnarchiveRequest {
+    teamSlug: string;
+    batchIds: BatchIds;
+}
 
 export interface BankFeedFeedListRequest {
     teamSlug: string;
@@ -44,10 +107,376 @@ export interface BankFeedTransactionsCategorizeRequest {
     categorizeTransactionsRequest: CategorizeTransactionsRequest;
 }
 
+export interface BankFeedUploadConfirmRequest {
+    teamSlug: string;
+    uploadConfirmRequest: UploadConfirmRequest;
+}
+
+export interface BankFeedUploadParseRequest {
+    teamSlug: string;
+    file?: Blob;
+}
+
+export interface BankFeedUploadPreviewRequest {
+    teamSlug: string;
+    file?: Blob;
+    accountId?: number;
+    columnMapping?: string;
+    categoryMappings?: string;
+}
+
 /**
  * 
  */
 export class BankFeedApi extends runtime.BaseAPI {
+
+    /**
+     * Batch archive multiple bank transactions. Sets is_archived=True on BankTransaction.
+     */
+    async bankFeedBatchArchiveRaw(requestParameters: BankFeedBatchArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchArchive().'
+            );
+        }
+
+        if (requestParameters['batchIds'] == null) {
+            throw new runtime.RequiredError(
+                'batchIds',
+                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchArchive().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_archive/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchIdsToJSON(requestParameters['batchIds']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Batch archive multiple bank transactions. Sets is_archived=True on BankTransaction.
+     */
+    async bankFeedBatchArchive(requestParameters: BankFeedBatchArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchArchiveRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Batch categorize multiple bank transactions. Creates or updates journal entries for each transaction.
+     */
+    async bankFeedBatchCategorizeRaw(requestParameters: BankFeedBatchCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchCategorize().'
+            );
+        }
+
+        if (requestParameters['batchCategorizeRequest'] == null) {
+            throw new runtime.RequiredError(
+                'batchCategorizeRequest',
+                'Required parameter "batchCategorizeRequest" was null or undefined when calling bankFeedBatchCategorize().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_categorize/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchCategorizeRequestToJSON(requestParameters['batchCategorizeRequest']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Batch categorize multiple bank transactions. Creates or updates journal entries for each transaction.
+     */
+    async bankFeedBatchCategorize(requestParameters: BankFeedBatchCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchCategorizeRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries.
+     */
+    async bankFeedBatchDuplicateRaw(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchDuplicate().'
+            );
+        }
+
+        if (requestParameters['batchIds'] == null) {
+            throw new runtime.RequiredError(
+                'batchIds',
+                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchDuplicate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_duplicate/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchIdsToJSON(requestParameters['batchIds']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedBankFeedRowListFromJSON(jsonValue));
+    }
+
+    /**
+     * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries.
+     */
+    async bankFeedBatchDuplicate(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedBankFeedRowList> {
+        const response = await this.bankFeedBatchDuplicateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Batch move transactions to a different bank account. Updates the account FK on BankTransaction and related journal entries.
+     */
+    async bankFeedBatchMoveAccountRaw(requestParameters: BankFeedBatchMoveAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchMoveAccount().'
+            );
+        }
+
+        if (requestParameters['batchMoveAccountRequest'] == null) {
+            throw new runtime.RequiredError(
+                'batchMoveAccountRequest',
+                'Required parameter "batchMoveAccountRequest" was null or undefined when calling bankFeedBatchMoveAccount().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_move_account/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchMoveAccountRequestToJSON(requestParameters['batchMoveAccountRequest']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Batch move transactions to a different bank account. Updates the account FK on BankTransaction and related journal entries.
+     */
+    async bankFeedBatchMoveAccount(requestParameters: BankFeedBatchMoveAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchMoveAccountRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Batch set description on multiple transactions. Updates description on BankTransaction and linked JournalEntry.
+     */
+    async bankFeedBatchSetDescriptionRaw(requestParameters: BankFeedBatchSetDescriptionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchSetDescription().'
+            );
+        }
+
+        if (requestParameters['batchSetDescriptionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'batchSetDescriptionRequest',
+                'Required parameter "batchSetDescriptionRequest" was null or undefined when calling bankFeedBatchSetDescription().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_set_description/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchSetDescriptionRequestToJSON(requestParameters['batchSetDescriptionRequest']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Batch set description on multiple transactions. Updates description on BankTransaction and linked JournalEntry.
+     */
+    async bankFeedBatchSetDescription(requestParameters: BankFeedBatchSetDescriptionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchSetDescriptionRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Batch set payee/merchant name on multiple transactions. Updates merchant_name on BankTransaction and payee on linked JournalEntry.
+     */
+    async bankFeedBatchSetPayeeRaw(requestParameters: BankFeedBatchSetPayeeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchSetPayee().'
+            );
+        }
+
+        if (requestParameters['batchSetPayeeRequest'] == null) {
+            throw new runtime.RequiredError(
+                'batchSetPayeeRequest',
+                'Required parameter "batchSetPayeeRequest" was null or undefined when calling bankFeedBatchSetPayee().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_set_payee/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchSetPayeeRequestToJSON(requestParameters['batchSetPayeeRequest']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Batch set payee/merchant name on multiple transactions. Updates merchant_name on BankTransaction and payee on linked JournalEntry.
+     */
+    async bankFeedBatchSetPayee(requestParameters: BankFeedBatchSetPayeeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchSetPayeeRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Batch unarchive multiple bank transactions. Sets is_archived=False on BankTransaction.
+     */
+    async bankFeedBatchUnarchiveRaw(requestParameters: BankFeedBatchUnarchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchUnarchive().'
+            );
+        }
+
+        if (requestParameters['batchIds'] == null) {
+            throw new runtime.RequiredError(
+                'batchIds',
+                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchUnarchive().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_unarchive/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchIdsToJSON(requestParameters['batchIds']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Batch unarchive multiple bank transactions. Sets is_archived=False on BankTransaction.
+     */
+    async bankFeedBatchUnarchive(requestParameters: BankFeedBatchUnarchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchUnarchiveRaw(requestParameters, initOverrides);
+    }
 
     /**
      * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional)
@@ -191,6 +620,190 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedTransactionsCategorize(requestParameters: BankFeedTransactionsCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedTransactionsCategorizeRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Create BankTransaction records from confirmed transactions. Used in step 4 of the upload wizard.  Request: account_id, transactions list, skip_duplicates flag Response: created_count, skipped_count, error_count
+     */
+    async bankFeedUploadConfirmRaw(requestParameters: BankFeedUploadConfirmRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadConfirmResponse>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedUploadConfirm().'
+            );
+        }
+
+        if (requestParameters['uploadConfirmRequest'] == null) {
+            throw new runtime.RequiredError(
+                'uploadConfirmRequest',
+                'Required parameter "uploadConfirmRequest" was null or undefined when calling bankFeedUploadConfirm().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/upload_confirm/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: UploadConfirmRequestToJSON(requestParameters['uploadConfirmRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadConfirmResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Create BankTransaction records from confirmed transactions. Used in step 4 of the upload wizard.  Request: account_id, transactions list, skip_duplicates flag Response: created_count, skipped_count, error_count
+     */
+    async bankFeedUploadConfirm(requestParameters: BankFeedUploadConfirmRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadConfirmResponse> {
+        const response = await this.bankFeedUploadConfirmRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Parse an uploaded CSV/Excel file and return headers + sample rows. Used in step 1 of the upload wizard.  Request: multipart/form-data with \'file\' field Response: headers, sample_rows, total_rows
+     */
+    async bankFeedUploadParseRaw(requestParameters: BankFeedUploadParseRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadParseResponse>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedUploadParse().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const consumes: runtime.Consume[] = [
+            { contentType: 'multipart/form-data' },
+        ];
+        // @ts-ignore: canConsumeForm may be unused
+        const canConsumeForm = runtime.canConsumeForm(consumes);
+
+        let formParams: { append(param: string, value: any): any };
+        let useForm = false;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        if (useForm) {
+            formParams = new FormData();
+        } else {
+            formParams = new URLSearchParams();
+        }
+
+        if (requestParameters['file'] != null) {
+            formParams.append('file', requestParameters['file'] as any);
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/upload_parse/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: formParams,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadParseResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Parse an uploaded CSV/Excel file and return headers + sample rows. Used in step 1 of the upload wizard.  Request: multipart/form-data with \'file\' field Response: headers, sample_rows, total_rows
+     */
+    async bankFeedUploadParse(requestParameters: BankFeedUploadParseRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadParseResponse> {
+        const response = await this.bankFeedUploadParseRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Apply column mapping to uploaded file and return parsed transactions. Used in step 2-3 of the upload wizard.  Request: multipart/form-data with file and mapping data Response: parsed transactions, unmapped categories, error count, duplicate count
+     */
+    async bankFeedUploadPreviewRaw(requestParameters: BankFeedUploadPreviewRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadPreviewResponse>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedUploadPreview().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const consumes: runtime.Consume[] = [
+            { contentType: 'multipart/form-data' },
+        ];
+        // @ts-ignore: canConsumeForm may be unused
+        const canConsumeForm = runtime.canConsumeForm(consumes);
+
+        let formParams: { append(param: string, value: any): any };
+        let useForm = false;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        if (useForm) {
+            formParams = new FormData();
+        } else {
+            formParams = new URLSearchParams();
+        }
+
+        if (requestParameters['file'] != null) {
+            formParams.append('file', requestParameters['file'] as any);
+        }
+
+        if (requestParameters['accountId'] != null) {
+            formParams.append('account_id', requestParameters['accountId'] as any);
+        }
+
+        if (requestParameters['columnMapping'] != null) {
+            formParams.append('column_mapping', requestParameters['columnMapping'] as any);
+        }
+
+        if (requestParameters['categoryMappings'] != null) {
+            formParams.append('category_mappings', requestParameters['categoryMappings'] as any);
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/upload_preview/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: formParams,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadPreviewResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Apply column mapping to uploaded file and return parsed transactions. Used in step 2-3 of the upload wizard.  Request: multipart/form-data with file and mapping data Response: parsed transactions, unmapped categories, error count, duplicate count
+     */
+    async bankFeedUploadPreview(requestParameters: BankFeedUploadPreviewRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadPreviewResponse> {
+        const response = await this.bankFeedUploadPreviewRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
 }
