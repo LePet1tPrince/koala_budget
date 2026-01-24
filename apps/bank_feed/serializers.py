@@ -86,6 +86,42 @@ class CategorizeTransactionsRequestSerializer(serializers.Serializer):
     category_id = serializers.IntegerField(help_text="ID of the category account")
 
 
+# Batch Operation Serializers
+
+
+class BatchIdsSerializer(serializers.Serializer):
+    """Base serializer for batch operations with transaction IDs."""
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        help_text="List of BankTransaction IDs to operate on",
+    )
+
+
+class BatchCategorizeRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch categorize request."""
+
+    category_id = serializers.IntegerField(help_text="ID of the category account")
+
+
+class BatchMoveAccountRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch move account request."""
+
+    account_id = serializers.IntegerField(help_text="ID of the target bank account")
+
+
+class BatchSetPayeeRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch set payee request."""
+
+    payee = serializers.CharField(max_length=255, help_text="Payee/merchant name")
+
+
+class BatchSetDescriptionRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch set description request."""
+
+    description = serializers.CharField(max_length=255, help_text="Transaction description")
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.
@@ -128,6 +164,13 @@ class BankFeedRowSerializer(serializers.Serializer):
 
     is_pending = serializers.BooleanField(help_text="Whether transaction is pending")
     is_cleared = serializers.BooleanField(help_text="Whether transaction is cleared")
+    is_archived = serializers.BooleanField(help_text="Whether transaction is archived")
+    is_reconciled = serializers.BooleanField(help_text="Whether transaction is reconciled")
+
+    payee = serializers.CharField(
+        allow_null=True,
+        help_text="Payee name (maps to merchant_name)",
+    )
 
     payment_channel = serializers.CharField(
         allow_null=True,
@@ -394,6 +437,9 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "outflow": outflow,
         "is_pending": is_pending,
         "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
+        "is_archived": tx.is_archived,
+        "is_reconciled": bool(tx.journal_entry),  # If categorized, consider it reconciled
+        "payee": tx.merchant_name,  # Map merchant_name to payee
         "payment_channel": payment_channel,
         "confidence": "manual" if tx.journal_entry else category_confidence,
         "journal_line_id": None,

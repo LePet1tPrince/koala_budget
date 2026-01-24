@@ -100,3 +100,39 @@ export function getUploadApiHelpers(teamSlug) {
     },
   };
 }
+
+/**
+ * Batch operations API helpers for bulk transaction operations.
+ * Uses fetch with JSON body for batch endpoints.
+ */
+export function getBatchOperationsApi(teamSlug) {
+  const headers = getApiHeaders();
+  const baseUrl = `/a/${teamSlug}/bankfeed/api/feed`;
+
+  const postJson = async (endpoint, body) => {
+    const response = await fetch(`${baseUrl}/${endpoint}/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': headers['X-CSRFToken'],
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Operation failed');
+    }
+    return response.status === 204 ? null : response.json();
+  };
+
+  return {
+    batchCategorize: (ids, categoryId) => postJson('batch_categorize', { ids, category_id: categoryId }),
+    batchMoveAccount: (ids, accountId) => postJson('batch_move_account', { ids, account_id: accountId }),
+    batchSetPayee: (ids, payee) => postJson('batch_set_payee', { ids, payee }),
+    batchSetDescription: (ids, description) => postJson('batch_set_description', { ids, description }),
+    batchArchive: (ids) => postJson('batch_archive', { ids }),
+    batchUnarchive: (ids) => postJson('batch_unarchive', { ids }),
+    batchDuplicate: (ids) => postJson('batch_duplicate', { ids }),
+  };
+}

@@ -32,6 +32,11 @@ from .serializers import (
     UploadPreviewResponseSerializer,
     UploadConfirmRequestSerializer,
     UploadConfirmResponseSerializer,
+    BatchIdsSerializer,
+    BatchCategorizeRequestSerializer,
+    BatchMoveAccountRequestSerializer,
+    BatchSetPayeeRequestSerializer,
+    BatchSetDescriptionRequestSerializer,
 )
 from .services.csv_upload import parse_file, preview_transactions, create_transactions
 
@@ -408,6 +413,296 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         response_serializer = UploadConfirmResponseSerializer(result)
+        return Response(response_serializer.data)
+
+    # Batch Operations
+
+    @extend_schema(
+        operation_id="bank_feed_batch_categorize",
+        tags=["bank-feed"],
+        request=BatchCategorizeRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_categorize")
+    def batch_categorize(self, request, team_slug=None):
+        """
+        Batch categorize multiple bank transactions.
+        Creates or updates journal entries for each transaction.
+        """
+        serializer = BatchCategorizeRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+        category_id = serializer.validated_data["category_id"]
+
+        # Verify category account exists and belongs to team
+        try:
+            category_account = Account.for_team.get(id=category_id)
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Category account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("account", "journal_entry")
+
+        for tx in transactions:
+            if tx.journal_entry:
+                # Update existing journal entry's category line
+                self._update_journal_category(tx, category_account)
+            else:
+                # Create new journal entry
+                self._create_journal_from_bank_transaction(
+                    transaction_id=tx.id,
+                    category_account=category_account,
+                    team=request.team,
+                )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @transaction.atomic
+    def _update_journal_category(self, bank_tx, new_category_account):
+        """Update the category line of an existing journal entry."""
+        journal_entry = bank_tx.journal_entry
+        # Find the category line (the one that's not the bank account)
+        for line in journal_entry.lines.all():
+            if line.account != bank_tx.account:
+                line.account = new_category_account
+                line.save()
+                break
+
+    @extend_schema(
+        operation_id="bank_feed_batch_move_account",
+        tags=["bank-feed"],
+        request=BatchMoveAccountRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_move_account")
+    def batch_move_account(self, request, team_slug=None):
+        """
+        Batch move transactions to a different bank account.
+        Updates the account FK on BankTransaction and related journal entries.
+        """
+        serializer = BatchMoveAccountRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+        account_id = serializer.validated_data["account_id"]
+
+        # Verify target account exists, belongs to team, and has_feed=True
+        try:
+            target_account = Account.for_team.get(id=account_id)
+            if not target_account.has_feed:
+                return Response(
+                    {"error": "Target account must have bank feed enabled"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Target account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("account", "journal_entry")
+
+        for tx in transactions:
+            old_account = tx.account
+            tx.account = target_account
+            tx.save()
+
+            # Update journal entry if categorized
+            if tx.journal_entry:
+                for line in tx.journal_entry.lines.all():
+                    if line.account == old_account:
+                        line.account = target_account
+                        line.save()
+                        break
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="bank_feed_batch_set_payee",
+        tags=["bank-feed"],
+        request=BatchSetPayeeRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_set_payee")
+    def batch_set_payee(self, request, team_slug=None):
+        """
+        Batch set payee/merchant name on multiple transactions.
+        Updates merchant_name on BankTransaction and payee on linked JournalEntry.
+        """
+        serializer = BatchSetPayeeRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+        payee_name = serializer.validated_data["payee"]
+
+        # Get or create payee
+        payee, _ = Payee.objects.get_or_create(
+            team=request.team,
+            name=payee_name,
+        )
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("journal_entry")
+
+        for tx in transactions:
+            tx.merchant_name = payee_name
+            tx.save()
+
+            # Update journal entry payee if categorized
+            if tx.journal_entry:
+                tx.journal_entry.payee = payee
+                tx.journal_entry.save()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="bank_feed_batch_set_description",
+        tags=["bank-feed"],
+        request=BatchSetDescriptionRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_set_description")
+    def batch_set_description(self, request, team_slug=None):
+        """
+        Batch set description on multiple transactions.
+        Updates description on BankTransaction and linked JournalEntry.
+        """
+        serializer = BatchSetDescriptionRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+        description = serializer.validated_data["description"]
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("journal_entry")
+
+        for tx in transactions:
+            tx.description = description
+            tx.save()
+
+            # Update journal entry description if categorized
+            if tx.journal_entry:
+                tx.journal_entry.description = description
+                tx.journal_entry.save()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="bank_feed_batch_archive",
+        tags=["bank-feed"],
+        request=BatchIdsSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_archive")
+    def batch_archive(self, request, team_slug=None):
+        """
+        Batch archive multiple bank transactions.
+        Sets is_archived=True on BankTransaction.
+        """
+        serializer = BatchIdsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+
+        # Update transactions that belong to this team
+        BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).update(is_archived=True)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="bank_feed_batch_unarchive",
+        tags=["bank-feed"],
+        request=BatchIdsSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_unarchive")
+    def batch_unarchive(self, request, team_slug=None):
+        """
+        Batch unarchive multiple bank transactions.
+        Sets is_archived=False on BankTransaction.
+        """
+        serializer = BatchIdsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+
+        # Update transactions that belong to this team
+        BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).update(is_archived=False)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="bank_feed_batch_duplicate",
+        tags=["bank-feed"],
+        request=BatchIdsSerializer,
+        responses={200: BankFeedRowSerializer(many=True)},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_duplicate")
+    def batch_duplicate(self, request, team_slug=None):
+        """
+        Batch duplicate multiple bank transactions.
+        Creates new BankTransaction copies without journal entries.
+        """
+        serializer = BatchIdsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("account")
+
+        created_transactions = []
+        for tx in transactions:
+            # Create a duplicate with no journal entry
+            new_tx = BankTransaction.objects.create(
+                team=request.team,
+                account=tx.account,
+                amount=tx.amount,
+                posted_date=tx.posted_date,
+                description=tx.description,
+                merchant_name=tx.merchant_name,
+                source=tx.source,
+                raw={"duplicated_from": tx.id},
+                journal_entry=None,
+            )
+            created_transactions.append(new_tx)
+
+        # Return the created transactions as feed rows
+        rows = [bank_transaction_to_feed_row(tx) for tx in created_transactions]
+        response_serializer = BankFeedRowSerializer(rows, many=True)
         return Response(response_serializer.data)
 
 
