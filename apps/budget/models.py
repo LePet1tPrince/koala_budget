@@ -36,3 +36,5 @@ class Budget(BaseTeamModel):
 
     def __str__(self):
         return f"{self.month.strftime('%Y-%m')} - {self.category.name} - ${self.budget_amount}"
+
+class Goal(BaseTeamModel):

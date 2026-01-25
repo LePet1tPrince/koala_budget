@@ -14,6 +14,9 @@ from .services import BudgetService
 
 @login_and_team_required
 def budget_month_view(request, team_slug):
+    from collections import defaultdict
+    from decimal import Decimal
+
     month_param = request.GET.get("month")
     if month_param:
         month = parse_date(month_param)
@@ -22,29 +25,58 @@ def budget_month_view(request, team_slug):
 
     month = month.replace(day=1)
 
+    if request.method == "POST":
+        budget_id = request.POST.get("budget_id")
+        budget = Budget.objects.get(id=budget_id, team=request.team)
+
+        form = BudgetAmountForm(request.POST, instance=budget)
+        if form.is_valid():
+            form.save()
+            return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
+
     service = BudgetService(request.team)
 
-    categories = Account.for_team.filter(
+    categories = list(Account.for_team.filter(
         account_group__account_type__in=("expense", "income"),
-    ).select_related("account_group").order_by("account_group__name", "account_number")
+    ).select_related("account_group").order_by("account_group__name", "account_number"))
+
+    # Bulk fetch existing budgets for this month
+    existing_budgets = {
+        b.category_id: b
+        for b in Budget.objects.filter(team=request.team, month=month)
+    }
+
+    # Bulk create missing budgets
+    missing_budgets = []
+    for category in categories:
+        if category.pk not in existing_budgets:
+            missing_budgets.append(Budget(
+                team=request.team,
+                category=category,
+                month=month,
+                budget_amount=0,
+            ))
+
+    if missing_budgets:
+        Budget.objects.bulk_create(missing_budgets, ignore_conflicts=True)
+        # Re-fetch to get all budgets including newly created ones
+        existing_budgets = {
+            b.category_id: b
+            for b in Budget.objects.filter(team=request.team, month=month)
+        }
+
+    # Bulk fetch actuals and available amounts
+    actuals_map = service.get_actuals_by_category(month)
+    available_map = service.get_available_by_category(month, categories)
 
     # Group categories by account_group
-    from collections import defaultdict
-    from decimal import Decimal
-
     grouped_data = defaultdict(lambda: {"rows": [], "subtotals": {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}})
 
     for category in categories:
-        budget, _ = Budget.objects.get_or_create(
-            team=request.team,
-            category=category,
-            month=month,
-            defaults={"budget_amount": 0},
-        )
-
-        budgeted = service.budgeted(category, month)
-        actual = service.actual(category, month)
-        available = service.available(category, month)
+        budget = existing_budgets.get(category.pk)
+        budgeted = budget.budget_amount if budget else Decimal("0")
+        actual = actuals_map.get(category.pk, Decimal("0"))
+        available = available_map.get(category.pk, Decimal("0"))
 
         group_name = category.account_group.name
 
@@ -70,15 +102,6 @@ def budget_month_view(request, team_slug):
         "actual": sum(data["subtotals"]["actual"] for _, data in groups),
         "available": sum(data["subtotals"]["available"] for _, data in groups),
     }
-
-    if request.method == "POST":
-        budget_id = request.POST.get("budget_id")
-        budget = Budget.objects.get(id=budget_id, team=request.team)
-
-        form = BudgetAmountForm(request.POST, instance=budget)
-        if form.is_valid():
-            form.save()
-            return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
 
     return render(
         request,
