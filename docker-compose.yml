@@ -70,7 +70,7 @@ services:
       args:
         MY_UID: ${MY_UID:-1000}
         MY_GID: ${MY_GID:-1000}
-    command: celery -A koala_budget worker -l INFO --beat --pool=solo
+    command: celery -A koala_budget worker -l INFO --beat --pool=solo -E
     volumes:
       - .:/code
     environment:
@@ -98,15 +98,27 @@ services:
   #     - 5174:5174
 
   flower:
-    image: mher/flower
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: celery -A koala_budget flower --broker=redis://redis:6379
+    volumes:
+      - .:/code
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379
-    command: celery flower
+      PYTHONUNBUFFERED: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      DJANGO_SETTINGS_MODULE: 'koala_budget.settings'
+    env_file:
+      - ./.env
     ports:
       - 5555:5555
     depends_on:
-      - redis
-      - celery
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      celery:
+        condition: service_started
 
 volumes:
   postgres_data:

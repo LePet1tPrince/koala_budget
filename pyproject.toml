@@ -81,6 +81,7 @@ dependencies = [
 dev = [
     "channels[daphne]",
     "django-debug-toolbar",
+    "flower",
     "pre-commit",
     "ruff>=0.13.1",
 ]
