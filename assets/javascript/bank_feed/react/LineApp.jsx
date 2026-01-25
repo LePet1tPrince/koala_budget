@@ -1,22 +1,50 @@
 /* globals gettext */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { Alert, Snackbar } from '@mui/material';
 
 import AccountCard from './AccountCard';
 import AccountGrid from './AccountGrid';
 import LineTableMaterial from './LineTableMaterial';
 import PlaidLinkButton from './PlaidLinkButton';
+import { CSVUploadWizard } from './CSVUploadWizard';
+import BatchActionBar from './BatchActionBar';
+import { getBatchOperationsApi } from '../bank_feed';
 
 /**
  * LineApp - Main application component for managing lines
  * Manages account selection and bank feed operations
  */
-const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, plaidClient, journalClient }) => {
+const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showUploadWizard, setShowUploadWizard] = useState(false);
+
+  // Batch selection state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Snackbar state for batch operations
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
+
+  // Batch operations API
+  const batchApi = useMemo(() => getBatchOperationsApi(teamSlug), [teamSlug]);
+
+  // Show snackbar helper
+  const showSnackbar = useCallback((message, severity = 'info') => {
+    setSnackbar({ open: true, message, severity });
+  }, []);
+
+  // Close snackbar
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
 
   // Load lines when account is selected
   useEffect(() => {
@@ -215,18 +243,157 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
     }
   };
 
+  // Batch operation handlers
+
+  /**
+   * Batch categorize selected transactions
+   */
+  const handleBatchCategorize = async (categoryId) => {
+    try {
+      await batchApi.batchCategorize([...selectedIds], categoryId);
+      setSelectedIds(new Set());
+      await loadLines();
+      showSnackbar(gettext('Transactions categorized successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch categorize:', err);
+      showSnackbar(err.message || gettext('Failed to categorize transactions'), 'error');
+    }
+  };
+
+  /**
+   * Batch move selected transactions to another account
+   */
+  const handleBatchMoveAccount = async (accountId) => {
+    try {
+      await batchApi.batchMoveAccount([...selectedIds], accountId);
+      setSelectedIds(new Set());
+      await loadLines();
+      showSnackbar(gettext('Transactions moved successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch move account:', err);
+      showSnackbar(err.message || gettext('Failed to move transactions'), 'error');
+    }
+  };
+
+  /**
+   * Batch set payee on selected transactions
+   */
+  const handleBatchSetPayee = async (payee) => {
+    try {
+      await batchApi.batchSetPayee([...selectedIds], payee);
+      setSelectedIds(new Set());
+      await loadLines();
+      showSnackbar(gettext('Payee updated successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch set payee:', err);
+      showSnackbar(err.message || gettext('Failed to update payee'), 'error');
+    }
+  };
+
+  /**
+   * Batch set description on selected transactions
+   */
+  const handleBatchSetDescription = async (description) => {
+    try {
+      await batchApi.batchSetDescription([...selectedIds], description);
+      setSelectedIds(new Set());
+      await loadLines();
+      showSnackbar(gettext('Description updated successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch set description:', err);
+      showSnackbar(err.message || gettext('Failed to update description'), 'error');
+    }
+  };
+
+  /**
+   * Batch archive selected transactions
+   */
+  const handleBatchArchive = async () => {
+    try {
+      await batchApi.batchArchive([...selectedIds]);
+      setSelectedIds(new Set());
+      await loadLines();
+      showSnackbar(gettext('Transactions archived successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch archive:', err);
+      showSnackbar(err.message || gettext('Failed to archive transactions'), 'error');
+    }
+  };
+
+  /**
+   * Batch unarchive selected transactions
+   */
+  const handleBatchUnarchive = async () => {
+    try {
+      await batchApi.batchUnarchive([...selectedIds]);
+      setSelectedIds(new Set());
+      await loadLines();
+      showSnackbar(gettext('Transactions unarchived successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch unarchive:', err);
+      showSnackbar(err.message || gettext('Failed to unarchive transactions'), 'error');
+    }
+  };
+
+  /**
+   * Batch duplicate selected transactions
+   */
+  const handleBatchDuplicate = async () => {
+    try {
+      await batchApi.batchDuplicate([...selectedIds]);
+      setSelectedIds(new Set());
+      await loadLines();
+      showSnackbar(gettext('Transactions duplicated successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch duplicate:', err);
+      showSnackbar(err.message || gettext('Failed to duplicate transactions'), 'error');
+    }
+  };
+
+  /**
+   * Handle selection change from table
+   */
+  const handleSelectionChange = (newSelectedIds) => {
+    setSelectedIds(newSelectedIds);
+  };
+
+  /**
+   * Get selected rows data
+   */
+  const selectedRows = useMemo(() => {
+    return lines.filter(l => selectedIds.has(l.id));
+  }, [lines, selectedIds]);
+
+  /**
+   * Determine which archive/unarchive button to show based on selection
+   */
+  // Handle both camelCase (from generated API client) and snake_case (raw API)
+  const isArchived = (r) => r.isArchived ?? r.is_archived ?? false;
+
+  const showArchiveButton = useMemo(() => {
+    // Show archive if any selected row is not archived
+    return selectedRows.some(r => !isArchived(r));
+  }, [selectedRows]);
+
+  const showUnarchiveButton = useMemo(() => {
+    // Show unarchive if any selected row is archived
+    return selectedRows.some(r => isArchived(r));
+  }, [selectedRows]);
+
   return (
     <div className="space-y-6">
       {/* Account Selection Cards */}
       <section className="app-card">
         <div className="flex justify-between items-center mb-4">
           <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
-          <PlaidLinkButton
-            teamSlug={teamSlug}
-            allAccounts={allAccounts}
-            onSuccess={handlePlaidSuccess}
-            plaidClient={plaidClient}
-          />
+          <div className="flex gap-2">
+            <PlaidLinkButton
+              teamSlug={teamSlug}
+              allAccounts={allAccounts}
+              onSuccess={handlePlaidSuccess}
+              plaidClient={plaidClient}
+            />
+          </div>
         </div>
         {accounts.length === 0 ? (
           <div className="alert alert-warning">
@@ -259,23 +426,33 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
             <h2 className="pg-subtitle">
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing || loading}
-              className="btn btn-outline btn-sm"
-            >
-              {refreshing ? (
-                <>
-                  <span className="loading loading-spinner loading-xs"></span>
-                  {gettext('Refreshing...')}
-                </>
-              ) : (
-                <>
-                  <i className="fa fa-refresh mr-2"></i>
-                  {gettext('Refresh')}
-                </>
-              )}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowUploadWizard(true)}
+                disabled={loading}
+                className="btn btn-outline btn-sm"
+              >
+                <i className="fa fa-upload mr-2"></i>
+                {gettext('Upload CSV/Excel')}
+              </button>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing || loading}
+                className="btn btn-outline btn-sm"
+              >
+                {refreshing ? (
+                  <>
+                    <span className="loading loading-spinner loading-xs"></span>
+                    {gettext('Refreshing...')}
+                  </>
+                ) : (
+                  <>
+                    <i className="fa fa-refresh mr-2"></i>
+                    {gettext('Refresh')}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           {error && (
             <div className="alert alert-error mb-4">
@@ -296,10 +473,57 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
               onAdd={handleAddLine}
               onUpdate={handleUpdateLine}
               onDelete={handleDeleteLine}
+              selectedIds={selectedIds}
+              onSelectionChange={handleSelectionChange}
             />
           )}
         </section>
       )}
+
+      {/* CSV Upload Wizard Modal */}
+      {showUploadWizard && selectedAccount && (
+        <CSVUploadWizard
+          selectedAccount={selectedAccount}
+          allAccounts={allAccounts}
+          uploadApi={uploadApi}
+          onComplete={(result) => {
+            setShowUploadWizard(false);
+            // Reload lines to show newly imported transactions
+            loadLines();
+          }}
+          onCancel={() => setShowUploadWizard(false)}
+        />
+      )}
+
+      {/* Batch Action Bar */}
+      <BatchActionBar
+        selectedCount={selectedIds.size}
+        selectedRows={selectedRows}
+        allAccounts={allAccounts}
+        bankFeedAccounts={accounts}
+        onCategorize={handleBatchCategorize}
+        onMoveAccount={handleBatchMoveAccount}
+        onSetPayee={handleBatchSetPayee}
+        onSetDescription={handleBatchSetDescription}
+        onArchive={handleBatchArchive}
+        onUnarchive={handleBatchUnarchive}
+        onDuplicate={handleBatchDuplicate}
+        onClearSelection={() => setSelectedIds(new Set())}
+        showArchive={showArchiveButton}
+        showUnarchive={showUnarchiveButton}
+      />
+
+      {/* Snackbar for batch operations */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };

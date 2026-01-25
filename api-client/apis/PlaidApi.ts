@@ -68,13 +68,13 @@ export interface PlaidAccountsListRequest {
 }
 
 export interface PlaidAccountsPartialUpdateRequest {
-    id: number;
+    id: string;
     teamSlug: string;
     patchedPlaidAccount?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'>;
 }
 
 export interface PlaidAccountsRetrieveRequest {
-    id: number;
+    id: string;
     teamSlug: string;
 }
 
@@ -93,12 +93,12 @@ export interface PlaidItemsListRequest {
 }
 
 export interface PlaidItemsRetrieveRequest {
-    id: number;
+    id: string;
     teamSlug: string;
 }
 
 export interface PlaidItemsSyncRequest {
-    id: number;
+    id: string;
     teamSlug: string;
 }
 

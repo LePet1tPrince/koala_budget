@@ -12,7 +12,7 @@ import {
   LastPage as LastPageIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { Alert, Autocomplete, Snackbar, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Alert, Autocomplete, Box, Checkbox, Snackbar, TextField, ToggleButton, ToggleButtonGroup, Toolbar, Typography } from '@mui/material';
 import React, { useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
@@ -41,6 +41,8 @@ const LineTableMaterial = ({
   onAdd,
   onUpdate,
   onDelete,
+  selectedIds = new Set(),
+  onSelectionChange,
 }) => {
   // Date range filter state (YYYY-MM-DD strings)
   const [filterStart, setFilterStart] = useState('');
@@ -116,15 +118,19 @@ const LineTableMaterial = ({
     let filtered = lines;
 
     // Apply filter mode (Feed/Reconciled/Archived)
+    // Handle both camelCase (from generated API client) and snake_case (raw API)
+    const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
+    const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
+
     if (filterMode === 'to_review') {
       // To Review: not reconciled and not archived
-      filtered = filtered.filter((l) => !l.isReconciled && !l.isArchived);
-    } else if (filterMode === 'completed') {
+      filtered = filtered.filter((l) => !isReconciled(l) && !isArchived(l));
+    } else if (filterMode === 'reconciled') {
       // Reconciled: reconciled and not archived
-      filtered = filtered.filter((l) => l.isReconciled && !l.isArchived);
+      filtered = filtered.filter((l) => isReconciled(l) && !isArchived(l));
     } else if (filterMode === 'archived') {
-      // Archived: not implemented yet, show all for now
-      filtered = filtered.filter((l) => l.isArchived);
+      // Archived: show archived transactions
+      filtered = filtered.filter((l) => isArchived(l));
     }
 
     // Apply date range filter
@@ -145,8 +151,53 @@ const LineTableMaterial = ({
     return filtered;
   }, [lines, filterStart, filterEnd, filterMode]);
 
+  // Handle row selection
+  const handleRowSelect = (rowId, checked) => {
+    if (!onSelectionChange) return;
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(rowId);
+    } else {
+      newSelected.delete(rowId);
+    }
+    onSelectionChange(newSelected);
+  };
+
+  // Handle select all
+  const handleSelectAll = (checked) => {
+    if (!onSelectionChange) return;
+    if (checked) {
+      const allIds = new Set(filteredLines.map(l => l.id));
+      onSelectionChange(allIds);
+    } else {
+      onSelectionChange(new Set());
+    }
+  };
+
+  // Check if all rows are selected
+  const allSelected = filteredLines.length > 0 && filteredLines.every(l => selectedIds.has(l.id));
+  const someSelected = filteredLines.some(l => selectedIds.has(l.id)) && !allSelected;
+
   // Define columns for Material-Table
   const columns = [
+    // Selection checkbox column
+    {
+      title: '',
+      field: 'select',
+      width: 50,
+      sorting: false,
+      render: (rowData) => (
+        <Checkbox
+          size="small"
+          checked={selectedIds.has(rowData.id)}
+          onChange={(e) => handleRowSelect(rowData.id, e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+      headerStyle: { width: 50, paddingLeft: 8, paddingRight: 0 },
+      cellStyle: { width: 50, paddingLeft: 8, paddingRight: 0 },
+      editable: 'never',
+    },
     {
       title: gettext('Date'),
       field: 'postedDate',
@@ -421,6 +472,26 @@ const LineTableMaterial = ({
           title=""
           columns={columns}
           data={filteredLines}
+          components={{
+            Toolbar: (props) => (
+              <Toolbar variant="dense" sx={{ pl: 1, pr: 1, minHeight: 48 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
+                  <Checkbox
+                    size="small"
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    sx={{ mr: 1 }}
+                  />
+                  {selectedIds.size > 0 && (
+                    <Typography variant="body2" color="primary">
+                      {selectedIds.size} {gettext('selected')}
+                    </Typography>
+                  )}
+                </Box>
+              </Toolbar>
+            ),
+          }}
           icons={{
             Add: AddIcon,
             Edit: EditIcon,

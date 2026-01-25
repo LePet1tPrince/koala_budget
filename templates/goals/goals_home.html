@@ -1,12 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    {% comment %} <li><a href="{% url 'goals:goals_home' request.team.slug %}">{% translate "Goals" %}</a></li> {% endcomment %}
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "All Goals" %}</li>
-  </ol>
-</nav>
 
 <!-- Financial Summary Card -->
 <section class="app-card mb-6">

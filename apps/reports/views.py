@@ -118,7 +118,6 @@ def account_activity(request, team_slug, account_id):
     from apps.accounts.models import Account
 
     service = ReportService(request.team)
-    form = IncomeStatementForm(request.GET or None)
 
     account = None
     report_data = None
@@ -126,14 +125,46 @@ def account_activity(request, team_slug, account_id):
     end_date = None
 
     try:
-        account = Account.objects.get(team=request.team, account_id=account_id)
+        account = Account.objects.get(team=request.team, pk=account_id)
     except Account.DoesNotExist:
         # Handle account not found
         pass
 
-    if account and form.is_valid():
-        start_date, end_date = form.get_date_range()
-        report_data = service.get_account_activity(account, start_date, end_date)
+    if account:
+        # Check for direct start_date and end_date parameters
+        start_date_param = request.GET.get('start_date')
+        end_date_param = request.GET.get('end_date')
+
+        if start_date_param and end_date_param:
+            # Parse dates directly from URL parameters
+            try:
+                start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+                report_data = service.get_account_activity(account, start_date, end_date)
+            except ValueError:
+                # Invalid date format, fall back to defaults
+                today = date.today()
+                start_date = today.replace(day=1)
+                end_date = today
+                report_data = service.get_account_activity(account, start_date, end_date)
+        elif request.GET:
+            # Fallback: try to process with form (for backward compatibility)
+            form = IncomeStatementForm(request.GET)
+            if form.is_valid():
+                start_date, end_date = form.get_date_range()
+                report_data = service.get_account_activity(account, start_date, end_date)
+            else:
+                # Form invalid, use defaults
+                today = date.today()
+                start_date = today.replace(day=1)
+                end_date = today
+                report_data = service.get_account_activity(account, start_date, end_date)
+        else:
+            # No parameters provided, set defaults for current month
+            today = date.today()
+            start_date = today.replace(day=1)
+            end_date = today
+            report_data = service.get_account_activity(account, start_date, end_date)
 
     return render(
         request,
@@ -141,7 +172,6 @@ def account_activity(request, team_slug, account_id):
         {
             "active_tab": "reports",
             "page_title": _("Account Activity"),
-            "form": form,
             "account": account,
             "report_data": report_data,
             "start_date": start_date,

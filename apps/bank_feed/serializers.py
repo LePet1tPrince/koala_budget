@@ -86,6 +86,42 @@ class CategorizeTransactionsRequestSerializer(serializers.Serializer):
     category_id = serializers.IntegerField(help_text="ID of the category account")
 
 
+# Batch Operation Serializers
+
+
+class BatchIdsSerializer(serializers.Serializer):
+    """Base serializer for batch operations with transaction IDs."""
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        help_text="List of BankTransaction IDs to operate on",
+    )
+
+
+class BatchCategorizeRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch categorize request."""
+
+    category_id = serializers.IntegerField(help_text="ID of the category account")
+
+
+class BatchMoveAccountRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch move account request."""
+
+    account_id = serializers.IntegerField(help_text="ID of the target bank account")
+
+
+class BatchSetPayeeRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch set payee request."""
+
+    payee = serializers.CharField(max_length=255, help_text="Payee/merchant name")
+
+
+class BatchSetDescriptionRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch set description request."""
+
+    description = serializers.CharField(max_length=255, help_text="Transaction description")
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.
@@ -128,6 +164,13 @@ class BankFeedRowSerializer(serializers.Serializer):
 
     is_pending = serializers.BooleanField(help_text="Whether transaction is pending")
     is_cleared = serializers.BooleanField(help_text="Whether transaction is cleared")
+    is_archived = serializers.BooleanField(help_text="Whether transaction is archived")
+    is_reconciled = serializers.BooleanField(help_text="Whether transaction is reconciled")
+
+    payee = serializers.CharField(
+        allow_null=True,
+        help_text="Payee name (maps to merchant_name)",
+    )
 
     payment_channel = serializers.CharField(
         allow_null=True,
@@ -191,6 +234,169 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
     }
 
 
+# Upload Serializers
+
+
+class UploadParseResponseSerializer(serializers.Serializer):
+    """Response serializer for the upload_parse endpoint."""
+
+    headers = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Column headers from the file",
+    )
+    sample_rows = serializers.ListField(
+        child=serializers.ListField(child=serializers.CharField()),
+        help_text="Sample data rows (up to 5)",
+    )
+    total_rows = serializers.IntegerField(help_text="Total number of data rows")
+    error = serializers.CharField(allow_null=True, help_text="Error message if parsing failed")
+
+
+class ColumnMappingSerializer(serializers.Serializer):
+    """Serializer for column mapping configuration."""
+
+    date = serializers.IntegerField(help_text="Column index for date")
+    description = serializers.IntegerField(help_text="Column index for description")
+    payee = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="Column index for payee (optional)",
+    )
+    category = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="Column index for category (optional)",
+    )
+    amount = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="Column index for single amount column",
+    )
+    inflow = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="Column index for inflow (dual column mode)",
+    )
+    outflow = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="Column index for outflow (dual column mode)",
+    )
+
+
+class CategoryMappingSerializer(serializers.Serializer):
+    """Serializer for category mapping."""
+
+    category_name = serializers.CharField(help_text="Original category name from file")
+    account_id = serializers.IntegerField(help_text="Mapped account ID")
+
+
+class UploadPreviewRequestSerializer(serializers.Serializer):
+    """Request serializer for the upload_preview endpoint."""
+
+    account_id = serializers.IntegerField(help_text="Bank account ID to upload to")
+    column_mapping = ColumnMappingSerializer(help_text="Column mapping configuration")
+    category_mappings = CategoryMappingSerializer(
+        many=True,
+        required=False,
+        help_text="Category name to account ID mappings",
+    )
+
+
+class ParsedTransactionSerializer(serializers.Serializer):
+    """Serializer for a parsed transaction in preview."""
+
+    row_number = serializers.IntegerField(help_text="Row number in original file")
+    date = serializers.DateField(allow_null=True, help_text="Parsed date")
+    description = serializers.CharField(allow_null=True, help_text="Transaction description")
+    payee = serializers.CharField(allow_null=True, help_text="Payee name")
+    category = serializers.CharField(allow_null=True, help_text="Original category name")
+    amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        allow_null=True,
+        help_text="Parsed amount",
+    )
+    error = serializers.CharField(allow_null=True, help_text="Error message for this row")
+    matched_category_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="Matched/mapped category account ID",
+    )
+    is_potential_duplicate = serializers.BooleanField(help_text="Whether this may be a duplicate")
+
+
+class UnmappedCategorySerializer(serializers.Serializer):
+    """Serializer for unmapped categories."""
+
+    name = serializers.CharField(help_text="Category name that needs mapping")
+
+
+class UploadPreviewResponseSerializer(serializers.Serializer):
+    """Response serializer for the upload_preview endpoint."""
+
+    transactions = ParsedTransactionSerializer(many=True, help_text="Parsed transactions")
+    unmapped_categories = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Category names that couldn't be auto-matched",
+    )
+    error_count = serializers.IntegerField(help_text="Number of rows with errors")
+    duplicate_count = serializers.IntegerField(help_text="Number of potential duplicates")
+
+
+class TransactionToCreateSerializer(serializers.Serializer):
+    """Serializer for a transaction to be created."""
+
+    date = serializers.DateField(help_text="Transaction date")
+    description = serializers.CharField(
+        allow_blank=True,
+        allow_null=True,
+        help_text="Transaction description",
+    )
+    payee = serializers.CharField(
+        allow_blank=True,
+        allow_null=True,
+        help_text="Payee name",
+    )
+    amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Transaction amount",
+    )
+    category_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="Category account ID (for auto-categorization)",
+    )
+    skip = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Whether to skip this transaction",
+    )
+
+
+class UploadConfirmRequestSerializer(serializers.Serializer):
+    """Request serializer for the upload_confirm endpoint."""
+
+    account_id = serializers.IntegerField(help_text="Bank account ID to upload to")
+    transactions = TransactionToCreateSerializer(
+        many=True,
+        help_text="Transactions to create",
+    )
+    skip_duplicates = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="Whether to skip potential duplicates",
+    )
+
+
+class UploadConfirmResponseSerializer(serializers.Serializer):
+    """Response serializer for the upload_confirm endpoint."""
+
+    created_count = serializers.IntegerField(help_text="Number of transactions created")
+    skipped_count = serializers.IntegerField(help_text="Number of transactions skipped")
+    error_count = serializers.IntegerField(help_text="Number of transactions with errors")
+
+
 def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     """
     Convert a BankTransaction to a BankFeedRow dict.
@@ -231,6 +437,9 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "outflow": outflow,
         "is_pending": is_pending,
         "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
+        "is_archived": tx.is_archived,
+        "is_reconciled": bool(tx.journal_entry),  # If categorized, consider it reconciled
+        "payee": tx.merchant_name,  # Map merchant_name to payee
         "payment_channel": payment_channel,
         "confidence": "manual" if tx.journal_entry else category_confidence,
         "journal_line_id": None,
