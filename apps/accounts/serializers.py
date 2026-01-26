@@ -30,6 +30,7 @@ class AccountSerializer(serializers.ModelSerializer):
 
     account_group_name = serializers.CharField(source="account_group.name", read_only=True)
     account_type = serializers.CharField(source="account_group.account_type", read_only=True)
+    reconciled_balance = serializers.SerializerMethodField()
 
     class Meta:
         model = Account
@@ -42,6 +43,7 @@ class AccountSerializer(serializers.ModelSerializer):
             "account_type",
             "has_feed",
             "balance",
+            "reconciled_balance",
             "created_at",
             "updated_at",
             "is_archived",
@@ -49,7 +51,13 @@ class AccountSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["account_group_name", "account_type",
                             "created_at", "updated_at",
-                            "balance", "archived_at"]
+                            "balance", "reconciled_balance", "archived_at"]
+
+    def get_reconciled_balance(self, obj):
+        """Get reconciled_balance from annotation if available."""
+        if hasattr(obj, '_reconciled_balance'):
+            return str(obj._reconciled_balance)
+        return None
 
 class SimpleAccountSerializer(serializers.ModelSerializer):
     """Serializer for Account model."""

@@ -122,6 +122,18 @@ class BatchSetDescriptionRequestSerializer(BatchIdsSerializer):
     description = serializers.CharField(max_length=255, help_text="Transaction description")
 
 
+class BatchReconcileRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch reconcile request."""
+
+    adjustment_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        default=0,
+        help_text="Optional adjustment amount to create if balance doesn't match",
+    )
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.

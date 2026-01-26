@@ -37,6 +37,7 @@ from .serializers import (
     BatchMoveAccountRequestSerializer,
     BatchSetPayeeRequestSerializer,
     BatchSetDescriptionRequestSerializer,
+    BatchReconcileRequestSerializer,
 )
 from .services.csv_upload import parse_file, preview_transactions, create_transactions
 
@@ -705,6 +706,193 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
         response_serializer = BankFeedRowSerializer(rows, many=True)
         return Response(response_serializer.data)
 
+    @extend_schema(
+        operation_id="bank_feed_batch_reconcile",
+        tags=["bank-feed"],
+        request=BatchReconcileRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_reconcile")
+    def batch_reconcile(self, request, team_slug=None):
+        """
+        Batch reconcile multiple bank transactions.
+        Sets is_reconciled=True on the JournalLine for the bank account side.
+        Optionally creates an adjustment if adjustment_amount is non-zero.
+        """
+        serializer = BatchReconcileRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+        adjustment_amount = serializer.validated_data.get("adjustment_amount", Decimal("0"))
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("account", "journal_entry")
+
+        # Validate: All transactions must be categorized (have journal_entry)
+        uncategorized = [tx for tx in transactions if not tx.journal_entry]
+        if uncategorized:
+            return Response(
+                {"error": f"Cannot reconcile uncategorized transactions. {len(uncategorized)} transaction(s) need to be categorized first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get the account (assuming all transactions are for the same account)
+        if not transactions:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        bank_account = transactions[0].account
+
+        with transaction.atomic():
+            # Mark each transaction's bank account journal line as reconciled
+            for tx in transactions:
+                for line in tx.journal_entry.lines.all():
+                    if line.account == tx.account:
+                        line.is_reconciled = True
+                        line.save()
+                        break
+
+            # Create adjustment if needed
+            if adjustment_amount and adjustment_amount != Decimal("0"):
+                self._create_reconciliation_adjustment(
+                    team=request.team,
+                    bank_account=bank_account,
+                    amount=adjustment_amount,
+                )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @transaction.atomic
+    def _create_reconciliation_adjustment(self, team, bank_account, amount):
+        """
+        Create a reconciliation adjustment transaction.
+        Creates a BankTransaction with source='S' and a JournalEntry linking to an 'Adjustments' account.
+        The adjustment is marked as reconciled immediately.
+        """
+        from apps.accounts.models import AccountGroup, ACCOUNT_TYPE_EXPENSE
+
+        # First, find or create an expense group for adjustments
+        expense_group = AccountGroup.objects.filter(
+            team=team,
+            account_type=ACCOUNT_TYPE_EXPENSE,
+        ).first()
+
+        if not expense_group:
+            # Create a default expense group if none exists
+            expense_group = AccountGroup.objects.create(
+                team=team,
+                name="Expenses",
+                account_type=ACCOUNT_TYPE_EXPENSE,
+            )
+
+        # Find or create the Adjustments account (account_group is required)
+        adjustments_account, created = Account.objects.get_or_create(
+            team=team,
+            name="Reconciliation Adjustments",
+            defaults={
+                "account_number": "9999",
+                "has_feed": False,
+                "account_group": expense_group,
+            },
+        )
+
+        # Create the journal entry
+        journal_entry = JournalEntry.objects.create(
+            team=team,
+            entry_date=datetime.now().date(),
+            description="Reconciliation Adjustment",
+            source="S",  # System
+            status=JournalEntry.STATUS_POSTED,
+        )
+
+        # Determine dr/cr based on sign (positive = increase bank balance)
+        abs_amount = abs(amount)
+        if amount > 0:
+            # Positive adjustment: debit bank account, credit adjustments
+            bank_line = JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=bank_account,
+                dr_amount=abs_amount,
+                cr_amount=Decimal("0"),
+                is_reconciled=True,  # Mark as reconciled immediately
+            )
+            JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=adjustments_account,
+                dr_amount=Decimal("0"),
+                cr_amount=abs_amount,
+            )
+        else:
+            # Negative adjustment: credit bank account, debit adjustments
+            bank_line = JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=bank_account,
+                dr_amount=Decimal("0"),
+                cr_amount=abs_amount,
+                is_reconciled=True,  # Mark as reconciled immediately
+            )
+            JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=adjustments_account,
+                dr_amount=abs_amount,
+                cr_amount=Decimal("0"),
+            )
+
+        # Create the BankTransaction
+        BankTransaction.objects.create(
+            team=team,
+            account=bank_account,
+            amount=-amount if amount > 0 else abs_amount,  # Plaid convention: positive = outflow
+            posted_date=datetime.now().date(),
+            description="Reconciliation Adjustment",
+            source="S",  # System
+            journal_entry=journal_entry,
+        )
+
+        return journal_entry
+
+    @extend_schema(
+        operation_id="bank_feed_batch_unreconcile",
+        tags=["bank-feed"],
+        request=BatchIdsSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_unreconcile")
+    def batch_unreconcile(self, request, team_slug=None):
+        """
+        Batch unreconcile multiple bank transactions.
+        Sets is_reconciled=False on the JournalLine for the bank account side.
+        """
+        serializer = BatchIdsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("account", "journal_entry")
+
+        # Mark each transaction's bank account journal line as unreconciled
+        for tx in transactions:
+            if tx.journal_entry:
+                for line in tx.journal_entry.lines.all():
+                    if line.account == tx.account:
+                        line.is_reconciled = False
+                        line.save()
+                        break
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 # # Template Views
 
@@ -715,8 +903,8 @@ def bank_feed_home(request, team_slug):
     Main bank feed page view.
     Displays accounts with bank feeds and bank transactions table.
     """
-    # Get accounts with bank feeds (with_balance() avoids N+1 queries)
-    accounts_with_feeds = Account.for_team.filter(has_feed=True).with_balance().select_related("account_group").order_by("name")
+    # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
+    accounts_with_feeds = Account.for_team.filter(has_feed=True).with_balance().with_reconciled_balance().select_related("account_group").order_by("name")
 
     # Serialize accounts for React
     accounts_data = AccountSerializer(accounts_with_feeds, many=True).data

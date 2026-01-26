@@ -7,6 +7,7 @@ export * from './BankFeedRowSourceEnum';
 export * from './BatchCategorizeRequest';
 export * from './BatchIds';
 export * from './BatchMoveAccountRequest';
+export * from './BatchReconcileRequest';
 export * from './BatchSetDescriptionRequest';
 export * from './BatchSetPayeeRequest';
 export * from './CategorizeTransactionsRequest';

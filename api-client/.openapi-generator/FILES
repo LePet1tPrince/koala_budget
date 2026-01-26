@@ -14,6 +14,7 @@ models/BankFeedRowSourceEnum.ts
 models/BatchCategorizeRequest.ts
 models/BatchIds.ts
 models/BatchMoveAccountRequest.ts
+models/BatchReconcileRequest.ts
 models/BatchSetDescriptionRequest.ts
 models/BatchSetPayeeRequest.ts
 models/CategorizeTransactionsRequest.ts

@@ -26,9 +26,14 @@ const AccountCard = ({ account, isSelected, onClick }) => {
         <p className="text-xs text-base-content/60">
           {account.account_group_name}
         </p>
-        <p className="text-xs text-base-content/60">
-        {formatCurrency(account.balance)}
-        </p>
+        <div className="text-xs text-base-content/60 mt-2 space-y-1">
+          <p>
+            {gettext('Categorized Balance:')} {formatCurrency(account.balance)}
+          </p>
+          <p>
+            {gettext('Reconciled Balance:')} {formatCurrency(account.reconciled_balance || 0)}
+          </p>
+        </div>
       </div>
     </div>
   );
