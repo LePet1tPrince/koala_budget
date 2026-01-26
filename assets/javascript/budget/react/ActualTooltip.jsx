@@ -35,6 +35,7 @@ const ActualTooltip = ({
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [currentAmount, setCurrentAmount] = useState(parseFloat(amount));
 
   // Create MUI theme that adapts to existing theme
   const theme = useMemo(() => {
@@ -101,6 +102,9 @@ const ActualTooltip = ({
       });
 
       if (response.ok) {
+        // Update the displayed amount by subtracting the moved transaction
+        const removedTx = transactions.find(t => (t.line_id || t.lineId) === lineId);
+        setCurrentAmount(prev => prev - getAmount(removedTx));
         // Remove the recategorized transaction from local state
         setTransactions(transactions.filter(t => (t.line_id || t.lineId) !== lineId));
         setSnackbar({ open: true, message: gettext('Transaction recategorized'), severity: 'success' });
@@ -143,7 +147,7 @@ const ActualTooltip = ({
         onClick={handleClick}
         title={gettext('Click to view transaction details')}
       >
-        {formatCurrency(parseFloat(amount))}
+        {formatCurrency(currentAmount)}
       </span>
 
       <Popover
@@ -220,7 +224,7 @@ const ActualTooltip = ({
           )}
 
           <div className="mt-3 pt-2 border-t text-sm text-gray-500">
-            {transactions.length} {transactions.length === 1 ? gettext('transaction') : gettext('transactions')} | {gettext('Total')}: {formatCurrency(parseFloat(amount))}
+            {transactions.length} {transactions.length === 1 ? gettext('transaction') : gettext('transactions')} | {gettext('Total')}: {formatCurrency(currentAmount)}
           </div>
         </div>
       </Popover>
