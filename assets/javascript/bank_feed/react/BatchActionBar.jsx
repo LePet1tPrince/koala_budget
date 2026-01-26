@@ -49,7 +49,10 @@ const BatchActionBar = ({
   onClearSelection,
   showArchive = true,
   showUnarchive = false,
+  filterMode = 'to_review',
 }) => {
+  // In archived view, only allow unarchive and export
+  const isArchivedView = filterMode === 'archived';
   // Menu anchors
   const [categoryAnchor, setCategoryAnchor] = useState(null);
   const [accountAnchor, setAccountAnchor] = useState(null);
@@ -173,39 +176,47 @@ const BatchActionBar = ({
             {selectedCount} {gettext('selected')}
           </Typography>
 
-          <Button
-            size="small"
-            startIcon={<CategoryIcon />}
-            onClick={(e) => setCategoryAnchor(e.currentTarget)}
-          >
-            {gettext('Categorize')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<CategoryIcon />}
+              onClick={(e) => setCategoryAnchor(e.currentTarget)}
+            >
+              {gettext('Categorize')}
+            </Button>
+          )}
 
-          <Button
-            size="small"
-            startIcon={<SwapHorizIcon />}
-            onClick={(e) => setAccountAnchor(e.currentTarget)}
-          >
-            {gettext('Move')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<SwapHorizIcon />}
+              onClick={(e) => setAccountAnchor(e.currentTarget)}
+            >
+              {gettext('Move')}
+            </Button>
+          )}
 
-          <Button
-            size="small"
-            startIcon={<PersonIcon />}
-            onClick={() => setPayeeDialogOpen(true)}
-          >
-            {gettext('Set Payee')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<PersonIcon />}
+              onClick={() => setPayeeDialogOpen(true)}
+            >
+              {gettext('Set Payee')}
+            </Button>
+          )}
 
-          <Button
-            size="small"
-            startIcon={<DescriptionIcon />}
-            onClick={() => setDescriptionDialogOpen(true)}
-          >
-            {gettext('Set Description')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<DescriptionIcon />}
+              onClick={() => setDescriptionDialogOpen(true)}
+            >
+              {gettext('Set Description')}
+            </Button>
+          )}
 
-          {showArchive && (
+          {showArchive && !isArchivedView && (
             <Button
               size="small"
               startIcon={<ArchiveIcon />}
@@ -225,13 +236,15 @@ const BatchActionBar = ({
             </Button>
           )}
 
-          <Button
-            size="small"
-            startIcon={<ContentCopyIcon />}
-            onClick={onDuplicate}
-          >
-            {gettext('Duplicate')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<ContentCopyIcon />}
+              onClick={onDuplicate}
+            >
+              {gettext('Duplicate')}
+            </Button>
+          )}
 
           <Button
             size="small"

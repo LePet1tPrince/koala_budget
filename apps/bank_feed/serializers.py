@@ -415,14 +415,18 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     payment_channel = plaid_tx.payment_channel if plaid_tx else None
     category_confidence = plaid_tx.category_confidence if plaid_tx else None
 
-    # Get category from JournalEntry if categorized
+    # Get category and reconciliation status from JournalEntry if categorized
     category = None
+    is_reconciled = False
     if tx.journal_entry:
         # Find the category account (the one that's not the bank account)
+        # and the bank account line for reconciliation status
         for line in tx.journal_entry.lines.all():
             if line.account != tx.account:
                 category = line.account
-                break
+            else:
+                # Bank account line - get reconciliation status from here
+                is_reconciled = line.is_reconciled
 
     return {
         "id": tx.id,
@@ -438,7 +442,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "is_pending": is_pending,
         "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
         "is_archived": tx.is_archived,
-        "is_reconciled": bool(tx.journal_entry),  # If categorized, consider it reconciled
+        "is_reconciled": is_reconciled,  # From the bank account's journal line
         "payee": tx.merchant_name,  # Map merchant_name to payee
         "payment_channel": payment_channel,
         "confidence": "manual" if tx.journal_entry else category_confidence,

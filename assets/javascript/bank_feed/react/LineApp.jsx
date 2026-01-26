@@ -26,6 +26,9 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState(new Set());
 
+  // Filter mode state (synced from LineTableMaterial)
+  const [filterMode, setFilterMode] = useState('to_review');
+
   // Snackbar state for batch operations
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -475,6 +478,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
               onDelete={handleDeleteLine}
               selectedIds={selectedIds}
               onSelectionChange={handleSelectionChange}
+              onFilterModeChange={setFilterMode}
             />
           )}
         </section>
@@ -511,6 +515,7 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
         onClearSelection={() => setSelectedIds(new Set())}
         showArchive={showArchiveButton}
         showUnarchive={showUnarchiveButton}
+        filterMode={filterMode}
       />
 
       {/* Snackbar for batch operations */}

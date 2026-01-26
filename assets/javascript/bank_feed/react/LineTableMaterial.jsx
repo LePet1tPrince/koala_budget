@@ -12,13 +12,12 @@ import {
   LastPage as LastPageIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { Alert, Autocomplete, Box, Checkbox, Snackbar, TextField, ToggleButton, ToggleButtonGroup, Toolbar, Typography } from '@mui/material';
-import React, { useMemo, useState } from 'react';
+import { Alert, Autocomplete, Box, Checkbox, Snackbar, TextField, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
 import MaterialTable from '@material-table/core';
-import { ProperCase } from '../utils';
 import { formatCurrency } from '../../utilities/currency';
 
 /* globals gettext */
@@ -43,6 +42,7 @@ const LineTableMaterial = ({
   onDelete,
   selectedIds = new Set(),
   onSelectionChange,
+  onFilterModeChange,
 }) => {
   // Date range filter state (YYYY-MM-DD strings)
   const [filterStart, setFilterStart] = useState('');
@@ -57,6 +57,18 @@ const LineTableMaterial = ({
 
   // Filter state for Feed/Reconciled/Archived toggle
   const [filterMode, setFilterMode] = useState('to_review');
+
+  // Clear selection and notify parent when filter mode changes
+  useEffect(() => {
+    // Clear selected transactions when switching views
+    if (onSelectionChange) {
+      onSelectionChange(new Set());
+    }
+    // Notify parent of filter mode change
+    if (onFilterModeChange) {
+      onFilterModeChange(filterMode);
+    }
+  }, [filterMode]);
 
   // Create MUI theme that adapts to existing theme
   const theme = useMemo(() => {
@@ -298,30 +310,43 @@ const LineTableMaterial = ({
       editable: (rowData) => !isReadOnly(rowData),
     },
     {
-      title: gettext('Source'),
+      title: '',
       field: 'source',
+      width: 30,
       render: (rowData) => {
         const source = rowData.source;
-        let label = ProperCase(source);
+        let letter = 'S';
+        let tooltip = gettext('System transaction');
         let color = 'gray';
 
         if (source === 'plaid') {
-          // label = 'Plaid';
+          letter = 'P';
+          tooltip = gettext('Plaid transaction');
           color = 'blue';
-        } else if (source === 'ledger') {
-          // label = 'Ledger';
-          color = 'green';
-        } else if (source === 'manual') {
-          // label = 'Manual';
+        } else if (source === 'csv') {
+          letter = 'U';
+          tooltip = gettext('Uploaded transaction');
           color = 'orange';
+        } else if (source === 'manual') {
+          letter = 'M';
+          tooltip = gettext('Manual transaction');
+          color = 'purple';
+        } else if (source === 'ledger') {
+          letter = 'L';
+          tooltip = gettext('Ledger transaction');
+          color = 'green';
         }
 
         return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${color}-100 text-${color}-800`}>
-            {label}
-          </span>
+          <Tooltip title={tooltip} arrow placement="top">
+            <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-xs font-semibold bg-${color}-100 text-${color}-700 cursor-default`}>
+              {letter}
+            </span>
+          </Tooltip>
         );
       },
+      headerStyle: { width: 30, paddingLeft: 4, paddingRight: 4 },
+      cellStyle: { width: 30, paddingLeft: 4, paddingRight: 4 },
       editable: 'never',
     },
   ];
@@ -517,6 +542,15 @@ const LineTableMaterial = ({
             showTitle: false,
             padding: 'dense',
             emptyRowsWhenPaging: false,
+            rowStyle: (rowData) => {
+              // Style uncategorized transactions with grey text in 'to_review' mode only
+              if (filterMode === 'to_review' && rowData.category === null) {
+                return {
+                  color: '#9CA3AF',
+                };
+              }
+              return {};
+            },
           }}
           editable={{
             onRowAdd: handleRowAdd,
