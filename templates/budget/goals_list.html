@@ -1,6 +1,5 @@
 {% extends "budget/budget_base.html" %}
 {% load static %}
-{% load django_vite %}
 {% load i18n %}
 
 {% block app %}
@@ -13,7 +12,7 @@
   <div class="container mx-auto px-4 py-6">
     <!-- Header with Month Navigation -->
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-3xl font-bold">{% translate "Budget" %} - {{ month|date:"F Y" }}</h1>
+      <h1 class="text-3xl font-bold">{% translate "Goals" %} - {{ month|date:"F Y" }}</h1>
 
       <div class="flex gap-2">
         <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
@@ -22,15 +21,18 @@
         <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
           {% translate "Next" %}
         </a>
+        <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-primary btn-sm">
+          + {% translate "New Goal" %}
+        </a>
       </div>
     </div>
 
     <!-- Tab Navigation -->
     <div role="tablist" class="tabs tabs-boxed mb-6">
-      <a role="tab" class="tab tab-active" href="{% url 'budget:budget_home' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
+      <a role="tab" class="tab" href="{% url 'budget:budget_home' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
         {% translate "Budget" %}
       </a>
-      <a role="tab" class="tab" href="{% url 'budget:goals_list' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
+      <a role="tab" class="tab tab-active" href="{% url 'budget:goals_list' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
         {% translate "Goals" %}
       </a>
     </div>
@@ -38,7 +40,7 @@
     <!-- Net Worth Card -->
     {% include "budget/components/net_worth_card.html" %}
 
-    <!-- Budget Table Component -->
-    {% include "budget/components/budget_table.html" %}
+    <!-- Goals Table Component -->
+    {% include "budget/components/goals_table.html" %}
   </div>
 {% endblock %}

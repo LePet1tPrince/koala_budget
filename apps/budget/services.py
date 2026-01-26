@@ -7,7 +7,7 @@ from dateutil.relativedelta import relativedelta
 from django.db.models import Sum
 
 from apps.accounts.models import Account
-from apps.budget.models import Budget
+from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalLine
 
 
@@ -372,3 +372,142 @@ class BudgetService:
             })
 
         return rows
+
+
+class GoalService:
+    """Service class for goal-related calculations and queries."""
+
+    def __init__(self, team):
+        self.team = team
+
+    def get_goals_with_progress(self, month=None, include_archived=False):
+        """Get all goals with progress annotations for a given month."""
+        qs = Goal.objects.filter(team=self.team)
+        if not include_archived:
+            qs = qs.filter(is_archived=False)
+        return qs.with_progress(month).select_related("account")
+
+    def get_total_saved(self):
+        """Get the total amount saved across all active goals."""
+        return GoalAllocation.objects.filter(
+            team=self.team,
+            goal__is_archived=False
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+
+    def get_goal_summary(self, month):
+        """Get summary data for the goals section of the budget page."""
+        goals = self.get_goals_with_progress(month)
+        total_target = goals.aggregate(total=Sum("target_amount"))["total"] or Decimal("0")
+        total_saved = goals.aggregate(total=Sum("total_saved"))["total"] or Decimal("0")
+
+        return {
+            "goals": goals,
+            "total_target": total_target,
+            "total_saved": total_saved,
+            "goal_count": goals.count(),
+        }
+
+    def update_allocation(self, goal, month, amount):
+        """Create or update a goal allocation for a specific month."""
+        month = month.replace(day=1)
+        allocation, created = GoalAllocation.objects.update_or_create(
+            team=self.team,
+            goal=goal,
+            month=month,
+            defaults={"amount": amount}
+        )
+        return allocation
+
+
+class NetWorthService:
+    """Service class for net worth and financial summary calculations."""
+
+    def __init__(self, team):
+        self.team = team
+
+    def get_net_worth(self, month):
+        """
+        Calculate net worth as of the end of a given month.
+        Net worth = sum of (dr_amount - cr_amount) for all asset and liability accounts.
+        For assets: positive balance means we own it
+        For liabilities: positive balance (dr > cr) would reduce net worth, but typically
+        liabilities have cr > dr, so the subtraction gives negative, which is correct.
+        """
+        from dateutil.relativedelta import relativedelta
+
+        # End of month (first day of next month)
+        end_date = month.replace(day=1) + relativedelta(months=1)
+
+        result = (
+            JournalLine.objects
+            .filter(
+                team=self.team,
+                journal_entry__entry_date__lt=end_date,
+                account__account_group__account_type__in=["asset", "liability"],
+            )
+            .aggregate(
+                total_dr=Sum("dr_amount"),
+                total_cr=Sum("cr_amount"),
+            )
+        )
+
+        total_dr = result["total_dr"] or Decimal("0")
+        total_cr = result["total_cr"] or Decimal("0")
+
+        # Net worth is assets - liabilities
+        # Assets have dr > cr (positive balance)
+        # Liabilities have cr > dr (negative when doing dr - cr)
+        # So dr - cr gives us: assets - liabilities = net worth
+        return total_dr - total_cr
+
+    def get_total_saved_to_goals(self):
+        """
+        Get the total amount allocated to all active goals.
+        This represents money set aside for savings goals.
+        """
+        return GoalAllocation.objects.filter(
+            team=self.team,
+            goal__is_archived=False,
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+
+    def get_total_available_to_spend(self, month, categories=None):
+        """
+        Get the sum of all 'available' amounts across budget categories.
+        This represents money available to spend from the budget.
+        """
+        budget_service = BudgetService(self.team)
+
+        if categories is None:
+            categories = list(Account.objects.filter(
+                team=self.team,
+                account_group__account_type__in=("expense", "income"),
+            ).select_related("account_group"))
+
+        if not categories:
+            return Decimal("0")
+
+        available_map = budget_service.get_available_by_category(month, categories)
+        return sum(available_map.values())
+
+    def get_net_worth_card_data(self, month, categories=None):
+        """
+        Get all data needed for the NetWorthCard component.
+
+        Returns:
+            dict with keys:
+            - net_worth: Total assets minus liabilities
+            - save: Total allocated to goals
+            - spend: Total available in budget categories
+            - available: net_worth - save - spend (unallocated money)
+        """
+        net_worth = self.get_net_worth(month)
+        save = self.get_total_saved_to_goals()
+        spend = self.get_total_available_to_spend(month, categories)
+        available = net_worth - save - spend
+
+        return {
+            "net_worth": net_worth,
+            "save": save,
+            "spend": spend,
+            "available": available,
+        }

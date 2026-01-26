@@ -1,0 +1,48 @@
+{% load i18n %}
+
+<!-- Net Worth Card -->
+<div class="stats shadow w-full mb-6 bg-base-100">
+  <div class="stat">
+    <div class="stat-figure text-primary">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+    </div>
+    <div class="stat-title">{% translate "Net Worth" %}</div>
+    <div class="stat-value text-primary">${{ net_worth_card.net_worth|floatformat:2 }}</div>
+    <div class="stat-desc">{% translate "Assets minus liabilities" %}</div>
+  </div>
+
+  <div class="stat">
+    <div class="stat-figure text-success">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+      </svg>
+    </div>
+    <div class="stat-title">{% translate "Save" %}</div>
+    <div class="stat-value text-success">${{ net_worth_card.save|floatformat:2 }}</div>
+    <div class="stat-desc">{% translate "Allocated to goals" %}</div>
+  </div>
+
+  <div class="stat">
+    <div class="stat-figure text-warning">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
+      </svg>
+    </div>
+    <div class="stat-title">{% translate "Spend" %}</div>
+    <div class="stat-value text-warning">${{ net_worth_card.spend|floatformat:2 }}</div>
+    <div class="stat-desc">{% translate "Available in budget" %}</div>
+  </div>
+
+  <div class="stat">
+    <div class="stat-figure text-info">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+      </svg>
+    </div>
+    <div class="stat-title">{% translate "Available" %}</div>
+    <div class="stat-value {% if net_worth_card.available >= 0 %}text-info{% else %}text-error{% endif %}">${{ net_worth_card.available|floatformat:2 }}</div>
+    <div class="stat-desc">{% translate "Unallocated funds" %}</div>
+  </div>
+</div>
