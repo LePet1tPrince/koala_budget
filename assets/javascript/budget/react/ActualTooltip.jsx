@@ -113,11 +113,19 @@ const ActualTooltip = ({
     }
   };
 
-  const formatDate = (dateValue) => {
-    if (!dateValue) return '-';
-    const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-    return date.toLocaleDateString();
-  };
+  function formatWeekDayDate(date) {
+  // Get weekday (short)
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date);
+  const day = date.getDate();
+
+  // Determine ordinal suffix
+  let suffix = 'th';
+  if (day === 1 || day === 21 || day === 31) suffix = 'st';
+  else if (day === 2 || day === 22) suffix = 'nd';
+  else if (day === 3 || day === 23) suffix = 'rd';
+
+  return `${weekday}, ${day}${suffix}`;
+}
 
   // Calculate amount display based on inflow/outflow
   const getAmount = (tx) => {
@@ -171,7 +179,7 @@ const ActualTooltip = ({
                   return (
                     <TableRow key={lineId}>
                       <TableCell className="whitespace-nowrap">
-                        {formatDate(tx.date)}
+                        {formatWeekDayDate(new Date(tx.date))}
                       </TableCell>
                       <TableCell className="max-w-[120px] truncate">
                         {tx.payee_name || tx.payeeName || '-'}
