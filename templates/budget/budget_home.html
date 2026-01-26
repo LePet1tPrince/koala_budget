@@ -4,6 +4,10 @@
 {% load i18n %}
 
 {% block app %}
+  {# Data for React components #}
+  {{ all_accounts|json_script:'all-accounts' }}
+  {{ api_urls|json_script:'api-urls' }}
+  {{ team_slug|json_script:'team-slug' }}
   <nav aria-label="breadcrumbs">
     <ol class="pg-breadcrumbs">
       <li class="pg-breadcrumb-active" aria-current="page">{% translate "Budget" %}</li>
@@ -41,4 +45,12 @@
     <!-- Budget Table Component -->
     {% include "budget/components/budget_table.html" %}
   </div>
+{% endblock %}
+
+{% block page_js %}
+  <script>
+    const SERVER_URL_BASE = "{{ request.scheme }}://{{ request.get_host }}";
+  </script>
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/budget/budget-actual-app.jsx' %}
 {% endblock %}

@@ -38,7 +38,13 @@
           </td>
 
           <td class="text-right">
-            <span class="font-mono">{{ row.actual|floatformat:2 }}</span>
+            <div data-actual-tooltip
+                 data-category-id="{{ row.category.id }}"
+                 data-category-name="{{ row.category.name }}"
+                 data-amount="{{ row.actual }}"
+                 data-month="{{ month|date:'Y-m-d' }}">
+              <span class="font-mono">{{ row.actual|floatformat:2 }}</span>
+            </div>
           </td>
 
           <td class="text-right">

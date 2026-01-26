@@ -8,6 +8,7 @@ from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import Account
+from apps.accounts.serializers import SimpleAccountSerializer
 from apps.teams.decorators import login_and_team_required
 
 from .forms import BudgetAmountForm, GoalAllocationForm, GoalForm
@@ -110,6 +111,17 @@ def budget_month_view(request, team_slug):
     net_worth_service = NetWorthService(request.team)
     net_worth_card = net_worth_service.get_net_worth_card_data(month, categories)
 
+    # Get all accounts for React recategorize dropdown
+    all_accounts = Account.for_team.filter(
+        account_group__account_type__in=("expense", "income"),
+    ).select_related("account_group").order_by("account_number")
+    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
+
+    # API URLs for React
+    api_urls = {
+        "lines": f"/a/{team_slug}/journal/api/lines/",
+    }
+
     return render(
         request,
         "budget/budget_home.html",
@@ -122,6 +134,9 @@ def budget_month_view(request, team_slug):
             "net_worth_card": net_worth_card,
             "prev_month": month - relativedelta(months=1),
             "next_month": month + relativedelta(months=1),
+            "all_accounts": all_accounts_data,
+            "api_urls": api_urls,
+            "team_slug": team_slug,
         },
     )
 
