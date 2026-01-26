@@ -101,7 +101,6 @@ PROJECT_APPS = [
     "apps.budget.apps.BudgetConfig",
     "apps.accounts.apps.AccountsConfig",
     "apps.journal.apps.JournalConfig",
-    "apps.goals.apps.GoalsConfig",
     "apps.reports.apps.ReportsConfig",
     "apps.plaid.apps.PlaidConfig",
     "apps.bank_feed.apps.BankFeedConfig",
