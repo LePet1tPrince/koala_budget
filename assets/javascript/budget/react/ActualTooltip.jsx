@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Alert,
+  Button,
   CircularProgress,
   MenuItem,
   Popover,
@@ -36,6 +37,20 @@ const ActualTooltip = ({
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [currentAmount, setCurrentAmount] = useState(parseFloat(amount));
+  const [undoInfo, setUndoInfo] = useState(null);
+
+  // Listen for transactions moved from other categories to this one
+  useEffect(() => {
+    const handleTransactionMoved = (event) => {
+      const { toCategoryId, amount: movedAmount } = event.detail;
+      if (parseInt(categoryId) === toCategoryId) {
+        setCurrentAmount(prev => prev + movedAmount);
+      }
+    };
+
+    window.addEventListener('transaction-moved', handleTransactionMoved);
+    return () => window.removeEventListener('transaction-moved', handleTransactionMoved);
+  }, [categoryId]);
 
   // Create MUI theme that adapts to existing theme
   const theme = useMemo(() => {
@@ -104,16 +119,58 @@ const ActualTooltip = ({
       if (response.ok) {
         // Update the displayed amount by subtracting the moved transaction
         const removedTx = transactions.find(t => (t.line_id || t.lineId) === lineId);
-        setCurrentAmount(prev => prev - getAmount(removedTx));
+        const movedAmount = getAmount(removedTx);
+        setCurrentAmount(prev => prev - movedAmount);
         // Remove the recategorized transaction from local state
         setTransactions(transactions.filter(t => (t.line_id || t.lineId) !== lineId));
-        setSnackbar({ open: true, message: gettext('Transaction recategorized'), severity: 'success' });
+        // Notify the destination category to update its amount
+        window.dispatchEvent(new CustomEvent('transaction-moved', {
+          detail: { toCategoryId: parseInt(newCategoryId), amount: movedAmount }
+        }));
+        // Store undo info and show success message
+        const destCategory = allAccounts.find(a => a.id === parseInt(newCategoryId));
+        const destName = destCategory?.name || gettext('another category');
+        setUndoInfo({ lineId, fromCategoryId: parseInt(categoryId), toCategoryId: parseInt(newCategoryId), amount: movedAmount, transaction: removedTx });
+        setSnackbar({ open: true, message: `${formatCurrency(Math.abs(movedAmount))} ${gettext('recategorized to')} ${destName}`, severity: 'success' });
       } else {
         throw new Error('Failed to recategorize');
       }
     } catch (error) {
       console.error('Failed to recategorize:', error);
       setSnackbar({ open: true, message: gettext('Failed to recategorize'), severity: 'error' });
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!undoInfo) return;
+
+    try {
+      const response = await fetch(`${apiUrls.lines}${undoInfo.lineId}/recategorize/`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': Cookies.get('csrftoken'),
+        },
+        body: JSON.stringify({ new_category_id: undoInfo.fromCategoryId }),
+      });
+
+      if (response.ok) {
+        // Add the transaction back to this category
+        setCurrentAmount(prev => prev + undoInfo.amount);
+        setTransactions(prev => [...prev, undoInfo.transaction]);
+        // Notify the other category to subtract the amount
+        window.dispatchEvent(new CustomEvent('transaction-moved', {
+          detail: { toCategoryId: undoInfo.toCategoryId, amount: -undoInfo.amount }
+        }));
+        setUndoInfo(null);
+        setSnackbar({ open: true, message: gettext('Undo successful'), severity: 'success' });
+      } else {
+        throw new Error('Failed to undo');
+      }
+    } catch (error) {
+      console.error('Failed to undo:', error);
+      setSnackbar({ open: true, message: gettext('Failed to undo'), severity: 'error' });
     }
   };
 
@@ -231,14 +288,19 @@ const ActualTooltip = ({
 
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        autoHideDuration={undoInfo ? 6000 : 3000}
+        onClose={() => { setSnackbar({ ...snackbar, open: false }); setUndoInfo(null); }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          onClose={() => { setSnackbar({ ...snackbar, open: false }); setUndoInfo(null); }}
           severity={snackbar.severity}
           sx={{ width: '100%' }}
+          action={undoInfo && (
+            <Button color="inherit" size="small" onClick={handleUndo}>
+              {gettext('Undo')}
+            </Button>
+          )}
         >
           {snackbar.message}
         </Alert>
