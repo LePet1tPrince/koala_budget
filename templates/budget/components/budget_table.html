@@ -1,0 +1,129 @@
+{% load i18n %}
+
+<!-- Budget Table -->
+<div class="overflow-x-auto bg-base-100 rounded-lg shadow">
+  <table class="table w-full">
+    <thead>
+      <tr>
+        <th>{% translate "Category" %}</th>
+        <th class="text-right">{% translate "Budgeted" %}</th>
+        <th class="text-right">{% translate "Actual" %}</th>
+        <th class="text-right">{% translate "Available" %}</th>
+        <th class="text-center">{% translate "Action" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for group_name, group_data in groups %}
+        <!-- Group Header -->
+        <tr class="bg-base-200">
+          <td colspan="5" class="font-bold text-lg">{{ group_name }}</td>
+        </tr>
+
+        <!-- Group Rows -->
+        {% for row in group_data.rows %}
+        <tr>
+          <td class="pl-8">
+            <div class="font-medium">{{ row.category.name }}</div>
+            <div class="text-sm text-gray-500">{{ row.category.account_number }}</div>
+          </td>
+
+          <td class="text-right">
+            <form method="post" class="inline-flex items-center gap-2" id="budget-form-{{ row.form.instance.id }}">
+              {% csrf_token %}
+              <input type="hidden" name="budget_id" value="{{ row.form.instance.id }}">
+              <div class="form-control w-32">
+                {{ row.form.budget_amount }}
+              </div>
+            </form>
+          </td>
+
+          <td class="text-right">
+            <div data-actual-tooltip
+                 data-category-id="{{ row.category.id }}"
+                 data-category-name="{{ row.category.name }}"
+                 data-amount="{{ row.actual }}"
+                 data-month="{{ month|date:'Y-m-d' }}">
+              <span class="font-mono">{{ row.actual|floatformat:2 }}</span>
+            </div>
+          </td>
+
+          <td class="text-right">
+            <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}">
+              {{ row.available|floatformat:2 }}
+            </span>
+          </td>
+
+          <td class="text-center">
+            <button type="submit" form="budget-form-{{ row.form.instance.id }}" class="btn btn-primary btn-sm">
+              {% translate "Save" %}
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+
+        <!-- Group Subtotal -->
+        <tr class="bg-base-200 font-bold">
+          <td class="pl-8">{% translate "Subtotal" %} - {{ group_name }}</td>
+          <td class="text-right">
+            <span class="font-mono">{{ group_data.subtotals.budgeted|floatformat:2 }}</span>
+          </td>
+          <td class="text-right">
+            <span class="font-mono">{{ group_data.subtotals.actual|floatformat:2 }}</span>
+          </td>
+          <td class="text-right">
+            <span class="font-mono {% if group_data.subtotals.available < 0 %}text-error{% elif group_data.subtotals.available > 0 %}text-success{% endif %}">
+              {{ group_data.subtotals.available|floatformat:2 }}
+            </span>
+          </td>
+          <td></td>
+        </tr>
+
+        <!-- Spacer row between groups -->
+        <tr class="h-2">
+          <td colspan="5"></td>
+        </tr>
+      {% empty %}
+      <tr>
+        <td colspan="5" class="text-center text-gray-500 py-8">
+          {% translate "No budget categories found. Please add income or expense accounts first." %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="bg-primary text-primary-content font-bold text-lg">
+        <td>{% translate "Grand Total" %}</td>
+        <td class="text-right">
+          <span class="font-mono">{{ grand_totals.budgeted|floatformat:2 }}</span>
+        </td>
+        <td class="text-right">
+          <span class="font-mono">{{ grand_totals.actual|floatformat:2 }}</span>
+        </td>
+        <td class="text-right">
+          <span class="font-mono">{{ grand_totals.available|floatformat:2 }}</span>
+        </td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<!-- Info Box -->
+<div class="alert alert-info mt-6">
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+  </svg>
+  <div>
+    <h3 class="font-bold">{% translate "How it works" %}</h3>
+    <div class="text-sm">
+      {% translate "Available = Budget (this month) - Actual (this month) + Available (previous month). Unspent budget rolls forward to future months." %}
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Custom styling for budget input fields */
+  .budget-input {
+    @apply input input-bordered input-sm w-full text-right font-mono;
+  }
+</style>

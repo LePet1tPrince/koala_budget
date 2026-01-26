@@ -1,0 +1,78 @@
+{% extends "budget/budget_base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block app %}
+  <nav aria-label="breadcrumbs">
+    <ol class="pg-breadcrumbs">
+      <li><a href="{% url 'budget:budget_home' team_slug=request.team.slug %}">{% translate "Budget" %}</a></li>
+      <li><a href="{% url 'budget:goals_list' team_slug=request.team.slug %}">{% translate "Goals" %}</a></li>
+      <li class="pg-breadcrumb-active" aria-current="page">
+        {% if is_new %}{% translate "New Goal" %}{% else %}{% translate "Edit Goal" %}{% endif %}
+      </li>
+    </ol>
+  </nav>
+
+  <div class="container mx-auto px-4 py-6 max-w-2xl">
+    <h1 class="text-3xl font-bold mb-6">
+      {% if is_new %}{% translate "Create New Goal" %}{% else %}{% translate "Edit Goal" %}{% endif %}
+    </h1>
+
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+
+          <div class="form-control mb-4">
+            <label class="label">
+              <span class="label-text">{% translate "Goal Name" %}</span>
+            </label>
+            {{ form.name }}
+            {% if form.name.errors %}
+            <label class="label">
+              <span class="label-text-alt text-error">{{ form.name.errors.0 }}</span>
+            </label>
+            {% endif %}
+          </div>
+
+          <div class="form-control mb-4">
+            <label class="label">
+              <span class="label-text">{% translate "Description" %}</span>
+            </label>
+            {{ form.description }}
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">{% translate "Target Amount" %}</span>
+              </label>
+              {{ form.target_amount }}
+              {% if form.target_amount.errors %}
+              <label class="label">
+                <span class="label-text-alt text-error">{{ form.target_amount.errors.0 }}</span>
+              </label>
+              {% endif %}
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">{% translate "Target Date" %}</span>
+              </label>
+              {{ form.target_date }}
+            </div>
+          </div>
+
+          <div class="card-actions justify-end mt-6">
+            <a href="{% url 'budget:goals_list' team_slug=request.team.slug %}" class="btn btn-ghost">
+              {% translate "Cancel" %}
+            </a>
+            <button type="submit" class="btn btn-primary">
+              {% if is_new %}{% translate "Create Goal" %}{% else %}{% translate "Save Changes" %}{% endif %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

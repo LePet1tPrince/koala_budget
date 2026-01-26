@@ -3,9 +3,10 @@ Views for journal app.
 Provides both template views and REST API endpoints for journal entries and lines.
 """
 
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
+from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -93,7 +94,26 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 
 @extend_schema_view(
     create=extend_schema(operation_id="simple_lines_create", tags=["journal"]),
-    list=extend_schema(operation_id="simple_lines_list", tags=["journal"]),
+    list=extend_schema(
+        operation_id="simple_lines_list",
+        tags=["journal"],
+        parameters=[
+            OpenApiParameter(
+                name="account",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                description="Filter by account ID (category)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="month",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Filter by month (YYYY-MM-DD format, uses first day of month)",
+                required=False,
+            ),
+        ],
+    ),
     retrieve=extend_schema(operation_id="simple_lines_retrieve", tags=["journal"]),
     update=extend_schema(operation_id="simple_lines_update", tags=["journal"]),
     partial_update=extend_schema(operation_id="simple_lines_partial_update", tags=["journal"]),
@@ -112,6 +132,10 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
     - Creates/updates a journal entry with exactly 2 lines
     - The main line uses the specified account with inflow/outflow amounts
     - The sibling line uses the category account with opposite amounts
+
+    Query parameters for filtering:
+    - account: Filter by account ID (useful for getting all transactions in a category)
+    - month: Filter by month (YYYY-MM-DD format, uses first day of month)
     """
 
     serializer_class = SimpleLineSerializer
@@ -121,10 +145,41 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         """
         Get journal lines for the current team.
         Optimized with select_related and prefetch_related for performance.
+
+        Supports filtering by:
+        - account: Account ID to filter by
+        - month: Month to filter by (YYYY-MM-DD format)
         """
-        return JournalLine.for_team.select_related("account", "journal_entry", "journal_entry__payee").prefetch_related(
-            "journal_entry__lines__account"
-        )
+        qs = JournalLine.objects.filter(
+            team=self.request.team,
+        ).select_related(
+            "account",
+            "account__account_group",
+            "journal_entry",
+            "journal_entry__payee",
+        ).prefetch_related("journal_entry__lines__account")
+
+        # Filter by account (category) if provided
+        account_id = self.request.query_params.get("account")
+        if account_id:
+            qs = qs.filter(account_id=account_id)
+
+        # Filter by month if provided
+        month_param = self.request.query_params.get("month")
+        if month_param:
+            month = parse_date(month_param)
+            if month:
+                start = month.replace(day=1)
+                if start.month == 12:
+                    end = start.replace(year=start.year + 1, month=1)
+                else:
+                    end = start.replace(month=start.month + 1)
+                qs = qs.filter(
+                    journal_entry__entry_date__gte=start,
+                    journal_entry__entry_date__lt=end,
+                )
+
+        return qs.order_by("-journal_entry__entry_date")
 
     def perform_create(self, serializer):
         """Create line with team context."""
@@ -138,6 +193,43 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         """Delete the entire journal entry when deleting a line."""
         journal_entry = instance.journal_entry
         journal_entry.delete()
+
+    @extend_schema(
+        operation_id="simple_lines_recategorize",
+        tags=["journal"],
+        request={"application/json": {"type": "object", "properties": {"new_category_id": {"type": "integer"}}}},
+        responses={200: {"type": "object", "properties": {"status": {"type": "string"}, "line_id": {"type": "integer"}}}},
+    )
+    @action(detail=True, methods=["post"])
+    def recategorize(self, request, pk=None, team_slug=None):
+        """
+        Recategorize a journal line to a different account/category.
+
+        This changes the account on a single journal line, effectively moving
+        the transaction to a different budget category.
+
+        POST body:
+        {
+            "new_category_id": 456
+        }
+        """
+        line = self.get_object()
+        new_category_id = request.data.get("new_category_id")
+
+        if not new_category_id:
+            return Response(
+                {"error": "new_category_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        new_category = get_object_or_404(
+            Account.objects.filter(team=self.request.team),
+            id=new_category_id
+        )
+        line.account = new_category
+        line.save()
+
+        return Response({"status": "success", "line_id": line.id})
 
 
 # Template Views
