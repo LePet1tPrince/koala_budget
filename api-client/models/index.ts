@@ -46,6 +46,8 @@ export * from './Price';
 export * from './RoleEnum';
 export * from './SimpleAccount';
 export * from './SimpleLine';
+export * from './SimpleLinesRecategorize200Response';
+export * from './SimpleLinesRecategorizeRequest';
 export * from './Subscription';
 export * from './SubscriptionItem';
 export * from './SubscriptionStatusEnum';

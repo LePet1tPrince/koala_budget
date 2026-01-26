@@ -53,6 +53,8 @@ models/Price.ts
 models/RoleEnum.ts
 models/SimpleAccount.ts
 models/SimpleLine.ts
+models/SimpleLinesRecategorize200Response.ts
+models/SimpleLinesRecategorizeRequest.ts
 models/Subscription.ts
 models/SubscriptionItem.ts
 models/SubscriptionStatusEnum.ts
