@@ -13,6 +13,7 @@ import {
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { buildCategoryOptions } from '../../utilities/categoryOptions';
 
 /* globals gettext */
 
@@ -50,15 +51,9 @@ const EditTransactionModal = ({
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
-  // Create options array for category Autocomplete (grouped by account number first letter)
+  // Create options array for category Autocomplete (grouped by account type)
   const categoryOptions = useMemo(() => {
-    return allAccounts.map((account) => ({
-      id: account.id,
-      label: `${account.account_number} - ${account.name}`,
-      accountNumber: account.account_number,
-      name: account.name,
-      firstLetter: String(account.account_number).charAt(0).toUpperCase(),
-    })).sort((a, b) => -b.firstLetter.localeCompare(a.firstLetter));
+    return buildCategoryOptions(allAccounts);
   }, [allAccounts]);
 
   // Initialize form when transaction changes or modal opens
@@ -229,7 +224,7 @@ const EditTransactionModal = ({
             value={category}
             onChange={(_event, newValue) => setCategory(newValue)}
             options={categoryOptions}
-            groupBy={(option) => option.firstLetter}
+            groupBy={(option) => option.groupLabel}
             getOptionLabel={(option) => option.label}
             isOptionEqualToValue={(option, value) => option.id === value.id}
             disabled={!canEditCategory}

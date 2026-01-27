@@ -28,6 +28,7 @@ import {
   CheckCircle as CheckCircleIcon,
   RemoveCircle as RemoveCircleIcon,
 } from '@mui/icons-material';
+import { buildCategoryOptions } from '../../utilities/categoryOptions';
 
 /* globals gettext */
 
@@ -78,13 +79,7 @@ const BatchActionBar = ({
 
   // Create options array for category Autocomplete
   const categoryOptions = useMemo(() => {
-    return allAccounts.map((account) => ({
-      id: account.id,
-      label: `${account.account_number} - ${account.name}`,
-      accountNumber: account.account_number,
-      name: account.name,
-      firstLetter: String(account.account_number).charAt(0).toUpperCase(),
-    })).sort((a, b) => -b.firstLetter.localeCompare(a.firstLetter));
+    return buildCategoryOptions(allAccounts);
   }, [allAccounts]);
 
   // Filter bank feed accounts (has_feed=true)
@@ -358,7 +353,7 @@ const BatchActionBar = ({
             value={selectedCategory}
             onChange={(_event, newValue) => setSelectedCategory(newValue)}
             options={categoryOptions}
-            groupBy={(option) => option.firstLetter}
+            groupBy={(option) => option.groupLabel}
             getOptionLabel={(option) => option.label}
             isOptionEqualToValue={(option, value) => option.id === value?.id}
             renderInput={(params) => (
