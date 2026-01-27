@@ -105,13 +105,6 @@ const LineTableMaterial = ({
     return date.toLocaleDateString();
   };
 
-  // Check if a row can be edited (at least payee/description can always be edited)
-  const canEdit = () => {
-    // All transactions can be edited for payee/description
-    // Even Plaid transactions can have payee/description updated
-    return true;
-  };
-
   // Handle opening edit modal
   const handleEditClick = (rowData) => {
     setEditingTransaction(rowData);
@@ -277,29 +270,6 @@ const LineTableMaterial = ({
         return desc.length > 26 ? desc.slice(0, 26) + '...' : desc;
       },
     },
-    // Edit action column
-    {
-      title: '',
-      field: 'actions',
-      width: 50,
-      sorting: false,
-      render: (rowData) => (
-        <Tooltip title={gettext('Edit')} arrow placement="top">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEditClick(rowData);
-            }}
-            disabled={!canEdit(rowData)}
-          >
-            <EditIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      ),
-      headerStyle: { width: 50, paddingLeft: 4, paddingRight: 4 },
-      cellStyle: { width: 50, paddingLeft: 4, paddingRight: 4 },
-    },
     {
       title: '',
       field: 'source',
@@ -437,6 +407,7 @@ const LineTableMaterial = ({
             SortArrow: ArrowUpwardIcon,
             Filter: FilterListIcon,
           }}
+          onRowClick={(_event, rowData) => handleEditClick(rowData)}
           options={{
             actionsColumnIndex: -1,
             pageSize: 10,
@@ -453,9 +424,10 @@ const LineTableMaterial = ({
               if (filterMode === 'to_review' && rowData.category === null) {
                 return {
                   color: '#9CA3AF',
+                  cursor: 'pointer',
                 };
               }
-              return {};
+              return { cursor: 'pointer' };
             },
           }}
           localization={{
