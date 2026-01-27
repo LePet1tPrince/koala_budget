@@ -61,6 +61,7 @@ const LineTableMaterial = ({
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
+  const [modalMode, setModalMode] = useState('edit'); // 'create' | 'edit'
 
   // Clear selection and notify parent when filter mode changes
   useEffect(() => {
@@ -114,6 +115,14 @@ const LineTableMaterial = ({
   // Handle opening edit modal
   const handleEditClick = (rowData) => {
     setEditingTransaction(rowData);
+    setModalMode('edit');
+    setEditModalOpen(true);
+  };
+
+  // Handle opening create modal
+  const handleAddClick = () => {
+    setEditingTransaction(null);
+    setModalMode('create');
     setEditModalOpen(true);
   };
 
@@ -124,9 +133,17 @@ const LineTableMaterial = ({
   };
 
   // Handle save from edit modal
-  const handleEditSave = async (updatedData) => {
-    if (onEditTransaction) {
-      await onEditTransaction(updatedData);
+  const handleEditSave = async (data, mode) => {
+    if (mode === 'create') {
+      if (onAdd) {
+        await onAdd(data);
+        showSnackbar(gettext('Transaction added successfully'), 'success');
+      }
+    } else {
+      if (onEditTransaction) {
+        await onEditTransaction(data);
+        showSnackbar(gettext('Transaction updated successfully'), 'success');
+      }
     }
   };
 
@@ -320,50 +337,6 @@ const LineTableMaterial = ({
     },
   ];
 
-  // Validate row data for adding new transactions
-  const validateRowData = (rowData) => {
-    if (!rowData.postedDate) {
-      return gettext('Date is required');
-    }
-    if (!rowData.category) {
-      return gettext('Category is required');
-    }
-    const hasInflow = rowData.inflow && parseFloat(rowData.inflow) > 0;
-    const hasOutflow = rowData.outflow && parseFloat(rowData.outflow) > 0;
-    if (!hasInflow && !hasOutflow) {
-      return gettext('Either inflow or outflow is required');
-    }
-    if (hasInflow && hasOutflow) {
-      return gettext('Cannot have both inflow and outflow');
-    }
-    return null;
-  };
-
-  // Handle add row
-  const handleRowAdd = async (newData) => {
-    const error = validateRowData(newData);
-    if (error) {
-      showSnackbar(error, 'error');
-      throw new Error(error);
-    }
-    try {
-      const lineData = {
-        date: newData.postedDate,
-        category: newData.category?.id || newData.category,
-        inflow: newData.inflow || '',
-        outflow: newData.outflow || '',
-        description: newData.description || '',
-        payee: newData.payee || '',
-      };
-      await onAdd(lineData);
-      showSnackbar(gettext('Transaction added successfully'), 'success');
-    } catch (error) {
-      console.error('Failed to add transaction:', error);
-      showSnackbar(gettext('Failed to add transaction'), 'error');
-      throw error;
-    }
-  };
-
   // Handle delete row
   const handleRowDelete = async (oldData) => {
     try {
@@ -446,6 +419,15 @@ const LineTableMaterial = ({
                     </Typography>
                   )}
                 </Box>
+                <Tooltip title={gettext('Add Transaction')} arrow placement="top">
+                  <IconButton
+                    size="small"
+                    onClick={handleAddClick}
+                    color="primary"
+                  >
+                    <AddIcon />
+                  </IconButton>
+                </Tooltip>
               </Toolbar>
             ),
           }}
@@ -485,7 +467,6 @@ const LineTableMaterial = ({
             },
           }}
           editable={{
-            onRowAdd: handleRowAdd,
             onRowDelete: handleRowDelete,
           }}
           localization={{
@@ -514,13 +495,14 @@ const LineTableMaterial = ({
           }}
         />
 
-        {/* Edit Transaction Modal */}
+        {/* Edit/Create Transaction Modal */}
         <EditTransactionModal
           open={editModalOpen}
           onClose={handleEditModalClose}
           transaction={editingTransaction}
           allAccounts={allAccounts}
           onSave={handleEditSave}
+          mode={modalMode}
         />
 
         {/* Snackbar for notifications */}

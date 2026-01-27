@@ -17,8 +17,16 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 /* globals gettext */
 
 /**
- * EditTransactionModal - Modal dialog for editing bank feed transactions
+ * EditTransactionModal - Modal dialog for creating/editing bank feed transactions
  * Supports editing: date, category, inflow/outflow, payee, and description
+ *
+ * Props:
+ * - open: boolean - whether the modal is open
+ * - onClose: function - called when modal should close
+ * - transaction: object|null - the transaction to edit, or null for create mode
+ * - allAccounts: array - list of accounts for category selection
+ * - onSave: function - called with updated/new transaction data
+ * - mode: 'create' | 'edit' - defaults to 'edit' if transaction exists, 'create' otherwise
  */
 const EditTransactionModal = ({
   open,
@@ -26,7 +34,12 @@ const EditTransactionModal = ({
   transaction,
   allAccounts,
   onSave,
+  mode: modeProp,
 }) => {
+  // Determine mode - create if no transaction, edit otherwise
+  const mode = modeProp || (transaction ? 'edit' : 'create');
+  const isCreateMode = mode === 'create';
+
   // Form state
   const [date, setDate] = useState(null);
   const [category, setCategory] = useState(null);
@@ -48,45 +61,49 @@ const EditTransactionModal = ({
     })).sort((a, b) => -b.firstLetter.localeCompare(a.firstLetter));
   }, [allAccounts]);
 
-  // Initialize form when transaction changes
+  // Initialize form when transaction changes or modal opens
   useEffect(() => {
-    if (transaction) {
-      // Parse date - handle both Date objects and strings
+    if (!open) return;
+
+    if (isCreateMode) {
+      // Create mode - set defaults
+      setDate(new Date());
+      setCategory(null);
+      setInflow('');
+      setOutflow('');
+      setPayee('');
+      setDescription('');
+      setErrors({});
+    } else if (transaction) {
+      // Edit mode - populate from transaction
       const transactionDate = transaction.postedDate instanceof Date
         ? transaction.postedDate
         : transaction.postedDate ? new Date(transaction.postedDate) : null;
       setDate(transactionDate);
 
-      // Find matching category option
       const categoryOption = transaction.category
         ? categoryOptions.find(opt => opt.id === transaction.category.id)
         : null;
       setCategory(categoryOption);
 
-      // Parse amounts
       setInflow(transaction.inflow && parseFloat(transaction.inflow) > 0 ? transaction.inflow : '');
       setOutflow(transaction.outflow && parseFloat(transaction.outflow) > 0 ? transaction.outflow : '');
-
-      // Set text fields
       setPayee(transaction.payee || '');
       setDescription(transaction.description || '');
-
-      // Clear errors
       setErrors({});
     }
-  }, [transaction, categoryOptions]);
+  }, [open, transaction, categoryOptions, isCreateMode]);
 
   // Check if transaction is read-only (Plaid transactions without journal entry)
   const isReadOnly = useMemo(() => {
-    if (!transaction) return false;
-    // Plaid transactions that are not yet categorized (no journal_entry_id) can only have limited edits
+    if (isCreateMode || !transaction) return false;
     return transaction.source === 'plaid' && !transaction.journal_entry_id;
-  }, [transaction]);
+  }, [transaction, isCreateMode]);
 
   // Determine which fields can be edited
-  const canEditDate = !isReadOnly && transaction?.source === 'ledger';
-  const canEditAmounts = !isReadOnly && transaction?.source === 'ledger';
-  const canEditCategory = !isReadOnly;
+  const canEditDate = isCreateMode || (!isReadOnly && transaction?.source === 'ledger');
+  const canEditAmounts = isCreateMode || (!isReadOnly && transaction?.source === 'ledger');
+  const canEditCategory = isCreateMode || !isReadOnly;
   const canEditPayee = true; // Always editable
   const canEditDescription = true; // Always editable
 
@@ -94,25 +111,22 @@ const EditTransactionModal = ({
   const validate = () => {
     const newErrors = {};
 
-    // Only validate date/category/amounts for editable transactions
-    if (canEditDate && !date) {
+    if (!date) {
       newErrors.date = gettext('Date is required');
     }
 
-    if (canEditCategory && !category) {
+    if (!category) {
       newErrors.category = gettext('Category is required');
     }
 
-    if (canEditAmounts) {
-      const hasInflow = inflow && parseFloat(inflow) > 0;
-      const hasOutflow = outflow && parseFloat(outflow) > 0;
+    const hasInflow = inflow && parseFloat(inflow) > 0;
+    const hasOutflow = outflow && parseFloat(outflow) > 0;
 
-      if (!hasInflow && !hasOutflow) {
-        newErrors.amount = gettext('Either inflow or outflow is required');
-      }
-      if (hasInflow && hasOutflow) {
-        newErrors.amount = gettext('Cannot have both inflow and outflow');
-      }
+    if (!hasInflow && !hasOutflow) {
+      newErrors.amount = gettext('Either inflow or outflow is required');
+    }
+    if (hasInflow && hasOutflow) {
+      newErrors.amount = gettext('Cannot have both inflow and outflow');
     }
 
     setErrors(newErrors);
@@ -125,20 +139,33 @@ const EditTransactionModal = ({
 
     setSaving(true);
     try {
-      const updatedData = {
-        id: transaction.id,
-        source: transaction.source,
-        journal_entry_id: transaction.journal_entry_id,
-        // Include editable fields
-        date: canEditDate ? date : transaction.postedDate,
-        category: canEditCategory && category ? { id: category.id, name: category.name, account_number: category.accountNumber } : transaction.category,
-        inflow: canEditAmounts ? (inflow || '0') : transaction.inflow,
-        outflow: canEditAmounts ? (outflow || '0') : transaction.outflow,
-        payee: payee,
-        description: description,
-      };
-
-      await onSave(updatedData);
+      if (isCreateMode) {
+        // Create mode - send new transaction data
+        const newData = {
+          source: 'manual',
+          date: date,
+          category: category ? { id: category.id, name: category.name, account_number: category.accountNumber } : null,
+          inflow: inflow || '0',
+          outflow: outflow || '0',
+          payee: payee,
+          description: description,
+        };
+        await onSave(newData, 'create');
+      } else {
+        // Edit mode - send updated transaction data
+        const updatedData = {
+          id: transaction.id,
+          source: transaction.source,
+          journal_entry_id: transaction.journal_entry_id,
+          date: canEditDate ? date : transaction.postedDate,
+          category: canEditCategory && category ? { id: category.id, name: category.name, account_number: category.accountNumber } : transaction.category,
+          inflow: canEditAmounts ? (inflow || '0') : transaction.inflow,
+          outflow: canEditAmounts ? (outflow || '0') : transaction.outflow,
+          payee: payee,
+          description: description,
+        };
+        await onSave(updatedData, 'edit');
+      }
       onClose();
     } catch (error) {
       console.error('Failed to save transaction:', error);
@@ -166,11 +193,17 @@ const EditTransactionModal = ({
     }
   };
 
-  if (!transaction) return null;
+  // Don't render if not open (but we handle create mode now)
+  if (!open) return null;
+
+  const title = isCreateMode ? gettext('Add Transaction') : gettext('Edit Transaction');
+  const saveButtonText = isCreateMode
+    ? (saving ? gettext('Adding...') : gettext('Add'))
+    : (saving ? gettext('Saving...') : gettext('Save'));
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{gettext('Edit Transaction')}</DialogTitle>
+      <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
           {/* Date */}
@@ -185,7 +218,7 @@ const EditTransactionModal = ({
                   fullWidth: true,
                   size: 'small',
                   error: !!errors.date,
-                  helperText: errors.date || (!canEditDate ? gettext('Date cannot be edited for this transaction type') : ''),
+                  helperText: errors.date || (!canEditDate && !isCreateMode ? gettext('Date cannot be edited for this transaction type') : ''),
                 },
               }}
             />
@@ -206,7 +239,7 @@ const EditTransactionModal = ({
                 label={gettext('Category')}
                 size="small"
                 error={!!errors.category}
-                helperText={errors.category || (!canEditCategory ? gettext('Category cannot be edited for this transaction') : '')}
+                helperText={errors.category || (!canEditCategory && !isCreateMode ? gettext('Category cannot be edited for this transaction') : '')}
               />
             )}
           />
@@ -226,7 +259,7 @@ const EditTransactionModal = ({
                 startAdornment: <InputAdornment position="start">$</InputAdornment>,
               }}
               error={!!errors.amount}
-              helperText={!canEditAmounts ? gettext('Amount cannot be edited') : ''}
+              helperText={!canEditAmounts && !isCreateMode ? gettext('Amount cannot be edited') : ''}
             />
             <TextField
               label={gettext('Outflow')}
@@ -282,7 +315,7 @@ const EditTransactionModal = ({
           {gettext('Cancel')}
         </Button>
         <Button onClick={handleSave} variant="contained" disabled={saving}>
-          {saving ? gettext('Saving...') : gettext('Save')}
+          {saveButtonText}
         </Button>
       </DialogActions>
     </Dialog>

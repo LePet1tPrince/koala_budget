@@ -201,6 +201,10 @@ class BankFeedRowSerializer(serializers.Serializer):
         allow_null=True,
         help_text="ID of imported tx (if bank feed)",
     )
+    journal_entry_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="ID of linked journal entry (if categorized)",
+    )
 
     is_editable = serializers.BooleanField(help_text="Whether this row can be edited")
 
@@ -459,6 +463,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "payment_channel": payment_channel,
         "confidence": "manual" if tx.journal_entry else category_confidence,
         "journal_line_id": None,
+        "journal_entry_id": tx.journal_entry_id,  # ID of linked journal entry (for checking if categorized)
         "imported_transaction_id": tx.id,
-        "is_editable": not tx.journal_entry,  # Can't edit categorized transactions
+        "is_editable": True,  # All transactions can be edited via the modal
     }

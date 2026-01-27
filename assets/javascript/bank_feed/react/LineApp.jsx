@@ -9,7 +9,7 @@ import LineTableMaterial from './LineTableMaterial';
 import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
-import { getBatchOperationsApi } from '../bank_feed';
+import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
 
 /**
  * LineApp - Main application component for managing lines
@@ -40,6 +40,9 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, 
 
   // Batch operations API
   const batchApi = useMemo(() => getBatchOperationsApi(teamSlug), [teamSlug]);
+
+  // Transaction API (create/update)
+  const transactionApi = useMemo(() => getTransactionApi(teamSlug), [teamSlug]);
 
   // Show snackbar helper
   const showSnackbar = useCallback((message, severity = 'info') => {
@@ -171,18 +174,15 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, 
    */
   const handleAddLine = async (lineData) => {
     try {
-      // Use the simple lines API which creates a 2-line journal entry
-      await journalClient.simpleLinesCreate({
-        teamSlug: teamSlug,
-        simpleLine: {
-          entryDate: lineData.date,
-          description: lineData.description,
-          payee: lineData.payee,
-          account: selectedAccount.id,
-          category: lineData.category,
-          inflow: lineData.inflow || '0',
-          outflow: lineData.outflow || '0',
-        },
+      // Use the new transaction API which creates BankTransaction + JournalEntry
+      await transactionApi.createTransaction({
+        date: lineData.date,
+        category: lineData.category,
+        inflow: lineData.inflow || '0',
+        outflow: lineData.outflow || '0',
+        payee: lineData.payee || '',
+        description: lineData.description || '',
+        account: selectedAccount.id,
       });
 
       // Reload the bank feed to show updated data
@@ -195,66 +195,24 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, 
 
   /**
    * Handle editing a transaction from the edit modal
-   * Supports both ledger transactions (full CRUD) and uncategorized transactions (batch endpoints)
+   * Uses the transaction API to update the BankTransaction and associated JournalEntry
    */
   const handleEditTransaction = async (updatedData) => {
     try {
-      const { id, source, journal_entry_id, date, category, inflow, outflow, payee, description } = updatedData;
+      const { id, date, category, inflow, outflow, payee, description } = updatedData;
 
-      // For ledger transactions (categorized), use the simple lines partial update
-      if (source === 'ledger') {
-        // Extract the actual line ID from the composite ID (e.g., "ledger-123" -> 123)
-        const lineId = id.includes('-') ? id.split('-')[1] : id;
+      // Use the transaction API to update the transaction
+      await transactionApi.updateTransaction(id, {
+        date: date,
+        category: category,
+        inflow: inflow || '0',
+        outflow: outflow || '0',
+        payee: payee || '',
+        description: description || '',
+        account: selectedAccount.id,
+      });
 
-        // Format date as ISO string if it's a Date object
-        const formattedDate = date instanceof Date ? date.toISOString().split('T')[0] : date;
-
-        await journalClient.simpleLinesPartialUpdate({
-          teamSlug: teamSlug,
-          id: parseInt(lineId, 10),
-          patchedSimpleLine: {
-            entryDate: formattedDate,
-            category: category?.id || category,
-            inflow: inflow || '0',
-            outflow: outflow || '0',
-            payee: payee || '',
-            description: description || '',
-          },
-        });
-
-        await loadLines();
-        showSnackbar(gettext('Transaction updated successfully'), 'success');
-        return;
-      }
-
-      // For uncategorized transactions, use batch endpoints with single-item arrays
-      // Track what we need to update
-      const promises = [];
-
-      // Find the original transaction to compare changes
-      const originalTransaction = lines.find(l => l.id === id);
-
-      // Update category if changed (also sets payee/description if this creates a new journal entry)
-      if (category && category.id && (!originalTransaction?.category || originalTransaction.category.id !== category.id)) {
-        promises.push(batchApi.batchCategorize([id], category.id));
-      }
-
-      // Update payee if changed (for uncategorized transactions)
-      if (payee !== undefined && payee !== originalTransaction?.payee) {
-        promises.push(batchApi.batchSetPayee([id], payee));
-      }
-
-      // Update description if changed
-      if (description !== undefined && description !== originalTransaction?.description) {
-        promises.push(batchApi.batchSetDescription([id], description));
-      }
-
-      if (promises.length > 0) {
-        await Promise.all(promises);
-        await loadLines();
-        showSnackbar(gettext('Transaction updated successfully'), 'success');
-      }
-
+      await loadLines();
     } catch (err) {
       console.error('Failed to update transaction:', err);
       showSnackbar(err.message || gettext('Failed to update transaction'), 'error');
