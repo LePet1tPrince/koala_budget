@@ -239,6 +239,11 @@ const LineTableMaterial = ({
       render: (rowData) => formatDate(rowData.postedDate),
     },
     {
+      title: gettext('Payee'),
+      field: 'payee',
+      render: (rowData) => rowData.payee || '',
+    },
+    {
       title: gettext('Category'),
       field: 'category',
       render: (rowData) => {
@@ -265,13 +270,12 @@ const LineTableMaterial = ({
       },
     },
     {
-      title: gettext('Payee'),
-      field: 'payee',
-      render: (rowData) => rowData.payee || '',
-    },
-    {
       title: gettext('Description'),
       field: 'description',
+      render: (rowData) => {
+        const desc = rowData.description || '';
+        return desc.length > 26 ? desc.slice(0, 26) + '...' : desc;
+      },
     },
     // Edit action column
     {
@@ -336,18 +340,6 @@ const LineTableMaterial = ({
       cellStyle: { width: 30, paddingLeft: 4, paddingRight: 4 },
     },
   ];
-
-  // Handle delete row
-  const handleRowDelete = async (oldData) => {
-    try {
-      await onDelete(oldData.id);
-      showSnackbar(gettext('Transaction deleted successfully'), 'success');
-    } catch (error) {
-      console.error('Failed to delete transaction:', error);
-      showSnackbar(gettext('Failed to delete transaction'), 'error');
-      throw error;
-    }
-  };
 
   if (!selectedAccount) {
     return (
@@ -465,9 +457,6 @@ const LineTableMaterial = ({
               }
               return {};
             },
-          }}
-          editable={{
-            onRowDelete: handleRowDelete,
           }}
           localization={{
             header: {
