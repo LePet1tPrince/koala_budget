@@ -69,6 +69,12 @@ export interface Account {
     readonly balance: string;
     /**
      * 
+     * @type {string}
+     * @memberof Account
+     */
+    readonly reconciledBalance: string;
+    /**
+     * 
      * @type {Date}
      * @memberof Account
      */
@@ -104,6 +110,7 @@ export function instanceOfAccount(value: object): value is Account {
     if (!('accountGroupName' in value) || value['accountGroupName'] === undefined) return false;
     if (!('accountType' in value) || value['accountType'] === undefined) return false;
     if (!('balance' in value) || value['balance'] === undefined) return false;
+    if (!('reconciledBalance' in value) || value['reconciledBalance'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     if (!('archivedAt' in value) || value['archivedAt'] === undefined) return false;
@@ -128,6 +135,7 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
         'accountType': json['account_type'],
         'hasFeed': json['has_feed'] == null ? undefined : json['has_feed'],
         'balance': json['balance'],
+        'reconciledBalance': json['reconciled_balance'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
         'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
@@ -139,7 +147,7 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
       return AccountToJSONTyped(json, false);
   }
 
-  export function AccountToJSONTyped(value?: Omit<Account, 'id'|'account_group_name'|'account_type'|'balance'|'created_at'|'updated_at'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function AccountToJSONTyped(value?: Omit<Account, 'id'|'account_group_name'|'account_type'|'balance'|'reconciled_balance'|'created_at'|'updated_at'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

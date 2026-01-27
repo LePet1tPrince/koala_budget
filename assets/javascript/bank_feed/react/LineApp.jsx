@@ -9,13 +9,15 @@ import LineTableMaterial from './LineTableMaterial';
 import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
-import { getBatchOperationsApi } from '../bank_feed';
+import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
 
 /**
  * LineApp - Main application component for managing lines
  * Manages account selection and bank feed operations
  */
-const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
+const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
+  // Store accounts in state so we can update reconciled_balance after reconciliation
+  const [accounts, setAccounts] = useState(initialAccounts);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -26,6 +28,9 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState(new Set());
 
+  // Filter mode state (synced from LineTableMaterial)
+  const [filterMode, setFilterMode] = useState('to_review');
+
   // Snackbar state for batch operations
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -35,6 +40,9 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
 
   // Batch operations API
   const batchApi = useMemo(() => getBatchOperationsApi(teamSlug), [teamSlug]);
+
+  // Transaction API (create/update)
+  const transactionApi = useMemo(() => getTransactionApi(teamSlug), [teamSlug]);
 
   // Show snackbar helper
   const showSnackbar = useCallback((message, severity = 'info') => {
@@ -166,18 +174,15 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
    */
   const handleAddLine = async (lineData) => {
     try {
-      // Use the simple lines API which creates a 2-line journal entry
-      await journalClient.simpleLinesCreate({
-        teamSlug: teamSlug,
-        simpleLine: {
-          entryDate: lineData.date,
-          description: lineData.description,
-          payee: lineData.payee,
-          account: selectedAccount.id,
-          category: lineData.category,
-          inflow: lineData.inflow || '0',
-          outflow: lineData.outflow || '0',
-        },
+      // Use the new transaction API which creates BankTransaction + JournalEntry
+      await transactionApi.createTransaction({
+        date: lineData.date,
+        category: lineData.category,
+        inflow: lineData.inflow || '0',
+        outflow: lineData.outflow || '0',
+        payee: lineData.payee || '',
+        description: lineData.description || '',
+        account: selectedAccount.id,
       });
 
       // Reload the bank feed to show updated data
@@ -189,30 +194,28 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
   };
 
   /**
-   * Handle updating an existing line
+   * Handle editing a transaction from the edit modal
+   * Uses the transaction API to update the BankTransaction and associated JournalEntry
    */
-  const handleUpdateLine = async (lineId, lineData) => {
+  const handleEditTransaction = async (updatedData) => {
     try {
-      // If a category is being set and the transaction isn't already categorized,
-      // use the categorize API to create a journal entry
-      if (lineData.category && !lineData.journal_entry_id) {
-        await bankFeedClient.bankFeedTransactionsCategorize({
-          teamSlug: teamSlug,
-          categorizeTransactionsRequest: {
-            rows: [{ id: lineId }],
-            categoryId: lineData.category,
-          },
-        });
-        await loadLines();
-        return;
-      }
+      const { id, date, category, inflow, outflow, payee, description } = updatedData;
 
-      // For already categorized transactions or transactions without categories,
-      // we may need a different approach (e.g., update the existing journal entry)
-      throw new Error('Updating already categorized transactions not yet implemented');
+      // Use the transaction API to update the transaction
+      await transactionApi.updateTransaction(id, {
+        date: date,
+        category: category,
+        inflow: inflow || '0',
+        outflow: outflow || '0',
+        payee: payee || '',
+        description: description || '',
+        account: selectedAccount.id,
+      });
 
+      await loadLines();
     } catch (err) {
-      console.error('Failed to update line:', err);
+      console.error('Failed to update transaction:', err);
+      showSnackbar(err.message || gettext('Failed to update transaction'), 'error');
       throw err;
     }
   };
@@ -351,6 +354,85 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
   };
 
   /**
+   * Batch reconcile selected transactions
+   */
+  const handleBatchReconcile = async (adjustmentAmount = 0) => {
+    try {
+      // Calculate the reconciling amount before clearing selection
+      const reconcilingAmount = selectedRows.reduce((sum, row) => {
+        const inflow = parseFloat(row.inflow) || 0;
+        const outflow = parseFloat(row.outflow) || 0;
+        return sum + inflow - outflow;
+      }, 0);
+
+      await batchApi.batchReconcile([...selectedIds], adjustmentAmount);
+      setSelectedIds(new Set());
+      await loadLines();
+
+      // Update the account's reconciled_balance
+      const totalChange = reconcilingAmount + (parseFloat(adjustmentAmount) || 0);
+      updateAccountReconciledBalance(totalChange);
+
+      showSnackbar(gettext('Transactions reconciled successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch reconcile:', err);
+      showSnackbar(err.message || gettext('Failed to reconcile transactions'), 'error');
+    }
+  };
+
+  /**
+   * Batch unreconcile selected transactions
+   */
+  const handleBatchUnreconcile = async () => {
+    try {
+      // Calculate the amount being unreconciled before clearing selection
+      const unreconcilingAmount = selectedRows.reduce((sum, row) => {
+        const inflow = parseFloat(row.inflow) || 0;
+        const outflow = parseFloat(row.outflow) || 0;
+        return sum + inflow - outflow;
+      }, 0);
+
+      await batchApi.batchUnreconcile([...selectedIds]);
+      setSelectedIds(new Set());
+      await loadLines();
+
+      // Update the account's reconciled_balance (subtract the unreconciled amount)
+      updateAccountReconciledBalance(-unreconcilingAmount);
+
+      showSnackbar(gettext('Transactions unreconciled successfully'), 'success');
+    } catch (err) {
+      console.error('Failed to batch unreconcile:', err);
+      showSnackbar(err.message || gettext('Failed to unreconcile transactions'), 'error');
+    }
+  };
+
+  /**
+   * Update the reconciled_balance on the selected account and in the accounts list
+   */
+  const updateAccountReconciledBalance = (amountChange) => {
+    if (!selectedAccount) return;
+
+    const currentBalance = parseFloat(selectedAccount.reconciled_balance) || 0;
+    const newBalance = currentBalance + amountChange;
+
+    // Update the selected account
+    const updatedSelectedAccount = {
+      ...selectedAccount,
+      reconciled_balance: String(newBalance),
+    };
+    setSelectedAccount(updatedSelectedAccount);
+
+    // Update the accounts list
+    setAccounts(prevAccounts =>
+      prevAccounts.map(acc =>
+        acc.id === selectedAccount.id
+          ? { ...acc, reconciled_balance: String(newBalance) }
+          : acc
+      )
+    );
+  };
+
+  /**
    * Handle selection change from table
    */
   const handleSelectionChange = (newSelectedIds) => {
@@ -469,12 +551,12 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
               lines={lines}
               selectedAccount={selectedAccount}
               allAccounts={allAccounts}
-              allPayees={allPayees}
               onAdd={handleAddLine}
-              onUpdate={handleUpdateLine}
               onDelete={handleDeleteLine}
+              onEditTransaction={handleEditTransaction}
               selectedIds={selectedIds}
               onSelectionChange={handleSelectionChange}
+              onFilterModeChange={setFilterMode}
             />
           )}
         </section>
@@ -508,9 +590,13 @@ const LineApp = ({ accounts, allAccounts, allPayees, teamSlug, bankFeedClient, p
         onArchive={handleBatchArchive}
         onUnarchive={handleBatchUnarchive}
         onDuplicate={handleBatchDuplicate}
+        onReconcile={handleBatchReconcile}
+        onUnreconcile={handleBatchUnreconcile}
         onClearSelection={() => setSelectedIds(new Set())}
         showArchive={showArchiveButton}
         showUnarchive={showUnarchiveButton}
+        filterMode={filterMode}
+        selectedAccount={selectedAccount}
       />
 
       {/* Snackbar for batch operations */}

@@ -12,13 +12,13 @@ import {
   LastPage as LastPageIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { Alert, Autocomplete, Box, Checkbox, Snackbar, TextField, ToggleButton, ToggleButtonGroup, Toolbar, Typography } from '@mui/material';
-import React, { useMemo, useState } from 'react';
+import { Alert, Box, Checkbox, IconButton, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
+import EditTransactionModal from './EditTransactionModal';
 import MaterialTable from '@material-table/core';
-import { ProperCase } from '../utils';
 import { formatCurrency } from '../../utilities/currency';
 
 /* globals gettext */
@@ -37,12 +37,12 @@ const LineTableMaterial = ({
   lines,
   selectedAccount,
   allAccounts,
-  allPayees,
   onAdd,
-  onUpdate,
   onDelete,
+  onEditTransaction,
   selectedIds = new Set(),
   onSelectionChange,
+  onFilterModeChange,
 }) => {
   // Date range filter state (YYYY-MM-DD strings)
   const [filterStart, setFilterStart] = useState('');
@@ -57,6 +57,23 @@ const LineTableMaterial = ({
 
   // Filter state for Feed/Reconciled/Archived toggle
   const [filterMode, setFilterMode] = useState('to_review');
+
+  // Edit modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
+  const [modalMode, setModalMode] = useState('edit'); // 'create' | 'edit'
+
+  // Clear selection and notify parent when filter mode changes
+  useEffect(() => {
+    // Clear selected transactions when switching views
+    if (onSelectionChange) {
+      onSelectionChange(new Set());
+    }
+    // Notify parent of filter mode change
+    if (onFilterModeChange) {
+      onFilterModeChange(filterMode);
+    }
+  }, [filterMode]);
 
   // Create MUI theme that adapts to existing theme
   const theme = useMemo(() => {
@@ -88,28 +105,39 @@ const LineTableMaterial = ({
     return date.toLocaleDateString();
   };
 
-  // Create options array for Autocomplete (grouped by account number first letter)
-  const categoryOptions = useMemo(() => {
-    return allAccounts.map((account) => ({
-      id: account.id,
-      label: `${account.account_number} - ${account.name}`,
-      accountNumber: account.account_number,
-      name: account.name,
-      firstLetter: String(account.account_number).charAt(0).toUpperCase(),
-    })).sort((a, b) => -b.firstLetter.localeCompare(a.firstLetter));
-  }, [allAccounts]);
+  // Handle opening edit modal
+  const handleEditClick = (rowData) => {
+    setEditingTransaction(rowData);
+    setModalMode('edit');
+    setEditModalOpen(true);
+  };
 
-  const payeeLookup = useMemo(() => {
-    const lookup = { '': gettext('None') };
-    allPayees.forEach((payee) => {
-      lookup[payee.id] = payee.name;
-    });
-    return lookup;
-  }, [allPayees]);
+  // Handle opening create modal
+  const handleAddClick = () => {
+    setEditingTransaction(null);
+    setModalMode('create');
+    setEditModalOpen(true);
+  };
 
-  // Check if a row is read-only (Plaid transactions cannot be edited)
-  const isReadOnly = (rowData) => {
-    return rowData.source === 'plaid';
+  // Handle closing edit modal
+  const handleEditModalClose = () => {
+    setEditModalOpen(false);
+    setEditingTransaction(null);
+  };
+
+  // Handle save from edit modal
+  const handleEditSave = async (data, mode) => {
+    if (mode === 'create') {
+      if (onAdd) {
+        await onAdd(data);
+        showSnackbar(gettext('Transaction added successfully'), 'success');
+      }
+    } else {
+      if (onEditTransaction) {
+        await onEditTransaction(data);
+        showSnackbar(gettext('Transaction updated successfully'), 'success');
+      }
+    }
   };
 
   // Filter lines by selected date range and filter mode
@@ -196,15 +224,17 @@ const LineTableMaterial = ({
       ),
       headerStyle: { width: 50, paddingLeft: 8, paddingRight: 0 },
       cellStyle: { width: 50, paddingLeft: 8, paddingRight: 0 },
-      editable: 'never',
     },
     {
       title: gettext('Date'),
       field: 'postedDate',
       type: 'date',
       render: (rowData) => formatDate(rowData.postedDate),
-      validate: (rowData) => rowData.postedDate ? true : { isValid: false, helperText: gettext('Date is required') },
-      editable: (rowData) => !isReadOnly(rowData),
+    },
+    {
+      title: gettext('Payee'),
+      field: 'payee',
+      render: (rowData) => rowData.payee || '',
     },
     {
       title: gettext('Category'),
@@ -213,36 +243,6 @@ const LineTableMaterial = ({
         const category = rowData.category;
         return category ? gettext(category.name) : gettext('Uncategorized');
       },
-      validate: (rowData) => rowData.category ? true : { isValid: false, helperText: gettext('Category is required') },
-      editComponent: (props) => {
-        // Find the currently selected option
-        const currentCategory = props.rowData.category;
-        const selectedOption = currentCategory ? categoryOptions.find(opt => opt.id === currentCategory.id) : null;
-
-        return (
-          <Autocomplete
-            value={selectedOption}
-            onChange={(_event, newValue) => {
-              props.onChange(newValue ? { id: newValue.id, account_number: newValue.accountNumber, name: newValue.name } : null);
-            }}
-            options={categoryOptions}
-            groupBy={(option) => option.firstLetter}
-            getOptionLabel={(option) => option.label}
-            isOptionEqualToValue={(option, value) => option.id === value.id}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={gettext('Category')}
-                size="small"
-                error={!props.value}
-                helperText={!props.value ? gettext('Category is required') : ''}
-              />
-            )}
-            size="small"
-          />
-        );
-      },
-      editable: (rowData) => !isReadOnly(rowData),
     },
     {
       title: gettext('Inflow'),
@@ -252,21 +252,6 @@ const LineTableMaterial = ({
         const value = rowData.inflow;
         return value && parseFloat(value) > 0 ? formatCurrency(value) : '';
       },
-      editComponent: (props) => (
-        <input
-          type="number"
-          step="0.01"
-          value={props.value || ''}
-          onChange={(e) => props.onChange(e.target.value)}
-          onBlur={() => {
-            if (props.value && parseFloat(props.value) > 0) {
-              // Clear outflow when inflow is set
-              props.rowData.outflow = '0';
-            }
-          }}
-        />
-      ),
-      editable: (rowData) => !isReadOnly(rowData),
     },
     {
       title: gettext('Outflow'),
@@ -276,148 +261,55 @@ const LineTableMaterial = ({
         const value = rowData.outflow;
         return value && parseFloat(value) > 0 ? formatCurrency(value) : '';
       },
-      editComponent: (props) => (
-        <input
-          type="number"
-          step="0.01"
-          value={props.value || ''}
-          onChange={(e) => props.onChange(e.target.value)}
-          onBlur={() => {
-            if (props.value && parseFloat(props.value) > 0) {
-              // Clear inflow when inflow is set
-              props.rowData.inflow = '0';
-            }
-          }}
-        />
-      ),
-      editable: (rowData) => !isReadOnly(rowData),
     },
     {
       title: gettext('Description'),
       field: 'description',
-      editable: (rowData) => !isReadOnly(rowData),
+      render: (rowData) => {
+        const desc = rowData.description || '';
+        return desc.length > 26 ? desc.slice(0, 26) + '...' : desc;
+      },
     },
     {
-      title: gettext('Source'),
+      title: '',
       field: 'source',
+      width: 30,
       render: (rowData) => {
         const source = rowData.source;
-        let label = ProperCase(source);
+        let letter = 'S';
+        let tooltip = gettext('System transaction');
         let color = 'gray';
 
         if (source === 'plaid') {
-          // label = 'Plaid';
+          letter = 'P';
+          tooltip = gettext('Plaid transaction');
           color = 'blue';
-        } else if (source === 'ledger') {
-          // label = 'Ledger';
-          color = 'green';
-        } else if (source === 'manual') {
-          // label = 'Manual';
+        } else if (source === 'csv') {
+          letter = 'U';
+          tooltip = gettext('Uploaded transaction');
           color = 'orange';
+        } else if (source === 'manual') {
+          letter = 'M';
+          tooltip = gettext('Manual transaction');
+          color = 'purple';
+        } else if (source === 'ledger') {
+          letter = 'L';
+          tooltip = gettext('Ledger transaction');
+          color = 'green';
         }
 
         return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${color}-100 text-${color}-800`}>
-            {label}
-          </span>
+          <Tooltip title={tooltip} arrow placement="top">
+            <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-xs font-semibold bg-${color}-100 text-${color}-700 cursor-default`}>
+              {letter}
+            </span>
+          </Tooltip>
         );
       },
-      editable: 'never',
+      headerStyle: { width: 30, paddingLeft: 4, paddingRight: 4 },
+      cellStyle: { width: 30, paddingLeft: 4, paddingRight: 4 },
     },
   ];
-
-  // Validate row data
-  const validateRowData = (rowData) => {
-    // Check required fields
-    if (!rowData.postedDate) {
-      return gettext('Date is required');
-    }
-    if (!rowData.category) {
-      return gettext('Category is required');
-    }
-
-    // Validate that exactly one of inflow or outflow is specified
-    const hasInflow = rowData.inflow && parseFloat(rowData.inflow) > 0;
-    const hasOutflow = rowData.outflow && parseFloat(rowData.outflow) > 0;
-
-    if (!hasInflow && !hasOutflow) {
-      return gettext('Either inflow or outflow is required');
-    }
-    if (hasInflow && hasOutflow) {
-      return gettext('Cannot have both inflow and outflow');
-    }
-
-    return null;
-  };
-
-  // Handle add row
-  const handleRowAdd = async (newData) => {
-    const error = validateRowData(newData);
-    if (error) {
-      showSnackbar(error, 'error');
-      throw new Error(error);
-    }
-
-    try {
-      // Prepare data for API - map bank feed format to expected format
-      const lineData = {
-        date: newData.postedDate,
-        category: newData.category?.id || newData.category,
-        inflow: newData.inflow || '',
-        outflow: newData.outflow || '',
-        description: newData.description || '',
-        payee: '', // Not used in bank feed format
-      };
-
-      await onAdd(lineData);
-      showSnackbar(gettext('Transaction added successfully'), 'success');
-    } catch (error) {
-      console.error('Failed to add transaction:', error);
-      showSnackbar(gettext('Failed to add transaction'), 'error');
-      throw error;
-    }
-  };
-
-  // Handle update row
-  const handleRowUpdate = async (newData, oldData) => {
-    const error = validateRowData(newData);
-    if (error) {
-      showSnackbar(error, 'error');
-      throw new Error(error);
-    }
-
-    try {
-      // Prepare data for API
-      const lineData = {
-        date: newData.postedDate,
-        category: newData.category?.id || newData.category,
-        inflow: newData.inflow || '',
-        outflow: newData.outflow || '',
-        description: newData.description || '',
-        payee: '', // Not used in bank feed format
-        source: newData.source,
-      };
-
-      await onUpdate(oldData.id, lineData);
-      showSnackbar(gettext('Transaction updated successfully'), 'success');
-    } catch (error) {
-      console.error('Failed to update transaction:', error);
-      showSnackbar(gettext('Failed to update transaction'), 'error');
-      throw error;
-    }
-  };
-
-  // Handle delete row
-  const handleRowDelete = async (oldData) => {
-    try {
-      await onDelete(oldData.id);
-      showSnackbar(gettext('Transaction deleted successfully'), 'success');
-    } catch (error) {
-      console.error('Failed to delete transaction:', error);
-      showSnackbar(gettext('Failed to delete transaction'), 'error');
-      throw error;
-    }
-  };
 
   if (!selectedAccount) {
     return (
@@ -473,7 +365,7 @@ const LineTableMaterial = ({
           columns={columns}
           data={filteredLines}
           components={{
-            Toolbar: (props) => (
+            Toolbar: () => (
               <Toolbar variant="dense" sx={{ pl: 1, pr: 1, minHeight: 48 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
                   <Checkbox
@@ -489,6 +381,15 @@ const LineTableMaterial = ({
                     </Typography>
                   )}
                 </Box>
+                <Tooltip title={gettext('Add Transaction')} arrow placement="top">
+                  <IconButton
+                    size="small"
+                    onClick={handleAddClick}
+                    color="primary"
+                  >
+                    <AddIcon />
+                  </IconButton>
+                </Tooltip>
               </Toolbar>
             ),
           }}
@@ -506,6 +407,7 @@ const LineTableMaterial = ({
             SortArrow: ArrowUpwardIcon,
             Filter: FilterListIcon,
           }}
+          onRowClick={(_event, rowData) => handleEditClick(rowData)}
           options={{
             actionsColumnIndex: -1,
             pageSize: 10,
@@ -517,11 +419,16 @@ const LineTableMaterial = ({
             showTitle: false,
             padding: 'dense',
             emptyRowsWhenPaging: false,
-          }}
-          editable={{
-            onRowAdd: handleRowAdd,
-            onRowUpdate: handleRowUpdate,
-            onRowDelete: handleRowDelete,
+            rowStyle: (rowData) => {
+              // Style uncategorized transactions with grey text in 'to_review' mode only
+              if (filterMode === 'to_review' && rowData.category === null) {
+                return {
+                  color: '#9CA3AF',
+                  cursor: 'pointer',
+                };
+              }
+              return { cursor: 'pointer' };
+            },
           }}
           localization={{
             header: {
@@ -547,6 +454,16 @@ const LineTableMaterial = ({
               lastTooltip: gettext('Last Page'),
             },
           }}
+        />
+
+        {/* Edit/Create Transaction Modal */}
+        <EditTransactionModal
+          open={editModalOpen}
+          onClose={handleEditModalClose}
+          transaction={editingTransaction}
+          allAccounts={allAccounts}
+          onSave={handleEditSave}
+          mode={modalMode}
         />
 
         {/* Snackbar for notifications */}

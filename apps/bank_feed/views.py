@@ -10,7 +10,7 @@ from django.db import transaction
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -37,8 +37,44 @@ from .serializers import (
     BatchMoveAccountRequestSerializer,
     BatchSetPayeeRequestSerializer,
     BatchSetDescriptionRequestSerializer,
+    BatchReconcileRequestSerializer,
 )
 from .services.csv_upload import parse_file, preview_transactions, create_transactions
+
+class ManualTransactionSerializer(serializers.Serializer):
+    """Serializer for creating/updating manual transactions."""
+    date = serializers.DateField(help_text="Transaction date")
+    category = serializers.IntegerField(help_text="Category account ID")
+    inflow = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        default=Decimal("0"),
+        help_text="Money coming in",
+    )
+    outflow = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        default=Decimal("0"),
+        help_text="Money going out",
+    )
+    payee = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Payee/merchant name",
+    )
+    description = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Transaction description",
+    )
+    account = serializers.IntegerField(help_text="Bank account ID")
+
 
 @extend_schema_view(
     list=extend_schema(
@@ -58,8 +94,20 @@ from .services.csv_upload import parse_file, preview_transactions, create_transa
         operation_id="bank_feed_feed_retrieve",
         tags=["bank-feed"],
     ),
+    create=extend_schema(
+        operation_id="bank_feed_feed_create",
+        tags=["bank-feed"],
+        request=ManualTransactionSerializer,
+        responses={201: BankFeedRowSerializer},
+    ),
+    update=extend_schema(
+        operation_id="bank_feed_feed_update",
+        tags=["bank-feed"],
+        request=ManualTransactionSerializer,
+        responses={200: BankFeedRowSerializer},
+    ),
 )
-class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
+class BankFeedViewSet(viewsets.ModelViewSet):
     """
     Unified bank feed API.
     Uses BankTransaction as the base unit, combining uncategorized BankTransactions
@@ -243,6 +291,277 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
             "previous": None,
             "results": serializer.data,
         })
+
+    def create(self, request, team_slug=None):
+        """
+        Create a new manual bank transaction with associated journal entry.
+
+        Request body:
+        - date: Transaction date (YYYY-MM-DD)
+        - category: Category account ID
+        - inflow: Money coming in (default 0)
+        - outflow: Money going out (default 0)
+        - payee: Payee/merchant name (optional)
+        - description: Transaction description (optional)
+        - account: Bank account ID
+        """
+        serializer = ManualTransactionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+
+        # Verify accounts exist and belong to team
+        try:
+            bank_account = Account.for_team.get(id=data["account"])
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Bank account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            category_account = Account.for_team.get(id=data["category"])
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Category account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
+        inflow = data.get("inflow", Decimal("0")) or Decimal("0")
+        outflow = data.get("outflow", Decimal("0")) or Decimal("0")
+        amount = outflow - inflow  # positive = outflow
+
+        # Get or create payee if provided
+        payee = None
+        payee_name = data.get("payee", "")
+        if payee_name:
+            payee, _ = Payee.objects.get_or_create(
+                team=request.team,
+                name=payee_name,
+            )
+
+        with transaction.atomic():
+            # Create journal entry
+            journal_entry = JournalEntry.objects.create(
+                team=request.team,
+                entry_date=data["date"],
+                description=data.get("description", ""),
+                payee=payee,
+                source="M",  # Manual
+                status=JournalEntry.STATUS_POSTED,
+            )
+
+            # Create journal lines
+            abs_amount = abs(amount)
+            if inflow > 0:
+                # Money coming in: debit bank account, credit category
+                JournalLine.objects.create(
+                    journal_entry=journal_entry,
+                    team=request.team,
+                    account=bank_account,
+                    dr_amount=abs_amount,
+                    cr_amount=Decimal("0"),
+                )
+                JournalLine.objects.create(
+                    journal_entry=journal_entry,
+                    team=request.team,
+                    account=category_account,
+                    dr_amount=Decimal("0"),
+                    cr_amount=abs_amount,
+                )
+            else:
+                # Money going out: credit bank account, debit category
+                JournalLine.objects.create(
+                    journal_entry=journal_entry,
+                    team=request.team,
+                    account=bank_account,
+                    dr_amount=Decimal("0"),
+                    cr_amount=abs_amount,
+                )
+                JournalLine.objects.create(
+                    journal_entry=journal_entry,
+                    team=request.team,
+                    account=category_account,
+                    dr_amount=abs_amount,
+                    cr_amount=Decimal("0"),
+                )
+
+            # Create bank transaction
+            bank_tx = BankTransaction.objects.create(
+                team=request.team,
+                account=bank_account,
+                amount=amount,
+                posted_date=data["date"],
+                description=data.get("description", ""),
+                merchant_name=payee_name,
+                source="M",  # Manual
+                journal_entry=journal_entry,
+            )
+
+        # Return the created transaction as a feed row
+        row = bank_transaction_to_feed_row(bank_tx)
+        response_serializer = BankFeedRowSerializer(row)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, team_slug=None, pk=None):
+        """
+        Update an existing bank transaction and its associated journal entry.
+
+        Request body:
+        - date: Transaction date (YYYY-MM-DD)
+        - category: Category account ID
+        - inflow: Money coming in (default 0)
+        - outflow: Money going out (default 0)
+        - payee: Payee/merchant name (optional)
+        - description: Transaction description (optional)
+        - account: Bank account ID
+        """
+        # Get the existing bank transaction
+        try:
+            bank_tx = BankTransaction.objects.select_related(
+                "account", "journal_entry"
+            ).get(id=pk, team=request.team)
+        except BankTransaction.DoesNotExist:
+            return Response(
+                {"error": "Transaction not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = ManualTransactionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+
+        # Verify accounts exist and belong to team
+        try:
+            bank_account = Account.for_team.get(id=data["account"])
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Bank account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            category_account = Account.for_team.get(id=data["category"])
+        except Account.DoesNotExist:
+            return Response(
+                {"error": "Category account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
+        inflow = data.get("inflow", Decimal("0")) or Decimal("0")
+        outflow = data.get("outflow", Decimal("0")) or Decimal("0")
+        amount = outflow - inflow  # positive = outflow
+
+        # Get or create payee if provided
+        payee = None
+        payee_name = data.get("payee", "")
+        if payee_name:
+            payee, _ = Payee.objects.get_or_create(
+                team=request.team,
+                name=payee_name,
+            )
+
+        with transaction.atomic():
+            # Update bank transaction
+            bank_tx.account = bank_account
+            bank_tx.amount = amount
+            bank_tx.posted_date = data["date"]
+            bank_tx.description = data.get("description", "")
+            bank_tx.merchant_name = payee_name
+            bank_tx.save()
+
+            # Update or create journal entry
+            journal_entry = bank_tx.journal_entry
+            if journal_entry:
+                # Update existing journal entry
+                journal_entry.entry_date = data["date"]
+                journal_entry.description = data.get("description", "")
+                journal_entry.payee = payee
+                journal_entry.save()
+
+                # Update journal lines
+                lines = list(journal_entry.lines.all())
+                abs_amount = abs(amount)
+
+                for line in lines:
+                    if line.account == bank_tx.account or line.account == bank_account:
+                        # Bank account line
+                        line.account = bank_account
+                        if inflow > 0:
+                            line.dr_amount = abs_amount
+                            line.cr_amount = Decimal("0")
+                        else:
+                            line.dr_amount = Decimal("0")
+                            line.cr_amount = abs_amount
+                        line.save()
+                    else:
+                        # Category line
+                        line.account = category_account
+                        if inflow > 0:
+                            line.dr_amount = Decimal("0")
+                            line.cr_amount = abs_amount
+                        else:
+                            line.dr_amount = abs_amount
+                            line.cr_amount = Decimal("0")
+                        line.save()
+            else:
+                # Create new journal entry if one doesn't exist
+                journal_entry = JournalEntry.objects.create(
+                    team=request.team,
+                    entry_date=data["date"],
+                    description=data.get("description", ""),
+                    payee=payee,
+                    source="M",
+                    status=JournalEntry.STATUS_POSTED,
+                )
+
+                abs_amount = abs(amount)
+                if inflow > 0:
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=bank_account,
+                        dr_amount=abs_amount,
+                        cr_amount=Decimal("0"),
+                    )
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=category_account,
+                        dr_amount=Decimal("0"),
+                        cr_amount=abs_amount,
+                    )
+                else:
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=bank_account,
+                        dr_amount=Decimal("0"),
+                        cr_amount=abs_amount,
+                    )
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=category_account,
+                        dr_amount=abs_amount,
+                        cr_amount=Decimal("0"),
+                    )
+
+                bank_tx.journal_entry = journal_entry
+                bank_tx.save()
+
+        # Reload to get updated data
+        bank_tx.refresh_from_db()
+
+        # Return the updated transaction as a feed row
+        row = bank_transaction_to_feed_row(bank_tx)
+        response_serializer = BankFeedRowSerializer(row)
+        return Response(response_serializer.data)
 
     @extend_schema(
         operation_id="bank_feed_upload_parse",
@@ -705,6 +1024,193 @@ class BankFeedViewSet(viewsets.ReadOnlyModelViewSet):
         response_serializer = BankFeedRowSerializer(rows, many=True)
         return Response(response_serializer.data)
 
+    @extend_schema(
+        operation_id="bank_feed_batch_reconcile",
+        tags=["bank-feed"],
+        request=BatchReconcileRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_reconcile")
+    def batch_reconcile(self, request, team_slug=None):
+        """
+        Batch reconcile multiple bank transactions.
+        Sets is_reconciled=True on the JournalLine for the bank account side.
+        Optionally creates an adjustment if adjustment_amount is non-zero.
+        """
+        serializer = BatchReconcileRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+        adjustment_amount = serializer.validated_data.get("adjustment_amount", Decimal("0"))
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("account", "journal_entry")
+
+        # Validate: All transactions must be categorized (have journal_entry)
+        uncategorized = [tx for tx in transactions if not tx.journal_entry]
+        if uncategorized:
+            return Response(
+                {"error": f"Cannot reconcile uncategorized transactions. {len(uncategorized)} transaction(s) need to be categorized first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get the account (assuming all transactions are for the same account)
+        if not transactions:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        bank_account = transactions[0].account
+
+        with transaction.atomic():
+            # Mark each transaction's bank account journal line as reconciled
+            for tx in transactions:
+                for line in tx.journal_entry.lines.all():
+                    if line.account == tx.account:
+                        line.is_reconciled = True
+                        line.save()
+                        break
+
+            # Create adjustment if needed
+            if adjustment_amount and adjustment_amount != Decimal("0"):
+                self._create_reconciliation_adjustment(
+                    team=request.team,
+                    bank_account=bank_account,
+                    amount=adjustment_amount,
+                )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @transaction.atomic
+    def _create_reconciliation_adjustment(self, team, bank_account, amount):
+        """
+        Create a reconciliation adjustment transaction.
+        Creates a BankTransaction with source='S' and a JournalEntry linking to an 'Adjustments' account.
+        The adjustment is marked as reconciled immediately.
+        """
+        from apps.accounts.models import AccountGroup, ACCOUNT_TYPE_EXPENSE
+
+        # First, find or create an expense group for adjustments
+        expense_group = AccountGroup.objects.filter(
+            team=team,
+            account_type=ACCOUNT_TYPE_EXPENSE,
+        ).first()
+
+        if not expense_group:
+            # Create a default expense group if none exists
+            expense_group = AccountGroup.objects.create(
+                team=team,
+                name="Expenses",
+                account_type=ACCOUNT_TYPE_EXPENSE,
+            )
+
+        # Find or create the Adjustments account (account_group is required)
+        adjustments_account, created = Account.objects.get_or_create(
+            team=team,
+            name="Reconciliation Adjustments",
+            defaults={
+                "account_number": "9999",
+                "has_feed": False,
+                "account_group": expense_group,
+            },
+        )
+
+        # Create the journal entry
+        journal_entry = JournalEntry.objects.create(
+            team=team,
+            entry_date=datetime.now().date(),
+            description="Reconciliation Adjustment",
+            source="S",  # System
+            status=JournalEntry.STATUS_POSTED,
+        )
+
+        # Determine dr/cr based on sign (positive = increase bank balance)
+        abs_amount = abs(amount)
+        if amount > 0:
+            # Positive adjustment: debit bank account, credit adjustments
+            bank_line = JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=bank_account,
+                dr_amount=abs_amount,
+                cr_amount=Decimal("0"),
+                is_reconciled=True,  # Mark as reconciled immediately
+            )
+            JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=adjustments_account,
+                dr_amount=Decimal("0"),
+                cr_amount=abs_amount,
+            )
+        else:
+            # Negative adjustment: credit bank account, debit adjustments
+            bank_line = JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=bank_account,
+                dr_amount=Decimal("0"),
+                cr_amount=abs_amount,
+                is_reconciled=True,  # Mark as reconciled immediately
+            )
+            JournalLine.objects.create(
+                journal_entry=journal_entry,
+                team=team,
+                account=adjustments_account,
+                dr_amount=abs_amount,
+                cr_amount=Decimal("0"),
+            )
+
+        # Create the BankTransaction
+        BankTransaction.objects.create(
+            team=team,
+            account=bank_account,
+            amount=-amount if amount > 0 else abs_amount,  # Plaid convention: positive = outflow
+            posted_date=datetime.now().date(),
+            description="Reconciliation Adjustment",
+            source="S",  # System
+            journal_entry=journal_entry,
+        )
+
+        return journal_entry
+
+    @extend_schema(
+        operation_id="bank_feed_batch_unreconcile",
+        tags=["bank-feed"],
+        request=BatchIdsSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_unreconcile")
+    def batch_unreconcile(self, request, team_slug=None):
+        """
+        Batch unreconcile multiple bank transactions.
+        Sets is_reconciled=False on the JournalLine for the bank account side.
+        """
+        serializer = BatchIdsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+
+        # Get transactions that belong to this team
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+        ).select_related("account", "journal_entry")
+
+        # Mark each transaction's bank account journal line as unreconciled
+        for tx in transactions:
+            if tx.journal_entry:
+                for line in tx.journal_entry.lines.all():
+                    if line.account == tx.account:
+                        line.is_reconciled = False
+                        line.save()
+                        break
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 # # Template Views
 
@@ -715,8 +1221,8 @@ def bank_feed_home(request, team_slug):
     Main bank feed page view.
     Displays accounts with bank feeds and bank transactions table.
     """
-    # Get accounts with bank feeds (with_balance() avoids N+1 queries)
-    accounts_with_feeds = Account.for_team.filter(has_feed=True).with_balance().select_related("account_group").order_by("name")
+    # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
+    accounts_with_feeds = Account.for_team.filter(has_feed=True).with_balance().with_reconciled_balance().select_related("account_group").order_by("name")
 
     # Serialize accounts for React
     accounts_data = AccountSerializer(accounts_with_feeds, many=True).data

@@ -122,6 +122,18 @@ class BatchSetDescriptionRequestSerializer(BatchIdsSerializer):
     description = serializers.CharField(max_length=255, help_text="Transaction description")
 
 
+class BatchReconcileRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch reconcile request."""
+
+    adjustment_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        default=0,
+        help_text="Optional adjustment amount to create if balance doesn't match",
+    )
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.
@@ -188,6 +200,10 @@ class BankFeedRowSerializer(serializers.Serializer):
     imported_transaction_id = serializers.IntegerField(
         allow_null=True,
         help_text="ID of imported tx (if bank feed)",
+    )
+    journal_entry_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="ID of linked journal entry (if categorized)",
     )
 
     is_editable = serializers.BooleanField(help_text="Whether this row can be edited")
@@ -415,14 +431,18 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     payment_channel = plaid_tx.payment_channel if plaid_tx else None
     category_confidence = plaid_tx.category_confidence if plaid_tx else None
 
-    # Get category from JournalEntry if categorized
+    # Get category and reconciliation status from JournalEntry if categorized
     category = None
+    is_reconciled = False
     if tx.journal_entry:
         # Find the category account (the one that's not the bank account)
+        # and the bank account line for reconciliation status
         for line in tx.journal_entry.lines.all():
             if line.account != tx.account:
                 category = line.account
-                break
+            else:
+                # Bank account line - get reconciliation status from here
+                is_reconciled = line.is_reconciled
 
     return {
         "id": tx.id,
@@ -438,11 +458,12 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "is_pending": is_pending,
         "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
         "is_archived": tx.is_archived,
-        "is_reconciled": bool(tx.journal_entry),  # If categorized, consider it reconciled
+        "is_reconciled": is_reconciled,  # From the bank account's journal line
         "payee": tx.merchant_name,  # Map merchant_name to payee
         "payment_channel": payment_channel,
         "confidence": "manual" if tx.journal_entry else category_confidence,
         "journal_line_id": None,
+        "journal_entry_id": tx.journal_entry_id,  # ID of linked journal entry (for checking if categorized)
         "imported_transaction_id": tx.id,
-        "is_editable": not tx.journal_entry,  # Can't edit categorized transactions
+        "is_editable": True,  # All transactions can be edited via the modal
     }

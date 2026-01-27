@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 
 
@@ -15,6 +15,18 @@ class AccountQuerySet(models.QuerySet):
         return self.annotate(
             _balance=Coalesce(Sum('journal_lines__dr_amount'), Decimal('0'))
                    - Coalesce(Sum('journal_lines__cr_amount'), Decimal('0'))
+        )
+
+    def with_reconciled_balance(self):
+        """Annotate accounts with their reconciled balance (only reconciled journal lines)."""
+        return self.annotate(
+            _reconciled_balance=Coalesce(
+                Sum('journal_lines__dr_amount', filter=Q(journal_lines__is_reconciled=True)),
+                Decimal('0')
+            ) - Coalesce(
+                Sum('journal_lines__cr_amount', filter=Q(journal_lines__is_reconciled=True)),
+                Decimal('0')
+            )
         )
 
 

@@ -1,213 +1,363 @@
-# Codebase Guidelines
+# Koala Budget - LLM Context Guide
 
-## Architecture
+This document provides comprehensive context for LLMs working on the Koala Budget codebase.
 
-- This is a Django project built on Python 3.12.
-- User authentication uses `django-allauth`.
-- The front end is mostly standard Django views and templates.
-- The front end also uses React for dynamic user interfaces and interactions.
-- React components are built using TypeScript and communicate with Django via a REST API.
-- JavaScript files are kept in the `/assets/` folder and built by vite.
-  JavaScript code is typically loaded via the static files framework inside Django templates using `django-vite`.
-- There is also a standalone React front end in the `/frontend/` folder, which uses its own Vite build.
-- APIs use Django Rest Framework, and JavaScript code that interacts with APIs uses an
-  auto-generated OpenAPI-schema-baesd client.
-- The front end uses Tailwind (Version 4) and DaisyUI.
-- The main database is Postgres.
-- Celery is used for background jobs and scheduled tasks.
-- Redis is used as the default cache, and the message broker for Celery (if enabled).
+## Project Overview
 
-## Commands you can run
+Koala Budget is a **personal finance application for freelancers** built on the Pegasus SaaS framework. It features:
 
-The following commands can be used for various tools and workflows.
-A `Makefile` is provided to help centralize commands:
+- **Double-entry bookkeeping** with a full chart of accounts
+- **Bank feed integration** via Plaid API and CSV import
+- **Monthly budgeting** with category tracking
+- **Savings goals** with monthly allocation tracking
+- **Multi-tenancy** via Teams (virtual workspaces)
+- **AI/Chat features** for smart categorization
 
-```bash
-make  # List available commands
-```
+## Technology Stack
 
-### First-time Setup
-
-```bash
-make init
-```
-
-### Starting the Application
-
-```bash
-make start     # Run in foreground with logs
-make start-bg  # Run in background
-```
-
-Access the app at http://localhost:8000
-
-### Stopping Services
-
-```bash
-make stop
-```
-
-## Common Commands
-
-### Development
-
-```bash
-make ssh              # SSH into web container
-make shell            # Open Python / Django shell
-make dbshell          # Open PostgreSQL shell
-make manage ARGS='command'  # Run any Django management command
-```
-
-### Database
-
-```bash
-make migrations       # Create new migrations
-make migrate          # Apply migrations
-```
-
-### Testing
-
-```bash
-make test                              # Run all tests
-make test ARGS='apps.module.tests.test_file'  # Run specific test
-make test ARGS='path.to.test --keepdb'        # Run with options
-```
-
-### Python Code Quality
-
-```bash
-make ruff-format      # Format code
-make ruff-lint        # Lint and auto-fix
-make ruff             # Run both format and lint
-```
-### Python
-
-```bash
-make uv add '<package>'         # Add a new package
-make requirements               # Rebuild and restart containers after updating packages
-make uv run '<command> <args>'  # Run a Python command
-```
+### Backend
+- **Framework**: Django 6.0+ on Python 3.12
+- **Package Manager**: uv (modern Python dependency manager)
+- **Database**: PostgreSQL 17
+- **REST API**: Django REST Framework with drf-spectacular (OpenAPI)
+- **Authentication**: django-allauth (supports social auth, 2FA)
+- **Task Queue**: Celery with Redis
+- **Payments**: dj-stripe (Stripe integration)
 
 ### Frontend
+- **Build Tool**: Vite 7.x
+- **UI Frameworks**: React 19.x (primary), Alpine.js 3.x (simple interactions)
+- **Styling**: Tailwind CSS 4.x with DaisyUI 5.x components
+- **Data Tables**: Material UI React Table
+- **Type System**: TypeScript 5.x
+- **API Client**: Auto-generated from OpenAPI schema (`/api-client/`)
 
-```bash
-make npm-install      # Install npm packages
-make npm-install package-name  # Install specific package
-make npm-uninstall package-name  # Uninstall package
-make npm-dev          # Run the Vite development server
-make npm-build        # Build for production
-make npm-type-check   # Run TypeScript type checking
+### Infrastructure
+- **Containers**: Docker Compose for local development
+- **Cache/Broker**: Redis
+- **Deployment**: Digital Ocean App Platform
+
+## Project Structure
+
+```
+koala_budget_pegasus/
+├── koala_budget/              # Django project settings
+│   ├── settings.py            # Main configuration
+│   ├── urls.py                # Root URL routing
+│   └── celery.py              # Celery configuration
+│
+├── apps/                      # Django applications
+│   ├── accounts/              # Chart of accounts (Account, AccountGroup, Payee)
+│   ├── journal/               # Double-entry ledger (JournalEntry, JournalLine)
+│   ├── budget/                # Budgeting (Budget, Goal, GoalAllocation)
+│   ├── bank_feed/             # Transaction imports (BankTransaction)
+│   ├── plaid/                 # Plaid integration
+│   ├── reports/               # Financial reporting
+│   ├── chat/                  # AI chat interface
+│   ├── api/                   # API auth and permissions
+│   ├── teams/                 # Multi-tenancy
+│   ├── users/                 # User management
+│   └── subscriptions/         # Stripe billing
+│
+├── assets/javascript/         # React/Alpine components (bundled by Vite)
+│   ├── bank_feed/             # Bank feed React components
+│   ├── budget/                # Budget components
+│   └── ...
+│
+├── frontend/                  # Standalone React SPA (auth flows only)
+├── api-client/                # Generated TypeScript API client
+├── templates/                 # Django templates
+└── docs/                      # Documentation
 ```
 
-Note: Vite runs automatically with hot-reload when using `make start`.
+## Key Documentation
 
-### Translations
+- **[Architecture Overview](../docs/architecture.md)** - High-level system design
+- **[Entity Relationship Diagram](../docs/erd.md)** - Complete database schema
+- **[Data Model Guide](../docs/data-model.md)** - Detailed model documentation
+- **[API Guide](../docs/api-guide.md)** - REST API reference
+- **[Frontend Guide](../docs/frontend-guide.md)** - Frontend architecture
+- **[Getting Started](../docs/getting-started.md)** - Developer onboarding
+
+## Commands Reference
 
 ```bash
-make translations     # Update and compile translation files
+make                    # List all commands
+make init               # First-time setup
+make start              # Start all services
+make stop               # Stop services
+make ssh                # SSH into web container
+make shell              # Django Python shell
+make dbshell            # PostgreSQL shell
+make migrations         # Create new migrations
+make migrate            # Apply migrations
+make test               # Run all tests
+make test ARGS='path'   # Run specific tests
+make ruff               # Format + lint Python
+make npm-install        # Install JS packages
+make npm-dev            # Run Vite dev server
+make npm-build          # Build for production
+make npm-type-check     # TypeScript check
 ```
 
-### Standalone Front End
+## Core Domain Concepts
 
-The following commands can be used on the separate standalone frontend (`/frontend/` folder):
+### Double-Entry Bookkeeping
+
+Every financial transaction creates a balanced journal entry with equal debits and credits.
+
+**Account Types** (by account_number range):
+| Range | Type | Example |
+|-------|------|---------|
+| 1000s | Asset | Checking, Savings |
+| 2000s | Liability | Credit Card |
+| 3000s | Equity | Goals, Retained Earnings |
+| 4000s | Income | Salary, Freelance |
+| 5000s | Expense | Rent, Groceries |
+
+**Journal Entry Structure:**
+```python
+JournalEntry (entry_date, description, payee, status, source)
+    └── JournalLine (account, dr_amount OR cr_amount)
+    └── JournalLine (account, dr_amount OR cr_amount)
+    # sum(dr_amount) must equal sum(cr_amount)
+```
+
+### Bank Feed Workflow
+
+```
+External Source → BankTransaction (staging) → JournalEntry (ledger)
+                  (journal_entry=null)        (created on categorize)
+```
+
+1. **Import**: Transactions from Plaid/CSV become BankTransaction records
+2. **Categorize**: User assigns expense/income category
+3. **Create Entry**: System creates balanced JournalEntry
+4. **Link**: BankTransaction.journal_entry points to JournalEntry
+5. **Reconcile**: User marks JournalLine as reconciled
+
+**Amount convention**: Positive = outflow, Negative = inflow (Plaid standard)
+
+### Multi-Tenancy
+
+All financial data belongs to a **Team** (virtual workspace).
+
+- Models extend `BaseTeamModel` which has `team` FK
+- URLs follow pattern: `/a/{team_slug}/{app}/{path}/`
+- Queries use `Model.for_team.all()` for automatic team filtering
+- Views must include `team_slug` parameter
+
+### Budget System
+
+Monthly budgets link accounts to planned amounts:
+
+```python
+Budget(team, month, category, budget_amount)
+    │
+    └── JournalLine auto-links via account + month
+
+actual = sum(linked JournalLines)
+available = budget_amount - actual
+```
+
+### Goals System
+
+Savings goals with monthly allocations:
+
+```python
+Goal(name, target_amount, target_date)
+    │
+    ├── Account (auto-created equity account in 3000s)
+    └── GoalAllocation (monthly contributions)
+
+progress = sum(allocations) / target_amount
+```
+
+## Code Patterns
+
+### Django Models
+
+```python
+# Always extend BaseTeamModel for team-owned data
+from apps.teams.models import BaseTeamModel
+
+class MyModel(BaseTeamModel):
+    # team FK inherited
+    name = models.CharField(max_length=200)
+
+    class Meta:
+        unique_together = ["team", "name"]  # Common pattern
+```
+
+### Django Views (Team-Scoped)
+
+```python
+from apps.teams.decorators import login_and_team_required
+
+@login_and_team_required
+def my_view(request, team_slug):
+    team = request.team  # Set by middleware
+    items = MyModel.for_team.filter(team=team)
+    return render(request, 'my_template.html', {'items': items})
+```
+
+### DRF ViewSets
+
+```python
+from rest_framework import viewsets
+from apps.teams.permissions import TeamModelAccessPermissions
+
+class MyViewSet(viewsets.ModelViewSet):
+    serializer_class = MySerializer
+    permission_classes = [TeamModelAccessPermissions]
+
+    def get_queryset(self):
+        return MyModel.for_team.filter(team=self.request.team)
+
+    @action(detail=True, methods=['post'])
+    def custom_action(self, request, pk=None):
+        # Custom endpoint at /api/mymodel/{pk}/custom_action/
+        instance = self.get_object()
+        # ... do something
+        return Response(status=status.HTTP_204_NO_CONTENT)
+```
+
+### React Components in Django Templates
+
+```html
+{# Template provides mount point and props #}
+<div id="my-app"></div>
+<script>
+  window.MY_APP_PROPS = {
+    apiUrl: "{% url 'myapp:api-list' team_slug=team.slug %}",
+    initialData: {{ data_json|safe }}
+  };
+</script>
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/myapp/index.tsx' %}
+```
+
+```typescript
+// Component mounts itself
+const container = document.getElementById('my-app');
+if (container) {
+  createRoot(container).render(<MyApp {...window.MY_APP_PROPS} />);
+}
+```
+
+### API Client Usage
+
+```typescript
+import { MyApi } from 'api-client';
+import { getApiConfiguration } from '../api/utils';
+
+const api = new MyApi(getApiConfiguration());
+const items = await api.myList();
+await api.myCreate({ myRequest: { name: 'New Item' } });
+```
+
+## Coding Guidelines
+
+### Python
+
+- Follow PEP 8 with 120 character line limit
+- Use double quotes for strings (ruff enforced)
+- Use type hints in new code (not strictly enforced)
+- Prefer function-based views unless using DRF
+- Always validate user input server-side
+- Use `gettext_lazy` for user-facing strings
+
+### JavaScript/TypeScript
+
+- Use ES6+ syntax
+- 2 spaces for indentation
+- Single quotes for strings
+- Semicolons at end of statements
+- Use functional components with hooks
+- Use the generated OpenAPI client for API calls
+
+### Django Templates
+
+- 2 spaces for indentation
+- Use `{% translate %}` or `{% blocktranslate trimmed %}` for text
+- Load vite assets with `{% vite_asset %}`
+- Use DaisyUI classes for styling
+- Prefer Alpine.js for simple interactivity
+
+### Styling
+
+- Use DaisyUI components when available
+- Fall back to Tailwind utilities
+- Use semantic color names (primary, error, base-100)
+- Avoid custom CSS when possible
+
+## Important Constraints
+
+1. **Never modify .env without confirmation**
+2. **All team-owned models must extend BaseTeamModel**
+3. **Journal entries must always balance (debits = credits)**
+4. **URLs must include team_slug for team-scoped views**
+5. **API changes require regenerating the TypeScript client**
+6. **Avoid files over 200-300 lines - refactor when needed**
+7. **Don't add mock data outside of tests**
+8. **Keep changes minimal - only modify what's requested**
+
+## Testing
 
 ```bash
-npm run dev       # Run development server
-npm run build     # Run type checks and build for production
+make test                           # All tests
+make test ARGS='apps.journal'       # Specific app
+make test ARGS='apps.journal.tests.test_models::TestJournalEntry'  # Specific test
 ```
 
-## General Coding Preferences
+Test settings: `koala_budget.settings_test`
 
-- Always prefer simple solutions.
-- Avoid duplication of code whenever possible, which means checking for other areas of the codebase that might already have similar code and functionality.
-- You are careful to only make changes that are requested or you are confident are well understood and related to the change being requested.
-- When fixing an issue or bug, do not introduce a new pattern or technology without first exhausting all options for the existing implementation. And if you finally do this, make sure to remove the old implementation afterwards so we don’t have duplicate logic.
-- Keep the codebase clean and organized.
-- Avoid writing scripts in files if possible, especially if the script is likely only to be run once.
-- Try to avoid having files over 200-300 lines of code. Refactor at that point.
-- Don't ever add mock data to functions. Only add mocks to tests or utilities that are only used by tests.
-- Always think about what other areas of code might be affected by any changes made.
-- Never overwrite my .env file without first asking and confirming.
+## Common Tasks
 
-## Python Code Guidelines
+### Adding a New Model
 
-### Code Style
+1. Create model in appropriate app extending `BaseTeamModel`
+2. Run `make migrations && make migrate`
+3. Add serializer in `serializers.py`
+4. Add viewset in `views.py`
+5. Register routes in `urls.py`
+6. Regenerate API client if needed
 
-- Follow PEP 8 with 120 character line limit.
-- Use double quotes for Python strings (ruff enforced).
-- Sort imports with isort (via ruff).
-- Try to use type hints in new code. However, strict type-checking is not enforced and you can leave them out if it's burdensome.
-  There is no need to add type hints to existing code if it does not already use them.
+### Adding a New API Endpoint
 
-### Preferred Practices
+1. Add method to existing viewset or create new viewset
+2. Add serializers for request/response
+3. Register in router
+4. Regenerate TypeScript client
+5. Update frontend to use new endpoint
 
-- Use Django signals sparingly and document them well.
-- Always use the Django ORM if possible. Use best practices like lazily evaluating querysets
-  and selecting or prefetching related objects when necessary.
-- Use function-based views by default, unless using a framework that relies on class-based views (e.g. Django Rest Framework).
-- Always validate user input server-side.
-- Handle errors explicitly, avoid silent failures.
-- Use translation markup, usually `gettext_lazy` whenever using user-facing strings.
+### Adding Frontend Component
 
-#### Django models
+1. Create component in `assets/javascript/{app}/`
+2. Add entry point to `vite.config.ts` if needed
+3. Create/update Django template with mount point
+4. Pass props via `window.{APP}_PROPS`
 
-- All Django models should extend `apps.utils.models.BaseModel` (which adds `created_at` and `updated_at` fields) or `apps.teams.models.BaseTeamModel` (which also adds a `team`) if owned by a team.
-- Models that extend `BaseTeamModel` should use the `for_team` model manager for queries that require team filtering. This will apply the team filter automatically based on the global team context. See `apps.teams.context.get_current_team`.
-- The project's user model is `apps.users.models.CustomUser` and should be imported directly.
-- The `Team` model is like a virtual tenant and most data access / functionality happens within
-  the context of a `Team`.
+## Debugging Tips
 
-#### Django URLs, Views and Teams
+- Django Debug Toolbar shows SQL queries in browser
+- Use `print()` or `import pdb; pdb.set_trace()` for debugging
+- Check Celery logs: `docker-compose logs -f celery`
+- API docs at `/api/schema/swagger-ui/`
+- Flower dashboard at http://localhost:5555
 
-- Many apps have a `urls.py` with a `urlpatterns` and a `team_urlpatterns` value.
-  The `urlpatterns` are for views that happen outside the context of a `Team` model.
-  `team_urlpatterns` are for views that happen within the context of a `Team`.
-- Anything in `team_urlpatterns` will have URLs of the format `/a/<team_slug>/<app_path>/<pattern>/`.
-- Any view referenced by `team_urlpatterns` must contain `team_slug` as the first argument.
-- For team-based views, the `@login_and_team_required` and `@team_admin_required` decorators
-  can be used to ensure the user is logged in and can access the associated team.
-- If not specified, assume that a given url/view belongs within the context of a team
-  (and follows the above guidance)
+## File Locations Quick Reference
 
-## Django Template Coding Guidelines for HTML files
-
-- Indent templates with two spaces.
-- Use standard Django template syntax.
-- Use translation markup, usually `translate` or `blocktranslate trimmed` with user-facing text.
-  Don't forget to `{% load i18n %}` if needed.
-- JavaScript and CSS files built with vite should be included with the `{% vite_asset %}` template tag provided by `django-vite` (must have `{% load django_vite %}` at the top of the template)
-- Any react components also need `{% vite_react_refresh %}` for Vite + React's HMR functionality, from the same `django_vite` template library)
-- Use the Django `{% static %}` tag for loading images and external JavaScript / CSS files not managed by vite.
-- Prefer using alpine.js for page-level JavaScript, and avoid inline `<script>` tags where possible.
-- Break re-usable template components into separate templates with `{% include %}` statements.
-  These normally go into a `components` folder.
-- Use DaisyUI styling markup for available components. When not available, fall back to standard TailwindCSS classes.
-- Stick with the DaisyUI color palette whenever possible.
-
-## JavaScript Code Guidelines
-
-### Code Style
-
-- Use ES6+ syntax for JavaScript code.
-- Use 2 spaces for indentation in JavaScript, JSX, and HTML files.
-- Use single quotes for JavaScript strings.
-- End statements with semicolons.
-- Use camelCase for variable and function names.
-- Use PascalCase for component names (React).
-- For React components, use functional components with hooks rather than class components.
-- Use explicit type annotations in TypeScript files.
-- Use ES6 import/export syntax for module management.
-
-### Preferred Practices
-- React components should be kept small and focused on a single responsibility.
-- Store state at an appropriate level; avoid prop drilling by using context when necessary.
-- Where possible, use TypeScript for React components to leverage type safety.
-- Use Alpine.js for client-side interactivity that doesn't require server interaction.
-- Avoid inline `<script>` tags wherever posisble.
-- Use the generated OpenAPI client for API calls instead of raw fetch or axios calls.
-- Validate user input on both client and server side.
-- Handle errors explicitly in promise chains and async functions.
-
-### Build System
-
-- Code is bundled using vite and served with `django-vite`.
+| What | Where |
+|------|-------|
+| Django settings | `koala_budget/settings.py` |
+| URL routing | `koala_budget/urls.py`, `apps/*/urls.py` |
+| Models | `apps/*/models.py` |
+| Views | `apps/*/views.py` |
+| Serializers | `apps/*/serializers.py` |
+| Templates | `templates/*/` |
+| React components | `assets/javascript/*/` |
+| Styles | `assets/styles/` |
+| API client | `api-client/` |
+| Tests | `apps/*/tests/` |
+| Migrations | `apps/*/migrations/` |

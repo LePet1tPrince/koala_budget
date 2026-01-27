@@ -21,6 +21,8 @@ import type {
   PatchedJournalEntry,
   PatchedSimpleLine,
   SimpleLine,
+  SimpleLinesRecategorize200Response,
+  SimpleLinesRecategorizeRequest,
 } from '../models/index';
 import {
     JournalEntryFromJSON,
@@ -35,6 +37,10 @@ import {
     PatchedSimpleLineToJSON,
     SimpleLineFromJSON,
     SimpleLineToJSON,
+    SimpleLinesRecategorize200ResponseFromJSON,
+    SimpleLinesRecategorize200ResponseToJSON,
+    SimpleLinesRecategorizeRequestFromJSON,
+    SimpleLinesRecategorizeRequestToJSON,
 } from '../models/index';
 
 export interface JournalEntriesCreateRequest {
@@ -81,6 +87,8 @@ export interface SimpleLinesDestroyRequest {
 
 export interface SimpleLinesListRequest {
     teamSlug: string;
+    account?: number;
+    month?: string;
     page?: number;
 }
 
@@ -88,6 +96,12 @@ export interface SimpleLinesPartialUpdateRequest {
     id: string;
     teamSlug: string;
     patchedSimpleLine?: Omit<PatchedSimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
+}
+
+export interface SimpleLinesRecategorizeOperationRequest {
+    id: string;
+    teamSlug: string;
+    simpleLinesRecategorizeRequest?: SimpleLinesRecategorizeRequest;
 }
 
 export interface SimpleLinesRetrieveRequest {
@@ -401,7 +415,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesCreateRaw(requestParameters: SimpleLinesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
         if (requestParameters['teamSlug'] == null) {
@@ -443,7 +457,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesCreate(requestParameters: SimpleLinesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
         const response = await this.simpleLinesCreateRaw(requestParameters, initOverrides);
@@ -451,7 +465,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesDestroyRaw(requestParameters: SimpleLinesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['id'] == null) {
@@ -490,14 +504,14 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesDestroy(requestParameters: SimpleLinesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.simpleLinesDestroyRaw(requestParameters, initOverrides);
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesListRaw(requestParameters: SimpleLinesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedSimpleLineList>> {
         if (requestParameters['teamSlug'] == null) {
@@ -508,6 +522,14 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        if (requestParameters['month'] != null) {
+            queryParameters['month'] = requestParameters['month'];
+        }
 
         if (requestParameters['page'] != null) {
             queryParameters['page'] = requestParameters['page'];
@@ -533,7 +555,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesList(requestParameters: SimpleLinesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedSimpleLineList> {
         const response = await this.simpleLinesListRaw(requestParameters, initOverrides);
@@ -541,7 +563,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesPartialUpdateRaw(requestParameters: SimpleLinesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
         if (requestParameters['id'] == null) {
@@ -583,7 +605,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesPartialUpdate(requestParameters: SimpleLinesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
         const response = await this.simpleLinesPartialUpdateRaw(requestParameters, initOverrides);
@@ -591,7 +613,57 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * Recategorize a journal line to a different account/category.  This changes the account on a single journal line, effectively moving the transaction to a different budget category.  POST body: {     \"new_category_id\": 456 }
+     */
+    async simpleLinesRecategorizeRaw(requestParameters: SimpleLinesRecategorizeOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLinesRecategorize200Response>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling simpleLinesRecategorize().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling simpleLinesRecategorize().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/lines/{id}/recategorize/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SimpleLinesRecategorizeRequestToJSON(requestParameters['simpleLinesRecategorizeRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SimpleLinesRecategorize200ResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Recategorize a journal line to a different account/category.  This changes the account on a single journal line, effectively moving the transaction to a different budget category.  POST body: {     \"new_category_id\": 456 }
+     */
+    async simpleLinesRecategorize(requestParameters: SimpleLinesRecategorizeOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLinesRecategorize200Response> {
+        const response = await this.simpleLinesRecategorizeRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesRetrieveRaw(requestParameters: SimpleLinesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
         if (requestParameters['id'] == null) {
@@ -630,7 +702,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesRetrieve(requestParameters: SimpleLinesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
         const response = await this.simpleLinesRetrieveRaw(requestParameters, initOverrides);
@@ -638,7 +710,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesUpdateRaw(requestParameters: SimpleLinesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
         if (requestParameters['id'] == null) {
@@ -687,7 +759,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts
+     * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesUpdate(requestParameters: SimpleLinesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
         const response = await this.simpleLinesUpdateRaw(requestParameters, initOverrides);

@@ -16,6 +16,7 @@ import {
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import Cookies from 'js-cookie';
 import { formatCurrency } from '../../utilities/currency';
+import { buildCategoryOptions } from '../../utilities/categoryOptions';
 
 /* globals gettext */
 
@@ -65,14 +66,10 @@ const ActualTooltip = ({
 
   // Filter accounts to show only expense/income categories (exclude current category)
   const categoryOptions = useMemo(() => {
-    return allAccounts
-      .filter(account => {
-        // SimpleAccountSerializer provides account_type directly
-        const accountType = account.account_type || account.accountType;
-        return accountType === 'expense' || accountType === 'income';
-      })
-      .filter(account => account.id !== parseInt(categoryId))
-      .sort((a, b) => (a.account_number || a.accountNumber || 0) - (b.account_number || b.accountNumber || 0));
+    return buildCategoryOptions(allAccounts, {
+      excludeId: parseInt(categoryId),
+      filterTypes: ['expense', 'income'],
+    });
   }, [allAccounts, categoryId]);
 
   const handleClick = async (event) => {

@@ -102,6 +102,87 @@ export function getUploadApiHelpers(teamSlug) {
 }
 
 /**
+ * Transaction API helpers for creating and updating transactions.
+ * Uses fetch with JSON body.
+ */
+export function getTransactionApi(teamSlug) {
+  const headers = getApiHeaders();
+  const baseUrl = `/a/${teamSlug}/bankfeed/api/feed`;
+
+  return {
+    /**
+     * Create a new manual transaction with associated journal entry
+     */
+    createTransaction: async (data) => {
+      // Format date as YYYY-MM-DD string
+      const dateStr = data.date instanceof Date
+        ? data.date.toISOString().split('T')[0]
+        : data.date;
+
+      const response = await fetch(`${baseUrl}/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': headers['X-CSRFToken'],
+        },
+        body: JSON.stringify({
+          date: dateStr,
+          category: data.category?.id || data.category,
+          inflow: data.inflow || '0',
+          outflow: data.outflow || '0',
+          payee: data.payee || '',
+          description: data.description || '',
+          account: data.account,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Failed to create transaction');
+      }
+
+      return response.json();
+    },
+
+    /**
+     * Update an existing transaction and its associated journal entry
+     */
+    updateTransaction: async (id, data) => {
+      // Format date as YYYY-MM-DD string
+      const dateStr = data.date instanceof Date
+        ? data.date.toISOString().split('T')[0]
+        : data.date;
+
+      const response = await fetch(`${baseUrl}/${id}/`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': headers['X-CSRFToken'],
+        },
+        body: JSON.stringify({
+          date: dateStr,
+          category: data.category?.id || data.category,
+          inflow: data.inflow || '0',
+          outflow: data.outflow || '0',
+          payee: data.payee || '',
+          description: data.description || '',
+          account: data.account,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Failed to update transaction');
+      }
+
+      return response.json();
+    },
+  };
+}
+
+/**
  * Batch operations API helpers for bulk transaction operations.
  * Uses fetch with JSON body for batch endpoints.
  */
@@ -134,5 +215,7 @@ export function getBatchOperationsApi(teamSlug) {
     batchArchive: (ids) => postJson('batch_archive', { ids }),
     batchUnarchive: (ids) => postJson('batch_unarchive', { ids }),
     batchDuplicate: (ids) => postJson('batch_duplicate', { ids }),
+    batchReconcile: (ids, adjustmentAmount = 0) => postJson('batch_reconcile', { ids, adjustment_amount: adjustmentAmount }),
+    batchUnreconcile: (ids) => postJson('batch_unreconcile', { ids }),
   };
 }

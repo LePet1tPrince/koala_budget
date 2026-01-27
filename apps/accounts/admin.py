@@ -24,9 +24,9 @@ class AccountAdmin(admin.ModelAdmin):
     list_filter = ["account_group", "team"]
     search_fields = ["name", "account_number"]
     ordering = ["account_number"]
-    readonly_fields = ["created_at", "updated_at"]
+    readonly_fields = ["balance", "created_at", "updated_at"]
     autocomplete_fields = ["account_group", "team"]
-    fields = ["account_number", "name", "account_group", "has_feed", "team", "created_at", "updated_at"]
+    fields = ["account_number", "name", "account_group", "has_feed", "balance", "team", "created_at", "updated_at"]
 
 
 @admin.register(Payee)

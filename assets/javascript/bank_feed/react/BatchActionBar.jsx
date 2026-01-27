@@ -25,7 +25,10 @@ import {
   Unarchive as UnarchiveIcon,
   ContentCopy as ContentCopyIcon,
   FileDownload as FileDownloadIcon,
+  CheckCircle as CheckCircleIcon,
+  RemoveCircle as RemoveCircleIcon,
 } from '@mui/icons-material';
+import { buildCategoryOptions } from '../../utilities/categoryOptions';
 
 /* globals gettext */
 
@@ -47,9 +50,15 @@ const BatchActionBar = ({
   onDuplicate,
   onExport,
   onClearSelection,
+  onReconcile,
+  onUnreconcile,
   showArchive = true,
   showUnarchive = false,
+  filterMode = 'to_review',
+  selectedAccount = null,
 }) => {
+  // In archived view, only allow unarchive and export
+  const isArchivedView = filterMode === 'archived';
   // Menu anchors
   const [categoryAnchor, setCategoryAnchor] = useState(null);
   const [accountAnchor, setAccountAnchor] = useState(null);
@@ -63,15 +72,14 @@ const BatchActionBar = ({
   // Category selection state
   const [selectedCategory, setSelectedCategory] = useState(null);
 
+  // Reconcile dialog states
+  const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false);
+  const [unreconcileDialogOpen, setUnreconcileDialogOpen] = useState(false);
+  const [adjustmentAmount, setAdjustmentAmount] = useState('');
+
   // Create options array for category Autocomplete
   const categoryOptions = useMemo(() => {
-    return allAccounts.map((account) => ({
-      id: account.id,
-      label: `${account.account_number} - ${account.name}`,
-      accountNumber: account.account_number,
-      name: account.name,
-      firstLetter: String(account.account_number).charAt(0).toUpperCase(),
-    })).sort((a, b) => -b.firstLetter.localeCompare(a.firstLetter));
+    return buildCategoryOptions(allAccounts);
   }, [allAccounts]);
 
   // Filter bank feed accounts (has_feed=true)
@@ -114,6 +122,58 @@ const BatchActionBar = ({
       setDescriptionDialogOpen(false);
       setDescriptionValue('');
     }
+  };
+
+  // Calculate reconciling amount from selected rows
+  const reconcilingAmount = useMemo(() => {
+    return selectedRows.reduce((sum, row) => {
+      const inflow = parseFloat(row.inflow) || 0;
+      const outflow = parseFloat(row.outflow) || 0;
+      return sum + inflow - outflow;
+    }, 0);
+  }, [selectedRows]);
+
+  // Check if all selected rows are categorized (have a category)
+  const allCategorized = useMemo(() => {
+    return selectedRows.every(row => row.category);
+  }, [selectedRows]);
+
+  // Get reconciled balance from selected account
+  const reconciledBalance = useMemo(() => {
+    if (selectedAccount?.reconciled_balance !== undefined && selectedAccount?.reconciled_balance !== null) {
+      return parseFloat(selectedAccount.reconciled_balance);
+    }
+    return 0;
+  }, [selectedAccount]);
+
+  // Calculate new reconciled balance after reconciling
+  const newReconciledBalance = useMemo(() => {
+    return reconciledBalance + reconcilingAmount + (parseFloat(adjustmentAmount) || 0);
+  }, [reconciledBalance, reconcilingAmount, adjustmentAmount]);
+
+  // Handle reconcile submit
+  const handleReconcileSubmit = () => {
+    if (onReconcile) {
+      onReconcile(parseFloat(adjustmentAmount) || 0);
+    }
+    setReconcileDialogOpen(false);
+    setAdjustmentAmount('');
+  };
+
+  // Handle unreconcile submit
+  const handleUnreconcileSubmit = () => {
+    if (onUnreconcile) {
+      onUnreconcile();
+    }
+    setUnreconcileDialogOpen(false);
+  };
+
+  // Format currency
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
   };
 
   // Export to CSV
@@ -173,39 +233,47 @@ const BatchActionBar = ({
             {selectedCount} {gettext('selected')}
           </Typography>
 
-          <Button
-            size="small"
-            startIcon={<CategoryIcon />}
-            onClick={(e) => setCategoryAnchor(e.currentTarget)}
-          >
-            {gettext('Categorize')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<CategoryIcon />}
+              onClick={(e) => setCategoryAnchor(e.currentTarget)}
+            >
+              {gettext('Categorize')}
+            </Button>
+          )}
 
-          <Button
-            size="small"
-            startIcon={<SwapHorizIcon />}
-            onClick={(e) => setAccountAnchor(e.currentTarget)}
-          >
-            {gettext('Move')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<SwapHorizIcon />}
+              onClick={(e) => setAccountAnchor(e.currentTarget)}
+            >
+              {gettext('Move')}
+            </Button>
+          )}
 
-          <Button
-            size="small"
-            startIcon={<PersonIcon />}
-            onClick={() => setPayeeDialogOpen(true)}
-          >
-            {gettext('Set Payee')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<PersonIcon />}
+              onClick={() => setPayeeDialogOpen(true)}
+            >
+              {gettext('Set Payee')}
+            </Button>
+          )}
 
-          <Button
-            size="small"
-            startIcon={<DescriptionIcon />}
-            onClick={() => setDescriptionDialogOpen(true)}
-          >
-            {gettext('Set Description')}
-          </Button>
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<DescriptionIcon />}
+              onClick={() => setDescriptionDialogOpen(true)}
+            >
+              {gettext('Set Description')}
+            </Button>
+          )}
 
-          {showArchive && (
+          {showArchive && !isArchivedView && (
             <Button
               size="small"
               startIcon={<ArchiveIcon />}
@@ -225,13 +293,37 @@ const BatchActionBar = ({
             </Button>
           )}
 
-          <Button
-            size="small"
-            startIcon={<ContentCopyIcon />}
-            onClick={onDuplicate}
-          >
-            {gettext('Duplicate')}
-          </Button>
+          {!isArchivedView && filterMode === 'to_review' && (
+            <Button
+              size="small"
+              startIcon={<CheckCircleIcon />}
+              onClick={() => setReconcileDialogOpen(true)}
+              disabled={!allCategorized}
+              title={!allCategorized ? gettext('All selected transactions must be categorized') : ''}
+            >
+              {gettext('Reconcile')}
+            </Button>
+          )}
+
+          {filterMode === 'reconciled' && (
+            <Button
+              size="small"
+              startIcon={<RemoveCircleIcon />}
+              onClick={() => setUnreconcileDialogOpen(true)}
+            >
+              {gettext('Unreconcile')}
+            </Button>
+          )}
+
+          {!isArchivedView && (
+            <Button
+              size="small"
+              startIcon={<ContentCopyIcon />}
+              onClick={onDuplicate}
+            >
+              {gettext('Duplicate')}
+            </Button>
+          )}
 
           <Button
             size="small"
@@ -261,7 +353,7 @@ const BatchActionBar = ({
             value={selectedCategory}
             onChange={(_event, newValue) => setSelectedCategory(newValue)}
             options={categoryOptions}
-            groupBy={(option) => option.firstLetter}
+            groupBy={(option) => option.groupLabel}
             getOptionLabel={(option) => option.label}
             isOptionEqualToValue={(option, value) => option.id === value?.id}
             renderInput={(params) => (
@@ -351,6 +443,104 @@ const BatchActionBar = ({
           <Button onClick={() => setDescriptionDialogOpen(false)}>{gettext('Cancel')}</Button>
           <Button onClick={handleDescriptionSubmit} variant="contained">
             {gettext('Apply')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reconcile Dialog */}
+      <Dialog
+        open={reconcileDialogOpen}
+        onClose={() => {
+          setReconcileDialogOpen(false);
+          setAdjustmentAmount('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{gettext('Reconcile Transactions')}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography>{gettext('Starting reconciled balance:')}</Typography>
+              <Typography sx={{ fontWeight: 'bold' }}>{formatCurrency(reconciledBalance)}</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography>{gettext('Reconciling amount')} ({selectedCount} {gettext('items')}):</Typography>
+              <Typography sx={{ fontWeight: 'bold', color: reconcilingAmount >= 0 ? 'success.main' : 'error.main' }}>
+                {formatCurrency(reconcilingAmount)}
+              </Typography>
+            </Box>
+            {adjustmentAmount && parseFloat(adjustmentAmount) !== 0 && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography>{gettext('Adjustment:')}</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: parseFloat(adjustmentAmount) >= 0 ? 'success.main' : 'error.main' }}>
+                  {formatCurrency(parseFloat(adjustmentAmount))}
+                </Typography>
+              </Box>
+            )}
+            <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 1, mt: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography sx={{ fontWeight: 'bold' }}>{gettext('New reconciled balance:')}</Typography>
+                <Typography sx={{ fontWeight: 'bold' }}>{formatCurrency(newReconciledBalance)}</Typography>
+              </Box>
+            </Box>
+            <TextField
+              margin="dense"
+              label={gettext('Adjustment (optional)')}
+              fullWidth
+              type="number"
+              value={adjustmentAmount}
+              onChange={(e) => setAdjustmentAmount(e.target.value)}
+              helperText={gettext('Creates a system adjustment if balance needs correction')}
+              sx={{ mt: 3 }}
+              inputProps={{ step: "0.01" }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setReconcileDialogOpen(false);
+            setAdjustmentAmount('');
+          }}>
+            {gettext('Cancel')}
+          </Button>
+          <Button onClick={handleReconcileSubmit} variant="contained" color="primary">
+            {gettext('Reconcile')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Unreconcile Dialog */}
+      <Dialog
+        open={unreconcileDialogOpen}
+        onClose={() => setUnreconcileDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{gettext('Unreconcile Transactions')}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography>
+              {gettext('Are you sure you want to unreconcile')} {selectedCount} {gettext('transaction(s)?')}
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+              <Typography>{gettext('Amount being unreconciled:')}</Typography>
+              <Typography sx={{ fontWeight: 'bold', color: reconcilingAmount >= 0 ? 'success.main' : 'error.main' }}>
+                {formatCurrency(reconcilingAmount)}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+              <Typography>{gettext('New reconciled balance:')}</Typography>
+              <Typography sx={{ fontWeight: 'bold' }}>
+                {formatCurrency(reconciledBalance - reconcilingAmount)}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUnreconcileDialogOpen(false)}>{gettext('Cancel')}</Button>
+          <Button onClick={handleUnreconcileSubmit} variant="contained" color="warning">
+            {gettext('Unreconcile')}
           </Button>
         </DialogActions>
       </Dialog>
