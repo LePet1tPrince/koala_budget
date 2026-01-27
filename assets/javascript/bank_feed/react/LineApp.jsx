@@ -194,30 +194,70 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, 
   };
 
   /**
-   * Handle updating an existing line
+   * Handle editing a transaction from the edit modal
+   * Supports both ledger transactions (full CRUD) and uncategorized transactions (batch endpoints)
    */
-  const handleUpdateLine = async (lineId, lineData) => {
+  const handleEditTransaction = async (updatedData) => {
     try {
-      // If a category is being set and the transaction isn't already categorized,
-      // use the categorize API to create a journal entry
-      if (lineData.category && !lineData.journal_entry_id) {
-        await bankFeedClient.bankFeedTransactionsCategorize({
+      const { id, source, journal_entry_id, date, category, inflow, outflow, payee, description } = updatedData;
+
+      // For ledger transactions (categorized), use the simple lines partial update
+      if (source === 'ledger') {
+        // Extract the actual line ID from the composite ID (e.g., "ledger-123" -> 123)
+        const lineId = id.includes('-') ? id.split('-')[1] : id;
+
+        // Format date as ISO string if it's a Date object
+        const formattedDate = date instanceof Date ? date.toISOString().split('T')[0] : date;
+
+        await journalClient.simpleLinesPartialUpdate({
           teamSlug: teamSlug,
-          categorizeTransactionsRequest: {
-            rows: [{ id: lineId }],
-            categoryId: lineData.category,
+          id: parseInt(lineId, 10),
+          patchedSimpleLine: {
+            entryDate: formattedDate,
+            category: category?.id || category,
+            inflow: inflow || '0',
+            outflow: outflow || '0',
+            payee: payee || '',
+            description: description || '',
           },
         });
+
         await loadLines();
+        showSnackbar(gettext('Transaction updated successfully'), 'success');
         return;
       }
 
-      // For already categorized transactions or transactions without categories,
-      // we may need a different approach (e.g., update the existing journal entry)
-      throw new Error('Updating already categorized transactions not yet implemented');
+      // For uncategorized transactions, use batch endpoints with single-item arrays
+      // Track what we need to update
+      const promises = [];
+
+      // Find the original transaction to compare changes
+      const originalTransaction = lines.find(l => l.id === id);
+
+      // Update category if changed (also sets payee/description if this creates a new journal entry)
+      if (category && category.id && (!originalTransaction?.category || originalTransaction.category.id !== category.id)) {
+        promises.push(batchApi.batchCategorize([id], category.id));
+      }
+
+      // Update payee if changed (for uncategorized transactions)
+      if (payee !== undefined && payee !== originalTransaction?.payee) {
+        promises.push(batchApi.batchSetPayee([id], payee));
+      }
+
+      // Update description if changed
+      if (description !== undefined && description !== originalTransaction?.description) {
+        promises.push(batchApi.batchSetDescription([id], description));
+      }
+
+      if (promises.length > 0) {
+        await Promise.all(promises);
+        await loadLines();
+        showSnackbar(gettext('Transaction updated successfully'), 'success');
+      }
 
     } catch (err) {
-      console.error('Failed to update line:', err);
+      console.error('Failed to update transaction:', err);
+      showSnackbar(err.message || gettext('Failed to update transaction'), 'error');
       throw err;
     }
   };
@@ -553,10 +593,9 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, 
               lines={lines}
               selectedAccount={selectedAccount}
               allAccounts={allAccounts}
-              allPayees={allPayees}
               onAdd={handleAddLine}
-              onUpdate={handleUpdateLine}
               onDelete={handleDeleteLine}
+              onEditTransaction={handleEditTransaction}
               selectedIds={selectedIds}
               onSelectionChange={handleSelectionChange}
               onFilterModeChange={setFilterMode}
