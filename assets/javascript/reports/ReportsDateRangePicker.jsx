@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 
-import DateRangePickerMUI from '../common/DateRangePickerMUI';
+import DateRangePicker from '../common/DateRangePicker';
 import { createRoot } from 'react-dom/client';
 
 // Component that integrates with URL parameters
@@ -55,7 +55,7 @@ const DateRangePickerWrapper = () => {
   }, [handleDateRangeApply]);
 
   return (
-    <DateRangePickerMUI
+    <DateRangePicker
       startDate={startDate}
       endDate={endDate}
       onApply={handleDateRangeApply}

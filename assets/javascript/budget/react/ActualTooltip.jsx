@@ -16,7 +16,7 @@ import {
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import Cookies from 'js-cookie';
 import { formatCurrency } from '../../utilities/currency';
-import { buildCategoryOptions } from '../../utilities/categoryOptions';
+import { buildCategoryOptions } from '../../common/categoryOptions';
 
 /* globals gettext */
 

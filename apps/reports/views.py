@@ -88,13 +88,25 @@ def balance_sheet(request, team_slug):
     Balance Sheet report view.
     """
     service = ReportService(request.team)
-    form = BalanceSheetForm(request.GET or None)
 
     report_data = None
     as_of_date = None
 
-    if form.is_valid():
-        as_of_date = form.cleaned_data['as_of_date']
+    # Check for direct as_of_date parameter
+    as_of_date_param = request.GET.get('as_of_date')
+
+    if as_of_date_param:
+        # Parse date directly from URL parameter
+        try:
+            as_of_date = datetime.strptime(as_of_date_param, '%Y-%m-%d').date()
+            report_data = service.get_balance_sheet_data(as_of_date)
+        except ValueError:
+            # Invalid date format, fall back to today
+            as_of_date = date.today()
+            report_data = service.get_balance_sheet_data(as_of_date)
+    else:
+        # No parameter provided, set default to today
+        as_of_date = date.today()
         report_data = service.get_balance_sheet_data(as_of_date)
 
     return render(
@@ -103,7 +115,6 @@ def balance_sheet(request, team_slug):
         {
             "active_tab": "reports",
             "page_title": _("Balance Sheet"),
-            "form": form,
             "report_data": report_data,
             "as_of_date": as_of_date,
         },
