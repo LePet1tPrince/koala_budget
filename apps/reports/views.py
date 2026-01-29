@@ -186,6 +186,24 @@ def account_activity(request, team_slug, account_id):
             end_date = today
             report_data = service.get_account_activity(account, start_date, end_date)
 
+    # Determine back navigation based on source parameter
+    source = request.GET.get('source')
+    if source == 'budget':
+        from django.urls import reverse
+        back_url = reverse('budget:budget_home', args=[team_slug])
+        if start_date:
+            back_url += f'?month={start_date.isoformat()}'
+        back_label = _("Back to Budget")
+    else:
+        from django.urls import reverse
+        back_url = reverse('reports:income_statement', args=[team_slug])
+        # Forward date params to income statement
+        query_params = request.GET.copy()
+        query_params.pop('source', None)
+        if query_params:
+            back_url += f'?{query_params.urlencode()}'
+        back_label = _("Back to Summary")
+
     return render(
         request,
         "reports/account_activity.html",
@@ -196,6 +214,8 @@ def account_activity(request, team_slug, account_id):
             "report_data": report_data,
             "start_date": start_date,
             "end_date": end_date,
+            "back_url": back_url,
+            "back_label": back_label,
         },
     )
 
