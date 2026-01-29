@@ -20,8 +20,41 @@
   </div>
 
   {% if report_data %}
+  <!-- Summary Section -->
+  <div class="card bg-base-100 shadow-lg mb-6">
+    <div class="card-body">
+      <h2 class="card-title">
+        <i class="fa fa-calculator"></i>
+        {% translate "Summary" %}
+      </h2>
+      <div class="stats stats-vertical lg:stats-horizontal shadow">
+        <div class="stat">
+          <div class="stat-title">{% translate "Total Income" %}</div>
+          <div class="stat-value text-success">{{ report_data.total_income|floatformat:2 }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">{% translate "Total Expenses" %}</div>
+          <div class="stat-value text-error">{{ report_data.total_expenses|floatformat:2 }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">{% translate "Net Profit" %}</div>
+          <div class="stat-value {% if report_data.net_profit >= 0 %}text-success{% else %}text-error{% endif %}">
+            {{ report_data.net_profit|floatformat:2 }}
+          </div>
+        </div>
+      </div>
+      {% if start_date and end_date %}
+      <p class="text-sm text-gray-600 mt-2">
+        {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" %}
+          Showing {{ start }} – {{ end }}
+        {% endblocktranslate %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- Report Section -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <!-- Income Section -->
     <div class="card bg-base-100 shadow-lg">
       <div class="card-body">
@@ -99,36 +132,16 @@
     </div>
   </div>
 
-  <!-- Summary Section -->
-  <div class="card bg-base-100 shadow-lg mt-6">
+  <!-- Sankey Diagram Section -->
+  <div class="card bg-base-100 shadow-lg">
     <div class="card-body">
       <h2 class="card-title">
-        <i class="fa fa-calculator"></i>
-        {% translate "Summary" %}
+        <i class="fa fa-diagram-project"></i>
+        {% translate "Income Flow" %}
       </h2>
-      <div class="stats stats-vertical lg:stats-horizontal shadow">
-        <div class="stat">
-          <div class="stat-title">{% translate "Total Income" %}</div>
-          <div class="stat-value text-success">{{ report_data.total_income|floatformat:2 }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">{% translate "Total Expenses" %}</div>
-          <div class="stat-value text-error">{{ report_data.total_expenses|floatformat:2 }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">{% translate "Net Profit" %}</div>
-          <div class="stat-value {% if report_data.net_profit >= 0 %}text-success{% else %}text-error{% endif %}">
-            {{ report_data.net_profit|floatformat:2 }}
-          </div>
-        </div>
+      <div class="w-full" style="height: 400px;">
+        <canvas id="sankey-chart" class="w-full h-full"></canvas>
       </div>
-      {% if start_date and end_date %}
-      <p class="text-sm text-gray-600 mt-2">
-        {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" %}
-          Showing {{ start }} – {{ end }}
-        {% endblocktranslate %}
-      </p>
-      {% endif %}
     </div>
   </div>
   {% endif %}
@@ -141,4 +154,8 @@
 </script>
 {% vite_react_refresh %}
 {% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
+{% if sankey_data %}
+{{ sankey_data|json_script:'sankey-data' }}
+{% vite_asset 'assets/javascript/reports/income-statement-sankey.js' %}
+{% endif %}
 {% endblock %}

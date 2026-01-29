@@ -28,7 +28,7 @@ import {
   CheckCircle as CheckCircleIcon,
   RemoveCircle as RemoveCircleIcon,
 } from '@mui/icons-material';
-import { buildCategoryOptions } from '../../utilities/categoryOptions';
+import { buildCategoryOptions } from '../../common/categoryOptions';
 
 /* globals gettext */
 

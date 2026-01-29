@@ -1,6 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
-{% load form_tags %}
+{% load django_vite %}
 
 {% block app %}
 <section class="app-card">
@@ -12,21 +12,9 @@
     </a>
   </div>
 
-  <!-- Form Section -->
+  <!-- Date Picker Section -->
   <div class="bg-base-200 p-4 rounded-lg mb-6">
-    <form method="get" class="flex flex-col sm:flex-row gap-4 items-end">
-      <div class="form-control flex-1">
-        <label class="label">
-          <span class="label-text">{% translate "As of Date" %}</span>
-        </label>
-        {% render_field form.as_of_date class="input input-bordered" %}
-      </div>
-      <div class="form-control">
-        <button type="submit" class="btn btn-primary">
-          {% translate "Generate Report" %}
-        </button>
-      </div>
-    </form>
+    <div id="balance-sheet-date-picker"></div>
   </div>
 
   {% if report_data %}
@@ -50,7 +38,7 @@
             <tbody>
               {% for item in report_data.assets %}
               <tr>
-                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.account_number }} - {{ item.account.name }}</a></td>
                 <td class="text-right">{{ item.amount|floatformat:2 }}</td>
               </tr>
               {% empty %}
@@ -88,7 +76,7 @@
             <tbody>
               {% for item in report_data.liabilities %}
               <tr>
-                <td>{{ item.account.account_number }} - {{ item.account.name }}</td>
+                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.account_number }} - {{ item.account.name }}</a></td>
                 <td class="text-right">{{ item.amount|floatformat:2 }}</td>
               </tr>
               {% empty %}
@@ -138,15 +126,18 @@
     </div>
   </div>
 
-      {% if as_of_date %}
-      <p class="text-sm text-gray-600 mt-4">
-        {% blocktranslate with date=as_of_date|date:"M j, Y" %}
-        As of {{ date }}
-        {% endblocktranslate %}
-      </p>
-      {% endif %}
-    </div>
-  </div>
+  {% if as_of_date %}
+  <p class="text-sm text-gray-600 mt-4">
+    {% blocktranslate with date=as_of_date|date:"M j, Y" %}
+    As of {{ date }}
+    {% endblocktranslate %}
+  </p>
+  {% endif %}
   {% endif %}
 </section>
+{% endblock %}
+
+{% block page_js %}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/reports/BalanceSheetDatePicker.jsx' %}
 {% endblock %}

@@ -12,7 +12,7 @@ app_name = "reports"
 urlpatterns = [
     path("", views.reports_home, name="reports_home"),
     path("income-statement/", views.income_statement, name="income_statement"),
-    path("income-statement/account/<int:pk>/", views.account_activity, name="account_activity"),
+    path("income-statement/account/<int:account_id>/", views.account_activity, name="account_activity"),
     path("balance-sheet/", views.balance_sheet, name="balance_sheet"),
     path("net-worth-trend/", views.net_worth_trend, name="net_worth_trend"),
 ]

@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.teams.decorators import login_and_team_required
 
-from .forms import BalanceSheetForm, IncomeStatementForm, NetWorthTrendForm
+# Forms are no longer needed as we use React components with URL parameters
 from .services import ReportService
 
 
@@ -69,6 +69,14 @@ def income_statement(request, team_slug):
         end_date = today
         report_data = service.get_income_statement_data(start_date, end_date)
 
+    sankey_data = None
+    if report_data:
+        sankey_data = {
+            'income': [{'name': item['account'].name, 'amount': float(item['amount'])} for item in report_data['income']],
+            'expenses': [{'name': item['account'].name, 'amount': float(item['amount'])} for item in report_data['expenses']],
+            'net_profit': float(report_data['net_profit']),
+        }
+
     return render(
         request,
         "reports/income_statement.html",
@@ -76,6 +84,7 @@ def income_statement(request, team_slug):
             "active_tab": "reports",
             "page_title": _("Income Statement"),
             "report_data": report_data,
+            "sankey_data": sankey_data,
             "start_date": start_date,
             "end_date": end_date,
         },
@@ -88,13 +97,25 @@ def balance_sheet(request, team_slug):
     Balance Sheet report view.
     """
     service = ReportService(request.team)
-    form = BalanceSheetForm(request.GET or None)
 
     report_data = None
     as_of_date = None
 
-    if form.is_valid():
-        as_of_date = form.cleaned_data['as_of_date']
+    # Check for direct as_of_date parameter
+    as_of_date_param = request.GET.get('as_of_date')
+
+    if as_of_date_param:
+        # Parse date directly from URL parameter
+        try:
+            as_of_date = datetime.strptime(as_of_date_param, '%Y-%m-%d').date()
+            report_data = service.get_balance_sheet_data(as_of_date)
+        except ValueError:
+            # Invalid date format, fall back to today
+            as_of_date = date.today()
+            report_data = service.get_balance_sheet_data(as_of_date)
+    else:
+        # No parameter provided, set default to today
+        as_of_date = date.today()
         report_data = service.get_balance_sheet_data(as_of_date)
 
     return render(
@@ -103,7 +124,6 @@ def balance_sheet(request, team_slug):
         {
             "active_tab": "reports",
             "page_title": _("Balance Sheet"),
-            "form": form,
             "report_data": report_data,
             "as_of_date": as_of_date,
         },
@@ -185,21 +205,45 @@ def net_worth_trend(request, team_slug):
     """
     Net Worth Trend report view.
     """
-    service = ReportService(request.team)
+    from datetime import timedelta
 
-    # Only bind form with GET data if there are query parameters (form submitted)
-    # This prevents validation errors from showing on initial page load
-    form_data = request.GET if request.GET else None
-    form = NetWorthTrendForm(form_data)
+    service = ReportService(request.team)
 
     report_data = None
     start_date = None
     end_date = None
 
-    # Only process form if it has been submitted (has GET data) and is valid
-    if form_data and form.is_valid():
-        start_date = form.cleaned_data['start_date']
-        end_date = form.cleaned_data['end_date']
+    # Check for direct start_month and end_month parameters (YYYY-MM format)
+    start_month_param = request.GET.get('start_month')
+    end_month_param = request.GET.get('end_month')
+
+    if start_month_param and end_month_param:
+        try:
+            # Parse YYYY-MM format
+            start_year, start_month_num = map(int, start_month_param.split('-'))
+            end_year, end_month_num = map(int, end_month_param.split('-'))
+
+            # Create start_date as first day of start month
+            start_date = date(start_year, start_month_num, 1)
+
+            # Create end_date as last day of end month
+            if end_month_num == 12:
+                end_date = date(end_year + 1, 1, 1) - timedelta(days=1)
+            else:
+                end_date = date(end_year, end_month_num + 1, 1) - timedelta(days=1)
+
+            report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
+        except (ValueError, IndexError):
+            # Invalid format, fall back to defaults
+            today = date.today()
+            start_date = date(today.year - 1, today.month, 1)
+            end_date = today
+            report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
+    else:
+        # No parameters provided, set defaults for last 12 months
+        today = date.today()
+        start_date = date(today.year - 1, today.month, 1)
+        end_date = today
         report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
 
     return render(
@@ -208,7 +252,6 @@ def net_worth_trend(request, team_slug):
         {
             "active_tab": "reports",
             "page_title": _("Net Worth Trend"),
-            "form": form,
             "report_data": report_data,
             "start_date": start_date,
             "end_date": end_date,
