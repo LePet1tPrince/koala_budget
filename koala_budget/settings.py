@@ -472,7 +472,7 @@ if REDIS_URL.startswith("rediss"):
     REDIS_URL = f"{REDIS_URL}?ssl_cert_reqs=required"
 
 DUMMY_CACHE = {
-    "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+    "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
 }
 REDIS_CACHE = {
     "BACKEND": "django.core.cache.backends.redis.RedisCache",
