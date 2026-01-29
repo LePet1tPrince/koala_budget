@@ -2,7 +2,7 @@ import time
 
 from django.conf import settings
 from django.core.cache import cache
-from django.http import HttpResponse
+from django.shortcuts import render
 
 
 class AuthRateLimitMiddleware:
@@ -43,11 +43,7 @@ class AuthRateLimitMiddleware:
 
             if len(request_log) >= self.max_requests:
                 retry_after = int(self.window - (now - request_log[0]))
-                response = HttpResponse(
-                    "Too many authentication attempts. Please try again later.",
-                    status=429,
-                    content_type="text/plain",
-                )
+                response = render(request, "429.html", status=429)
                 response["Retry-After"] = str(max(retry_after, 1))
                 return response
 
