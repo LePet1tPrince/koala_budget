@@ -129,6 +129,7 @@ def budget_month_view(request, team_slug):
             "active_tab": "budget",
             "page_title": f"Budget | {request.team}",
             "month": month,
+            "end_date": month + relativedelta(months=1, days=-1),
             "groups": groups,
             "grand_totals": grand_totals,
             "net_worth_card": net_worth_card,

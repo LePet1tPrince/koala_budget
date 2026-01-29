@@ -23,8 +23,10 @@
         {% for row in group_data.rows %}
         <tr>
           <td class="pl-8">
-            <div class="font-medium">{{ row.category.name }}</div>
-            <div class="text-sm text-gray-500">{{ row.category.account_number }}</div>
+            <a href="{% url 'reports:account_activity' request.team.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}" class="link link-primary">
+              <div class="font-medium">{{ row.category.name }}</div>
+              <div class="text-sm text-gray-500">{{ row.category.account_number }}</div>
+            </a>
           </td>
 
           <td class="text-right">
