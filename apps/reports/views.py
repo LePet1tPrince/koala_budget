@@ -69,6 +69,14 @@ def income_statement(request, team_slug):
         end_date = today
         report_data = service.get_income_statement_data(start_date, end_date)
 
+    sankey_data = None
+    if report_data:
+        sankey_data = {
+            'income': [{'name': item['account'].name, 'amount': float(item['amount'])} for item in report_data['income']],
+            'expenses': [{'name': item['account'].name, 'amount': float(item['amount'])} for item in report_data['expenses']],
+            'net_profit': float(report_data['net_profit']),
+        }
+
     return render(
         request,
         "reports/income_statement.html",
@@ -76,6 +84,7 @@ def income_statement(request, team_slug):
             "active_tab": "reports",
             "page_title": _("Income Statement"),
             "report_data": report_data,
+            "sankey_data": sankey_data,
             "start_date": start_date,
             "end_date": end_date,
         },

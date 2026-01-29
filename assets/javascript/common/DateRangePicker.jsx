@@ -2,7 +2,7 @@ import {
   Box,
   Button,
   Divider,
-  IconButton,
+
   List,
   ListItemButton,
   ListItemText,
@@ -208,14 +208,17 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
           sx={{ textTransform: 'none', color: 'text.secondary', borderColor: 'grey.400' }}
           endIcon={
             (startDate || endDate) && (
-              <IconButton
-                size="small"
+              <Box
+                component="span"
                 onClick={handleClearAll}
-                sx={{ mr: -1, ml: 0.5 }}
+                sx={{ display: 'inline-flex', alignItems: 'center', mr: -1, ml: 0.5, cursor: 'pointer', borderRadius: '50%', '&:hover': { bgcolor: 'action.hover' } }}
+                role="button"
                 aria-label="Clear date range"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClearAll(e); }}
               >
                 <ClearIcon fontSize="small" />
-              </IconButton>
+              </Box>
             )
           }
         >
