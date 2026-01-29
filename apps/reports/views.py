@@ -5,6 +5,12 @@ from django.utils.translation import gettext_lazy as _
 from apps.teams.decorators import login_and_team_required
 
 # Forms are no longer needed as we use React components with URL parameters
+from .exports import (
+    export_account_activity_csv,
+    export_balance_sheet_csv,
+    export_income_statement_csv,
+    export_transactions_csv,
+)
 from .services import ReportService
 
 
@@ -257,3 +263,60 @@ def net_worth_trend(request, team_slug):
             "end_date": end_date,
         },
     )
+
+
+# --- Export Views ---
+
+
+def _parse_date_range(request):
+    """Parse start_date and end_date from GET params, with defaults to current month."""
+    today = date.today()
+    start_date_param = request.GET.get("start_date")
+    end_date_param = request.GET.get("end_date")
+    try:
+        start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date() if start_date_param else today.replace(day=1)
+        end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date() if end_date_param else today
+    except ValueError:
+        start_date = today.replace(day=1)
+        end_date = today
+    return start_date, end_date
+
+
+@login_and_team_required
+def export_income_statement(request, team_slug):
+    """Export income statement as CSV."""
+    start_date, end_date = _parse_date_range(request)
+    return export_income_statement_csv(request.team, start_date, end_date)
+
+
+@login_and_team_required
+def export_balance_sheet(request, team_slug):
+    """Export balance sheet as CSV."""
+    as_of_date_param = request.GET.get("as_of_date")
+    try:
+        as_of_date = datetime.strptime(as_of_date_param, "%Y-%m-%d").date() if as_of_date_param else date.today()
+    except ValueError:
+        as_of_date = date.today()
+    return export_balance_sheet_csv(request.team, as_of_date)
+
+
+@login_and_team_required
+def export_account_activity_view(request, team_slug, account_id):
+    """Export account activity as CSV."""
+    from apps.accounts.models import Account
+
+    try:
+        account = Account.objects.get(team=request.team, pk=account_id)
+    except Account.DoesNotExist:
+        from django.http import Http404
+        raise Http404("Account not found")
+
+    start_date, end_date = _parse_date_range(request)
+    return export_account_activity_csv(request.team, account, start_date, end_date)
+
+
+@login_and_team_required
+def export_transactions(request, team_slug):
+    """Export all transactions as CSV."""
+    start_date, end_date = _parse_date_range(request)
+    return export_transactions_csv(request.team, start_date, end_date)
