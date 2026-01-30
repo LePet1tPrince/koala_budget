@@ -1,0 +1,15 @@
+{% load i18n %}
+<section class="app-card">
+  <h2 class="pg-subtitle">{% translate "Data Management" %}</h2>
+  <p class="text-gray-600 dark:text-gray-400 mb-4">
+    {% translate "Download a copy of all your data or permanently delete your account." %}
+  </p>
+  <div class="flex flex-wrap gap-3">
+    <a href="{% url 'users:download_data' %}" class="pg-button-secondary">
+      <i class="fa fa-download mr-1"></i> {% translate "Download My Data" %}
+    </a>
+    <a href="{% url 'users:delete_account' %}" class="pg-button-danger">
+      <i class="fa fa-trash mr-1"></i> {% translate "Delete Account" %}
+    </a>
+  </div>
+</section>
