@@ -7,10 +7,16 @@
 <section class="app-card">
   <div class="flex justify-between items-center mb-6">
     <h1 class="pg-title">{% translate "Income Statement" %}</h1>
-    <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline">
-      <i class="fa fa-arrow-left mr-2"></i>
-      {% translate "Back to Reports" %}
-    </a>
+    <div class="flex gap-2">
+      <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm">
+        <i class="fa fa-download mr-2"></i>
+        {% translate "Export CSV" %}
+      </a>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline">
+        <i class="fa fa-arrow-left mr-2"></i>
+        {% translate "Back to Reports" %}
+      </a>
+    </div>
   </div>
 
 

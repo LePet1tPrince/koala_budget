@@ -15,4 +15,9 @@ urlpatterns = [
     path("income-statement/account/<int:account_id>/", views.account_activity, name="account_activity"),
     path("balance-sheet/", views.balance_sheet, name="balance_sheet"),
     path("net-worth-trend/", views.net_worth_trend, name="net_worth_trend"),
+    # CSV exports
+    path("export/income-statement/", views.export_income_statement, name="export_income_statement"),
+    path("export/balance-sheet/", views.export_balance_sheet, name="export_balance_sheet"),
+    path("export/account/<int:account_id>/", views.export_account_activity_view, name="export_account_activity"),
+    path("export/transactions/", views.export_transactions, name="export_transactions"),
 ]

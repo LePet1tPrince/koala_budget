@@ -55,5 +55,26 @@
       </div>
     </div>
   </div>
+
+  <!-- Data Exports Section -->
+  <h2 class="pg-subtitle mt-8 mb-4">{% translate "Data Exports" %}</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Export All Transactions -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title">
+          <i class="fa fa-file-csv text-accent"></i>
+          {% translate "Export Transactions" %}
+        </h2>
+        <p class="text-sm text-gray-600">{% translate "Download all journal entries and lines as a CSV file." %}</p>
+        <div class="card-actions justify-end">
+          <a href="{% url 'reports:export_transactions' request.team.slug %}" class="btn btn-outline btn-sm">
+            <i class="fa fa-download mr-2"></i>
+            {% translate "Download CSV" %}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
 </section>
 {% endblock %}
