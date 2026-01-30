@@ -1,11 +1,89 @@
 {% extends "web/base.html" %}
-{% load static %}
+{% load i18n %}
+{% block page_title %}{% translate "Terms of Service" %} — {{ project_meta.NAME }}{% endblock %}
 {% block body %}
 <section class="section mt-7">
-  <div class="container">
-    <div class="pg-content">
-      <h1>Terms Of Service</h1>
-      <p>Your site's terms go here.</p>
+  <div class="container max-w-3xl mx-auto px-4 py-8">
+    <div class="pg-content prose dark:prose-invert max-w-none">
+      <h1>{% translate "Terms of Service" %}</h1>
+      <p class="text-sm text-gray-500">{% translate "Last updated:" %} January 29, 2026</p>
+
+      <h2>1. {% translate "Acceptance of Terms" %}</h2>
+      <p>
+        {% blocktranslate with name=project_meta.NAME %}
+        By accessing or using {{ name }}, you agree to be bound by these Terms of Service.
+        If you do not agree to these terms, you may not use the service.
+        {% endblocktranslate %}
+      </p>
+
+      <h2>2. {% translate "Description of Service" %}</h2>
+      <p>
+        {% blocktranslate with name=project_meta.NAME %}
+        {{ name }} is a personal finance and budgeting application that provides double-entry
+        bookkeeping, bank feed integration, budgeting tools, and financial reporting for
+        freelancers and small businesses.
+        {% endblocktranslate %}
+      </p>
+
+      <h2>3. {% translate "Account Registration" %}</h2>
+      <p>
+        {% translate "You must provide accurate and complete information when creating an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account." %}
+      </p>
+
+      <h2>4. {% translate "Subscription and Payment" %}</h2>
+      <p>
+        {% translate "Certain features require a paid subscription. Subscription fees are billed in advance on a recurring basis. You may cancel your subscription at any time through your account settings. Refunds are handled in accordance with our refund policy." %}
+      </p>
+
+      <h2>5. {% translate "Your Data" %}</h2>
+      <p>
+        {% translate "You retain ownership of all financial data you enter into the service. We do not sell your data to third parties. You may export or delete your data at any time. See our Privacy Policy for details on how we handle your information." %}
+      </p>
+
+      <h2>6. {% translate "Acceptable Use" %}</h2>
+      <p>{% translate "You agree not to:" %}</p>
+      <ul>
+        <li>{% translate "Use the service for any unlawful purpose" %}</li>
+        <li>{% translate "Attempt to gain unauthorized access to the service or its systems" %}</li>
+        <li>{% translate "Interfere with or disrupt the service" %}</li>
+        <li>{% translate "Upload malicious code or content" %}</li>
+        <li>{% translate "Use the service to transmit spam or unsolicited communications" %}</li>
+      </ul>
+
+      <h2>7. {% translate "Third-Party Services" %}</h2>
+      <p>
+        {% translate "The service integrates with third-party providers such as Plaid (for bank connections) and Stripe (for payment processing). Your use of these integrations is subject to their respective terms of service and privacy policies." %}
+      </p>
+
+      <h2>8. {% translate "Disclaimers" %}</h2>
+      <p>
+        {% blocktranslate with name=project_meta.NAME %}
+        {{ name }} is not a substitute for professional financial, tax, or legal advice.
+        The service is provided "as is" without warranties of any kind. We do not guarantee
+        the accuracy of financial calculations, bank data synchronization, or AI-generated
+        categorization suggestions.
+        {% endblocktranslate %}
+      </p>
+
+      <h2>9. {% translate "Limitation of Liability" %}</h2>
+      <p>
+        {% translate "To the maximum extent permitted by law, we shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or other intangible losses resulting from your use of the service." %}
+      </p>
+
+      <h2>10. {% translate "Termination" %}</h2>
+      <p>
+        {% translate "We may terminate or suspend your account at any time for violation of these terms. You may delete your account at any time through your account settings. Upon termination, your data will be permanently deleted after a reasonable retention period." %}
+      </p>
+
+      <h2>11. {% translate "Changes to Terms" %}</h2>
+      <p>
+        {% translate "We reserve the right to modify these terms at any time. We will notify users of material changes via email or in-app notification. Continued use of the service after changes constitutes acceptance of the updated terms." %}
+      </p>
+
+      <h2>12. {% translate "Contact" %}</h2>
+      <p>
+        {% translate "If you have questions about these terms, please contact us through our support channels." %}
+      </p>
     </div>
   </div>
 </section>

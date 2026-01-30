@@ -24,11 +24,19 @@ class TeamSignupForm(TurnstileSignupForm):
         super().__init__(*args, **kwargs)
         # blank out overly-verbose help text
         self.fields["password1"].help_text = ""
-        link = '<a class="link" href={} target="_blank">{}</a>'.format(
+        terms_link = '<a class="link" href="{}" target="_blank">{}</a>'.format(
             reverse("web:terms"),
-            _("Terms and Conditions"),
+            _("Terms of Service"),
         )
-        self.fields["terms_agreement"].label = mark_safe(_("I agree to the {terms_link}").format(terms_link=link))
+        privacy_link = '<a class="link" href="{}" target="_blank">{}</a>'.format(
+            reverse("web:privacy"),
+            _("Privacy Policy"),
+        )
+        self.fields["terms_agreement"].label = mark_safe(
+            _("I agree to the {terms_link} and {privacy_link}").format(
+                terms_link=terms_link, privacy_link=privacy_link
+            )
+        )
 
     def clean(self):
         cleaned_data = super().clean()
