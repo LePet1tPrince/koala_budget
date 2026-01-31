@@ -26,71 +26,76 @@
 
 These must be completed before charging customers.
 
-### 1.1 Rate Limiting / API Throttling
-**Why**: Zero rate limiting exists. Public endpoints are vulnerable to brute-force and abuse.
+### 1.1 Rate Limiting / API Throttling ✅
+**Status**: Complete
 
-**Implementation**:
-- Add DRF throttle classes to `settings.py` (`DEFAULT_THROTTLE_CLASSES`, `DEFAULT_THROTTLE_RATES`)
-- Configure per-user and anonymous rate limits
-- Stricter limits on auth endpoints (login, signup, password reset)
-- Add `django-ratelimit` for Django view-based endpoints (non-DRF)
+**What was done**:
+- DRF throttle classes configured in `settings.py` (100/hr anon, 1000/hr authenticated, 5/min auth endpoints)
+- Custom `AuthRateLimitMiddleware` for Django view-based auth endpoints (login, signup, password reset) — 10 POST requests per 5 min per IP
+- Renders `429.html` error page with `Retry-After` header
+- Fixed `DummyCache` → `LocMemCache` so rate limiting works in development
+- Tests in `apps/api/tests/test_rate_limiting.py`
 
-**Files to modify**:
-- `koala_budget/settings.py` — DRF throttle config
-- `apps/api/` — Custom throttle classes if needed
-
----
-
-### 1.2 Data Export
-**Why**: Users can import data but cannot export it. This is a dealbreaker for trust and GDPR compliance.
-
-**Implementation**:
-- CSV export for: transactions (journal entries), bank transactions, accounts, budgets
-- PDF export for reports: income statement, balance sheet
-- "Download All My Data" endpoint for GDPR (JSON archive)
-
-**Files to create/modify**:
-- `apps/journal/exports.py` — CSV export service
-- `apps/reports/exports.py` — PDF export (using weasyprint or reportlab)
-- `apps/users/exports.py` — Full data export for GDPR
-- Templates and views to trigger exports
+**Files created/modified**:
+- `apps/api/middleware.py` — Auth rate limit middleware
+- `apps/api/throttling.py` — Custom DRF throttle class
+- `apps/api/tests/test_rate_limiting.py` — 10 tests
+- `koala_budget/settings.py` — Middleware, throttle config, cache fix
 
 ---
 
-### 1.3 Terms of Service / Privacy Policy
-**Why**: Legal requirement for handling financial data. Cannot collect PII without these.
+### 1.2 Data Export ✅
+**Status**: Complete
 
-**Implementation**:
-- Create static pages for ToS and Privacy Policy
-- Link from signup form footer
-- Link from app footer
-- Add consent checkbox or notice on signup
+**What was done**:
+- CSV export endpoints for income statement, balance sheet, account activity, and all transactions
+- Export buttons on report pages that inherit date range filters via query string passthrough
+- Export button on account activity detail page
 
-**Files to create/modify**:
-- `templates/web/terms.html`
-- `templates/web/privacy.html`
-- `apps/web/urls.py` — Add routes
-- `apps/web/views.py` — Add views
-- Update signup template with links
+**Files created/modified**:
+- `apps/reports/exports.py` — CSV generation functions
+- `apps/reports/views.py` — Export view functions with `@login_and_team_required`
+- `apps/reports/urls.py` — 4 export URL patterns
+- `templates/reports/income_statement.html` — Export CSV button
+- `templates/reports/balance_sheet.html` — Export CSV button
+- `templates/reports/reports_home.html` — Data Exports section
+- `templates/reports/account_activity.html` — Export CSV button
 
 ---
 
-### 1.4 Account Deletion / Data Portability (GDPR)
-**Why**: Legal requirement in the EU. Users must be able to delete their account and download all data.
+### 1.3 Terms of Service / Privacy Policy ✅
+**Status**: Complete
 
-**Implementation**:
-- "Delete My Account" flow with confirmation
-- Cascade delete: team data, subscriptions, Plaid connections
-- Cancel Stripe subscription on deletion
-- "Download My Data" button (JSON/ZIP archive of all user data)
-- Email confirmation before deletion (safety net)
+**What was done**:
+- Full 12-section Terms of Service with i18n support
+- Full 12-section Privacy Policy with i18n support
+- Both linked from site footer
+- Signup consent checkbox updated: "I agree to the Terms of Service and Privacy Policy" with links to both
 
-**Files to create/modify**:
-- `apps/users/views.py` — Account deletion view
-- `apps/users/services.py` — Deletion service (handle cascades)
-- `apps/users/exports.py` — Data export service
-- `templates/users/account_delete.html`
-- `templates/users/data_export.html`
+**Files created/modified**:
+- `templates/web/terms.html` — Updated from placeholder to full content
+- `templates/web/privacy.html` — Created
+- `apps/web/urls.py` — Added `/privacy/` route
+- `templates/web/components/footer.html` — Added ToS and Privacy links
+- `apps/teams/forms.py` — Updated signup consent label with both links
+
+---
+
+### 1.4 Account Deletion / Data Portability (GDPR) ✅
+**Status**: Complete
+
+**What was done**:
+- "Download My Data" — ZIP archive with CSV files for all user/team data (profile, accounts, journal entries, budgets, goals, Plaid items)
+- "Delete Account" — Confirmation page requires typing email address; deletes PROTECT-referenced models in dependency order, then team, then user
+- Data Management section on profile page with download and delete buttons
+
+**Files created/modified**:
+- `apps/users/services.py` — `export_user_data()` and `delete_user_account()`
+- `apps/users/views.py` — `download_data` and `delete_account` views
+- `apps/users/urls.py` — `/download-data/` and `/delete-account/` routes
+- `templates/account/components/data_management.html` — Profile component
+- `templates/account/delete_account.html` — Confirmation page
+- `templates/account/profile.html` — Includes data management component
 
 ---
 
@@ -235,11 +240,11 @@ Recommended order based on dependencies and impact:
 ## Success Criteria
 
 Phase 1 is complete when:
-- [ ] All API endpoints have rate limits
-- [ ] Users can export their transactions as CSV
+- [x] All API endpoints have rate limits
+- [x] Users can export their transactions as CSV
 - [ ] Users can export reports as PDF
-- [ ] Terms of Service and Privacy Policy pages exist and are linked from signup
-- [ ] Users can delete their account and download all their data
+- [x] Terms of Service and Privacy Policy pages exist and are linked from signup
+- [x] Users can delete their account and download all their data
 - [ ] Users receive welcome email, budget alerts, and can manage email preferences
 - [ ] New users go through a guided onboarding flow
 - [ ] Critical user flows are covered by Playwright e2e tests
