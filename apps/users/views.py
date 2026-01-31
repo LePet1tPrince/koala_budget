@@ -1,6 +1,7 @@
 from allauth.account.models import EmailAddress
 from allauth.socialaccount.models import SocialAccount
 from django.contrib import messages
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
@@ -15,6 +16,7 @@ from .adapter import user_has_valid_totp_device
 from .forms import CustomUserChangeForm, UploadAvatarForm
 from .helpers import require_email_confirmation, user_has_confirmed_email_address
 from .models import CustomUser
+from .services import delete_user_account, export_user_data
 
 
 @login_required
@@ -110,3 +112,36 @@ def revoke_api_key(request):
         ),
     )
     return HttpResponseRedirect(reverse("users:user_profile"))
+
+
+@login_required
+def download_data(request):
+    """Download all user data as a ZIP archive (GDPR data portability)."""
+    buffer = export_user_data(request.user)
+    response = HttpResponse(buffer.getvalue(), content_type="application/zip")
+    filename = f"koala_budget_data_{request.user.email}.zip"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+def delete_account(request):
+    """Account deletion view with confirmation."""
+    if request.method == "POST":
+        confirmation = request.POST.get("confirmation", "")
+        if confirmation == request.user.email:
+            delete_user_account(request.user)
+            logout(request)
+            messages.success(request, _("Your account has been permanently deleted."))
+            return HttpResponseRedirect(reverse("web:home"))
+        else:
+            messages.error(request, _("Email confirmation did not match. Account was not deleted."))
+
+    return render(
+        request,
+        "account/delete_account.html",
+        {
+            "active_tab": "profile",
+            "page_title": _("Delete Account"),
+        },
+    )

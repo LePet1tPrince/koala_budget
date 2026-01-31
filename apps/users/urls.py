@@ -8,4 +8,6 @@ urlpatterns = [
     path("profile/upload-image/", views.upload_profile_image, name="upload_profile_image"),
     path("api-keys/create/", views.create_api_key, name="create_api_key"),
     path("api-keys/revoke/", views.revoke_api_key, name="revoke_api_key"),
+    path("download-data/", views.download_data, name="download_data"),
+    path("delete-account/", views.delete_account, name="delete_account"),
 ]

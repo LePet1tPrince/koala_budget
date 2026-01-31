@@ -1,0 +1,45 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% block app %}
+<section class="app-card max-w-xl">
+  <h2 class="pg-subtitle text-red-600 dark:text-red-400">{% translate "Delete Account" %}</h2>
+
+  <div class="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+    <p class="text-red-800 dark:text-red-300 font-medium">
+      {% translate "Warning: This action is permanent and cannot be undone." %}
+    </p>
+    <p class="text-red-700 dark:text-red-400 mt-2 text-sm">
+      {% translate "Deleting your account will permanently remove:" %}
+    </p>
+    <ul class="list-disc list-inside text-red-700 dark:text-red-400 text-sm mt-1 space-y-1">
+      <li>{% translate "Your profile and login credentials" %}</li>
+      <li>{% translate "All teams where you are the sole admin (and all their data)" %}</li>
+      <li>{% translate "All financial accounts, transactions, and journal entries" %}</li>
+      <li>{% translate "All budgets and savings goals" %}</li>
+      <li>{% translate "All connected bank feeds" %}</li>
+    </ul>
+    <p class="text-red-700 dark:text-red-400 mt-2 text-sm">
+      {% translate "We recommend downloading your data before proceeding." %}
+      <a href="{% url 'users:download_data' %}" class="underline font-medium">{% translate "Download My Data" %}</a>
+    </p>
+  </div>
+
+  <form method="post" class="mt-6">
+    {% csrf_token %}
+    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="confirmation">
+      {% blocktranslate with email=user.email %}Type <strong>{{ email }}</strong> to confirm deletion:{% endblocktranslate %}
+    </label>
+    <input type="text" name="confirmation" id="confirmation" required autocomplete="off"
+           class="pg-control w-full max-w-md"
+           placeholder="{{ user.email }}">
+    <div class="mt-4 flex gap-3">
+      <button type="submit" class="pg-button-danger">
+        <i class="fa fa-trash mr-1"></i> {% translate "Permanently Delete Account" %}
+      </button>
+      <a href="{% url 'users:user_profile' %}" class="pg-button-secondary">
+        {% translate "Cancel" %}
+      </a>
+    </div>
+  </form>
+</section>
+{% endblock %}
