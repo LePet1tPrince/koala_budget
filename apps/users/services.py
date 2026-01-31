@@ -135,8 +135,9 @@ def delete_user_account(user):
     """Permanently delete a user account and all associated data.
 
     For teams where the user is the sole admin, the entire team and its
-    data are deleted (cascading). For teams with other admins, only the
-    user's membership is removed.
+    data are deleted. Models with PROTECT foreign keys must be deleted
+    in dependency order before the team itself can be removed.
+    For teams with other admins, only the user's membership is removed.
     """
     memberships = Membership.objects.filter(user=user).select_related("team")
 
@@ -145,7 +146,15 @@ def delete_user_account(user):
         admin_count = Membership.objects.filter(team=team, role="admin").count()
 
         if admin_count <= 1 and membership.role == "admin":
-            # Sole admin — delete the entire team (cascades to all team-scoped data)
+            # Sole admin — delete all team data in dependency order to
+            # respect PROTECT foreign keys, then delete the team.
+            PlaidAccount.objects.filter(team=team).delete()
+            PlaidItem.objects.filter(team=team).delete()
+            JournalLine.objects.filter(team=team).delete()
+            JournalEntry.objects.filter(team=team).delete()
+            Account.objects.filter(team=team).delete()
+            AccountGroup.objects.filter(team=team).delete()
+            Payee.objects.filter(team=team).delete()
             team.delete()
         else:
             # Other admins exist — just remove this user's membership
