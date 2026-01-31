@@ -249,62 +249,19 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, 
   // Batch operation handlers
 
   /**
-   * Batch categorize selected transactions
+   * Bulk edit selected transactions via the unified batch_edit endpoint.
+   * @param {Object} updates - Fields to update (category_id, account_id, payee, description, date)
    */
-  const handleBatchCategorize = async (categoryId) => {
+  const handleBulkEdit = async (updates) => {
     try {
-      await batchApi.batchCategorize([...selectedIds], categoryId);
+      await batchApi.batchEdit([...selectedIds], updates);
       setSelectedIds(new Set());
       await loadLines();
-      showSnackbar(gettext('Transactions categorized successfully'), 'success');
+      showSnackbar(gettext('Transactions updated successfully'), 'success');
     } catch (err) {
-      console.error('Failed to batch categorize:', err);
-      showSnackbar(err.message || gettext('Failed to categorize transactions'), 'error');
-    }
-  };
-
-  /**
-   * Batch move selected transactions to another account
-   */
-  const handleBatchMoveAccount = async (accountId) => {
-    try {
-      await batchApi.batchMoveAccount([...selectedIds], accountId);
-      setSelectedIds(new Set());
-      await loadLines();
-      showSnackbar(gettext('Transactions moved successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch move account:', err);
-      showSnackbar(err.message || gettext('Failed to move transactions'), 'error');
-    }
-  };
-
-  /**
-   * Batch set payee on selected transactions
-   */
-  const handleBatchSetPayee = async (payee) => {
-    try {
-      await batchApi.batchSetPayee([...selectedIds], payee);
-      setSelectedIds(new Set());
-      await loadLines();
-      showSnackbar(gettext('Payee updated successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch set payee:', err);
-      showSnackbar(err.message || gettext('Failed to update payee'), 'error');
-    }
-  };
-
-  /**
-   * Batch set description on selected transactions
-   */
-  const handleBatchSetDescription = async (description) => {
-    try {
-      await batchApi.batchSetDescription([...selectedIds], description);
-      setSelectedIds(new Set());
-      await loadLines();
-      showSnackbar(gettext('Description updated successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch set description:', err);
-      showSnackbar(err.message || gettext('Failed to update description'), 'error');
+      console.error('Failed to bulk edit:', err);
+      showSnackbar(err.message || gettext('Failed to update transactions'), 'error');
+      throw err;
     }
   };
 
@@ -583,10 +540,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, 
         selectedRows={selectedRows}
         allAccounts={allAccounts}
         bankFeedAccounts={accounts}
-        onCategorize={handleBatchCategorize}
-        onMoveAccount={handleBatchMoveAccount}
-        onSetPayee={handleBatchSetPayee}
-        onSetDescription={handleBatchSetDescription}
+        onBulkEdit={handleBulkEdit}
         onArchive={handleBatchArchive}
         onUnarchive={handleBatchUnarchive}
         onDuplicate={handleBatchDuplicate}

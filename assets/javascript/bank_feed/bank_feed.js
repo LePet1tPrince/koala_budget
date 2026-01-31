@@ -190,9 +190,9 @@ export function getBatchOperationsApi(teamSlug) {
   const headers = getApiHeaders();
   const baseUrl = `/a/${teamSlug}/bankfeed/api/feed`;
 
-  const postJson = async (endpoint, body) => {
+  const fetchJson = async (endpoint, body, method = 'POST') => {
     const response = await fetch(`${baseUrl}/${endpoint}/`, {
-      method: 'POST',
+      method,
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
@@ -208,14 +208,16 @@ export function getBatchOperationsApi(teamSlug) {
   };
 
   return {
-    batchCategorize: (ids, categoryId) => postJson('batch_categorize', { ids, category_id: categoryId }),
-    batchMoveAccount: (ids, accountId) => postJson('batch_move_account', { ids, account_id: accountId }),
-    batchSetPayee: (ids, payee) => postJson('batch_set_payee', { ids, payee }),
-    batchSetDescription: (ids, description) => postJson('batch_set_description', { ids, description }),
-    batchArchive: (ids) => postJson('batch_archive', { ids }),
-    batchUnarchive: (ids) => postJson('batch_unarchive', { ids }),
-    batchDuplicate: (ids) => postJson('batch_duplicate', { ids }),
-    batchReconcile: (ids, adjustmentAmount = 0) => postJson('batch_reconcile', { ids, adjustment_amount: adjustmentAmount }),
-    batchUnreconcile: (ids) => postJson('batch_unreconcile', { ids }),
+    /**
+     * Bulk edit transactions. Only provided (non-null) fields are updated.
+     * @param {number[]} ids - Transaction IDs
+     * @param {Object} updates - Fields to update (category_id, account_id, payee, description, date)
+     */
+    batchEdit: (ids, updates) => fetchJson('batch_edit', { ids, ...updates }, 'PATCH'),
+    batchArchive: (ids) => fetchJson('batch_archive', { ids }),
+    batchUnarchive: (ids) => fetchJson('batch_unarchive', { ids }),
+    batchDuplicate: (ids) => fetchJson('batch_duplicate', { ids }),
+    batchReconcile: (ids, adjustmentAmount = 0) => fetchJson('batch_reconcile', { ids, adjustment_amount: adjustmentAmount }),
+    batchUnreconcile: (ids) => fetchJson('batch_unreconcile', { ids }),
   };
 }
