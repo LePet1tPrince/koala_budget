@@ -2,13 +2,12 @@ import csv
 import io
 import json
 import zipfile
-from datetime import datetime
 
 from apps.accounts.models import Account, AccountGroup, Payee
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
-from apps.plaid.models import PlaidAccount, PlaidItem, PlaidTransaction
-from apps.teams.models import Membership, Team
+from apps.plaid.models import PlaidAccount, PlaidItem
+from apps.teams.models import Membership
 
 
 def export_user_data(user):
@@ -108,15 +107,15 @@ def export_user_data(user):
             # Plaid items
             plaid_items = PlaidItem.objects.filter(team=team)
             zf.writestr(f"{prefix}/plaid_items.csv", _build_csv(
-                ["institution_name", "status", "created_at"],
-                [[pi.institution_name, pi.status, pi.created_at.isoformat()] for pi in plaid_items],
+                ["institution_name", "created_at"],
+                [[pi.institution_name, pi.created_at.isoformat()] for pi in plaid_items],
             ))
 
             # Plaid accounts
-            plaid_accounts = PlaidAccount.objects.filter(team=team).select_related("plaid_item")
+            plaid_accounts = PlaidAccount.objects.filter(team=team).select_related("item")
             zf.writestr(f"{prefix}/plaid_accounts.csv", _build_csv(
-                ["institution", "name", "official_name", "type", "subtype", "mask"],
-                [[pa.plaid_item.institution_name, pa.name, pa.official_name or "", pa.type or "", pa.subtype or "", pa.mask or ""] for pa in plaid_accounts],
+                ["institution", "name", "type", "subtype", "mask"],
+                [[pa.item.institution_name, pa.name, pa.type or "", pa.subtype or "", pa.mask or ""] for pa in plaid_accounts],
             ))
 
     buffer.seek(0)
