@@ -49,31 +49,18 @@ def income_statement(request, team_slug):
         try:
             start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
             end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
-            report_data = service.get_income_statement_data(start_date, end_date)
         except ValueError:
             # Invalid date format, fall back to defaults
             today = date.today()
             start_date = today.replace(day=1)
             end_date = today
-            report_data = service.get_income_statement_data(start_date, end_date)
-    elif request.GET:
-        # Fallback: try to process with form (for backward compatibility)
-        form = IncomeStatementForm(request.GET)
-        if form.is_valid():
-            start_date, end_date = form.get_date_range()
-            report_data = service.get_income_statement_data(start_date, end_date)
-        else:
-            # Form invalid, use defaults
-            today = date.today()
-            start_date = today.replace(day=1)
-            end_date = today
-            report_data = service.get_income_statement_data(start_date, end_date)
     else:
         # No parameters provided, set defaults for current month
         today = date.today()
         start_date = today.replace(day=1)
         end_date = today
-        report_data = service.get_income_statement_data(start_date, end_date)
+
+    report_data = service.get_income_statement_data(start_date, end_date)
 
     sankey_data = None
     if report_data:
@@ -166,31 +153,18 @@ def account_activity(request, team_slug, account_id):
             try:
                 start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
                 end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
-                report_data = service.get_account_activity(account, start_date, end_date)
             except ValueError:
                 # Invalid date format, fall back to defaults
                 today = date.today()
                 start_date = today.replace(day=1)
                 end_date = today
-                report_data = service.get_account_activity(account, start_date, end_date)
-        elif request.GET:
-            # Fallback: try to process with form (for backward compatibility)
-            form = IncomeStatementForm(request.GET)
-            if form.is_valid():
-                start_date, end_date = form.get_date_range()
-                report_data = service.get_account_activity(account, start_date, end_date)
-            else:
-                # Form invalid, use defaults
-                today = date.today()
-                start_date = today.replace(day=1)
-                end_date = today
-                report_data = service.get_account_activity(account, start_date, end_date)
         else:
             # No parameters provided, set defaults for current month
             today = date.today()
             start_date = today.replace(day=1)
             end_date = today
-            report_data = service.get_account_activity(account, start_date, end_date)
+
+        report_data = service.get_account_activity(account, start_date, end_date)
 
     # Determine back navigation based on source parameter
     source = request.GET.get('source')
