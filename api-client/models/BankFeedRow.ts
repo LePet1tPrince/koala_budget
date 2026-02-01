@@ -150,6 +150,12 @@ export interface BankFeedRow {
      */
     importedTransactionId: number | null;
     /**
+     * ID of linked journal entry (if categorized)
+     * @type {number}
+     * @memberof BankFeedRow
+     */
+    journalEntryId: number | null;
+    /**
      * Whether this row can be edited
      * @type {boolean}
      * @memberof BankFeedRow
@@ -181,6 +187,7 @@ export function instanceOfBankFeedRow(value: object): value is BankFeedRow {
     if (!('paymentChannel' in value) || value['paymentChannel'] === undefined) return false;
     if (!('confidence' in value) || value['confidence'] === undefined) return false;
     if (!('importedTransactionId' in value) || value['importedTransactionId'] === undefined) return false;
+    if (!('journalEntryId' in value) || value['journalEntryId'] === undefined) return false;
     if (!('isEditable' in value) || value['isEditable'] === undefined) return false;
     return true;
 }
@@ -213,6 +220,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'paymentChannel': json['payment_channel'],
         'confidence': json['confidence'],
         'importedTransactionId': json['imported_transaction_id'],
+        'journalEntryId': json['journal_entry_id'],
         'isEditable': json['is_editable'],
     };
 }
@@ -246,6 +254,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'payment_channel': value['paymentChannel'],
         'confidence': value['confidence'],
         'imported_transaction_id': value['importedTransactionId'],
+        'journal_entry_id': value['journalEntryId'],
         'is_editable': value['isEditable'],
     };
 }

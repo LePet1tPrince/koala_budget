@@ -11,12 +11,8 @@ models/Account.ts
 models/AggregateEmployeeData.ts
 models/BankFeedRow.ts
 models/BankFeedRowSourceEnum.ts
-models/BatchCategorizeRequest.ts
 models/BatchIds.ts
-models/BatchMoveAccountRequest.ts
 models/BatchReconcileRequest.ts
-models/BatchSetDescriptionRequest.ts
-models/BatchSetPayeeRequest.ts
 models/CategorizeTransactionsRequest.ts
 models/DepartmentEnum.ts
 models/Employee.ts
@@ -27,6 +23,7 @@ models/JournalEntry.ts
 models/JournalEntrySourceEnum.ts
 models/JournalEntryStatusEnum.ts
 models/JournalLine.ts
+models/ManualTransaction.ts
 models/Membership.ts
 models/OpenInvitation.ts
 models/PaginatedBankFeedRowList.ts
@@ -39,6 +36,8 @@ models/PaginatedPlaidTransactionList.ts
 models/PaginatedSimpleLineList.ts
 models/PaginatedTeamList.ts
 models/ParsedTransaction.ts
+models/PatchedBankFeedRow.ts
+models/PatchedBatchEditRequest.ts
 models/PatchedEmployee.ts
 models/PatchedInvitation.ts
 models/PatchedJournalEntry.ts
