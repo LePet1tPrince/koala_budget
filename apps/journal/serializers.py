@@ -50,7 +50,7 @@ class JournalLineSerializer(serializers.ModelSerializer):
                             "updated_at"
         ]
 
-    def get_direction(self, obj):
+    def get_direction(self, obj) -> str:
         return "DR" if obj.dr_amount > 0 else "CR"
     def validate(self, data):
         """Validate that line has either debit or credit, not both or neither."""
@@ -232,12 +232,12 @@ class SimpleLineSerializer(serializers.Serializer):
 
         return data
 
-    def get_category_name(self, obj):
+    def get_category_name(self, obj) -> str | None:
         """Get the category account name from the sibling line."""
         sibling = self._get_sibling_line(obj)
         return sibling.account.name if sibling else None
 
-    def get_payee_name(self, obj):
+    def get_payee_name(self, obj) -> str | None:
         """Get the payee name from the journal entry."""
         return obj.journal_entry.payee.name if obj.journal_entry.payee else None
 
