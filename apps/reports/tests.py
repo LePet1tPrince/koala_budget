@@ -23,7 +23,7 @@ from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
 
-from .forms import BalanceSheetForm, IncomeStatementForm, NetWorthTrendForm
+from .forms import NetWorthTrendForm
 from .services import ReportService
 
 
@@ -206,79 +206,136 @@ class ReportServiceTest(TestCase):
         self.assertEqual(data['net_worth'], Decimal("0"))
 
 
-class IncomeStatementFormTest(TestCase):
-    """Tests for IncomeStatementForm."""
+class IncomeStatementDateParamsTest(TestCase):
+    """Tests for income statement date parameter handling (React datepicker)."""
 
-    def test_form_initial_values(self):
-        """Test form initializes with correct default values."""
-        form = IncomeStatementForm()
-        self.assertEqual(form.fields['period'].initial, 'this_month')
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="IS Param Team", slug="is-param-team")
+        cls.user = CustomUser.objects.create_user(
+            username="isuser", email="is@example.com", password="testpass123"
+        )
+        cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
+        cls.asset_group = AccountGroup.objects.create(
+            team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.income_group = AccountGroup.objects.create(
+            team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME
+        )
+        cls.asset_account = Account.objects.create(
+            team=cls.team, name="Cash", account_number=1001, account_group=cls.asset_group
+        )
+        cls.income_account = Account.objects.create(
+            team=cls.team, name="Sales", account_number=4001, account_group=cls.income_group
+        )
 
-    def test_custom_period_validation_valid(self):
-        """Test custom period validation with valid dates."""
-        form_data = {
-            'period': 'custom',
-            'start_date': '2024-01-01',
-            'end_date': '2024-01-31'
-        }
-        form = IncomeStatementForm(data=form_data)
-        self.assertTrue(form.is_valid())
+    def setUp(self):
+        self.client.login(username="isuser", password="testpass123")
 
-    def test_custom_period_validation_missing_dates(self):
-        """Test custom period with missing dates returns None values from get_date_range."""
-        form_data = {
-            'period': 'custom',
-            # Missing start_date and end_date
-        }
-        form = IncomeStatementForm(data=form_data)
-        # Form is valid (dates are optional), but get_date_range returns None
-        self.assertTrue(form.is_valid())
-        start_date, end_date = form.get_date_range()
-        self.assertIsNone(start_date)
-        self.assertIsNone(end_date)
+    def test_date_params_parsed_correctly(self):
+        """Test that start_date and end_date URL params are parsed and used."""
+        # Create a transaction in the date range
+        entry = JournalEntry.objects.create(
+            team=self.team, entry_date=date(2024, 6, 15), description="June sale"
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("500.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("500.00")
+        )
 
-    def test_custom_period_validation_valid_dates(self):
-        """Test custom period with valid dates."""
-        form_data = {
-            'period': 'custom',
-            'start_date': '2024-01-01',
-            'end_date': '2024-01-31'
-        }
-        form = IncomeStatementForm(data=form_data)
-        self.assertTrue(form.is_valid())
-        start_date, end_date = form.get_date_range()
-        self.assertEqual(start_date, date(2024, 1, 1))
-        self.assertEqual(end_date, date(2024, 1, 31))
+        url = reverse('reports:income_statement', kwargs={'team_slug': self.team.slug})
+        response = self.client.get(url, {'start_date': '2024-06-01', 'end_date': '2024-06-30'})
 
-    def test_get_date_range_this_month(self):
-        """Test get_date_range for 'this_month' period returns first of month to today."""
-        form_data = {'period': 'this_month'}
-        form = IncomeStatementForm(data=form_data)
-        self.assertTrue(form.is_valid())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['start_date'], date(2024, 6, 1))
+        self.assertEqual(response.context['end_date'], date(2024, 6, 30))
+        self.assertIsNotNone(response.context['report_data'])
+        self.assertEqual(response.context['report_data']['total_income'], Decimal("500.00"))
 
-        start_date, end_date = form.get_date_range()
+    def test_no_params_defaults_to_current_month(self):
+        """Test that no date params defaults to current month."""
+        url = reverse('reports:income_statement', kwargs={'team_slug': self.team.slug})
+        response = self.client.get(url)
+
         today = date.today()
-        expected_start = today.replace(day=1)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['start_date'], today.replace(day=1))
+        self.assertEqual(response.context['end_date'], today)
 
-        self.assertEqual(start_date, expected_start)
-        self.assertEqual(end_date, today)
+    def test_invalid_date_params_fall_back_to_defaults(self):
+        """Test that invalid date params fall back to current month defaults."""
+        url = reverse('reports:income_statement', kwargs={'team_slug': self.team.slug})
+        response = self.client.get(url, {'start_date': 'invalid', 'end_date': 'bad'})
+
+        today = date.today()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['start_date'], today.replace(day=1))
+        self.assertEqual(response.context['end_date'], today)
 
 
-class BalanceSheetFormTest(TestCase):
-    """Tests for BalanceSheetForm."""
+class BalanceSheetDateParamsTest(TestCase):
+    """Tests for balance sheet date parameter handling (React datepicker)."""
 
-    def test_form_initial_values(self):
-        """Test form initializes with correct default values."""
-        form = BalanceSheetForm()
-        # The initial value is callable, so evaluate it
-        self.assertEqual(form.fields['as_of_date'].initial(), date.today())
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="BS Param Team", slug="bs-param-team")
+        cls.user = CustomUser.objects.create_user(
+            username="bsuser", email="bs@example.com", password="testpass123"
+        )
+        cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
+        cls.asset_group = AccountGroup.objects.create(
+            team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.equity_group = AccountGroup.objects.create(
+            team=cls.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY
+        )
+        cls.asset_account = Account.objects.create(
+            team=cls.team, name="Cash", account_number=1001, account_group=cls.asset_group
+        )
+        cls.equity_account = Account.objects.create(
+            team=cls.team, name="Retained Earnings", account_number=3001, account_group=cls.equity_group
+        )
 
-    def test_form_valid(self):
-        """Test form validation with valid data."""
-        form_data = {'as_of_date': '2024-12-31'}
-        form = BalanceSheetForm(data=form_data)
-        self.assertTrue(form.is_valid())
-        self.assertEqual(form.cleaned_data['as_of_date'], date(2024, 12, 31))
+    def setUp(self):
+        self.client.login(username="bsuser", password="testpass123")
+
+    def test_as_of_date_param_parsed_correctly(self):
+        """Test that as_of_date URL param is parsed and used."""
+        entry = JournalEntry.objects.create(
+            team=self.team, entry_date=date(2024, 12, 15), description="Capital"
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("1000.00")
+        )
+
+        url = reverse('reports:balance_sheet', kwargs={'team_slug': self.team.slug})
+        response = self.client.get(url, {'as_of_date': '2024-12-31'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['as_of_date'], date(2024, 12, 31))
+        self.assertIsNotNone(response.context['report_data'])
+        self.assertEqual(response.context['report_data']['total_assets'], Decimal("1000.00"))
+
+    def test_no_params_defaults_to_today(self):
+        """Test that no as_of_date param defaults to today."""
+        url = reverse('reports:balance_sheet', kwargs={'team_slug': self.team.slug})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['as_of_date'], date.today())
+
+    def test_invalid_date_param_falls_back_to_today(self):
+        """Test that invalid as_of_date param falls back to today."""
+        url = reverse('reports:balance_sheet', kwargs={'team_slug': self.team.slug})
+        response = self.client.get(url, {'as_of_date': 'not-a-date'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['as_of_date'], date.today())
 
 
 class NetWorthTrendFormTest(TestCase):
@@ -378,7 +435,8 @@ class ReportViewsTest(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'reports/balance_sheet.html')
-        self.assertIsInstance(response.context['form'], BalanceSheetForm)
+        self.assertIn('report_data', response.context)
+        self.assertIn('as_of_date', response.context)
 
     def test_net_worth_trend_view_get(self):
         """Test net worth trend view GET request."""
@@ -386,27 +444,21 @@ class ReportViewsTest(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'reports/net_worth_trend.html')
-        self.assertIsInstance(response.context['form'], NetWorthTrendForm)
+        self.assertIn('report_data', response.context)
+        self.assertIn('start_date', response.context)
+        self.assertIn('end_date', response.context)
 
-    def test_net_worth_trend_view_post_valid(self):
-        """Test net worth trend view with valid form submission."""
+    def test_net_worth_trend_view_with_valid_params(self):
+        """Test net worth trend view with valid date parameters."""
         url = reverse('reports:net_worth_trend', kwargs={'team_slug': self.team.slug})
-        form_data = {
-            'start_month': '2024-01',
-            'end_month': '2024-12'
-        }
-        response = self.client.get(url, form_data)
+        response = self.client.get(url, {'start_month': '2024-01', 'end_month': '2024-12'})
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.context.get('report_data'))
 
-    def test_net_worth_trend_view_post_invalid(self):
-        """Test net worth trend view with invalid form submission."""
+    def test_net_worth_trend_view_with_invalid_params(self):
+        """Test net worth trend view with invalid date params falls back to defaults."""
         url = reverse('reports:net_worth_trend', kwargs={'team_slug': self.team.slug})
-        form_data = {
-            'start_month': '2024-12',
-            'end_month': '2024-01'  # Invalid: start after end
-        }
-        response = self.client.get(url, form_data)
+        response = self.client.get(url, {'start_month': 'bad', 'end_month': 'data'})
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.context.get('report_data'))  # No data generated
-        self.assertTrue(response.context['form'].errors)
+        # Falls back to defaults, still generates report data
+        self.assertIsNotNone(response.context.get('report_data'))

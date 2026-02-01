@@ -280,8 +280,8 @@ class SimpleLineAPITest(TestCase):
         with current_team(self.team):
             data = {
                 "date": "2025-12-17",
-                "account": self.bank_account.account_id,
-                "category": self.groceries_account.account_id,
+                "account": self.bank_account.pk,
+                "category": self.groceries_account.pk,
                 "inflow": "0.00",
                 "outflow": "50.00",
                 "description": "Bought groceries",
@@ -317,8 +317,8 @@ class SimpleLineAPITest(TestCase):
         with current_team(self.team):
             data = {
                 "date": "2025-12-17",
-                "account": self.bank_account.account_id,
-                "category": self.salary_account.account_id,
+                "account": self.bank_account.pk,
+                "category": self.salary_account.pk,
                 "inflow": "1000.00",
                 "outflow": "0.00",
                 "description": "Monthly salary",
@@ -346,7 +346,7 @@ class SimpleLineAPITest(TestCase):
         with current_team(self.team):
             data = {
                 "date": "2025-12-17",
-                "account": self.bank_account.account_id,
+                "account": self.bank_account.pk,
                 "category": None,
                 "inflow": "1000.00",
                 "outflow": "0.00",
@@ -425,8 +425,8 @@ class SimpleLineAPITest(TestCase):
             # Update the transaction
             data = {
                 "date": "2025-12-18",
-                "account": self.bank_account.account_id,
-                "category": self.groceries_account.account_id,
+                "account": self.bank_account.pk,
+                "category": self.groceries_account.pk,
                 "inflow": "0.00",
                 "outflow": "75.00",
                 "description": "Updated description",
@@ -479,8 +479,8 @@ class SimpleLineAPITest(TestCase):
         with current_team(self.team):
             data = {
                 "date": "2025-12-17",
-                "account": self.bank_account.account_id,
-                "category": self.groceries_account.account_id,
+                "account": self.bank_account.pk,
+                "category": self.groceries_account.pk,
                 "inflow": "50.00",
                 "outflow": "50.00",
                 "description": "Invalid",
@@ -495,8 +495,8 @@ class SimpleLineAPITest(TestCase):
         with current_team(self.team):
             data = {
                 "date": "2025-12-17",
-                "account": self.bank_account.account_id,
-                "category": self.groceries_account.account_id,
+                "account": self.bank_account.pk,
+                "category": self.groceries_account.pk,
                 "inflow": "0.00",
                 "outflow": "0.00",
                 "description": "Invalid",
@@ -547,8 +547,8 @@ class JournalEntryAPITest(TestCase):
                 "description": "Test entry",
                 "payee": self.payee.id,
                 "lines": [
-                    {"account": self.bank_account.account_id, "dr_amount": "100.00", "cr_amount": "0.00"},
-                    {"account": self.expense_account.account_id, "dr_amount": "0.00", "cr_amount": "100.00"},
+                    {"account": self.bank_account.pk, "dr_amount": "100.00", "cr_amount": "0.00"},
+                    {"account": self.expense_account.pk, "dr_amount": "0.00", "cr_amount": "100.00"},
                 ],
             }
 
@@ -612,8 +612,8 @@ class JournalEntryAPITest(TestCase):
                 "entry_date": "2025-12-18",
                 "description": "Updated description",
                 "lines": [
-                    {"account": self.bank_account.account_id, "dr_amount": "150.00", "cr_amount": "0.00"},
-                    {"account": self.expense_account.account_id, "dr_amount": "0.00", "cr_amount": "150.00"},
+                    {"account": self.bank_account.pk, "dr_amount": "150.00", "cr_amount": "0.00"},
+                    {"account": self.expense_account.pk, "dr_amount": "0.00", "cr_amount": "150.00"},
                 ],
             }
 
@@ -737,8 +737,8 @@ class JournalEntryAPITest(TestCase):
                 "entry_date": "2025-12-17",
                 "description": "Unbalanced entry",
                 "lines": [
-                    {"account": self.bank_account.account_id, "dr_amount": "100.00", "cr_amount": "0.00"},
-                    {"account": self.expense_account.account_id, "dr_amount": "0.00", "cr_amount": "50.00"},
+                    {"account": self.bank_account.pk, "dr_amount": "100.00", "cr_amount": "0.00"},
+                    {"account": self.expense_account.pk, "dr_amount": "0.00", "cr_amount": "50.00"},
                 ],
             }
 
@@ -753,57 +753,13 @@ class JournalEntryAPITest(TestCase):
                 "entry_date": "2025-12-17",
                 "description": "Single line entry",
                 "lines": [
-                    {"account": self.bank_account.account_id, "dr_amount": "100.00", "cr_amount": "0.00"},
+                    {"account": self.bank_account.pk, "dr_amount": "100.00", "cr_amount": "0.00"},
                 ],
             }
 
             response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/", data, format="json")
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-
-class JournalTemplateViewTest(TestCase):
-    """Tests for journal template views."""
-
-    @classmethod
-    def setUpTestData(cls):
-        """Set up test data for all tests."""
-        cls.team = Team.objects.create(name="Test Team", slug="test-team")
-        cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
-        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
-
-        # Create account groups
-        cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
-        )
-
-        # Create account with feed
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_number=1000, account_group=cls.asset_group, has_feed=True
-        )
-
-    def setUp(self):
-        """Set up for each test."""
-        self.client.login(username="testuser", password="testpass123")
-
-    def test_journal_home_view(self):
-        """Test journal home view renders correctly."""
-        response = self.client.get(f"/a/{self.team.slug}/journal/")
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTemplateUsed(response, "journal/journal_home.html")
-        self.assertIn("accounts", response.context)
-        self.assertIn("all_accounts", response.context)
-        self.assertIn("all_payees", response.context)
-        self.assertIn("api_urls", response.context)
-
-    def test_journal_home_view_requires_login(self):
-        """Test journal home view requires login."""
-        self.client.logout()
-        response = self.client.get(f"/a/{self.team.slug}/journal/")
-
-        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
-        self.assertIn("/accounts/login/", response.url)
 
 
 class JournalPermissionsTest(TestCase):
@@ -849,8 +805,8 @@ class JournalPermissionsTest(TestCase):
                 "entry_date": "2025-12-17",
                 "description": "Test entry",
                 "lines": [
-                    {"account": self.bank_account.account_id, "dr_amount": "100.00", "cr_amount": "0.00"},
-                    {"account": self.expense_account.account_id, "dr_amount": "0.00", "cr_amount": "100.00"},
+                    {"account": self.bank_account.pk, "dr_amount": "100.00", "cr_amount": "0.00"},
+                    {"account": self.expense_account.pk, "dr_amount": "0.00", "cr_amount": "100.00"},
                 ],
             }
 
