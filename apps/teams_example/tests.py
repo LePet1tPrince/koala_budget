@@ -20,6 +20,7 @@ class TestTeamFiltering(TestCase):
             ]
         )
 
+    @override_settings(STRICT_TEAM_CONTEXT=False)
     def test_filtering_no_team_in_context(self):
         self.assertEqual(Player.objects.count(), 4)
         self.assertEqual(Player.for_team.count(), 0)

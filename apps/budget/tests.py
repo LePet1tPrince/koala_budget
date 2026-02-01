@@ -276,8 +276,8 @@ class BudgetServiceTest(TestCase):
 
         actuals = self.service.get_actuals_by_category(date(2025, 12, 1))
 
-        self.assertEqual(actuals[self.expense_account.account_id], Decimal("100.00"))
-        self.assertEqual(actuals[self.income_account.account_id], Decimal("2000.00"))
+        self.assertEqual(actuals[self.expense_account.pk], Decimal("100.00"))
+        self.assertEqual(actuals[self.income_account.pk], Decimal("2000.00"))
 
     def test_build_budget_rows(self):
         """Test build_budget_rows includes expense and income accounts."""
@@ -317,8 +317,8 @@ class BudgetServiceTest(TestCase):
         self.assertEqual(len(rows), 2)
 
         # Find rows by account
-        expense_row = next(r for r in rows if r["category_id"] == self.expense_account.account_id)
-        income_row = next(r for r in rows if r["category_id"] == self.income_account.account_id)
+        expense_row = next(r for r in rows if r["category_id"] == self.expense_account.pk)
+        income_row = next(r for r in rows if r["category_id"] == self.income_account.pk)
 
         # Check expense row calculations
         self.assertEqual(expense_row["budgeted"], Decimal("500.00"))

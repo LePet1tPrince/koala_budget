@@ -3,17 +3,14 @@ Views for journal app.
 Provides both template views and REST API endpoints for journal entries and lines.
 """
 
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_date
-from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.accounts.models import Account, Payee
-from apps.accounts.serializers import AccountSerializer, PayeeSerializer
-from apps.teams.decorators import login_and_team_required
+from apps.accounts.models import Account
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from .models import JournalEntry, JournalLine
@@ -230,86 +227,3 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         line.save()
 
         return Response({"status": "success", "line_id": line.id})
-
-
-# Template Views
-
-
-@login_and_team_required
-def journal_home(request, team_slug):
-    """
-    Main journal page view.
-    Displays accounts with bank feeds and transactions table.
-    """
-    # Get accounts with bank feeds
-    accounts_with_feeds = Account.for_team.filter(has_feed=True).select_related("account_group").order_by("name")
-
-    # Serialize accounts for React
-    accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
-
-    # Get all accounts and payees for dropdowns
-    all_accounts = Account.for_team.all().order_by("account_number")
-    all_payees = Payee.for_team.all().order_by("name")
-
-    all_accounts_data = AccountSerializer(all_accounts, many=True).data
-    all_payees_data = PayeeSerializer(all_payees, many=True).data
-
-    # API URLs
-    api_urls = {
-        "transactions_list": f"/a/{team_slug}/journal/api/transactions/",
-        "transactions_detail": f"/a/{team_slug}/journal/api/transactions/{{id}}/",
-    }
-
-    return render(
-        request,
-        "journal/journal_home.html",
-        {
-            "active_tab": "journal",
-            "page_title": _("Journal | {team}").format(team=request.team),
-            "accounts": accounts_data,
-            "all_accounts": all_accounts_data,
-            "all_payees": all_payees_data,
-            "api_urls": api_urls,
-            "team_slug": team_slug,
-        },
-    )
-
-
-@login_and_team_required
-def journal_lines(request, team_slug):
-    """
-    Journal lines page view.
-    Displays accounts with bank feeds and lines table.
-    """
-    # Get accounts with bank feeds
-    accounts_with_feeds = Account.for_team.filter(has_feed=True).select_related("account_group").order_by("name")
-
-    # Serialize accounts for React
-    accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
-
-    # Get all accounts and payees for dropdowns
-    all_accounts = Account.for_team.all().order_by("account_number")
-    all_payees = Payee.for_team.all().order_by("name")
-
-    all_accounts_data = AccountSerializer(all_accounts, many=True).data
-    all_payees_data = PayeeSerializer(all_payees, many=True).data
-
-    # API URLs
-    api_urls = {
-        "lines_list": f"/a/{team_slug}/journal/api/lines/",
-        "lines_detail": f"/a/{team_slug}/journal/api/lines/{{id}}/",
-    }
-
-    return render(
-        request,
-        "journal/journal_lines.html",
-        {
-            "active_tab": "journal",
-            "page_title": _("Journal Lines | {team}").format(team=request.team),
-            "accounts": accounts_data,
-            "all_accounts": all_accounts_data,
-            "all_payees": all_payees_data,
-            "api_urls": api_urls,
-            "team_slug": team_slug,
-        },
-    )
