@@ -98,28 +98,29 @@ class BatchIdsSerializer(serializers.Serializer):
     )
 
 
-class BatchCategorizeRequestSerializer(BatchIdsSerializer):
-    """Serializer for batch categorize request."""
+class BatchEditRequestSerializer(BatchIdsSerializer):
+    """Serializer for batch edit request. Only provided (non-null) fields are updated."""
 
-    category_id = serializers.IntegerField(help_text="ID of the category account")
-
-
-class BatchMoveAccountRequestSerializer(BatchIdsSerializer):
-    """Serializer for batch move account request."""
-
-    account_id = serializers.IntegerField(help_text="ID of the target bank account")
-
-
-class BatchSetPayeeRequestSerializer(BatchIdsSerializer):
-    """Serializer for batch set payee request."""
-
-    payee = serializers.CharField(max_length=255, help_text="Payee/merchant name")
-
-
-class BatchSetDescriptionRequestSerializer(BatchIdsSerializer):
-    """Serializer for batch set description request."""
-
-    description = serializers.CharField(max_length=255, help_text="Transaction description")
+    category_id = serializers.IntegerField(
+        required=False, allow_null=True, default=None,
+        help_text="ID of the category account",
+    )
+    account_id = serializers.IntegerField(
+        required=False, allow_null=True, default=None,
+        help_text="ID of the target bank account (move)",
+    )
+    payee = serializers.CharField(
+        max_length=255, required=False, allow_null=True, default=None,
+        help_text="Payee/merchant name",
+    )
+    description = serializers.CharField(
+        max_length=255, required=False, allow_null=True, default=None,
+        help_text="Transaction description",
+    )
+    date = serializers.DateField(
+        required=False, allow_null=True, default=None,
+        help_text="Transaction date",
+    )
 
 
 class BatchReconcileRequestSerializer(BatchIdsSerializer):

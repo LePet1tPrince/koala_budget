@@ -16,14 +16,12 @@
 import * as runtime from '../runtime';
 import type {
   BankFeedRow,
-  BatchCategorizeRequest,
   BatchIds,
-  BatchMoveAccountRequest,
   BatchReconcileRequest,
-  BatchSetDescriptionRequest,
-  BatchSetPayeeRequest,
   CategorizeTransactionsRequest,
+  ManualTransaction,
   PaginatedBankFeedRowList,
+  PatchedBatchEditRequest,
   UploadConfirmRequest,
   UploadConfirmResponse,
   UploadParseResponse,
@@ -32,22 +30,18 @@ import type {
 import {
     BankFeedRowFromJSON,
     BankFeedRowToJSON,
-    BatchCategorizeRequestFromJSON,
-    BatchCategorizeRequestToJSON,
     BatchIdsFromJSON,
     BatchIdsToJSON,
-    BatchMoveAccountRequestFromJSON,
-    BatchMoveAccountRequestToJSON,
     BatchReconcileRequestFromJSON,
     BatchReconcileRequestToJSON,
-    BatchSetDescriptionRequestFromJSON,
-    BatchSetDescriptionRequestToJSON,
-    BatchSetPayeeRequestFromJSON,
-    BatchSetPayeeRequestToJSON,
     CategorizeTransactionsRequestFromJSON,
     CategorizeTransactionsRequestToJSON,
+    ManualTransactionFromJSON,
+    ManualTransactionToJSON,
     PaginatedBankFeedRowListFromJSON,
     PaginatedBankFeedRowListToJSON,
+    PatchedBatchEditRequestFromJSON,
+    PatchedBatchEditRequestToJSON,
     UploadConfirmRequestFromJSON,
     UploadConfirmRequestToJSON,
     UploadConfirmResponseFromJSON,
@@ -63,35 +57,20 @@ export interface BankFeedBatchArchiveRequest {
     batchIds: BatchIds;
 }
 
-export interface BankFeedBatchCategorizeRequest {
-    teamSlug: string;
-    batchCategorizeRequest: BatchCategorizeRequest;
-}
-
 export interface BankFeedBatchDuplicateRequest {
     teamSlug: string;
     batchIds: BatchIds;
     page?: number;
 }
 
-export interface BankFeedBatchMoveAccountRequest {
+export interface BankFeedBatchEditRequest {
     teamSlug: string;
-    batchMoveAccountRequest: BatchMoveAccountRequest;
+    patchedBatchEditRequest?: PatchedBatchEditRequest;
 }
 
 export interface BankFeedBatchReconcileRequest {
     teamSlug: string;
     batchReconcileRequest: BatchReconcileRequest;
-}
-
-export interface BankFeedBatchSetDescriptionRequest {
-    teamSlug: string;
-    batchSetDescriptionRequest: BatchSetDescriptionRequest;
-}
-
-export interface BankFeedBatchSetPayeeRequest {
-    teamSlug: string;
-    batchSetPayeeRequest: BatchSetPayeeRequest;
 }
 
 export interface BankFeedBatchUnarchiveRequest {
@@ -104,15 +83,21 @@ export interface BankFeedBatchUnreconcileRequest {
     batchIds: BatchIds;
 }
 
+export interface BankFeedFeedCreateRequest {
+    teamSlug: string;
+    manualTransaction: ManualTransaction;
+}
+
 export interface BankFeedFeedListRequest {
     teamSlug: string;
     account?: number;
     page?: number;
 }
 
-export interface BankFeedFeedRetrieveRequest {
+export interface BankFeedFeedUpdateRequest {
     id: string;
     teamSlug: string;
+    manualTransaction: ManualTransaction;
 }
 
 export interface BankFeedTransactionsCategorizeRequest {
@@ -193,55 +178,6 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch categorize multiple bank transactions. Creates or updates journal entries for each transaction.
-     */
-    async bankFeedBatchCategorizeRaw(requestParameters: BankFeedBatchCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchCategorize().'
-            );
-        }
-
-        if (requestParameters['batchCategorizeRequest'] == null) {
-            throw new runtime.RequiredError(
-                'batchCategorizeRequest',
-                'Required parameter "batchCategorizeRequest" was null or undefined when calling bankFeedBatchCategorize().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_categorize/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: BatchCategorizeRequestToJSON(requestParameters['batchCategorizeRequest']),
-        }, initOverrides);
-
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * Batch categorize multiple bank transactions. Creates or updates journal entries for each transaction.
-     */
-    async bankFeedBatchCategorize(requestParameters: BankFeedBatchCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchCategorizeRaw(requestParameters, initOverrides);
-    }
-
-    /**
      * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries.
      */
     async bankFeedBatchDuplicateRaw(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
@@ -296,20 +232,13 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch move transactions to a different bank account. Updates the account FK on BankTransaction and related journal entries.
+     * Bulk edit multiple bank transactions. Only fields that are provided (non-null) are updated. Supports: category_id, account_id (move), payee, description, date.
      */
-    async bankFeedBatchMoveAccountRaw(requestParameters: BankFeedBatchMoveAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+    async bankFeedBatchEditRaw(requestParameters: BankFeedBatchEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchMoveAccount().'
-            );
-        }
-
-        if (requestParameters['batchMoveAccountRequest'] == null) {
-            throw new runtime.RequiredError(
-                'batchMoveAccountRequest',
-                'Required parameter "batchMoveAccountRequest" was null or undefined when calling bankFeedBatchMoveAccount().'
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchEdit().'
             );
         }
 
@@ -327,21 +256,21 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_move_account/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'POST',
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_edit/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
-            body: BatchMoveAccountRequestToJSON(requestParameters['batchMoveAccountRequest']),
+            body: PatchedBatchEditRequestToJSON(requestParameters['patchedBatchEditRequest']),
         }, initOverrides);
 
         return new runtime.VoidApiResponse(response);
     }
 
     /**
-     * Batch move transactions to a different bank account. Updates the account FK on BankTransaction and related journal entries.
+     * Bulk edit multiple bank transactions. Only fields that are provided (non-null) are updated. Supports: category_id, account_id (move), payee, description, date.
      */
-    async bankFeedBatchMoveAccount(requestParameters: BankFeedBatchMoveAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchMoveAccountRaw(requestParameters, initOverrides);
+    async bankFeedBatchEdit(requestParameters: BankFeedBatchEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchEditRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -391,104 +320,6 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedBatchReconcile(requestParameters: BankFeedBatchReconcileRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedBatchReconcileRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     * Batch set description on multiple transactions. Updates description on BankTransaction and linked JournalEntry.
-     */
-    async bankFeedBatchSetDescriptionRaw(requestParameters: BankFeedBatchSetDescriptionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchSetDescription().'
-            );
-        }
-
-        if (requestParameters['batchSetDescriptionRequest'] == null) {
-            throw new runtime.RequiredError(
-                'batchSetDescriptionRequest',
-                'Required parameter "batchSetDescriptionRequest" was null or undefined when calling bankFeedBatchSetDescription().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_set_description/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: BatchSetDescriptionRequestToJSON(requestParameters['batchSetDescriptionRequest']),
-        }, initOverrides);
-
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * Batch set description on multiple transactions. Updates description on BankTransaction and linked JournalEntry.
-     */
-    async bankFeedBatchSetDescription(requestParameters: BankFeedBatchSetDescriptionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchSetDescriptionRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     * Batch set payee/merchant name on multiple transactions. Updates merchant_name on BankTransaction and payee on linked JournalEntry.
-     */
-    async bankFeedBatchSetPayeeRaw(requestParameters: BankFeedBatchSetPayeeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchSetPayee().'
-            );
-        }
-
-        if (requestParameters['batchSetPayeeRequest'] == null) {
-            throw new runtime.RequiredError(
-                'batchSetPayeeRequest',
-                'Required parameter "batchSetPayeeRequest" was null or undefined when calling bankFeedBatchSetPayee().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_set_payee/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: BatchSetPayeeRequestToJSON(requestParameters['batchSetPayeeRequest']),
-        }, initOverrides);
-
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * Batch set payee/merchant name on multiple transactions. Updates merchant_name on BankTransaction and payee on linked JournalEntry.
-     */
-    async bankFeedBatchSetPayee(requestParameters: BankFeedBatchSetPayeeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchSetPayeeRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -590,6 +421,56 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
+     * Create a new manual bank transaction with associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
+     */
+    async bankFeedFeedCreateRaw(requestParameters: BankFeedFeedCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedFeedCreate().'
+            );
+        }
+
+        if (requestParameters['manualTransaction'] == null) {
+            throw new runtime.RequiredError(
+                'manualTransaction',
+                'Required parameter "manualTransaction" was null or undefined when calling bankFeedFeedCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: ManualTransactionToJSON(requestParameters['manualTransaction']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => BankFeedRowFromJSON(jsonValue));
+    }
+
+    /**
+     * Create a new manual bank transaction with associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
+     */
+    async bankFeedFeedCreate(requestParameters: BankFeedFeedCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BankFeedRow> {
+        const response = await this.bankFeedFeedCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional)
      */
     async bankFeedFeedListRaw(requestParameters: BankFeedFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
@@ -638,26 +519,35 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions - GET /a/{team_slug}/bankfeed/api/feed/{id}/ - Get transactions for specific account
+     * Update an existing bank transaction and its associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
      */
-    async bankFeedFeedRetrieveRaw(requestParameters: BankFeedFeedRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
+    async bankFeedFeedUpdateRaw(requestParameters: BankFeedFeedUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
-                'Required parameter "id" was null or undefined when calling bankFeedFeedRetrieve().'
+                'Required parameter "id" was null or undefined when calling bankFeedFeedUpdate().'
             );
         }
 
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedFeedRetrieve().'
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedFeedUpdate().'
+            );
+        }
+
+        if (requestParameters['manualTransaction'] == null) {
+            throw new runtime.RequiredError(
+                'manualTransaction',
+                'Required parameter "manualTransaction" was null or undefined when calling bankFeedFeedUpdate().'
             );
         }
 
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
 
         if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
             headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
@@ -668,19 +558,20 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const response = await this.request({
             path: `/a/{team_slug}/bankfeed/api/feed/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'GET',
+            method: 'PUT',
             headers: headerParameters,
             query: queryParameters,
+            body: ManualTransactionToJSON(requestParameters['manualTransaction']),
         }, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => BankFeedRowFromJSON(jsonValue));
     }
 
     /**
-     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions - GET /a/{team_slug}/bankfeed/api/feed/{id}/ - Get transactions for specific account
+     * Update an existing bank transaction and its associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
      */
-    async bankFeedFeedRetrieve(requestParameters: BankFeedFeedRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BankFeedRow> {
-        const response = await this.bankFeedFeedRetrieveRaw(requestParameters, initOverrides);
+    async bankFeedFeedUpdate(requestParameters: BankFeedFeedUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BankFeedRow> {
+        const response = await this.bankFeedFeedUpdateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

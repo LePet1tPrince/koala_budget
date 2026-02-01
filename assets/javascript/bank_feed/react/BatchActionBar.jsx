@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Autocomplete,
   Box,
   Button,
   Dialog,
@@ -8,8 +7,6 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  Menu,
-  MenuItem,
   Paper,
   Slide,
   TextField,
@@ -17,10 +14,7 @@ import {
 } from '@mui/material';
 import {
   Close as CloseIcon,
-  Category as CategoryIcon,
-  SwapHoriz as SwapHorizIcon,
-  Person as PersonIcon,
-  Description as DescriptionIcon,
+  Edit as EditIcon,
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
   ContentCopy as ContentCopyIcon,
@@ -28,7 +22,7 @@ import {
   CheckCircle as CheckCircleIcon,
   RemoveCircle as RemoveCircleIcon,
 } from '@mui/icons-material';
-import { buildCategoryOptions } from '../../common/categoryOptions';
+import BulkEditModal from './BulkEditModal';
 
 /* globals gettext */
 
@@ -41,10 +35,7 @@ const BatchActionBar = ({
   selectedRows,
   allAccounts,
   bankFeedAccounts,
-  onCategorize,
-  onMoveAccount,
-  onSetPayee,
-  onSetDescription,
+  onBulkEdit,
   onArchive,
   onUnarchive,
   onDuplicate,
@@ -59,70 +50,14 @@ const BatchActionBar = ({
 }) => {
   // In archived view, only allow unarchive and export
   const isArchivedView = filterMode === 'archived';
-  // Menu anchors
-  const [categoryAnchor, setCategoryAnchor] = useState(null);
-  const [accountAnchor, setAccountAnchor] = useState(null);
 
-  // Dialog states
-  const [payeeDialogOpen, setPayeeDialogOpen] = useState(false);
-  const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
-  const [payeeValue, setPayeeValue] = useState('');
-  const [descriptionValue, setDescriptionValue] = useState('');
-
-  // Category selection state
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  // Bulk edit modal state
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
   // Reconcile dialog states
   const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false);
   const [unreconcileDialogOpen, setUnreconcileDialogOpen] = useState(false);
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
-
-  // Create options array for category Autocomplete
-  const categoryOptions = useMemo(() => {
-    return buildCategoryOptions(allAccounts);
-  }, [allAccounts]);
-
-  // Filter bank feed accounts (has_feed=true)
-  const feedAccountOptions = useMemo(() => {
-    return bankFeedAccounts.map((account) => ({
-      id: account.id,
-      label: account.name,
-      name: account.name,
-    }));
-  }, [bankFeedAccounts]);
-
-  // Handle category selection and close menu
-  const handleCategorySelect = () => {
-    if (selectedCategory) {
-      onCategorize(selectedCategory.id);
-      setCategoryAnchor(null);
-      setSelectedCategory(null);
-    }
-  };
-
-  // Handle account move
-  const handleAccountSelect = (account) => {
-    onMoveAccount(account.id);
-    setAccountAnchor(null);
-  };
-
-  // Handle payee submit
-  const handlePayeeSubmit = () => {
-    if (payeeValue.trim()) {
-      onSetPayee(payeeValue.trim());
-      setPayeeDialogOpen(false);
-      setPayeeValue('');
-    }
-  };
-
-  // Handle description submit
-  const handleDescriptionSubmit = () => {
-    if (descriptionValue.trim()) {
-      onSetDescription(descriptionValue.trim());
-      setDescriptionDialogOpen(false);
-      setDescriptionValue('');
-    }
-  };
 
   // Calculate reconciling amount from selected rows
   const reconcilingAmount = useMemo(() => {
@@ -236,40 +171,10 @@ const BatchActionBar = ({
           {!isArchivedView && (
             <Button
               size="small"
-              startIcon={<CategoryIcon />}
-              onClick={(e) => setCategoryAnchor(e.currentTarget)}
+              startIcon={<EditIcon />}
+              onClick={() => setBulkEditOpen(true)}
             >
-              {gettext('Categorize')}
-            </Button>
-          )}
-
-          {!isArchivedView && (
-            <Button
-              size="small"
-              startIcon={<SwapHorizIcon />}
-              onClick={(e) => setAccountAnchor(e.currentTarget)}
-            >
-              {gettext('Move')}
-            </Button>
-          )}
-
-          {!isArchivedView && (
-            <Button
-              size="small"
-              startIcon={<PersonIcon />}
-              onClick={() => setPayeeDialogOpen(true)}
-            >
-              {gettext('Set Payee')}
-            </Button>
-          )}
-
-          {!isArchivedView && (
-            <Button
-              size="small"
-              startIcon={<DescriptionIcon />}
-              onClick={() => setDescriptionDialogOpen(true)}
-            >
-              {gettext('Set Description')}
+              {gettext('Bulk Edit')}
             </Button>
           )}
 
@@ -339,113 +244,15 @@ const BatchActionBar = ({
         </Paper>
       </Slide>
 
-      {/* Category Selection Menu */}
-      <Menu
-        anchorEl={categoryAnchor}
-        open={Boolean(categoryAnchor)}
-        onClose={() => setCategoryAnchor(null)}
-        PaperProps={{
-          sx: { width: 350, maxHeight: 400, p: 2 },
-        }}
-      >
-        <Box sx={{ p: 1 }}>
-          <Autocomplete
-            value={selectedCategory}
-            onChange={(_event, newValue) => setSelectedCategory(newValue)}
-            options={categoryOptions}
-            groupBy={(option) => option.groupLabel}
-            getOptionLabel={(option) => option.label}
-            isOptionEqualToValue={(option, value) => option.id === value?.id}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={gettext('Select Category')}
-                size="small"
-                autoFocus
-              />
-            )}
-            size="small"
-          />
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-            <Button onClick={() => setCategoryAnchor(null)}>{gettext('Cancel')}</Button>
-            <Button
-              variant="contained"
-              onClick={handleCategorySelect}
-              disabled={!selectedCategory}
-            >
-              {gettext('Apply')}
-            </Button>
-          </Box>
-        </Box>
-      </Menu>
-
-      {/* Account Selection Menu */}
-      <Menu
-        anchorEl={accountAnchor}
-        open={Boolean(accountAnchor)}
-        onClose={() => setAccountAnchor(null)}
-      >
-        {feedAccountOptions.map((account) => (
-          <MenuItem
-            key={account.id}
-            onClick={() => handleAccountSelect(account)}
-          >
-            {account.label}
-          </MenuItem>
-        ))}
-      </Menu>
-
-      {/* Payee Dialog */}
-      <Dialog open={payeeDialogOpen} onClose={() => setPayeeDialogOpen(false)}>
-        <DialogTitle>{gettext('Set Payee')}</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label={gettext('Payee Name')}
-            fullWidth
-            value={payeeValue}
-            onChange={(e) => setPayeeValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handlePayeeSubmit();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPayeeDialogOpen(false)}>{gettext('Cancel')}</Button>
-          <Button onClick={handlePayeeSubmit} variant="contained">
-            {gettext('Apply')}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Description Dialog */}
-      <Dialog open={descriptionDialogOpen} onClose={() => setDescriptionDialogOpen(false)}>
-        <DialogTitle>{gettext('Set Description')}</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label={gettext('Description')}
-            fullWidth
-            value={descriptionValue}
-            onChange={(e) => setDescriptionValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleDescriptionSubmit();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDescriptionDialogOpen(false)}>{gettext('Cancel')}</Button>
-          <Button onClick={handleDescriptionSubmit} variant="contained">
-            {gettext('Apply')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Bulk Edit Modal */}
+      <BulkEditModal
+        open={bulkEditOpen}
+        onClose={() => setBulkEditOpen(false)}
+        selectedCount={selectedCount}
+        allAccounts={allAccounts}
+        bankFeedAccounts={bankFeedAccounts}
+        onSave={onBulkEdit}
+      />
 
       {/* Reconcile Dialog */}
       <Dialog

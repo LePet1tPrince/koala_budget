@@ -28,3 +28,4 @@ _dist/
 static/css/
 static/js/
 static/.vite/
+*.egg-info/

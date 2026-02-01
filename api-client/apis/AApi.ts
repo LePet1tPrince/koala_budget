@@ -15,12 +15,24 @@
 
 import * as runtime from '../runtime';
 import type {
+  BankFeedRow,
   JournalEntry,
+  PatchedBankFeedRow,
 } from '../models/index';
 import {
+    BankFeedRowFromJSON,
+    BankFeedRowToJSON,
     JournalEntryFromJSON,
     JournalEntryToJSON,
+    PatchedBankFeedRowFromJSON,
+    PatchedBankFeedRowToJSON,
 } from '../models/index';
+
+export interface ABankfeedApiFeedPartialUpdateRequest {
+    id: string;
+    teamSlug: string;
+    patchedBankFeedRow?: PatchedBankFeedRow;
+}
 
 export interface AJournalApiJournalEntriesPostEntryCreateRequest {
     id: string;
@@ -38,6 +50,56 @@ export interface AJournalApiJournalEntriesVoidEntryCreateRequest {
  * 
  */
 export class AApi extends runtime.BaseAPI {
+
+    /**
+     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
+     */
+    async aBankfeedApiFeedPartialUpdateRaw(requestParameters: ABankfeedApiFeedPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling aBankfeedApiFeedPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling aBankfeedApiFeedPartialUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedBankFeedRowToJSON(requestParameters['patchedBankFeedRow']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => BankFeedRowFromJSON(jsonValue));
+    }
+
+    /**
+     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
+     */
+    async aBankfeedApiFeedPartialUpdate(requestParameters: ABankfeedApiFeedPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BankFeedRow> {
+        const response = await this.aBankfeedApiFeedPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Post a draft journal entry (change status to posted). Only draft entries can be posted.

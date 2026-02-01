@@ -133,16 +133,14 @@ POST /a/acme/journal/api/lines/123/recategorize/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/feed/` | List feed items (transactions + journal lines) |
-| GET | `/feed/{id}/` | Get feed item |
+| POST | `/feed/` | Create manual transaction |
+| PUT | `/feed/{id}/` | Update transaction |
 | POST | `/feed/categorize/` | Categorize single transaction |
-| POST | `/feed/batch_categorize/` | Categorize multiple |
+| PATCH | `/feed/batch_edit/` | Bulk edit multiple (category, account, payee, description, date) |
 | POST | `/feed/batch_reconcile/` | Reconcile multiple |
 | POST | `/feed/batch_unreconcile/` | Unreconcile multiple |
 | POST | `/feed/batch_archive/` | Archive multiple |
 | POST | `/feed/batch_unarchive/` | Unarchive multiple |
-| POST | `/feed/batch_move_account/` | Move to different account |
-| POST | `/feed/batch_set_payee/` | Set payee on multiple |
-| POST | `/feed/batch_set_description/` | Set description |
 | POST | `/feed/batch_duplicate/` | Duplicate transactions |
 
 **Categorize transaction:**
@@ -156,12 +154,14 @@ POST /a/acme/bankfeed/api/feed/categorize/
 }
 ```
 
-**Batch categorize:**
+**Batch edit (only provided fields are updated):**
 ```json
-POST /a/acme/bankfeed/api/feed/batch_categorize/
+PATCH /a/acme/bankfeed/api/feed/batch_edit/
 {
   "ids": [123, 124, 125],
-  "category_id": 5001
+  "category_id": 5001,
+  "payee": "Walmart",
+  "description": "Weekly groceries"
 }
 ```
 
