@@ -1,0 +1,119 @@
+/* globals gettext */
+
+import React from 'react';
+
+import { formatCurrency } from '../utilities/currency';
+import { formatDate } from '../bank_feed/utils';
+
+/**
+ * Badge component for displaying status/source labels.
+ */
+const Badge = ({ children, className }) => (
+  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${className}`}>
+    {children}
+  </span>
+);
+
+/**
+ * Map source values to human-readable labels and badge colours.
+ */
+const SOURCE_STYLES = {
+  manual: { label: 'Manual', className: 'bg-gray-100 text-gray-800' },
+  import: { label: 'Import', className: 'bg-blue-100 text-blue-800' },
+  bank_match: { label: 'Bank', className: 'bg-indigo-100 text-indigo-800' },
+  recurring: { label: 'Recurring', className: 'bg-purple-100 text-purple-800' },
+};
+
+const STATUS_STYLES = {
+  draft: { label: 'Draft', className: 'bg-yellow-100 text-yellow-800' },
+  posted: { label: 'Posted', className: 'bg-green-100 text-green-800' },
+  void: { label: 'Void', className: 'bg-red-100 text-red-800' },
+};
+
+/**
+ * TransactionsTable - displays a flat list of journal entries as transaction rows.
+ *
+ * Props:
+ *   transactions  – array of transaction row objects from the API
+ */
+const TransactionsTable = ({ transactions }) => {
+  return (
+    <div className="space-y-4">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {gettext('Date')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {gettext('Payee')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {gettext('Description')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {gettext('Debit Account')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {gettext('Credit Account')}
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {gettext('Amount')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {gettext('Source')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {gettext('Status')}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {transactions.map((tx) => {
+              const source = SOURCE_STYLES[tx.source] || { label: tx.source, className: 'bg-gray-100 text-gray-800' };
+              const statusStyle = STATUS_STYLES[tx.status] || { label: tx.status, className: 'bg-gray-100 text-gray-800' };
+
+              return (
+                <tr key={tx.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatDate(tx.date)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {tx.payee_name || <span className="text-gray-400 italic">{gettext('—')}</span>}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                    {tx.description}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {tx.debit_account || '—'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {tx.credit_account || '—'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                    {formatCurrency(tx.amount)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <Badge className={source.className}>{source.label}</Badge>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <Badge className={statusStyle.className}>{statusStyle.label}</Badge>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {transactions.length === 0 && (
+        <div className="text-center py-12 text-gray-500">
+          {gettext('No transactions found.')}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default TransactionsTable;

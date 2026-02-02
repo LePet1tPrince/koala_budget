@@ -368,3 +368,58 @@ class SimpleLineSerializer(serializers.Serializer):
             "created_at": instance.created_at,
             "updated_at": instance.updated_at,
         }
+
+
+class TransactionRowSerializer(serializers.Serializer):
+    """
+    Read-only serializer that flattens a JournalEntry with its lines into a
+    single transaction row.  Only entries with exactly 2 lines are supported;
+    entries with more lines are skipped by the view.
+
+    Fields exposed:
+        id, date, payee_id, payee_name, description, source, status,
+        debit_account, credit_account, amount
+    """
+
+    id = serializers.IntegerField(source="pk")
+    date = serializers.DateField(source="entry_date")
+    payee_id = serializers.SerializerMethodField()
+    payee_name = serializers.SerializerMethodField()
+    description = serializers.CharField()
+    source = serializers.CharField()
+    status = serializers.CharField()
+    debit_account = serializers.SerializerMethodField()
+    credit_account = serializers.SerializerMethodField()
+    amount = serializers.SerializerMethodField()
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+
+    def _get_lines(self, entry):
+        """Return the prefetched lines list (already loaded by the view)."""
+        return list(entry.lines.all())
+
+    def get_payee_id(self, entry):
+        return entry.payee_id
+
+    def get_payee_name(self, entry):
+        return entry.payee.name if entry.payee else None
+
+    def get_debit_account(self, entry):
+        """Return the account name of the line that carries the debit."""
+        for line in self._get_lines(entry):
+            if line.dr_amount > 0:
+                return line.account.name
+        return None
+
+    def get_credit_account(self, entry):
+        """Return the account name of the line that carries the credit."""
+        for line in self._get_lines(entry):
+            if line.cr_amount > 0:
+                return line.account.name
+        return None
+
+    def get_amount(self, entry):
+        """Return total debits (== total credits for a balanced entry)."""
+        return str(sum(line.dr_amount for line in self._get_lines(entry)))

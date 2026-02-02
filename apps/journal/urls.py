@@ -13,8 +13,10 @@ app_name = "journal"
 router = DefaultRouter()
 router.register(r"journal-entries", views.JournalEntryViewSet, basename="journal-entry")
 router.register(r"lines", views.SimpleLineViewSet, basename="line")
+router.register(r"transactions", views.TransactionViewSet, basename="transaction")
 
 # URL patterns (all journal URLs are team-based)
 urlpatterns = [
+    path("transactions/", views.transactions_home, name="transactions_home"),
     path("api/", include(router.urls)),
 ]

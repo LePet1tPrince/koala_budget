@@ -3,18 +3,21 @@ Views for journal app.
 Provides both template views and REST API endpoints for journal entries and lines.
 """
 
-from django.shortcuts import get_object_or_404
+from django.db.models import Count
+from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_date
+from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import Account
+from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from .models import JournalEntry, JournalLine
-from .serializers import JournalEntrySerializer, SimpleLineSerializer
+from .serializers import JournalEntrySerializer, SimpleLineSerializer, TransactionRowSerializer
 
 
 @extend_schema_view(
@@ -227,3 +230,45 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         line.save()
 
         return Response({"status": "success", "line_id": line.id})
+
+
+@extend_schema_view(
+    list=extend_schema(operation_id="transactions_list", tags=["journal"]),
+)
+class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """
+    Read-only list of journal entries flattened into transaction rows.
+    Only entries with exactly 2 lines are returned (simple debit/credit pairs).
+    """
+
+    serializer_class = TransactionRowSerializer
+    permission_classes = [TeamModelAccessPermissions]
+
+    def get_queryset(self):
+        return (
+            JournalEntry.for_team
+            .select_related("payee")
+            .prefetch_related("lines__account")
+            .annotate(line_count=Count("lines"))
+            .filter(line_count=2)
+            .order_by("-entry_date", "-created_at")
+        )
+
+
+@login_and_team_required
+def transactions_home(request, team_slug):
+    """Transactions list page - renders the React-powered transactions table."""
+    api_urls = {
+        "transactions_list": f"/a/{team_slug}/journal/api/transactions/",
+    }
+
+    return render(
+        request,
+        "journal/transactions_home.html",
+        {
+            "active_tab": "transactions",
+            "page_title": _("Transactions | {team}").format(team=request.team),
+            "api_urls": api_urls,
+            "team_slug": team_slug,
+        },
+    )
