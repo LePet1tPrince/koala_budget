@@ -389,7 +389,9 @@ class TransactionRowSerializer(serializers.Serializer):
     source = serializers.CharField()
     status = serializers.CharField()
     debit_account = serializers.SerializerMethodField()
+    debit_account_number = serializers.SerializerMethodField()
     credit_account = serializers.SerializerMethodField()
+    credit_account_number = serializers.SerializerMethodField()
     amount = serializers.SerializerMethodField()
 
     # ------------------------------------------------------------------
@@ -413,11 +415,25 @@ class TransactionRowSerializer(serializers.Serializer):
                 return line.account.name
         return None
 
+    def get_debit_account_number(self, entry):
+        """Return the account number of the line that carries the debit."""
+        for line in self._get_lines(entry):
+            if line.dr_amount > 0:
+                return line.account.account_number
+        return None
+
     def get_credit_account(self, entry):
         """Return the account name of the line that carries the credit."""
         for line in self._get_lines(entry):
             if line.cr_amount > 0:
                 return line.account.name
+        return None
+
+    def get_credit_account_number(self, entry):
+        """Return the account number of the line that carries the credit."""
+        for line in self._get_lines(entry):
+            if line.cr_amount > 0:
+                return line.account.account_number
         return None
 
     def get_amount(self, entry):

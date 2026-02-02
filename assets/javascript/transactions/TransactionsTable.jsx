@@ -1,6 +1,6 @@
 /* globals gettext */
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 
 import { formatCurrency } from '../utilities/currency';
 import { formatDate } from '../bank_feed/utils';
@@ -31,14 +31,50 @@ const STATUS_STYLES = {
 };
 
 /**
+ * Check whether `haystack` loosely matches `needle`.
+ * Case-insensitive substring match.
+ */
+const fuzzyMatch = (haystack, needle) => {
+  if (!haystack) return false;
+  return String(haystack).toLowerCase().includes(needle);
+};
+
+/**
  * TransactionsTable - displays a flat list of journal entries as transaction rows.
  *
  * Props:
  *   transactions  – array of transaction row objects from the API
  */
 const TransactionsTable = ({ transactions }) => {
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return transactions;
+
+    return transactions.filter((tx) =>
+      fuzzyMatch(tx.payee_name, q) ||
+      fuzzyMatch(tx.description, q) ||
+      fuzzyMatch(tx.debit_account, q) ||
+      fuzzyMatch(tx.credit_account, q) ||
+      fuzzyMatch(tx.debit_account_number, q) ||
+      fuzzyMatch(tx.credit_account_number, q) ||
+      fuzzyMatch(tx.amount, q)
+    );
+  }, [transactions, search]);
+
   return (
     <div className="space-y-4">
+      <div>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={gettext('Search by payee, description, account, account number, or amount...')}
+          className="input input-bordered w-full"
+        />
+      </div>
+
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -70,7 +106,7 @@ const TransactionsTable = ({ transactions }) => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {transactions.map((tx) => {
+            {filtered.map((tx) => {
               const source = SOURCE_STYLES[tx.source] || { label: tx.source, className: 'bg-gray-100 text-gray-800' };
               const statusStyle = STATUS_STYLES[tx.status] || { label: tx.status, className: 'bg-gray-100 text-gray-800' };
 
@@ -107,7 +143,7 @@ const TransactionsTable = ({ transactions }) => {
         </table>
       </div>
 
-      {transactions.length === 0 && (
+      {filtered.length === 0 && (
         <div className="text-center py-12 text-gray-500">
           {gettext('No transactions found.')}
         </div>
