@@ -117,6 +117,7 @@ class BankFeedViewSet(
 
     serializer_class = BankFeedRowSerializer
     permission_classes = [TeamModelAccessPermissions]
+    queryset = BankTransaction.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
         """Get all BankTransactions, optionally filtered by account."""

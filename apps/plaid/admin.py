@@ -11,7 +11,7 @@ from .models import PlaidTransaction, PlaidAccount, PlaidItem
 class PlaidItemAdmin(admin.ModelAdmin):
     """Admin for PlaidItem model."""
 
-    list_display = ["institution_name", "plaid_item_id", "is_active", "team", "created_at"]
+    list_display = ["institution_name", "plaid_item_id", "is_archived", "team", "created_at"]
     list_filter = ["is_archived", "team", "created_at"]
     search_fields = ["institution_name", "plaid_item_id"]
     ordering = ["-created_at"]
