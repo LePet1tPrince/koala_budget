@@ -15,18 +15,17 @@
   </nav>
 
   <div class="container mx-auto px-4 py-6">
-    <!-- Header with Month Navigation -->
+    <!-- Header with Month Picker -->
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-3xl font-bold">{% translate "Budget" %} - {{ month|date:"F Y" }}</h1>
-
-      <div class="flex gap-2">
-        <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
-          {% translate "Previous" %}
-        </a>
-        <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
-          {% translate "Next" %}
-        </a>
-      </div>
+      <h1 class="text-3xl font-bold">{% translate "Budget" %}</h1>
+      <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}"></div>
+      <noscript>
+        <div class="flex gap-2">
+          <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Previous" %}</a>
+          <span class="font-bold">{{ month|date:"F Y" }}</span>
+          <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Next" %}</a>
+        </div>
+      </noscript>
     </div>
 
     <!-- Tab Navigation -->
@@ -61,4 +60,5 @@
   </script>
   {% vite_react_refresh %}
   {% vite_asset 'assets/javascript/budget/budget-actual-app.jsx' %}
+  {% vite_asset 'assets/javascript/budget/budget-month-picker-app.jsx' %}
 {% endblock %}
