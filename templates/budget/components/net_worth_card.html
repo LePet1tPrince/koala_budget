@@ -1,48 +1,45 @@
 {% load i18n %}
 
 <!-- Net Worth Card -->
-<div class="stats shadow w-full mb-6 bg-base-100">
-  <div class="stat">
-    <div class="stat-figure text-primary">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-      </svg>
+<div class="bg-base-100 rounded-lg shadow mb-6 p-6">
+  <div class="flex items-center gap-8">
+    <!-- Left: Net Worth -->
+    <div class="pr-8 border-r border-base-300">
+      <div class="text-sm text-base-content/60 mb-1">{% translate "Net Worth" %}</div>
+      <div class="text-3xl font-bold text-primary">${{ net_worth_card.net_worth|floatformat:2 }}</div>
     </div>
-    <div class="stat-title">{% translate "Net Worth" %}</div>
-    <div class="stat-value text-primary">${{ net_worth_card.net_worth|floatformat:2 }}</div>
-    <div class="stat-desc">{% translate "Assets minus liabilities" %}</div>
-  </div>
 
-  <div class="stat">
-    <div class="stat-figure text-success">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
-      </svg>
-    </div>
-    <div class="stat-title">{% translate "Save" %}</div>
-    <div class="stat-value text-success">${{ net_worth_card.save|floatformat:2 }}</div>
-    <div class="stat-desc">{% translate "Allocated to goals" %}</div>
-  </div>
+    <!-- Right: Breakdown rows -->
+    <div class="flex-1 flex flex-col gap-1.5">
+      <div class="flex justify-between items-center">
+        <div class="flex items-center gap-2 text-sm text-base-content/70">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+          </svg>
+          {% translate "Budgeted" %}
+        </div>
+        <span class="font-mono font-semibold text-sm">${{ net_worth_card.spend|floatformat:2 }}</span>
+      </div>
 
-  <div class="stat">
-    <div class="stat-figure text-warning">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
-      </svg>
-    </div>
-    <div class="stat-title">{% translate "Spend" %}</div>
-    <div class="stat-value text-warning">${{ net_worth_card.spend|floatformat:2 }}</div>
-    <div class="stat-desc">{% translate "Available in budget" %}</div>
-  </div>
+      <div class="flex justify-between items-center">
+        <div class="flex items-center gap-2 text-sm text-base-content/70">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
+          </svg>
+          {% translate "Goals" %}
+        </div>
+        <span class="font-mono font-semibold text-sm">${{ net_worth_card.save|floatformat:2 }}</span>
+      </div>
 
-  <div class="stat">
-    <div class="stat-figure text-info">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-      </svg>
+      <div class="flex justify-between items-center">
+        <div class="flex items-center gap-2 text-sm font-semibold text-base-content">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
+          </svg>
+          {% translate "Available" %}
+        </div>
+        <span class="font-mono font-bold text-sm {% if net_worth_card.available < 0 %}text-error{% elif net_worth_card.available > 0 %}text-success{% endif %}">${{ net_worth_card.available|floatformat:2 }}</span>
+      </div>
     </div>
-    <div class="stat-title">{% translate "Available" %}</div>
-    <div class="stat-value {% if net_worth_card.available >= 0 %}text-info{% else %}text-error{% endif %}">${{ net_worth_card.available|floatformat:2 }}</div>
-    <div class="stat-desc">{% translate "Unallocated funds" %}</div>
   </div>
 </div>
