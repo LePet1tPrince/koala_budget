@@ -28,6 +28,7 @@ export * from './PaginatedPlaidItemList';
 export * from './PaginatedPlaidTransactionList';
 export * from './PaginatedSimpleLineList';
 export * from './PaginatedTeamList';
+export * from './PaginatedTransactionRowList';
 export * from './ParsedTransaction';
 export * from './PatchedBankFeedRow';
 export * from './PatchedBatchEditRequest';

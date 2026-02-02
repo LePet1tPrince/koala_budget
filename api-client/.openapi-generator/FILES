@@ -35,6 +35,7 @@ models/PaginatedPlaidItemList.ts
 models/PaginatedPlaidTransactionList.ts
 models/PaginatedSimpleLineList.ts
 models/PaginatedTeamList.ts
+models/PaginatedTransactionRowList.ts
 models/ParsedTransaction.ts
 models/PatchedBankFeedRow.ts
 models/PatchedBatchEditRequest.ts

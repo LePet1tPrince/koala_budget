@@ -18,6 +18,7 @@ import type {
   JournalEntry,
   PaginatedJournalEntryList,
   PaginatedSimpleLineList,
+  PaginatedTransactionRowList,
   PatchedJournalEntry,
   PatchedSimpleLine,
   SimpleLine,
@@ -31,6 +32,8 @@ import {
     PaginatedJournalEntryListToJSON,
     PaginatedSimpleLineListFromJSON,
     PaginatedSimpleLineListToJSON,
+    PaginatedTransactionRowListFromJSON,
+    PaginatedTransactionRowListToJSON,
     PatchedJournalEntryFromJSON,
     PatchedJournalEntryToJSON,
     PatchedSimpleLineFromJSON,
@@ -113,6 +116,11 @@ export interface SimpleLinesUpdateRequest {
     id: string;
     teamSlug: string;
     simpleLine: Omit<SimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
+}
+
+export interface TransactionsListRequest {
+    teamSlug: string;
+    page?: number;
 }
 
 /**
@@ -763,6 +771,50 @@ export class JournalApi extends runtime.BaseAPI {
      */
     async simpleLinesUpdate(requestParameters: SimpleLinesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleLine> {
         const response = await this.simpleLinesUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Read-only list of journal entries flattened into transaction rows. Only entries with exactly 2 lines are returned (simple debit/credit pairs).
+     */
+    async transactionsListRaw(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling transactionsList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/transactions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedTransactionRowListFromJSON(jsonValue));
+    }
+
+    /**
+     * Read-only list of journal entries flattened into transaction rows. Only entries with exactly 2 lines are returned (simple debit/credit pairs).
+     */
+    async transactionsList(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
+        const response = await this.transactionsListRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
