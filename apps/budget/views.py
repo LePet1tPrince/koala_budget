@@ -107,6 +107,19 @@ def budget_month_view(request, team_slug):
         "available": sum(data["subtotals"]["available"] for _, data in groups),
     }
 
+    # Get previous month available totals for sidebar summary
+    prev_month = month - relativedelta(months=1)
+    prev_available_map = service.get_available_by_category(prev_month, categories)
+    leftover_last_month = sum(prev_available_map.values())
+
+    # Sidebar summary data
+    sidebar_summary = {
+        "leftover_last_month": leftover_last_month,
+        "assigned_this_month": grand_totals["budgeted"],
+        "activity_this_month": grand_totals["actual"],
+        "available": grand_totals["available"],
+    }
+
     # Get net worth card data
     net_worth_service = NetWorthService(request.team)
     net_worth_card = net_worth_service.get_net_worth_card_data(month, categories)
@@ -133,6 +146,7 @@ def budget_month_view(request, team_slug):
             "groups": groups,
             "grand_totals": grand_totals,
             "net_worth_card": net_worth_card,
+            "sidebar_summary": sidebar_summary,
             "prev_month": month - relativedelta(months=1),
             "next_month": month + relativedelta(months=1),
             "all_accounts": all_accounts_data,
@@ -140,6 +154,102 @@ def budget_month_view(request, team_slug):
             "team_slug": team_slug,
         },
     )
+
+
+@login_and_team_required
+def budget_autofill_view(request, team_slug):
+    """Handle auto-fill budget actions from the sidebar."""
+    if request.method != "POST":
+        return redirect("budget:budget_home", team_slug=team_slug)
+
+    month_param = request.POST.get("month")
+    action = request.POST.get("action")
+
+    if month_param:
+        month = parse_date(month_param).replace(day=1)
+    else:
+        month = date.today().replace(day=1)
+
+    prev_month = month - relativedelta(months=1)
+    service = BudgetService(request.team)
+
+    categories = list(Account.for_team.filter(
+        account_group__account_type__in=("expense", "income"),
+    ).select_related("account_group").order_by("account_group__name", "account_number"))
+
+    # Ensure budgets exist for this month
+    existing_budgets = {
+        b.category_id: b
+        for b in Budget.objects.filter(team=request.team, month=month)
+    }
+    missing_budgets = []
+    for category in categories:
+        if category.pk not in existing_budgets:
+            missing_budgets.append(Budget(
+                team=request.team,
+                category=category,
+                month=month,
+                budget_amount=0,
+            ))
+    if missing_budgets:
+        Budget.objects.bulk_create(missing_budgets, ignore_conflicts=True)
+        existing_budgets = {
+            b.category_id: b
+            for b in Budget.objects.filter(team=request.team, month=month)
+        }
+
+    if action == "assigned_last_month":
+        prev_budgets = {
+            b.category_id: b.budget_amount
+            for b in Budget.objects.filter(team=request.team, month=prev_month)
+        }
+        updates = []
+        for cat in categories:
+            budget = existing_budgets.get(cat.pk)
+            if budget:
+                budget.budget_amount = prev_budgets.get(cat.pk, Decimal("0"))
+                updates.append(budget)
+        Budget.objects.bulk_update(updates, ["budget_amount"])
+        messages.success(request, _("Budgets set to last month's assigned amounts."))
+
+    elif action == "spent_last_month":
+        prev_actuals = service.get_actuals_by_category(prev_month)
+        updates = []
+        for cat in categories:
+            budget = existing_budgets.get(cat.pk)
+            if budget:
+                actual = prev_actuals.get(cat.pk, Decimal("0"))
+                budget.budget_amount = max(actual, Decimal("0"))
+                updates.append(budget)
+        Budget.objects.bulk_update(updates, ["budget_amount"])
+        messages.success(request, _("Budgets set to last month's spending."))
+
+    elif action == "assign_zero":
+        Budget.objects.filter(team=request.team, month=month).update(budget_amount=Decimal("0"))
+        messages.success(request, _("All budgets set to zero."))
+
+    elif action == "reset_available_zero":
+        prev_available = service.get_available_by_category(prev_month, categories)
+        current_actuals = service.get_actuals_by_category(month)
+        updates = []
+        for cat in categories:
+            budget = existing_budgets.get(cat.pk)
+            if budget:
+                actual = current_actuals.get(cat.pk, Decimal("0"))
+                prev_avail = prev_available.get(cat.pk, Decimal("0"))
+                if cat.account_group.account_type == "income":
+                    # Available = Actual - Budget + prev_avail = 0
+                    # Budget = Actual + prev_avail
+                    budget.budget_amount = actual + prev_avail
+                else:
+                    # Available = Budget - Actual + prev_avail = 0
+                    # Budget = Actual - prev_avail
+                    budget.budget_amount = actual - prev_avail
+                updates.append(budget)
+        Budget.objects.bulk_update(updates, ["budget_amount"])
+        messages.success(request, _("Budgets adjusted so all available amounts are zero."))
+
+    return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
 
 
 # =============================================================================

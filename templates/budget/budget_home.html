@@ -42,8 +42,16 @@
     <!-- Net Worth Card -->
     {% include "budget/components/net_worth_card.html" %}
 
-    <!-- Budget Table Component -->
-    {% include "budget/components/budget_table.html" %}
+    <!-- Main Content: Budget Table + Sidebar -->
+    <div class="flex gap-6 items-start">
+      <!-- Budget Table (left, takes remaining space) -->
+      <div class="flex-1 min-w-0">
+        {% include "budget/components/budget_table.html" %}
+      </div>
+
+      <!-- Sidebar (right, fixed width) -->
+      {% include "budget/components/budget_sidebar.html" %}
+    </div>
   </div>
 {% endblock %}
 
