@@ -23,7 +23,7 @@ const TransactionsApp = () => {
           throw new Error(`HTTP ${response.status}`);
         }
         const data = await response.json();
-        setTransactions(data);
+        setTransactions(data.results || data);
       } catch (err) {
         setError(err.message);
       } finally {
