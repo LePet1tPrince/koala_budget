@@ -642,6 +642,11 @@ LOGGING = {
             "handlers": ["console"],
             "level": env("DJANGO_LOG_LEVEL", default="INFO"),
         },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
         "koala_budget": {
             "handlers": ["console"],
             "level": env("KOALA_BUDGET_LOG_LEVEL", default="INFO"),

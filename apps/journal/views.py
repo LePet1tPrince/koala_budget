@@ -33,6 +33,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 
     serializer_class = JournalEntrySerializer
     permission_classes = [TeamModelAccessPermissions]
+    queryset = JournalEntry.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
         """Get journal entries for the current team with optimized queries."""
@@ -137,6 +138,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
 
     serializer_class = SimpleLineSerializer
     permission_classes = [TeamModelAccessPermissions]
+    queryset = JournalLine.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
         """

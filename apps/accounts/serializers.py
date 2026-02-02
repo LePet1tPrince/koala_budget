@@ -30,6 +30,7 @@ class AccountSerializer(serializers.ModelSerializer):
 
     account_group_name = serializers.CharField(source="account_group.name", read_only=True)
     account_type = serializers.CharField(source="account_group.account_type", read_only=True)
+    balance = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
     reconciled_balance = serializers.SerializerMethodField()
 
     class Meta:
@@ -53,7 +54,7 @@ class AccountSerializer(serializers.ModelSerializer):
                             "created_at", "updated_at",
                             "balance", "reconciled_balance", "archived_at"]
 
-    def get_reconciled_balance(self, obj):
+    def get_reconciled_balance(self, obj) -> str | None:
         """Get reconciled_balance from annotation if available."""
         if hasattr(obj, '_reconciled_balance'):
             return str(obj._reconciled_balance)

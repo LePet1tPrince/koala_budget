@@ -37,6 +37,7 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = PlaidItemSerializer
     permission_classes = [TeamModelAccessPermissions]
+    queryset = PlaidItem.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
         return PlaidItem.for_team.all()
@@ -96,6 +97,7 @@ class PlaidAccountViewSet(viewsets.ModelViewSet):
     serializer_class = PlaidAccountSerializer
     permission_classes = [TeamModelAccessPermissions]
     http_method_names = ["get", "patch"]  # Only allow GET and PATCH
+    queryset = PlaidAccount.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
         return PlaidAccount.for_team.select_related("item", "account").all()
@@ -110,6 +112,7 @@ class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = PlaidTransactionSerializer
     permission_classes = [TeamModelAccessPermissions]
+    queryset = PlaidTransaction.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
         return PlaidTransaction.objects.filter(team=self.request.team).select_related(

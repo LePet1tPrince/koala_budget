@@ -18,7 +18,6 @@ class PlaidItemSerializer(serializers.ModelSerializer):
             "id",
             "plaid_item_id",
             "institution_name",
-            "is_active",
             "created_at",
             "updated_at",
         ]
