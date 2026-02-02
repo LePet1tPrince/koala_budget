@@ -1,9 +1,10 @@
 /* globals gettext */
 
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 
 import { formatCurrency } from '../utilities/currency';
 import { formatDate } from '../bank_feed/utils';
+import DateRangePicker from '../common/DateRangePicker';
 
 /**
  * Badge component for displaying status/source labels.
@@ -47,31 +48,57 @@ const fuzzyMatch = (haystack, needle) => {
  */
 const TransactionsTable = ({ transactions }) => {
   const [search, setSearch] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const handleDateApply = useCallback((start, end) => {
+    setStartDate(start);
+    setEndDate(end);
+  }, []);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return transactions;
+    let rows = transactions;
 
-    return transactions.filter((tx) =>
-      fuzzyMatch(tx.payee_name, q) ||
-      fuzzyMatch(tx.description, q) ||
-      fuzzyMatch(tx.debit_account, q) ||
-      fuzzyMatch(tx.credit_account, q) ||
-      fuzzyMatch(tx.debit_account_number, q) ||
-      fuzzyMatch(tx.credit_account_number, q) ||
-      fuzzyMatch(tx.amount, q)
-    );
-  }, [transactions, search]);
+    // Date range filter
+    if (startDate || endDate) {
+      rows = rows.filter((tx) => {
+        if (startDate && tx.date < startDate) return false;
+        if (endDate && tx.date > endDate) return false;
+        return true;
+      });
+    }
+
+    // Text search filter
+    const q = search.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter((tx) =>
+        fuzzyMatch(tx.payee_name, q) ||
+        fuzzyMatch(tx.description, q) ||
+        fuzzyMatch(tx.debit_account, q) ||
+        fuzzyMatch(tx.credit_account, q) ||
+        fuzzyMatch(tx.debit_account_number, q) ||
+        fuzzyMatch(tx.credit_account_number, q) ||
+        fuzzyMatch(tx.amount, q)
+      );
+    }
+
+    return rows;
+  }, [transactions, search, startDate, endDate]);
 
   return (
     <div className="space-y-4">
-      <div>
+      <div className="flex items-center gap-4">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={gettext('Search by payee, description, account, account number, or amount...')}
-          className="input input-bordered w-full"
+          className="input input-bordered flex-1"
+        />
+        <DateRangePicker
+          startDate={startDate}
+          endDate={endDate}
+          onApply={handleDateApply}
         />
       </div>
 
