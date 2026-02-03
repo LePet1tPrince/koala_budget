@@ -15,19 +15,7 @@
   </nav>
 
   <div class="container mx-auto px-4 py-6">
-    <!-- Header with Month Navigation -->
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-3xl font-bold">{% translate "Budget" %} - {{ month|date:"F Y" }}</h1>
 
-      <div class="flex gap-2">
-        <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
-          {% translate "Previous" %}
-        </a>
-        <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
-          {% translate "Next" %}
-        </a>
-      </div>
-    </div>
 
     <!-- Tab Navigation -->
     <div role="tablist" class="tabs tabs-boxed mb-6">
@@ -40,10 +28,31 @@
     </div>
 
     <!-- Net Worth Card -->
-    {% include "budget/components/net_worth_card.html" %}
 
-    <!-- Budget Table Component -->
-    {% include "budget/components/budget_table.html" %}
+    <!-- Main Content: Budget Table + Sidebar -->
+    <div class="flex gap-6 items-start">
+      <!-- Budget Table (left, takes remaining space) -->
+      <div class="flex-1 min-w-0">
+          <!-- Header with Month Picker -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">{% translate "Budget" %}</h1>
+      <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}"></div>
+      <noscript>
+        <div class="flex gap-2">
+          <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Previous" %}</a>
+          <span class="font-bold">{{ month|date:"F Y" }}</span>
+          <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Next" %}</a>
+        </div>
+      </noscript>
+    </div>
+
+        {% include "budget/components/net_worth_card.html" %}
+        {% include "budget/components/budget_table.html" %}
+      </div>
+
+      <!-- Sidebar (right, fixed width) -->
+      {% include "budget/components/budget_sidebar.html" %}
+    </div>
   </div>
 {% endblock %}
 
@@ -53,4 +62,5 @@
   </script>
   {% vite_react_refresh %}
   {% vite_asset 'assets/javascript/budget/budget-actual-app.jsx' %}
+  {% vite_asset 'assets/javascript/budget/budget-month-picker-app.jsx' %}
 {% endblock %}
