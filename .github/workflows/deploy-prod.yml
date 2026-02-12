@@ -76,15 +76,8 @@ jobs:
           script: |
             cd ${{ secrets.DROPLET_PROJECT_PATH || '/opt/koala_budget_pegasus' }}
 
-            # Run production deployment script
-            ./deploy/deploy-prod.sh
-
-            echo "✅ Production deployment completed successfully!"
-
-            # Show running containers
-            echo ""
-            echo "Production services:"
-            docker-compose -f docker-compose.prod.yml ps
+            # Run deployment script for production
+            ./deploy/deploy.sh prod
 
       - name: Notify deployment status
         if: always()
