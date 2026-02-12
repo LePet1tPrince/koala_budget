@@ -1,0 +1,74 @@
+version: '3.8'
+
+# Development environment
+# Uses shared PostgreSQL and Redis from docker-compose.shared.yml
+# Database 1 for dev (vs database 0 for prod)
+
+services:
+  web-dev:
+    container_name: koala-web-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    command: /start
+    environment:
+      - DEBUG=1
+      - DJANGO_SETTINGS_MODULE=koala_budget.settings
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_DEV:-koala_budget_dev}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/1
+      - SECRET_KEY=${SECRET_KEY_DEV}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS_DEV:-localhost,127.0.0.1,dev.yourdomain.com}
+      - DJANGO_SECURE_SSL_REDIRECT=False
+      - PORT=8001
+    restart: unless-stopped
+    healthcheck:
+      test: curl --fail http://localhost:8001/health/ || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - dev-network
+      - shared-network
+
+  celery-dev:
+    container_name: koala-celery-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    command: celery -A koala_budget worker -l DEBUG --pool threads --concurrency 10
+    environment:
+      - DEBUG=1
+      - DJANGO_SETTINGS_MODULE=koala_budget.settings
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_DEV:-koala_budget_dev}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/1
+      - SECRET_KEY=${SECRET_KEY_DEV}
+    restart: unless-stopped
+    networks:
+      - dev-network
+      - shared-network
+
+  celery-beat-dev:
+    container_name: koala-celery-beat-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    command: celery -A koala_budget beat -l DEBUG
+    environment:
+      - DEBUG=1
+      - DJANGO_SETTINGS_MODULE=koala_budget.settings
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_DEV:-koala_budget_dev}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/1
+      - SECRET_KEY=${SECRET_KEY_DEV}
+    restart: unless-stopped
+    networks:
+      - dev-network
+      - shared-network
+
+networks:
+  dev-network:
+    name: koala-dev-network
+    driver: bridge
+  shared-network:
+    name: koala-shared-network
+    external: true

@@ -1,0 +1,51 @@
+version: '3.8'
+
+# Shared services for both dev and prod environments
+# This saves resources by using one PostgreSQL and Redis instance
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: koala-postgres-shared
+    volumes:
+      - postgres_shared_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      # Note: We'll create separate databases for dev/prod via migrations
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: pg_isready -U $${POSTGRES_USER}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shared-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: koala-redis-shared
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_shared_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: redis-cli --no-auth-warning -a $${REDIS_PASSWORD} ping | grep PONG
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shared-network
+
+volumes:
+  postgres_shared_data:
+  redis_shared_data:
+
+networks:
+  shared-network:
+    name: koala-shared-network
+    driver: bridge

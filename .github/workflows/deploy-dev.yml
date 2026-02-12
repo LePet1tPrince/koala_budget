@@ -1,9 +1,9 @@
-name: Deploy to DigitalOcean Droplet
+name: Deploy to Development
 
 on:
   push:
     branches:
-      - main
+      - develop
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
@@ -60,13 +60,13 @@ jobs:
         run: uv run manage.py test
 
   deploy:
-    name: Deploy to Production
+    name: Deploy to Development
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/develop'
 
     steps:
-      - name: Deploy to Droplet via SSH
+      - name: Deploy to Development Droplet via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DROPLET_HOST }}
@@ -76,20 +76,23 @@ jobs:
           script: |
             cd ${{ secrets.DROPLET_PROJECT_PATH || '/opt/koala_budget_pegasus' }}
 
-            # Run deployment script
-            ./deploy/deploy.sh
+            # Run development deployment script
+            ./deploy/deploy-dev.sh
 
-            echo "✅ Deployment completed successfully!"
+            echo "✅ Development deployment completed successfully!"
 
             # Show running containers
-            docker-compose -f docker-compose.prod.yml ps
+            echo ""
+            echo "Development services:"
+            docker-compose -f docker-compose.dev.yml ps
 
       - name: Notify deployment status
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment to production successful!"
+            echo "✅ Deployment to development successful!"
+            echo "🌐 Development URL: https://dev.yourdomain.com"
           else
-            echo "❌ Deployment to production failed!"
+            echo "❌ Deployment to development failed!"
             exit 1
           fi

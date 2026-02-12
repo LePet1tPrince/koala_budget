@@ -1,38 +1,11 @@
 version: '3.8'
 
+# Production environment
+# Uses shared PostgreSQL and Redis from docker-compose.shared.yml
+
 services:
-  db:
-    image: postgres:17
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-koala_budget}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    restart: unless-stopped
-    healthcheck:
-      test: pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: redis-cli --no-auth-warning -a $${REDIS_PASSWORD} ping | grep PONG
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
   web:
+    container_name: koala-web-prod
     build:
       context: .
       dockerfile: Dockerfile.web
@@ -40,18 +13,13 @@ services:
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-koala_budget}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_PROD:-koala_budget_prod}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/0
+      - SECRET_KEY=${SECRET_KEY_PROD}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      - DJANGO_SECURE_SSL_REDIRECT=${DJANGO_SECURE_SSL_REDIRECT:-False}
+      - DJANGO_SECURE_SSL_REDIRECT=${DJANGO_SECURE_SSL_REDIRECT:-True}
       - PORT=8000
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     healthcheck:
       test: curl --fail http://localhost:8000/health/ || exit 1
       interval: 30s
@@ -59,9 +27,11 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - app-network
+      - prod-network
+      - shared-network
 
   celery:
+    container_name: koala-celery-prod
     build:
       context: .
       dockerfile: Dockerfile.web
@@ -69,19 +39,16 @@ services:
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-koala_budget}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_PROD:-koala_budget_prod}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/0
+      - SECRET_KEY=${SECRET_KEY_PROD}
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
-      - app-network
+      - prod-network
+      - shared-network
 
   celery-beat:
+    container_name: koala-celery-beat-prod
     build:
       context: .
       dockerfile: Dockerfile.web
@@ -89,19 +56,16 @@ services:
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-koala_budget}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_PROD:-koala_budget_prod}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/0
+      - SECRET_KEY=${SECRET_KEY_PROD}
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
-      - app-network
+      - prod-network
+      - shared-network
 
   nginx:
+    container_name: koala-nginx
     image: nginx:alpine
     ports:
       - "80:80"
@@ -116,9 +80,11 @@ services:
     depends_on:
       - web
     networks:
-      - app-network
+      - prod-network
+      - dev-network
 
   certbot:
+    container_name: koala-certbot
     image: certbot/certbot
     volumes:
       - ./deploy/certbot/conf:/etc/letsencrypt
@@ -126,10 +92,13 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     restart: unless-stopped
 
-volumes:
-  postgres_data:
-  redis_data:
-
 networks:
-  app-network:
+  prod-network:
+    name: koala-prod-network
     driver: bridge
+  dev-network:
+    name: koala-dev-network
+    driver: bridge
+  shared-network:
+    name: koala-shared-network
+    external: true

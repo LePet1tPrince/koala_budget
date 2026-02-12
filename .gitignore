@@ -21,6 +21,7 @@ docs/_build
 _dist/
 .env
 .env.production
+.env.dev
 .DS_Store
 .direnv
 .envrc
