@@ -1,0 +1,6 @@
+# Git-crypt configuration
+# Files matching these patterns will be encrypted
+
+.env.production filter=git-crypt diff=git-crypt
+.env.dev filter=git-crypt diff=git-crypt
+deploy/secrets/** filter=git-crypt diff=git-crypt

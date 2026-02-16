@@ -21,9 +21,12 @@ docs/_build
 _dist/
 .env
 .env.production
+.env.dev
 .DS_Store
 .direnv
 .envrc
+# SSL certificates and certbot data
+deploy/certbot/
 # compiled static files are built in dev/deploy
 static/css/
 static/js/
