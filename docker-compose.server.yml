@@ -63,6 +63,8 @@ services:
       context: .
       dockerfile: Dockerfile.web
     command: /start
+    volumes:
+      - static_files:/code/static_root
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
@@ -130,6 +132,8 @@ services:
       context: .
       dockerfile: Dockerfile.web
     command: /start
+    volumes:
+      - static_files:/code/static_root
     environment:
       - DEBUG=1
       - DJANGO_SETTINGS_MODULE=koala_budget.settings
@@ -200,7 +204,7 @@ services:
     volumes:
       - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./static_root:/static:ro
+      - static_files:/static:ro
       - ./deploy/certbot/conf:/etc/letsencrypt:ro
       - ./deploy/certbot/www:/var/www/certbot:ro
     restart: unless-stopped
@@ -221,6 +225,7 @@ services:
 volumes:
   postgres_shared_data:
   redis_shared_data:
+  static_files:
 
 networks:
   prod-network:
