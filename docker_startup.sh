@@ -6,6 +6,8 @@ set -o nounset
 
 PORT=${PORT:-8000}
 
+echo "Collect static files"
+python manage.py collectstatic --noinput
 echo "Django migrate"
 python manage.py migrate --noinput
 echo "Run Gunicorn"
