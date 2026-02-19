@@ -30,6 +30,11 @@ USE_HTTPS_IN_ABSOLUTE_URLS = True
 # If you don't want to use environment variables to set production hosts you can add them here
 # ALLOWED_HOSTS = ["example.com"]
 
+# Always allow localhost/127.0.0.1 so Docker health checks (which hit localhost:8000) don't 403.
+for _host in ["localhost", "127.0.0.1"]:
+    if _host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_host)
+
 # Your email config goes here.
 # see https://github.com/anymail/django-anymail for more details / examples
 # To use mailgun, uncomment the lines below and make sure your key and domain
