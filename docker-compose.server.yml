@@ -73,6 +73,9 @@ services:
       - SECRET_KEY=${SECRET_KEY_PROD}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
       - DJANGO_SECURE_SSL_REDIRECT=${DJANGO_SECURE_SSL_REDIRECT:-True}
+      - DJANGO_CSRF_COOKIE_SECURE=${DJANGO_CSRF_COOKIE_SECURE:-True}
+      - DJANGO_SESSION_COOKIE_SECURE=${DJANGO_SESSION_COOKIE_SECURE:-True}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}
       - PORT=8000
     restart: unless-stopped
     healthcheck:
@@ -142,6 +145,7 @@ services:
       - SECRET_KEY=${SECRET_KEY_DEV}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS_DEV:-localhost,127.0.0.1,dev.yourdomain.com}
       - DJANGO_SECURE_SSL_REDIRECT=False
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS_DEV:-http://localhost}
       - PORT=8001
     restart: unless-stopped
     healthcheck:
