@@ -92,10 +92,7 @@ COPY --from=build-node /code/static /code/static
 # Replace the uv shebang with python3 shebang in manage.py since we don't have the uv binary in the runtime image
 RUN sed -i '1c\#!/usr/bin/env python3' /code/manage.py
 
-# why this has to be here:
-# https://stackoverflow.com/questions/59719175/where-to-run-collectstatic-when-deploying-django-app-to-heroku-using-docker
-RUN DEBUG=False python /code/manage.py collectstatic --noinput --settings=koala_budget.settings_production
-RUN chown django:django -R static_root
+RUN mkdir -p /code/static_root && chown django:django /code/static_root
 
 USER django
 
