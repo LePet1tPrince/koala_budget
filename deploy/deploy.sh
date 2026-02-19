@@ -81,6 +81,7 @@ docker exec koala-postgres-shared psql -U ${POSTGRES_USER:-postgres} -c "CREATE 
 
 # Build images
 echo -e "${YELLOW}🏗️  Building Docker images for ${ENV_NAME}...${NC}"
+export DOCKER_BUILDKIT=1
 docker compose -f docker-compose.server.yml --profile $PROFILE build
 
 # Stop services gracefully
