@@ -88,7 +88,7 @@ services:
     container_name: koala-celery-prod
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: Dockerfile.worker
     command: celery -A koala_budget worker -l INFO --pool threads --concurrency 20
     environment:
       - DEBUG=0
@@ -106,7 +106,7 @@ services:
     container_name: koala-celery-beat-prod
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: Dockerfile.worker
     command: celery -A koala_budget beat -l INFO
     environment:
       - DEBUG=0
@@ -155,7 +155,7 @@ services:
     container_name: koala-celery-dev
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: Dockerfile.worker
     command: celery -A koala_budget worker -l DEBUG --pool threads --concurrency 10
     environment:
       - DEBUG=1
@@ -173,7 +173,7 @@ services:
     container_name: koala-celery-beat-dev
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: Dockerfile.worker
     command: celery -A koala_budget beat -l DEBUG
     environment:
       - DEBUG=1
