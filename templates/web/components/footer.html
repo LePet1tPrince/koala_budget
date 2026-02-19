@@ -2,6 +2,11 @@
 <footer class="mt-10 mb-4">
   <div class="text-center text-gray-700 dark:text-gray-500">
     <p>{{project_meta.NAME}} &mdash; {% translate "Copyright" %} <span id="copyright-year">2024</span></p>
+    <p class="text-sm mt-1">
+      <a href="{% url 'web:terms' %}" class="link">{% translate "Terms of Service" %}</a>
+      &middot;
+      <a href="{% url 'web:privacy' %}" class="link">{% translate "Privacy Policy" %}</a>
+    </p>
     {% include "web/components/language_select.html" %}
     <small>
       {% blocktranslate trimmed %}🦄 Built with <a class="link" href="https://www.saaspegasus.com/" target="_blank">SaaS Pegasus</a>{% endblocktranslate %}

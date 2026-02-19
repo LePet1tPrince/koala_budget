@@ -1,0 +1,66 @@
+{% extends "budget/budget_base.html" %}
+{% load static %}
+{% load django_vite %}
+{% load i18n %}
+
+{% block app %}
+  {# Data for React components #}
+  {{ all_accounts|json_script:'all-accounts' }}
+  {{ api_urls|json_script:'api-urls' }}
+  {{ team_slug|json_script:'team-slug' }}
+  <nav aria-label="breadcrumbs">
+    <ol class="pg-breadcrumbs">
+      <li class="pg-breadcrumb-active" aria-current="page">{% translate "Budget" %}</li>
+    </ol>
+  </nav>
+
+  <div class="container mx-auto px-4 py-6">
+
+
+    <!-- Tab Navigation -->
+    <div role="tablist" class="tabs tabs-boxed mb-6">
+      <a role="tab" class="tab tab-active" href="{% url 'budget:budget_home' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
+        {% translate "Budget" %}
+      </a>
+      <a role="tab" class="tab" href="{% url 'budget:goals_list' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
+        {% translate "Goals" %}
+      </a>
+    </div>
+
+    <!-- Net Worth Card -->
+
+    <!-- Main Content: Budget Table + Sidebar -->
+    <div class="flex gap-6 items-start">
+      <!-- Budget Table (left, takes remaining space) -->
+      <div class="flex-1 min-w-0">
+          <!-- Header with Month Picker -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">{% translate "Budget" %}</h1>
+      <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}"></div>
+      <noscript>
+        <div class="flex gap-2">
+          <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Previous" %}</a>
+          <span class="font-bold">{{ month|date:"F Y" }}</span>
+          <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Next" %}</a>
+        </div>
+      </noscript>
+    </div>
+
+        {% include "budget/components/net_worth_card.html" %}
+        {% include "budget/components/budget_table.html" %}
+      </div>
+
+      <!-- Sidebar (right, fixed width) -->
+      {% include "budget/components/budget_sidebar.html" %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block page_js %}
+  <script>
+    const SERVER_URL_BASE = "{{ request.scheme }}://{{ request.get_host }}";
+  </script>
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/budget/budget-actual-app.jsx' %}
+  {% vite_asset 'assets/javascript/budget/budget-month-picker-app.jsx' %}
+{% endblock %}

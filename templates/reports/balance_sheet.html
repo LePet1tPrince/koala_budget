@@ -1,0 +1,149 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+
+{% block app %}
+<section class="app-card">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="pg-title">{% translate "Balance Sheet" %}</h1>
+    <div class="flex gap-2">
+      <a href="{% url 'reports:export_balance_sheet' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm">
+        <i class="fa fa-download mr-2"></i>
+        {% translate "Export CSV" %}
+      </a>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline">
+        <i class="fa fa-arrow-left mr-2"></i>
+        {% translate "Back to Reports" %}
+      </a>
+    </div>
+  </div>
+
+  <!-- Date Picker Section -->
+  <div class="bg-base-200 p-4 rounded-lg mb-6">
+    <div id="balance-sheet-date-picker"></div>
+  </div>
+
+  {% if report_data %}
+  <!-- Report Section -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Assets Section -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title text-info">
+          <i class="fa fa-coins"></i>
+          {% translate "Assets" %}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Account" %}</th>
+                <th class="text-right">{% translate "Balance" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in report_data.assets %}
+              <tr>
+                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.account_number }} - {{ item.account.name }}</a></td>
+                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="2" class="text-center text-gray-500">{% translate "No asset accounts with balances" %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td>{% translate "Total Assets" %}</td>
+                <td class="text-right text-info">{{ report_data.total_assets|floatformat:2 }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Liabilities Section -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title text-warning">
+          <i class="fa fa-credit-card"></i>
+          {% translate "Liabilities" %}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Account" %}</th>
+                <th class="text-right">{% translate "Balance" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in report_data.liabilities %}
+              <tr>
+                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.account_number }} - {{ item.account.name }}</a></td>
+                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="2" class="text-center text-gray-500">{% translate "No liability accounts with balances" %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td>{% translate "Total Liabilities" %}</td>
+                <td class="text-right text-warning">{{ report_data.total_liabilities|floatformat:2 }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Net Worth Section -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title text-secondary">
+          <i class="fa fa-building"></i>
+          {% translate "Net Worth" %}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Account" %}</th>
+                <th class="text-right">{% translate "Balance" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td>{% translate "Total Net Worth" %}</td>
+                <td class="text-right text-secondary">{{ report_data.net_worth|floatformat:2 }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if as_of_date %}
+  <p class="text-sm text-gray-600 mt-4">
+    {% blocktranslate with date=as_of_date|date:"M j, Y" %}
+    As of {{ date }}
+    {% endblocktranslate %}
+  </p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block page_js %}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/reports/BalanceSheetDatePicker.jsx' %}
+{% endblock %}

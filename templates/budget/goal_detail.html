@@ -1,0 +1,115 @@
+{% extends "budget/budget_base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block app %}
+  <nav aria-label="breadcrumbs">
+    <ol class="pg-breadcrumbs">
+      <li><a href="{% url 'budget:budget_home' team_slug=request.team.slug %}">{% translate "Budget" %}</a></li>
+      <li><a href="{% url 'budget:goals_list' team_slug=request.team.slug %}">{% translate "Goals" %}</a></li>
+      <li class="pg-breadcrumb-active" aria-current="page">{{ goal.name }}</li>
+    </ol>
+  </nav>
+
+  <div class="container mx-auto px-4 py-6">
+    <div class="flex justify-between items-start mb-6">
+      <div>
+        <h1 class="text-3xl font-bold">{{ goal.name }}</h1>
+        {% if goal.description %}
+        <p class="text-gray-600 mt-2">{{ goal.description }}</p>
+        {% endif %}
+      </div>
+
+      <div class="flex gap-2">
+        <a href="{% url 'budget:goal_update' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-outline btn-sm">
+          {% translate "Edit" %}
+        </a>
+        {% if not goal.is_complete %}
+        <form method="post" action="{% url 'budget:goal_complete' team_slug=request.team.slug pk=goal.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-success btn-sm">{% translate "Mark Complete" %}</button>
+        </form>
+        {% endif %}
+        <a href="{% url 'budget:goal_delete' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-outline btn-warning btn-sm">
+          {% translate "Archive" %}
+        </a>
+      </div>
+    </div>
+
+    <!-- Progress Card -->
+    <div class="card bg-base-100 shadow-xl mb-6">
+      <div class="card-body">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <div class="text-sm text-gray-500">{% translate "Progress" %}</div>
+            <div class="text-2xl font-bold">
+              ${{ goal.total_saved|floatformat:2 }} / ${{ goal.target_amount|floatformat:2 }}
+            </div>
+          </div>
+          <div class="text-4xl font-bold text-primary">{{ goal.progress_percentage|floatformat:0 }}%</div>
+        </div>
+
+        <progress
+          class="progress progress-primary w-full h-4"
+          value="{{ goal.progress_percentage }}"
+          max="100"
+        ></progress>
+
+        {% if goal.target_date %}
+        <div class="mt-4 text-sm text-gray-500">
+          {% translate "Target Date:" %} {{ goal.target_date|date:"F d, Y" }}
+        </div>
+        {% endif %}
+
+        {% if goal.remaining and goal.remaining > 0 %}
+        <div class="mt-2 text-sm text-gray-500">
+          {% translate "Remaining:" %} ${{ goal.remaining|floatformat:2 }}
+        </div>
+        {% endif %}
+
+        {% if goal.is_complete %}
+        <div class="alert alert-success mt-4">
+          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{% translate "Goal completed!" %}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Allocation History -->
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h2 class="card-title">{% translate "Allocation History" %}</h2>
+
+        <div class="overflow-x-auto">
+          <table class="table w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Month" %}</th>
+                <th class="text-right">{% translate "Amount" %}</th>
+                <th>{% translate "Notes" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for allocation in allocations %}
+              <tr>
+                <td>{{ allocation.month|date:"F Y" }}</td>
+                <td class="text-right font-mono">${{ allocation.amount|floatformat:2 }}</td>
+                <td>{{ allocation.notes|default:"-" }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="3" class="text-center text-gray-500">
+                  {% translate "No allocations yet." %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

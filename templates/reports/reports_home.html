@@ -1,0 +1,80 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+
+{% block app %}
+<section class="app-card">
+  <h1 class="pg-title">{% translate "Financial Reports" %}</h1>
+  <p class="mb-6 text-gray-600">{% translate "Generate comprehensive financial reports to analyze your business performance." %}</p>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Income Statement Card -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title">
+          <i class="fa fa-chart-line text-primary"></i>
+          {% translate "Income Statement" %}
+        </h2>
+        <p class="text-sm text-gray-600">{% translate "Compare income and expenses over a selected time period to see your profit or loss." %}</p>
+        <div class="card-actions justify-end">
+          <a href="{% url 'reports:income_statement' request.team.slug %}" class="btn btn-primary">
+            {% translate "View Report" %}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Balance Sheet Card -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title">
+          <i class="fa fa-balance-scale text-success"></i>
+          {% translate "Balance Sheet" %}
+        </h2>
+        <p class="text-sm text-gray-600">{% translate "View your assets, liabilities, and equity as of a specific date." %}</p>
+        <div class="card-actions justify-end">
+          <a href="{% url 'reports:balance_sheet' request.team.slug %}" class="btn btn-primary">
+            {% translate "View Report" %}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Net Worth Trend Card -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title">
+          <i class="fa fa-chart-area text-info"></i>
+          {% translate "Net Worth Trend" %}
+        </h2>
+        <p class="text-sm text-gray-600">{% translate "Track how your net worth changes over time with a monthly chart." %}</p>
+        <div class="card-actions justify-end">
+          <a href="{% url 'reports:net_worth_trend' request.team.slug %}" class="btn btn-primary">
+            {% translate "View Report" %}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Exports Section -->
+  <h2 class="pg-subtitle mt-8 mb-4">{% translate "Data Exports" %}</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Export All Transactions -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body">
+        <h2 class="card-title">
+          <i class="fa fa-file-csv text-accent"></i>
+          {% translate "Export Transactions" %}
+        </h2>
+        <p class="text-sm text-gray-600">{% translate "Download all journal entries and lines as a CSV file." %}</p>
+        <div class="card-actions justify-end">
+          <a href="{% url 'reports:export_transactions' request.team.slug %}" class="btn btn-outline btn-sm">
+            <i class="fa fa-download mr-2"></i>
+            {% translate "Download CSV" %}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

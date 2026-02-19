@@ -59,7 +59,7 @@ services:
     command: npm run dev -- --host
     volumes:
       - .:/code
-      - /code/node_modules
+      - vite_node_modules:/code/node_modules
     ports:
       - "5173:5173"
     restart: unless-stopped
@@ -70,7 +70,7 @@ services:
       args:
         MY_UID: ${MY_UID:-1000}
         MY_GID: ${MY_GID:-1000}
-    command: celery -A koala_budget worker -l INFO --beat --pool=solo
+    command: celery -A koala_budget worker -l INFO --beat --pool=solo -E
     volumes:
       - .:/code
     environment:
@@ -83,20 +83,44 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-  frontend:
+  # frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: ./frontend/Dockerfile
+  #     args:
+  #       MY_UID: ${MY_UID:-1000}
+  #       MY_GID: ${MY_GID:-1000}
+  #   command: npm run dev-host
+  #   volumes:
+  #     - .:/code
+  #     - /code/frontend/node_modules
+  #   ports:
+  #     - 5174:5174
+
+  flower:
     build:
       context: .
-      dockerfile: ./frontend/Dockerfile
-      args:
-        MY_UID: ${MY_UID:-1000}
-        MY_GID: ${MY_GID:-1000}
-    command: npm run dev-host
+      dockerfile: Dockerfile.dev
+    command: celery -A koala_budget flower --broker=redis://redis:6379
     volumes:
       - .:/code
-      - /code/frontend/node_modules
+    environment:
+      PYTHONUNBUFFERED: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      DJANGO_SETTINGS_MODULE: 'koala_budget.settings'
+    env_file:
+      - ./.env
     ports:
-      - 5174:5174
+      - 5555:5555
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      celery:
+        condition: service_started
 
 volumes:
   postgres_data:
   redis_data:
+  vite_node_modules:

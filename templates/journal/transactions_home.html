@@ -1,0 +1,20 @@
+{% extends "journal/journal_base.html" %}
+{% load static %}
+{% load django_vite %}
+{% load i18n %}
+
+{% block app %}
+
+  <div id="transactions-app"></div>
+
+  {{ api_urls|json_script:'api-urls' }}
+  {{ team_slug|json_script:'team-slug' }}
+{% endblock %}
+
+{% block page_js %}
+  <script>
+    const SERVER_URL_BASE = "{{ request.scheme }}://{{ request.get_host }}";
+  </script>
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/transactions/transactions-app.jsx' %}
+{% endblock %}

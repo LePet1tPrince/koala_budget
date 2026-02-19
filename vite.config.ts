@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
+import path from 'path';
 import react from '@vitejs/plugin-react';
 import vue from '@vitejs/plugin-vue';
-import path from 'path';
 
 export default defineConfig({
   plugins: [
@@ -32,6 +32,10 @@ export default defineConfig({
         'react-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/react/react-object-lifecycle.jsx'),
         'vue-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/vue/vue-object-lifecycle.js'),
         'chat': path.resolve(__dirname, './assets/javascript/chat/chat.jsx'),
+        'reports': path.resolve(__dirname, './assets/javascript/reports/ReportsDateRangePicker.jsx'),
+        'bank-feed': path.resolve(__dirname, './assets/javascript/bank_feed/react/line-app.jsx'),
+        'transactions': path.resolve(__dirname, './assets/javascript/transactions/transactions-app.jsx'),
+        'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
       },
       output: {
         // Output JS bundles to js/ directory with -bundle suffix

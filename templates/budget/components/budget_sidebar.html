@@ -1,0 +1,79 @@
+{% load i18n %}
+
+<div class="flex flex-col gap-4 w-72 shrink-0">
+  <div class="sticky top-4 flex flex-col gap-4">
+    <!-- Monthly Summary -->
+    <div class="bg-base-100 rounded-lg shadow p-5">
+      <h3 class="font-bold text-lg mb-4">{{ month|date:"F" }}{% translate "'s Summary" %}</h3>
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between items-center">
+          <span class="text-sm">{% translate "Left Over from Last Month" %}</span>
+          <span class="font-mono text-sm font-semibold {% if sidebar_summary.leftover_last_month < 0 %}text-error{% elif sidebar_summary.leftover_last_month > 0 %}text-success{% endif %}">
+            ${{ sidebar_summary.leftover_last_month|floatformat:2 }}
+          </span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm">{% translate "Assigned in" %} {{ month|date:"F" }}</span>
+          <span class="font-mono text-sm font-semibold">
+            ${{ sidebar_summary.assigned_this_month|floatformat:2 }}
+          </span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm">{% translate "Activity" %}</span>
+          <span class="font-mono text-sm font-semibold">
+            ${{ sidebar_summary.activity_this_month|floatformat:2 }}
+          </span>
+        </div>
+        <div class="divider my-0"></div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm font-bold">{% translate "Available" %}</span>
+          <span class="font-mono text-sm font-bold {% if sidebar_summary.available < 0 %}text-error{% elif sidebar_summary.available > 0 %}text-success{% endif %}">
+            ${{ sidebar_summary.available|floatformat:2 }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auto-Assign Options -->
+    <div class="bg-base-100 rounded-lg shadow p-5">
+      <h3 class="font-bold text-lg mb-4">{% translate "Auto-Assign" %}</h3>
+      <div class="flex flex-col gap-2">
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}">
+          {% csrf_token %}
+          <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
+          <input type="hidden" name="action" value="assigned_last_month">
+          <button type="submit" class="btn btn-soft btn-primary btn-sm w-full justify-start gap-2">
+            {% translate "Assigned Last Month" %}
+          </button>
+        </form>
+
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}">
+          {% csrf_token %}
+          <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
+          <input type="hidden" name="action" value="spent_last_month">
+          <button type="submit" class="btn btn-soft btn-secondary btn-sm w-full justify-start gap-2">
+            {% translate "Spent Last Month" %}
+          </button>
+        </form>
+
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}">
+          {% csrf_token %}
+          <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
+          <input type="hidden" name="action" value="assign_zero">
+          <button type="submit" class="btn btn-soft btn-sm w-full justify-start gap-2">
+            {% translate "Assign Zero" %}
+          </button>
+        </form>
+
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}">
+          {% csrf_token %}
+          <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
+          <input type="hidden" name="action" value="reset_available_zero">
+          <button type="submit" class="btn btn-soft btn-sm w-full justify-start gap-2">
+            {% translate "Reset Available to Zero" %}
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

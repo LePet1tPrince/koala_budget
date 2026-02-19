@@ -65,8 +65,10 @@ dependencies = [
     "markdown",
     "nh3>=0.2.21",
     "openai",
+    "plaid-python>=38.0.0",
     "psycopg2-binary",
     "pydantic-ai>=1.0",
+    "openpyxl>=3.1.0",  # Excel file parsing
     "python-dateutil",
     "redis",
     "requests",
@@ -79,6 +81,7 @@ dependencies = [
 dev = [
     "channels[daphne]",
     "django-debug-toolbar",
+    "flower",
     "pre-commit",
     "ruff>=0.13.1",
 ]

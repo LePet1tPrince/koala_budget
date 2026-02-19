@@ -38,6 +38,14 @@ team_urlpatterns = [
     path("subscription/", include(subscriptions_team_urls)),
     path("team/", include(single_team_urls)),
     path("example/", include("apps.teams_example.urls")),
+    # path("budgeting/", include("apps.budgeting.urls")),
+    path("accounts/", include("apps.accounts.urls")),
+    path("journal/", include("apps.journal.urls")),
+    path("budget/", include("apps.budget.urls")),
+    path("reports/", include("apps.reports.urls")),
+    path("plaid/", include("apps.plaid.urls")),
+    path("bankfeed/", include("apps.bank_feed.urls")),
+
 ]
 
 urlpatterns = [

@@ -2,6 +2,40 @@
 <li class="menu-title">
   <span>{% translate "Application" %}</span>
 </li>
+{% if request.team %}
+<li>
+  <a href="{% url 'accounts:accounts_home' request.team.slug %}" {% if active_tab == 'accounts' %}class="menu-active"{% endif %}>
+    <i class="fa fa-home h-4 w-4"></i>
+    {% translate "Set Up" %}
+  </a>
+</li>
+
+
+<li>
+  <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" {% if active_tab == 'bank_feed' %}class="menu-active"{% endif %}>
+    <i class="fa fa-book h-4 w-4"></i>
+    {% translate "Bank Feed" %}
+  </a>
+</li>
+<li>
+  <a href="{% url 'journal:transactions_home' request.team.slug %}" {% if active_tab == 'transactions' %}class="menu-active"{% endif %}>
+    <i class="fa fa-list h-4 w-4"></i>
+    {% translate "Transactions" %}
+  </a>
+</li>
+<li>
+  <a href="{% url 'budget:budget_home' request.team.slug %}" {% if active_tab == 'budget' %}class="menu-active"{% endif %}>
+    <i class="fa fa-book h-4 w-4"></i>
+    {% translate "Budget" %}
+  </a>
+</li>
+<li>
+  <a href="{% url 'reports:reports_home' request.team.slug %}" {% if active_tab == 'reports' %}class="menu-active"{% endif %}>
+    <i class="fa fa-chart-bar h-4 w-4"></i>
+    {% translate "Reports" %}
+  </a>
+</li>
+{% endif %}
 <li>
   <a href="{% url 'web:home' %}" {% if active_tab == 'dashboard' %}class="menu-active"{% endif %}>
     <i class="fa fa-home h-4 w-4"></i>

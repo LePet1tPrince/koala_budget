@@ -98,6 +98,12 @@ PROJECT_APPS = [
     "apps.teams_example.apps.TeamsExampleConfig",
     "apps.chat",
     "apps.ai.apps.AiConfig",
+    "apps.budget.apps.BudgetConfig",
+    "apps.accounts.apps.AccountsConfig",
+    "apps.journal.apps.JournalConfig",
+    "apps.reports.apps.ReportsConfig",
+    "apps.plaid.apps.PlaidConfig",
+    "apps.bank_feed.apps.BankFeedConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -108,6 +114,7 @@ if DEBUG:
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.api.middleware.AuthRateLimitMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -419,6 +426,15 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 100,
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",
+        "user": "1000/hour",
+        "auth": "5/minute",
+    },
 }
 
 
@@ -456,7 +472,7 @@ if REDIS_URL.startswith("rediss"):
     REDIS_URL = f"{REDIS_URL}?ssl_cert_reqs=required"
 
 DUMMY_CACHE = {
-    "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+    "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
 }
 REDIS_CACHE = {
     "BACKEND": "django.core.cache.backends.redis.RedisCache",
@@ -468,6 +484,9 @@ CACHES = {
 
 CELERY_BROKER_URL = CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+FLOWER_URL = "http://localhost:5555"
+FLOWER_URL_PREFIX = "flower"
 
 # Add tasks to this dict and run `python manage.py bootstrap_celery_tasks` to create them
 SCHEDULED_TASKS = {
@@ -556,6 +575,24 @@ if "test" in sys.argv:
     SILENCED_SYSTEM_CHECKS.append("djstripe.I002")
 
 
+# Plaid config
+# Note: don't edit these values here - edit them in your .env file or environment variables!
+PLAID_CLIENT_ID = env("PLAID_CLIENT_ID", default="")
+PLAID_SECRET = env("PLAID_SECRET", default="")
+# Environment: sandbox, development, or production
+PLAID_ENV = env("PLAID_ENV", default="https://sandbox.plaid.com")
+
+# django-encrypted-model-fields configuration
+# Generate a proper Fernet key from the SECRET_KEY
+# In production, set FIELD_ENCRYPTION_KEY in your .env file to a proper Fernet key
+# You can generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+import base64
+import hashlib
+
+_default_key = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest())
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default=_default_key.decode())
+
+
 # AI Chat Setup
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 # LiteLLM models
@@ -605,6 +642,11 @@ LOGGING = {
             "handlers": ["console"],
             "level": env("DJANGO_LOG_LEVEL", default="INFO"),
         },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
         "koala_budget": {
             "handlers": ["console"],
             "level": env("KOALA_BUDGET_LOG_LEVEL", default="INFO"),
@@ -615,3 +657,14 @@ LOGGING = {
         },
     },
 }
+
+
+# Populate team account with default data
+BOOTSTRAP_TEAM_ON_CREATE = True
+STRICT_TEAM_CONTEXT = True
+
+# settings.py
+ICON_PICKER_PATH = 'static/images/icons'
+
+# default icon color
+ICON_PICKER_COLOR = "#00bcc9"
