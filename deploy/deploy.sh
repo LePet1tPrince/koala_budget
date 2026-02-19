@@ -81,6 +81,7 @@ docker exec koala-postgres-shared psql -U ${POSTGRES_USER:-postgres} -c "CREATE 
 
 # Build images
 echo -e "${YELLOW}🏗️  Building Docker images for ${ENV_NAME}...${NC}"
+export DOCKER_BUILDKIT=1
 docker compose -f docker-compose.server.yml --profile $PROFILE build
 
 # Stop services gracefully
@@ -104,7 +105,7 @@ fi
 
 # Clean up
 echo -e "${YELLOW}🧹 Cleaning up old Docker images...${NC}"
-docker system prune -f
+docker image prune -f
 
 echo ""
 echo -e "${GREEN}✅ ${ENV_NAME} deployment completed successfully!${NC}"
