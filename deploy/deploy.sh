@@ -104,7 +104,7 @@ fi
 
 # Clean up
 echo -e "${YELLOW}🧹 Cleaning up old Docker images...${NC}"
-docker system prune -f
+docker image prune -f
 
 echo ""
 echo -e "${GREEN}✅ ${ENV_NAME} deployment completed successfully!${NC}"
