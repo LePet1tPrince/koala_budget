@@ -40,18 +40,18 @@ cd "$(dirname "$0")/.."
 
 echo ""
 echo "📝 Step 1: Updating Nginx configuration with your domain..."
-sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" deploy/nginx/conf.d/app.conf
+sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" deploy/nginx/conf.d/prod.conf
 
 echo "✅ Nginx configuration updated"
 echo ""
 echo "🔄 Step 2: Restarting Nginx to apply changes..."
-docker-compose -f docker-compose.prod.yml restart nginx
+docker-compose -f docker-compose.server.yml restart nginx
 
 echo ""
 echo "🎫 Step 3: Obtaining SSL certificate from Let's Encrypt..."
 echo "This may take a minute..."
 
-docker-compose -f docker-compose.prod.yml run --rm certbot certonly \
+docker-compose -f docker-compose.server.yml run --rm certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email $EMAIL \
@@ -67,13 +67,13 @@ if [ $? -eq 0 ]; then
     echo "📝 Step 4: Enabling HTTPS in Nginx configuration..."
 
     # Update the nginx config to use the domain name in SSL section
-    sed -i "s/yourdomain.com/$DOMAIN/g" deploy/nginx/conf.d/app.conf
+    sed -i "s/yourdomain.com/$DOMAIN/g" deploy/nginx/conf.d/prod.conf
 
     echo "⚠️  Please manually uncomment the HTTPS server block in:"
-    echo "   deploy/nginx/conf.d/app.conf"
+    echo "   deploy/nginx/conf.d/prod.conf"
     echo ""
     echo "After uncommenting, restart Nginx:"
-    echo "   docker-compose -f docker-compose.prod.yml restart nginx"
+    echo "   docker-compose -f docker-compose.server.yml restart nginx"
     echo ""
     echo "🎉 Setup complete! Your site will be available at https://$DOMAIN"
 else
