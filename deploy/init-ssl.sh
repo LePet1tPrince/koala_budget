@@ -45,13 +45,13 @@ sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" deploy/nginx/conf.d/
 echo "✅ Nginx configuration updated"
 echo ""
 echo "🔄 Step 2: Restarting Nginx to apply changes..."
-docker-compose -f docker-compose.server.yml restart nginx
+docker compose -f docker-compose.server.yml restart nginx
 
 echo ""
 echo "🎫 Step 3: Obtaining SSL certificate from Let's Encrypt..."
 echo "This may take a minute..."
 
-docker-compose -f docker-compose.server.yml run --rm certbot certonly \
+docker compose -f docker-compose.server.yml run --rm certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email $EMAIL \
@@ -73,7 +73,7 @@ if [ $? -eq 0 ]; then
     echo "   deploy/nginx/conf.d/prod.conf"
     echo ""
     echo "After uncommenting, restart Nginx:"
-    echo "   docker-compose -f docker-compose.server.yml restart nginx"
+    echo "   docker compose -f docker-compose.server.yml restart nginx"
     echo ""
     echo "🎉 Setup complete! Your site will be available at https://$DOMAIN"
 else
