@@ -37,7 +37,7 @@ else
     BRANCH="develop"
     ENV_FILE=".env.dev"
     DB_NAME="${POSTGRES_DB_DEV:-koala_budget_dev}"
-    URL="https://dev.yourdomain.com"
+    URL="https://dev.koalabudget.com"
     PROFILE="dev"
 fi
 
