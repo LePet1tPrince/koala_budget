@@ -79,14 +79,19 @@ su - deploy
 ### 4. Clone Your Repository
 
 ```bash
-# Create project directory
-sudo mkdir -p /opt/koala_budget_pegasus
-sudo chown deploy:deploy /opt/koala_budget_pegasus
+# Use SSH instead of HTTPS
+GIT_SSH_COMMAND='ssh -i ~/.ssh/koala_deploy_key' git clone git@github.com:LePet1tPrince/koala_budget_pegasus.git
 
-# Clone repository
-cd /opt
-git clone https://github.com/YOUR_USERNAME/koala_budget_pegasus.git
-cd koala_budget_pegasus
+# Or configure it permanently
+cat >> ~/.ssh/config << EOF
+Host github.com-koala
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/koala_deploy_key
+EOF
+
+git clone git@github.com-koala:LePet1tPrince/koala_budget_pegasus.git
+
 ```
 
 ### 5. Set Up Environment Variables
