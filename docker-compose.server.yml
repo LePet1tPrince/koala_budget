@@ -139,6 +139,7 @@ services:
       - static_files:/code/static_root
     environment:
       - DEBUG=1
+      - DJANGO_VITE_DEV_MODE=False
       - DJANGO_SETTINGS_MODULE=koala_budget.settings
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_DEV:-koala_budget_dev}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/1
