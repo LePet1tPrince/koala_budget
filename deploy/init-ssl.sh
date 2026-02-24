@@ -56,8 +56,9 @@ if [ "$ENV" == "prod" ]; then
 
     echo "✅ Nginx configuration updated"
     echo ""
-    echo "🔄 Step 2: Restarting Nginx..."
-    docker compose -f docker-compose.server.yml restart nginx
+    echo "🔄 Step 2: Ensuring Nginx is running..."
+    docker compose -f docker-compose.server.yml --profile prod up -d nginx
+    sleep 3
 
     echo ""
     echo "🎫 Step 3: Obtaining SSL certificate (prod + www)..."
@@ -89,8 +90,23 @@ else
     NGINX_CONF="deploy/nginx/conf.d/dev.conf"
 
     echo ""
-    echo "🔄 Step 1: Restarting Nginx to ensure it's serving the dev vhost..."
-    docker compose -f docker-compose.server.yml restart nginx
+    echo "🔄 Step 1: Ensuring Nginx is running..."
+    docker compose -f docker-compose.server.yml --profile dev up -d nginx
+    sleep 3
+
+    echo ""
+    echo "🔍 Pre-flight check: verifying port 80 is reachable from this server..."
+    if ! curl -s --max-time 5 "http://$DOMAIN/.well-known/acme-challenge/test" > /dev/null 2>&1; then
+        echo "⚠️  Warning: Could not reach http://$DOMAIN on port 80."
+        echo "   Let's Encrypt requires port 80 to be publicly accessible."
+        echo "   Check: ufw allow 80/tcp && ufw allow 443/tcp"
+        echo "   Also check your cloud provider's firewall rules."
+        read -p "Continue anyway? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
 
     echo ""
     echo "🎫 Step 2: Obtaining SSL certificate for $DOMAIN..."
