@@ -383,6 +383,31 @@ docker-compose -f docker-compose.prod.yml exec web python manage.py dbshell
 docker-compose -f docker-compose.prod.yml exec certbot certbot certificates
 ```
 
+### CSRF Token Error on Sign-In
+
+If you see "CSRF verification failed. Request aborted." when signing in, this is most likely because `CSRF_COOKIE_SECURE=True` is set but the site is running over plain HTTP (no SSL yet).
+
+**Before SSL is configured**, set these in your `.env.production`:
+```bash
+DJANGO_CSRF_COOKIE_SECURE=False
+DJANGO_SESSION_COOKIE_SECURE=False
+DJANGO_SECURE_SSL_REDIRECT=False
+CSRF_TRUSTED_ORIGINS=http://your-droplet-ip
+```
+
+**After SSL is configured**, revert to secure values:
+```bash
+DJANGO_CSRF_COOKIE_SECURE=True
+DJANGO_SESSION_COOKIE_SECURE=True
+DJANGO_SECURE_SSL_REDIRECT=True
+CSRF_TRUSTED_ORIGINS=https://yourdomain.com
+```
+
+Redeploy after changing these values:
+```bash
+./deploy/deploy.sh
+```
+
 ### GitHub Actions Deployment Failing
 
 1. Check SSH connection:

@@ -1,6 +1,7 @@
 media
 static_root
 node_modules
+.git
 npm-debug.log
 **/.env
 venv

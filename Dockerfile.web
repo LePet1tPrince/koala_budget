@@ -43,13 +43,15 @@ RUN --mount=type=cache,target=/root/.cache \
 
 # Stage 2: Build the front end files
 FROM node:22-bookworm-slim AS build-node
-RUN npm install -g npm@11.3
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g npm@11.3
 RUN nodejs -v && npm -v
 WORKDIR /code
 COPY *.json *.js /code/
 COPY assets /code/assets/
 COPY api-client /code/api-client/
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm install
 
 # build needs everything because it needs to be able to do the tailwind class detection / purging stuff
 COPY . /code
@@ -90,10 +92,7 @@ COPY --from=build-node /code/static /code/static
 # Replace the uv shebang with python3 shebang in manage.py since we don't have the uv binary in the runtime image
 RUN sed -i '1c\#!/usr/bin/env python3' /code/manage.py
 
-# why this has to be here:
-# https://stackoverflow.com/questions/59719175/where-to-run-collectstatic-when-deploying-django-app-to-heroku-using-docker
-RUN DEBUG=False python /code/manage.py collectstatic --noinput --settings=koala_budget.settings_production
-RUN chown django:django -R static_root
+RUN mkdir -p /code/static_root && chown django:django /code/static_root
 
 USER django
 

@@ -84,7 +84,7 @@ jobs:
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             echo "✅ Deployment to development successful!"
-            echo "🌐 Development URL: https://dev.yourdomain.com"
+            echo "🌐 Development URL: https://dev.koalabudget.com"
           else
             echo "❌ Deployment to development failed!"
             exit 1

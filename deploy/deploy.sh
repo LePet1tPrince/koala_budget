@@ -37,7 +37,7 @@ else
     BRANCH="develop"
     ENV_FILE=".env.dev"
     DB_NAME="${POSTGRES_DB_DEV:-koala_budget_dev}"
-    URL="https://dev.yourdomain.com"
+    URL="https://dev.koalabudget.com"
     PROFILE="dev"
 fi
 
@@ -69,7 +69,7 @@ set +a
 
 # Ensure shared services are running
 echo -e "${BLUE}🔗 Checking shared services (PostgreSQL & Redis)...${NC}"
-docker-compose -f docker-compose.server.yml --profile shared up -d
+docker compose -f docker-compose.server.yml --profile shared up -d
 
 echo -e "${YELLOW}⏳ Waiting for shared services to be healthy...${NC}"
 sleep 10
@@ -81,15 +81,16 @@ docker exec koala-postgres-shared psql -U ${POSTGRES_USER:-postgres} -c "CREATE 
 
 # Build images
 echo -e "${YELLOW}🏗️  Building Docker images for ${ENV_NAME}...${NC}"
-docker-compose -f docker-compose.server.yml --profile $PROFILE build
+export DOCKER_BUILDKIT=1
+docker compose -f docker-compose.server.yml --profile $PROFILE build
 
 # Stop services gracefully
 echo -e "${YELLOW}⬇️  Stopping ${ENV_NAME} services gracefully...${NC}"
-docker-compose -f docker-compose.server.yml --profile $PROFILE down
+docker compose -f docker-compose.server.yml --profile $PROFILE down
 
 # Start services
 echo -e "${YELLOW}⬆️  Starting ${ENV_NAME} services...${NC}"
-docker-compose -f docker-compose.server.yml --profile $PROFILE up -d
+docker compose -f docker-compose.server.yml --profile $PROFILE up -d
 
 echo -e "${YELLOW}⏳ Waiting for services to be healthy...${NC}"
 sleep 15
@@ -104,16 +105,16 @@ fi
 
 # Clean up
 echo -e "${YELLOW}🧹 Cleaning up old Docker images...${NC}"
-docker system prune -f
+docker image prune -f
 
 echo ""
 echo -e "${GREEN}✅ ${ENV_NAME} deployment completed successfully!${NC}"
 echo ""
 echo "📊 Service status:"
-docker-compose -f docker-compose.server.yml --profile $PROFILE ps
+docker compose -f docker-compose.server.yml --profile $PROFILE ps
 
 echo ""
 echo "📋 To view logs, run:"
-echo "  docker-compose -f docker-compose.server.yml --profile $PROFILE logs -f"
+echo "  docker compose -f docker-compose.server.yml --profile $PROFILE logs -f"
 echo ""
 echo "🌐 ${ENV_NAME} URL: $URL"

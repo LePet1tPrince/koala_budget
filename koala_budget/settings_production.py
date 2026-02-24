@@ -10,9 +10,9 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Django security checklist settings.
 # More details here: https://docs.djangoproject.com/en/stable/howto/deployment/checklist/
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
+SESSION_COOKIE_SECURE = env.bool("DJANGO_SESSION_COOKIE_SECURE", default=True)
+CSRF_COOKIE_SECURE = env.bool("DJANGO_CSRF_COOKIE_SECURE", default=True)
 
 # HTTP Strict Transport Security settings
 # Without uncommenting the lines below, you will get security warnings when running ./manage.py check --deploy
@@ -29,6 +29,11 @@ USE_HTTPS_IN_ABSOLUTE_URLS = True
 
 # If you don't want to use environment variables to set production hosts you can add them here
 # ALLOWED_HOSTS = ["example.com"]
+
+# Always allow localhost/127.0.0.1 so Docker health checks (which hit localhost:8000) don't 403.
+for _host in ["localhost", "127.0.0.1"]:
+    if _host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_host)
 
 # Your email config goes here.
 # see https://github.com/anymail/django-anymail for more details / examples
