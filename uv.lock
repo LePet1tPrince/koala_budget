@@ -1787,7 +1787,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "celery", extra = ["redis"] },
     { name = "celery-progress" },
-    { name = "channels" },
+    { name = "channels", extra = ["daphne"] },
     { name = "channels-redis" },
     { name = "dj-stripe" },
     { name = "django" },
@@ -1824,7 +1824,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "channels", extra = ["daphne"] },
     { name = "django-debug-toolbar" },
     { name = "flower" },
     { name = "pre-commit" },
@@ -1840,7 +1839,7 @@ requires-dist = [
     { name = "celery" },
     { name = "celery", extras = ["redis"] },
     { name = "celery-progress" },
-    { name = "channels" },
+    { name = "channels", extras = ["daphne"] },
     { name = "channels-redis" },
     { name = "dj-stripe", specifier = ">=2.9,<2.10" },
     { name = "django", specifier = ">=6.0" },
@@ -1877,7 +1876,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "channels", extras = ["daphne"] },
     { name = "django-debug-toolbar" },
     { name = "flower" },
     { name = "pre-commit" },
