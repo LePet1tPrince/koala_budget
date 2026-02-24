@@ -61,7 +61,7 @@ if [ "$ENV" == "prod" ]; then
 
     echo ""
     echo "🎫 Step 3: Obtaining SSL certificate (prod + www)..."
-    docker compose -f docker-compose.server.yml run --rm certbot certonly \
+    docker compose -f docker-compose.server.yml run --rm --entrypoint certbot certbot certonly \
         --webroot \
         --webroot-path=/var/www/certbot \
         --email $EMAIL \
@@ -94,7 +94,7 @@ else
 
     echo ""
     echo "🎫 Step 2: Obtaining SSL certificate for $DOMAIN..."
-    docker compose -f docker-compose.server.yml run --rm certbot certonly \
+    docker compose -f docker-compose.server.yml run --rm --entrypoint certbot certbot certonly \
         --webroot \
         --webroot-path=/var/www/certbot \
         --email $EMAIL \
