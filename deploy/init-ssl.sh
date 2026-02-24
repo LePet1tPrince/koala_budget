@@ -95,12 +95,16 @@ else
     sleep 3
 
     echo ""
-    echo "🔍 Pre-flight check: verifying port 80 is reachable from this server..."
-    if ! curl -s --max-time 5 "http://$DOMAIN/.well-known/acme-challenge/test" > /dev/null 2>&1; then
-        echo "⚠️  Warning: Could not reach http://$DOMAIN on port 80."
-        echo "   Let's Encrypt requires port 80 to be publicly accessible."
-        echo "   Check: ufw allow 80/tcp && ufw allow 443/tcp"
-        echo "   Also check your cloud provider's firewall rules."
+    echo "🔍 Pre-flight check: verifying Nginx is responding on port 80..."
+    if ! curl -s --max-time 5 -H "Host: $DOMAIN" "http://localhost/.well-known/acme-challenge/test" > /dev/null 2>&1; then
+        echo "⚠️  Warning: Nginx does not appear to be responding on port 80."
+        echo "   Check container status: docker compose -f docker-compose.server.yml ps"
+        echo "   Check nginx logs:       docker compose -f docker-compose.server.yml logs nginx"
+        echo ""
+        echo "   Let's Encrypt also requires port 80 to be reachable from the internet."
+        echo "   UFW: ufw allow 80/tcp && ufw allow 443/tcp"
+        echo "   Cloud firewall: ensure port 80/443 are open in your provider's console"
+        echo "   (AWS Security Groups, GCP Firewall Rules, DigitalOcean Cloud Firewall, etc.)"
         read -p "Continue anyway? (y/n) " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
