@@ -43,7 +43,7 @@ dependencies = [
     "celery",
     "celery-progress",
     "celery[redis]",
-    "channels",
+    "channels[daphne]",
     "channels_redis",
     "dj-stripe>=2.9,<2.10",
     "django-allauth[socialaccount,mfa,headless]>=65.13.0",
@@ -79,7 +79,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "channels[daphne]",
     "django-debug-toolbar",
     "flower",
     "pre-commit",
