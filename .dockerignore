@@ -8,3 +8,4 @@ venv
 .venv
 .direnv
 .pytest_cache
+deploy/certbot
