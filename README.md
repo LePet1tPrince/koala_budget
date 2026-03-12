@@ -1,6 +1,41 @@
 # Koala Budget
 
-Budgeting and expense tracking app for freelancers
+Koala Budget is a personal finance application for freelancers that implements double-entry bookkeeping with bank feed integration, monthly budgeting, and savings goals. It is a multi-tenant SaaS app built on the [Pegasus](https://www.saaspegasus.com/) framework.
+
+## Key Features
+
+- **Double-entry bookkeeping** — Full chart of accounts (assets, liabilities, equity, income, expenses) with balanced journal entries
+- **Bank feed integration** — Import transactions via [Plaid](https://plaid.com/) (live bank sync) or CSV upload, then categorize them into the ledger
+- **Monthly budgeting** — Set per-category spending targets and track actuals against budget in real time
+- **Savings goals** — Create goals with target amounts and track progress through monthly allocations
+- **AI-assisted categorization** — Chat interface powered by pydantic-ai/LiteLLM (Claude/GPT) to suggest transaction categories
+- **Multi-tenancy** — Each user workspace is a Team; all financial data is fully isolated per team
+- **Stripe subscriptions** — Team-level billing via dj-stripe
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Django 6.0+ / Python 3.12, Django REST Framework, Celery + Redis |
+| Database | PostgreSQL 17 |
+| Frontend | React 19.x + TypeScript, Alpine.js, Tailwind CSS 4.x + DaisyUI 5.x |
+| Build | Vite 7.x, auto-generated OpenAPI TypeScript client |
+| Auth | django-allauth (social auth + 2FA) |
+| Payments | dj-stripe (Stripe) |
+| Deployment | Docker Compose (local), Digital Ocean App Platform (production) |
+
+## Documentation
+
+Full documentation lives in the [`docs/`](./docs/README.md) directory:
+
+- [Architecture overview](./docs/architecture.md) — system design, layers, and data flow
+- [Entity Relationship Diagram](./docs/erd.md) — database schema
+- [Data Model Guide](./docs/data-model.md) — detailed model reference
+- [API Guide](./docs/api-guide.md) — REST API reference
+- [Frontend Guide](./docs/frontend-guide.md) — React/TypeScript patterns
+- [Getting Started](./docs/getting-started.md) — developer onboarding
+
+---
 
 ## Quickstart
 
