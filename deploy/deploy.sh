@@ -30,7 +30,7 @@ if [ "$ENV" == "prod" ]; then
     BRANCH="main"
     ENV_FILE=".env.production"
     DB_NAME="${POSTGRES_DB_PROD:-koala_budget_prod}"
-    URL="https://yourdomain.com"
+    URL="https://koalabudget.com"
     PROFILE="prod"
 else
     ENV_NAME="DEVELOPMENT"
