@@ -42,7 +42,8 @@ services:
       PYTHONUNBUFFERED: '1'
       PYTHONDONTWRITEBYTECODE: '1'
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     restart: unless-stopped
     depends_on:
       db:
@@ -77,7 +78,8 @@ services:
       PYTHONUNBUFFERED: '1'
       PYTHONDONTWRITEBYTECODE: '1'
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     depends_on:
       db:
         condition: service_healthy
@@ -109,7 +111,8 @@ services:
       PYTHONDONTWRITEBYTECODE: '1'
       DJANGO_SETTINGS_MODULE: 'koala_budget.settings'
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     ports:
       - 5555:5555
     depends_on:
