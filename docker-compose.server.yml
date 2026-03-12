@@ -79,6 +79,8 @@ services:
       - DJANGO_SESSION_COOKIE_SECURE=${DJANGO_SESSION_COOKIE_SECURE:-True}
       - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}
       - PORT=8000
+      - TURNSTILE_KEY=${TURNSTILE_KEY}
+      - TURNSTILE_SECRET=${TURNSTILE_SECRET}
     restart: unless-stopped
     healthcheck:
       test: curl --fail http://localhost:8000/health/ || exit 1
@@ -103,6 +105,8 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_PROD:-koala_budget_prod}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/0
       - SECRET_KEY=${SECRET_KEY_PROD}
+      - TURNSTILE_KEY=${TURNSTILE_KEY}
+      - TURNSTILE_SECRET=${TURNSTILE_SECRET}
     restart: unless-stopped
     networks:
       - prod-network
@@ -121,6 +125,8 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_PROD:-koala_budget_prod}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/0
       - SECRET_KEY=${SECRET_KEY_PROD}
+      - TURNSTILE_KEY=${TURNSTILE_KEY}
+      - TURNSTILE_SECRET=${TURNSTILE_SECRET}
     restart: unless-stopped
     networks:
       - prod-network
