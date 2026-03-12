@@ -43,6 +43,8 @@ services:
       - redis_shared_data:/data
     ports:
       - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     restart: unless-stopped
     healthcheck:
       test: redis-cli --no-auth-warning -a $${REDIS_PASSWORD} ping | grep PONG
