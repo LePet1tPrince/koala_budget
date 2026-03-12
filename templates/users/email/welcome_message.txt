@@ -1,0 +1,10 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate trimmed with name=user.get_display_name project_name=project_name %}
+Welcome to {{ project_name }}, {{ name }}!
+{% endblocktranslate %}
+
+{% blocktranslate trimmed with project_name=project_name %}
+Your account is ready. Start tracking your budget and taking control of your finances with {{ project_name }}.
+{% endblocktranslate %}
+
+{{ login_url }}
+{% endautoescape %}

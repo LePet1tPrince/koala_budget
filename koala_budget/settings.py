@@ -279,9 +279,9 @@ CORS_ALLOW_HEADERS = (*default_headers, "x-password-reset-key", "x-email-verific
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[FRONTEND_ADDRESS])
 SESSION_COOKIE_DOMAIN = env("SESSION_COOKIE_DOMAIN", default=None)
 
-# User signup configuration: change to "mandatory" to require users to confirm email before signing in.
-# or "optional" to send confirmation emails but not require them
-ACCOUNT_EMAIL_VERIFICATION = env("ACCOUNT_EMAIL_VERIFICATION", default="none")
+# User signup configuration: "mandatory" requires users to confirm email before signing in.
+# "optional" sends confirmation emails but doesn't require them. "none" skips verification.
+ACCOUNT_EMAIL_VERIFICATION = env("ACCOUNT_EMAIL_VERIFICATION", default="mandatory")
 
 AUTHENTICATION_BACKENDS = (
     # Needed to login by username in Django admin, regardless of `allauth`
