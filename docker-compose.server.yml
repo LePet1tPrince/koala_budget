@@ -156,6 +156,8 @@ services:
       - DJANGO_SECURE_SSL_REDIRECT=False
       - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS_DEV:-http://localhost}
       - PORT=8001
+      - TURNSTILE_KEY=${TURNSTILE_KEY}
+      - TURNSTILE_SECRET=${TURNSTILE_SECRET}
     restart: unless-stopped
     healthcheck:
       test: curl --fail http://localhost:8001/health/ || exit 1
@@ -180,6 +182,8 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_DEV:-koala_budget_dev}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/1
       - SECRET_KEY=${SECRET_KEY_DEV}
+      - TURNSTILE_KEY=${TURNSTILE_KEY}
+      - TURNSTILE_SECRET=${TURNSTILE_SECRET}
     restart: unless-stopped
     networks:
       - dev-network
@@ -198,6 +202,8 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@koala-postgres-shared:5432/${POSTGRES_DB_DEV:-koala_budget_dev}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@koala-redis-shared:6379/1
       - SECRET_KEY=${SECRET_KEY_DEV}
+      - TURNSTILE_KEY=${TURNSTILE_KEY}
+      - TURNSTILE_SECRET=${TURNSTILE_SECRET}
     restart: unless-stopped
     networks:
       - dev-network
