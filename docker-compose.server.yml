@@ -198,12 +198,12 @@ services:
       - shared-network
 
   # ============================================================================
-  # Nginx & SSL (separate per environment to avoid cross-config contamination)
+  # Nginx & SSL (single shared instance routing both prod and dev by domain)
   # ============================================================================
 
-  nginx-prod:
-    profiles: ["prod"]
-    container_name: koala-nginx-prod
+  nginx:
+    profiles: ["shared"]
+    container_name: koala-nginx
     image: nginx:alpine
     ports:
       - "80:80"
@@ -211,32 +211,17 @@ services:
     volumes:
       - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/nginx/conf.d/prod.conf:/etc/nginx/conf.d/prod.conf:ro
-      - static_files:/static:ro
-      - ./deploy/certbot/conf:/etc/letsencrypt:ro
-      - ./deploy/certbot/www:/var/www/certbot:ro
-    restart: unless-stopped
-    networks:
-      - prod-network
-
-  nginx-dev:
-    profiles: ["dev"]
-    container_name: koala-nginx-dev
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/nginx/conf.d/dev.conf:/etc/nginx/conf.d/dev.conf:ro
       - static_files:/static:ro
       - ./deploy/certbot/conf:/etc/letsencrypt:ro
       - ./deploy/certbot/www:/var/www/certbot:ro
     restart: unless-stopped
     networks:
+      - prod-network
       - dev-network
 
   certbot:
-    profiles: ["prod", "dev"]
+    profiles: ["shared"]
     container_name: koala-certbot
     image: certbot/certbot
     volumes:

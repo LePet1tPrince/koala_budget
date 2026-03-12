@@ -57,7 +57,7 @@ if [ "$ENV" == "prod" ]; then
     echo "✅ Nginx configuration updated"
     echo ""
     echo "🔄 Step 2: Ensuring Nginx is running..."
-    docker compose -f docker-compose.server.yml --profile prod up -d nginx-prod
+    docker compose -f docker-compose.server.yml --profile shared up -d nginx
     sleep 3
 
     echo ""
@@ -91,7 +91,7 @@ else
 
     echo ""
     echo "🔄 Step 1: Ensuring Nginx is running..."
-    docker compose -f docker-compose.server.yml --profile dev up -d nginx-dev
+    docker compose -f docker-compose.server.yml --profile shared up -d nginx
     sleep 3
 
     echo ""
