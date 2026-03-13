@@ -279,9 +279,9 @@ CORS_ALLOW_HEADERS = (*default_headers, "x-password-reset-key", "x-email-verific
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[FRONTEND_ADDRESS])
 SESSION_COOKIE_DOMAIN = env("SESSION_COOKIE_DOMAIN", default=None)
 
-# User signup configuration: change to "mandatory" to require users to confirm email before signing in.
-# or "optional" to send confirmation emails but not require them
-ACCOUNT_EMAIL_VERIFICATION = env("ACCOUNT_EMAIL_VERIFICATION", default="none")
+# User signup configuration: "mandatory" requires users to confirm email before signing in.
+# "optional" sends confirmation emails but doesn't require them. "none" skips verification.
+ACCOUNT_EMAIL_VERIFICATION = env("ACCOUNT_EMAIL_VERIFICATION", default="mandatory")
 
 AUTHENTICATION_BACKENDS = (
     # Needed to login by username in Django admin, regardless of `allauth`
@@ -400,15 +400,13 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="timothylbender@gmail.com
 # and in your environment.
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 
-# Most production backends will require further customization. The below example uses Mailgun.
-# ANYMAIL = {
-#     "MAILGUN_API_KEY": env("MAILGUN_API_KEY", default=None),
-#     "MAILGUN_SENDER_DOMAIN": env("MAILGUN_SENDER_DOMAIN", default=None),
-# }
-
-# use in production
-# see https://github.com/anymail/django-anymail for more details/examples
-# EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
+# Mailgun configuration via django-anymail.
+# Set EMAIL_BACKEND=anymail.backends.mailgun.EmailBackend in your environment to activate.
+# see https://github.com/anymail/django-anymail for details.
+ANYMAIL = {
+    "MAILGUN_API_KEY": env("MAILGUN_API_KEY", default=None),
+    "MAILGUN_SENDER_DOMAIN": env("MAILGUN_SENDER_DOMAIN", default=None),
+}
 
 EMAIL_SUBJECT_PREFIX = "[Koala Budget] "
 
