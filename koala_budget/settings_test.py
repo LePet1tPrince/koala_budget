@@ -1,4 +1,4 @@
-from .settings import *
+from .settings import *  # noqa: F403
 
 BOOTSTRAP_TEAM_ON_CREATE = False
 

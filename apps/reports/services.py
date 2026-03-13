@@ -37,12 +37,12 @@ class ReportService:
             team=self.team,
             journal_entry__entry_date__range=(start_date, end_date),
             # journal_entry__status='posted'
-        ).select_related('account', 'account__account_group')
+        ).select_related("account", "account__account_group")
 
         income_data = []
         expense_data = []
-        total_income = Decimal('0')
-        total_expenses = Decimal('0')
+        total_income = Decimal("0")
+        total_expenses = Decimal("0")
 
         # Group by account and calculate balances
         account_balances = {}
@@ -62,7 +62,7 @@ class ReportService:
                 continue  # Skip non-income/expense accounts
 
             if account not in account_balances:
-                account_balances[account] = Decimal('0')
+                account_balances[account] = Decimal("0")
             account_balances[account] += amount
 
         # Sort accounts and build result data
@@ -70,24 +70,24 @@ class ReportService:
             if amount != 0:  # Only include accounts with activity
                 account_type = account.account_group.account_type
                 if account_type == ACCOUNT_TYPE_INCOME:
-                    income_data.append({'account': account, 'amount': amount})
+                    income_data.append({"account": account, "amount": amount})
                     total_income += amount
                 elif account_type == ACCOUNT_TYPE_EXPENSE:
-                    expense_data.append({'account': account, 'amount': amount})
+                    expense_data.append({"account": account, "amount": amount})
                     total_expenses += amount
 
         # Sort by account number
-        income_data.sort(key=lambda x: x['account'].account_number)
-        expense_data.sort(key=lambda x: x['account'].account_number)
+        income_data.sort(key=lambda x: x["account"].account_number)
+        expense_data.sort(key=lambda x: x["account"].account_number)
 
         net_profit = total_income - total_expenses
 
         return {
-            'income': income_data,
-            'expenses': expense_data,
-            'total_income': total_income,
-            'total_expenses': total_expenses,
-            'net_profit': net_profit,
+            "income": income_data,
+            "expenses": expense_data,
+            "total_income": total_income,
+            "total_expenses": total_expenses,
+            "net_profit": net_profit,
         }
 
     def get_balance_sheet_data(self, as_of_date):
@@ -110,14 +110,14 @@ class ReportService:
             team=self.team,
             journal_entry__entry_date__lte=as_of_date,
             # journal_entry__status='posted'
-        ).select_related('account', 'account__account_group')
+        ).select_related("account", "account__account_group")
 
         asset_data = []
         liability_data = []
         equity_data = []
-        total_assets = Decimal('0')
-        total_liabilities = Decimal('0')
-        total_equity = Decimal('0')
+        total_assets = Decimal("0")
+        total_liabilities = Decimal("0")
+        total_equity = Decimal("0")
 
         # Group by account and calculate balances
         account_balances = {}
@@ -137,7 +137,7 @@ class ReportService:
                 continue  # Skip other account types
 
             if account not in account_balances:
-                account_balances[account] = Decimal('0')
+                account_balances[account] = Decimal("0")
             account_balances[account] += amount
 
         # Sort accounts and build result data
@@ -145,30 +145,30 @@ class ReportService:
             if amount != 0:  # Only include accounts with balances
                 account_type = account.account_group.account_type
                 if account_type == ACCOUNT_TYPE_ASSET:
-                    asset_data.append({'account': account, 'amount': amount})
+                    asset_data.append({"account": account, "amount": amount})
                     total_assets += amount
                 elif account_type == ACCOUNT_TYPE_LIABILITY:
-                    liability_data.append({'account': account, 'amount': amount})
+                    liability_data.append({"account": account, "amount": amount})
                     total_liabilities += amount
                 elif account_type == ACCOUNT_TYPE_EQUITY:
-                    equity_data.append({'account': account, 'amount': amount})
+                    equity_data.append({"account": account, "amount": amount})
                     total_equity += amount
 
         # Sort by account number
-        asset_data.sort(key=lambda x: x['account'].account_number)
-        liability_data.sort(key=lambda x: x['account'].account_number)
-        equity_data.sort(key=lambda x: x['account'].account_number)
+        asset_data.sort(key=lambda x: x["account"].account_number)
+        liability_data.sort(key=lambda x: x["account"].account_number)
+        equity_data.sort(key=lambda x: x["account"].account_number)
 
         net_worth = total_assets - total_liabilities
 
         return {
-            'assets': asset_data,
-            'liabilities': liability_data,
-            'equity': equity_data,
-            'total_assets': total_assets,
-            'total_liabilities': total_liabilities,
-            'total_equity': total_equity,
-            'net_worth': net_worth,
+            "assets": asset_data,
+            "liabilities": liability_data,
+            "equity": equity_data,
+            "total_assets": total_assets,
+            "total_liabilities": total_liabilities,
+            "total_equity": total_equity,
+            "net_worth": net_worth,
         }
 
     def get_net_worth_trend_data(self, num_months):
@@ -193,10 +193,12 @@ class ReportService:
                 month_end = end_date
 
             balance_data = self.get_balance_sheet_data(month_end)
-            trend_data.append({
-                'date': month_end,
-                'net_worth': balance_data['net_worth'],
-            })
+            trend_data.append(
+                {
+                    "date": month_end,
+                    "net_worth": balance_data["net_worth"],
+                }
+            )
 
             # Move to next month
             current_date = (current_date + timedelta(days=32)).replace(day=1)
@@ -214,19 +216,17 @@ class ReportService:
                 'total': Decimal
             }
         """
-        from django.db.models import Case, DecimalField, F, When
+        from django.db.models import F
 
         # Build the queryset
         queryset = JournalLine.objects.filter(
             team=self.team,
             account=account,
-        ).select_related('journal_entry', 'journal_entry__payee')
+        ).select_related("journal_entry", "journal_entry__payee")
 
         # Apply date filter if provided
         if start_date and end_date:
-            queryset = queryset.filter(
-                journal_entry__entry_date__range=(start_date, end_date)
-            )
+            queryset = queryset.filter(journal_entry__entry_date__range=(start_date, end_date))
 
         # Determine account type for sign logic
         account_type = account.account_group.account_type
@@ -234,35 +234,35 @@ class ReportService:
         # Annotate signed amount based on account type
         if account_type == ACCOUNT_TYPE_INCOME:
             # Income: credits increase income
-            signed_amount = F('cr_amount') - F('dr_amount')
+            signed_amount = F("cr_amount") - F("dr_amount")
         elif account_type == ACCOUNT_TYPE_EXPENSE:
             # Expenses: debits increase expenses
-            signed_amount = F('dr_amount') - F('cr_amount')
+            signed_amount = F("dr_amount") - F("cr_amount")
         else:
             # For other account types, use debit - credit (asset/liability/equity logic)
-            signed_amount = F('dr_amount') - F('cr_amount')
+            signed_amount = F("dr_amount") - F("cr_amount")
 
-        transactions = queryset.annotate(
-            signed_amount=signed_amount
-        ).order_by('journal_entry__entry_date')
+        transactions = queryset.annotate(signed_amount=signed_amount).order_by("journal_entry__entry_date")
 
         # Build transaction list
         transaction_list = []
-        total = Decimal('0')
+        total = Decimal("0")
 
         for line in transactions:
-            transaction_list.append({
-                'date': line.journal_entry.entry_date,
-                'payee': line.journal_entry.payee.name if line.journal_entry.payee else '',
-                'memo': line.journal_entry.description,
-                'amount': line.signed_amount,
-            })
+            transaction_list.append(
+                {
+                    "date": line.journal_entry.entry_date,
+                    "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
+                    "memo": line.journal_entry.description,
+                    "amount": line.signed_amount,
+                }
+            )
             total += line.signed_amount
 
         return {
-            'account': account,
-            'transactions': transaction_list,
-            'total': total,
+            "account": account,
+            "transactions": transaction_list,
+            "total": total,
         }
 
     def get_net_worth_trend_data_by_date_range(self, start_date, end_date):
@@ -284,10 +284,12 @@ class ReportService:
                 month_end = end_date
 
             balance_data = self.get_balance_sheet_data(month_end)
-            trend_data.append({
-                'date': month_end,
-                'net_worth': balance_data['net_worth'],
-            })
+            trend_data.append(
+                {
+                    "date": month_end,
+                    "net_worth": balance_data["net_worth"],
+                }
+            )
 
             # Move to next month
             current_date = (current_date + timedelta(days=32)).replace(day=1)

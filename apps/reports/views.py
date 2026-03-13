@@ -1,4 +1,6 @@
+import contextlib
 from datetime import date, datetime
+
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 
@@ -41,14 +43,14 @@ def income_statement(request, team_slug):
     end_date = None
 
     # Check for direct start_date and end_date parameters
-    start_date_param = request.GET.get('start_date')
-    end_date_param = request.GET.get('end_date')
+    start_date_param = request.GET.get("start_date")
+    end_date_param = request.GET.get("end_date")
 
     if start_date_param and end_date_param:
         # Parse dates directly from URL parameters
         try:
-            start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+            start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
         except ValueError:
             # Invalid date format, fall back to defaults
             today = date.today()
@@ -65,9 +67,13 @@ def income_statement(request, team_slug):
     sankey_data = None
     if report_data:
         sankey_data = {
-            'income': [{'name': item['account'].name, 'amount': float(item['amount'])} for item in report_data['income']],
-            'expenses': [{'name': item['account'].name, 'amount': float(item['amount'])} for item in report_data['expenses']],
-            'net_profit': float(report_data['net_profit']),
+            "income": [
+                {"name": item["account"].name, "amount": float(item["amount"])} for item in report_data["income"]
+            ],  # noqa: E501
+            "expenses": [
+                {"name": item["account"].name, "amount": float(item["amount"])} for item in report_data["expenses"]
+            ],  # noqa: E501
+            "net_profit": float(report_data["net_profit"]),
         }
 
     return render(
@@ -95,12 +101,12 @@ def balance_sheet(request, team_slug):
     as_of_date = None
 
     # Check for direct as_of_date parameter
-    as_of_date_param = request.GET.get('as_of_date')
+    as_of_date_param = request.GET.get("as_of_date")
 
     if as_of_date_param:
         # Parse date directly from URL parameter
         try:
-            as_of_date = datetime.strptime(as_of_date_param, '%Y-%m-%d').date()
+            as_of_date = datetime.strptime(as_of_date_param, "%Y-%m-%d").date()
             report_data = service.get_balance_sheet_data(as_of_date)
         except ValueError:
             # Invalid date format, fall back to today
@@ -137,22 +143,19 @@ def account_activity(request, team_slug, account_id):
     start_date = None
     end_date = None
 
-    try:
+    with contextlib.suppress(Account.DoesNotExist):
         account = Account.objects.get(team=request.team, pk=account_id)
-    except Account.DoesNotExist:
-        # Handle account not found
-        pass
 
     if account:
         # Check for direct start_date and end_date parameters
-        start_date_param = request.GET.get('start_date')
-        end_date_param = request.GET.get('end_date')
+        start_date_param = request.GET.get("start_date")
+        end_date_param = request.GET.get("end_date")
 
         if start_date_param and end_date_param:
             # Parse dates directly from URL parameters
             try:
-                start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
-                end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+                start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
+                end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
             except ValueError:
                 # Invalid date format, fall back to defaults
                 today = date.today()
@@ -167,21 +170,23 @@ def account_activity(request, team_slug, account_id):
         report_data = service.get_account_activity(account, start_date, end_date)
 
     # Determine back navigation based on source parameter
-    source = request.GET.get('source')
-    if source == 'budget':
+    source = request.GET.get("source")
+    if source == "budget":
         from django.urls import reverse
-        back_url = reverse('budget:budget_home', args=[team_slug])
+
+        back_url = reverse("budget:budget_home", args=[team_slug])
         if start_date:
-            back_url += f'?month={start_date.isoformat()}'
+            back_url += f"?month={start_date.isoformat()}"
         back_label = _("Back to Budget")
     else:
         from django.urls import reverse
-        back_url = reverse('reports:income_statement', args=[team_slug])
+
+        back_url = reverse("reports:income_statement", args=[team_slug])
         # Forward date params to income statement
         query_params = request.GET.copy()
-        query_params.pop('source', None)
+        query_params.pop("source", None)
         if query_params:
-            back_url += f'?{query_params.urlencode()}'
+            back_url += f"?{query_params.urlencode()}"
         back_label = _("Back to Summary")
 
     return render(
@@ -214,14 +219,14 @@ def net_worth_trend(request, team_slug):
     end_date = None
 
     # Check for direct start_month and end_month parameters (YYYY-MM format)
-    start_month_param = request.GET.get('start_month')
-    end_month_param = request.GET.get('end_month')
+    start_month_param = request.GET.get("start_month")
+    end_month_param = request.GET.get("end_month")
 
     if start_month_param and end_month_param:
         try:
             # Parse YYYY-MM format
-            start_year, start_month_num = map(int, start_month_param.split('-'))
-            end_year, end_month_num = map(int, end_month_param.split('-'))
+            start_year, start_month_num = map(int, start_month_param.split("-"))
+            end_year, end_month_num = map(int, end_month_param.split("-"))
 
             # Create start_date as first day of start month
             start_date = date(start_year, start_month_num, 1)
@@ -268,7 +273,9 @@ def _parse_date_range(request):
     start_date_param = request.GET.get("start_date")
     end_date_param = request.GET.get("end_date")
     try:
-        start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date() if start_date_param else today.replace(day=1)
+        start_date = (
+            datetime.strptime(start_date_param, "%Y-%m-%d").date() if start_date_param else today.replace(day=1)
+        )  # noqa: E501
         end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date() if end_date_param else today
     except ValueError:
         start_date = today.replace(day=1)
@@ -301,9 +308,10 @@ def export_account_activity_view(request, team_slug, account_id):
 
     try:
         account = Account.objects.get(team=request.team, pk=account_id)
-    except Account.DoesNotExist:
+    except Account.DoesNotExist as err:
         from django.http import Http404
-        raise Http404("Account not found")
+
+        raise Http404("Account not found") from err
 
     start_date, end_date = _parse_date_range(request)
     return export_account_activity_csv(request.team, account, start_date, end_date)

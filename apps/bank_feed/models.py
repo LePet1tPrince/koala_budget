@@ -20,7 +20,6 @@ class BankTransaction(BaseTeamModel):
     - manual: Manually entered bank feed transactions
     """
 
-
     # Source choices for imported transactions
     SOURCE_PLAID = "plaid"
     SOURCE_CSV = "csv"
@@ -70,7 +69,7 @@ class BankTransaction(BaseTeamModel):
         help_text="Merchant name",
     )
 
-        # Source of this transaction
+    # Source of this transaction
     source = models.CharField(
         max_length=20,
         choices=SOURCE_CHOICES,
@@ -78,8 +77,6 @@ class BankTransaction(BaseTeamModel):
         help_text="Source of this imported transaction (plaid, csv, manual)",
     )
     raw = models.JSONField(null=True, blank=True, help_text="Raw transaction data from source")
-
-
 
     class Meta:
         ordering = ["-posted_date", "-created_at"]

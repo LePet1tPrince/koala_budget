@@ -22,11 +22,3 @@ jobs:
         run: npm run build
       - name: Check types
         run: npm run type-check
-      - name: Install front end dependencies
-        run: npm install
-        working-directory: ./frontend
-      - name: Build Vite front end and run type checks
-        run: npm run build
-        working-directory: ./frontend
-        env:
-          VITE_APP_BASE_URL: http://localhost:8000

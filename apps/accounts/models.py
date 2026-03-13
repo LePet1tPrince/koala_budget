@@ -53,8 +53,8 @@ class Account(BaseTeamModel):
 
     name = models.CharField(max_length=200)
     account_number = models.CharField(
-        max_length=20,
-        help_text="Account number (1000s for assets, 2000s for liabilities, etc.)")
+        max_length=20, help_text="Account number (1000s for assets, 2000s for liabilities, etc.)"
+    )
     account_group = models.ForeignKey(
         AccountGroup,
         on_delete=models.PROTECT,
@@ -80,11 +80,11 @@ class Account(BaseTeamModel):
     @property
     def balance(self):
         """Return annotated balance if available, otherwise calculate."""
-        if hasattr(self, '_balance'):
-            return self._balance or Decimal('0')
+        if hasattr(self, "_balance"):
+            return self._balance or Decimal("0")
         # Fallback for non-annotated queries
-        dr_total = self.journal_lines.aggregate(total=Sum("dr_amount"))["total"] or Decimal('0')
-        cr_total = self.journal_lines.aggregate(total=Sum("cr_amount"))["total"] or Decimal('0')
+        dr_total = self.journal_lines.aggregate(total=Sum("dr_amount"))["total"] or Decimal("0")
+        cr_total = self.journal_lines.aggregate(total=Sum("cr_amount"))["total"] or Decimal("0")
         return dr_total - cr_total
 
 

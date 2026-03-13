@@ -13,7 +13,6 @@ urlpatterns = [
     # Budget views
     path("", views.budget_month_view, name="budget_home"),
     path("autofill/", views.budget_autofill_view, name="budget_autofill"),
-
     # Goal views
     path("goals/", views.goals_list_view, name="goals_list"),
     path("goals/new/", views.goal_create_view, name="goal_create"),

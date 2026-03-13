@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import AccountSerializer
 
-from .models import PlaidTransaction, PlaidAccount, PlaidItem
+from .models import PlaidAccount, PlaidItem, PlaidTransaction
 
 
 class PlaidItemSerializer(serializers.ModelSerializer):

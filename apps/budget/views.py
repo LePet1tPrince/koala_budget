@@ -22,11 +22,7 @@ def budget_month_view(request, team_slug):
     from decimal import Decimal
 
     month_param = request.GET.get("month")
-    if month_param:
-        month = parse_date(month_param)
-    else:
-        month = date.today().replace(day=1)
-
+    month = parse_date(month_param) if month_param else date.today().replace(day=1)
     month = month.replace(day=1)
 
     if request.method == "POST":
@@ -40,41 +36,43 @@ def budget_month_view(request, team_slug):
 
     service = BudgetService(request.team)
 
-    categories = list(Account.for_team.filter(
-        account_group__account_type__in=("expense", "income"),
-    ).select_related("account_group").order_by("account_group__name", "account_number"))
+    categories = list(
+        Account.for_team.filter(
+            account_group__account_type__in=("expense", "income"),
+        )
+        .select_related("account_group")
+        .order_by("account_group__name", "account_number")
+    )
 
     # Bulk fetch existing budgets for this month
-    existing_budgets = {
-        b.category_id: b
-        for b in Budget.objects.filter(team=request.team, month=month)
-    }
+    existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
 
     # Bulk create missing budgets
     missing_budgets = []
     for category in categories:
         if category.pk not in existing_budgets:
-            missing_budgets.append(Budget(
-                team=request.team,
-                category=category,
-                month=month,
-                budget_amount=0,
-            ))
+            missing_budgets.append(
+                Budget(
+                    team=request.team,
+                    category=category,
+                    month=month,
+                    budget_amount=0,
+                )
+            )
 
     if missing_budgets:
         Budget.objects.bulk_create(missing_budgets, ignore_conflicts=True)
         # Re-fetch to get all budgets including newly created ones
-        existing_budgets = {
-            b.category_id: b
-            for b in Budget.objects.filter(team=request.team, month=month)
-        }
+        existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
 
     # Bulk fetch actuals and available amounts
     actuals_map = service.get_actuals_by_category(month)
     available_map = service.get_available_by_category(month, categories)
 
     # Group categories by account_group
-    grouped_data = defaultdict(lambda: {"rows": [], "subtotals": {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}})
+    grouped_data = defaultdict(
+        lambda: {"rows": [], "subtotals": {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}}
+    )  # noqa: E501
 
     for category in categories:
         budget = existing_budgets.get(category.pk)
@@ -84,13 +82,15 @@ def budget_month_view(request, team_slug):
 
         group_name = category.account_group.name
 
-        grouped_data[group_name]["rows"].append({
-            "category": category,
-            "form": BudgetAmountForm(instance=budget),
-            "budgeted": budgeted,
-            "actual": actual,
-            "available": available,
-        })
+        grouped_data[group_name]["rows"].append(
+            {
+                "category": category,
+                "form": BudgetAmountForm(instance=budget),
+                "budgeted": budgeted,
+                "actual": actual,
+                "available": available,
+            }
+        )
 
         # Add to subtotals
         grouped_data[group_name]["subtotals"]["budgeted"] += budgeted
@@ -125,9 +125,13 @@ def budget_month_view(request, team_slug):
     net_worth_card = net_worth_service.get_net_worth_card_data(month, categories)
 
     # Get all accounts for React recategorize dropdown
-    all_accounts = Account.for_team.filter(
-        account_group__account_type__in=("expense", "income"),
-    ).select_related("account_group").order_by("account_number")
+    all_accounts = (
+        Account.for_team.filter(
+            account_group__account_type__in=("expense", "income"),
+        )
+        .select_related("account_group")
+        .order_by("account_number")
+    )
     all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
 
     # API URLs for React
@@ -164,44 +168,39 @@ def budget_autofill_view(request, team_slug):
 
     month_param = request.POST.get("month")
     action = request.POST.get("action")
-
-    if month_param:
-        month = parse_date(month_param).replace(day=1)
-    else:
-        month = date.today().replace(day=1)
+    month = parse_date(month_param).replace(day=1) if month_param else date.today().replace(day=1)
 
     prev_month = month - relativedelta(months=1)
     service = BudgetService(request.team)
 
-    categories = list(Account.for_team.filter(
-        account_group__account_type__in=("expense", "income"),
-    ).select_related("account_group").order_by("account_group__name", "account_number"))
+    categories = list(
+        Account.for_team.filter(
+            account_group__account_type__in=("expense", "income"),
+        )
+        .select_related("account_group")
+        .order_by("account_group__name", "account_number")
+    )
 
     # Ensure budgets exist for this month
-    existing_budgets = {
-        b.category_id: b
-        for b in Budget.objects.filter(team=request.team, month=month)
-    }
+    existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
     missing_budgets = []
     for category in categories:
         if category.pk not in existing_budgets:
-            missing_budgets.append(Budget(
-                team=request.team,
-                category=category,
-                month=month,
-                budget_amount=0,
-            ))
+            missing_budgets.append(
+                Budget(
+                    team=request.team,
+                    category=category,
+                    month=month,
+                    budget_amount=0,
+                )
+            )
     if missing_budgets:
         Budget.objects.bulk_create(missing_budgets, ignore_conflicts=True)
-        existing_budgets = {
-            b.category_id: b
-            for b in Budget.objects.filter(team=request.team, month=month)
-        }
+        existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
 
     if action == "assigned_last_month":
         prev_budgets = {
-            b.category_id: b.budget_amount
-            for b in Budget.objects.filter(team=request.team, month=prev_month)
+            b.category_id: b.budget_amount for b in Budget.objects.filter(team=request.team, month=prev_month)
         }
         updates = []
         for cat in categories:
@@ -261,11 +260,7 @@ def budget_autofill_view(request, team_slug):
 def goals_list_view(request, team_slug):
     """List all goals with progress for the selected month."""
     month_param = request.GET.get("month")
-    if month_param:
-        month = parse_date(month_param)
-    else:
-        month = date.today().replace(day=1)
-
+    month = parse_date(month_param) if month_param else date.today().replace(day=1)
     month = month.replace(day=1)
     service = GoalService(request.team)
     summary = service.get_goal_summary(month)
@@ -273,22 +268,20 @@ def goals_list_view(request, team_slug):
     # Build forms for inline allocation editing
     goals_with_forms = []
     for goal in summary["goals"]:
-        allocation = GoalAllocation.objects.filter(
-            team=request.team,
-            goal=goal,
-            month=month
-        ).first()
+        allocation = GoalAllocation.objects.filter(team=request.team, goal=goal, month=month).first()
 
         if allocation:
             form = GoalAllocationForm(instance=allocation)
         else:
             form = GoalAllocationForm(initial={"amount": Decimal("0")})
 
-        goals_with_forms.append({
-            "goal": goal,
-            "form": form,
-            "allocation": allocation,
-        })
+        goals_with_forms.append(
+            {
+                "goal": goal,
+                "form": form,
+                "allocation": allocation,
+            }
+        )
 
     # Get net worth card data
     net_worth_service = NetWorthService(request.team)
@@ -339,10 +332,7 @@ def goal_create_view(request, team_slug):
 @login_and_team_required
 def goal_detail_view(request, team_slug, pk):
     """View a single goal with full details and allocation history."""
-    goal = get_object_or_404(
-        Goal.objects.filter(team=request.team).with_progress(),
-        pk=pk
-    )
+    goal = get_object_or_404(Goal.objects.filter(team=request.team).with_progress(), pk=pk)
 
     allocations = goal.allocations.all()[:12]  # Last 12 months
 
@@ -416,11 +406,7 @@ def goal_allocation_update_view(request, team_slug, pk):
     if request.method == "POST":
         month_param = request.POST.get("month")
         amount = request.POST.get("amount", "0")
-
-        if month_param:
-            month = parse_date(month_param).replace(day=1)
-        else:
-            month = date.today().replace(day=1)
+        month = parse_date(month_param).replace(day=1) if month_param else date.today().replace(day=1)
 
         try:
             amount = Decimal(amount)
