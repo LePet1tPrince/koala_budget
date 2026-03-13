@@ -67,6 +67,7 @@ services:
     command: /start
     volumes:
       - static_files:/code/static_root
+    env_file: .env
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
@@ -81,11 +82,6 @@ services:
       - PORT=8000
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
-      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
-      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
-      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     healthcheck:
       test: curl --fail http://localhost:8000/health/ || exit 1
@@ -104,6 +100,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     command: celery -A koala_budget worker -l INFO --pool threads --concurrency 20
+    env_file: .env
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
@@ -112,11 +109,6 @@ services:
       - SECRET_KEY=${SECRET_KEY_PROD}
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
-      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
-      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
-      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     networks:
       - prod-network
@@ -129,6 +121,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     command: celery -A koala_budget beat -l INFO
+    env_file: .env
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
@@ -137,11 +130,6 @@ services:
       - SECRET_KEY=${SECRET_KEY_PROD}
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
-      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
-      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
-      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     networks:
       - prod-network
@@ -160,6 +148,7 @@ services:
     command: /start
     volumes:
       - static_files:/code/static_root
+    env_file: .env
     environment:
       - DEBUG=1
       - DJANGO_VITE_DEV_MODE=False
@@ -173,11 +162,6 @@ services:
       - PORT=8001
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
-      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
-      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
-      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     healthcheck:
       test: curl --fail http://localhost:8001/health/ || exit 1
@@ -196,6 +180,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     command: celery -A koala_budget worker -l DEBUG --pool threads --concurrency 10
+    env_file: .env
     environment:
       - DEBUG=1
       - DJANGO_SETTINGS_MODULE=koala_budget.settings
@@ -204,11 +189,6 @@ services:
       - SECRET_KEY=${SECRET_KEY_DEV}
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
-      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
-      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
-      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     networks:
       - dev-network
@@ -221,6 +201,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     command: celery -A koala_budget beat -l DEBUG
+    env_file: .env
     environment:
       - DEBUG=1
       - DJANGO_SETTINGS_MODULE=koala_budget.settings
@@ -229,11 +210,6 @@ services:
       - SECRET_KEY=${SECRET_KEY_DEV}
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
-      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
-      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
-      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     networks:
       - dev-network
