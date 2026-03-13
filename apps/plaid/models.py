@@ -3,7 +3,6 @@ Plaid integration models.
 Stores Plaid items, accounts, and imported transactions.
 """
 
-
 from django.db import models
 
 from apps.teams.models import BaseTeamModel
@@ -42,6 +41,7 @@ class PlaidAccount(BaseTeamModel):
     Maps a Plaid account to a ledger Account.
     Each Plaid account feeds transactions into a specific ledger account.
     """
+
     plaid_account_id = models.CharField(
         max_length=255,
         unique=True,
@@ -173,4 +173,4 @@ class PlaidTransaction(BaseTeamModel):
         ]
 
     def __str__(self):
-        return f"{self.bank_transaction.posted_date} - {self.bank_transaction.description} - ${self.bank_transaction.amount}"
+        return f"{self.bank_transaction.posted_date} - {self.bank_transaction.description} - ${self.bank_transaction.amount}"  # noqa: E501

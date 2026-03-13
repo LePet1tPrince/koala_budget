@@ -143,4 +143,3 @@ def sync_transactions(access_token: str, cursor: str = None):
         "next_cursor": response.get("next_cursor"),
         "has_more": response.get("has_more", False),
     }
-

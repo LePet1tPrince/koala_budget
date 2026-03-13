@@ -22,7 +22,7 @@ class AccountGroupSerializer(serializers.ModelSerializer):
             "is_archived",
             "archived_at",
         ]
-        read_only_fields = ["created_at", "updated_at","archived_at"]
+        read_only_fields = ["created_at", "updated_at", "archived_at"]
 
 
 class AccountSerializer(serializers.ModelSerializer):
@@ -50,15 +50,22 @@ class AccountSerializer(serializers.ModelSerializer):
             "is_archived",
             "archived_at",
         ]
-        read_only_fields = ["account_group_name", "account_type",
-                            "created_at", "updated_at",
-                            "balance", "reconciled_balance", "archived_at"]
+        read_only_fields = [
+            "account_group_name",
+            "account_type",
+            "created_at",
+            "updated_at",
+            "balance",
+            "reconciled_balance",
+            "archived_at",
+        ]
 
     def get_reconciled_balance(self, obj) -> str | None:
         """Get reconciled_balance from annotation if available."""
-        if hasattr(obj, '_reconciled_balance'):
+        if hasattr(obj, "_reconciled_balance"):
             return str(obj._reconciled_balance)
         return None
+
 
 class SimpleAccountSerializer(serializers.ModelSerializer):
     """Serializer for Account model."""
@@ -79,9 +86,7 @@ class SimpleAccountSerializer(serializers.ModelSerializer):
             "is_archived",
             "archived_at",
         ]
-        read_only_fields = ["account_group_name", "account_type",
-                            "archived_at"]
-
+        read_only_fields = ["account_group_name", "account_type", "archived_at"]
 
 
 class PayeeSerializer(serializers.ModelSerializer):

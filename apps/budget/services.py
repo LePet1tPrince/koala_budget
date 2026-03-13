@@ -18,10 +18,7 @@ class BudgetService:
     def month_bounds(self, month: date):
         """Return start and end dates for a given month."""
         start = month.replace(day=1)
-        if start.month == 12:
-            end = start.replace(year=start.year + 1, month=1)
-        else:
-            end = start.replace(month=start.month + 1)
+        end = start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
         return start, end
 
     def month_start(self, date_obj: date):
@@ -45,8 +42,7 @@ class BudgetService:
             actual_expression = Sum("dr_amount") - Sum("cr_amount")
 
         qs = (
-            JournalLine.objects
-            .filter(
+            JournalLine.objects.filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
@@ -65,11 +61,7 @@ class BudgetService:
         Get the budgeted amount for a category in a given month.
         Returns 0 if no budget exists.
         """
-        budget = (
-            Budget.objects
-            .filter(team=self.team, category=category, month=month)
-            .first()
-        )
+        budget = Budget.objects.filter(team=self.team, category=category, month=month).first()
         return budget.budget_amount if budget else Decimal("0")
 
     def available(self, category, month):
@@ -83,26 +75,15 @@ class BudgetService:
         prev_month = month - relativedelta(months=1)
 
         # Base case: check if there are any budgets or transactions for this category
-        first_budget = (
-            Budget.objects
-            .filter(team=self.team, category=category)
-            .order_by("month")
-            .first()
-        )
+        first_budget = Budget.objects.filter(team=self.team, category=category).order_by("month").first()
 
         first_txn = (
-            JournalLine.objects
-            .filter(team=self.team, account=category)
-            .order_by("journal_entry__entry_date")
-            .first()
+            JournalLine.objects.filter(team=self.team, account=category).order_by("journal_entry__entry_date").first()
         )
 
         # Determine the earliest month we need to consider
         if first_budget and first_txn:
-            first_month = min(
-                first_budget.month,
-                self.month_start(first_txn.journal_entry.entry_date)
-            )
+            first_month = min(first_budget.month, self.month_start(first_txn.journal_entry.entry_date))
         elif first_budget:
             first_month = first_budget.month
         elif first_txn:
@@ -140,8 +121,7 @@ class BudgetService:
 
         # Get expense accounts: dr - cr
         expense_qs = (
-            JournalLine.objects
-            .filter(
+            JournalLine.objects.filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
@@ -153,8 +133,7 @@ class BudgetService:
 
         # Get income accounts: cr - dr
         income_qs = (
-            JournalLine.objects
-            .filter(
+            JournalLine.objects.filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
@@ -191,17 +170,10 @@ class BudgetService:
         Get the earliest month with any budget or transaction for the team.
         Returns None if no activity exists.
         """
-        first_budget = (
-            Budget.objects
-            .filter(team=self.team)
-            .order_by("month")
-            .values_list("month", flat=True)
-            .first()
-        )
+        first_budget = Budget.objects.filter(team=self.team).order_by("month").values_list("month", flat=True).first()
 
         first_txn_date = (
-            JournalLine.objects
-            .filter(team=self.team)
+            JournalLine.objects.filter(team=self.team)
             .order_by("journal_entry__entry_date")
             .values_list("journal_entry__entry_date", flat=True)
             .first()
@@ -227,10 +199,7 @@ class BudgetService:
             month__lte=end_month,
         ).values("month", "category_id", "budget_amount")
 
-        return {
-            (b["month"], b["category_id"]): b["budget_amount"]
-            for b in budgets
-        }
+        return {(b["month"], b["category_id"]): b["budget_amount"] for b in budgets}
 
     def get_all_actuals_by_month_category(self, start_month, end_month):
         """
@@ -242,8 +211,7 @@ class BudgetService:
 
         # Get expense accounts: dr - cr
         expense_qs = (
-            JournalLine.objects
-            .filter(
+            JournalLine.objects.filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start_month,
                 journal_entry__entry_date__lt=end_month + relativedelta(months=1),
@@ -256,8 +224,7 @@ class BudgetService:
 
         # Get income accounts: cr - dr
         income_qs = (
-            JournalLine.objects
-            .filter(
+            JournalLine.objects.filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start_month,
                 journal_entry__entry_date__lt=end_month + relativedelta(months=1),
@@ -330,8 +297,7 @@ class BudgetService:
         Returns a list of dictionaries with budget data for each account.
         """
         accounts = (
-            Account.objects
-            .filter(
+            Account.objects.filter(
                 team=self.team,
                 account_group__account_type__in=("expense", "income"),
             )
@@ -347,29 +313,25 @@ class BudgetService:
         for account in accounts:
             budget = budgets.get(account.pk)
 
-            budgeted = (
-                budget.budget_amount
-                if budget else Decimal("0")
-            )
+            budgeted = budget.budget_amount if budget else Decimal("0")
 
             actual = actuals.get(account.pk, Decimal("0"))
 
             # Calculate available based on account type
-            if account.account_group.account_type == "income":
-                available = actual - budgeted
-            else:
-                available = budgeted - actual
+            available = actual - budgeted if account.account_group.account_type == "income" else budgeted - actual
 
-            rows.append({
-                "category_id": account.pk,
-                "category_name": account.name,
-                "account_group": account.account_group.name,
-                "month": month,
-                "budget_id": budget.id if budget else None,
-                "budgeted": budgeted,
-                "actual": actual,
-                "available": available,
-            })
+            rows.append(
+                {
+                    "category_id": account.pk,
+                    "category_name": account.name,
+                    "account_group": account.account_group.name,
+                    "month": month,
+                    "budget_id": budget.id if budget else None,
+                    "budgeted": budgeted,
+                    "actual": actual,
+                    "available": available,
+                }
+            )
 
         return rows
 
@@ -389,10 +351,9 @@ class GoalService:
 
     def get_total_saved(self):
         """Get the total amount saved across all active goals."""
-        return GoalAllocation.objects.filter(
-            team=self.team,
-            goal__is_archived=False
-        ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        return GoalAllocation.objects.filter(team=self.team, goal__is_archived=False).aggregate(total=Sum("amount"))[
+            "total"
+        ] or Decimal("0")
 
     def get_goal_summary(self, month):
         """Get summary data for the goals section of the budget page."""
@@ -411,10 +372,7 @@ class GoalService:
         """Create or update a goal allocation for a specific month."""
         month = month.replace(day=1)
         allocation, created = GoalAllocation.objects.update_or_create(
-            team=self.team,
-            goal=goal,
-            month=month,
-            defaults={"amount": amount}
+            team=self.team, goal=goal, month=month, defaults={"amount": amount}
         )
         return allocation
 
@@ -438,17 +396,13 @@ class NetWorthService:
         # End of month (first day of next month)
         end_date = month.replace(day=1) + relativedelta(months=1)
 
-        result = (
-            JournalLine.objects
-            .filter(
-                team=self.team,
-                journal_entry__entry_date__lt=end_date,
-                account__account_group__account_type__in=["asset", "liability"],
-            )
-            .aggregate(
-                total_dr=Sum("dr_amount"),
-                total_cr=Sum("cr_amount"),
-            )
+        result = JournalLine.objects.filter(
+            team=self.team,
+            journal_entry__entry_date__lt=end_date,
+            account__account_group__account_type__in=["asset", "liability"],
+        ).aggregate(
+            total_dr=Sum("dr_amount"),
+            total_cr=Sum("cr_amount"),
         )
 
         total_dr = result["total_dr"] or Decimal("0")
@@ -478,10 +432,12 @@ class NetWorthService:
         budget_service = BudgetService(self.team)
 
         if categories is None:
-            categories = list(Account.objects.filter(
-                team=self.team,
-                account_group__account_type__in=("expense", "income"),
-            ).select_related("account_group"))
+            categories = list(
+                Account.objects.filter(
+                    team=self.team,
+                    account_group__account_type__in=("expense", "income"),
+                ).select_related("account_group")
+            )
 
         if not categories:
             return Decimal("0")

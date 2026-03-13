@@ -4,7 +4,7 @@ Admin configuration for Plaid app.
 
 from django.contrib import admin
 
-from .models import PlaidTransaction, PlaidAccount, PlaidItem
+from .models import PlaidAccount, PlaidItem, PlaidTransaction
 
 
 @admin.register(PlaidItem)

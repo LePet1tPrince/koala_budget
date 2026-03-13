@@ -7,11 +7,12 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
+from apps.accounts.serializers import SimpleAccountSerializer
 from apps.journal.models import JournalLine
 from apps.plaid.serializers import PlaidTransactionSerializer
 
 from .models import BankTransaction
+
 
 class BankTransactionSerializer(serializers.ModelSerializer):
     """Serializer for BankTransaction model."""
@@ -102,23 +103,35 @@ class BatchEditRequestSerializer(BatchIdsSerializer):
     """Serializer for batch edit request. Only provided (non-null) fields are updated."""
 
     category_id = serializers.IntegerField(
-        required=False, allow_null=True, default=None,
+        required=False,
+        allow_null=True,
+        default=None,
         help_text="ID of the category account",
     )
     account_id = serializers.IntegerField(
-        required=False, allow_null=True, default=None,
+        required=False,
+        allow_null=True,
+        default=None,
         help_text="ID of the target bank account (move)",
     )
     payee = serializers.CharField(
-        max_length=255, required=False, allow_null=True, default=None,
+        max_length=255,
+        required=False,
+        allow_null=True,
+        default=None,
         help_text="Payee/merchant name",
     )
     description = serializers.CharField(
-        max_length=255, required=False, allow_null=True, default=None,
+        max_length=255,
+        required=False,
+        allow_null=True,
+        default=None,
         help_text="Transaction description",
     )
     date = serializers.DateField(
-        required=False, allow_null=True, default=None,
+        required=False,
+        allow_null=True,
+        default=None,
         help_text="Transaction date",
     )
 
@@ -228,9 +241,6 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
     inflow = line.dr_amount if line.dr_amount > 0 else Decimal("0")
     outflow = line.cr_amount if line.cr_amount > 0 else Decimal("0")
 
-    # Derive is_cleared from reconciled_date (backwards compatible API)
-    is_cleared = bool(line.reconciled_date) or line.is_cleared
-
     return {
         "id": line.id,
         "source": "ledger",
@@ -243,6 +253,7 @@ def journal_line_to_feed_row(line: JournalLine) -> dict:
         "inflow": inflow,
         "outflow": outflow,
         "is_pending": False,
+        "is_cleared": bool(line.reconciled_date) or line.is_cleared,
         "payment_channel": None,
         "confidence": "manual",
         "journal_line_id": line.id,

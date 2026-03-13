@@ -134,9 +134,7 @@ class JournalLine(BaseTeamModel):
 
     is_cleared = models.BooleanField(default=False, help_text="Whether this line has cleared the bank")
     is_reconciled = models.BooleanField(default=False, help_text="Whether this line has been reconciled")
-    is_archived = models.BooleanField(
-        default=False, help_text="Whether this line has been archived"
-    )
+    is_archived = models.BooleanField(default=False, help_text="Whether this line has been archived")
 
     # Budget foreign key - commented out until Budget model is ready
     budget = models.ForeignKey(
@@ -195,15 +193,11 @@ class JournalLine(BaseTeamModel):
 
         month_start = entry_date.replace(day=1)
 
-        return (
-            Budget.objects
-            .filter(
-                team=self.team,
-                category=self.account,
-                month=month_start,
-            )
-            .first()
-        )
+        return Budget.objects.filter(
+            team=self.team,
+            category=self.account,
+            month=month_start,
+        ).first()
 
     def save(self, *args, **kwargs):
         """Automatically link to budget based on account and entry date."""

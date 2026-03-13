@@ -5,7 +5,7 @@ from django.db.models import F, Q, Sum
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from apps.accounts.models import Account, AccountGroup, ACCOUNT_TYPE_EQUITY
+from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
 from apps.teams.models import BaseTeamModel
 
 
@@ -28,11 +28,7 @@ class Budget(BaseTeamModel):
         help_text="Income or expense category (account)",
     )
 
-    budget_amount = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Planned budget amount"
-    )
+    budget_amount = models.DecimalField(max_digits=15, decimal_places=2, help_text="Planned budget amount")
 
     objects = BudgetQuerySet.as_manager()
 
@@ -61,27 +57,13 @@ class GoalQuerySet(models.QuerySet):
 
         return self.annotate(
             # Total saved up to previous month
-            saved_previous=Sum(
-                "allocations__amount",
-                filter=Q(allocations__month__lt=month),
-                default=Decimal("0")
-            ),
+            saved_previous=Sum("allocations__amount", filter=Q(allocations__month__lt=month), default=Decimal("0")),
             # Saved this month
-            saved_this_month=Sum(
-                "allocations__amount",
-                filter=Q(allocations__month=month),
-                default=Decimal("0")
-            ),
+            saved_this_month=Sum("allocations__amount", filter=Q(allocations__month=month), default=Decimal("0")),
             # Total saved (all time)
-            total_saved=Sum(
-                "allocations__amount",
-                default=Decimal("0")
-            ),
+            total_saved=Sum("allocations__amount", default=Decimal("0")),
             # Calculate remaining amount needed
-            remaining=F("target_amount") - Sum(
-                "allocations__amount",
-                default=Decimal("0")
-            )
+            remaining=F("target_amount") - Sum("allocations__amount", default=Decimal("0")),
         )
 
 
@@ -95,17 +77,11 @@ class Goal(BaseTeamModel):
     description = models.TextField(blank=True, verbose_name=_("Description"))
 
     target_amount = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        verbose_name=_("Target amount"),
-        help_text=_("Target savings amount")
+        max_digits=15, decimal_places=2, verbose_name=_("Target amount"), help_text=_("Target savings amount")
     )
 
     target_date = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name=_("Target date"),
-        help_text=_("Target date to reach the goal")
+        null=True, blank=True, verbose_name=_("Target date"), help_text=_("Target date to reach the goal")
     )
 
     account = models.OneToOneField(
@@ -119,22 +95,14 @@ class Goal(BaseTeamModel):
     )
 
     is_complete = models.BooleanField(
-        default=False,
-        verbose_name=_("Completed"),
-        help_text=_("Whether this goal has been completed")
+        default=False, verbose_name=_("Completed"), help_text=_("Whether this goal has been completed")
     )
 
     is_archived = models.BooleanField(
-        default=False,
-        verbose_name=_("Archived"),
-        help_text=_("Whether this goal is archived")
+        default=False, verbose_name=_("Archived"), help_text=_("Whether this goal is archived")
     )
 
-    order = models.IntegerField(
-        default=0,
-        verbose_name=_("Order"),
-        help_text=_("Display order for goals")
-    )
+    order = models.IntegerField(default=0, verbose_name=_("Order"), help_text=_("Display order for goals"))
 
     objects = GoalQuerySet.as_manager()
 
@@ -159,17 +127,15 @@ class Goal(BaseTeamModel):
             goal_group, _ = AccountGroup.objects.get_or_create(
                 team=self.team,
                 account_type=ACCOUNT_TYPE_EQUITY,
-                defaults={
-                    "name": "Goals",
-                    "description": "Savings goals"
-                }
+                defaults={"name": "Goals", "description": "Savings goals"},
             )
 
             # Find the next available account number in the 3000s range (equity)
-            last_goal_account = Account.objects.filter(
-                team=self.team,
-                account_number__startswith="3"
-            ).order_by("-account_number").first()
+            last_goal_account = (
+                Account.objects.filter(team=self.team, account_number__startswith="3")
+                .order_by("-account_number")
+                .first()
+            )
 
             if last_goal_account:
                 try:
@@ -181,10 +147,7 @@ class Goal(BaseTeamModel):
 
             # Create the backing account
             self.account = Account.objects.create(
-                team=self.team,
-                name=f"Goal: {self.name}",
-                account_number=str(next_number),
-                account_group=goal_group
+                team=self.team, name=f"Goal: {self.name}", account_number=str(next_number), account_group=goal_group
             )
 
         super().save(*args, **kwargs)
@@ -195,9 +158,7 @@ class Goal(BaseTeamModel):
         if hasattr(self, "total_saved"):
             saved = self.total_saved or Decimal("0")
         else:
-            saved = self.allocations.aggregate(
-                total=Sum("amount")
-            )["total"] or Decimal("0")
+            saved = self.allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0")
 
         if self.target_amount > 0:
             return min(float(saved / self.target_amount * 100), 100)
@@ -210,24 +171,16 @@ class GoalAllocation(BaseTeamModel):
     This represents how much is being saved toward the goal each month.
     """
 
-    goal = models.ForeignKey(
-        Goal,
-        on_delete=models.CASCADE,
-        related_name="allocations",
-        verbose_name=_("Goal")
-    )
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="allocations", verbose_name=_("Goal"))
 
-    month = models.DateField(
-        verbose_name=_("Month"),
-        help_text=_("Month of this allocation (first day of month)")
-    )
+    month = models.DateField(verbose_name=_("Month"), help_text=_("Month of this allocation (first day of month)"))
 
     amount = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal("0"),
         verbose_name=_("Amount"),
-        help_text=_("Amount allocated this month")
+        help_text=_("Amount allocated this month"),
     )
 
     notes = models.TextField(blank=True, verbose_name=_("Notes"))

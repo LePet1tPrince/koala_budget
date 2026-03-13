@@ -89,15 +89,21 @@ class AccountModelTest(TestCase):
     def test_account_ordering(self):
         """Test that accounts are ordered by account_number."""
         with current_team(self.team):
-            Account.objects.create(team=self.team, name="Second", account_number="2000", account_group=self.account_group)
-            Account.objects.create(team=self.team, name="First", account_number="1000", account_group=self.account_group)
+            Account.objects.create(
+                team=self.team, name="Second", account_number="2000", account_group=self.account_group
+            )  # noqa: E501
+            Account.objects.create(
+                team=self.team, name="First", account_number="1000", account_group=self.account_group
+            )  # noqa: E501
             accounts = list(Account.for_team.all())
-            self.assertEqual(accounts[0].account_number, '1000')
+            self.assertEqual(accounts[0].account_number, "1000")
             self.assertEqual(accounts[1].account_number, "2000")
 
     def test_account_unique_together(self):
         """Test that team and account_number must be unique together."""
-        Account.objects.create(team=self.team, name="Account 1", account_number="1000", account_group=self.account_group)
+        Account.objects.create(
+            team=self.team, name="Account 1", account_number="1000", account_group=self.account_group
+        )  # noqa: E501
         with self.assertRaises(IntegrityError):
             Account.objects.create(
                 team=self.team, name="Account 2", account_number="1000", account_group=self.account_group

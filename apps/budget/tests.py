@@ -6,6 +6,7 @@ Tests models, forms, services, views, and API endpoints.
 from datetime import date
 from decimal import Decimal
 
+from django.db import IntegrityError
 from django.test import TestCase
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account, AccountGroup
@@ -70,7 +71,7 @@ class BudgetModelTest(TestCase):
         )
 
         # Should raise IntegrityError for duplicate
-        with self.assertRaises(Exception):  # Could be IntegrityError or ValidationError
+        with self.assertRaises(IntegrityError):
             Budget.objects.create(
                 team=self.team,
                 month=date(2025, 12, 1),
@@ -116,9 +117,7 @@ class BudgetServiceTest(TestCase):
         cls.income_account = Account.objects.create(
             team=cls.team, name="Service Salary", account_number=3003, account_group=cls.income_group
         )
-        cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Service Assets", account_type="asset"
-        )
+        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Service Assets", account_type="asset")
         cls.asset_account = Account.objects.create(
             team=cls.team, name="Service Checking", account_number=1001, account_group=cls.asset_group
         )
@@ -145,9 +144,7 @@ class BudgetServiceTest(TestCase):
     def test_actual_income_account(self):
         """Test actual calculation for income accounts (cr - dr)."""
         # Create journal entry: asset debit, income credit
-        entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 12, 15), description="Salary payment"
-        )
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 15), description="Salary payment")
         JournalLine.objects.create(
             team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
         )
@@ -198,9 +195,7 @@ class BudgetServiceTest(TestCase):
         )
 
         # Create transaction
-        entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 12, 15), description="Salary payment"
-        )
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 15), description="Salary payment")
         JournalLine.objects.create(
             team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
         )
@@ -295,9 +290,7 @@ class BudgetServiceTest(TestCase):
             budget_amount=Decimal("1500.00"),
         )
 
-        entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 12, 15), description="Transactions"
-        )
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 15), description="Transactions")
         JournalLine.objects.create(
             team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("100.00")
         )

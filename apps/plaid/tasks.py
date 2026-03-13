@@ -9,10 +9,10 @@ from decimal import Decimal
 from celery import shared_task
 from django.db import transaction
 
+from apps.bank_feed.models import BankTransaction
 from apps.teams.context import set_current_team
 
-from .models import PlaidTransaction, PlaidAccount, PlaidItem
-from apps.bank_feed.models import BankTransaction
+from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .services import sync_transactions
 
 
@@ -26,7 +26,6 @@ def json_safe(value):
     if isinstance(value, list):
         return [json_safe(v) for v in value]
     return value
-
 
 
 @shared_task
@@ -94,10 +93,10 @@ def sync_plaid_transactions(plaid_item_id: int):
         return {"success": False, "error": "PlaidItem not found"}
     except Exception as e:
         import traceback
+
         print(traceback.format_exc())
         print(type(e), e)
         raise
-
 
 
 @transaction.atomic
@@ -117,9 +116,7 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
         return
 
     # Check if transaction already exists
-    if PlaidTransaction.objects.filter(
-        plaid_transaction_id=tx_data["transaction_id"]
-    ).exists():
+    if PlaidTransaction.objects.filter(plaid_transaction_id=tx_data["transaction_id"]).exists():
         return
 
     # Create bank transaction
@@ -131,9 +128,7 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
         description=tx_data["name"],
         merchant_name=tx_data.get("merchant_name"),
         source=BankTransaction.SOURCE_PLAID,
-        raw=json_safe(
-            tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data
-        )
+        raw=json_safe(tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data),
     )
 
     # Create plaid transaction
@@ -152,15 +147,9 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
         category_confidence=tx_data.get("personal_finance_category", {}).get("confidence_level"),
         payment_channel=tx_data.get("payment_channel"),
         transaction_type=tx_data.get("transaction_type"),
-        location=json_safe(
-            tx_data.get("location").to_dict()
-            if tx_data.get("location")
-            else None
-        ),
+        location=json_safe(tx_data.get("location").to_dict() if tx_data.get("location") else None),
         merchant_metadata=json_safe(
-            tx_data.get("merchant_metadata").to_dict()
-            if tx_data.get("merchant_metadata")
-            else None
+            tx_data.get("merchant_metadata").to_dict() if tx_data.get("merchant_metadata") else None
         ),
     )
 
@@ -172,7 +161,7 @@ def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
     Updates the existing BankTransaction and PlaidTransaction records.
     """
     try:
-        plaid_tx = PlaidTransaction.objects.select_related('bank_transaction').get(
+        plaid_tx = PlaidTransaction.objects.select_related("bank_transaction").get(
             plaid_transaction_id=tx_data["transaction_id"],
             team=plaid_item.team,
         )
@@ -184,9 +173,7 @@ def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
             plaid_tx.bank_transaction.posted_date = tx_data["date"]
             plaid_tx.bank_transaction.description = tx_data["name"]
             plaid_tx.bank_transaction.merchant_name = tx_data.get("merchant_name")
-            plaid_tx.bank_transaction.raw = json_safe(
-                tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data
-            )
+            plaid_tx.bank_transaction.raw = json_safe(tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data)
             plaid_tx.bank_transaction.save()
 
             # Update plaid transaction
@@ -198,15 +185,9 @@ def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
             plaid_tx.category_confidence = tx_data.get("personal_finance_category", {}).get("confidence_level")
             plaid_tx.payment_channel = tx_data.get("payment_channel")
             plaid_tx.transaction_type = tx_data.get("transaction_type")
-            plaid_tx.location = json_safe(
-                tx_data.get("location").to_dict()
-                if tx_data.get("location")
-                else None
-            )
+            plaid_tx.location = json_safe(tx_data.get("location").to_dict() if tx_data.get("location") else None)
             plaid_tx.merchant_metadata = json_safe(
-                tx_data.get("merchant_metadata").to_dict()
-                if tx_data.get("merchant_metadata")
-                else None
+                tx_data.get("merchant_metadata").to_dict() if tx_data.get("merchant_metadata") else None
             )
             plaid_tx.save()
 
@@ -222,7 +203,7 @@ def process_removed_transaction(plaid_item: PlaidItem, tx_data: dict):
     Deletes the BankTransaction and PlaidTransaction if it hasn't been categorized.
     """
     try:
-        plaid_tx = PlaidTransaction.objects.select_related('bank_transaction').get(
+        plaid_tx = PlaidTransaction.objects.select_related("bank_transaction").get(
             plaid_transaction_id=tx_data["transaction_id"],
             team=plaid_item.team,
         )

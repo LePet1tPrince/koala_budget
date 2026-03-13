@@ -16,14 +16,13 @@ from rest_framework.response import Response
 
 from apps.teams.permissions import TeamModelAccessPermissions
 
-from .models import PlaidTransaction, PlaidAccount, PlaidItem
+from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .serializers import (
-    PlaidTransactionSerializer,
     PlaidAccountSerializer,
     PlaidItemSerializer,
+    PlaidTransactionSerializer,
 )
 from .services import create_link_token, exchange_public_token, get_accounts, get_institution
-
 
 # ViewSets for Plaid models
 
@@ -46,7 +45,9 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
         operation_id="plaid_items_sync",
         tags=["plaid"],
         request=None,
-        responses={200: {"type": "object", "properties": {"task_id": {"type": "string"}, "status": {"type": "string"}}}},
+        responses={
+            200: {"type": "object", "properties": {"task_id": {"type": "string"}, "status": {"type": "string"}}}
+        },  # noqa: E501
     )
     @action(detail=True, methods=["post"])
     def sync(self, request, pk=None, team_slug=None):
@@ -184,7 +185,6 @@ def exchange_public_token_view(request, team_slug=None):
     """
     public_token = request.data.get("public_token")
     institution_id = request.data.get("institution_id")
-    accounts_metadata = request.data.get("accounts", [])
 
     if not public_token or not institution_id:
         return Response(

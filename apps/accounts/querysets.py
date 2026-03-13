@@ -13,20 +13,17 @@ class AccountQuerySet(models.QuerySet):
     def with_balance(self):
         """Annotate accounts with their calculated balance in a single query."""
         return self.annotate(
-            _balance=Coalesce(Sum('journal_lines__dr_amount'), Decimal('0'))
-                   - Coalesce(Sum('journal_lines__cr_amount'), Decimal('0'))
+            _balance=Coalesce(Sum("journal_lines__dr_amount"), Decimal("0"))
+            - Coalesce(Sum("journal_lines__cr_amount"), Decimal("0"))
         )
 
     def with_reconciled_balance(self):
         """Annotate accounts with their reconciled balance (only reconciled journal lines)."""
         return self.annotate(
             _reconciled_balance=Coalesce(
-                Sum('journal_lines__dr_amount', filter=Q(journal_lines__is_reconciled=True)),
-                Decimal('0')
-            ) - Coalesce(
-                Sum('journal_lines__cr_amount', filter=Q(journal_lines__is_reconciled=True)),
-                Decimal('0')
+                Sum("journal_lines__dr_amount", filter=Q(journal_lines__is_reconciled=True)), Decimal("0")
             )
+            - Coalesce(Sum("journal_lines__cr_amount", filter=Q(journal_lines__is_reconciled=True)), Decimal("0"))
         )
 
 

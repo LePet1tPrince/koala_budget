@@ -12,10 +12,12 @@ class BudgetAmountForm(forms.ModelForm):
         max_digits=15,
         decimal_places=2,
         required=False,
-        widget=forms.NumberInput(attrs={
-            "step": "0.01",
-            "class": "budget-input",
-        })
+        widget=forms.NumberInput(
+            attrs={
+                "step": "0.01",
+                "class": "budget-input",
+            }
+        ),
     )
 
     class Meta:
@@ -24,8 +26,8 @@ class BudgetAmountForm(forms.ModelForm):
 
     def clean_budget_amount(self):
         """Convert blank/empty values to 0."""
-        value = self.cleaned_data.get('budget_amount')
-        if value is None or value == '':
+        value = self.cleaned_data.get("budget_amount")
+        if value is None or value == "":
             return Decimal("0")
         return value
 
@@ -51,11 +53,13 @@ class GoalAllocationForm(forms.ModelForm):
         model = GoalAllocation
         fields = ["amount"]
         widgets = {
-            "amount": forms.NumberInput(attrs={
-                "class": "input input-bordered input-sm w-24 text-right font-mono",
-                "step": "0.01",
-                "min": "0",
-            }),
+            "amount": forms.NumberInput(
+                attrs={
+                    "class": "input input-bordered input-sm w-24 text-right font-mono",
+                    "step": "0.01",
+                    "min": "0",
+                }
+            ),
         }
 
     def clean_amount(self):
