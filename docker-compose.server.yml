@@ -81,6 +81,11 @@ services:
       - PORT=8000
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     healthcheck:
       test: curl --fail http://localhost:8000/health/ || exit 1
@@ -107,6 +112,11 @@ services:
       - SECRET_KEY=${SECRET_KEY_PROD}
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     networks:
       - prod-network
@@ -127,6 +137,11 @@ services:
       - SECRET_KEY=${SECRET_KEY_PROD}
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     networks:
       - prod-network
@@ -158,6 +173,11 @@ services:
       - PORT=8001
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     healthcheck:
       test: curl --fail http://localhost:8001/health/ || exit 1
@@ -184,6 +204,11 @@ services:
       - SECRET_KEY=${SECRET_KEY_DEV}
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     networks:
       - dev-network
@@ -204,6 +229,11 @@ services:
       - SECRET_KEY=${SECRET_KEY_DEV}
       - TURNSTILE_KEY=${TURNSTILE_KEY}
       - TURNSTILE_SECRET=${TURNSTILE_SECRET}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-anymail.backends.mailgun.EmailBackend}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - SERVER_EMAIL=${SERVER_EMAIL}
     restart: unless-stopped
     networks:
       - dev-network
