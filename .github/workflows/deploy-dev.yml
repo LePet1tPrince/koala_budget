@@ -78,6 +78,7 @@ jobs:
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
           port: ${{ secrets.DROPLET_PORT || 22 }}
+          command_timeout: 30m
           script: |
             cd ${{ secrets.DROPLET_PROJECT_PATH || '/opt/koala_budget_pegasus' }}
 
