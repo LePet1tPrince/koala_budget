@@ -9,9 +9,14 @@
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
     <h3 class="pg-subtitle">{% translate "Accounts" %}</h3>
-    <a href="{% url 'accounts:account_create' request.team.slug %}" class="pg-button-primary">
-      {% translate "New Account" %}
-    </a>
+    <div class="flex gap-2">
+      <a href="{% url 'accounts:account_bulk_edit' request.team.slug %}" class="pg-button-secondary">
+        {% translate "Bulk Edit" %}
+      </a>
+      <a href="{% url 'accounts:account_create' request.team.slug %}" class="pg-button-primary">
+        {% translate "New Account" %}
+      </a>
+    </div>
   </div>
   {% if object_list %}
     <div class="overflow-x-auto">

@@ -36,6 +36,7 @@ export default defineConfig({
         'bank-feed': path.resolve(__dirname, './assets/javascript/bank_feed/react/line-app.jsx'),
         'transactions': path.resolve(__dirname, './assets/javascript/transactions/transactions-app.jsx'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
+        'accounts-bulk-edit': path.resolve(__dirname, './assets/javascript/accounts/account-bulk-edit.jsx'),
       },
       output: {
         // Output JS bundles to js/ directory with -bundle suffix

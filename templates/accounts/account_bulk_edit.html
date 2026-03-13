@@ -1,0 +1,14 @@
+{% extends "web/app/app_base.html" %}
+{% load django_vite %}
+{% load i18n %}
+
+{% block app %}
+  <div id="accounts-bulk-edit-app"></div>
+  {{ api_urls|json_script:"api-urls" }}
+  {{ request.team.slug|json_script:"team-slug" }}
+{% endblock %}
+
+{% block page_js %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/accounts/account-bulk-edit.jsx' %}
+{% endblock %}

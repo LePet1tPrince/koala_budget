@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, TemplateView, UpdateView
 
+
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
 from .forms import AccountForm, AccountGroupForm, PayeeForm
@@ -94,6 +95,22 @@ class AccountListView(AccountViewMixin, ListView):
     """List all accounts."""
 
     pass
+
+
+class AccountBulkEditView(AccountViewMixin, TemplateView):
+    """Bulk edit accounts using an in-browser spreadsheet."""
+
+    template_name = "accounts/account_bulk_edit.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["api_urls"] = {
+            "data": reverse("accounts:account_bulk_data", args=[self.request.team.slug]),
+            "save": reverse("accounts:account_bulk_save", args=[self.request.team.slug]),
+            "export_csv": reverse("accounts:account_export_csv", args=[self.request.team.slug]),
+            "import_csv": reverse("accounts:account_import_csv", args=[self.request.team.slug]),
+        }
+        return context
 
 
 class AccountCreateView(AccountViewMixin, CreateView):

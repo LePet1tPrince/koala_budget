@@ -4,7 +4,7 @@ URL configuration for accounts app.
 
 from django.urls import path
 
-from . import views
+from . import api_views, views
 
 app_name = "accounts"
 
@@ -20,6 +20,11 @@ urlpatterns = [
     # Account URLs
     path("accounts/", views.AccountListView.as_view(), name="account_list"),
     path("accounts/new/", views.AccountCreateView.as_view(), name="account_create"),
+    path("accounts/bulk-edit/", views.AccountBulkEditView.as_view(), name="account_bulk_edit"),
+    path("accounts/bulk-edit/data/", api_views.AccountBulkListView.as_view(), name="account_bulk_data"),
+    path("accounts/bulk-edit/save/", api_views.AccountBulkUpdateView.as_view(), name="account_bulk_save"),
+    path("accounts/bulk-edit/export-csv/", api_views.AccountCSVExportView.as_view(), name="account_export_csv"),
+    path("accounts/bulk-edit/import-csv/", api_views.AccountCSVImportView.as_view(), name="account_import_csv"),
     path("accounts/<int:pk>/", views.AccountDetailView.as_view(), name="account_detail"),
     path("accounts/<int:pk>/update/", views.AccountUpdateView.as_view(), name="account_update"),
     path("accounts/<int:pk>/delete/", views.AccountDeleteView.as_view(), name="account_delete"),
