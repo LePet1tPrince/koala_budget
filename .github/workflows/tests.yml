@@ -62,7 +62,7 @@ jobs:
         run: |
           uv sync
 
-      - name: Run Tests
+      - name: Run Tests with Coverage
         env:
           DJANGO_DATABASE_USER: postgres
           DJANGO_DATABASE_PASSWORD: postgres_password
@@ -70,4 +70,13 @@ jobs:
           DJANGO_SETTINGS_MODULE: koala_budget.settings_test
           REDIS_URL: redis://localhost:6379
         run: |
-          uv run manage.py test
+          uv run coverage run manage.py test
+          uv run coverage report
+          uv run coverage xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
