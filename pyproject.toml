@@ -29,6 +29,30 @@ line-ending = "auto"
 # until https://github.com/celery/django-celery-beat/issues/977 is resolved
 django-celery-beat = { git = "https://github.com/celery/django-celery-beat", rev = "bd429063cbb227c00905e7693c38895e44ff8e47" }
 
+[tool.coverage.run]
+source = ["apps", "koala_budget"]
+branch = true
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/tests.py",
+    "koala_budget/settings*.py",
+    "koala_budget/wsgi.py",
+    "koala_budget/asgi.py",
+]
+
+[tool.coverage.report]
+fail_under = 50
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
 [tool.setuptools]
 py-modules = []
 
@@ -79,6 +103,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "coverage[toml]",
     "django-debug-toolbar",
     "flower",
     "pre-commit",
