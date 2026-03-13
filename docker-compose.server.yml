@@ -4,10 +4,10 @@ version: '3.8'
 # Uses profiles to manage which services to start
 #
 # Usage:
-#   docker-compose -f docker-compose.server.yml --profile shared up -d  # Start shared services
-#   docker-compose -f docker-compose.server.yml --profile prod up -d    # Start production
-#   docker-compose -f docker-compose.server.yml --profile dev up -d     # Start development
-#   docker-compose -f docker-compose.server.yml --profile shared --profile prod up -d  # Start both
+#   docker compose -f docker-compose.server.yml --env-file .env.production --profile shared up -d
+#   docker compose -f docker-compose.server.yml --env-file .env.production --profile prod up -d
+#   docker compose -f docker-compose.server.yml --env-file .env.dev --profile dev up -d
+#   docker compose -f docker-compose.server.yml --env-file .env.production --profile shared --profile prod up -d
 
 services:
   # ============================================================================
@@ -67,6 +67,7 @@ services:
     command: /start
     volumes:
       - static_files:/code/static_root
+    env_file: .env.production
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
@@ -99,6 +100,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     command: celery -A koala_budget worker -l INFO --pool threads --concurrency 20
+    env_file: .env.production
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
@@ -119,6 +121,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     command: celery -A koala_budget beat -l INFO
+    env_file: .env.production
     environment:
       - DEBUG=0
       - DJANGO_SETTINGS_MODULE=koala_budget.settings_production
@@ -145,6 +148,7 @@ services:
     command: /start
     volumes:
       - static_files:/code/static_root
+    env_file: .env.dev
     environment:
       - DEBUG=1
       - DJANGO_VITE_DEV_MODE=False
@@ -176,6 +180,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     command: celery -A koala_budget worker -l DEBUG --pool threads --concurrency 10
+    env_file: .env.dev
     environment:
       - DEBUG=1
       - DJANGO_SETTINGS_MODULE=koala_budget.settings
@@ -196,6 +201,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     command: celery -A koala_budget beat -l DEBUG
+    env_file: .env.dev
     environment:
       - DEBUG=1
       - DJANGO_SETTINGS_MODULE=koala_budget.settings

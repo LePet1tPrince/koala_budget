@@ -37,13 +37,11 @@ for _host in ["localhost", "127.0.0.1"]:
 
 # Your email config goes here.
 # see https://github.com/anymail/django-anymail for more details / examples
-# To use mailgun, uncomment the lines below and make sure your key and domain
-# are available in the environment.
-# EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="anymail.backends.mailgun.EmailBackend")
 
-# ANYMAIL = {
-#     "MAILGUN_API_KEY": env("MAILGUN_API_KEY", default=None),
-#     "MAILGUN_SENDER_DOMAIN": env("MAILGUN_SENDER_DOMAIN", default=None),
-# }
+ANYMAIL = {
+    "MAILGUN_API_KEY": env("MAILGUN_API_KEY", default=None),
+    "MAILGUN_SENDER_DOMAIN": env("MAILGUN_SENDER_DOMAIN", default=None),
+}
 
 ADMINS = ["timothylbender@gmail.com"]
