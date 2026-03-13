@@ -1,7 +1,9 @@
 name: Deploy to Development
 
 on:
-  push:
+  pull_request:
+    types:
+      - closed
     branches:
       - develop
   workflow_dispatch:  # Allow manual triggering
@@ -66,7 +68,7 @@ jobs:
     name: Deploy to Development
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Deploy to Development Droplet via SSH
