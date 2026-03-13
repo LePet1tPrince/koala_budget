@@ -15,31 +15,30 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import Account, Payee
-from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer, PayeeSerializer
+from apps.accounts.serializers import AccountSerializer, PayeeSerializer, SimpleAccountSerializer
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from .models import BankTransaction
 from .serializers import (
-    BankTransactionSerializer,
-    CategorizeTransactionsRequestSerializer,
     BankFeedRowSerializer,
-    bank_transaction_to_feed_row,
-    journal_line_to_feed_row,
-    UploadParseResponseSerializer,
-    UploadPreviewRequestSerializer,
-    UploadPreviewResponseSerializer,
+    BatchEditRequestSerializer,
+    BatchIdsSerializer,
+    BatchReconcileRequestSerializer,
+    CategorizeTransactionsRequestSerializer,
     UploadConfirmRequestSerializer,
     UploadConfirmResponseSerializer,
-    BatchIdsSerializer,
-    BatchEditRequestSerializer,
-    BatchReconcileRequestSerializer,
+    UploadParseResponseSerializer,
+    UploadPreviewResponseSerializer,
+    bank_transaction_to_feed_row,
 )
-from .services.csv_upload import parse_file, preview_transactions, create_transactions
+from .services.csv_upload import create_transactions, parse_file, preview_transactions
+
 
 class ManualTransactionSerializer(serializers.Serializer):
     """Serializer for creating/updating manual transactions."""
+
     date = serializers.DateField(help_text="Transaction date")
     category = serializers.IntegerField(help_text="Category account ID")
     inflow = serializers.DecimalField(
@@ -265,8 +264,6 @@ class BankFeedViewSet(
 
         return journal_entry
 
-
-
     def list(self, request, team_slug=None):
         """
         Get unified bank feed, optionally filtered by account.
@@ -283,12 +280,14 @@ class BankFeedViewSet(
 
         serializer = BankFeedRowSerializer(rows, many=True)
         # Return paginated format expected by generated API client
-        return Response({
-            "count": len(rows),
-            "next": None,
-            "previous": None,
-            "results": serializer.data,
-        })
+        return Response(
+            {
+                "count": len(rows),
+                "next": None,
+                "previous": None,
+                "results": serializer.data,
+            }
+        )
 
     def create(self, request, team_slug=None):
         """
@@ -418,9 +417,7 @@ class BankFeedViewSet(
         """
         # Get the existing bank transaction
         try:
-            bank_tx = BankTransaction.objects.select_related(
-                "account", "journal_entry"
-            ).get(id=pk, team=request.team)
+            bank_tx = BankTransaction.objects.select_related("account", "journal_entry").get(id=pk, team=request.team)
         except BankTransaction.DoesNotExist:
             return Response(
                 {"error": "Transaction not found"},
@@ -564,7 +561,9 @@ class BankFeedViewSet(
     @extend_schema(
         operation_id="bank_feed_upload_parse",
         tags=["bank-feed"],
-        request={"multipart/form-data": {"type": "object", "properties": {"file": {"type": "string", "format": "binary"}}}},
+        request={
+            "multipart/form-data": {"type": "object", "properties": {"file": {"type": "string", "format": "binary"}}}
+        },  # noqa: E501
         responses={200: UploadParseResponseSerializer},
     )
     @action(detail=False, methods=["post"], url_path="upload_parse")
@@ -591,12 +590,17 @@ class BankFeedViewSet(
     @extend_schema(
         operation_id="bank_feed_upload_preview",
         tags=["bank-feed"],
-        request={"multipart/form-data": {"type": "object", "properties": {
-            "file": {"type": "string", "format": "binary"},
-            "account_id": {"type": "integer"},
-            "column_mapping": {"type": "string"},
-            "category_mappings": {"type": "string"},
-        }}},
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "format": "binary"},
+                    "account_id": {"type": "integer"},
+                    "column_mapping": {"type": "string"},
+                    "category_mappings": {"type": "string"},
+                },
+            }
+        },
         responses={200: UploadPreviewResponseSerializer},
     )
     @action(detail=False, methods=["post"], url_path="upload_preview")
@@ -638,10 +642,7 @@ class BankFeedViewSet(
         try:
             category_mappings_list = json.loads(request.data.get("category_mappings", "[]"))
             # Convert list of {category_name, account_id} to dict
-            category_mappings = {
-                item["category_name"]: item["account_id"]
-                for item in category_mappings_list
-            }
+            category_mappings = {item["category_name"]: item["account_id"] for item in category_mappings_list}
         except (json.JSONDecodeError, KeyError):
             category_mappings = {}
 
@@ -986,7 +987,9 @@ class BankFeedViewSet(
         uncategorized = [tx for tx in transactions if not tx.journal_entry]
         if uncategorized:
             return Response(
-                {"error": f"Cannot reconcile uncategorized transactions. {len(uncategorized)} transaction(s) need to be categorized first."},
+                {
+                    "error": f"Cannot reconcile uncategorized transactions. {len(uncategorized)} transaction(s) need to be categorized first."  # noqa: E501
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1022,7 +1025,7 @@ class BankFeedViewSet(
         Creates a BankTransaction with source='S' and a JournalEntry linking to an 'Adjustments' account.
         The adjustment is marked as reconciled immediately.
         """
-        from apps.accounts.models import AccountGroup, ACCOUNT_TYPE_EXPENSE
+        from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, AccountGroup
 
         # First, find or create an expense group for adjustments
         expense_group = AccountGroup.objects.filter(
@@ -1062,7 +1065,7 @@ class BankFeedViewSet(
         abs_amount = abs(amount)
         if amount > 0:
             # Positive adjustment: debit bank account, credit adjustments
-            bank_line = JournalLine.objects.create(
+            JournalLine.objects.create(
                 journal_entry=journal_entry,
                 team=team,
                 account=bank_account,
@@ -1079,7 +1082,7 @@ class BankFeedViewSet(
             )
         else:
             # Negative adjustment: credit bank account, debit adjustments
-            bank_line = JournalLine.objects.create(
+            JournalLine.objects.create(
                 journal_entry=journal_entry,
                 team=team,
                 account=bank_account,
@@ -1154,7 +1157,13 @@ def bank_feed_home(request, team_slug):
     Displays accounts with bank feeds and bank transactions table.
     """
     # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
-    accounts_with_feeds = Account.for_team.filter(has_feed=True).with_balance().with_reconciled_balance().select_related("account_group").order_by("name")
+    accounts_with_feeds = (
+        Account.for_team.filter(has_feed=True)
+        .with_balance()
+        .with_reconciled_balance()
+        .select_related("account_group")
+        .order_by("name")
+    )  # noqa: E501
 
     # Serialize accounts for React
     accounts_data = AccountSerializer(accounts_with_feeds, many=True).data

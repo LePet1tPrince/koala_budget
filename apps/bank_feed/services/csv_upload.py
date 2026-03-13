@@ -158,20 +158,12 @@ def parse_amount(value: str) -> Decimal | None:
         last_comma = value.rfind(",")
         last_period = value.rfind(".")
 
-        if last_period > last_comma:
-            # Period is decimal separator, remove commas
-            value = value.replace(",", "")
-        else:
-            # Comma is decimal separator, remove periods and convert comma
-            value = value.replace(".", "").replace(",", ".")
+        value = value.replace(",", "") if last_period > last_comma else value.replace(".", "").replace(",", ".")
     elif has_comma:
         # Could be thousands separator (1,000) or decimal separator (1,50)
         # Check if there are exactly 2 digits after the comma (European decimal)
         parts = value.split(",")
-        if len(parts) == 2 and len(parts[1]) == 2:
-            value = value.replace(",", ".")
-        else:
-            value = value.replace(",", "")
+        value = value.replace(",", ".") if len(parts) == 2 and len(parts[1]) == 2 else value.replace(",", "")
 
     try:
         amount = Decimal(value)
@@ -286,9 +278,11 @@ def match_category(category_name: str, team) -> Account | None:
     category_name = category_name.strip()
 
     # Try exact match on name (case-insensitive) or account_number
-    account = Account.objects.filter(team=team).filter(
-        Q(name__iexact=category_name) | Q(account_number__iexact=category_name)
-    ).first()
+    account = (
+        Account.objects.filter(team=team)
+        .filter(Q(name__iexact=category_name) | Q(account_number__iexact=category_name))
+        .first()
+    )
 
     return account
 

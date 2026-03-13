@@ -584,8 +584,8 @@ PLAID_ENV = env("PLAID_ENV", default="https://sandbox.plaid.com")
 # Generate a proper Fernet key from the SECRET_KEY
 # In production, set FIELD_ENCRYPTION_KEY in your .env file to a proper Fernet key
 # You can generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-import base64
-import hashlib
+import base64  # noqa: E402
+import hashlib  # noqa: E402
 
 _default_key = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest())
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default=_default_key.decode())
@@ -662,7 +662,7 @@ BOOTSTRAP_TEAM_ON_CREATE = True
 STRICT_TEAM_CONTEXT = True
 
 # settings.py
-ICON_PICKER_PATH = 'static/images/icons'
+ICON_PICKER_PATH = "static/images/icons"
 
 # default icon color
 ICON_PICKER_COLOR = "#00bcc9"

@@ -152,14 +152,18 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         - account: Account ID to filter by
         - month: Month to filter by (YYYY-MM-DD format)
         """
-        qs = JournalLine.objects.filter(
-            team=self.request.team,
-        ).select_related(
-            "account",
-            "account__account_group",
-            "journal_entry",
-            "journal_entry__payee",
-        ).prefetch_related("journal_entry__lines__account")
+        qs = (
+            JournalLine.objects.filter(
+                team=self.request.team,
+            )
+            .select_related(
+                "account",
+                "account__account_group",
+                "journal_entry",
+                "journal_entry__payee",
+            )
+            .prefetch_related("journal_entry__lines__account")
+        )
 
         # Filter by account (category) if provided
         account_id = self.request.query_params.get("account")
@@ -200,7 +204,9 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         operation_id="simple_lines_recategorize",
         tags=["journal"],
         request={"application/json": {"type": "object", "properties": {"new_category_id": {"type": "integer"}}}},
-        responses={200: {"type": "object", "properties": {"status": {"type": "string"}, "line_id": {"type": "integer"}}}},
+        responses={
+            200: {"type": "object", "properties": {"status": {"type": "string"}, "line_id": {"type": "integer"}}}
+        },  # noqa: E501
     )
     @action(detail=True, methods=["post"])
     def recategorize(self, request, pk=None, team_slug=None):
@@ -224,10 +230,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        new_category = get_object_or_404(
-            Account.objects.filter(team=self.request.team),
-            id=new_category_id
-        )
+        new_category = get_object_or_404(Account.objects.filter(team=self.request.team), id=new_category_id)
         line.account = new_category
         line.save()
 
@@ -248,8 +251,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     def get_queryset(self):
         return (
-            JournalEntry.for_team
-            .select_related("payee")
+            JournalEntry.for_team.select_related("payee")
             .prefetch_related("lines__account")
             .annotate(line_count=Count("lines"))
             .filter(line_count=2)

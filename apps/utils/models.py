@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 
+
 class BaseModel(models.Model):
     """
     Base model that includes default created / updated timestamps.

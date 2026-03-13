@@ -61,9 +61,7 @@ services:
   web-prod:
     profiles: ["prod"]
     container_name: koala-web-prod
-    build:
-      context: .
-      dockerfile: Dockerfile.web
+    image: ghcr.io/lepet1tprince/koala-budget-web:latest
     command: /start
     volumes:
       - static_files:/code/static_root
@@ -96,9 +94,7 @@ services:
   celery-prod:
     profiles: ["prod"]
     container_name: koala-celery-prod
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: ghcr.io/lepet1tprince/koala-budget-worker:latest
     command: celery -A koala_budget worker -l INFO --pool threads --concurrency 20
     env_file: .env.production
     environment:
@@ -117,9 +113,7 @@ services:
   celery-beat-prod:
     profiles: ["prod"]
     container_name: koala-celery-beat-prod
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: ghcr.io/lepet1tprince/koala-budget-worker:latest
     command: celery -A koala_budget beat -l INFO
     env_file: .env.production
     environment:
@@ -142,9 +136,7 @@ services:
   web-dev:
     profiles: ["dev"]
     container_name: koala-web-dev
-    build:
-      context: .
-      dockerfile: Dockerfile.web
+    image: ghcr.io/lepet1tprince/koala-budget-web:develop
     command: /start
     volumes:
       - static_files:/code/static_root
@@ -176,9 +168,7 @@ services:
   celery-dev:
     profiles: ["dev"]
     container_name: koala-celery-dev
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: ghcr.io/lepet1tprince/koala-budget-worker:develop
     command: celery -A koala_budget worker -l DEBUG --pool threads --concurrency 10
     env_file: .env.dev
     environment:
@@ -197,9 +187,7 @@ services:
   celery-beat-dev:
     profiles: ["dev"]
     container_name: koala-celery-beat-dev
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: ghcr.io/lepet1tprince/koala-budget-worker:develop
     command: celery -A koala_budget beat -l DEBUG
     env_file: .env.dev
     environment:

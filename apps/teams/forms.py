@@ -33,9 +33,7 @@ class TeamSignupForm(TurnstileSignupForm):
             _("Privacy Policy"),
         )
         self.fields["terms_agreement"].label = mark_safe(
-            _("I agree to the {terms_link} and {privacy_link}").format(
-                terms_link=terms_link, privacy_link=privacy_link
-            )
+            _("I agree to the {terms_link} and {privacy_link}").format(terms_link=terms_link, privacy_link=privacy_link)
         )
 
     def clean(self):

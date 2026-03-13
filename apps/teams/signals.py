@@ -31,12 +31,13 @@ def add_user_to_team(request, user, **kwargs):
         # the user has open invitations
         create_default_team_for_user(user)
 
+
 @receiver(post_save, sender=Team)
 def bootstrap_team_on_create(sender, instance, created, **kwargs):
     if not created:
         return
 
-    if not getattr(settings, 'BOOTSTRAP_TEAM_ON_CREATE', True):
+    if not getattr(settings, "BOOTSTRAP_TEAM_ON_CREATE", True):
         return
 
     month_start = date.today().replace(day=1)

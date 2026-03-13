@@ -41,6 +41,22 @@ else
     PROFILE="dev"
 fi
 
+wait_for_healthy() {
+    local container=$1
+    local timeout=${2:-60}
+    local elapsed=0
+    echo "Waiting for $container to be healthy..."
+    until [ "$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null)" = "healthy" ]; do
+        if [ $elapsed -ge $timeout ]; then
+            echo -e "${RED}❌ Timed out waiting for $container${NC}"
+            return 1
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+    echo -e "${GREEN}✅ $container is healthy${NC}"
+}
+
 echo "🚀 Starting ${ENV_NAME} deployment..."
 echo ""
 
@@ -71,18 +87,17 @@ set +a
 echo -e "${BLUE}🔗 Checking shared services (PostgreSQL & Redis)...${NC}"
 docker compose -f docker-compose.server.yml --profile shared up -d
 
-echo -e "${YELLOW}⏳ Waiting for shared services to be healthy...${NC}"
-sleep 10
+wait_for_healthy koala-postgres-shared 60
+wait_for_healthy koala-redis-shared 60
 
 # Create database if it doesn't exist
 echo -e "${YELLOW}📊 Ensuring ${ENV_NAME} database exists...${NC}"
 docker exec koala-postgres-shared psql -U ${POSTGRES_USER:-postgres} -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" | grep -q 1 || \
 docker exec koala-postgres-shared psql -U ${POSTGRES_USER:-postgres} -c "CREATE DATABASE ${DB_NAME};"
 
-# Build images
-echo -e "${YELLOW}🏗️  Building Docker images for ${ENV_NAME}...${NC}"
-export DOCKER_BUILDKIT=1
-docker compose -f docker-compose.server.yml --profile $PROFILE build
+# Pull latest images
+echo -e "${YELLOW}📦 Pulling Docker images for ${ENV_NAME}...${NC}"
+docker compose -f docker-compose.server.yml --profile $PROFILE pull
 
 # Stop services gracefully
 echo -e "${YELLOW}⬇️  Stopping ${ENV_NAME} services gracefully...${NC}"
@@ -92,16 +107,9 @@ docker compose -f docker-compose.server.yml --profile $PROFILE down
 echo -e "${YELLOW}⬆️  Starting ${ENV_NAME} services...${NC}"
 docker compose -f docker-compose.server.yml --profile $PROFILE up -d
 
-echo -e "${YELLOW}⏳ Waiting for services to be healthy...${NC}"
-sleep 15
-
-# Check if web service is healthy
+# Wait for web service to become healthy
 WEB_CONTAINER="koala-web-${ENV}"
-if docker ps | grep $WEB_CONTAINER | grep -q "healthy\|Up"; then
-    echo -e "${GREEN}✅ ${ENV_NAME} web service is running${NC}"
-else
-    echo -e "${YELLOW}⚠️  Warning: ${ENV_NAME} web service might not be healthy yet${NC}"
-fi
+wait_for_healthy "$WEB_CONTAINER" 120
 
 # Clean up
 echo -e "${YELLOW}🧹 Cleaning up old Docker images...${NC}"

@@ -15,10 +15,8 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_INCOME,
     Account,
     AccountGroup,
-    Payee,
 )
 from apps.bank_feed.models import BankTransaction
-from apps.journal.models import JournalEntry
 from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
@@ -40,9 +38,7 @@ class BatchEditTest(TestCase):
         cls.expense_group = AccountGroup.objects.create(
             team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.income_group = AccountGroup.objects.create(
-            team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME
-        )
+        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
 
         cls.bank_account = Account.objects.create(
             team=cls.team,
@@ -319,8 +315,6 @@ class RetrieveEndpointRemovedTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
         with current_team(self.team):
-            resp = self.client.get(
-                f"/a/{self.team.slug}/bankfeed/api/feed/{tx.id}/"
-            )
+            resp = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/{tx.id}/")
         # Should return 405 Method Not Allowed since retrieve is removed
         self.assertIn(resp.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED])
