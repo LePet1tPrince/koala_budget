@@ -197,7 +197,7 @@ const EditTransactionModal = ({
     : (saving ? gettext('Saving...') : gettext('Save'));
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth data-testid="edit-transaction-modal">
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -306,10 +306,10 @@ const EditTransactionModal = ({
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={saving}>
+        <Button onClick={onClose} disabled={saving} data-testid="modal-cancel-btn">
           {gettext('Cancel')}
         </Button>
-        <Button onClick={handleSave} variant="contained" disabled={saving}>
+        <Button onClick={handleSave} variant="contained" disabled={saving} data-testid="modal-save-btn">
           {saveButtonText}
         </Button>
       </DialogActions>

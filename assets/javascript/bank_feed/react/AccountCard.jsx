@@ -13,7 +13,7 @@ const AccountCard = ({ account, isSelected, onClick }) => {
   }`;
 
   return (
-    <div className={cardClasses} onClick={() => onClick(account)}>
+    <div className={cardClasses} onClick={() => onClick(account)} data-testid={`account-card-${account.id}`}>
       <div className="card-body p-4">
         <h3 className="card-title text-base">
           {account.name}

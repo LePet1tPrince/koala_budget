@@ -19,3 +19,16 @@ ALLOWED_HOSTS = ["*"]
 # Disable Stripe live mode and Plaid in tests
 STRIPE_LIVE_MODE = False
 PLAID_ENV = "sandbox"
+
+# Use the Vite dev server for E2E tests.
+# When running tests, ensure the 'vite' Docker service is also running
+# (e.g. via `make start-bg` before `make test-e2e`).
+# Alternatively run `make npm-build` once to produce static assets,
+# then set DJANGO_VITE_DEV_MODE=False here to use the build output.
+DJANGO_VITE = {
+    "default": {
+        "dev_mode": True,
+        "dev_server_port": 5173,
+        "manifest_path": BASE_DIR / "static" / ".vite" / "manifest.json",  # noqa: F405
+    }
+}

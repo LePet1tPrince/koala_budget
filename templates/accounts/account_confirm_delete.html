@@ -13,7 +13,7 @@
   <form method="post">{% csrf_token %}
     <p class="mb-4">{% blocktranslate with name=account.name %}Are you sure you want to delete "{{ name }}"?{% endblocktranslate %}</p>
     <div class="flex gap-2">
-      <input type="submit" class="pg-button-danger" value="{% translate 'Delete' %}">
+      <input type="submit" class="pg-button-danger" value="{% translate 'Delete' %}" data-testid="confirm-delete-btn">
       <a href="{{ account.get_absolute_url }}" class="pg-button-secondary">{% translate "Cancel" %}</a>
     </div>
   </form>
