@@ -7,10 +7,10 @@ from .base import BasePage
 
 class AccountsPage(BasePage):
     def list_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/accounts/"
+        return f"/a/{team_slug}/accounts/accounts/"
 
     def create_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/accounts/new/"
+        return f"/a/{team_slug}/accounts/accounts/new/"
 
     # ------------------------------------------------------------------
     # Navigation

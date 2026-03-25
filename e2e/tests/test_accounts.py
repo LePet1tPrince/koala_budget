@@ -42,14 +42,14 @@ def test_create_account(authenticated_page: Page, live_server, team):
     )
 
     # Should redirect back to accounts area after save
-    assert f"/a/{team.slug}/accounts" in authenticated_page.url
+    assert f"/a/{team.slug}/accounts/accounts" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)
 def test_account_list_empty_state(authenticated_page: Page, live_server, team):
     """With no accounts, the list page shows an empty state message."""
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto(f"/a/{team.slug}/accounts/", wait_for="[data-testid='new-account-btn'], p.text-gray-500")
+    accounts.goto(f"/a/{team.slug}/accounts/accounts/", wait_for="[data-testid='new-account-btn'], p.text-gray-500")
 
     assert not accounts.has_table()
     assert authenticated_page.locator("text=No accounts yet.").is_visible()
@@ -62,8 +62,8 @@ def test_cancel_create_account_returns_to_list(authenticated_page: Page, live_se
     accounts.goto_create(team.slug)
     accounts.click_cancel()
 
-    authenticated_page.wait_for_url(f"**/a/{team.slug}/accounts/", timeout=5_000)
-    assert f"/a/{team.slug}/accounts/" in authenticated_page.url
+    authenticated_page.wait_for_url(f"**/a/{team.slug}/accounts/accounts/", timeout=5_000)
+    assert f"/a/{team.slug}/accounts/accounts/" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)
