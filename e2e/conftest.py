@@ -7,8 +7,15 @@ Key fixtures:
 - team_page: alias for authenticated_page, used in tests that need a full team context
 """
 
+import os
+
 import pytest
 from django.contrib.auth import get_user_model
+
+# pytest-playwright runs inside an asyncio event loop; Django raises
+# SynchronousOnlyOperation when sync DB calls are made from async context.
+# Setting this env var opts in to allowing that (safe for test-only use).
+os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 from playwright.sync_api import Page
 
 from apps.teams.helpers import create_default_team_for_user
