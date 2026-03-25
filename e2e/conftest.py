@@ -59,7 +59,7 @@ def authenticated_page(page: Page, live_server, user, team) -> Page:
     page.goto(f"{live_server.url}/accounts/login/")
     page.locator("[name='login']").fill(user.email)
     page.locator("[name='password']").fill("testpass123")
-    page.locator("[type='submit']").click()
+    page.locator("[data-testid='login-btn']").click()
     # Home view redirects authenticated users to /a/<team_slug>/
     page.wait_for_url(f"**/a/{team.slug}/**", timeout=10_000)
     return page

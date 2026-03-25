@@ -15,7 +15,7 @@
           {% render_field form.login %}
           {% render_field form.password %}
           <div>
-            <input class="btn btn-primary btn-block" type="submit" value="{% translate "Sign In" %}">
+            <input class="btn btn-primary btn-block" type="submit" value="{% translate "Sign In" %}" data-testid="login-btn">
           </div>
         </form>
         {% include 'account/components/social/social_buttons.html' %}

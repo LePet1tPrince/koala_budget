@@ -14,7 +14,7 @@ class LoginPage(BasePage):
     def login(self, email: str, password: str):
         self.page.locator("[name='login']").fill(email)
         self.page.locator("[name='password']").fill(password)
-        self.page.locator("[type='submit']").click()
+        self.page.locator("[data-testid='login-btn']").click()
 
     def is_showing_error(self) -> bool:
         """Returns True if an authentication error message is visible."""
