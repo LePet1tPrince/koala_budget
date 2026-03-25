@@ -55,6 +55,14 @@ test: ## Run Django tests
 		-e DJANGO_SETTINGS_MODULE=koala_budget.settings_test \
 		web python manage.py test ${ARGS}
 
+e2e-install: ## Install Playwright browser binaries (run once after e2e deps install)
+	@docker compose run --rm --no-deps web uv run playwright install --with-deps chromium
+
+test-e2e: ## Run E2E tests with Playwright (requires running DB and Redis)
+	@docker compose run --rm \
+		-e DJANGO_SETTINGS_MODULE=koala_budget.settings_e2e \
+		web uv run pytest e2e/ -v ${ARGS}
+
 
 init: setup-env start-bg migrations migrate  ## Quickly get up and running (start containers and bootstrap DB)
 
