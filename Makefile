@@ -55,18 +55,19 @@ test: ## Run Django tests
 		-e DJANGO_SETTINGS_MODULE=koala_budget.settings_test \
 		web python manage.py test ${ARGS}
 
-e2e-install: ## Install Playwright browser binaries (run once after e2e deps install)
-	@docker compose run --rm --no-deps web uv run playwright install --with-deps chromium
+e2e-install: ## Install E2E deps and Playwright browser binaries (run once)
+	@docker compose run --rm web uv sync --group e2e
+	@docker compose run --rm web uv run playwright install --with-deps chromium
 
 test-e2e: ## Run E2E tests with Playwright. React-page tests need 'make start-bg' first (Vite dev server).
 	@docker compose run --rm \
 		-e DJANGO_SETTINGS_MODULE=koala_budget.settings_e2e \
-		web uv run pytest e2e/ -v ${ARGS}
+		web bash -c "uv sync --group e2e && uv run pytest e2e/ -v $(ARGS)"
 
 test-e2e-accounts: ## Run only the accounts E2E tests (no Vite dev server required)
 	@docker compose run --rm \
 		-e DJANGO_SETTINGS_MODULE=koala_budget.settings_e2e \
-		web uv run pytest e2e/tests/test_auth.py e2e/tests/test_accounts.py -v ${ARGS}
+		web bash -c "uv sync --group e2e && uv run pytest e2e/tests/test_auth.py e2e/tests/test_accounts.py -v $(ARGS)"
 
 
 init: setup-env start-bg migrations migrate  ## Quickly get up and running (start containers and bootstrap DB)
