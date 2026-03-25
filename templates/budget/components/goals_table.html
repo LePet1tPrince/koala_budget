@@ -1,7 +1,7 @@
 {% load i18n %}
 
 <!-- Summary Card -->
-<div class="stats shadow mb-6 w-full">
+<div class="stats shadow mb-6 w-full" data-testid="goals-summary">
   <div class="stat">
     <div class="stat-title">{% translate "Total Goals" %}</div>
     <div class="stat-value">{{ summary.goal_count }}</div>
@@ -18,7 +18,7 @@
 
 <!-- Goals Table -->
 <div class="overflow-x-auto bg-base-100 rounded-lg shadow">
-  <table class="table w-full">
+  <table class="table w-full" data-testid="goals-table">
     <thead>
       <tr>
         <th>{% translate "Goal" %}</th>
@@ -31,7 +31,7 @@
     </thead>
     <tbody>
       {% for item in goals_with_forms %}
-      <tr>
+      <tr data-testid="goal-row">
         <td>
           <a href="{% url 'budget:goal_detail' team_slug=request.team.slug pk=item.goal.pk %}" class="link link-hover">
             <div class="font-medium">{{ item.goal.name }}</div>

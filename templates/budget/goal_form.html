@@ -20,7 +20,7 @@
 
     <div class="card bg-base-100 shadow-xl">
       <div class="card-body">
-        <form method="post">
+        <form method="post" data-testid="goal-form">
           {% csrf_token %}
 
           <div class="form-control mb-4">
@@ -64,10 +64,10 @@
           </div>
 
           <div class="card-actions justify-end mt-6">
-            <a href="{% url 'budget:goals_list' team_slug=request.team.slug %}" class="btn btn-ghost">
+            <a href="{% url 'budget:goals_list' team_slug=request.team.slug %}" class="btn btn-ghost" data-testid="goal-cancel-btn">
               {% translate "Cancel" %}
             </a>
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary" data-testid="goal-submit-btn">
               {% if is_new %}{% translate "Create Goal" %}{% else %}{% translate "Save Changes" %}{% endif %}
             </button>
           </div>

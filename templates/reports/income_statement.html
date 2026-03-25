@@ -8,7 +8,7 @@
   <div class="flex justify-between items-center mb-6">
     <h1 class="pg-title">{% translate "Income Statement" %}</h1>
     <div class="flex gap-2">
-      <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm">
+      <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
         <i class="fa fa-download mr-2"></i>
         {% translate "Export CSV" %}
       </a>
@@ -27,7 +27,7 @@
 
   {% if report_data %}
   <!-- Summary Section -->
-  <div class="card bg-base-100 shadow-lg mb-6">
+  <div class="card bg-base-100 shadow-lg mb-6" data-testid="income-statement-summary">
     <div class="card-body">
       <h2 class="card-title">
         <i class="fa fa-calculator"></i>
@@ -69,7 +69,7 @@
           {% translate "Income" %}
         </h2>
         <div class="overflow-x-auto">
-          <table class="table table-zebra w-full">
+          <table class="table table-zebra w-full" data-testid="income-table">
             <thead>
               <tr>
                 <th>{% translate "Account" %}</th>
@@ -107,7 +107,7 @@
           {% translate "Expenses" %}
         </h2>
         <div class="overflow-x-auto">
-          <table class="table table-zebra w-full">
+          <table class="table table-zebra w-full" data-testid="expenses-table">
             <thead>
               <tr>
                 <th>{% translate "Account" %}</th>

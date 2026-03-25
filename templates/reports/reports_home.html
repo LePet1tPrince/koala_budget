@@ -16,7 +16,7 @@
         </h2>
         <p class="text-sm text-gray-600">{% translate "Compare income and expenses over a selected time period to see your profit or loss." %}</p>
         <div class="card-actions justify-end">
-          <a href="{% url 'reports:income_statement' request.team.slug %}" class="btn btn-primary">
+          <a href="{% url 'reports:income_statement' request.team.slug %}" class="btn btn-primary" data-testid="report-link-income-statement">
             {% translate "View Report" %}
           </a>
         </div>
@@ -32,7 +32,7 @@
         </h2>
         <p class="text-sm text-gray-600">{% translate "View your assets, liabilities, and equity as of a specific date." %}</p>
         <div class="card-actions justify-end">
-          <a href="{% url 'reports:balance_sheet' request.team.slug %}" class="btn btn-primary">
+          <a href="{% url 'reports:balance_sheet' request.team.slug %}" class="btn btn-primary" data-testid="report-link-balance-sheet">
             {% translate "View Report" %}
           </a>
         </div>
@@ -48,7 +48,7 @@
         </h2>
         <p class="text-sm text-gray-600">{% translate "Track how your net worth changes over time with a monthly chart." %}</p>
         <div class="card-actions justify-end">
-          <a href="{% url 'reports:net_worth_trend' request.team.slug %}" class="btn btn-primary">
+          <a href="{% url 'reports:net_worth_trend' request.team.slug %}" class="btn btn-primary" data-testid="report-link-net-worth-trend">
             {% translate "View Report" %}
           </a>
         </div>

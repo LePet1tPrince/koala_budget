@@ -2,7 +2,7 @@
 
 <!-- Budget Table -->
 <div class="overflow-x-auto bg-base-100 rounded-lg shadow">
-  <table class="table w-full">
+  <table class="table w-full" data-testid="budget-table">
     <thead>
       <tr>
         <th>{% translate "Category" %}</th>
@@ -21,7 +21,7 @@
 
         <!-- Group Rows -->
         {% for row in group_data.rows %}
-        <tr>
+        <tr data-testid="budget-row">
           <td class="pl-8">
             <a href="{% url 'reports:account_activity' request.team.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget" class="link link-primary">
               <div class="font-medium">{{ row.category.name }}</div>
@@ -56,7 +56,7 @@
           </td>
 
           <td class="text-center">
-            <button type="submit" form="budget-form-{{ row.form.instance.id }}" class="btn btn-primary btn-sm">
+            <button type="submit" form="budget-form-{{ row.form.instance.id }}" class="btn btn-primary btn-sm" data-testid="budget-save-btn">
               {% translate "Save" %}
             </button>
           </td>
@@ -86,14 +86,14 @@
         </tr>
       {% empty %}
       <tr>
-        <td colspan="5" class="text-center text-gray-500 py-8">
+        <td colspan="5" class="text-center text-gray-500 py-8" data-testid="budget-empty-state">
           {% translate "No budget categories found. Please add income or expense accounts first." %}
         </td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr class="bg-primary text-primary-content font-bold text-lg">
+      <tr class="bg-primary text-primary-content font-bold text-lg" data-testid="budget-grand-total">
         <td>{% translate "Grand Total" %}</td>
         <td class="text-right">
           <span class="font-mono">{{ grand_totals.budgeted|floatformat:2 }}</span>

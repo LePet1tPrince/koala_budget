@@ -23,7 +23,7 @@
             <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Next" %}</a>
           </div>
         </noscript>
-        <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-primary btn-sm">
+        <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-primary btn-sm" data-testid="new-goal-btn">
           + {% translate "New Goal" %}
         </a>
       </div>
