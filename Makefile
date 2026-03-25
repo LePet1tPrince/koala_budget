@@ -56,8 +56,7 @@ test: ## Run Django tests
 		web python manage.py test ${ARGS}
 
 e2e-install: ## Install E2E deps and Playwright browser binaries (run once)
-	@docker compose run --rm web uv sync --group e2e
-	@docker compose run --rm web uv run playwright install --with-deps chromium
+	@docker compose run --rm web bash -c "uv sync --group e2e && uv run playwright install --with-deps chromium"
 
 test-e2e: ## Run E2E tests with Playwright. React-page tests need 'make start-bg' first (Vite dev server).
 	@docker compose run --rm \
