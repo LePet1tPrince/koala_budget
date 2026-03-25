@@ -16,8 +16,9 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_INCOME,
     Account,
     AccountGroup,
+    Payee,
 )
-from apps.journal.models import JournalEntry, JournalLine, Payee
+from apps.journal.models import JournalEntry, JournalLine
 from apps.teams import roles
 from apps.teams.models import Membership, Team
 
