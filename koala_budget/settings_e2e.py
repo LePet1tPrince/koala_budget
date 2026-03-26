@@ -32,6 +32,7 @@ AUTH_RATE_LIMIT_MAX_REQUESTS = 10000
 DJANGO_VITE = {
     "default": {
         "dev_mode": env.bool("DJANGO_VITE_DEV_MODE", default=True),  # noqa: F405
+        "dev_server_host": os.environ.get("VITE_DEV_SERVER_HOST", "localhost"),  # noqa: F405
         "dev_server_port": 5173,
         "manifest_path": BASE_DIR / "static" / ".vite" / "manifest.json",  # noqa: F405
     }
