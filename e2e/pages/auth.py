@@ -1,7 +1,5 @@
 """Page Object Models for authentication pages."""
 
-from playwright.sync_api import Page
-
 from .base import BasePage
 
 

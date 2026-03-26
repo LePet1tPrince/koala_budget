@@ -13,16 +13,15 @@ export CSV button presence.
 import pytest
 from playwright.sync_api import Page
 
+from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
 from e2e.factories import (
     AccountFactory,
-    IncomeAccountGroupFactory,
     AccountGroupFactory,
+    IncomeAccountGroupFactory,
     JournalEntryFactory,
     JournalLineFactory,
 )
 from e2e.pages.reports import ReportsPage
-
-from apps.accounts.models import ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE
 
 
 @pytest.mark.django_db(transaction=True)

@@ -1,7 +1,5 @@
 """Page Object Model for the Reports section (Django-template rendered)."""
 
-from playwright.sync_api import Page
-
 from .base import BasePage
 
 

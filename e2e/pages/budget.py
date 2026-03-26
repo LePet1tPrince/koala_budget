@@ -1,7 +1,5 @@
 """Page Object Models for the Budget and Goals pages (Django-template rendered)."""
 
-from playwright.sync_api import Page
-
 from .base import BasePage
 
 

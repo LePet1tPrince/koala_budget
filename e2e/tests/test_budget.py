@@ -12,7 +12,7 @@ Covers: budget table display, goals list, create goal, cancel goal form.
 import pytest
 from playwright.sync_api import Page
 
-from e2e.factories import AccountGroupFactory, IncomeAccountFactory, AccountFactory
+from e2e.factories import AccountFactory, AccountGroupFactory
 from e2e.pages.budget import BudgetPage
 
 
