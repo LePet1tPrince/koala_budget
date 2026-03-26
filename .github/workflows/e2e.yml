@@ -80,7 +80,7 @@ jobs:
           DJANGO_VITE_DEV_MODE: "False"
           REDIS_URL: redis://localhost:6379
           SECRET_KEY: ci-secret-key-not-for-production
-        run: uv run pytest e2e/ -v --screenshot on-failure --output e2e-results/
+        run: uv run pytest e2e/ -v --screenshot only-on-failure --output e2e-results/
 
       # ── Artifacts ────────────────────────────────────────────────────
       - name: Upload failure screenshots
