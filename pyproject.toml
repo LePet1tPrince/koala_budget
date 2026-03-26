@@ -56,6 +56,8 @@ exclude_lines = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "koala_budget.settings_e2e"
 testpaths = ["e2e"]
+# Give Playwright 30 s for navigation/actions (built JS bundles are slower in CI)
+playwright_timeout = 30000
 
 [tool.setuptools]
 py-modules = []

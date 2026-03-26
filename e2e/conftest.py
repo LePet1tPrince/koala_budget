@@ -61,7 +61,9 @@ def authenticated_page(page: Page, live_server, user, team) -> Page:
     page.locator("[name='password']").fill("testpass123")
     page.locator("[data-testid='login-btn']").click()
     # Home view redirects authenticated users to /a/<team_slug>/
-    page.wait_for_url(f"**/a/{team.slug}/**", timeout=10_000)
+    # Use domcontentloaded (not load) so we don't wait for the full JS bundle
+    # to execute — that can take >10 s on loaded CI runners.
+    page.wait_for_url(f"**/a/{team.slug}/**", timeout=30_000, wait_until="domcontentloaded")
     return page
 
 
