@@ -8,6 +8,7 @@ Key fixtures:
 """
 
 import os
+import socket
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -71,3 +72,40 @@ def authenticated_page(page: Page, live_server, user, team) -> Page:
 def team_page(authenticated_page: Page) -> Page:
     """Alias used by tests that operate in the context of a team workspace."""
     return authenticated_page
+
+
+# ---------------------------------------------------------------------------
+# Vite / React asset availability
+# ---------------------------------------------------------------------------
+
+
+def _vite_dev_server_reachable() -> bool:
+    """Return True if the Vite dev server is listening on port 5173."""
+    try:
+        with socket.create_connection(("127.0.0.1", 5173), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+@pytest.fixture(scope="session")
+def vite_available() -> bool:
+    """
+    True when React assets are accessible — either pre-built (DJANGO_VITE_DEV_MODE=False)
+    or served live by the Vite dev server on port 5173.
+    """
+    dev_mode = os.environ.get("DJANGO_VITE_DEV_MODE", "True").lower() not in ("false", "0")
+    if not dev_mode:
+        return True  # built assets are served statically; no dev server needed
+    return _vite_dev_server_reachable()
+
+
+@pytest.fixture
+def requires_vite(vite_available: bool):
+    """
+    Depend on this fixture in tests that need the React (Vite) app to mount.
+    The test is skipped automatically when neither built assets nor the dev
+    server are available.
+    """
+    if not vite_available:
+        pytest.skip("Vite assets not available — run `make npm-build` or `make start-bg`")

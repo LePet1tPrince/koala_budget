@@ -17,7 +17,7 @@ from e2e.pages.bank_feed import BankFeedPage
 
 
 @pytest.mark.django_db(transaction=True)
-def test_bank_feed_shows_accounts_with_feed(authenticated_page: Page, live_server, team):
+def test_bank_feed_shows_accounts_with_feed(requires_vite, authenticated_page: Page, live_server, team):
     """Accounts with has_feed=True appear as cards on the bank feed home page."""
     group = AccountGroupFactory(team=team)
     feed_account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
@@ -32,7 +32,7 @@ def test_bank_feed_shows_accounts_with_feed(authenticated_page: Page, live_serve
 
 
 @pytest.mark.django_db(transaction=True)
-def test_selecting_account_shows_filter_toggles(authenticated_page: Page, live_server, team):
+def test_selecting_account_shows_filter_toggles(requires_vite, authenticated_page: Page, live_server, team):
     """Clicking an account card loads the bank feed table with filter toggles."""
     group = AccountGroupFactory(team=team)
     feed_account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
@@ -45,7 +45,7 @@ def test_selecting_account_shows_filter_toggles(authenticated_page: Page, live_s
 
 
 @pytest.mark.django_db(transaction=True)
-def test_add_transaction_modal_opens(authenticated_page: Page, live_server, team):
+def test_add_transaction_modal_opens(requires_vite, authenticated_page: Page, live_server, team):
     """Clicking the add-transaction button opens the edit modal."""
     group = AccountGroupFactory(team=team)
     feed_account = AssetAccountFactory(team=team, account_group=group, has_feed=True)

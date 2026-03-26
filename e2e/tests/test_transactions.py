@@ -24,7 +24,7 @@ from e2e.pages.transactions import TransactionsPage
 
 
 @pytest.mark.django_db(transaction=True)
-def test_transactions_page_loads(authenticated_page: Page, live_server, team):
+def test_transactions_page_loads(requires_vite, authenticated_page: Page, live_server, team):
     """The transactions page mounts the React app and shows an empty state when there are no entries."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
     transactions.goto(team.slug)
@@ -33,7 +33,7 @@ def test_transactions_page_loads(authenticated_page: Page, live_server, team):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_transactions_empty_state_shown_with_no_entries(authenticated_page: Page, live_server, team):
+def test_transactions_empty_state_shown_with_no_entries(requires_vite, authenticated_page: Page, live_server, team):
     """With no journal entries, the empty state message is displayed."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
     transactions.goto(team.slug)
@@ -43,7 +43,7 @@ def test_transactions_empty_state_shown_with_no_entries(authenticated_page: Page
 
 
 @pytest.mark.django_db(transaction=True)
-def test_transactions_table_shows_seeded_entries(authenticated_page: Page, live_server, team):
+def test_transactions_table_shows_seeded_entries(requires_vite, authenticated_page: Page, live_server, team):
     """Journal entries created in the DB appear as rows in the transactions table."""
     group = AccountGroupFactory(team=team)
     debit_acct = AccountFactory(team=team, account_group=group)
@@ -61,7 +61,7 @@ def test_transactions_table_shows_seeded_entries(authenticated_page: Page, live_
 
 
 @pytest.mark.django_db(transaction=True)
-def test_transactions_search_filters_rows(authenticated_page: Page, live_server, team):
+def test_transactions_search_filters_rows(requires_vite, authenticated_page: Page, live_server, team):
     """The search input filters the displayed rows to matching entries."""
     group = AccountGroupFactory(team=team)
     acct = AccountFactory(team=team, account_group=group)

@@ -20,6 +20,10 @@ ALLOWED_HOSTS = ["*"]
 STRIPE_LIVE_MODE = False
 PLAID_ENV = "sandbox"
 
+# Raise the auth rate-limit cap so E2E tests (all sharing 127.0.0.1) can
+# each perform a fresh login without hitting the default 10-req/5-min ceiling.
+AUTH_RATE_LIMIT_MAX_REQUESTS = 10000
+
 # Vite integration for E2E tests.
 # - Local dev: keep DJANGO_VITE_DEV_MODE unset (defaults to True) and
 #   run `make start-bg` so the Vite dev server is available.
