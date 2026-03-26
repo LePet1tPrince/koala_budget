@@ -13,9 +13,20 @@ class BankFeedPage(BasePage):
 
     def goto(self, team_slug: str):
         """Navigate to the bank feed page and wait for the React app to mount."""
+        console_msgs = []
+        failed_urls = []
+        self.page.on("console", lambda msg: console_msgs.append(f"[{msg.type}] {msg.text}"))
+        self.page.on("requestfailed", lambda req: failed_urls.append(f"{req.failure} {req.url}"))
+
         self.page.goto(self.url(self.path(team_slug)))
         # Wait until at least one account card or the line-app container is visible
-        self.page.wait_for_selector("#line-app", timeout=15_000)
+        try:
+            self.page.wait_for_selector("#line-app", timeout=15_000)
+        except Exception:
+            print(f"\n[BankFeedPage] Page HTML snippet:\n{self.page.content()[:3000]}")
+            print("\n[BankFeedPage] Console messages:\n" + "\n".join(console_msgs[-20:]))
+            print("\n[BankFeedPage] Failed requests:\n" + "\n".join(failed_urls))
+            raise
 
     # ------------------------------------------------------------------
     # Queries

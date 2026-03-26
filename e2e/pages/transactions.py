@@ -13,12 +13,23 @@ class TransactionsPage(BasePage):
 
     def goto(self, team_slug: str):
         """Navigate to the transactions page and wait for the React app to mount."""
+        console_msgs = []
+        failed_urls = []
+        self.page.on("console", lambda msg: console_msgs.append(f"[{msg.type}] {msg.text}"))
+        self.page.on("requestfailed", lambda req: failed_urls.append(f"{req.failure} {req.url}"))
+
         self.page.goto(self.url(self.path(team_slug)))
         # Wait for React to finish loading: either the table or the empty state appears
-        self.page.wait_for_selector(
-            "[data-testid='transactions-table'], [data-testid='transactions-empty-state']",
-            timeout=15_000,
-        )
+        try:
+            self.page.wait_for_selector(
+                "[data-testid='transactions-table'], [data-testid='transactions-empty-state']",
+                timeout=15_000,
+            )
+        except Exception:
+            print(f"\n[TransactionsPage] Page HTML snippet:\n{self.page.content()[:3000]}")
+            print("\n[TransactionsPage] Console messages:\n" + "\n".join(console_msgs[-20:]))
+            print("\n[TransactionsPage] Failed requests:\n" + "\n".join(failed_urls))
+            raise
 
     # ------------------------------------------------------------------
     # Queries
