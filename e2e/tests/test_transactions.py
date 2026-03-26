@@ -64,13 +64,16 @@ def test_transactions_table_shows_seeded_entries(requires_vite, authenticated_pa
 def test_transactions_search_filters_rows(requires_vite, authenticated_page: Page, live_server, team):
     """The search input filters the displayed rows to matching entries."""
     group = AccountGroupFactory(team=team)
-    acct = AccountFactory(team=team, account_group=group)
+    debit_acct = AccountFactory(team=team, account_group=group)
+    credit_acct = AccountFactory(team=team, account_group=group)
 
     entry1 = JournalEntryFactory(team=team, description="Coffee Shop Purchase", status="posted")
-    JournalLineFactory(team=team, journal_entry=entry1, account=acct, dr_amount="5.00")
+    JournalLineFactory(team=team, journal_entry=entry1, account=debit_acct, dr_amount="5.00")
+    JournalLineFactory(team=team, journal_entry=entry1, account=credit_acct, cr_amount="5.00")
 
     entry2 = JournalEntryFactory(team=team, description="Grocery Store", status="posted")
-    JournalLineFactory(team=team, journal_entry=entry2, account=acct, dr_amount="120.00")
+    JournalLineFactory(team=team, journal_entry=entry2, account=debit_acct, dr_amount="120.00")
+    JournalLineFactory(team=team, journal_entry=entry2, account=credit_acct, cr_amount="120.00")
 
     transactions = TransactionsPage(authenticated_page, live_server.url)
     transactions.goto(team.slug)
