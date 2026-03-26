@@ -80,12 +80,17 @@ def team_page(authenticated_page: Page) -> Page:
 
 
 def _vite_dev_server_reachable() -> bool:
-    """Return True if the Vite dev server is listening on port 5173."""
-    try:
-        with socket.create_connection(("127.0.0.1", 5173), timeout=1):
-            return True
-    except OSError:
-        return False
+    """
+    Return True if the Vite dev server is reachable.
+    Tries 127.0.0.1:5173 (native) and vite:5173 (Docker Compose service name).
+    """
+    for host in ("127.0.0.1", "vite"):
+        try:
+            with socket.create_connection((host, 5173), timeout=1):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 @pytest.fixture(scope="session")
