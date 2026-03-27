@@ -103,6 +103,7 @@ const Step1FileUpload = ({ onFileUpload, onCancel }) => {
                 className="hidden"
                 accept=".csv,.xls,.xlsx"
                 onChange={handleFileInput}
+                data-testid="csv-file-input"
               />
             </label>
             <p className="text-xs text-base-content/50 mt-4">
@@ -117,6 +118,7 @@ const Step1FileUpload = ({ onFileUpload, onCancel }) => {
           className="btn btn-ghost"
           onClick={onCancel}
           disabled={loading}
+          data-testid="csv-upload-cancel-btn"
         >
           {gettext('Cancel')}
         </button>

@@ -94,6 +94,7 @@ const TransactionsTable = ({ transactions }) => {
           onChange={(e) => setSearch(e.target.value)}
           placeholder={gettext('Search by payee, description, account, account number, or amount...')}
           className="input input-bordered flex-1"
+          data-testid="transaction-search"
         />
         <DateRangePicker
           startDate={startDate}
@@ -103,7 +104,7 @@ const TransactionsTable = ({ transactions }) => {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+        <table className="min-w-full divide-y divide-gray-200" data-testid="transactions-table">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -138,7 +139,7 @@ const TransactionsTable = ({ transactions }) => {
               const statusStyle = STATUS_STYLES[tx.status] || { label: tx.status, className: 'bg-gray-100 text-gray-800' };
 
               return (
-                <tr key={tx.id}>
+                <tr key={tx.id} data-testid="transaction-row">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {formatDate(tx.date)}
                   </td>
@@ -171,7 +172,7 @@ const TransactionsTable = ({ transactions }) => {
       </div>
 
       {filtered.length === 0 && (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-gray-500" data-testid="transactions-empty-state">
           {gettext('No transactions found.')}
         </div>
       )}

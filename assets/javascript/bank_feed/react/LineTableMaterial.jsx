@@ -336,9 +336,9 @@ const LineTableMaterial = ({
             }}
             aria-label="Transaction filter"
           >
-            <ToggleButton value="to_review">{gettext('To Review')}</ToggleButton>
-            <ToggleButton value="reconciled">{gettext('Reconciled')}</ToggleButton>
-            <ToggleButton value="archived">{gettext('Archived')}</ToggleButton>
+            <ToggleButton value="to_review" data-testid="filter-to-review">{gettext('To Review')}</ToggleButton>
+            <ToggleButton value="reconciled" data-testid="filter-reconciled">{gettext('Reconciled')}</ToggleButton>
+            <ToggleButton value="archived" data-testid="filter-archived">{gettext('Archived')}</ToggleButton>
           </ToggleButtonGroup>
         </div>
 
@@ -386,6 +386,7 @@ const LineTableMaterial = ({
                     size="small"
                     onClick={handleAddClick}
                     color="primary"
+                    data-testid="add-transaction-btn"
                   >
                     <AddIcon />
                   </IconButton>

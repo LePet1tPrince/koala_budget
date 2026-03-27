@@ -1,0 +1,92 @@
+name: E2E Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_password
+          POSTGRES_DB: koala_budget
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Frontend build ──────────────────────────────────────────────
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Build frontend assets
+        run: npm run build
+
+      # ── Python / Django setup ────────────────────────────────────────
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.9.17"
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies (including e2e group)
+        run: uv sync --group e2e
+
+      # ── Playwright ──────────────────────────────────────────────────
+      - name: Install Playwright browser
+        run: uv run playwright install --with-deps chromium
+
+      # ── Run E2E tests ────────────────────────────────────────────────
+      - name: Run E2E tests
+        env:
+          DJANGO_DATABASE_USER: postgres
+          DJANGO_DATABASE_PASSWORD: postgres_password
+          DJANGO_DATABASE_HOST: localhost
+          DJANGO_DATABASE_NAME: koala_budget
+          DJANGO_SETTINGS_MODULE: koala_budget.settings_e2e
+          DJANGO_VITE_DEV_MODE: "False"
+          REDIS_URL: redis://localhost:6379
+          SECRET_KEY: ci-secret-key-not-for-production
+        run: uv run pytest e2e/ -v --screenshot only-on-failure --output e2e-results/
+
+      # ── Artifacts ────────────────────────────────────────────────────
+      - name: Upload failure screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-failure-screenshots
+          path: e2e-results/
+          retention-days: 7

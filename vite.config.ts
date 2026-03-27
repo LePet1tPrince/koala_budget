@@ -35,6 +35,8 @@ export default defineConfig({
         'reports': path.resolve(__dirname, './assets/javascript/reports/ReportsDateRangePicker.jsx'),
         'bank-feed': path.resolve(__dirname, './assets/javascript/bank_feed/react/line-app.jsx'),
         'transactions': path.resolve(__dirname, './assets/javascript/transactions/transactions-app.jsx'),
+        'budget-actual-app': path.resolve(__dirname, './assets/javascript/budget/budget-actual-app.jsx'),
+        'budget-month-picker-app': path.resolve(__dirname, './assets/javascript/budget/budget-month-picker-app.jsx'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
       },
       output: {
@@ -60,6 +62,9 @@ export default defineConfig({
   server: {
     port: 5173, // Default Vite dev server port, must match DJANGO_VITE settings
     strictPort: true, // Vite will exit if the port is already in use
+    // Allow the Docker Compose service hostname so E2E tests (running inside the
+    // web container) can fetch assets from the vite container.
+    allowedHosts: ['vite'],
     hmr: {
       // host: 'localhost', // default of localhost is fine as long as Django is running there.
       // protocol: 'ws', // default of ws is fine. Change to 'wss' if Django (dev) server uses HTTPS.

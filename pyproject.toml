@@ -53,6 +53,10 @@ exclude_lines = [
     "if __name__ == .__main__.:",
 ]
 
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "koala_budget.settings_e2e"
+testpaths = ["e2e"]
+
 [tool.setuptools]
 py-modules = []
 
@@ -108,6 +112,13 @@ dev = [
     "flower",
     "pre-commit",
     "ruff>=0.13.1",
+]
+e2e = [
+    "factory-boy>=3.3",
+    "playwright>=1.40",
+    "pytest>=8.0",
+    "pytest-django>=4.9",
+    "pytest-playwright>=0.6",
 ]
 prod = [
     "gunicorn",
