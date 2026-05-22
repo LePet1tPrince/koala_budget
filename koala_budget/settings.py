@@ -278,6 +278,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (*default_headers, "x-password-reset-key", "x-email-verification-key")
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[FRONTEND_ADDRESS])
 SESSION_COOKIE_DOMAIN = env("SESSION_COOKIE_DOMAIN", default=None)
+SESSION_COOKIE_AGE = 604800  # 1 week in seconds
 
 # User signup configuration: "mandatory" requires users to confirm email before signing in.
 # "optional" sends confirmation emails but doesn't require them. "none" skips verification.
@@ -620,7 +621,38 @@ if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
 
-    sentry_sdk.init(dsn=SENTRY_DSN, integrations=[DjangoIntegration()])
+    _SENTRY_SCRUB_FIELDS = {
+        "password", "password1", "password2", "token", "secret", "api_key",
+        "access_token", "plaid_token", "account_number", "routing_number",
+        "ssn", "credit_card", "card_number", "cvv",
+    }
+    _SENTRY_SCRUB_HEADERS = {"authorization", "cookie", "x-api-key"}
+
+    def _sentry_before_send(event, hint):
+        # Scrub sensitive request data
+        request = event.get("request", {})
+        for section in ("data", "cookies", "query_string"):
+            if isinstance(request.get(section), dict):
+                request[section] = {
+                    k: "[Filtered]" if k.lower() in _SENTRY_SCRUB_FIELDS else v
+                    for k, v in request[section].items()
+                }
+        if isinstance(request.get("headers"), dict):
+            request["headers"] = {
+                k: "[Filtered]" if k.lower() in _SENTRY_SCRUB_HEADERS else v
+                for k, v in request["headers"].items()
+            }
+        # Remove user email — keep id for issue correlation
+        if "user" in event and "email" in event["user"]:
+            del event["user"]["email"]
+        return event
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        before_send=_sentry_before_send,
+        send_default_pii=False,
+    )
 
 LOGGING = {
     "version": 1,
