@@ -9,7 +9,7 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, T
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
 from .forms import AccountForm, AccountGroupForm, PayeeForm
-from .models import Account, AccountGroup, Payee
+from .models import ACCOUNT_TYPE_CHOICES, Account, AccountGroup, Payee
 
 
 # Accounts Home View
@@ -93,7 +93,18 @@ class AccountViewMixin(LoginAndTeamRequiredMixin):
 class AccountListView(AccountViewMixin, ListView):
     """List all accounts."""
 
-    pass
+    def get_queryset(self):
+        qs = super().get_queryset()
+        account_type = self.request.GET.get("type")
+        if account_type:
+            qs = qs.filter(account_group__account_type=account_type)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["account_type_choices"] = ACCOUNT_TYPE_CHOICES
+        context["selected_type"] = self.request.GET.get("type", "")
+        return context
 
 
 class AccountCreateView(AccountViewMixin, CreateView):

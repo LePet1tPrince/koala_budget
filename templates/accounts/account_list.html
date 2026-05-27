@@ -13,6 +13,14 @@
       {% translate "New Account" %}
     </a>
   </div>
+  <div role="tablist" class="tabs tabs-boxed mb-4 w-fit">
+    <a role="tab" class="tab{% if not selected_type %} tab-active{% endif %}"
+       href="?">{% translate "All" %}</a>
+    {% for value, label in account_type_choices %}
+      <a role="tab" class="tab{% if selected_type == value %} tab-active{% endif %}"
+         href="?type={{ value }}">{{ label }}</a>
+    {% endfor %}
+  </div>
   {% if object_list %}
     <div class="overflow-x-auto">
       <table class="table table-zebra w-full" data-testid="accounts-table">
