@@ -1,4 +1,5 @@
 .playwright-browsers/
+.playwright-mcp/
 .idea
 .vscode
 *.code-workspace
