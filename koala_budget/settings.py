@@ -398,7 +398,7 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="timothylbender@gmail.com
 
 # The default value will print emails to the console, but you can change that here
 # and in your environment.
-EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="apps.users.email_backends.DevConsoleEmailBackend")
 
 # Mailgun configuration via django-anymail.
 # Set EMAIL_BACKEND=anymail.backends.mailgun.EmailBackend in your environment to activate.
