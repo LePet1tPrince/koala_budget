@@ -112,6 +112,7 @@ class AccountCreateView(AccountViewMixin, CreateView):
     """Create a new account."""
 
     form_class = AccountForm
+    template_name = "accounts/account_create.html"
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -119,11 +120,25 @@ class AccountCreateView(AccountViewMixin, CreateView):
         kwargs["is_create"] = True
         return kwargs
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["account_types_with_groups"] = [
+            {
+                "value": value,
+                "label": label,
+                "groups": list(AccountGroup.for_team.filter(account_type=value)),
+            }
+            for value, label in ACCOUNT_TYPE_CHOICES
+        ]
+        return context
+
     def form_valid(self, form):
         form.instance.team = self.request.team
         account_group = form.cleaned_data.get("account_group")
         if account_group:
             form.instance.has_feed = account_group.account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY)
+            if account_group.account_type not in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY):
+                form.instance.institution = None
         return super().form_valid(form)
 
 

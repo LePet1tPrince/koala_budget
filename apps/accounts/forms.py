@@ -72,7 +72,8 @@ class AccountForm(forms.ModelForm):
             self.fields["institution"].queryset = Institution.for_team.all()
 
         # Institution is only relevant for asset and liability accounts
-        if account_type_value not in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY):
+        # In create mode the template uses Alpine.js to show/hide it, so keep it in the form
+        if not is_create and account_type_value not in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY):
             self.fields.pop("institution", None)
 
         # In create view, has_feed is automatically determined from account type

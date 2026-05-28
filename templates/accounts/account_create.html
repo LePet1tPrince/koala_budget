@@ -1,0 +1,94 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li><a href="{% url 'accounts:account_list' request.team.slug %}">{% translate "Accounts" %}</a></li>
+    <li class="pg-breadcrumb-active" aria-current="page">{% translate "New" %}</li>
+  </ol>
+</nav>
+<section class="app-card">
+  <h3 class="pg-subtitle">{% translate "New Account" %}</h3>
+
+  <form method="post" data-testid="account-form"
+        x-data="{
+          selectedType: '{{ form.data.account_type|default:'' }}',
+          selectedGroup: '{{ form.data.account_group|default:'' }}',
+          get showInstitution() {
+            return this.selectedType === 'asset' || this.selectedType === 'liability';
+          },
+          selectType(type) {
+            if (this.selectedType !== type) {
+              this.selectedType = type;
+              this.selectedGroup = '';
+            }
+          },
+          selectGroup(id) {
+            this.selectedGroup = id;
+          }
+        }">
+    {% csrf_token %}
+
+    {% render_field form.name %}
+
+    {% if form.non_field_errors %}
+    <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+      {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    <div class="w-full mt-4">
+      <label class="block mb-2 font-bold">{% translate "Account Type" %}</label>
+      <div class="flex flex-wrap gap-2">
+        {% for type_data in account_types_with_groups %}
+        <button type="button"
+                :class="selectedType === '{{ type_data.value }}' ? 'btn btn-primary' : 'btn btn-outline'"
+                @click="selectType('{{ type_data.value }}')"
+                data-testid="type-btn-{{ type_data.value }}">
+          {{ type_data.label }}
+        </button>
+        {% endfor %}
+      </div>
+      <input type="hidden" name="account_type" :value="selectedType">
+      {% if form.account_type.errors %}
+      <div class="text-error text-sm mt-1">{{ form.account_type.errors }}</div>
+      {% endif %}
+    </div>
+
+    <div class="w-full mt-4" x-show="selectedType" x-cloak>
+      <label class="block mb-2 font-bold">{% translate "Account Group" %}</label>
+      {% for type_data in account_types_with_groups %}
+      <div class="flex flex-wrap gap-2" x-show="selectedType === '{{ type_data.value }}'">
+        {% for group in type_data.groups %}
+        <button type="button"
+                :class="selectedGroup === '{{ group.pk }}' ? 'btn btn-primary' : 'btn btn-outline'"
+                @click="selectGroup('{{ group.pk }}')"
+                data-testid="group-btn">
+          {{ group.name }}
+        </button>
+        {% empty %}
+        <p class="text-gray-500 text-sm">
+          {% translate "No account groups of this type." %}
+          <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="link">{% translate "Create one" %}</a>.
+        </p>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      <input type="hidden" name="account_group" :value="selectedGroup">
+      {% if form.account_group.errors %}
+      <div class="text-error text-sm mt-1">{{ form.account_group.errors }}</div>
+      {% endif %}
+    </div>
+
+    <div x-show="showInstitution" x-cloak>
+      {% render_field form.institution %}
+    </div>
+
+    <div class="flex gap-2 mt-6">
+      <input type="submit" class="pg-button-primary" value="{% translate 'Save' %}" data-testid="save-btn">
+      <a href="{% url 'accounts:account_list' request.team.slug %}" class="pg-button-secondary" data-testid="cancel-btn">{% translate "Cancel" %}</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
