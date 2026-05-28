@@ -33,6 +33,10 @@
       <dd><a href="{{ account.account_group.get_absolute_url }}" class="link">{{ account.account_group.name }}</a></dd>
     </div>
     <div>
+      <dt class="font-semibold">{% translate "Institution" %}</dt>
+      <dd>{% if account.institution %}{{ account.institution.name }}{% else %}-{% endif %}</dd>
+    </div>
+    <div>
       <dt class="font-semibold">{% translate "Has Bank Feed" %}</dt>
       <dd>{% if account.has_feed %}{% translate "Yes" %}{% else %}{% translate "No" %}{% endif %}</dd>
     </div>

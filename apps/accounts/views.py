@@ -8,8 +8,8 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, T
 
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
-from .forms import AccountForm, AccountGroupForm, PayeeForm
-from .models import ACCOUNT_TYPE_CHOICES, Account, AccountGroup, Payee
+from .forms import AccountForm, AccountGroupForm, InstitutionForm, PayeeForm
+from .models import ACCOUNT_TYPE_CHOICES, Account, AccountGroup, Institution, Payee
 
 
 # Accounts Home View
@@ -26,6 +26,7 @@ class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
         context["account_groups_count"] = AccountGroup.for_team.count()
         context["accounts_count"] = Account.for_team.count()
         context["payees_count"] = Payee.for_team.count()
+        context["institutions_count"] = Institution.for_team.count()
         return context
 
 
@@ -195,3 +196,51 @@ class PayeeDeleteView(PayeeViewMixin, DeleteView):
 
     def get_success_url(self):
         return reverse("accounts:payee_list", args=[self.request.team.slug])
+
+
+# Institution Views
+class InstitutionViewMixin(LoginAndTeamRequiredMixin):
+    """Mixin class for all Institution views."""
+
+    model = Institution
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["active_tab"] = "accounts"
+        context["page_title"] = _("Institutions | {team}").format(team=self.request.team)
+        return context
+
+
+class InstitutionListView(InstitutionViewMixin, ListView):
+    """List all institutions."""
+
+    pass
+
+
+class InstitutionCreateView(InstitutionViewMixin, CreateView):
+    """Create a new institution."""
+
+    form_class = InstitutionForm
+
+    def form_valid(self, form):
+        form.instance.team = self.request.team
+        return super().form_valid(form)
+
+
+class InstitutionDetailView(InstitutionViewMixin, DetailView):
+    """View details of an institution."""
+
+    pass
+
+
+class InstitutionUpdateView(InstitutionViewMixin, UpdateView):
+    """Update an institution."""
+
+    form_class = InstitutionForm
+
+
+class InstitutionDeleteView(InstitutionViewMixin, DeleteView):
+    """Delete an institution."""
+
+    def get_success_url(self):
+        return reverse("accounts:institution_list", args=[self.request.team.slug])
