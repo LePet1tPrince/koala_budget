@@ -80,21 +80,12 @@ class AccountForm(forms.ModelForm):
         if is_create:
             self.fields.pop("has_feed", None)
 
-    def clean_name(self):
-        name = self.cleaned_data.get("name")
-        if name and self.team:
-            qs = Account.objects.filter(team=self.team, name=name)
-            if self.instance and self.instance.pk:
-                qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise forms.ValidationError(_("An account with this name already exists."))
-        return name
-
     def clean(self):
-        """Validate that the selected account_group matches the selected account_type."""
+        """Validate account_group/account_type match and uniqueness of name within account type."""
         cleaned_data = super().clean()
         account_type = cleaned_data.get("account_type")
         account_group = cleaned_data.get("account_group")
+        name = cleaned_data.get("name")
 
         if account_type and account_group and account_group.account_type != account_type:
             raise forms.ValidationError(
@@ -104,6 +95,16 @@ class AccountForm(forms.ModelForm):
                     "type": dict(ACCOUNT_TYPE_CHOICES)[account_type],
                 }
             )
+
+        if name and self.team and account_type:
+            qs = Account.objects.filter(team=self.team, name=name, account_group__account_type=account_type)
+            if self.instance and self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise forms.ValidationError(
+                    _("An account named '%(name)s' already exists for account type '%(type)s'.")
+                    % {"name": name, "type": dict(ACCOUNT_TYPE_CHOICES)[account_type]}
+                )
 
         return cleaned_data
 
