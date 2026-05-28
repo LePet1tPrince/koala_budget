@@ -9,9 +9,4 @@ class Migration(migrations.Migration):
         ("accounts", "0005_account_unique_name_and_ordering"),
     ]
 
-    operations = [
-        migrations.AlterUniqueTogether(
-            name="account",
-            unique_together=set(),
-        ),
-    ]
+    operations = []

@@ -21,8 +21,4 @@ class Migration(migrations.Migration):
                 ]
             },
         ),
-        migrations.AlterUniqueTogether(
-            name="account",
-            unique_together={("team", "name")},
-        ),
     ]
