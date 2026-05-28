@@ -44,7 +44,7 @@
             <tbody>
               {% for item in report_data.assets %}
               <tr>
-                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.account_number }} - {{ item.account.name }}</a></td>
+                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.name }}</a></td>
                 <td class="text-right">{{ item.amount|floatformat:2 }}</td>
               </tr>
               {% empty %}
@@ -82,7 +82,7 @@
             <tbody>
               {% for item in report_data.liabilities %}
               <tr>
-                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.account_number }} - {{ item.account.name }}</a></td>
+                <td><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-primary">{{ item.account.name }}</a></td>
                 <td class="text-right">{{ item.amount|floatformat:2 }}</td>
               </tr>
               {% empty %}

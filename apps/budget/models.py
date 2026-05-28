@@ -34,7 +34,7 @@ class Budget(BaseTeamModel):
 
     class Meta:
         unique_together = ["team", "month", "category"]
-        ordering = ["-month", "category__account_number"]
+        ordering = ["-month", "category__name"]
 
     def __str__(self):
         return f"{self.month.strftime('%Y-%m')} - {self.category.name} - ${self.budget_amount}"
@@ -130,24 +130,9 @@ class Goal(BaseTeamModel):
                 defaults={"name": "Goals", "description": "Savings goals"},
             )
 
-            # Find the next available account number in the 3000s range (equity)
-            last_goal_account = (
-                Account.objects.filter(team=self.team, account_number__startswith="3")
-                .order_by("-account_number")
-                .first()
-            )
-
-            if last_goal_account:
-                try:
-                    next_number = int(last_goal_account.account_number) + 1
-                except ValueError:
-                    next_number = 3000
-            else:
-                next_number = 3000
-
             # Create the backing account
             self.account = Account.objects.create(
-                team=self.team, name=f"Goal: {self.name}", account_number=str(next_number), account_group=goal_group
+                team=self.team, name=f"Goal: {self.name}", account_group=goal_group
             )
 
         super().save(*args, **kwargs)

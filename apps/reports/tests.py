@@ -47,19 +47,19 @@ class ReportServiceTest(TestCase):
 
         # Create accounts
         cls.asset_account = Account.objects.create(
-            team=cls.team, name="Cash", account_number=1001, account_group=cls.asset_group
+            team=cls.team, name="Cash", account_group=cls.asset_group
         )
         cls.liability_account = Account.objects.create(
-            team=cls.team, name="Loans", account_number=2001, account_group=cls.liability_group
+            team=cls.team, name="Loans", account_group=cls.liability_group
         )
         cls.equity_account = Account.objects.create(
-            team=cls.team, name="Retained Earnings", account_number=3001, account_group=cls.equity_group
+            team=cls.team, name="Retained Earnings", account_group=cls.equity_group
         )
         cls.income_account = Account.objects.create(
-            team=cls.team, name="Sales Revenue", account_number=4001, account_group=cls.income_group
+            team=cls.team, name="Sales Revenue", account_group=cls.income_group
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Operating Expenses", account_number=5001, account_group=cls.expense_group
+            team=cls.team, name="Operating Expenses", account_group=cls.expense_group
         )
 
     def setUp(self):
@@ -203,10 +203,10 @@ class IncomeStatementDateParamsTest(TestCase):
         cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
         cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
         cls.asset_account = Account.objects.create(
-            team=cls.team, name="Cash", account_number=1001, account_group=cls.asset_group
+            team=cls.team, name="Cash", account_group=cls.asset_group
         )
         cls.income_account = Account.objects.create(
-            team=cls.team, name="Sales", account_number=4001, account_group=cls.income_group
+            team=cls.team, name="Sales", account_group=cls.income_group
         )
 
     def setUp(self):
@@ -264,10 +264,10 @@ class BalanceSheetDateParamsTest(TestCase):
         cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
         cls.equity_group = AccountGroup.objects.create(team=cls.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
         cls.asset_account = Account.objects.create(
-            team=cls.team, name="Cash", account_number=1001, account_group=cls.asset_group
+            team=cls.team, name="Cash", account_group=cls.asset_group
         )
         cls.equity_account = Account.objects.create(
-            team=cls.team, name="Retained Earnings", account_number=3001, account_group=cls.equity_group
+            team=cls.team, name="Retained Earnings", account_group=cls.equity_group
         )
 
     def setUp(self):
@@ -360,7 +360,7 @@ class ReportViewsTest(TestCase):
         # Create account groups and accounts for testing
         cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
         cls.asset_account = Account.objects.create(
-            team=cls.team, name="Cash", account_number=1001, account_group=cls.asset_group
+            team=cls.team, name="Cash", account_group=cls.asset_group
         )
 
     def setUp(self):

@@ -52,9 +52,6 @@ class Account(BaseTeamModel):
     """
 
     name = models.CharField(max_length=200)
-    account_number = models.CharField(
-        max_length=20, help_text="Account number (1000s for assets, 2000s for liabilities, etc.)"
-    )
     account_group = models.ForeignKey(
         AccountGroup,
         on_delete=models.PROTECT,
@@ -76,11 +73,10 @@ class Account(BaseTeamModel):
     for_team = AccountTeamScopedManager()
 
     class Meta:
-        ordering = ["account_number"]
-        unique_together = ["team", "account_number"]
+        ordering = ["name"]
 
     def __str__(self):
-        return f"{self.account_number} - {self.name}"
+        return self.name
 
     def get_absolute_url(self):
         return reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})

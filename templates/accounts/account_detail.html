@@ -21,10 +21,6 @@
   </div>
   <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div>
-      <dt class="font-semibold">{% translate "Account Number" %}</dt>
-      <dd>{{ account.account_number }}</dd>
-    </div>
-    <div>
       <dt class="font-semibold">{% translate "Type" %}</dt>
       <dd>{{ account.account_group.get_account_type_display }}</dd>
     </div>

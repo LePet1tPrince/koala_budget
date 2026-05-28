@@ -40,10 +40,10 @@ class JournalEntryModelTest(TestCase):
             team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_number=1000, account_group=cls.asset_group
+            team=cls.team, name="Checking", account_group=cls.asset_group
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_number=4000, account_group=cls.expense_group
+            team=cls.team, name="Groceries", account_group=cls.expense_group
         )
         cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
 
@@ -148,7 +148,7 @@ class JournalLineModelTest(TestCase):
             team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_number=1000, account_group=cls.asset_group
+            team=cls.team, name="Checking", account_group=cls.asset_group
         )
         cls.entry = JournalEntry.objects.create(team=cls.team, entry_date=date(2025, 12, 17), description="Test")
 
@@ -258,13 +258,13 @@ class SimpleLineAPITest(TestCase):
 
         # Create accounts
         cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking Account", account_number=1001, account_group=cls.asset_group
+            team=cls.team, name="Checking Account", account_group=cls.asset_group
         )
         cls.groceries_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_number=4001, account_group=cls.expense_group
+            team=cls.team, name="Groceries", account_group=cls.expense_group
         )
         cls.salary_account = Account.objects.create(
-            team=cls.team, name="Salary", account_number=3001, account_group=cls.income_group
+            team=cls.team, name="Salary", account_group=cls.income_group
         )
 
         # Create payee
@@ -514,10 +514,10 @@ class JournalEntryAPITest(TestCase):
 
         # Create accounts
         cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_number=1000, account_group=cls.asset_group
+            team=cls.team, name="Checking", account_group=cls.asset_group
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_number=4000, account_group=cls.expense_group
+            team=cls.team, name="Groceries", account_group=cls.expense_group
         )
         cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
 
@@ -773,10 +773,10 @@ class JournalPermissionsTest(TestCase):
 
         # Create accounts
         cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_number=1000, account_group=cls.asset_group
+            team=cls.team, name="Checking", account_group=cls.asset_group
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_number=4000, account_group=cls.expense_group
+            team=cls.team, name="Groceries", account_group=cls.expense_group
         )
 
     def setUp(self):

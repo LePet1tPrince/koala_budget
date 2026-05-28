@@ -36,7 +36,6 @@ def test_create_account(authenticated_page: Page, live_server, team):
     accounts = AccountsPage(authenticated_page, live_server.url)
     accounts.create_account(
         name="Office Supplies",
-        account_number="5100",
         account_group_name=group.name,
         team_slug=team.slug,
     )
@@ -70,7 +69,7 @@ def test_cancel_create_account_returns_to_list(authenticated_page: Page, live_se
 def test_edit_account_form_prefills_name(authenticated_page: Page, live_server, team):
     """The edit form is pre-populated with the existing account name."""
     group = AccountGroupFactory(team=team)
-    AccountFactory(team=team, account_group=group, name="My Test Account", account_number="9999")
+    AccountFactory(team=team, account_group=group, name="My Test Account")
 
     accounts = AccountsPage(authenticated_page, live_server.url)
     accounts.goto_list(team.slug)

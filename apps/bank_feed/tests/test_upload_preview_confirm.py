@@ -45,14 +45,12 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         cls.bank_account = Account.objects.create(
             team=cls.team,
             name="Checking",
-            account_number=1000,
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.groceries_account = Account.objects.create(
             team=cls.team,
             name="Groceries",
-            account_number=4000,
             account_group=cls.expense_group,
         )
 
@@ -250,14 +248,12 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
         cls.bank_account = Account.objects.create(
             team=cls.team,
             name="Checking",
-            account_number=1000,
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.groceries_account = Account.objects.create(
             team=cls.team,
             name="Groceries",
-            account_number=4000,
             account_group=cls.expense_group,
         )
 

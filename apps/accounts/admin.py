@@ -20,13 +20,13 @@ class AccountGroupAdmin(admin.ModelAdmin):
 class AccountAdmin(admin.ModelAdmin):
     """Admin for Account model."""
 
-    list_display = ["account_number", "name", "account_group", "team"]
+    list_display = ["name", "account_group", "team"]
     list_filter = ["account_group", "team"]
-    search_fields = ["name", "account_number"]
-    ordering = ["account_number"]
+    search_fields = ["name"]
+    ordering = ["name"]
     readonly_fields = ["balance", "created_at", "updated_at"]
     autocomplete_fields = ["account_group", "team"]
-    fields = ["account_number", "name", "account_group", "has_feed", "balance", "team", "created_at", "updated_at"]
+    fields = ["name", "account_group", "has_feed", "balance", "team", "created_at", "updated_at"]
 
 
 @admin.register(Payee)

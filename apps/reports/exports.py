@@ -27,11 +27,10 @@ def export_income_statement_csv(team, start_date, end_date):
 
     # Income section
     writer.writerow(["INCOME"])
-    writer.writerow(["Account Number", "Account Name", "Amount"])
+    writer.writerow(["Account Name", "Amount"])
     for item in data["income"]:
         writer.writerow(
             [
-                item["account"].account_number,
                 item["account"].name,
                 _decimal_str(item["amount"]),
             ]
@@ -41,11 +40,10 @@ def export_income_statement_csv(team, start_date, end_date):
 
     # Expense section
     writer.writerow(["EXPENSES"])
-    writer.writerow(["Account Number", "Account Name", "Amount"])
+    writer.writerow(["Account Name", "Amount"])
     for item in data["expenses"]:
         writer.writerow(
             [
-                item["account"].account_number,
                 item["account"].name,
                 _decimal_str(item["amount"]),
             ]
@@ -74,11 +72,10 @@ def export_balance_sheet_csv(team, as_of_date):
 
     # Assets
     writer.writerow(["ASSETS"])
-    writer.writerow(["Account Number", "Account Name", "Balance"])
+    writer.writerow(["Account Name", "Balance"])
     for item in data["assets"]:
         writer.writerow(
             [
-                item["account"].account_number,
                 item["account"].name,
                 _decimal_str(item["amount"]),
             ]
@@ -88,11 +85,10 @@ def export_balance_sheet_csv(team, as_of_date):
 
     # Liabilities
     writer.writerow(["LIABILITIES"])
-    writer.writerow(["Account Number", "Account Name", "Balance"])
+    writer.writerow(["Account Name", "Balance"])
     for item in data["liabilities"]:
         writer.writerow(
             [
-                item["account"].account_number,
                 item["account"].name,
                 _decimal_str(item["amount"]),
             ]
@@ -102,11 +98,10 @@ def export_balance_sheet_csv(team, as_of_date):
 
     # Equity
     writer.writerow(["EQUITY"])
-    writer.writerow(["Account Number", "Account Name", "Balance"])
+    writer.writerow(["Account Name", "Balance"])
     for item in data["equity"]:
         writer.writerow(
             [
-                item["account"].account_number,
                 item["account"].name,
                 _decimal_str(item["amount"]),
             ]
@@ -127,11 +122,11 @@ def export_account_activity_csv(team, account, start_date, end_date):
 
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = (
-        f'attachment; filename="account_activity_{account.account_number}_{start_date}_{end_date}.csv"'
+        f'attachment; filename="account_activity_{account.pk}_{start_date}_{end_date}.csv"'
     )
 
     writer = csv.writer(response)
-    writer.writerow([f"Account Activity: {account.name} ({account.account_number})"])
+    writer.writerow([f"Account Activity: {account.name}"])
     writer.writerow([f"Period: {start_date} to {end_date}"])
     writer.writerow([])
 
@@ -186,7 +181,6 @@ def export_transactions_csv(team, start_date=None, end_date=None):
             "Description",
             "Source",
             "Status",
-            "Account Number",
             "Account Name",
             "Account Type",
             "Debit",
@@ -204,7 +198,6 @@ def export_transactions_csv(team, start_date=None, end_date=None):
                     entry.description,
                     entry.get_source_display(),
                     entry.get_status_display(),
-                    line.account.account_number,
                     line.account.name,
                     line.account.account_group.get_account_type_display()
                     if hasattr(line.account.account_group, "get_account_type_display")

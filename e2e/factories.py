@@ -67,7 +67,6 @@ class AccountFactory(factory.django.DjangoModelFactory):
     team = factory.SubFactory(TeamFactory)
     account_group = factory.SubFactory(AccountGroupFactory, team=factory.SelfAttribute("..team"))
     name = factory.Sequence(lambda n: f"Account {n}")
-    account_number = factory.Sequence(lambda n: str(5000 + n))
 
 
 class AssetAccountGroupFactory(AccountGroupFactory):
@@ -77,7 +76,6 @@ class AssetAccountGroupFactory(AccountGroupFactory):
 
 class AssetAccountFactory(AccountFactory):
     account_group = factory.SubFactory(AssetAccountGroupFactory, team=factory.SelfAttribute("..team"))
-    account_number = factory.Sequence(lambda n: str(1000 + n))
 
 
 class IncomeAccountGroupFactory(AccountGroupFactory):
@@ -87,7 +85,6 @@ class IncomeAccountGroupFactory(AccountGroupFactory):
 
 class IncomeAccountFactory(AccountFactory):
     account_group = factory.SubFactory(IncomeAccountGroupFactory, team=factory.SelfAttribute("..team"))
-    account_number = factory.Sequence(lambda n: str(4000 + n))
 
 
 class PayeeFactory(factory.django.DjangoModelFactory):

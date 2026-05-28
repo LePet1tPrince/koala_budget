@@ -41,9 +41,8 @@ class AccountsPage(BasePage):
         self.page.locator("[data-testid='new-account-btn']").click()
         self.page.wait_for_selector("[data-testid='account-form']")
 
-    def fill_account_form(self, name: str, account_number: str, account_group_name: str):
+    def fill_account_form(self, name: str, account_group_name: str):
         self.page.locator("[name='name']").fill(name)
-        self.page.locator("[name='account_number']").fill(account_number)
         self.page.select_option("[name='account_group']", label=account_group_name)
 
     def submit_form(self):
@@ -56,10 +55,10 @@ class AccountsPage(BasePage):
         self.page.locator("[data-testid='edit-account-btn']").nth(index).click()
         self.page.wait_for_selector("[data-testid='account-form']")
 
-    def create_account(self, name: str, account_number: str, account_group_name: str, team_slug: str):
+    def create_account(self, name: str, account_group_name: str, team_slug: str):
         """High-level helper: navigate to create form, fill, and submit."""
         self.goto_create(team_slug)
-        self.fill_account_form(name, account_number, account_group_name)
+        self.fill_account_form(name, account_group_name)
         self.submit_form()
         # After save, Django redirects back to the list
         self.page.wait_for_url(f"**/a/{team_slug}/accounts/**", timeout=10_000)

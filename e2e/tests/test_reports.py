@@ -50,8 +50,8 @@ def test_income_statement_shows_summary_with_data(authenticated_page: Page, live
     """Income statement renders summary stats and tables when there is journal data."""
     income_group = IncomeAccountGroupFactory(team=team)
     expense_group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
-    income_acct = AccountFactory(team=team, account_group=income_group, account_number="4001")
-    expense_acct = AccountFactory(team=team, account_group=expense_group, account_number="5001")
+    income_acct = AccountFactory(team=team, account_group=income_group)
+    expense_acct = AccountFactory(team=team, account_group=expense_group)
 
     entry = JournalEntryFactory(team=team, description="Consulting Invoice", status="posted")
     JournalLineFactory(team=team, journal_entry=entry, account=income_acct, cr_amount="2000.00")
