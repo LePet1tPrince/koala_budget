@@ -39,6 +39,7 @@ class AccountForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         team = kwargs.pop("team", None)
+        self.team = team
         super().__init__(*args, **kwargs)
 
         # If editing an existing account, set the account_type from the account_group
@@ -70,6 +71,19 @@ class AccountForm(forms.ModelForm):
                 self.fields["account_group"].help_text = _("Select an account type first for filtered options")
 
             self.fields["institution"].queryset = Institution.for_team.all()
+    
+    def clean_account_number(self):
+        account_number = self.cleaned_data.get("account_number")
+        if account_number is not None and self.team:
+            qs = Account.objects.filter(team=self.team, account_number=account_number)
+            if self.instance and self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise forms.ValidationError(
+                    _("An account with number %(number)s already exists. Please choose a different number.")
+                    % {"number": account_number}
+                )
+        return account_number
 
     def clean(self):
         """Validate that the selected account_group matches the selected account_type."""
