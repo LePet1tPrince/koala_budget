@@ -13,8 +13,9 @@
 
   <form method="post" data-testid="account-form"
         x-data="{
-          selectedType: '{{ form.data.account_type|default:'' }}',
-          selectedGroup: '{{ form.data.account_group|default:'' }}',
+          selectedType: '{{ form.data.account_type|default:initial_type }}',
+          selectedGroup: '{{ form.data.account_group|default:initial_group }}',
+          selectedInstitution: '{{ form.data.institution|default:initial_institution }}',
           get showInstitution() {
             return this.selectedType === 'asset' || this.selectedType === 'liability';
           },
@@ -82,11 +83,25 @@
     </div>
 
     <div x-show="showInstitution" x-cloak>
-      {% render_field form.institution %}
+      <div class="w-full mt-2">
+        <label class="block mb-1 font-bold" for="{{ form.institution.id_for_label }}">{{ form.institution.label }}</label>
+        <select name="institution" id="{{ form.institution.id_for_label }}"
+                x-model="selectedInstitution" class="select select-bordered w-full">
+          <option value="">---------</option>
+          {% for choice in form.institution.field.queryset %}
+          <option value="{{ choice.pk }}">{{ choice }}</option>
+          {% endfor %}
+        </select>
+        {{ form.institution.errors }}
+      </div>
     </div>
 
     <div class="flex gap-2 mt-6">
       <input type="submit" class="pg-button-primary" value="{% translate 'Save' %}" data-testid="save-btn">
+      <button type="submit" name="next_action" value="save_and_create_another"
+              class="pg-button-secondary" data-testid="save-and-create-another-btn">
+        {% translate "Save and create another" %}
+      </button>
       <a href="{% url 'accounts:account_list' request.team.slug %}" class="pg-button-secondary" data-testid="cancel-btn">{% translate "Cancel" %}</a>
     </div>
   </form>

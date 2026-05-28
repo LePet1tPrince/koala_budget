@@ -2,9 +2,11 @@
 Views for accounts app.
 """
 
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, TemplateView, UpdateView
+from urllib.parse import urlencode
 
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
@@ -130,6 +132,9 @@ class AccountCreateView(AccountViewMixin, CreateView):
             }
             for value, label in ACCOUNT_TYPE_CHOICES
         ]
+        context["initial_type"] = self.request.GET.get("account_type", "")
+        context["initial_group"] = self.request.GET.get("account_group", "")
+        context["initial_institution"] = self.request.GET.get("institution", "")
         return context
 
     def form_valid(self, form):
@@ -139,7 +144,20 @@ class AccountCreateView(AccountViewMixin, CreateView):
             form.instance.has_feed = account_group.account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY)
             if account_group.account_type not in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY):
                 form.instance.institution = None
-        return super().form_valid(form)
+
+        response = super().form_valid(form)
+
+        if self.request.POST.get("next_action") == "save_and_create_another":
+            params = {
+                "account_type": form.cleaned_data.get("account_type", ""),
+                "account_group": form.instance.account_group_id or "",
+            }
+            if form.instance.institution_id:
+                params["institution"] = form.instance.institution_id
+            url = reverse("accounts:account_create", args=[self.request.team.slug])
+            return redirect(f"{url}?{urlencode(params)}")
+
+        return response
 
 
 class AccountDetailView(AccountViewMixin, DetailView):
