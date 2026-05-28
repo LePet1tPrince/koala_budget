@@ -5,7 +5,7 @@ Forms for accounts app.
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import ACCOUNT_TYPE_CHOICES, Account, AccountGroup, Institution, Payee
+from .models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Institution, Payee
 
 
 class AccountGroupForm(forms.ModelForm):
@@ -32,13 +32,14 @@ class AccountForm(forms.ModelForm):
 
     class Meta:
         model = Account
-        fields = ["name", "account_number", "account_group", "institution", "has_feed"]
+        fields = ["name", "account_group", "institution", "has_feed"]
 
     # Define the field order explicitly
-    field_order = ["name", "account_number", "account_type", "account_group", "institution", "has_feed"]
+    field_order = ["name", "account_type", "account_group", "institution", "has_feed"]
 
     def __init__(self, *args, **kwargs):
         team = kwargs.pop("team", None)
+        is_create = kwargs.pop("is_create", False)
         self.team = team
         super().__init__(*args, **kwargs)
 
@@ -46,21 +47,19 @@ class AccountForm(forms.ModelForm):
         if self.instance and self.instance.pk and self.instance.account_group:
             self.fields["account_type"].initial = self.instance.account_group.account_type
 
+        # Determine effective account_type for conditional field display
+        account_type_value = None
+        if self.data.get("account_type"):
+            account_type_value = self.data.get("account_type")
+        elif self.instance and self.instance.pk and self.instance.account_group:
+            account_type_value = self.instance.account_group.account_type
+
         # Make institution optional
         self.fields["institution"].required = False
         self.fields["institution"].empty_label = "---------"
 
         # Filter account_group and institution querysets to the current team
         if team:
-            account_type_value = None
-
-            # Check if form was submitted with account_type data
-            if self.data.get("account_type"):
-                account_type_value = self.data.get("account_type")
-            # Or if editing existing instance
-            elif self.instance and self.instance.pk and self.instance.account_group:
-                account_type_value = self.instance.account_group.account_type
-
             if account_type_value:
                 # Filter account groups by the selected account type
                 self.fields["account_group"].queryset = AccountGroup.for_team.filter(account_type=account_type_value)
@@ -71,19 +70,14 @@ class AccountForm(forms.ModelForm):
                 self.fields["account_group"].help_text = _("Select an account type first for filtered options")
 
             self.fields["institution"].queryset = Institution.for_team.all()
-    
-    def clean_account_number(self):
-        account_number = self.cleaned_data.get("account_number")
-        if account_number is not None and self.team:
-            qs = Account.objects.filter(team=self.team, account_number=account_number)
-            if self.instance and self.instance.pk:
-                qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise forms.ValidationError(
-                    _("An account with number %(number)s already exists. Please choose a different number.")
-                    % {"number": account_number}
-                )
-        return account_number
+
+        # Institution is only relevant for asset and liability accounts
+        if account_type_value not in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY):
+            self.fields.pop("institution", None)
+
+        # In create view, has_feed is automatically determined from account type
+        if is_create:
+            self.fields.pop("has_feed", None)
 
     def clean(self):
         """Validate that the selected account_group matches the selected account_type."""

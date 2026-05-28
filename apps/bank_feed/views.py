@@ -1046,7 +1046,6 @@ class BankFeedViewSet(
             team=team,
             name="Reconciliation Adjustments",
             defaults={
-                "account_number": "9999",
                 "has_feed": False,
                 "account_group": expense_group,
             },
@@ -1169,7 +1168,7 @@ def bank_feed_home(request, team_slug):
     accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
 
     # Get all accounts and payees for dropdowns
-    all_accounts = Account.for_team.select_related("account_group").order_by("account_number")
+    all_accounts = Account.for_team.select_related("account_group").order_by("name")
     all_payees = Payee.for_team.all().order_by("name")
 
     all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data

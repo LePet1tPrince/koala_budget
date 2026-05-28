@@ -31,10 +31,10 @@ class BudgetModelTest(TestCase):
             team=cls.team, name="Model Income", account_type=ACCOUNT_TYPE_INCOME
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Model Groceries", account_number=4001, account_group=cls.expense_group
+            team=cls.team, name="Model Groceries", account_group=cls.expense_group
         )
         cls.income_account = Account.objects.create(
-            team=cls.team, name="Model Salary", account_number=3001, account_group=cls.income_group
+            team=cls.team, name="Model Salary", account_group=cls.income_group
         )
 
     def test_create_budget(self):
@@ -80,7 +80,7 @@ class BudgetModelTest(TestCase):
             )
 
     def test_budget_ordering(self):
-        """Test that budgets are ordered by month descending, then account number."""
+        """Test that budgets are ordered by month descending."""
         budget1 = Budget.objects.create(
             team=self.team,
             month=date(2025, 11, 1),
@@ -112,14 +112,14 @@ class BudgetServiceTest(TestCase):
             team=cls.team, name="Service Income", account_type=ACCOUNT_TYPE_INCOME
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Service Groceries", account_number=4005, account_group=cls.expense_group
+            team=cls.team, name="Service Groceries", account_group=cls.expense_group
         )
         cls.income_account = Account.objects.create(
-            team=cls.team, name="Service Salary", account_number=3003, account_group=cls.income_group
+            team=cls.team, name="Service Salary", account_group=cls.income_group
         )
         cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Service Assets", account_type="asset")
         cls.asset_account = Account.objects.create(
-            team=cls.team, name="Service Checking", account_number=1001, account_group=cls.asset_group
+            team=cls.team, name="Service Checking", account_group=cls.asset_group
         )
 
     def setUp(self):
@@ -334,7 +334,7 @@ class BudgetAmountFormTest(TestCase):
             team=cls.team, name="Form Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Form Groceries", account_number=4002, account_group=cls.expense_group
+            team=cls.team, name="Form Groceries", account_group=cls.expense_group
         )
 
     def test_form_valid(self):

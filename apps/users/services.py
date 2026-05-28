@@ -66,8 +66,8 @@ def export_user_data(user):
             zf.writestr(
                 f"{prefix}/accounts.csv",
                 _build_csv(
-                    ["account_number", "name", "account_group", "has_feed"],
-                    [[a.account_number, a.name, a.account_group.name, a.has_feed] for a in accounts],
+                    ["id", "name", "account_group", "has_feed"],
+                    [[a.id, a.name, a.account_group.name, a.has_feed] for a in accounts],
                 ),
             )
 

@@ -26,7 +26,6 @@
       <table class="table table-zebra w-full" data-testid="accounts-table">
         <thead>
           <tr>
-            <th>{% translate "Number" %}</th>
             <th>{% translate "Name" %}</th>
             <th>{% translate "Type" %}</th>
             <th>{% translate "Group" %}</th>
@@ -38,7 +37,6 @@
         <tbody>
           {% for account in object_list %}
             <tr data-testid="account-row">
-              <td>{{ account.account_number }}</td>
               <td><a href="{{ account.get_absolute_url }}" class="link" data-testid="account-name">{{ account.name }}</a></td>
               <td>{{ account.account_group.get_account_type_display }}</td>
               <td><a href="{{ account.account_group.get_absolute_url }}" class="link">{{ account.account_group.name }}</a></td>

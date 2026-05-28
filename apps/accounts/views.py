@@ -9,7 +9,7 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, T
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
 from .forms import AccountForm, AccountGroupForm, InstitutionForm, PayeeForm
-from .models import ACCOUNT_TYPE_CHOICES, Account, AccountGroup, Institution, Payee
+from .models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Institution, Payee
 
 
 # Accounts Home View
@@ -116,10 +116,14 @@ class AccountCreateView(AccountViewMixin, CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["team"] = self.request.team
+        kwargs["is_create"] = True
         return kwargs
 
     def form_valid(self, form):
         form.instance.team = self.request.team
+        account_group = form.cleaned_data.get("account_group")
+        if account_group:
+            form.instance.has_feed = account_group.account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY)
         return super().form_valid(form)
 
 

@@ -45,20 +45,17 @@ class BankFeedViewSetCategorizeTest(TestCase):
         cls.bank_account = Account.objects.create(
             team=cls.team,
             name="Checking",
-            account_number=1000,
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.expense_category = Account.objects.create(
             team=cls.team,
             name="Groceries",
-            account_number=4000,
             account_group=cls.expense_group,
         )
         cls.income_category = Account.objects.create(
             team=cls.team,
             name="Salary",
-            account_number=3000,
             account_group=cls.income_group,
         )
 

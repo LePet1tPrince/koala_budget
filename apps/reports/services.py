@@ -77,8 +77,8 @@ class ReportService:
                     total_expenses += amount
 
         # Sort by account number
-        income_data.sort(key=lambda x: x["account"].account_number)
-        expense_data.sort(key=lambda x: x["account"].account_number)
+        income_data.sort(key=lambda x: x["account"].name)
+        expense_data.sort(key=lambda x: x["account"].name)
 
         net_profit = total_income - total_expenses
 
@@ -155,9 +155,9 @@ class ReportService:
                     total_equity += amount
 
         # Sort by account number
-        asset_data.sort(key=lambda x: x["account"].account_number)
-        liability_data.sort(key=lambda x: x["account"].account_number)
-        equity_data.sort(key=lambda x: x["account"].account_number)
+        asset_data.sort(key=lambda x: x["account"].name)
+        liability_data.sort(key=lambda x: x["account"].name)
+        equity_data.sort(key=lambda x: x["account"].name)
 
         net_worth = total_assets - total_liabilities
 

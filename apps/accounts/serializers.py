@@ -39,7 +39,6 @@ class AccountSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
-            "account_number",
             "account_group",
             "account_group_name",
             "account_type",
@@ -82,7 +81,6 @@ class SimpleAccountSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
-            "account_number",
             "account_group",
             "account_group_name",
             "account_type",

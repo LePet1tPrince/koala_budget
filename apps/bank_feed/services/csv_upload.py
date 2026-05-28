@@ -12,7 +12,6 @@ from decimal import Decimal, InvalidOperation
 from typing import BinaryIO
 
 from dateutil import parser as date_parser
-from django.db.models import Q
 from openpyxl import load_workbook
 
 from apps.accounts.models import Account
@@ -269,20 +268,14 @@ def parse_file(file: BinaryIO, filename: str) -> ParseResult:
 
 def match_category(category_name: str, team) -> Account | None:
     """
-    Match a category name to an existing Account.
-    Matches by name (case-insensitive) or account_number.
+    Match a category name to an existing Account by name (case-insensitive).
     """
     if not category_name or not category_name.strip():
         return None
 
     category_name = category_name.strip()
 
-    # Try exact match on name (case-insensitive) or account_number
-    account = (
-        Account.objects.filter(team=team)
-        .filter(Q(name__iexact=category_name) | Q(account_number__iexact=category_name))
-        .first()
-    )
+    account = Account.objects.filter(team=team, name__iexact=category_name).first()
 
     return account
 

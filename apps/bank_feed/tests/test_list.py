@@ -55,21 +55,18 @@ class BankFeedViewSetListTest(TestCase):
         cls.bank_account = Account.objects.create(
             team=cls.team,
             name="Checking",
-            account_number=1000,
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.bank_account2 = Account.objects.create(
             team=cls.team,
             name="Savings",
-            account_number=1001,
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.category_account = Account.objects.create(
             team=cls.team,
             name="Groceries",
-            account_number=4000,
             account_group=cls.expense_group,
         )
 
@@ -77,7 +74,6 @@ class BankFeedViewSetListTest(TestCase):
         cls.other_bank_account = Account.objects.create(
             team=cls.other_team,
             name="Other Checking",
-            account_number=1000,
             account_group=cls.other_asset_group,
             has_feed=True,
         )

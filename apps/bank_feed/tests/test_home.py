@@ -38,14 +38,12 @@ class BankFeedHomeViewTest(TestCase):
         cls.bank_account = Account.objects.create(
             team=cls.team,
             name="Checking",
-            account_number=1000,
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.savings_account = Account.objects.create(
             team=cls.team,
             name="Savings",
-            account_number=1001,
             account_group=cls.asset_group,
             has_feed=False,  # No feed
         )
@@ -114,7 +112,6 @@ class BankFeedPermissionsTest(TestCase):
         cls.bank_account = Account.objects.create(
             team=cls.team,
             name="Checking",
-            account_number=1000,
             account_group=cls.asset_group,
             has_feed=True,
         )

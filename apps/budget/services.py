@@ -302,7 +302,7 @@ class BudgetService:
                 account_group__account_type__in=("expense", "income"),
             )
             .select_related("account_group")
-            .order_by("account_number")
+            .order_by("name")
         )
 
         actuals = self.get_actuals_by_category(month)

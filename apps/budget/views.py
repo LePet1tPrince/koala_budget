@@ -41,7 +41,7 @@ def budget_month_view(request, team_slug):
             account_group__account_type__in=("expense", "income"),
         )
         .select_related("account_group")
-        .order_by("account_group__name", "account_number")
+        .order_by("account_group__name", "name")
     )
 
     # Bulk fetch existing budgets for this month
@@ -130,7 +130,7 @@ def budget_month_view(request, team_slug):
             account_group__account_type__in=("expense", "income"),
         )
         .select_related("account_group")
-        .order_by("account_number")
+        .order_by("name")
     )
     all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
 
@@ -178,7 +178,7 @@ def budget_autofill_view(request, team_slug):
             account_group__account_type__in=("expense", "income"),
         )
         .select_related("account_group")
-        .order_by("account_group__name", "account_number")
+        .order_by("account_group__name", "name")
     )
 
     # Ensure budgets exist for this month
