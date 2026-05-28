@@ -40,11 +40,7 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, onComplete, onB
   const getFilteredAccounts = (categoryName) => {
     const searchTerm = (searchTerms[categoryName] || '').toLowerCase();
     if (!searchTerm) return allAccounts;
-    return allAccounts.filter(
-      (account) =>
-        account.name.toLowerCase().includes(searchTerm) ||
-        account.account_number.toLowerCase().includes(searchTerm)
-    );
+    return allAccounts.filter((account) => account.name.toLowerCase().includes(searchTerm));
   };
 
   const handleComplete = async () => {
@@ -105,10 +101,7 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, onComplete, onB
                       const filteredAccounts = accounts.filter((account) => {
                         const searchTerm = (searchTerms[categoryName] || '').toLowerCase();
                         if (!searchTerm) return true;
-                        return (
-                          account.name.toLowerCase().includes(searchTerm) ||
-                          account.account_number.toLowerCase().includes(searchTerm)
-                        );
+                        return account.name.toLowerCase().includes(searchTerm);
                       });
 
                       if (filteredAccounts.length === 0) return null;
@@ -117,7 +110,7 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, onComplete, onB
                         <optgroup key={type} label={accountTypeLabels[type] || type}>
                           {filteredAccounts.map((account) => (
                             <option key={account.id} value={account.id}>
-                              {account.account_number} - {account.name}
+                              {account.name}
                             </option>
                           ))}
                         </optgroup>

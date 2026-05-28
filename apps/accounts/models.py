@@ -73,7 +73,8 @@ class Account(BaseTeamModel):
     for_team = AccountTeamScopedManager()
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["account_group__account_type", "account_group__name", "name"]
+        unique_together = ["team", "name"]
 
     def __str__(self):
         return self.name
