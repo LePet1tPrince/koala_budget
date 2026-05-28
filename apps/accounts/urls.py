@@ -29,4 +29,10 @@ urlpatterns = [
     path("payees/<int:pk>/", views.PayeeDetailView.as_view(), name="payee_detail"),
     path("payees/<int:pk>/update/", views.PayeeUpdateView.as_view(), name="payee_update"),
     path("payees/<int:pk>/delete/", views.PayeeDeleteView.as_view(), name="payee_delete"),
+    # Institution URLs
+    path("institutions/", views.InstitutionListView.as_view(), name="institution_list"),
+    path("institutions/new/", views.InstitutionCreateView.as_view(), name="institution_create"),
+    path("institutions/<int:pk>/", views.InstitutionDetailView.as_view(), name="institution_detail"),
+    path("institutions/<int:pk>/update/", views.InstitutionUpdateView.as_view(), name="institution_update"),
+    path("institutions/<int:pk>/delete/", views.InstitutionDeleteView.as_view(), name="institution_delete"),
 ]

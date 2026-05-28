@@ -10,10 +10,10 @@
 <section class="app-card">
   <h3 class="pg-subtitle">{% translate "accounts Overview" %}</h3>
   <p class="text-gray-600 mb-6">
-    {% translate "Manage your accounts, account groups, and payees." %}
+    {% translate "Manage your accounts, account groups, payees, and institutions." %}
   </p>
 
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
     <!-- Account Groups Card -->
     <div class="card bg-base-200 shadow-md">
       <div class="card-body">
@@ -76,13 +76,34 @@
         </div>
       </div>
     </div>
+
+    <!-- Institutions Card -->
+    <div class="card bg-base-200 shadow-md">
+      <div class="card-body">
+        <h4 class="card-title text-lg">
+          <i class="fa fa-landmark h-5 w-5 mr-2"></i>
+          {% translate "Institutions" %}
+        </h4>
+        <p class="text-sm text-gray-600">
+          {% translate "Manage the banks and financial institutions your accounts are held with." %}
+        </p>
+        <div class="card-actions justify-end mt-4">
+          <a href="{% url 'accounts:institution_list' request.team.slug %}" class="pg-button-secondary pg-button-sm">
+            {% translate "View All" %}
+          </a>
+          <a href="{% url 'accounts:institution_create' request.team.slug %}" class="pg-button-primary pg-button-sm">
+            {% translate "New Institution" %}
+          </a>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
 <!-- Quick Stats Section (Optional - can be enhanced later) -->
 <section class="app-card mt-6">
   <h4 class="pg-subtitle">{% translate "Quick Stats" %}</h4>
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
     <div class="stat bg-base-200 rounded-lg p-4">
       <div class="stat-title">{% translate "Account Groups" %}</div>
       <div class="stat-value text-2xl">{{ account_groups_count }}</div>
@@ -94,6 +115,10 @@
     <div class="stat bg-base-200 rounded-lg p-4">
       <div class="stat-title">{% translate "Payees" %}</div>
       <div class="stat-value text-2xl">{{ payees_count }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded-lg p-4">
+      <div class="stat-title">{% translate "Institutions" %}</div>
+      <div class="stat-value text-2xl">{{ institutions_count }}</div>
     </div>
   </div>
 </section>

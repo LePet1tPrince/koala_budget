@@ -61,6 +61,14 @@ class Account(BaseTeamModel):
         related_name="accounts",
         help_text="Account group classification",
     )
+    institution = models.ForeignKey(
+        "Institution",
+        on_delete=models.SET_NULL,
+        related_name="accounts",
+        null=True,
+        blank=True,
+        help_text="Bank or financial institution this account is held with",
+    )
     has_feed = models.BooleanField(default=False, help_text="Whether this account has a bank feed")
 
     # Override managers to use AccountQuerySet for optimized balance queries
@@ -86,6 +94,25 @@ class Account(BaseTeamModel):
         dr_total = self.journal_lines.aggregate(total=Sum("dr_amount"))["total"] or Decimal("0")
         cr_total = self.journal_lines.aggregate(total=Sum("cr_amount"))["total"] or Decimal("0")
         return dr_total - cr_total
+
+
+class Institution(BaseTeamModel):
+    """
+    Institution model for tracking the bank or financial institution an account is held with.
+    Examples: TD Bank, CIBC, Wealthsimple.
+    """
+
+    name = models.CharField(max_length=200)
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = ["team", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def get_absolute_url(self):
+        return reverse("accounts:institution_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
 
 
 class Payee(BaseTeamModel):

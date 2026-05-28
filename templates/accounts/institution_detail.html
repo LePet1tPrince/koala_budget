@@ -1,0 +1,37 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% block app %}
+<nav aria-label="breadcrumbs">
+  <ol class="pg-breadcrumbs">
+    <li><a href="{% url 'accounts:institution_list' request.team.slug %}">{% translate "Institutions" %}</a></li>
+    <li class="pg-breadcrumb-active" aria-current="page">{{ institution.name }}</li>
+  </ol>
+</nav>
+<section class="app-card">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="pg-subtitle">{{ institution.name }}</h3>
+    <div class="flex gap-2">
+      <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="pg-button-primary">
+        {% translate "Edit" %}
+      </a>
+      <a href="{% url 'accounts:institution_delete' request.team.slug institution.pk %}" class="pg-button-danger">
+        {% translate "Delete" %}
+      </a>
+    </div>
+  </div>
+  <dl class="grid grid-cols-1 gap-4">
+    <div>
+      <dt class="font-semibold">{% translate "Name" %}</dt>
+      <dd>{{ institution.name }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Accounts" %}</dt>
+      <dd>{{ institution.accounts.count }}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold">{% translate "Created" %}</dt>
+      <dd>{{ institution.created_at }}</dd>
+    </div>
+  </dl>
+</section>
+{% endblock %}

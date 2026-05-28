@@ -5,7 +5,7 @@ Forms for accounts app.
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import ACCOUNT_TYPE_CHOICES, Account, AccountGroup, Payee
+from .models import ACCOUNT_TYPE_CHOICES, Account, AccountGroup, Institution, Payee
 
 
 class AccountGroupForm(forms.ModelForm):
@@ -32,10 +32,10 @@ class AccountForm(forms.ModelForm):
 
     class Meta:
         model = Account
-        fields = ["name", "account_number", "account_group", "has_feed"]
+        fields = ["name", "account_number", "account_group", "institution", "has_feed"]
 
     # Define the field order explicitly
-    field_order = ["name", "account_number", "account_type", "account_group", "has_feed"]
+    field_order = ["name", "account_number", "account_type", "account_group", "institution", "has_feed"]
 
     def __init__(self, *args, **kwargs):
         team = kwargs.pop("team", None)
@@ -45,7 +45,11 @@ class AccountForm(forms.ModelForm):
         if self.instance and self.instance.pk and self.instance.account_group:
             self.fields["account_type"].initial = self.instance.account_group.account_type
 
-        # Filter account_group queryset based on selected account_type
+        # Make institution optional
+        self.fields["institution"].required = False
+        self.fields["institution"].empty_label = "---------"
+
+        # Filter account_group and institution querysets to the current team
         if team:
             account_type_value = None
 
@@ -65,6 +69,8 @@ class AccountForm(forms.ModelForm):
                 # Update help text to guide user
                 self.fields["account_group"].help_text = _("Select an account type first for filtered options")
 
+            self.fields["institution"].queryset = Institution.for_team.all()
+
     def clean(self):
         """Validate that the selected account_group matches the selected account_type."""
         cleaned_data = super().clean()
@@ -81,6 +87,14 @@ class AccountForm(forms.ModelForm):
             )
 
         return cleaned_data
+
+
+class InstitutionForm(forms.ModelForm):
+    """Form for creating and editing institutions."""
+
+    class Meta:
+        model = Institution
+        fields = ["name"]
 
 
 class PayeeForm(forms.ModelForm):
