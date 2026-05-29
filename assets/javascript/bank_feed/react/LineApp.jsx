@@ -15,7 +15,7 @@ import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
  * LineApp - Main application component for managing lines
  * Manages account selection and bank feed operations
  */
-const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
+const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccountGroups, teamSlug, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
   // Store accounts in state so we can update reconciled_balance after reconciliation
   const [accounts, setAccounts] = useState(initialAccounts);
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -524,6 +524,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, teamSlug, 
         <CSVUploadWizard
           selectedAccount={selectedAccount}
           allAccounts={allAccounts}
+          allAccountGroups={allAccountGroups}
           uploadApi={uploadApi}
           onComplete={(result) => {
             setShowUploadWizard(false);

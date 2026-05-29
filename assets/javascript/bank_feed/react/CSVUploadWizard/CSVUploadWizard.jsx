@@ -17,7 +17,7 @@ import Step4Preview from './Step4Preview';
  * - onComplete: Callback when import is complete
  * - onCancel: Callback when user cancels
  */
-const CSVUploadWizard = ({ selectedAccount, allAccounts, uploadApi, onComplete, onCancel }) => {
+const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploadApi, onComplete, onCancel }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState(null);
 
@@ -223,6 +223,8 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, uploadApi, onComplete, 
           <Step3CategoryMapping
             unmappedCategories={previewResult.unmapped_categories}
             allAccounts={allAccounts}
+            allAccountGroups={allAccountGroups}
+            uploadApi={uploadApi}
             onComplete={handleCategoryMappingComplete}
             onBack={handleBack}
             onCancel={onCancel}

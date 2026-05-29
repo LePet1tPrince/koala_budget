@@ -14,8 +14,8 @@ from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.accounts.models import Account, Payee
-from apps.accounts.serializers import AccountSerializer, PayeeSerializer, SimpleAccountSerializer
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Payee
+from apps.accounts.serializers import AccountGroupSerializer, AccountSerializer, PayeeSerializer, SimpleAccountSerializer
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
@@ -733,6 +733,55 @@ class BankFeedViewSet(
         response_serializer = UploadConfirmResponseSerializer(result)
         return Response(response_serializer.data)
 
+    @extend_schema(
+        operation_id="bank_feed_create_account",
+        tags=["bank-feed"],
+        responses={201: SimpleAccountSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="create_account")
+    def create_account(self, request, team_slug=None):
+        """
+        Create a new account for use in the CSV upload category mapping step.
+        Body: name (str), account_group_id (int)
+        """
+        name = request.data.get("name", "").strip()
+        account_group_id = request.data.get("account_group_id")
+
+        if not name:
+            return Response({"error": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not account_group_id:
+            return Response({"error": "account_group_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            account_group = AccountGroup.for_team.get(id=account_group_id)
+        except AccountGroup.DoesNotExist:
+            return Response({"error": "Account group not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if Account.for_team.filter(name__iexact=name).exists():
+            return Response({"error": f'An account named "{name}" already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+        account = Account.objects.create(
+            name=name,
+            account_group=account_group,
+            team=request.team,
+            has_feed=account_group.account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY),
+        )
+
+        serializer = SimpleAccountSerializer(account)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        operation_id="bank_feed_account_groups",
+        tags=["bank-feed"],
+        responses={200: AccountGroupSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="account_groups")
+    def account_groups(self, request, team_slug=None):
+        """Return all account groups for the team, for use in account creation."""
+        groups = AccountGroup.for_team.all()
+        serializer = AccountGroupSerializer(groups, many=True)
+        return Response(serializer.data)
+
     # Batch Operations
 
     @extend_schema(
@@ -1167,12 +1216,14 @@ def bank_feed_home(request, team_slug):
     # Serialize accounts for React
     accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
 
-    # Get all accounts and payees for dropdowns
+    # Get all accounts, payees, and account groups for dropdowns
     all_accounts = Account.for_team.select_related("account_group").order_by("name")
     all_payees = Payee.for_team.all().order_by("name")
+    all_account_groups = AccountGroup.for_team.all().order_by("account_type", "name")
 
     all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
     all_payees_data = PayeeSerializer(all_payees, many=True).data
+    all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
 
     # API URLs
     api_urls = {
@@ -1190,6 +1241,7 @@ def bank_feed_home(request, team_slug):
             "accounts": accounts_data,
             "all_accounts": all_accounts_data,
             "all_payees": all_payees_data,
+            "all_account_groups": all_account_groups_data,
             "api_urls": api_urls,
             "team_slug": team_slug,
         },

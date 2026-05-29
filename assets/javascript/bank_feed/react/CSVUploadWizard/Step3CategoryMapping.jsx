@@ -1,6 +1,8 @@
 /* globals gettext */
 
 import React, { useState } from 'react';
+import AccountComboBox from './AccountComboBox';
+import CreateAccountModal from './CreateAccountModal';
 
 /**
  * Step3CategoryMapping - Map unrecognized categories to existing accounts
@@ -8,39 +10,32 @@ import React, { useState } from 'react';
  * Props:
  * - unmappedCategories: Array of category names that need mapping
  * - allAccounts: All available accounts for selection
+ * - allAccountGroups: All account groups (for creating new accounts)
+ * - uploadApi: API helpers (includes createAccount)
  * - onComplete: Callback with category mappings
  * - onBack: Callback to go back
  * - onCancel: Callback when user cancels
  */
-const Step3CategoryMapping = ({ unmappedCategories, allAccounts, onComplete, onBack, onCancel }) => {
+const Step3CategoryMapping = ({ unmappedCategories, allAccounts, allAccountGroups, uploadApi, onComplete, onBack, onCancel }) => {
   const [mappings, setMappings] = useState({});
   const [loading, setLoading] = useState(false);
-  const [searchTerms, setSearchTerms] = useState({});
+
+  // Local copy of accounts so newly created accounts appear without a full page reload
+  const [localAccounts, setLocalAccounts] = useState(allAccounts);
+
+  // Track which category is requesting account creation (null = modal closed)
+  const [creatingForCategory, setCreatingForCategory] = useState(null);
 
   const handleMappingChange = (categoryName, accountId) => {
-    const value = accountId === '' ? null : parseInt(accountId, 10);
     setMappings((prev) => {
-      const newMappings = { ...prev };
-      if (value === null) {
-        delete newMappings[categoryName];
+      const next = { ...prev };
+      if (accountId == null) {
+        delete next[categoryName];
       } else {
-        newMappings[categoryName] = value;
+        next[categoryName] = accountId;
       }
-      return newMappings;
+      return next;
     });
-  };
-
-  const handleSearchChange = (categoryName, term) => {
-    setSearchTerms((prev) => ({
-      ...prev,
-      [categoryName]: term,
-    }));
-  };
-
-  const getFilteredAccounts = (categoryName) => {
-    const searchTerm = (searchTerms[categoryName] || '').toLowerCase();
-    if (!searchTerm) return allAccounts;
-    return allAccounts.filter((account) => account.name.toLowerCase().includes(searchTerm));
   };
 
   const handleComplete = async () => {
@@ -49,23 +44,15 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, onComplete, onB
     setLoading(false);
   };
 
-  // Group accounts by type for easier selection
-  const groupedAccounts = allAccounts.reduce((groups, account) => {
-    const type = account.account_group?.account_type || 'other';
-    if (!groups[type]) {
-      groups[type] = [];
+  const handleCreateAccount = async (name, accountGroupId) => {
+    const newAccount = await uploadApi.createAccount(name, accountGroupId);
+    setLocalAccounts((prev) => [...prev, newAccount].sort((a, b) => a.name.localeCompare(b.name)));
+    // Auto-select the new account for the category that triggered creation
+    if (creatingForCategory) {
+      handleMappingChange(creatingForCategory, newAccount.id);
     }
-    groups[type].push(account);
-    return groups;
-  }, {});
-
-  const accountTypeLabels = {
-    asset: gettext('Assets'),
-    liability: gettext('Liabilities'),
-    income: gettext('Income'),
-    expense: gettext('Expenses'),
-    equity: gettext('Equity'),
-    other: gettext('Other'),
+    setCreatingForCategory(null);
+    return newAccount;
   };
 
   return (
@@ -78,46 +65,17 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, onComplete, onB
         {unmappedCategories.map((categoryName) => (
           <div key={categoryName} className="card bg-base-200 p-4">
             <div className="flex items-start gap-4">
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="font-medium mb-2">
                   <span className="badge badge-warning mr-2">{gettext('Unmapped')}</span>
                   {categoryName}
                 </div>
-                <div className="form-control">
-                  <input
-                    type="text"
-                    className="input input-bordered input-sm mb-2"
-                    placeholder={gettext('Search accounts...')}
-                    value={searchTerms[categoryName] || ''}
-                    onChange={(e) => handleSearchChange(categoryName, e.target.value)}
-                  />
-                  <select
-                    className="select select-bordered w-full"
-                    value={mappings[categoryName] || ''}
-                    onChange={(e) => handleMappingChange(categoryName, e.target.value)}
-                  >
-                    <option value="">{gettext('-- Leave uncategorized --')}</option>
-                    {Object.entries(groupedAccounts).map(([type, accounts]) => {
-                      const filteredAccounts = accounts.filter((account) => {
-                        const searchTerm = (searchTerms[categoryName] || '').toLowerCase();
-                        if (!searchTerm) return true;
-                        return account.name.toLowerCase().includes(searchTerm);
-                      });
-
-                      if (filteredAccounts.length === 0) return null;
-
-                      return (
-                        <optgroup key={type} label={accountTypeLabels[type] || type}>
-                          {filteredAccounts.map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      );
-                    })}
-                  </select>
-                </div>
+                <AccountComboBox
+                  allAccounts={localAccounts}
+                  value={mappings[categoryName] || null}
+                  onChange={(accountId) => handleMappingChange(categoryName, accountId)}
+                  onCreateNew={() => setCreatingForCategory(categoryName)}
+                />
               </div>
             </div>
           </div>
@@ -130,25 +88,13 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, onComplete, onB
       </div>
 
       <div className="modal-action">
-        <button
-          className="btn btn-ghost"
-          onClick={onCancel}
-          disabled={loading}
-        >
+        <button className="btn btn-ghost" onClick={onCancel} disabled={loading}>
           {gettext('Cancel')}
         </button>
-        <button
-          className="btn btn-ghost"
-          onClick={onBack}
-          disabled={loading}
-        >
+        <button className="btn btn-ghost" onClick={onBack} disabled={loading}>
           {gettext('Back')}
         </button>
-        <button
-          className="btn btn-primary"
-          onClick={handleComplete}
-          disabled={loading}
-        >
+        <button className="btn btn-primary" onClick={handleComplete} disabled={loading}>
           {loading ? (
             <>
               <span className="loading loading-spinner loading-sm"></span>
@@ -159,6 +105,15 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, onComplete, onB
           )}
         </button>
       </div>
+
+      {/* Create Account Modal - rendered on top, preserves all upload state */}
+      {creatingForCategory && (
+        <CreateAccountModal
+          allAccountGroups={allAccountGroups}
+          onSave={handleCreateAccount}
+          onCancel={() => setCreatingForCategory(null)}
+        />
+      )}
     </div>
   );
 };
