@@ -10,6 +10,7 @@ import { getBankFeedApiClient, getPlaidApiClient, getJournalApiClient, getUpload
 const accounts = JSON.parse(document.getElementById('accounts').textContent);
 const allAccounts = JSON.parse(document.getElementById('all-accounts').textContent);
 const allPayees = JSON.parse(document.getElementById('all-payees').textContent);
+const allAccountGroups = JSON.parse(document.getElementById('all-account-groups').textContent);
 const teamSlug = JSON.parse(document.getElementById('team-slug').textContent);
 
 // Create API clients
@@ -26,6 +27,7 @@ root.render(
     accounts={accounts}
     allAccounts={allAccounts}
     allPayees={allPayees}
+    allAccountGroups={allAccountGroups}
     teamSlug={teamSlug}
     bankFeedClient={bankFeedClient}
     plaidClient={plaidClient}

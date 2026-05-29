@@ -74,6 +74,28 @@ export function getUploadApiHelpers(teamSlug) {
     },
 
     /**
+     * Create a new account (for use during category mapping)
+     */
+    createAccount: async (name, accountGroupId) => {
+      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/create_account/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': headers['X-CSRFToken'],
+        },
+        body: JSON.stringify({ name, account_group_id: accountGroupId }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Failed to create account');
+      }
+
+      return response.json();
+    },
+
+    /**
      * Confirm and create transactions
      */
     uploadConfirm: async (accountId, transactions, skipDuplicates = true) => {
