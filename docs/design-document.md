@@ -119,3 +119,6 @@ Koala Budget uses **DaisyUI 5** semantic color tokens on top of Tailwind CSS 4. 
 | Project start | Positive amounts = outflow (Plaid convention) | Matches Plaid API; consistent throughout |
 | Project start | Team-level multi-tenancy with role-based access | SaaS model; supports shared household budgets |
 | Project start | Double-entry bookkeeping | Financial integrity; enables full reporting |
+| 2026-06-04 | Accounts filter state passed as `return_type` query param on outbound links; no client-side storage | Stateless, bookmarkable, no JS dependency |
+| 2026-06-04 | Hidden `<input type="hidden" name="return_type">` in account edit form to survive POST redirect | Preserves filter through form submission without URL manipulation in the view |
+| 2026-06-04 | Invalid/unrecognized `return_type` values are passed through; the account list view silently ignores them | Avoids 400 errors on stale/external links; degrades gracefully to unfiltered list |
