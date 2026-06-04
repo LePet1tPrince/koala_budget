@@ -166,6 +166,7 @@ class AccountDetailView(AccountViewMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["journal_lines"] = self.object.journal_lines.all()
+        context["return_type"] = self.request.GET.get("return_type", "")
         return context
 
 
@@ -179,12 +180,33 @@ class AccountUpdateView(AccountViewMixin, UpdateView):
         kwargs["team"] = self.request.team
         return kwargs
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["return_type"] = self.request.GET.get("return_type", "") or self.request.POST.get("return_type", "")
+        return context
+
+    def get_success_url(self):
+        return_type = self.request.POST.get("return_type", "")
+        if return_type:
+            url = reverse("accounts:account_list", args=[self.request.team.slug])
+            return f"{url}?type={return_type}"
+        return self.object.get_absolute_url()
+
 
 class AccountDeleteView(AccountViewMixin, DeleteView):
     """Delete an account."""
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["return_type"] = self.request.GET.get("return_type", "")
+        return context
+
     def get_success_url(self):
-        return reverse("accounts:account_list", args=[self.request.team.slug])
+        url = reverse("accounts:account_list", args=[self.request.team.slug])
+        return_type = self.request.GET.get("return_type", "")
+        if return_type:
+            url = f"{url}?type={return_type}"
+        return url
 
 
 # Payee Views
