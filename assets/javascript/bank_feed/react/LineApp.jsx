@@ -499,23 +499,23 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               <span>{error}</span>
             </div>
           )}
-          {loading ? (
-            <div className="flex justify-center items-center py-12">
+          {loading && (
+            <div className="flex justify-center items-center py-4">
               <span className="loading loading-spinner loading-lg"></span>
             </div>
-          ) : (
-            <LineTableMaterial
-              lines={lines}
-              selectedAccount={selectedAccount}
-              allAccounts={allAccounts}
-              onAdd={handleAddLine}
-              onDelete={handleDeleteLine}
-              onEditTransaction={handleEditTransaction}
-              selectedIds={selectedIds}
-              onSelectionChange={handleSelectionChange}
-              onFilterModeChange={setFilterMode}
-            />
           )}
+          <LineTableMaterial
+            lines={lines}
+            selectedAccount={selectedAccount}
+            allAccounts={allAccounts}
+            onAdd={handleAddLine}
+            onDelete={handleDeleteLine}
+            onEditTransaction={handleEditTransaction}
+            selectedIds={selectedIds}
+            onSelectionChange={handleSelectionChange}
+            onFilterModeChange={setFilterMode}
+            hidden={loading}
+          />
         </section>
       )}
 
