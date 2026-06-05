@@ -68,11 +68,6 @@ const BatchActionBar = ({
     }, 0);
   }, [selectedRows]);
 
-  // Check if all selected rows are categorized (have a category)
-  const allCategorized = useMemo(() => {
-    return selectedRows.every(row => row.category);
-  }, [selectedRows]);
-
   // Get reconciled balance from selected account
   const reconciledBalance = useMemo(() => {
     if (selectedAccount?.reconciled_balance !== undefined && selectedAccount?.reconciled_balance !== null) {
@@ -203,8 +198,6 @@ const BatchActionBar = ({
               size="small"
               startIcon={<CheckCircleIcon />}
               onClick={() => setReconcileDialogOpen(true)}
-              disabled={!allCategorized}
-              title={!allCategorized ? gettext('All selected transactions must be categorized') : ''}
             >
               {gettext('Reconcile')}
             </Button>
