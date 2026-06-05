@@ -617,3 +617,105 @@ class TeamIsolationTest(TestCase):
             payees = list(Payee.for_team.all())
             self.assertEqual(len(payees), 1)
             self.assertEqual(payees[0].name, "Team 2 Payee")
+
+
+class AccountReturnTypeTest(TestCase):
+    """Tests for return_type filter persistence in Account views."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        cls.account_group = AccountGroup.objects.create(
+            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.account = Account.objects.create(
+            team=cls.team, name="Checking", account_group=cls.account_group
+        )
+
+    def setUp(self):
+        self.client.login(username="testuser@example.com", password="testpass123")
+
+    def test_detail_view_passes_return_type_to_context(self):
+        """Test that detail view passes return_type from GET to template context."""
+        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        response = self.client.get(url, {"return_type": "asset"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["return_type"], "asset")
+
+    def test_detail_view_no_return_type_is_empty_string(self):
+        """Test that detail view context has empty return_type when not provided."""
+        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["return_type"], "")
+
+    def test_update_view_passes_return_type_to_context(self):
+        """Test that update view passes return_type from GET to template context."""
+        url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        response = self.client.get(url, {"return_type": "asset"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["return_type"], "asset")
+
+    def test_update_view_success_url_with_return_type_redirects_to_filtered_list(self):
+        """Test that saving edit with return_type redirects to filtered account list."""
+        url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        data = {
+            "name": "Checking Updated",
+            "account_type": ACCOUNT_TYPE_ASSET,
+            "account_group": self.account_group.pk,
+            "has_feed": False,
+            "return_type": "asset",
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 302)
+        list_url = reverse("accounts:account_list", kwargs={"team_slug": self.team.slug})
+        self.assertRedirects(response, f"{list_url}?type=asset", fetch_redirect_response=False)
+        # Restore name for other tests
+        self.account.refresh_from_db()
+        self.account.name = "Checking"
+        self.account.save()
+
+    def test_update_view_success_url_without_return_type_redirects_to_detail(self):
+        """Test that saving edit without return_type redirects to account detail page."""
+        url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        data = {
+            "name": "Checking",
+            "account_type": ACCOUNT_TYPE_ASSET,
+            "account_group": self.account_group.pk,
+            "has_feed": False,
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 302)
+        detail_url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        self.assertRedirects(response, detail_url, fetch_redirect_response=False)
+
+    def test_delete_view_success_url_with_return_type_redirects_to_filtered_list(self):
+        """Test that deleting an account with return_type redirects to filtered account list."""
+        account_to_delete = Account.objects.create(
+            team=self.team, name="To Delete", account_group=self.account_group
+        )
+        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
+        response = self.client.post(url, {}, QUERY_STRING="return_type=asset")
+        self.assertEqual(response.status_code, 302)
+        list_url = reverse("accounts:account_list", kwargs={"team_slug": self.team.slug})
+        self.assertRedirects(response, f"{list_url}?type=asset", fetch_redirect_response=False)
+
+    def test_delete_view_success_url_without_return_type_redirects_to_list(self):
+        """Test that deleting without return_type redirects to plain account list."""
+        account_to_delete = Account.objects.create(
+            team=self.team, name="To Delete 2", account_group=self.account_group
+        )
+        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
+        list_url = reverse("accounts:account_list", kwargs={"team_slug": self.team.slug})
+        self.assertRedirects(response, list_url, fetch_redirect_response=False)
+
+    def test_delete_view_passes_return_type_to_context(self):
+        """Test that delete confirm view passes return_type to template context."""
+        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        response = self.client.get(url, {"return_type": "asset"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["return_type"], "asset")

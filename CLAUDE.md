@@ -80,6 +80,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 - CSV bank import as fallback to Plaid
 - dj-stripe subscription billing
 - Playwright E2E test suite with Page Object Model
+- Accounts: persist `?type=` filter across account detail/edit/delete navigation via `return_type` query param
 
 ---
 

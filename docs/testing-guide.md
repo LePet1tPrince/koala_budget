@@ -141,6 +141,12 @@ make test-e2e-accounts  # Run specific test file
 - MEMBER role cannot create/edit (returns 403 or 404)
 - ADMIN role can perform all CRUD operations
 
+### Accounts — filter state persistence (`AccountReturnTypeTest`)
+- `return_type` param is preserved through account detail, edit (GET and POST), and delete views
+- Cancel and breadcrumb links on edit/delete forms carry `return_type` back to the filtered list
+- Invalid/unknown `return_type` values round-trip without error; list view ignores them
+- Pattern: pass `?return_type=<value>` in test URLs and assert the redirect or link targets include the param
+
 ---
 
 ## Known Coverage Gaps
