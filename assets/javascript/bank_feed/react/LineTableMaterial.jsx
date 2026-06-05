@@ -43,10 +43,13 @@ const LineTableMaterial = ({
   selectedIds = new Set(),
   onSelectionChange,
   onFilterModeChange,
+  hidden = false,
 }) => {
   // Date range filter state (YYYY-MM-DD strings)
   const [filterStart, setFilterStart] = useState('');
   const [filterEnd, setFilterEnd] = useState('');
+  // Controlled page size so it survives data reloads
+  const [pageSize, setPageSize] = useState(10);
   const [showUncategorizedOnly, setShowUncategorizedOnly] = useState(false);
 
   // Snackbar state
@@ -326,6 +329,7 @@ const LineTableMaterial = ({
   }
 
   return (
+    <div style={hidden ? { display: 'none' } : undefined}>
     <ThemeProvider theme={theme}>
       <div className="space-y-4">
         {/* Filter Mode Toggle */}
@@ -423,9 +427,10 @@ const LineTableMaterial = ({
             Filter: FilterListIcon,
           }}
           onRowClick={(_event, rowData) => handleEditClick(rowData)}
+          onChangeRowsPerPage={setPageSize}
           options={{
             actionsColumnIndex: -1,
-            pageSize: 10,
+            pageSize: pageSize,
             pageSizeOptions: [10, 20, 50],
             addRowPosition: 'first',
             sorting: true,
@@ -494,6 +499,7 @@ const LineTableMaterial = ({
         </Snackbar>
       </div>
     </ThemeProvider>
+    </div>
   );
 };
 
