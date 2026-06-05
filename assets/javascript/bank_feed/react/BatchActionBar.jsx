@@ -10,6 +10,7 @@ import {
   Paper,
   Slide,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -66,6 +67,11 @@ const BatchActionBar = ({
       const outflow = parseFloat(row.outflow) || 0;
       return sum + inflow - outflow;
     }, 0);
+  }, [selectedRows]);
+
+  // Check if all selected rows are categorized (have a category)
+  const allCategorized = useMemo(() => {
+    return selectedRows.every(row => row.category);
   }, [selectedRows]);
 
   // Get reconciled balance from selected account
@@ -194,13 +200,18 @@ const BatchActionBar = ({
           )}
 
           {!isArchivedView && filterMode === 'to_review' && (
-            <Button
-              size="small"
-              startIcon={<CheckCircleIcon />}
-              onClick={() => setReconcileDialogOpen(true)}
-            >
-              {gettext('Reconcile')}
-            </Button>
+            <Tooltip title={!allCategorized ? gettext('Categorize all transactions to reconcile') : ''}>
+              <span>
+                <Button
+                  size="small"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={() => setReconcileDialogOpen(true)}
+                  disabled={!allCategorized}
+                >
+                  {gettext('Reconcile')}
+                </Button>
+              </span>
+            </Tooltip>
           )}
 
           {filterMode === 'reconciled' && (
