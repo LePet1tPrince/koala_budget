@@ -12,7 +12,7 @@ import {
   LastPage as LastPageIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { Alert, Box, Checkbox, IconButton, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, Checkbox, IconButton, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
@@ -47,6 +47,7 @@ const LineTableMaterial = ({
   // Date range filter state (YYYY-MM-DD strings)
   const [filterStart, setFilterStart] = useState('');
   const [filterEnd, setFilterEnd] = useState('');
+  const [showUncategorizedOnly, setShowUncategorizedOnly] = useState(false);
 
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
@@ -65,11 +66,10 @@ const LineTableMaterial = ({
 
   // Clear selection and notify parent when filter mode changes
   useEffect(() => {
-    // Clear selected transactions when switching views
+    setShowUncategorizedOnly(false);
     if (onSelectionChange) {
       onSelectionChange(new Set());
     }
-    // Notify parent of filter mode change
     if (onFilterModeChange) {
       onFilterModeChange(filterMode);
     }
@@ -176,8 +176,13 @@ const LineTableMaterial = ({
       });
     }
 
+    // Apply uncategorized filter
+    if (showUncategorizedOnly) {
+      filtered = filtered.filter((l) => !l.category);
+    }
+
     return filtered;
-  }, [lines, filterStart, filterEnd, filterMode]);
+  }, [lines, filterStart, filterEnd, filterMode, showUncategorizedOnly]);
 
   // Handle row selection
   const handleRowSelect = (rowId, checked) => {
@@ -344,7 +349,7 @@ const LineTableMaterial = ({
 
         {/* Date Range Filter */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-2">
             <DateRangePicker
               startDate={filterStart}
               endDate={filterEnd}
@@ -353,6 +358,15 @@ const LineTableMaterial = ({
                 setFilterEnd(e);
               }}
             />
+            {filterMode === 'to_review' && (
+              <Button
+                size="small"
+                variant={showUncategorizedOnly ? 'contained' : 'outlined'}
+                onClick={() => setShowUncategorizedOnly(v => !v)}
+              >
+                {gettext('Uncategorized')}
+              </Button>
+            )}
           </div>
           <div className="text-sm text-gray-500">
             {filteredLines.length} {gettext('lines')}
