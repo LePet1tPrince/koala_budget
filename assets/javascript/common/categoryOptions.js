@@ -60,13 +60,13 @@ export function buildCategoryOptions(accounts, options = {}) {
   // Map to option objects with group information
   const options_list = filtered.map((account) => {
     const accountType = account.account_type || account.accountType;
-    const accountNumber = account.account_number || account.accountNumber;
+    const accountGroupName = account.account_group_name || account.accountGroupName || '';
     const groupKey = getGroupKey(accountType);
     const groupLabel = GROUP_LABELS[groupKey] || accountType;
 
     return {
       id: account.id,
-      label: `${accountNumber} - ${account.name}`,
+      label: `${accountGroupName} - ${account.name}`,
       accountNumber: accountNumber,
       name: account.name,
       accountType: accountType,

@@ -138,7 +138,7 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, plaidClie
                   <option value="">{gettext('Select an account...')}</option>
                   {ledgerAccounts.map(account => (
                     <option key={account.id} value={account.id}>
-                      {account.account_number} - {account.name}
+                      {account.account_group_name} - {account.name}
                     </option>
                   ))}
                 </select>
