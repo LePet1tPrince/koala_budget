@@ -67,24 +67,20 @@ export function buildCategoryOptions(accounts, options = {}) {
     return {
       id: account.id,
       label: `${accountGroupName} - ${account.name}`,
-      accountNumber: accountNumber,
       name: account.name,
       accountType: accountType,
       groupKey: groupKey,
       groupLabel: groupLabel,
-      // Sort priority based on group order
       groupOrder: GROUP_ORDER.indexOf(groupKey),
     };
   });
 
-  // Sort by group order, then by account number within each group
+  // Sort by group order, then alphabetically by name within each group
   return options_list.sort((a, b) => {
-    // First sort by group
     if (a.groupOrder !== b.groupOrder) {
       return a.groupOrder - b.groupOrder;
     }
-    // Then sort by account number within group
-    return String(a.accountNumber).localeCompare(String(b.accountNumber), undefined, { numeric: true });
+    return a.name.localeCompare(b.name);
   });
 }
 
