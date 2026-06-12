@@ -36,6 +36,7 @@ const BulkEditModal = ({
   onClose,
   selectedCount,
   allAccounts,
+  allPayees = [],
   bankFeedAccounts,
   onSave,
 }) => {
@@ -169,14 +170,21 @@ const BulkEditModal = ({
             )}
           />
 
-          {/* Payee */}
-          <TextField
-            label={gettext('Payee')}
-            value={payee}
-            onChange={(e) => setPayee(e.target.value)}
-            fullWidth
-            size="small"
-            placeholder={gettext('Leave blank to keep existing')}
+          {/* Payee (free text with autocomplete from existing payees) */}
+          <Autocomplete
+            freeSolo
+            options={allPayees.map((p) => p.name)}
+            inputValue={payee}
+            onInputChange={(_event, newValue) => setPayee(newValue || '')}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={gettext('Payee')}
+                size="small"
+                fullWidth
+                placeholder={gettext('Leave blank to keep existing')}
+              />
+            )}
           />
 
           {/* Description */}

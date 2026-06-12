@@ -19,10 +19,11 @@ class PlaidItemSerializer(serializers.ModelSerializer):
             "id",
             "plaid_item_id",
             "institution_name",
+            "last_synced_at",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["last_synced_at", "created_at", "updated_at"]
 
 
 class PlaidAccountSerializer(serializers.ModelSerializer):

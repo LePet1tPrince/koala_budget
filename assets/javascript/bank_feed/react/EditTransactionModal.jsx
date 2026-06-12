@@ -34,6 +34,8 @@ const EditTransactionModal = ({
   onClose,
   transaction,
   allAccounts,
+  allPayees = [],
+  categorySuggestions = {},
   onSave,
   mode: modeProp,
 }) => {
@@ -50,11 +52,16 @@ const EditTransactionModal = ({
   const [description, setDescription] = useState('');
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  // Whether the current category came from a merchant-history suggestion
+  const [categorySuggested, setCategorySuggested] = useState(false);
 
   // Create options array for category Autocomplete (grouped by account type)
   const categoryOptions = useMemo(() => {
     return buildCategoryOptions(allAccounts);
   }, [allAccounts]);
+
+  // Payee names for the free-text autocomplete
+  const payeeOptions = useMemo(() => allPayees.map((p) => p.name), [allPayees]);
 
   // Initialize form when transaction changes or modal opens
   useEffect(() => {
@@ -69,6 +76,7 @@ const EditTransactionModal = ({
       setPayee('');
       setDescription('');
       setErrors({});
+      setCategorySuggested(false);
     } else if (transaction) {
       // Edit mode - populate from transaction
       const transactionDate = transaction.postedDate instanceof Date
@@ -76,10 +84,18 @@ const EditTransactionModal = ({
         : transaction.postedDate ? new Date(transaction.postedDate) : null;
       setDate(transactionDate);
 
-      const categoryOption = transaction.category
+      let categoryOption = transaction.category
         ? categoryOptions.find(opt => opt.id === transaction.category.id)
         : null;
+      let suggested = false;
+      if (!categoryOption && transaction.payee && categorySuggestions[transaction.payee]) {
+        // Uncategorized: pre-fill with how this merchant was last categorized
+        const suggestion = categorySuggestions[transaction.payee];
+        categoryOption = categoryOptions.find(opt => opt.id === suggestion.id) || null;
+        suggested = Boolean(categoryOption);
+      }
       setCategory(categoryOption);
+      setCategorySuggested(suggested);
 
       setInflow(transaction.inflow && parseFloat(transaction.inflow) > 0 ? transaction.inflow : '');
       setOutflow(transaction.outflow && parseFloat(transaction.outflow) > 0 ? transaction.outflow : '');
@@ -87,7 +103,7 @@ const EditTransactionModal = ({
       setDescription(transaction.description || '');
       setErrors({});
     }
-  }, [open, transaction, categoryOptions, isCreateMode]);
+  }, [open, transaction, categoryOptions, categorySuggestions, isCreateMode]);
 
   // Check if transaction is read-only (Plaid transactions without journal entry).
   // Rows come from the generated API client (camelCase), but tolerate snake_case
@@ -225,7 +241,10 @@ const EditTransactionModal = ({
           {/* Category */}
           <Autocomplete
             value={category}
-            onChange={(_event, newValue) => setCategory(newValue)}
+            onChange={(_event, newValue) => {
+              setCategory(newValue);
+              setCategorySuggested(false);
+            }}
             options={categoryOptions}
             groupBy={(option) => option.groupLabel}
             getOptionLabel={(option) => option.label}
@@ -237,7 +256,11 @@ const EditTransactionModal = ({
                 label={gettext('Category')}
                 size="small"
                 error={!!errors.category}
-                helperText={errors.category || (!canEditCategory && !isCreateMode ? gettext('Category cannot be edited for this transaction') : '')}
+                helperText={
+                  errors.category
+                  || (categorySuggested ? gettext('Suggested from how this payee was last categorized') : '')
+                  || (!canEditCategory && !isCreateMode ? gettext('Category cannot be edited for this transaction') : '')
+                }
               />
             )}
           />
@@ -280,13 +303,20 @@ const EditTransactionModal = ({
             </Box>
           )}
 
-          {/* Payee */}
-          <TextField
-            label={gettext('Payee')}
-            value={payee}
-            onChange={(e) => setPayee(e.target.value)}
-            fullWidth
-            size="small"
+          {/* Payee (free text with autocomplete from existing payees) */}
+          <Autocomplete
+            freeSolo
+            options={payeeOptions}
+            inputValue={payee}
+            onInputChange={(_event, newValue) => setPayee(newValue || '')}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={gettext('Payee')}
+                size="small"
+                fullWidth
+              />
+            )}
           />
 
           {/* Description */}

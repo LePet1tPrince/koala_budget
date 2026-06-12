@@ -1,4 +1,5 @@
 {% load i18n %}
+{% load currency_tags %}
 
 <!-- Summary Card -->
 {% if summary.goal_count %}
@@ -9,11 +10,11 @@
   </div>
   <div class="stat">
     <div class="stat-title">{% translate "Total Target" %}</div>
-    <div class="stat-value text-primary">${{ summary.total_target|floatformat:2 }}</div>
+    <div class="stat-value text-primary">{{ summary.total_target|currency }}</div>
   </div>
   <div class="stat">
     <div class="stat-title">{% translate "Total Saved" %}</div>
-    <div class="stat-value text-success">${{ summary.total_saved|floatformat:2 }}</div>
+    <div class="stat-value text-success">{{ summary.total_saved|currency }}</div>
   </div>
 </div>
 {% endif %}
@@ -43,9 +44,9 @@
           {% endif %}
         </td>
 
-        <td class="text-right font-mono">${{ item.goal.target_amount|floatformat:2 }}</td>
+        <td class="text-right font-mono">{{ item.goal.target_amount|currency }}</td>
 
-        <td class="text-right font-mono text-success">${{ item.goal.total_saved|floatformat:2 }}</td>
+        <td class="text-right font-mono text-success">{{ item.goal.total_saved|currency }}</td>
 
         <td class="text-center">
           <div class="flex items-center gap-2 justify-center">

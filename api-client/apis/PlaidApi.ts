@@ -58,7 +58,7 @@ export interface ImportedTransactionsListRequest {
 }
 
 export interface ImportedTransactionsRetrieveRequest {
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -68,13 +68,13 @@ export interface PlaidAccountsListRequest {
 }
 
 export interface PlaidAccountsPartialUpdateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     patchedPlaidAccount?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'>;
 }
 
 export interface PlaidAccountsRetrieveRequest {
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -93,12 +93,12 @@ export interface PlaidItemsListRequest {
 }
 
 export interface PlaidItemsRetrieveRequest {
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
 export interface PlaidItemsSyncRequest {
-    id: string;
+    id: number;
     teamSlug: string;
 }
 

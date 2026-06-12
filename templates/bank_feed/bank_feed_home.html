@@ -5,7 +5,23 @@
 
 {% block app %}
 
-  <div id="line-app"></div>
+  {# Server-rendered placeholder; React replaces it when the bundle mounts #}
+  <div id="line-app">
+    <section class="app-card">
+      <h2 class="pg-subtitle">{% translate "Bank Feed" %}</h2>
+      <p class="text-sm text-base-content/60 mb-4">{% translate "Loading your accounts and transactions…" %}</p>
+      <div class="space-y-4" aria-hidden="true">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="skeleton h-28 w-full"></div>
+          <div class="skeleton h-28 w-full"></div>
+          <div class="skeleton h-28 w-full"></div>
+          <div class="skeleton h-28 w-full"></div>
+        </div>
+        <div class="skeleton h-10 w-full"></div>
+        <div class="skeleton h-64 w-full"></div>
+      </div>
+    </section>
+  </div>
 
   {{ accounts|json_script:'accounts' }}
   {{ all_accounts|json_script:'all-accounts' }}

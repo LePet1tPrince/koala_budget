@@ -38,11 +38,11 @@ export interface PlaidItem {
      */
     institutionName: string;
     /**
-     * 
-     * @type {string}
+     * When transactions were last successfully synced from Plaid
+     * @type {Date}
      * @memberof PlaidItem
      */
-    readonly isActive: string;
+    readonly lastSyncedAt: Date | null;
     /**
      * 
      * @type {Date}
@@ -64,7 +64,7 @@ export function instanceOfPlaidItem(value: object): value is PlaidItem {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('plaidItemId' in value) || value['plaidItemId'] === undefined) return false;
     if (!('institutionName' in value) || value['institutionName'] === undefined) return false;
-    if (!('isActive' in value) || value['isActive'] === undefined) return false;
+    if (!('lastSyncedAt' in value) || value['lastSyncedAt'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -83,7 +83,7 @@ export function PlaidItemFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'id': json['id'],
         'plaidItemId': json['plaid_item_id'],
         'institutionName': json['institution_name'],
-        'isActive': json['is_active'],
+        'lastSyncedAt': (json['last_synced_at'] == null ? null : new Date(json['last_synced_at'])),
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
     };
@@ -93,7 +93,7 @@ export function PlaidItemFromJSONTyped(json: any, ignoreDiscriminator: boolean):
       return PlaidItemToJSONTyped(json, false);
   }
 
-  export function PlaidItemToJSONTyped(value?: Omit<PlaidItem, 'id'|'is_active'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PlaidItemToJSONTyped(value?: Omit<PlaidItem, 'id'|'last_synced_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

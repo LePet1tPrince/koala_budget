@@ -12,6 +12,7 @@ from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Payee
@@ -32,6 +33,7 @@ from .serializers import (
     BatchIdsSerializer,
     BatchReconcileRequestSerializer,
     CategorizeTransactionsRequestSerializer,
+    CategorySuggestionSerializer,
     UploadConfirmRequestSerializer,
     UploadConfirmResponseSerializer,
     UploadParseResponseSerializer,
@@ -130,8 +132,12 @@ class BankFeedViewSet(
     - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
     """
 
+    class Pagination(PageNumberPagination):
+        page_size = 200
+
     serializer_class = BankFeedRowSerializer
     permission_classes = [TeamModelAccessPermissions]
+    pagination_class = Pagination
     queryset = BankTransaction.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
@@ -303,25 +309,15 @@ class BankFeedViewSet(
         Get unified bank feed, optionally filtered by account.
         Query params:
         - account: Account ID to filter by (optional)
+        - page: Page number (optional)
         """
+        # Model Meta ordering (-posted_date, -created_at) gives most-recent-first
         bank_transactions = self.get_queryset()
 
-        # Convert queryset to feed row dicts
-        rows = [bank_transaction_to_feed_row(tx) for tx in bank_transactions]
-
-        # Sort by date (most recent first)
-        rows.sort(key=lambda r: r["posted_date"], reverse=True)
-
+        page = self.paginate_queryset(bank_transactions)
+        rows = [bank_transaction_to_feed_row(tx) for tx in page]
         serializer = BankFeedRowSerializer(rows, many=True)
-        # Return paginated format expected by generated API client
-        return Response(
-            {
-                "count": len(rows),
-                "next": None,
-                "previous": None,
-                "results": serializer.data,
-            }
-        )
+        return self.get_paginated_response(serializer.data)
 
     def create(self, request, team_slug=None):
         """
@@ -818,6 +814,44 @@ class BankFeedViewSet(
         """Return all account groups for the team, for use in account creation."""
         groups = AccountGroup.for_team.all()
         serializer = AccountGroupSerializer(groups, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="bank_feed_category_suggestions",
+        tags=["bank-feed"],
+        responses={200: CategorySuggestionSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="category_suggestions", pagination_class=None)
+    def category_suggestions(self, request, team_slug=None):
+        """
+        Suggest a category per merchant based on the most recent categorization.
+        Used to pre-fill the category when editing an uncategorized transaction.
+        """
+        transactions = (
+            BankTransaction.objects.filter(team=request.team, journal_entry__isnull=False)
+            .exclude(merchant_name__isnull=True)
+            .exclude(merchant_name="")
+            .select_related("account")
+            .prefetch_related("journal_entry__lines__account")
+            .order_by("-posted_date", "-created_at")[:1000]
+        )
+
+        suggestions = {}
+        for tx in transactions:
+            if tx.merchant_name in suggestions:
+                continue  # already have a more recent categorization
+            category_line = next(
+                (line for line in tx.journal_entry.lines.all() if line.account_id != tx.account_id),
+                None,
+            )
+            if category_line:
+                suggestions[tx.merchant_name] = {
+                    "merchant_name": tx.merchant_name,
+                    "category_id": category_line.account_id,
+                    "category_name": category_line.account.name,
+                }
+
+        serializer = CategorySuggestionSerializer(list(suggestions.values()), many=True)
         return Response(serializer.data)
 
     # Batch Operations

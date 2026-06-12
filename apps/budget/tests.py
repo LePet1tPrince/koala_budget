@@ -33,9 +33,7 @@ class BudgetModelTest(TestCase):
         cls.expense_account = Account.objects.create(
             team=cls.team, name="Model Groceries", account_group=cls.expense_group
         )
-        cls.income_account = Account.objects.create(
-            team=cls.team, name="Model Salary", account_group=cls.income_group
-        )
+        cls.income_account = Account.objects.create(team=cls.team, name="Model Salary", account_group=cls.income_group)
 
     def test_create_budget(self):
         """Test creating a budget."""
@@ -398,3 +396,62 @@ class BudgetAmountFormTest(TestCase):
         form = BudgetAmountForm(data=form_data, instance=budget)
         self.assertTrue(form.is_valid())
         self.assertEqual(form.cleaned_data["budget_amount"], Decimal("0"))
+
+
+class BudgetMonthViewTest(TestCase):
+    """Tests for budget_month_view GET/POST behavior."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="View Test Team", slug="view-test-team")
+        cls.user = CustomUser.objects.create_user(username="budgetuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="View Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.expense_account = Account.objects.create(
+            team=cls.team, name="View Groceries", account_group=cls.expense_group
+        )
+
+    def setUp(self):
+        self.client.login(username="budgetuser@example.com", password="testpass123")
+
+    def test_get_does_not_create_budget_rows(self):
+        """Merely viewing a month must not insert Budget rows."""
+        response = self.client.get(f"/a/{self.team.slug}/budget/?month=2030-01-01")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Budget.objects.filter(team=self.team).count(), 0)
+
+    def test_post_creates_budget_lazily_for_category(self):
+        """Saving an amount for a category without a Budget row creates it."""
+        response = self.client.post(
+            f"/a/{self.team.slug}/budget/?month=2025-06-01",
+            {
+                "category_id": self.expense_account.pk,
+                "budget_month": "2025-06-01",
+                "budget_amount": "123.45",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        budget = Budget.objects.get(team=self.team, category=self.expense_account, month=date(2025, 6, 1))
+        self.assertEqual(budget.budget_amount, Decimal("123.45"))
+
+    def test_post_updates_existing_budget(self):
+        """Saving an amount for an existing Budget row updates it in place."""
+        budget = Budget.objects.create(
+            team=self.team,
+            category=self.expense_account,
+            month=date(2025, 6, 1),
+            budget_amount=Decimal("10.00"),
+        )
+        response = self.client.post(
+            f"/a/{self.team.slug}/budget/?month=2025-06-01",
+            {"budget_id": budget.pk, "budget_amount": "55.00"},
+        )
+        self.assertEqual(response.status_code, 302)
+        budget.refresh_from_db()
+        self.assertEqual(budget.budget_amount, Decimal("55.00"))
+        self.assertEqual(Budget.objects.filter(team=self.team).count(), 1)

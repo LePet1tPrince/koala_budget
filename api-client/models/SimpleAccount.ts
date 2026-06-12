@@ -32,12 +32,6 @@ export interface SimpleAccount {
      */
     name: string;
     /**
-     * Account number (1000s for assets, 2000s for liabilities, etc.)
-     * @type {string}
-     * @memberof SimpleAccount
-     */
-    accountNumber: string;
-    /**
      * Account group classification
      * @type {number}
      * @memberof SimpleAccount
@@ -81,7 +75,6 @@ export interface SimpleAccount {
 export function instanceOfSimpleAccount(value: object): value is SimpleAccount {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
-    if (!('accountNumber' in value) || value['accountNumber'] === undefined) return false;
     if (!('accountGroup' in value) || value['accountGroup'] === undefined) return false;
     if (!('accountGroupName' in value) || value['accountGroupName'] === undefined) return false;
     if (!('accountType' in value) || value['accountType'] === undefined) return false;
@@ -101,7 +94,6 @@ export function SimpleAccountFromJSONTyped(json: any, ignoreDiscriminator: boole
         
         'id': json['id'],
         'name': json['name'],
-        'accountNumber': json['account_number'],
         'accountGroup': json['account_group'],
         'accountGroupName': json['account_group_name'],
         'accountType': json['account_type'],
@@ -123,7 +115,6 @@ export function SimpleAccountFromJSONTyped(json: any, ignoreDiscriminator: boole
     return {
         
         'name': value['name'],
-        'account_number': value['accountNumber'],
         'account_group': value['accountGroup'],
         'has_feed': value['hasFeed'],
         'is_archived': value['isArchived'],

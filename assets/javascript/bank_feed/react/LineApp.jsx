@@ -28,6 +28,12 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState(new Set());
 
+  // Plaid sync status: ledger account id -> PlaidItem (for "last synced" display)
+  const [plaidItemsByAccountId, setPlaidItemsByAccountId] = useState({});
+
+  // Category suggestions: merchant/payee name -> {id, name} of last-used category
+  const [categorySuggestions, setCategorySuggestions] = useState({});
+
   // Filter mode state (synced from LineTableMaterial)
   const [filterMode, setFilterMode] = useState('to_review');
 
@@ -59,6 +65,47 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   const loadRequestRef = useRef(0);
   const selectedAccountRef = useRef(null);
   selectedAccountRef.current = selectedAccount;
+
+  // Load Plaid sync status (which item feeds each account, and when it last synced)
+  const loadPlaidStatus = useCallback(async () => {
+    try {
+      const [accountsData, itemsData] = await Promise.all([
+        plaidClient.plaidAccountsList({ teamSlug }),
+        plaidClient.plaidItemsList({ teamSlug }),
+      ]);
+      const itemsById = {};
+      (itemsData.results || []).forEach((item) => {
+        itemsById[item.id] = item;
+      });
+      const map = {};
+      (accountsData.results || []).forEach((pa) => {
+        if (pa.account != null && itemsById[pa.item]) {
+          map[pa.account] = itemsById[pa.item];
+        }
+      });
+      setPlaidItemsByAccountId(map);
+    } catch (err) {
+      console.error('Failed to load Plaid sync status:', err);
+    }
+  }, [plaidClient, teamSlug]);
+
+  useEffect(() => {
+    loadPlaidStatus();
+  }, [loadPlaidStatus]);
+
+  // Load category suggestions (most recent category per merchant)
+  useEffect(() => {
+    bankFeedClient
+      .bankFeedCategorySuggestions({ teamSlug })
+      .then((rows) => {
+        const map = {};
+        (rows || []).forEach((s) => {
+          map[s.merchantName] = { id: s.categoryId, name: s.categoryName };
+        });
+        setCategorySuggestions(map);
+      })
+      .catch((err) => console.error('Failed to load category suggestions:', err));
+  }, [bankFeedClient, teamSlug]);
 
   // Load lines when account is selected
   useEffect(() => {
@@ -151,6 +198,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           if (selectedAccountRef.current?.id !== accountId) break;
           await loadLines();
         }
+        await loadPlaidStatus();
         setRefreshing(false);
       } else {
         // No Plaid account linked to this ledger account
@@ -434,6 +482,23 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   };
 
   /**
+   * Human-friendly "last synced" label for the selected account's Plaid item
+   */
+  const formatLastSynced = (lastSyncedAt) => {
+    if (!lastSyncedAt) return gettext('Never synced');
+    const seconds = Math.floor((Date.now() - new Date(lastSyncedAt).getTime()) / 1000);
+    if (seconds < 60) return gettext('Synced just now');
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${gettext('Synced')} ${minutes} ${gettext('min ago')}`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${gettext('Synced')} ${hours} ${gettext('hr ago')}`;
+    const days = Math.floor(hours / 24);
+    return `${gettext('Synced')} ${days} ${gettext('d ago')}`;
+  };
+
+  const selectedPlaidItem = selectedAccount ? plaidItemsByAccountId[selectedAccount.id] : null;
+
+  /**
    * Get selected rows data
    */
   const selectedRows = useMemo(() => {
@@ -502,7 +567,14 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             <h2 className="pg-subtitle">
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              {selectedPlaidItem && (
+                <span className="text-xs text-base-content/60" title={selectedPlaidItem.institutionName}>
+                  {refreshing
+                    ? gettext('Syncing…')
+                    : formatLastSynced(selectedPlaidItem.lastSyncedAt)}
+                </span>
+              )}
               <button
                 onClick={() => setShowUploadWizard(true)}
                 disabled={loading}
@@ -545,6 +617,8 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             lines={lines}
             selectedAccount={selectedAccount}
             allAccounts={allAccounts}
+            allPayees={allPayees}
+            categorySuggestions={categorySuggestions}
             onAdd={handleAddLine}
             onDelete={handleDeleteLine}
             onEditTransaction={handleEditTransaction}
@@ -586,6 +660,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         selectedCount={selectedIds.size}
         selectedRows={selectedRows}
         allAccounts={allAccounts}
+        allPayees={allPayees}
         bankFeedAccounts={accounts}
         onBulkEdit={handleBulkEdit}
         onArchive={handleBatchArchive}

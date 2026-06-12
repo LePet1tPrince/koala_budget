@@ -74,11 +74,11 @@ export interface SimpleLine {
      */
     category: number;
     /**
-     * 
+     * Get the category account name from the sibling line.
      * @type {string}
      * @memberof SimpleLine
      */
-    readonly categoryName: string;
+    readonly categoryName: string | null;
     /**
      * 
      * @type {string}
@@ -104,11 +104,11 @@ export interface SimpleLine {
      */
     payee?: number | null;
     /**
-     * 
+     * Get the payee name from the journal entry.
      * @type {string}
      * @memberof SimpleLine
      */
-    readonly payeeName: string;
+    readonly payeeName: string | null;
     /**
      * 
      * @type {boolean}

@@ -32,12 +32,6 @@ export interface Account {
      */
     name: string;
     /**
-     * Account number (1000s for assets, 2000s for liabilities, etc.)
-     * @type {string}
-     * @memberof Account
-     */
-    accountNumber: string;
-    /**
      * Account group classification
      * @type {number}
      * @memberof Account
@@ -56,6 +50,18 @@ export interface Account {
      */
     readonly accountType: string;
     /**
+     * Bank or financial institution this account is held with
+     * @type {number}
+     * @memberof Account
+     */
+    institution?: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof Account
+     */
+    readonly institutionName: string;
+    /**
      * Whether this account has a bank feed
      * @type {boolean}
      * @memberof Account
@@ -68,11 +74,11 @@ export interface Account {
      */
     readonly balance: string;
     /**
-     * 
+     * Get reconciled_balance from annotation if available.
      * @type {string}
      * @memberof Account
      */
-    readonly reconciledBalance: string;
+    readonly reconciledBalance: string | null;
     /**
      * 
      * @type {Date}
@@ -105,10 +111,10 @@ export interface Account {
 export function instanceOfAccount(value: object): value is Account {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
-    if (!('accountNumber' in value) || value['accountNumber'] === undefined) return false;
     if (!('accountGroup' in value) || value['accountGroup'] === undefined) return false;
     if (!('accountGroupName' in value) || value['accountGroupName'] === undefined) return false;
     if (!('accountType' in value) || value['accountType'] === undefined) return false;
+    if (!('institutionName' in value) || value['institutionName'] === undefined) return false;
     if (!('balance' in value) || value['balance'] === undefined) return false;
     if (!('reconciledBalance' in value) || value['reconciledBalance'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
@@ -129,10 +135,11 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
         
         'id': json['id'],
         'name': json['name'],
-        'accountNumber': json['account_number'],
         'accountGroup': json['account_group'],
         'accountGroupName': json['account_group_name'],
         'accountType': json['account_type'],
+        'institution': json['institution'] == null ? undefined : json['institution'],
+        'institutionName': json['institution_name'],
         'hasFeed': json['has_feed'] == null ? undefined : json['has_feed'],
         'balance': json['balance'],
         'reconciledBalance': json['reconciled_balance'],
@@ -147,7 +154,7 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
       return AccountToJSONTyped(json, false);
   }
 
-  export function AccountToJSONTyped(value?: Omit<Account, 'id'|'account_group_name'|'account_type'|'balance'|'reconciled_balance'|'created_at'|'updated_at'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function AccountToJSONTyped(value?: Omit<Account, 'id'|'account_group_name'|'account_type'|'institution_name'|'balance'|'reconciled_balance'|'created_at'|'updated_at'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -155,8 +162,8 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
     return {
         
         'name': value['name'],
-        'account_number': value['accountNumber'],
         'account_group': value['accountGroup'],
+        'institution': value['institution'],
         'has_feed': value['hasFeed'],
         'is_archived': value['isArchived'],
     };

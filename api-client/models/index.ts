@@ -1,12 +1,15 @@
 /* tslint:disable */
 /* eslint-disable */
 export * from './Account';
+export * from './AccountGroup';
+export * from './AccountTypeEnum';
 export * from './AggregateEmployeeData';
 export * from './BankFeedRow';
 export * from './BankFeedRowSourceEnum';
 export * from './BatchIds';
 export * from './BatchReconcileRequest';
 export * from './CategorizeTransactionsRequest';
+export * from './CategorySuggestion';
 export * from './DepartmentEnum';
 export * from './Employee';
 export * from './ExchangePublicTokenRequest';
@@ -19,6 +22,7 @@ export * from './JournalLine';
 export * from './ManualTransaction';
 export * from './Membership';
 export * from './OpenInvitation';
+export * from './PaginatedAccountGroupList';
 export * from './PaginatedBankFeedRowList';
 export * from './PaginatedEmployeeList';
 export * from './PaginatedInvitationList';

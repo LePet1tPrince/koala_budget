@@ -23,6 +23,7 @@ from django.views.generic import RedirectView
 from django.views.i18n import JavaScriptCatalog
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
+from apps.plaid.views import plaid_webhook_view
 from apps.subscriptions.urls import team_urlpatterns as subscriptions_team_urls
 from apps.teams.urls import team_urlpatterns as single_team_urls
 from apps.web.sitemaps import StaticViewSitemap
@@ -75,6 +76,8 @@ urlpatterns = [
     path("api/schema/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
     # djstripe urls - for webhooks
     path("stripe/", include("djstripe.urls", namespace="djstripe")),
+    # Plaid webhooks (global - Plaid can't know team slugs)
+    path("plaid/webhook/", plaid_webhook_view, name="plaid_webhook"),
     # hijack urls for impersonation
     path("hijack/", include("hijack.urls", namespace="hijack")),
     path("chat/", include("apps.chat.urls")),

@@ -19,9 +19,12 @@ import type {
   BatchIds,
   BatchReconcileRequest,
   CategorizeTransactionsRequest,
+  CategorySuggestion,
   ManualTransaction,
+  PaginatedAccountGroupList,
   PaginatedBankFeedRowList,
   PatchedBatchEditRequest,
+  SimpleAccount,
   UploadConfirmRequest,
   UploadConfirmResponse,
   UploadParseResponse,
@@ -36,12 +39,18 @@ import {
     BatchReconcileRequestToJSON,
     CategorizeTransactionsRequestFromJSON,
     CategorizeTransactionsRequestToJSON,
+    CategorySuggestionFromJSON,
+    CategorySuggestionToJSON,
     ManualTransactionFromJSON,
     ManualTransactionToJSON,
+    PaginatedAccountGroupListFromJSON,
+    PaginatedAccountGroupListToJSON,
     PaginatedBankFeedRowListFromJSON,
     PaginatedBankFeedRowListToJSON,
     PatchedBatchEditRequestFromJSON,
     PatchedBatchEditRequestToJSON,
+    SimpleAccountFromJSON,
+    SimpleAccountToJSON,
     UploadConfirmRequestFromJSON,
     UploadConfirmRequestToJSON,
     UploadConfirmResponseFromJSON,
@@ -51,6 +60,11 @@ import {
     UploadPreviewResponseFromJSON,
     UploadPreviewResponseToJSON,
 } from '../models/index';
+
+export interface BankFeedAccountGroupsRequest {
+    teamSlug: string;
+    page?: number;
+}
 
 export interface BankFeedBatchArchiveRequest {
     teamSlug: string;
@@ -83,6 +97,15 @@ export interface BankFeedBatchUnreconcileRequest {
     batchIds: BatchIds;
 }
 
+export interface BankFeedCategorySuggestionsRequest {
+    teamSlug: string;
+}
+
+export interface BankFeedCreateAccountRequest {
+    teamSlug: string;
+    bankFeedRow: BankFeedRow;
+}
+
 export interface BankFeedFeedCreateRequest {
     teamSlug: string;
     manualTransaction: ManualTransaction;
@@ -95,7 +118,7 @@ export interface BankFeedFeedListRequest {
 }
 
 export interface BankFeedFeedUpdateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     manualTransaction: ManualTransaction;
 }
@@ -127,6 +150,50 @@ export interface BankFeedUploadPreviewRequest {
  * 
  */
 export class BankFeedApi extends runtime.BaseAPI {
+
+    /**
+     * Return all account groups for the team, for use in account creation.
+     */
+    async bankFeedAccountGroupsRaw(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedAccountGroupList>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedAccountGroups().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/account_groups/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedAccountGroupListFromJSON(jsonValue));
+    }
+
+    /**
+     * Return all account groups for the team, for use in account creation.
+     */
+    async bankFeedAccountGroups(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedAccountGroupList> {
+        const response = await this.bankFeedAccountGroupsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Batch archive multiple bank transactions. Sets is_archived=True on BankTransaction.
@@ -421,6 +488,96 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
+     * Suggest a category per merchant based on the most recent categorization. Used to pre-fill the category when editing an uncategorized transaction.
+     */
+    async bankFeedCategorySuggestionsRaw(requestParameters: BankFeedCategorySuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CategorySuggestion>>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedCategorySuggestions().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/category_suggestions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(CategorySuggestionFromJSON));
+    }
+
+    /**
+     * Suggest a category per merchant based on the most recent categorization. Used to pre-fill the category when editing an uncategorized transaction.
+     */
+    async bankFeedCategorySuggestions(requestParameters: BankFeedCategorySuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<CategorySuggestion>> {
+        const response = await this.bankFeedCategorySuggestionsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Create a new account for use in the CSV upload category mapping step. Body: name (str), account_group_id (int)
+     */
+    async bankFeedCreateAccountRaw(requestParameters: BankFeedCreateAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleAccount>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedCreateAccount().'
+            );
+        }
+
+        if (requestParameters['bankFeedRow'] == null) {
+            throw new runtime.RequiredError(
+                'bankFeedRow',
+                'Required parameter "bankFeedRow" was null or undefined when calling bankFeedCreateAccount().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/create_account/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BankFeedRowToJSON(requestParameters['bankFeedRow']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SimpleAccountFromJSON(jsonValue));
+    }
+
+    /**
+     * Create a new account for use in the CSV upload category mapping step. Body: name (str), account_group_id (int)
+     */
+    async bankFeedCreateAccount(requestParameters: BankFeedCreateAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SimpleAccount> {
+        const response = await this.bankFeedCreateAccountRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Create a new manual bank transaction with associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
      */
     async bankFeedFeedCreateRaw(requestParameters: BankFeedFeedCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
@@ -471,7 +628,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional)
+     * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional) - page: Page number (optional)
      */
     async bankFeedFeedListRaw(requestParameters: BankFeedFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
         if (requestParameters['teamSlug'] == null) {
@@ -511,7 +668,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional)
+     * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional) - page: Page number (optional)
      */
     async bankFeedFeedList(requestParameters: BankFeedFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedBankFeedRowList> {
         const response = await this.bankFeedFeedListRaw(requestParameters, initOverrides);
