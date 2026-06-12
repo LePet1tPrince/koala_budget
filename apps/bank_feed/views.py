@@ -995,7 +995,7 @@ class BankFeedViewSet(
                 posted_date=tx.posted_date,
                 description=tx.description,
                 merchant_name=tx.merchant_name,
-                source=tx.source,
+                source=BankTransaction.SOURCE_MANUAL,
                 raw={"duplicated_from": tx.id},
                 journal_entry=None,
             )

@@ -96,7 +96,7 @@ const EditTransactionModal = ({
   }, [transaction, isCreateMode]);
 
   // Determine which fields can be edited
-  const canEditDate = isCreateMode || (!isReadOnly && transaction?.source === 'ledger');
+  const canEditDate = isCreateMode || (!isReadOnly && transaction?.source !== 'plaid');
   const canEditAmounts = isCreateMode || (!isReadOnly && transaction?.source === 'ledger');
   const canEditCategory = isCreateMode || !isReadOnly;
   const canEditPayee = true; // Always editable
