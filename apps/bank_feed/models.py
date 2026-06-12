@@ -95,3 +95,15 @@ class BankTransaction(BaseTeamModel):
     def is_categorized(self):
         """Check if this transaction has been categorized (linked to a journal entry)."""
         return self.journal_entry is not None
+
+    @property
+    def journal_source(self):
+        """Map this transaction's source to a valid JournalEntry source value."""
+        from apps.journal.models import JournalEntry
+
+        return {
+            self.SOURCE_PLAID: JournalEntry.SOURCE_BANK_MATCH,
+            self.SOURCE_CSV: JournalEntry.SOURCE_IMPORT,
+            self.SOURCE_MANUAL: JournalEntry.SOURCE_MANUAL,
+            self.SOURCE_SYSTEM: JournalEntry.SOURCE_BANK_MATCH,
+        }.get(self.source, JournalEntry.SOURCE_IMPORT)

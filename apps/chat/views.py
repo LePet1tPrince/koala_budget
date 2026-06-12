@@ -52,6 +52,10 @@ def new_agent_chat(request):
 def start_chat(request):
     chat_type = request.POST.get("chat_type", "chat")
     agent_type = request.POST.get("agent_type", "")
+    # The admin agent carries privileged tools (DB access, outbound email);
+    # don't let regular users select it by tampering with the POST body.
+    if agent_type == AgentTypes.ADMIN and not request.user.is_superuser:
+        agent_type = ""
     chat = Chat.objects.create(
         user=request.user,
         chat_type=chat_type,

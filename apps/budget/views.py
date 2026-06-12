@@ -1,5 +1,5 @@
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
@@ -16,23 +16,31 @@ from .models import Budget, Goal, GoalAllocation
 from .services import BudgetService, GoalService, NetWorthService
 
 
+def _parse_month(value):
+    """Parse a month parameter (YYYY-MM-DD or YYYY-MM); fall back to the current month."""
+    if value:
+        month = parse_date(value) or parse_date(f"{value}-01")
+        if month:
+            return month.replace(day=1)
+    return date.today().replace(day=1)
+
+
 @login_and_team_required
 def budget_month_view(request, team_slug):
     from collections import defaultdict
     from decimal import Decimal
 
-    month_param = request.GET.get("month")
-    month = parse_date(month_param) if month_param else date.today().replace(day=1)
-    month = month.replace(day=1)
+    month = _parse_month(request.GET.get("month"))
 
     if request.method == "POST":
         budget_id = request.POST.get("budget_id")
-        budget = Budget.objects.get(id=budget_id, team=request.team)
+        budget = get_object_or_404(Budget, id=budget_id, team=request.team)
 
         form = BudgetAmountForm(request.POST, instance=budget)
         if form.is_valid():
             form.save()
             return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
+        messages.error(request, _("Could not save budget amount: %(errors)s") % {"errors": form.errors.as_text()})
 
     service = BudgetService(request.team)
 
@@ -166,9 +174,8 @@ def budget_autofill_view(request, team_slug):
     if request.method != "POST":
         return redirect("budget:budget_home", team_slug=team_slug)
 
-    month_param = request.POST.get("month")
     action = request.POST.get("action")
-    month = parse_date(month_param).replace(day=1) if month_param else date.today().replace(day=1)
+    month = _parse_month(request.POST.get("month"))
 
     prev_month = month - relativedelta(months=1)
     service = BudgetService(request.team)
@@ -259,9 +266,7 @@ def budget_autofill_view(request, team_slug):
 @login_and_team_required
 def goals_list_view(request, team_slug):
     """List all goals with progress for the selected month."""
-    month_param = request.GET.get("month")
-    month = parse_date(month_param) if month_param else date.today().replace(day=1)
-    month = month.replace(day=1)
+    month = _parse_month(request.GET.get("month"))
     service = GoalService(request.team)
     summary = service.get_goal_summary(month)
 
@@ -404,14 +409,16 @@ def goal_allocation_update_view(request, team_slug, pk):
     goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
 
     if request.method == "POST":
-        month_param = request.POST.get("month")
         amount = request.POST.get("amount", "0")
-        month = parse_date(month_param).replace(day=1) if month_param else date.today().replace(day=1)
+        month = _parse_month(request.POST.get("month"))
 
         try:
             amount = Decimal(amount)
-        except (ValueError, TypeError):
+        except (InvalidOperation, ValueError, TypeError):
             amount = Decimal("0")
+        if amount < 0:
+            messages.error(request, _("Allocation amount cannot be negative."))
+            return redirect(f"/a/{team_slug}/budget/goals/?month={month.isoformat()}")
 
         service = GoalService(request.team)
         service.update_allocation(goal, month, amount)

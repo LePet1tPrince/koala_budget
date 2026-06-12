@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Divider,
-  IconButton,
   List,
   ListItemButton,
   ListItemText,
@@ -157,14 +156,18 @@ const BalanceSheetDatePickerWrapper = () => {
           sx={{ textTransform: 'none', color: 'text.secondary', borderColor: 'grey.400' }}
           endIcon={
             asOfDate && (
-              <IconButton
-                size="small"
+              // Not an IconButton: a <button> may not nest inside the outer Button
+              <Box
+                component="span"
                 onClick={handleClear}
-                sx={{ mr: -1, ml: 0.5 }}
+                sx={{ display: 'inline-flex', alignItems: 'center', mr: -1, ml: 0.5, cursor: 'pointer', borderRadius: '50%', '&:hover': { bgcolor: 'action.hover' } }}
+                role="button"
                 aria-label="Reset to today"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClear(e); }}
               >
                 <ClearIcon fontSize="small" />
-              </IconButton>
+              </Box>
             )
           }
         >

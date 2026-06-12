@@ -52,7 +52,7 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
         teamSlug: teamSlug,
         exchangePublicTokenRequest: {
           publicToken: public_token,
-          institutionId: metadata.institution.institution_id,
+          institutionId: metadata.institution?.institution_id ?? null,
           accounts: metadata.accounts,
         },
       });

@@ -3,11 +3,11 @@ Views for bank_feed app.
 Provides API endpoints for imported transactions and unified bank feed.
 """
 
-from datetime import datetime
 from decimal import Decimal
 
 from django.db import transaction
 from django.shortcuts import render
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, serializers, status, viewsets
@@ -15,7 +15,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Payee
-from apps.accounts.serializers import AccountGroupSerializer, AccountSerializer, PayeeSerializer, SimpleAccountSerializer
+from apps.accounts.serializers import (
+    AccountGroupSerializer,
+    AccountSerializer,
+    PayeeSerializer,
+    SimpleAccountSerializer,
+)
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
@@ -71,6 +76,17 @@ class ManualTransactionSerializer(serializers.Serializer):
     )
     account = serializers.IntegerField(help_text="Bank account ID")
 
+    def validate(self, data):
+        inflow = data.get("inflow") or Decimal("0")
+        outflow = data.get("outflow") or Decimal("0")
+        if inflow < 0 or outflow < 0:
+            raise serializers.ValidationError("Inflow and outflow must not be negative.")
+        if inflow > 0 and outflow > 0:
+            raise serializers.ValidationError("Specify either inflow or outflow, not both.")
+        if inflow == 0 and outflow == 0:
+            raise serializers.ValidationError("Either inflow or outflow must be greater than zero.")
+        return data
+
 
 @extend_schema_view(
     list=extend_schema(
@@ -120,14 +136,18 @@ class BankFeedViewSet(
 
     def get_queryset(self):
         """Get all BankTransactions, optionally filtered by account."""
-        queryset = BankTransaction.objects.filter(
-            team=self.request.team,
-        ).select_related(
-            "account",
-            "journal_entry",
-            "plaid_transaction",
-            "plaid_transaction__plaid_account",
-            "plaid_transaction__plaid_account__account",
+        queryset = (
+            BankTransaction.objects.filter(
+                team=self.request.team,
+            )
+            .select_related(
+                "account",
+                "journal_entry",
+                "plaid_transaction",
+                "plaid_transaction__plaid_account",
+                "plaid_transaction__plaid_account__account",
+            )
+            .prefetch_related("journal_entry__lines__account")
         )
 
         # Filter by account if provided in query params
@@ -171,16 +191,30 @@ class BankFeedViewSet(
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Process each row
+        # Resolve all transactions up front so a bad id can't partially apply the batch
+        tx_ids = {row.get("id") for row in rows if row.get("id")}
+        transactions = list(
+            BankTransaction.objects.select_related("account", "journal_entry").filter(id__in=tx_ids, team=request.team)
+        )
+        if len(transactions) != len(tx_ids):
+            return Response(
+                {"error": "One or more transactions not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         try:
-            for row in rows:
-                tx_id = row.get("id")
-                if tx_id:
-                    self._create_journal_from_bank_transaction(
-                        transaction_id=tx_id,
-                        category_account=category_account,
-                        team=request.team,
-                    )
+            with transaction.atomic():
+                for bank_tx in transactions:
+                    if bank_tx.journal_entry:
+                        # Already categorized: move the category line instead of
+                        # creating a duplicate journal entry
+                        self._update_journal_category(bank_tx, category_account)
+                    else:
+                        self._create_journal_from_bank_transaction(
+                            transaction_id=bank_tx.id,
+                            category_account=category_account,
+                            team=request.team,
+                        )
         except ValueError as e:
             return Response(
                 {"error": str(e)},
@@ -216,7 +250,7 @@ class BankFeedViewSet(
             team=team,
             entry_date=bank_tx.posted_date,
             description=bank_tx.description,
-            source=bank_tx.source,
+            source=bank_tx.journal_source,
             status=JournalEntry.STATUS_POSTED,
         )
 
@@ -346,7 +380,7 @@ class BankFeedViewSet(
                 entry_date=data["date"],
                 description=data.get("description", ""),
                 payee=payee,
-                source="M",  # Manual
+                source=JournalEntry.SOURCE_MANUAL,
                 status=JournalEntry.STATUS_POSTED,
             )
 
@@ -393,7 +427,7 @@ class BankFeedViewSet(
                 posted_date=data["date"],
                 description=data.get("description", ""),
                 merchant_name=payee_name,
-                source="M",  # Manual
+                source=BankTransaction.SOURCE_MANUAL,
                 journal_entry=journal_entry,
             )
 
@@ -462,6 +496,10 @@ class BankFeedViewSet(
             )
 
         with transaction.atomic():
+            # Remember the original bank account so we can still identify the bank-side
+            # journal line after the account is reassigned
+            old_account = bank_tx.account
+
             # Update bank transaction
             bank_tx.account = bank_account
             bank_tx.amount = amount
@@ -484,7 +522,7 @@ class BankFeedViewSet(
                 abs_amount = abs(amount)
 
                 for line in lines:
-                    if line.account == bank_tx.account or line.account == bank_account:
+                    if line.account == old_account or line.account == bank_account:
                         # Bank account line
                         line.account = bank_account
                         if inflow > 0:
@@ -511,7 +549,7 @@ class BankFeedViewSet(
                     entry_date=data["date"],
                     description=data.get("description", ""),
                     payee=payee,
-                    source="M",
+                    source=JournalEntry.SOURCE_MANUAL,
                     status=JournalEntry.STATUS_POSTED,
                 )
 
@@ -893,6 +931,9 @@ class BankFeedViewSet(
                     if tx.journal_entry:
                         tx.journal_entry.entry_date = new_date
                         tx.journal_entry.save()
+                        # Re-save lines so their auto-linked budget follows the new month
+                        for line in tx.journal_entry.lines.all():
+                            line.save()
 
                 tx.save()
 
@@ -1042,9 +1083,16 @@ class BankFeedViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Get the account (assuming all transactions are for the same account)
         if not transactions:
             return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # Reconciliation (and any adjustment) only makes sense against a single account
+        account_ids = {tx.account_id for tx in transactions}
+        if len(account_ids) > 1:
+            return Response(
+                {"error": "All transactions must belong to the same account to reconcile."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         bank_account = transactions[0].account
 
@@ -1103,9 +1151,9 @@ class BankFeedViewSet(
         # Create the journal entry
         journal_entry = JournalEntry.objects.create(
             team=team,
-            entry_date=datetime.now().date(),
+            entry_date=timezone.localdate(),
             description="Reconciliation Adjustment",
-            source="S",  # System
+            source=JournalEntry.SOURCE_BANK_MATCH,
             status=JournalEntry.STATUS_POSTED,
         )
 
@@ -1151,9 +1199,9 @@ class BankFeedViewSet(
             team=team,
             account=bank_account,
             amount=-amount if amount > 0 else abs_amount,  # Plaid convention: positive = outflow
-            posted_date=datetime.now().date(),
+            posted_date=timezone.localdate(),
             description="Reconciliation Adjustment",
-            source="S",  # System
+            source=BankTransaction.SOURCE_SYSTEM,
             journal_entry=journal_entry,
         )
 

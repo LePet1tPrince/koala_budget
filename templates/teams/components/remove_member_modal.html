@@ -5,11 +5,15 @@
     <h3 class="font-bold text-lg">{% if editing_self %}{% translate "Leave team?" %}{% else %}{% translate "Remove team member?" %}{% endif %}</h3>
     <p class="py-4">
       {% if editing_self %}
-        You will be removed from the team: <em><strong>{{ request.team.name }}</strong></em>.
-        After this, you will no longer be able to access any team pages, and will have to be invited again to regain access.
+        {% blocktranslate trimmed with team_name=request.team.name %}
+          You will be removed from the team: <em><strong>{{ team_name }}</strong></em>.
+          After this, you will no longer be able to access any team pages, and will have to be invited again to regain access.
+        {% endblocktranslate %}
       {% else %}
-        This will remove <em><strong>{{ membership.user.get_display_name }}</strong></em> from your team: <em>{{ request.team.name }}</em>.
-        They will no longer be able to access any team pages, and will have to be invited again to regain access.
+        {% blocktranslate trimmed with member_name=membership.user.get_display_name team_name=request.team.name %}
+          This will remove <em><strong>{{ member_name }}</strong></em> from your team: <em>{{ team_name }}</em>.
+          They will no longer be able to access any team pages, and will have to be invited again to regain access.
+        {% endblocktranslate %}
       {% endif %}
     </p>
     <footer class="modal-card-foot">

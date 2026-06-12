@@ -104,9 +104,9 @@ function getErrorMessage() {
     id: `error-message-${Date.now()}`,
     message_type: "AI",
     content: <p className="pg-text-danger">
-      Sorry something went wrong. This may be an OpenAI error, or your API key may not be set properly.
-      If you are a site administrator seeing this for the first time, double check your <code>OPENAI_API_KEY</code>
-      setting / environment variable and restart all running processes.
+      Sorry, something went wrong while generating a response. Please try again.
+      If you are a site administrator seeing this for the first time, check that the AI backend
+      API key settings are configured correctly and restart all running processes.
     </p>
   };
 }
@@ -125,10 +125,15 @@ const ChatApplication = function(props) {
   useEffect(() => {
     if (currentTaskId) {
       const taskUrl = getChatTaskUrl(props.apiUrls['chat:api_get_message_response'], props.chat.id, currentTaskId);
+      let cancelled = false;
+      let timerId = null;
+      let failures = 0;
       const fetchData = async () => {
+        if (cancelled) return;
         try {
           const response = await fetch(taskUrl);
           const jsonResponse = await response.json();
+          if (cancelled) return;
           if (jsonResponse.complete) {
             if (jsonResponse.success) {
               addMessage(jsonResponse.result);
@@ -137,19 +142,36 @@ const ChatApplication = function(props) {
             }
             setCurrentTaskId(null);
           } else {
-            window.setTimeout(fetchData, 1000);
+            timerId = window.setTimeout(fetchData, 1000);
           }
         } catch (error) {
           console.error('Fetch error:', error);
+          if (cancelled) return;
+          // Retry transient failures instead of leaving the chat stuck on
+          // "Thinking..." forever; give up after a few attempts.
+          failures += 1;
+          if (failures < 5) {
+            timerId = window.setTimeout(fetchData, 2000);
+          } else {
+            addMessage(getErrorMessage());
+            setCurrentTaskId(null);
+          }
         }
       };
       fetchData();
+      return () => {
+        cancelled = true;
+        if (timerId) {
+          window.clearTimeout(timerId);
+        }
+      };
     }
   }, [currentTaskId])
 
   const addMessage = (message) => {
-    const newMessages = [...messages, message];
-    setMessages(newMessages);
+    // Functional update: a stale closure here would drop messages that were
+    // added while the response poll was in flight
+    setMessages((prev) => [...prev, message]);
   }
   const inputChanged = (message) => {
     setInputMessage(message);
@@ -159,9 +181,16 @@ const ChatApplication = function(props) {
     addMessage(responseData);
     setInputMessage("");
   }
+  const sendMessageError = () => {
+    addMessage(getErrorMessage());
+  }
   const sendMessageWrapper = (message) => {
+    if (!message || !message.trim() || currentTaskId) {
+      // Don't send empty messages or double-send while a response is pending
+      return;
+    }
     const apiUrl = getChatUrl(props.apiUrls['chat:api_new_chat_message'], props.chat.id)
-    return sendMessage(apiUrl, props.chat.id, message, sendMessageCallback);
+    return sendMessage(apiUrl, props.chat.id, message, sendMessageCallback, sendMessageError);
   }
   return  (
     <>

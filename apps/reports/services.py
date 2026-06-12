@@ -8,7 +8,7 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_INCOME,
     ACCOUNT_TYPE_LIABILITY,
 )
-from apps.journal.models import JournalLine
+from apps.journal.models import JournalEntry, JournalLine
 
 
 class ReportService:
@@ -32,12 +32,15 @@ class ReportService:
                 'net_profit': Decimal
             }
         """
-        # Get all journal lines for posted entries in date range
-        journal_lines = JournalLine.objects.filter(
-            team=self.team,
-            journal_entry__entry_date__range=(start_date, end_date),
-            # journal_entry__status='posted'
-        ).select_related("account", "account__account_group")
+        # Get all journal lines in the date range (voided entries don't count)
+        journal_lines = (
+            JournalLine.objects.filter(
+                team=self.team,
+                journal_entry__entry_date__range=(start_date, end_date),
+            )
+            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .select_related("account", "account__account_group")
+        )
 
         income_data = []
         expense_data = []
@@ -105,12 +108,15 @@ class ReportService:
                 'net_worth': Decimal
             }
         """
-        # Get all journal lines for posted entries up to as_of_date
-        journal_lines = JournalLine.objects.filter(
-            team=self.team,
-            journal_entry__entry_date__lte=as_of_date,
-            # journal_entry__status='posted'
-        ).select_related("account", "account__account_group")
+        # Get all journal lines up to as_of_date (voided entries don't count)
+        journal_lines = (
+            JournalLine.objects.filter(
+                team=self.team,
+                journal_entry__entry_date__lte=as_of_date,
+            )
+            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .select_related("account", "account__account_group")
+        )
 
         asset_data = []
         liability_data = []
@@ -218,11 +224,15 @@ class ReportService:
         """
         from django.db.models import F
 
-        # Build the queryset
-        queryset = JournalLine.objects.filter(
-            team=self.team,
-            account=account,
-        ).select_related("journal_entry", "journal_entry__payee")
+        # Build the queryset (voided entries don't count)
+        queryset = (
+            JournalLine.objects.filter(
+                team=self.team,
+                account=account,
+            )
+            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .select_related("journal_entry", "journal_entry__payee")
+        )
 
         # Apply date filter if provided
         if start_date and end_date:

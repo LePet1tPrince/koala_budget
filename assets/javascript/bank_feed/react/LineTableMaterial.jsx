@@ -20,6 +20,7 @@ import DateRangePicker from '../../common/DateRangePicker';
 import EditTransactionModal from './EditTransactionModal';
 import MaterialTable from '@material-table/core';
 import { formatCurrency } from '../../utilities/currency';
+import { formatDate as formatDateUtc, formatDateForInput } from '../utils';
 
 /* globals gettext */
 
@@ -101,11 +102,12 @@ const LineTableMaterial = ({
     setSnackbar({ ...snackbar, open: false });
   };
 
-  // Format date for display (handles both Date objects and strings)
+  // Format date for display (handles both Date objects and strings).
+  // Date-only values are rendered in UTC so users west of UTC don't see
+  // the previous day.
   const formatDate = (dateValue) => {
     if (!dateValue) return '';
-    const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-    return date.toLocaleDateString();
+    return formatDateUtc(dateValue);
   };
 
   // Handle opening edit modal
@@ -164,17 +166,16 @@ const LineTableMaterial = ({
       filtered = filtered.filter((l) => isArchived(l));
     }
 
-    // Apply date range filter
+    // Apply date range filter. Compare YYYY-MM-DD strings so UTC-parsed
+    // posted dates and local picker dates can't disagree on boundary days.
     if (filterStart || filterEnd) {
-      const s = filterStart ? new Date(filterStart) : null;
-      const e = filterEnd ? new Date(filterEnd) : null;
-      // make end of day inclusive
-      const eInclusive = e ? new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999) : null;
+      const startStr = filterStart ? formatDateForInput(filterStart) : null;
+      const endStr = filterEnd ? formatDateForInput(filterEnd) : null;
       filtered = filtered.filter((l) => {
         if (!l.postedDate) return false;
-        const d = l.postedDate instanceof Date ? l.postedDate : new Date(l.postedDate);
-        if (s && d < s) return false;
-        if (eInclusive && d > eInclusive) return false;
+        const dateStr = formatDateForInput(l.postedDate);
+        if (startStr && dateStr < startStr) return false;
+        if (endStr && dateStr > endStr) return false;
         return true;
       });
     }
@@ -284,31 +285,33 @@ const LineTableMaterial = ({
       width: 30,
       render: (rowData) => {
         const source = rowData.source;
+        // Class names must be full literals, otherwise Tailwind's compiler
+        // can't see them and strips them from the build.
         let letter = 'S';
         let tooltip = gettext('System transaction');
-        let color = 'gray';
+        let colorClasses = 'bg-gray-100 text-gray-700';
 
         if (source === 'plaid') {
           letter = 'P';
           tooltip = gettext('Plaid transaction');
-          color = 'blue';
+          colorClasses = 'bg-blue-100 text-blue-700';
         } else if (source === 'csv') {
           letter = 'U';
           tooltip = gettext('Uploaded transaction');
-          color = 'orange';
+          colorClasses = 'bg-orange-100 text-orange-700';
         } else if (source === 'manual') {
           letter = 'M';
           tooltip = gettext('Manual transaction');
-          color = 'purple';
+          colorClasses = 'bg-purple-100 text-purple-700';
         } else if (source === 'ledger') {
           letter = 'L';
           tooltip = gettext('Ledger transaction');
-          color = 'green';
+          colorClasses = 'bg-green-100 text-green-700';
         }
 
         return (
           <Tooltip title={tooltip} arrow placement="top">
-            <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-xs font-semibold bg-${color}-100 text-${color}-700 cursor-default`}>
+            <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-xs font-semibold ${colorClasses} cursor-default`}>
               {letter}
             </span>
           </Tooltip>
@@ -466,7 +469,6 @@ const LineTableMaterial = ({
               },
             },
             pagination: {
-              labelDisplayedRows: gettext('lines'),
               labelDisplayedRows: '{from}-{to} ' + gettext('of') + ' {count}',
               firstTooltip: gettext('First Page'),
               previousTooltip: gettext('Previous Page'),

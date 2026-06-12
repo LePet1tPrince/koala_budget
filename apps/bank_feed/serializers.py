@@ -8,7 +8,6 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounts.serializers import SimpleAccountSerializer
-from apps.journal.models import JournalLine
 from apps.plaid.serializers import PlaidTransactionSerializer
 
 from .models import BankTransaction
@@ -224,42 +223,6 @@ class BankFeedRowSerializer(serializers.Serializer):
 
 
 # Adapter Functions
-
-
-def journal_line_to_feed_row(line: JournalLine) -> dict:
-    """
-    Convert a JournalLine to a BankFeedRow dict.
-    Assumes a 2-line journal entry (simple transaction).
-    """
-    # Get the sibling line (category)
-    all_lines = list(line.journal_entry.lines.all())
-    sibling = None
-    if len(all_lines) == 2:
-        sibling = all_lines[0] if all_lines[1].id == line.id else all_lines[1]
-
-    # Calculate inflow/outflow
-    inflow = line.dr_amount if line.dr_amount > 0 else Decimal("0")
-    outflow = line.cr_amount if line.cr_amount > 0 else Decimal("0")
-
-    return {
-        "id": line.id,
-        "source": "ledger",
-        "posted_date": line.journal_entry.entry_date,
-        "authorized_date": None,
-        "description": line.journal_entry.description,
-        "merchant_name": line.journal_entry.payee.name if line.journal_entry.payee else None,
-        "account": line.account,
-        "category": sibling.account if sibling else None,
-        "inflow": inflow,
-        "outflow": outflow,
-        "is_pending": False,
-        "is_cleared": bool(line.reconciled_date) or line.is_cleared,
-        "payment_channel": None,
-        "confidence": "manual",
-        "journal_line_id": line.id,
-        "imported_transaction_id": None,
-        "is_editable": True,
-    }
 
 
 # Upload Serializers

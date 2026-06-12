@@ -34,7 +34,7 @@
               <form method="post">
                 {% csrf_token %}
                 {% if user_owns_email %}
-                  <input type="submit" class="pg-button-primary" value="Accept Invitation"/>
+                  <input type="submit" class="pg-button-primary" value="{% translate 'Accept Invitation' %}"/>
                 {% else %}
                   <p >
                     {% blocktranslate trimmed with invite_email=invitation.email user_email=request.user.email  %}
@@ -60,7 +60,7 @@
             {% endif %}
             {% if user_team_count == 0 %}
             <div class="mt-3">
-              <a class="pg-text-muted pg-link" href="{% url 'teams:create_team' %}">
+              <a class="pg-text-muted pg-link" href="{% url 'teams:manage_teams' %}new">
                 {% translate "Ignore and create a new team instead." %}
               </a>
             </div>

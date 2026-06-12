@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.views.decorators.http import require_POST
@@ -41,8 +42,15 @@ def subscription_confirm(request):
             "Sorry, it looks like your payment didn't go through. If you think this is an error, please get in touch.",
         )
         return TemplateResponse(request, "400.html", status=400)
-    client_reference_id = int(session.client_reference_id)
-    subscription_holder = request.user.teams.select_related("subscription", "customer").get(id=client_reference_id)
+    try:
+        client_reference_id = int(session.client_reference_id)
+        subscription_holder = request.user.teams.select_related("subscription", "customer").get(id=client_reference_id)
+    except (TypeError, ValueError, ObjectDoesNotExist):
+        messages.error(
+            request,
+            "We couldn't match this payment to one of your teams. If you think this is an error, please get in touch.",
+        )
+        return TemplateResponse(request, "400.html", status=400)
     if not subscription_holder.subscription or subscription_holder.subscription.id != session.subscription:
         # provision subscription
         djstripe_subscription = provision_subscription(subscription_holder, session.subscription)

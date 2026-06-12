@@ -162,7 +162,7 @@ npm run build     # Run type checks and build for production
 **apps.accounts** - Manages the chart of accounts and transactional counterparties.
 
 Models:
-- `Account` - Represents a financial account (asset, liability, income, expense, or equity) with account type determined by its associated AccountGroup. Includes `account_number` (1000s for assets, 2000s for liabilities, etc.) and an optional `has_feed` flag for bank integrations. Has a property `account_balance` that calculates balance from journal lines.
+- `Account` - Represents a financial account (asset, liability, income, expense, or equity) with account type determined by its associated AccountGroup. Includes `account_number` (1000s for assets, 2000s for liabilities, etc.) and an optional `has_feed` flag for bank integrations. Has a property `balance` that calculates balance from journal lines (excluding voided entries).
 - `AccountGroup` - Organizes accounts by type (asset, liability, income, expense, equity) and includes a description. Enforces unique names per team.
 - `Payee` - Tracks who transactions are with. Simple model with name and unique constraint per team.
 
@@ -225,7 +225,6 @@ Views & API Endpoints:
 
 Serializers:
 - `BankFeedRowSerializer` - Unified format for both ledger and Plaid transactions. Fields: `id`, `source` (ledger/plaid), `date`, `description`, `account`, `category`, `inflow`, `outflow`, `is_pending`, `is_cleared`, `payment_channel`, `confidence`, `journal_line_id`, `imported_transaction_id`, `is_editable`.
-- `journal_line_to_feed_row(line)` - Adapter function converting `JournalLine` to bank feed row format. Extracts data from line, parent journal entry, and sibling line.
 - `imported_tx_to_feed_row(tx)` - Adapter function converting `ImportedTransaction` to bank feed row format. Converts Plaid amount convention to inflow/outflow.
 - Standard model serializers: `PlaidItemSerializer`, `PlaidAccountSerializer`, `ImportedTransactionSerializer`
 

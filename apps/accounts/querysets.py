@@ -6,6 +6,10 @@ from django.db import models
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 
+# Lines belonging to voided journal entries must not count toward any balance.
+# (String literal to avoid a circular import of JournalEntry.STATUS_VOID.)
+NOT_VOID = ~Q(journal_lines__journal_entry__status="void")
+
 
 class AccountQuerySet(models.QuerySet):
     """Custom QuerySet for Account model with optimized balance calculation."""
@@ -13,17 +17,16 @@ class AccountQuerySet(models.QuerySet):
     def with_balance(self):
         """Annotate accounts with their calculated balance in a single query."""
         return self.annotate(
-            _balance=Coalesce(Sum("journal_lines__dr_amount"), Decimal("0"))
-            - Coalesce(Sum("journal_lines__cr_amount"), Decimal("0"))
+            _balance=Coalesce(Sum("journal_lines__dr_amount", filter=NOT_VOID), Decimal("0"))
+            - Coalesce(Sum("journal_lines__cr_amount", filter=NOT_VOID), Decimal("0"))
         )
 
     def with_reconciled_balance(self):
         """Annotate accounts with their reconciled balance (only reconciled journal lines)."""
+        reconciled = Q(journal_lines__is_reconciled=True) & NOT_VOID
         return self.annotate(
-            _reconciled_balance=Coalesce(
-                Sum("journal_lines__dr_amount", filter=Q(journal_lines__is_reconciled=True)), Decimal("0")
-            )
-            - Coalesce(Sum("journal_lines__cr_amount", filter=Q(journal_lines__is_reconciled=True)), Decimal("0"))
+            _reconciled_balance=Coalesce(Sum("journal_lines__dr_amount", filter=reconciled), Decimal("0"))
+            - Coalesce(Sum("journal_lines__cr_amount", filter=reconciled), Decimal("0"))
         )
 
 

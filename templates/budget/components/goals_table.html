@@ -1,6 +1,7 @@
 {% load i18n %}
 
 <!-- Summary Card -->
+{% if summary.goal_count %}
 <div class="stats shadow mb-6 w-full" data-testid="goals-summary">
   <div class="stat">
     <div class="stat-title">{% translate "Total Goals" %}</div>
@@ -15,6 +16,7 @@
     <div class="stat-value text-success">${{ summary.total_saved|floatformat:2 }}</div>
   </div>
 </div>
+{% endif %}
 
 <!-- Goals Table -->
 <div class="overflow-x-auto bg-base-100 rounded-lg shadow">

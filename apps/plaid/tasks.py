@@ -3,6 +3,7 @@ Celery tasks for Plaid app.
 Handles background transaction syncing and updates.
 """
 
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -14,6 +15,8 @@ from apps.teams.context import set_current_team
 
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .services import sync_transactions
+
+logger = logging.getLogger(__name__)
 
 
 def json_safe(value):
@@ -37,7 +40,7 @@ def sync_plaid_transactions(plaid_item_id: int):
     Args:
         plaid_item_id: ID of the PlaidItem to sync
     """
-    print("STARTING THE PLAID SYNC")
+    logger.info("Starting Plaid sync for item %s", plaid_item_id)
     try:
         plaid_item = PlaidItem.objects.select_related("team").get(id=plaid_item_id)
 
@@ -91,11 +94,8 @@ def sync_plaid_transactions(plaid_item_id: int):
 
     except PlaidItem.DoesNotExist:
         return {"success": False, "error": "PlaidItem not found"}
-    except Exception as e:
-        import traceback
-
-        print(traceback.format_exc())
-        print(type(e), e)
+    except Exception:
+        logger.exception("Plaid sync failed for item %s", plaid_item_id)
         raise
 
 

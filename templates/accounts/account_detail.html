@@ -46,7 +46,7 @@
     </div>
     <div>
       <dt class="font-semibold">{% translate "Account Balance" %}</dt>
-      <dd>{{ account.account_balance }}</dd>
+      <dd {% if account.balance < 0 %}class="text-error"{% endif %}>${{ account.balance|floatformat:2 }}</dd>
     </div>
   </dl>
 </section>

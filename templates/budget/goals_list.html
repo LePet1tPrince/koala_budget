@@ -30,7 +30,7 @@
     </div>
 
     <!-- Tab Navigation -->
-    <div role="tablist" class="tabs tabs-boxed mb-6">
+    <div role="tablist" class="tabs tabs-box mb-6">
       <a role="tab" class="tab" href="{% url 'budget:budget_home' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
         {% translate "Budget" %}
       </a>

@@ -48,6 +48,21 @@ const Step4Preview = ({
     return { validCount: valid, categorizedCount: categorized, uncategorizedCount: uncategorized };
   }, [transactions]);
 
+  // Exact counts of what will actually be imported, accounting for manual
+  // skips and the skip-duplicates toggle without double-counting overlap
+  const { importCount, autoCategorizedCount } = useMemo(() => {
+    let importable = 0;
+    let categorized = 0;
+    transactions.forEach((tx) => {
+      if (tx.error || !tx.date || tx.amount === null) return;
+      if (skippedRows.has(tx.row_number)) return;
+      if (skipDuplicates && tx.is_potential_duplicate) return;
+      importable++;
+      if (tx.matched_category_id) categorized++;
+    });
+    return { importCount: importable, autoCategorizedCount: categorized };
+  }, [transactions, skippedRows, skipDuplicates]);
+
   const toggleSkipRow = (rowNumber) => {
     setSkippedRows((prev) => {
       const newSet = new Set(prev);
@@ -230,12 +245,12 @@ const Step4Preview = ({
       {/* Import Summary */}
       <div className="text-sm text-base-content/70">
         <i className="fa fa-info-circle mr-2"></i>
-        {validCount - skippedRows.size - (skipDuplicates ? duplicateCount : 0)}{' '}
+        {importCount}{' '}
         {gettext('transactions will be imported')}
-        {categorizedCount > 0 && (
+        {autoCategorizedCount > 0 && (
           <span>
             {' ('}
-            {categorizedCount - skippedRows.size} {gettext('will be auto-categorized')}
+            {autoCategorizedCount} {gettext('will be auto-categorized')}
             {')'}
           </span>
         )}

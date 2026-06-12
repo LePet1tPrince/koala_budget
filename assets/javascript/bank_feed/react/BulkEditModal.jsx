@@ -14,6 +14,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { buildCategoryOptions } from '../../common/categoryOptions';
+import { formatDateForInput } from '../utils';
 
 /* globals gettext */
 
@@ -86,9 +87,8 @@ const BulkEditModal = ({
       if (payee.trim()) updates.payee = payee.trim();
       if (description.trim()) updates.description = description.trim();
       if (date) {
-        // Format date as YYYY-MM-DD
-        const d = date instanceof Date ? date : new Date(date);
-        updates.date = d.toISOString().split('T')[0];
+        // Format date as YYYY-MM-DD (timezone-safe)
+        updates.date = formatDateForInput(date);
       }
       await onSave(updates);
       onClose();

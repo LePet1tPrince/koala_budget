@@ -1,5 +1,6 @@
 import {BankFeedApi, PlaidApi, JournalApi} from "api-client";
 import {getApiConfiguration, getApiHeaders} from "../api";
+import {formatDateForInput} from "./utils";
 
 export function getBankFeedApiClient(serverBaseUrl) {
   return new BankFeedApi(getApiConfiguration(serverBaseUrl));
@@ -136,10 +137,9 @@ export function getTransactionApi(teamSlug) {
      * Create a new manual transaction with associated journal entry
      */
     createTransaction: async (data) => {
-      // Format date as YYYY-MM-DD string
-      const dateStr = data.date instanceof Date
-        ? data.date.toISOString().split('T')[0]
-        : data.date;
+      // Format date as YYYY-MM-DD string (timezone-safe; toISOString would
+      // shift local-midnight dates to the previous day east of UTC)
+      const dateStr = formatDateForInput(data.date);
 
       const response = await fetch(`${baseUrl}/`, {
         method: 'POST',
@@ -171,10 +171,8 @@ export function getTransactionApi(teamSlug) {
      * Update an existing transaction and its associated journal entry
      */
     updateTransaction: async (id, data) => {
-      // Format date as YYYY-MM-DD string
-      const dateStr = data.date instanceof Date
-        ? data.date.toISOString().split('T')[0]
-        : data.date;
+      // Format date as YYYY-MM-DD string (timezone-safe)
+      const dateStr = formatDateForInput(data.date);
 
       const response = await fetch(`${baseUrl}/${id}/`, {
         method: 'PUT',

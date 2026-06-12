@@ -89,13 +89,16 @@ export function AuthChangeRedirector ({ children }) {
   const [auth, event] = useAuthChange()
   const location = useLocation()
   const navigate = useNavigate()
-  const processedEventsRef = useRef(new Set())
+  // Track the auth snapshot that produced the last handled event. Keying by
+  // event name would permanently swallow repeats (e.g. logout then login
+  // again in the same session would never navigate).
+  const processedAuthRef = useRef(null)
 
   useEffect(() => {
     // Only process new events
-    if (event && !processedEventsRef.current.has(event)) {
-      // Mark this event as handled
-      processedEventsRef.current.add(event)
+    if (event && processedAuthRef.current !== auth) {
+      // Mark this auth state as handled
+      processedAuthRef.current = auth
 
       switch (event) {
         case AuthChangeEvent.LOGGED_OUT:
