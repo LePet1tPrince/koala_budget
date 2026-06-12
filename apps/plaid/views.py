@@ -3,9 +3,13 @@ Views for Plaid app.
 Provides bank feed API, Plaid Link integration, and account management.
 """
 
+import json
 import logging
 
 from django.db import transaction
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
@@ -249,3 +253,46 @@ def exchange_public_token_view(request, team_slug=None):
             {"error": "Failed to link bank account. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+# Plaid Webhooks
+
+
+@csrf_exempt
+@require_POST
+def plaid_webhook_view(request):
+    """
+    Receive Plaid webhooks (global endpoint — Plaid can't know team slugs).
+
+    Handles TRANSACTIONS webhooks by enqueueing an incremental sync for the
+    item. The worst a spoofed request can do is trigger an extra sync, but
+    for defence in depth consider Plaid's JWT webhook verification
+    (https://plaid.com/docs/api/webhooks/webhook-verification/) before
+    relying on this in production.
+
+    Always returns 200 so Plaid doesn't retry storms on payloads we ignore.
+    """
+    from .tasks import sync_plaid_transactions
+
+    try:
+        payload = json.loads(request.body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"status": "ignored"})
+
+    webhook_type = payload.get("webhook_type")
+    webhook_code = payload.get("webhook_code")
+    item_id = payload.get("item_id")
+
+    if webhook_type == "TRANSACTIONS" and item_id:
+        if webhook_code in ("SYNC_UPDATES_AVAILABLE", "INITIAL_UPDATE", "HISTORICAL_UPDATE", "DEFAULT_UPDATE"):
+            try:
+                plaid_item = PlaidItem.objects.get(plaid_item_id=item_id)
+            except PlaidItem.DoesNotExist:
+                logger.warning("Plaid webhook for unknown item %s", item_id)
+                return JsonResponse({"status": "ignored"})
+            sync_plaid_transactions.delay(plaid_item.id)
+            return JsonResponse({"status": "sync_queued"})
+    elif webhook_type == "ITEM" and webhook_code == "ERROR":
+        logger.error("Plaid item error webhook for item %s: %s", item_id, payload.get("error"))
+
+    return JsonResponse({"status": "ignored"})

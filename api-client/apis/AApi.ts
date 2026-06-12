@@ -29,19 +29,19 @@ import {
 } from '../models/index';
 
 export interface ABankfeedApiFeedPartialUpdateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     patchedBankFeedRow?: PatchedBankFeedRow;
 }
 
 export interface AJournalApiJournalEntriesPostEntryCreateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
 
 export interface AJournalApiJournalEntriesVoidEntryCreateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }

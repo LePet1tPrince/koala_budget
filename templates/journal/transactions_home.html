@@ -5,7 +5,17 @@
 
 {% block app %}
 
-  <div id="transactions-app"></div>
+  {# Server-rendered placeholder; React replaces it when the bundle mounts #}
+  <div id="transactions-app">
+    <section class="app-card">
+      <h2 class="pg-subtitle">{% translate "Transactions" %}</h2>
+      <p class="text-sm text-base-content/60 mb-4">{% translate "Loading transactions…" %}</p>
+      <div class="space-y-4" aria-hidden="true">
+        <div class="skeleton h-10 w-full"></div>
+        <div class="skeleton h-64 w-full"></div>
+      </div>
+    </section>
+  </div>
 
   {{ api_urls|json_script:'api-urls' }}
   {{ team_slug|json_script:'team-slug' }}

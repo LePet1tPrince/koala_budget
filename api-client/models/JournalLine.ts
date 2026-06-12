@@ -38,12 +38,6 @@ export interface JournalLine {
      */
     readonly accountName: string;
     /**
-     * 
-     * @type {number}
-     * @memberof JournalLine
-     */
-    readonly accountNumber: number;
-    /**
      * Debit amount (sum of debits must equal sum of credits)
      * @type {string}
      * @memberof JournalLine
@@ -106,7 +100,6 @@ export function instanceOfJournalLine(value: object): value is JournalLine {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('account' in value) || value['account'] === undefined) return false;
     if (!('accountName' in value) || value['accountName'] === undefined) return false;
-    if (!('accountNumber' in value) || value['accountNumber'] === undefined) return false;
     if (!('amount' in value) || value['amount'] === undefined) return false;
     if (!('budget' in value) || value['budget'] === undefined) return false;
     if (!('direction' in value) || value['direction'] === undefined) return false;
@@ -128,7 +121,6 @@ export function JournalLineFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'id': json['id'],
         'account': json['account'],
         'accountName': json['account_name'],
-        'accountNumber': json['account_number'],
         'drAmount': json['dr_amount'] == null ? undefined : json['dr_amount'],
         'crAmount': json['cr_amount'] == null ? undefined : json['cr_amount'],
         'amount': json['amount'],
@@ -145,7 +137,7 @@ export function JournalLineFromJSONTyped(json: any, ignoreDiscriminator: boolean
       return JournalLineToJSONTyped(json, false);
   }
 
-  export function JournalLineToJSONTyped(value?: Omit<JournalLine, 'id'|'account_name'|'account_number'|'amount'|'budget'|'direction'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function JournalLineToJSONTyped(value?: Omit<JournalLine, 'id'|'account_name'|'amount'|'budget'|'direction'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

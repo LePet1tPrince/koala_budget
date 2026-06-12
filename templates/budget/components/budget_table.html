@@ -9,7 +9,7 @@
         <th class="text-right">{% translate "Budgeted" %}</th>
         <th class="text-right">{% translate "Actual" %}</th>
         <th class="text-right">{% translate "Available" %}</th>
-        <th class="text-center">{% translate "Action" %}</th>
+        <th class="text-center"><noscript>{% translate "Action" %}</noscript></th>
       </tr>
     </thead>
     <tbody>
@@ -29,9 +29,14 @@
           </td>
 
           <td class="text-right">
-            <form method="post" class="inline-flex items-center gap-2" id="budget-form-{{ row.form.instance.id }}">
+            <form method="post" class="inline-flex items-center gap-2" id="budget-form-{{ row.category.pk }}" data-budget-autosave>
               {% csrf_token %}
-              <input type="hidden" name="budget_id" value="{{ row.form.instance.id }}">
+              {% if row.form.instance.pk %}
+              <input type="hidden" name="budget_id" value="{{ row.form.instance.pk }}">
+              {% else %}
+              <input type="hidden" name="category_id" value="{{ row.category.pk }}">
+              <input type="hidden" name="budget_month" value="{{ month|date:'Y-m-d' }}">
+              {% endif %}
               <div class="form-control w-32">
                 {{ row.form.budget_amount }}
               </div>
@@ -55,9 +60,11 @@
           </td>
 
           <td class="text-center">
-            <button type="submit" form="budget-form-{{ row.form.instance.id }}" class="btn btn-primary btn-sm" data-testid="budget-save-btn">
-              {% translate "Save" %}
-            </button>
+            <noscript>
+              <button type="submit" form="budget-form-{{ row.category.pk }}" class="btn btn-primary btn-sm" data-testid="budget-save-btn">
+                {% translate "Save" %}
+              </button>
+            </noscript>
           </td>
         </tr>
         {% endfor %}
@@ -128,3 +135,16 @@
     @apply input input-bordered input-sm w-full text-right font-mono;
   }
 </style>
+
+<script>
+  // Auto-save budget amounts when an input value changes (blur/Enter).
+  // The <noscript> Save buttons remain the fallback when JS is disabled.
+  document.querySelectorAll('form[data-budget-autosave] input[name="budget_amount"]').forEach(function (input) {
+    input.dataset.savedValue = input.value;
+    input.addEventListener('change', function () {
+      if (input.value !== input.dataset.savedValue) {
+        input.form.requestSubmit();
+      }
+    });
+  });
+</script>

@@ -27,6 +27,12 @@ class PlaidItem(BaseTeamModel):
         help_text="Cursor for incremental transaction sync",
     )
 
+    last_synced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When transactions were last successfully synced from Plaid",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Plaid Item"

@@ -52,7 +52,7 @@ export interface JournalEntriesCreateRequest {
 }
 
 export interface JournalEntriesDestroyRequest {
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -62,18 +62,18 @@ export interface JournalEntriesListRequest {
 }
 
 export interface JournalEntriesPartialUpdateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     patchedJournalEntry?: Omit<PatchedJournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
 
 export interface JournalEntriesRetrieveRequest {
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
 export interface JournalEntriesUpdateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
@@ -84,7 +84,7 @@ export interface SimpleLinesCreateRequest {
 }
 
 export interface SimpleLinesDestroyRequest {
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -96,24 +96,24 @@ export interface SimpleLinesListRequest {
 }
 
 export interface SimpleLinesPartialUpdateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     patchedSimpleLine?: Omit<PatchedSimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
 }
 
 export interface SimpleLinesRecategorizeOperationRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     simpleLinesRecategorizeRequest?: SimpleLinesRecategorizeRequest;
 }
 
 export interface SimpleLinesRetrieveRequest {
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
 export interface SimpleLinesUpdateRequest {
-    id: string;
+    id: number;
     teamSlug: string;
     simpleLine: Omit<SimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
 }

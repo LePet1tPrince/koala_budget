@@ -1,4 +1,5 @@
 {% load i18n %}
+{% load currency_tags %}
 
 <div class="flex flex-col gap-4 w-72 shrink-0">
   <div class="sticky top-4 flex flex-col gap-4">
@@ -9,26 +10,26 @@
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Left Over from Last Month" %}</span>
           <span class="font-mono text-sm font-semibold {% if sidebar_summary.leftover_last_month < 0 %}text-error{% elif sidebar_summary.leftover_last_month > 0 %}text-success{% endif %}">
-            ${{ sidebar_summary.leftover_last_month|floatformat:2 }}
+            {{ sidebar_summary.leftover_last_month|currency }}
           </span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Assigned in" %} {{ month|date:"F" }}</span>
           <span class="font-mono text-sm font-semibold">
-            ${{ sidebar_summary.assigned_this_month|floatformat:2 }}
+            {{ sidebar_summary.assigned_this_month|currency }}
           </span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Activity" %}</span>
           <span class="font-mono text-sm font-semibold">
-            ${{ sidebar_summary.activity_this_month|floatformat:2 }}
+            {{ sidebar_summary.activity_this_month|currency }}
           </span>
         </div>
         <div class="divider my-0"></div>
         <div class="flex justify-between items-center">
           <span class="text-sm font-bold">{% translate "Available" %}</span>
           <span class="font-mono text-sm font-bold {% if sidebar_summary.available < 0 %}text-error{% elif sidebar_summary.available > 0 %}text-success{% endif %}">
-            ${{ sidebar_summary.available|floatformat:2 }}
+            {{ sidebar_summary.available|currency }}
           </span>
         </div>
       </div>

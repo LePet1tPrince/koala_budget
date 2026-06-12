@@ -33,12 +33,31 @@ def budget_month_view(request, team_slug):
     month = _parse_month(request.GET.get("month"))
 
     if request.method == "POST":
+        # Budget rows are created lazily on first save (a GET must not write).
+        # The form posts budget_id when a row already exists, category_id otherwise.
         budget_id = request.POST.get("budget_id")
-        budget = get_object_or_404(Budget, id=budget_id, team=request.team)
+        if budget_id:
+            budget = get_object_or_404(Budget, id=budget_id, team=request.team)
+        else:
+            category = get_object_or_404(
+                Account.objects.filter(team=request.team, account_group__account_type__in=("expense", "income")),
+                id=request.POST.get("category_id"),
+            )
+            budget, _created = Budget.objects.get_or_create(
+                team=request.team,
+                category=category,
+                month=_parse_month(request.POST.get("budget_month")) if request.POST.get("budget_month") else month,
+                defaults={"budget_amount": 0},
+            )
 
         form = BudgetAmountForm(request.POST, instance=budget)
         if form.is_valid():
             form.save()
+            messages.success(
+                request,
+                _("%(category)s budget set to $%(amount)s.")
+                % {"category": budget.category.name, "amount": form.cleaned_data["budget_amount"]},
+            )
             return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
         messages.error(request, _("Could not save budget amount: %(errors)s") % {"errors": form.errors.as_text()})
 
@@ -52,26 +71,9 @@ def budget_month_view(request, team_slug):
         .order_by("account_group__name", "name")
     )
 
-    # Bulk fetch existing budgets for this month
+    # Fetch existing budgets for this month; categories without one are shown
+    # with a zero amount and a row is only created when the user saves a value
     existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
-
-    # Bulk create missing budgets
-    missing_budgets = []
-    for category in categories:
-        if category.pk not in existing_budgets:
-            missing_budgets.append(
-                Budget(
-                    team=request.team,
-                    category=category,
-                    month=month,
-                    budget_amount=0,
-                )
-            )
-
-    if missing_budgets:
-        Budget.objects.bulk_create(missing_budgets, ignore_conflicts=True)
-        # Re-fetch to get all budgets including newly created ones
-        existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
 
     # Bulk fetch actuals and available amounts
     actuals_map = service.get_actuals_by_category(month)

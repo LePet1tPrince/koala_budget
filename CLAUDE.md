@@ -84,6 +84,11 @@ deploy/            # Docker Compose and DigitalOcean configs
 - Security: `TeamAccessPermissions`/`TeamModelAccessPermissions` now enforce authenticated team membership at the view level (`has_permission`), closing anonymous/cross-tenant access to list/create/custom actions
 - Correctness: voided journal entries are excluded from all balances, budget actuals, net worth, and reports; bank feed account moves no longer unbalance journal entries; re-categorizing keeps a single journal entry per bank transaction
 - Frontend: timezone-safe date handling for transaction dates (no more off-by-one-day saves/displays across timezones)
+- Bank feed: real DRF pagination on the feed list (page size 200; frontend follows `next` pages)
+- Bank feed: payee autocomplete (from team payees) and category suggestions (most recent category per merchant via `category_suggestions` endpoint) in the edit/bulk-edit modals
+- Plaid: `last_synced_at` on PlaidItem with "last synced" indicator in the bank feed UI; global webhook receiver at `/plaid/webhook/` queues incremental syncs on `SYNC_UPDATES_AVAILABLE`
+- Budget: amounts auto-save on change (no per-row Save button; `<noscript>` fallback); Budget rows created lazily on first save instead of on GET
+- UI: shared `currency` template filter (`{% load currency_tags %}`) replaces hardcoded `$…|floatformat:2`; loading skeletons on the Transactions and Bank Feed React mounts
 
 ---
 
@@ -93,8 +98,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 - E2E tests require `make start-bg` (Vite dev server) before running
 - Coverage threshold set at 50% — many apps have minimal test coverage
 - `STRICT_TEAM_CONTEXT` disabled by default; enable in production for stricter data isolation
-- Bank feed list endpoint returns all rows in one response (`next: null` envelope) — needs real DRF pagination as data grows (frontend already follows `next` pages when present)
-- `budget_month_view` bulk-creates Budget rows on GET — browsing far-future months inserts rows as a side effect of viewing
+- Plaid webhook receiver does not verify Plaid's JWT signature — a spoofed request can only trigger an extra sync, but add verification before production
 
 ---
 

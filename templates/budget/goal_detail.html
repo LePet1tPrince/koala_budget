@@ -1,6 +1,7 @@
 {% extends "budget/budget_base.html" %}
 {% load static %}
 {% load i18n %}
+{% load currency_tags %}
 
 {% block app %}
   <nav aria-label="breadcrumbs">
@@ -43,7 +44,7 @@
           <div>
             <div class="text-sm text-gray-500">{% translate "Progress" %}</div>
             <div class="text-2xl font-bold">
-              ${{ goal.total_saved|floatformat:2 }} / ${{ goal.target_amount|floatformat:2 }}
+              {{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}
             </div>
           </div>
           <div class="text-4xl font-bold text-primary">{{ goal.progress_percentage|floatformat:0 }}%</div>
@@ -63,7 +64,7 @@
 
         {% if goal.remaining and goal.remaining > 0 %}
         <div class="mt-2 text-sm text-gray-500">
-          {% translate "Remaining:" %} ${{ goal.remaining|floatformat:2 }}
+          {% translate "Remaining:" %} {{ goal.remaining|currency }}
         </div>
         {% endif %}
 
@@ -96,7 +97,7 @@
               {% for allocation in allocations %}
               <tr>
                 <td>{{ allocation.month|date:"F Y" }}</td>
-                <td class="text-right font-mono">${{ allocation.amount|floatformat:2 }}</td>
+                <td class="text-right font-mono">{{ allocation.amount|currency }}</td>
                 <td>{{ allocation.notes|default:"-" }}</td>
               </tr>
               {% empty %}

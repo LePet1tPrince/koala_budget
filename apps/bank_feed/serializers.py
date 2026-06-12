@@ -147,6 +147,14 @@ class BatchReconcileRequestSerializer(BatchIdsSerializer):
     )
 
 
+class CategorySuggestionSerializer(serializers.Serializer):
+    """A suggested category for a merchant, based on how it was last categorized."""
+
+    merchant_name = serializers.CharField(help_text="Merchant/payee name the suggestion applies to")
+    category_id = serializers.IntegerField(help_text="Account ID of the most recently used category")
+    category_name = serializers.CharField(help_text="Name of the most recently used category")
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.

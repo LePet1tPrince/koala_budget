@@ -38,6 +38,8 @@ const LineTableMaterial = ({
   lines,
   selectedAccount,
   allAccounts,
+  allPayees = [],
+  categorySuggestions = {},
   onAdd,
   onDelete,
   onEditTransaction,
@@ -484,6 +486,8 @@ const LineTableMaterial = ({
           onClose={handleEditModalClose}
           transaction={editingTransaction}
           allAccounts={allAccounts}
+          allPayees={allPayees}
+          categorySuggestions={categorySuggestions}
           onSave={handleEditSave}
           mode={modalMode}
         />

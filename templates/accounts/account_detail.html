@@ -1,5 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
+{% load currency_tags %}
 {% block app %}
 <nav aria-label="breadcrumbs">
   <ol class="pg-breadcrumbs">
@@ -46,7 +47,7 @@
     </div>
     <div>
       <dt class="font-semibold">{% translate "Account Balance" %}</dt>
-      <dd {% if account.balance < 0 %}class="text-error"{% endif %}>${{ account.balance|floatformat:2 }}</dd>
+      <dd {% if account.balance < 0 %}class="text-error"{% endif %}>{{ account.balance|currency }}</dd>
     </div>
   </dl>
 </section>

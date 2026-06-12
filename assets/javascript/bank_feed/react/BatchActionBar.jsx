@@ -35,6 +35,7 @@ const BatchActionBar = ({
   selectedCount,
   selectedRows,
   allAccounts,
+  allPayees = [],
   bankFeedAccounts,
   onBulkEdit,
   onArchive,
@@ -254,6 +255,7 @@ const BatchActionBar = ({
         onClose={() => setBulkEditOpen(false)}
         selectedCount={selectedCount}
         allAccounts={allAccounts}
+        allPayees={allPayees}
         bankFeedAccounts={bankFeedAccounts}
         onSave={onBulkEdit}
       />

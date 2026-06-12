@@ -74,11 +74,11 @@ export interface PatchedSimpleLine {
      */
     category?: number;
     /**
-     * 
+     * Get the category account name from the sibling line.
      * @type {string}
      * @memberof PatchedSimpleLine
      */
-    readonly categoryName?: string;
+    readonly categoryName?: string | null;
     /**
      * 
      * @type {string}
@@ -104,11 +104,11 @@ export interface PatchedSimpleLine {
      */
     payee?: number | null;
     /**
-     * 
+     * Get the payee name from the journal entry.
      * @type {string}
      * @memberof PatchedSimpleLine
      */
-    readonly payeeName?: string;
+    readonly payeeName?: string | null;
     /**
      * 
      * @type {boolean}

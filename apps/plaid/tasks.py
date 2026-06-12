@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from celery import shared_task
 from django.db import transaction
+from django.utils import timezone
 
 from apps.bank_feed.models import BankTransaction
 from apps.teams.context import set_current_team
@@ -81,8 +82,9 @@ def sync_plaid_transactions(plaid_item_id: int):
             cursor = result["next_cursor"]
             has_more = result["has_more"]
 
-        # Save the final cursor
+        # Save the final cursor and record the successful sync time
         plaid_item.cursor = cursor
+        plaid_item.last_synced_at = timezone.now()
         plaid_item.save()
 
         return {
