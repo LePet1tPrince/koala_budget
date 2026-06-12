@@ -2,16 +2,25 @@
 Views for accounts app.
 """
 
+from urllib.parse import urlencode
+
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, TemplateView, UpdateView
-from urllib.parse import urlencode
 
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
 from .forms import AccountForm, AccountGroupForm, InstitutionForm, PayeeForm
-from .models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Institution, Payee
+from .models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_CHOICES,
+    ACCOUNT_TYPE_LIABILITY,
+    Account,
+    AccountGroup,
+    Institution,
+    Payee,
+)
 
 
 # Accounts Home View

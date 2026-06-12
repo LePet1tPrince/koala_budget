@@ -89,11 +89,14 @@ const EditTransactionModal = ({
     }
   }, [open, transaction, categoryOptions, isCreateMode]);
 
-  // Check if transaction is read-only (Plaid transactions without journal entry)
+  // Check if transaction is read-only (Plaid transactions without journal entry).
+  // Rows come from the generated API client (camelCase), but tolerate snake_case
+  // for callers passing raw API data.
+  const journalEntryId = transaction?.journalEntryId ?? transaction?.journal_entry_id;
   const isReadOnly = useMemo(() => {
     if (isCreateMode || !transaction) return false;
-    return transaction.source === 'plaid' && !transaction.journal_entry_id;
-  }, [transaction, isCreateMode]);
+    return transaction.source === 'plaid' && !journalEntryId;
+  }, [transaction, isCreateMode, journalEntryId]);
 
   // Determine which fields can be edited
   const canEditDate = isCreateMode || (!isReadOnly && transaction?.source !== 'plaid');
@@ -151,7 +154,7 @@ const EditTransactionModal = ({
         const updatedData = {
           id: transaction.id,
           source: transaction.source,
-          journal_entry_id: transaction.journal_entry_id,
+          journal_entry_id: journalEntryId,
           date: canEditDate ? date : transaction.postedDate,
           category: canEditCategory && category ? { id: category.id, name: category.name, account_number: category.accountNumber } : transaction.category,
           inflow: canEditAmounts ? (inflow || '0') : transaction.inflow,

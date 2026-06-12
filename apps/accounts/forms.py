@@ -5,7 +5,15 @@ Forms for accounts app.
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Institution, Payee
+from .models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_CHOICES,
+    ACCOUNT_TYPE_LIABILITY,
+    Account,
+    AccountGroup,
+    Institution,
+    Payee,
+)
 
 
 class AccountGroupForm(forms.ModelForm):
@@ -71,9 +79,13 @@ class AccountForm(forms.ModelForm):
 
             self.fields["institution"].queryset = Institution.for_team.all()
 
-        # Institution is only relevant for asset and liability accounts
-        # In create mode the template uses Alpine.js to show/hide it, so keep it in the form
-        if not is_create and account_type_value not in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY):
+        # Institution is only relevant for asset and liability accounts.
+        # In create mode the unbound form keeps the field so the template can render
+        # the options (Alpine.js toggles visibility); once a type is chosen, drop it
+        # for non-asset/liability types so stray institution data is never saved.
+        if account_type_value not in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY) and (
+            not is_create or account_type_value
+        ):
             self.fields.pop("institution", None)
 
         # In create view, has_feed is automatically determined from account type

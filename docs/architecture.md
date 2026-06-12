@@ -247,7 +247,6 @@ Transform models for different presentation needs:
 ```python
 # apps/bank_feed/serializers.py
 def bank_transaction_to_feed_row(bt: BankTransaction) -> dict
-def journal_line_to_feed_row(jl: JournalLine) -> dict
 ```
 
 ### Generated API Client

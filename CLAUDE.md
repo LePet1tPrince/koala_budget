@@ -81,6 +81,9 @@ deploy/            # Docker Compose and DigitalOcean configs
 - dj-stripe subscription billing
 - Playwright E2E test suite with Page Object Model
 - Accounts: persist `?type=` filter across account detail/edit/delete navigation via `return_type` query param
+- Security: `TeamAccessPermissions`/`TeamModelAccessPermissions` now enforce authenticated team membership at the view level (`has_permission`), closing anonymous/cross-tenant access to list/create/custom actions
+- Correctness: voided journal entries are excluded from all balances, budget actuals, net worth, and reports; bank feed account moves no longer unbalance journal entries; re-categorizing keeps a single journal entry per bank transaction
+- Frontend: timezone-safe date handling for transaction dates (no more off-by-one-day saves/displays across timezones)
 
 ---
 
@@ -90,6 +93,8 @@ deploy/            # Docker Compose and DigitalOcean configs
 - E2E tests require `make start-bg` (Vite dev server) before running
 - Coverage threshold set at 50% — many apps have minimal test coverage
 - `STRICT_TEAM_CONTEXT` disabled by default; enable in production for stricter data isolation
+- Bank feed list endpoint returns all rows in one response (`next: null` envelope) — needs real DRF pagination as data grows (frontend already follows `next` pages when present)
+- `budget_month_view` bulk-creates Budget rows on GET — browsing far-future months inserts rows as a side effect of viewing
 
 ---
 

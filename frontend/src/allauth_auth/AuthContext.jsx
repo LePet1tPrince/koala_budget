@@ -30,17 +30,20 @@ export function AuthContextProvider (props) {
     })
     getConfig().then(data => setConfig(data)).catch((e) => {
       console.error(e);
+      // Surface the failure instead of spinning forever on the loading screen
+      setConfig(false)
     })
     return () => {
       document.removeEventListener('allauth.auth.change', onAuthChanged)
     }
   }, [])
-  const loading = (typeof auth === 'undefined') || config?.status !== 200
+  const failed = auth === false || config === false
+  const loading = !failed && ((typeof auth === 'undefined') || config?.status !== 200)
   return (
     <AuthContext.Provider value={{ auth, config }}>
       {loading
         ? <LoadingScreen />
-        : (auth === false
+        : (failed
             ? <LoadError />
             : props.children)}
     </AuthContext.Provider>

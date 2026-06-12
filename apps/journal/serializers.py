@@ -149,6 +149,10 @@ class JournalEntrySerializer(serializers.ModelSerializer):
             # Create new lines
             for line_data in lines_data:
                 JournalLine.objects.create(journal_entry=instance, team=instance.team, **line_data)
+        elif "entry_date" in validated_data:
+            # Re-save lines so their auto-linked budget follows the new month
+            for line in instance.lines.all():
+                line.save()
 
         return instance
 
@@ -218,6 +222,10 @@ class SimpleLineSerializer(serializers.Serializer):
 
     def validate(self, data):
         """Validate that exactly one of inflow or outflow is non-zero."""
+        # On a partial update that doesn't touch the amounts, keep the existing ones
+        if self.partial and "inflow" not in data and "outflow" not in data:
+            return data
+
         inflow = data.get("inflow", Decimal("0"))
         outflow = data.get("outflow", Decimal("0"))
 
@@ -299,35 +307,52 @@ class SimpleLineSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         """Update a journal entry and its lines from simple line data."""
-        account = validated_data["account"]
-        category = validated_data["category"]
-        inflow = validated_data.get("inflow", Decimal("0"))
-        outflow = validated_data.get("outflow", Decimal("0"))
+        journal_entry = instance.journal_entry
+
+        # The simple-line format assumes a 2-line entry; updating one line of a
+        # larger split entry would unbalance it.
+        all_lines = list(journal_entry.lines.all())
+        if len(all_lines) > 2:
+            raise serializers.ValidationError(
+                "This transaction is part of a multi-line journal entry and cannot be edited here. "
+                "Edit the journal entry directly instead."
+            )
+        sibling = next((line for line in all_lines if line.id != instance.id), None)
+
+        # Fall back to current values for fields omitted from a partial update
+        account = validated_data.get("account", instance.account)
+        category = validated_data.get("category", sibling.account if sibling else None)
+        if "inflow" in validated_data or "outflow" in validated_data:
+            inflow = validated_data.get("inflow", Decimal("0"))
+            outflow = validated_data.get("outflow", Decimal("0"))
+        else:
+            inflow = instance.dr_amount
+            outflow = instance.cr_amount
 
         # Update journal entry fields
-        journal_entry = instance.journal_entry
-        journal_entry.entry_date = validated_data["date"]
-        journal_entry.description = validated_data["description"]
-        journal_entry.payee = validated_data.get("payee")
+        journal_entry.entry_date = validated_data.get("date", journal_entry.entry_date)
+        journal_entry.description = validated_data.get("description", journal_entry.description)
+        if "payee" in validated_data or not self.partial:
+            journal_entry.payee = validated_data.get("payee")
         journal_entry.save()
 
         # Update the main line
         instance.account = account
         instance.dr_amount = inflow
         instance.cr_amount = outflow
-        instance.is_cleared = validated_data.get("is_cleared", False)
-        instance.is_reconciled = validated_data.get("is_reconciled", False)
-        instance.is_archived = validated_data.get("is_archived", False)
+        instance.is_cleared = validated_data.get("is_cleared", instance.is_cleared)
+        instance.is_reconciled = validated_data.get("is_reconciled", instance.is_reconciled)
+        instance.is_archived = validated_data.get("is_archived", instance.is_archived)
         instance.save()
 
         # Update or create the sibling line
-        sibling = self._get_sibling_line(instance)
         if sibling:
-            sibling.account = category
+            if category is not None:
+                sibling.account = category
             sibling.dr_amount = outflow  # Opposite of main line
             sibling.cr_amount = inflow  # Opposite of main line
             sibling.save()
-        else:
+        elif category is not None:
             # If no sibling exists, create one
             JournalLine.objects.create(
                 journal_entry=journal_entry,

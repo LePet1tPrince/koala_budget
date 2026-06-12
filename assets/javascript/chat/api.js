@@ -2,13 +2,13 @@ import {Cookies} from "../app";
 import {getChatUrl} from "./urls";
 
 
-export const sendMessage = (apiUrl, chat_id, message, callBack) => {
+export const sendMessage = (apiUrl, chat_id, message, callBack, onError) => {
   const messageData = {
     chat: chat_id,
     message_type: "HUMAN",
     content: message,
   }
-  fetch(apiUrl, {
+  return fetch(apiUrl, {
     method: "POST",
     credentials: 'same-origin',
     headers: {
@@ -17,10 +17,16 @@ export const sendMessage = (apiUrl, chat_id, message, callBack) => {
     },
     body: JSON.stringify(messageData),
   }).then((response) => {
-    if (response.ok) {
-      return response.json();
+    if (!response.ok) {
+      throw new Error(`Failed to send message (${response.status})`);
     }
+    return response.json();
   }).then((data) => {
     callBack(data);
+  }).catch((error) => {
+    console.error('Failed to send chat message:', error);
+    if (onError) {
+      onError(error);
+    }
   });
 }

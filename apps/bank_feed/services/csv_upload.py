@@ -592,7 +592,7 @@ def _auto_categorize_transaction(bank_tx, category_id: int, team):
         team=team,
         entry_date=bank_tx.posted_date,
         description=bank_tx.description,
-        source=bank_tx.source,
+        source=bank_tx.journal_source,
         status=JournalEntry.STATUS_POSTED,
     )
 

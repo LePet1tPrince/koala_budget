@@ -211,10 +211,10 @@ def delete_user_account(user):
 
     for membership in memberships:
         team = membership.team
-        admin_count = Membership.objects.filter(team=team, role="admin").count()
+        other_members = Membership.objects.filter(team=team).exclude(user=user)
 
-        if admin_count <= 1 and membership.role == "admin":
-            # Sole admin — delete all team data in dependency order to
+        if not other_members.exists():
+            # Last member — delete all team data in dependency order to
             # respect PROTECT foreign keys, then delete the team.
             PlaidAccount.objects.filter(team=team).delete()
             PlaidItem.objects.filter(team=team).delete()
@@ -225,7 +225,14 @@ def delete_user_account(user):
             Payee.objects.filter(team=team).delete()
             team.delete()
         else:
-            # Other admins exist — just remove this user's membership
+            # Other members exist — never destroy their data. If this user was
+            # the only admin, promote the longest-standing member so the team
+            # isn't left without an administrator.
+            other_admins = other_members.filter(role="admin")
+            if membership.role == "admin" and not other_admins.exists():
+                successor = other_members.order_by("created_at").first()
+                successor.role = "admin"
+                successor.save()
             membership.delete()
 
     # Delete the user account itself

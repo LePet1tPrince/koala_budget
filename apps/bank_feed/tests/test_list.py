@@ -149,18 +149,24 @@ class BankFeedViewSetListTest(TestCase):
             self.assertEqual(response.data["count"], 0)
             self.assertEqual(response.data["results"], [])
 
-    def test_list_without_authentication_still_accessible(self):
-        """Test that list endpoint is accessible without authentication.
+    def test_list_without_authentication_denied(self):
+        """Test that the list endpoint rejects unauthenticated requests.
 
-        Note: Authentication is enforced at the middleware level before
-        reaching the view, so unauthenticated requests to team URLs are
-        typically blocked by middleware. This test verifies view behavior.
+        TeamModelAccessPermissions enforces authenticated team membership at the
+        view level, so anonymous requests must not see any team data.
         """
         self.client.force_authenticate(user=None)
         response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/")
 
-        # The view itself returns 200 - authentication is handled by middleware
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_list_denied_for_non_member(self):
+        """Users who are not members of the team must not see its feed."""
+        outsider = CustomUser.objects.create_user(username="outsider", password="pass")
+        self.client.force_authenticate(user=outsider)
+        response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_list_only_shows_own_team_transactions(self):
         """Test that users can only see their own team's transactions."""

@@ -8,7 +8,12 @@ from django.db.models import Sum
 
 from apps.accounts.models import Account
 from apps.budget.models import Budget, Goal, GoalAllocation
-from apps.journal.models import JournalLine
+from apps.journal.models import JournalEntry, JournalLine
+
+
+def _active_lines():
+    """Journal lines that count toward budgets/net worth (voided entries don't)."""
+    return JournalLine.objects.exclude(journal_entry__status=JournalEntry.STATUS_VOID)
 
 
 class BudgetService:
@@ -42,7 +47,8 @@ class BudgetService:
             actual_expression = Sum("dr_amount") - Sum("cr_amount")
 
         qs = (
-            JournalLine.objects.filter(
+            _active_lines()
+            .filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
@@ -121,7 +127,8 @@ class BudgetService:
 
         # Get expense accounts: dr - cr
         expense_qs = (
-            JournalLine.objects.filter(
+            _active_lines()
+            .filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
@@ -133,7 +140,8 @@ class BudgetService:
 
         # Get income accounts: cr - dr
         income_qs = (
-            JournalLine.objects.filter(
+            _active_lines()
+            .filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
@@ -211,7 +219,8 @@ class BudgetService:
 
         # Get expense accounts: dr - cr
         expense_qs = (
-            JournalLine.objects.filter(
+            _active_lines()
+            .filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start_month,
                 journal_entry__entry_date__lt=end_month + relativedelta(months=1),
@@ -224,7 +233,8 @@ class BudgetService:
 
         # Get income accounts: cr - dr
         income_qs = (
-            JournalLine.objects.filter(
+            _active_lines()
+            .filter(
                 team=self.team,
                 journal_entry__entry_date__gte=start_month,
                 journal_entry__entry_date__lt=end_month + relativedelta(months=1),
@@ -396,13 +406,17 @@ class NetWorthService:
         # End of month (first day of next month)
         end_date = month.replace(day=1) + relativedelta(months=1)
 
-        result = JournalLine.objects.filter(
-            team=self.team,
-            journal_entry__entry_date__lt=end_date,
-            account__account_group__account_type__in=["asset", "liability"],
-        ).aggregate(
-            total_dr=Sum("dr_amount"),
-            total_cr=Sum("cr_amount"),
+        result = (
+            _active_lines()
+            .filter(
+                team=self.team,
+                journal_entry__entry_date__lt=end_date,
+                account__account_group__account_type__in=["asset", "liability"],
+            )
+            .aggregate(
+                total_dr=Sum("dr_amount"),
+                total_cr=Sum("cr_amount"),
+            )
         )
 
         total_dr = result["total_dr"] or Decimal("0")

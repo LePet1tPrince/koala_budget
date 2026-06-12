@@ -4,6 +4,7 @@ Serializers for Plaid app.
 
 from rest_framework import serializers
 
+from apps.accounts.models import Account
 from apps.accounts.serializers import AccountSerializer
 
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
@@ -47,6 +48,15 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Scope writable FKs to the current team so a PATCH can't link a Plaid
+        # account to another tenant's ledger account or item
+        request = self.context.get("request")
+        if request is not None and getattr(request, "team", None):
+            self.fields["account"].queryset = Account.for_team.all()
+            self.fields["item"].queryset = PlaidItem.for_team.all()
 
 
 class PlaidTransactionSerializer(serializers.ModelSerializer):

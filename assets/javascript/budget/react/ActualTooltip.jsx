@@ -90,9 +90,13 @@ const ActualTooltip = ({
           credentials: 'same-origin',
         }
       );
+      if (!response.ok) {
+        throw new Error(`Failed to load transactions (${response.status})`);
+      }
       const data = await response.json();
       // Handle both paginated and non-paginated responses
-      setTransactions(data.results || data);
+      const rows = Array.isArray(data) ? data : data.results;
+      setTransactions(Array.isArray(rows) ? rows : []);
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
       setSnackbar({ open: true, message: gettext('Failed to load transactions'), severity: 'error' });
@@ -172,9 +176,10 @@ const ActualTooltip = ({
   };
 
   function formatWeekDayDate(date) {
-  // Get weekday (short)
-  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date);
-  const day = date.getDate();
+  // Dates here are date-only values parsed as UTC midnight, so read them in
+  // UTC — local getters would show the previous day west of UTC.
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }).format(date);
+  const day = date.getUTCDate();
 
   // Determine ordinal suffix
   let suffix = 'th';

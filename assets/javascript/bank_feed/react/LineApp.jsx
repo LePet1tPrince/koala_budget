@@ -1,6 +1,6 @@
 /* globals gettext */
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Alert, Snackbar } from '@mui/material';
 
 import AccountCard from './AccountCard';
@@ -54,34 +54,64 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     setSnackbar({ ...snackbar, open: false });
   };
 
+  // Monotonic id so a slow response for a previously selected account can't
+  // overwrite the rows of the currently selected one
+  const loadRequestRef = useRef(0);
+  const selectedAccountRef = useRef(null);
+  selectedAccountRef.current = selectedAccount;
+
   // Load lines when account is selected
   useEffect(() => {
     if (selectedAccount) {
-      loadLines();
+      loadLines(selectedAccount);
     } else {
       setLines([]);
     }
   }, [selectedAccount]);
 
-  const loadLines = async () => {
+  const loadLines = async (account = selectedAccountRef.current) => {
+    if (!account) return;
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError(null);
     try {
-      // Use the bank feed API client
-      const data = await bankFeedClient.bankFeedFeedList({
+      // Use the bank feed API client, following pagination if the server
+      // returns more than one page
+      const results = [];
+      let data = await bankFeedClient.bankFeedFeedList({
         teamSlug: teamSlug,
-        account: selectedAccount.id,
+        account: account.id,
       });
-      setLines(data.results || []);
+      results.push(...(data.results || []));
+      while (data.next) {
+        const nextPage = Number(new URL(data.next, window.location.origin).searchParams.get('page'));
+        if (!nextPage) break;
+        data = await bankFeedClient.bankFeedFeedList({
+          teamSlug: teamSlug,
+          account: account.id,
+          page: nextPage,
+        });
+        results.push(...(data.results || []));
+      }
+      if (loadRequestRef.current === requestId) {
+        setLines(results);
+      }
     } catch (err) {
       console.error('Failed to load lines:', err);
-      setError(err.message || gettext('Failed to load lines'));
+      if (loadRequestRef.current === requestId) {
+        setError(err.message || gettext('Failed to load lines'));
+      }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) {
+        setLoading(false);
+      }
     }
   };
 
   const handleAccountSelect = (account) => {
+    // Selection refers to rows of the previous account; don't let the batch
+    // bar keep acting on rows that are no longer visible
+    setSelectedIds(new Set());
     setSelectedAccount(account);
   };
 
@@ -112,11 +142,16 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           id: plaidAccount.item,
         });
 
-        // Wait a moment for sync to complete, then reload lines
-        setTimeout(() => {
-          loadLines();
-          setRefreshing(false);
-        }, 2000);
+        // The sync runs in a background task with no completion signal, so
+        // reload a few times while it (probably) finishes instead of assuming
+        // it's done after a fixed 2s.
+        const accountId = selectedAccount.id;
+        for (const delay of [2000, 4000, 6000]) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          if (selectedAccountRef.current?.id !== accountId) break;
+          await loadLines();
+        }
+        setRefreshing(false);
       } else {
         // No Plaid account linked to this ledger account
         setError(gettext('This account is not linked to a bank feed.'));
@@ -370,7 +405,9 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     if (!selectedAccount) return;
 
     const currentBalance = parseFloat(selectedAccount.reconciled_balance) || 0;
-    const newBalance = currentBalance + amountChange;
+    // Round to cents: summing parsed floats accumulates binary-float noise
+    // (e.g. 1234.5600000000002) that would otherwise be stored and displayed
+    const newBalance = Math.round((currentBalance + amountChange) * 100) / 100;
 
     // Update the selected account
     const updatedSelectedAccount = {
@@ -530,6 +567,15 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             setShowUploadWizard(false);
             // Reload lines to show newly imported transactions
             loadLines();
+            if (result) {
+              const created = result.created_count ?? result.createdCount ?? 0;
+              const skipped = result.skipped_count ?? result.skippedCount ?? 0;
+              const parts = [`${created} ${gettext('transactions imported')}`];
+              if (skipped > 0) {
+                parts.push(`${skipped} ${gettext('skipped')}`);
+              }
+              showSnackbar(parts.join(', '), 'success');
+            }
           }}
           onCancel={() => setShowUploadWizard(false)}
         />

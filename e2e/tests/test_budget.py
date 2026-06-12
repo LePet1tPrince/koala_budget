@@ -47,11 +47,11 @@ def test_budget_home_shows_rows_for_accounts(authenticated_page: Page, live_serv
 
 @pytest.mark.django_db(transaction=True)
 def test_goals_list_empty_state(authenticated_page: Page, live_server, team):
-    """Goals list shows a summary card and empty table when no goals exist."""
+    """Goals list hides the summary card and shows an empty table when no goals exist."""
     budget = BudgetPage(authenticated_page, live_server.url)
     budget.goto_goals(team.slug)
 
-    assert budget.has_goals_summary()
+    assert not budget.has_goals_summary()
     assert budget.has_goals_table()
     assert budget.get_goal_row_count() == 0
 

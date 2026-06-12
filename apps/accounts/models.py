@@ -86,10 +86,10 @@ class Account(BaseTeamModel):
         """Return annotated balance if available, otherwise calculate."""
         if hasattr(self, "_balance"):
             return self._balance or Decimal("0")
-        # Fallback for non-annotated queries
-        dr_total = self.journal_lines.aggregate(total=Sum("dr_amount"))["total"] or Decimal("0")
-        cr_total = self.journal_lines.aggregate(total=Sum("cr_amount"))["total"] or Decimal("0")
-        return dr_total - cr_total
+        # Fallback for non-annotated queries (voided entries don't count)
+        lines = self.journal_lines.exclude(journal_entry__status="void")
+        totals = lines.aggregate(dr=Sum("dr_amount"), cr=Sum("cr_amount"))
+        return (totals["dr"] or Decimal("0")) - (totals["cr"] or Decimal("0"))
 
 
 class Institution(BaseTeamModel):

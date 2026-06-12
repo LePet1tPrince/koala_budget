@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q, Sum
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
@@ -123,17 +123,34 @@ class Goal(BaseTeamModel):
         is_new = self.pk is None
 
         if is_new and not self.account_id:
-            # Get or create the Goals account group
-            goal_group, _ = AccountGroup.objects.get_or_create(
-                team=self.team,
-                account_type=ACCOUNT_TYPE_EQUITY,
-                defaults={"name": "Goals", "description": "Savings goals"},
-            )
+            with transaction.atomic():
+                # Get or create the Goals account group. Filter by name as well as type:
+                # a team can have several equity groups, and get_or_create on type alone
+                # would raise MultipleObjectsReturned.
+                goal_group = AccountGroup.objects.filter(
+                    team=self.team, account_type=ACCOUNT_TYPE_EQUITY, name="Goals"
+                ).first()
+                if goal_group is None:
+                    goal_group = (
+                        AccountGroup.objects.filter(team=self.team, account_type=ACCOUNT_TYPE_EQUITY)
+                        .order_by("id")
+                        .first()
+                    )
+                if goal_group is None:
+                    goal_group = AccountGroup.objects.create(
+                        team=self.team,
+                        account_type=ACCOUNT_TYPE_EQUITY,
+                        name="Goals",
+                        description="Savings goals",
+                    )
 
-            # Create the backing account
-            self.account = Account.objects.create(
-                team=self.team, name=f"Goal: {self.name}", account_group=goal_group
-            )
+                # Create the backing account inside the same transaction so a failed
+                # goal save doesn't leave an orphaned account behind
+                self.account = Account.objects.create(
+                    team=self.team, name=f"Goal: {self.name}", account_group=goal_group
+                )
+                super().save(*args, **kwargs)
+            return
 
         super().save(*args, **kwargs)
 

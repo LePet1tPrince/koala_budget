@@ -13,7 +13,20 @@ const AccountCard = ({ account, isSelected, onClick }) => {
   }`;
 
   return (
-    <div className={cardClasses} onClick={() => onClick(account)} data-testid={`account-card-${account.id}`}>
+    <div
+      className={cardClasses}
+      onClick={() => onClick(account)}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick(account);
+        }
+      }}
+      data-testid={`account-card-${account.id}`}
+    >
       <div className="card-body p-4">
         <h3 className="card-title text-base">
           {account.name}

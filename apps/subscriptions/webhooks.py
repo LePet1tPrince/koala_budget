@@ -23,7 +23,11 @@ def checkout_session_completed(event, **kwargs):
     if session["metadata"].get("source") == "subscriptions" or session.get("subscription"):
         client_reference_id = session.get("client_reference_id")
         subscription_id = session.get("subscription")
-        subscription_holder = Team.objects.get(id=client_reference_id)
+        try:
+            subscription_holder = Team.objects.get(id=client_reference_id)
+        except (Team.DoesNotExist, ValueError, TypeError):
+            log.error("checkout.session.completed with unknown client_reference_id %r", client_reference_id)
+            return
         provision_subscription(subscription_holder, subscription_id)
 
 

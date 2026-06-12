@@ -3,6 +3,8 @@ Views for Plaid app.
 Provides bank feed API, Plaid Link integration, and account management.
 """
 
+import logging
+
 from django.db import transaction
 from drf_spectacular.utils import (
     extend_schema,
@@ -23,6 +25,8 @@ from .serializers import (
     PlaidTransactionSerializer,
 )
 from .services import create_link_token, exchange_public_token, get_accounts, get_institution
+
+logger = logging.getLogger(__name__)
 
 # ViewSets for Plaid models
 
@@ -142,9 +146,10 @@ def create_link_token_view(request, team_slug=None):
     try:
         link_token = create_link_token(user_id=request.user.id)
         return Response({"link_token": link_token})
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to create Plaid link token")
         return Response(
-            {"error": str(e)},
+            {"error": "Failed to create link token. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -238,8 +243,9 @@ def exchange_public_token_view(request, team_slug=None):
             }
         )
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to exchange Plaid public token")
         return Response(
-            {"error": str(e)},
+            {"error": "Failed to link bank account. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
