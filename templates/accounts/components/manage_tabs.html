@@ -1,0 +1,8 @@
+{% load i18n %}
+{# Tab row linking the chart-of-accounts management pages. Pass manage_tab as "accounts", "groups", "payees", or "institutions". #}
+<div role="tablist" class="tabs tabs-box mb-6 w-fit">
+  <a role="tab" class="tab{% if manage_tab == 'accounts' %} tab-active{% endif %}" href="{% url 'accounts:accounts_home' request.team.slug %}">{% translate "Accounts" %}</a>
+  <a role="tab" class="tab{% if manage_tab == 'groups' %} tab-active{% endif %}" href="{% url 'accounts:accountgroup_list' request.team.slug %}">{% translate "Groups" %}</a>
+  <a role="tab" class="tab{% if manage_tab == 'payees' %} tab-active{% endif %}" href="{% url 'accounts:payee_list' request.team.slug %}">{% translate "Payees" %}</a>
+  <a role="tab" class="tab{% if manage_tab == 'institutions' %} tab-active{% endif %}" href="{% url 'accounts:institution_list' request.team.slug %}">{% translate "Institutions" %}</a>
+</div>

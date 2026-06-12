@@ -1,11 +1,12 @@
 {% extends "web/base.html" %}
+{% load i18n %}
 {% block top_nav %}
   {% include 'web/components/top_nav_app.html' %}
 {% endblock %}
 {% block body %}
   {% block notifications %}
   {% endblock %}
-  <section class="section">
+  <section class="section pb-24 lg:pb-4">
     <div class="container flex flex-row">
       <div class="w-64 hidden lg:flex">
         {% block sidebar-nav %}
@@ -18,4 +19,32 @@
       </div>
     </div>
   </section>
+  {% if request.team %}
+    {# Bottom tab bar for the main destinations on mobile; the sidebar covers desktop #}
+    <div class="dock lg:hidden z-20" data-testid="mobile-dock">
+      <a href="{% url 'web_team:home' request.team.slug %}" {% if active_tab == 'dashboard' %}class="dock-active"{% endif %}>
+        <i class="fa fa-home"></i>
+        <span class="dock-label">{% translate "Home" %}</span>
+      </a>
+      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" {% if active_tab == 'bank-feed' %}class="dock-active"{% endif %}>
+        <span class="indicator">
+          {% if inbox_count %}<span class="indicator-item badge badge-primary badge-xs">{{ inbox_count }}</span>{% endif %}
+          <i class="fa fa-inbox"></i>
+        </span>
+        <span class="dock-label">{% translate "Inbox" %}</span>
+      </a>
+      <a href="{% url 'journal:transactions_home' request.team.slug %}" {% if active_tab == 'transactions' %}class="dock-active"{% endif %}>
+        <i class="fa fa-list"></i>
+        <span class="dock-label">{% translate "Transactions" %}</span>
+      </a>
+      <a href="{% url 'budget:budget_home' request.team.slug %}" {% if active_tab == 'budget' %}class="dock-active"{% endif %}>
+        <i class="fa fa-wallet"></i>
+        <span class="dock-label">{% translate "Budget" %}</span>
+      </a>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" {% if active_tab == 'reports' %}class="dock-active"{% endif %}>
+        <i class="fa fa-chart-bar"></i>
+        <span class="dock-label">{% translate "Reports" %}</span>
+      </a>
+    </div>
+  {% endif %}
 {% endblock %}

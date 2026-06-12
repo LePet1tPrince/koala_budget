@@ -2,12 +2,6 @@
 {% load i18n %}
 {% load form_tags %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'accounts:account_list' request.team.slug %}">{% translate "Accounts" %}</a></li>
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "New" %}</li>
-  </ol>
-</nav>
 <section class="app-card">
   <h3 class="pg-subtitle">{% translate "New Account" %}</h3>
 

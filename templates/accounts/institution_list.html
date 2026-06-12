@@ -1,12 +1,8 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Institutions" %}</li>
-  </ol>
-</nav>
 <section class="app-card">
+  {% include "accounts/components/manage_tabs.html" with manage_tab="institutions" %}
   <div class="flex justify-between items-center mb-4">
     <h3 class="pg-subtitle">{% translate "Institutions" %}</h3>
     <a href="{% url 'accounts:institution_create' request.team.slug %}" class="pg-button-primary">

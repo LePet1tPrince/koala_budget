@@ -2,17 +2,6 @@
 {% load i18n %}
 {% load form_tags %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'accounts:account_list' request.team.slug %}{% if return_type %}?type={{ return_type }}{% endif %}">{% translate "Accounts" %}</a></li>
-    {% if account %}
-    <li><a href="{{ account.get_absolute_url }}{% if return_type %}?return_type={{ return_type }}{% endif %}">{{ account.name }}</a></li>
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Edit" %}</li>
-    {% else %}
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "New" %}</li>
-    {% endif %}
-  </ol>
-</nav>
 <section class="app-card">
   <h3 class="pg-subtitle">{% if account %}{% translate "Edit" %} {{ account.name }}{% else %}{% translate "New Account" %}{% endif %}</h3>
   <form method="post" data-testid="account-form">{% csrf_token %}

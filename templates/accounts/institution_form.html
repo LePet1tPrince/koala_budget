@@ -2,17 +2,6 @@
 {% load i18n %}
 {% load form_tags %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'accounts:institution_list' request.team.slug %}">{% translate "Institutions" %}</a></li>
-    {% if institution %}
-    <li><a href="{{ institution.get_absolute_url }}">{{ institution.name }}</a></li>
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Edit" %}</li>
-    {% else %}
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "New" %}</li>
-    {% endif %}
-  </ol>
-</nav>
 <section class="app-card">
   <h3 class="pg-subtitle">{% if institution %}{% translate "Edit" %} {{ institution.name }}{% else %}{% translate "New Institution" %}{% endif %}</h3>
   <form method="post">{% csrf_token %}
