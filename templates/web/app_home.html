@@ -1,27 +1,146 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
-{% load static %}
+{% load currency_tags %}
 {% block app %}
-<section class="app-card">
-    <div class="pg-columns pg-columns-reversed pg-align-items-center">
-        <div class="pg-column-one-third">
-            <img class="img-fluid" src="{% static 'images/web/rocket-laptop.svg' %}" alt="{% translate "Fly Away!" %}">
-        </div>
-        <div class="pg-column">
-            <h1 class="pg-title">{% translate "You're Signed In!" %}</h1>
-            <h2 class="pg-subtitle">
-                {% translate "This is your application's logged in home page." %}
-            </h2>
-            <p>
-              {% blocktranslate trimmed with team_name=team.name %}You're logged into the "{{ team_name }}" Team.{% endblocktranslate %}
-            </p>
-        </div>
+
+  {# Hero: the one number that matters #}
+  <section class="app-card" data-testid="dashboard-hero">
+    <div class="text-sm text-base-content/60">{% translate "Net worth" %}</div>
+    <div class="text-4xl font-semibold tracking-tight mt-1" data-testid="dashboard-net-worth">
+      {{ net_worth_card.net_worth|currency }}
     </div>
-</section>
-<section class="app-card">
-    <div class="pg-content">
-        <p>To add more to this page you can make new sections like this one.</p>
-        <p>Tip: the source of this page can be found at <code>templates/web/app_home.html</code></p>
+    <div class="text-sm text-base-content/60 mt-2">
+      {% translate "Available" %}:
+      <span class="font-semibold {% if net_worth_card.available < 0 %}text-error{% elif net_worth_card.available > 0 %}text-success{% endif %}">{{ net_worth_card.available|currency }}</span>
+      · {% translate "Budgeted" %}: {{ net_worth_card.spend|currency }}
+      · {% translate "Saved to goals" %}: {{ net_worth_card.save|currency }}
     </div>
-</section>
+  </section>
+
+  {% if show_onboarding %}
+    {# Onboarding checklist for new teams; disappears once all steps are done #}
+    <section class="app-card mt-6" data-testid="onboarding-checklist">
+      <h2 class="text-2xl font-semibold mb-1">{% translate "Get set up" %}</h2>
+      <p class="text-sm text-base-content/60 mb-4">{% translate "Three steps and your budget is up and running." %}</p>
+      <ul class="space-y-3">
+        <li class="flex items-center gap-3">
+          {% if has_accounts %}
+            <i class="fa fa-check-circle text-success"></i>
+            <span class="text-base-content/60 line-through">{% translate "Add your accounts" %}</span>
+          {% else %}
+            <i class="fa fa-circle-o text-base-content/40"></i>
+            <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="link">{% translate "Add your accounts" %}</a>
+            <span class="text-sm text-base-content/60">{% translate "— or connect a bank from the Inbox" %}</span>
+          {% endif %}
+        </li>
+        <li class="flex items-center gap-3">
+          {% if has_transactions %}
+            <i class="fa fa-check-circle text-success"></i>
+            <span class="text-base-content/60 line-through">{% translate "Import or add transactions" %}</span>
+          {% else %}
+            <i class="fa fa-circle-o text-base-content/40"></i>
+            <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" class="link">{% translate "Import or add transactions" %}</a>
+          {% endif %}
+        </li>
+        <li class="flex items-center gap-3">
+          {% if has_budget %}
+            <i class="fa fa-check-circle text-success"></i>
+            <span class="text-base-content/60 line-through">{% translate "Set your monthly budget" %}</span>
+          {% else %}
+            <i class="fa fa-circle-o text-base-content/40"></i>
+            <a href="{% url 'budget:budget_home' request.team.slug %}" class="link">{% translate "Set your monthly budget" %}</a>
+          {% endif %}
+        </li>
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if inbox_count %}
+    <div class="alert mt-6" data-testid="review-banner">
+      <i class="fa fa-inbox"></i>
+      <span>
+        {% blocktranslate trimmed count counter=inbox_count %}
+          {{ counter }} transaction to review
+        {% plural %}
+          {{ counter }} transactions to review
+        {% endblocktranslate %}
+      </span>
+      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" class="btn btn-primary btn-sm">
+        {% translate "Review" %}
+      </a>
+    </div>
+  {% endif %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+    {# Budget snapshot #}
+    <section class="app-card" data-testid="dashboard-budget">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-2xl font-semibold">{{ month|date:"F" }} {% translate "budget" %}</h2>
+        <a href="{% url 'budget:budget_home' request.team.slug %}" class="link text-sm">{% translate "Open budget" %}</a>
+      </div>
+      {% if has_budget %}
+        <div class="text-sm text-base-content/60">{% translate "Left to spend" %}</div>
+        <div class="text-3xl font-semibold {% if net_worth_card.spend < 0 %}text-error{% endif %}">
+          {{ net_worth_card.spend|currency }}
+        </div>
+      {% else %}
+        <p class="text-base-content/60">
+          {% translate "No budget yet." %}
+          <a href="{% url 'budget:budget_home' request.team.slug %}" class="link">{% translate "Set one up" %}</a>
+        </p>
+      {% endif %}
+    </section>
+
+    {# Goals #}
+    <section class="app-card" data-testid="dashboard-goals">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-2xl font-semibold">{% translate "Goals" %}</h2>
+        <a href="{% url 'budget:goals_list' request.team.slug %}" class="link text-sm">{% translate "All goals" %}</a>
+      </div>
+      {% if goals %}
+        <ul class="space-y-3">
+          {% for goal in goals %}
+            <li>
+              <div class="flex justify-between text-sm mb-1">
+                <a href="{{ goal.get_absolute_url }}" class="link link-hover font-medium">{{ goal.name }}</a>
+                <span class="text-base-content/60">{{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}</span>
+              </div>
+              <progress class="progress progress-accent w-full" value="{{ goal.progress_percentage }}" max="100"></progress>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-base-content/60">
+          {% translate "Nothing you're saving for yet." %}
+          <a href="{% url 'budget:goal_create' request.team.slug %}" class="link">{% translate "Create a goal" %}</a>
+        </p>
+      {% endif %}
+    </section>
+  </div>
+
+  {# Recent activity #}
+  <section class="app-card mt-6" data-testid="dashboard-recent">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-2xl font-semibold">{% translate "Recent activity" %}</h2>
+      <a href="{% url 'journal:transactions_home' request.team.slug %}" class="link text-sm">{% translate "See all" %}</a>
+    </div>
+    {% if recent_entries %}
+      <ul class="divide-y divide-base-300">
+        {% for entry in recent_entries %}
+          <li class="flex justify-between items-center py-3 gap-4">
+            <div class="min-w-0">
+              <div class="font-medium truncate">{{ entry.description }}</div>
+              <div class="text-sm text-base-content/60">
+                {{ entry.entry_date|date:"M j" }}{% if entry.payee %} · {{ entry.payee.name }}{% endif %}
+              </div>
+            </div>
+            <span class="font-mono text-sm shrink-0">{{ entry.total_debits|currency }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-base-content/60">{% translate "No transactions yet." %}</p>
+    {% endif %}
+  </section>
+
 {% endblock %}

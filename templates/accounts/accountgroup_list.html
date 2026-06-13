@@ -1,12 +1,8 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Account Groups" %}</li>
-  </ol>
-</nav>
 <section class="app-card">
+  {% include "accounts/components/manage_tabs.html" with manage_tab="groups" %}
   <div class="flex justify-between items-center mb-4">
     <h3 class="pg-subtitle">{% translate "Account Groups" %}</h3>
     <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="pg-button-primary">

@@ -79,9 +79,7 @@ class AccountModelTest(TestCase):
     def test_create_account(self):
         """Test creating an account."""
         with current_team(self.team):
-            account = Account.objects.create(
-                team=self.team, name="Checking Account", account_group=self.account_group
-            )
+            account = Account.objects.create(team=self.team, name="Checking Account", account_group=self.account_group)
             self.assertEqual(account.name, "Checking Account")
             self.assertEqual(str(account), "Checking Account")
 
@@ -96,16 +94,12 @@ class AccountModelTest(TestCase):
 
     def test_account_has_feed_default(self):
         """Test that has_feed defaults to False."""
-        account = Account.objects.create(
-            team=self.team, name="Test Account", account_group=self.account_group
-        )
+        account = Account.objects.create(team=self.team, name="Test Account", account_group=self.account_group)
         self.assertFalse(account.has_feed)
 
     def test_get_absolute_url(self):
         """Test get_absolute_url method."""
-        account = Account.objects.create(
-            team=self.team, name="Test Account", account_group=self.account_group
-        )
+        account = Account.objects.create(team=self.team, name="Test Account", account_group=self.account_group)
         expected_url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
         self.assertEqual(account.get_absolute_url(), expected_url)
 
@@ -303,6 +297,23 @@ class AccountsHomeViewTest(TestCase):
         self.assertEqual(response.context["accounts_count"], 0)
         self.assertEqual(response.context["payees_count"], 1)
 
+    def test_accounts_home_groups_accounts_by_type(self):
+        """Accounts are grouped by type, in balance-sheet order, with balances."""
+        with current_team(self.team):
+            asset_group = AccountGroup.objects.create(team=self.team, name="Cash", account_type=ACCOUNT_TYPE_ASSET)
+            expense_group = AccountGroup.objects.create(
+                team=self.team, name="Spending", account_type=ACCOUNT_TYPE_EXPENSE
+            )
+            Account.objects.create(team=self.team, name="Groceries", account_group=expense_group)
+            Account.objects.create(team=self.team, name="Checking", account_group=asset_group)
+
+        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url)
+        grouped = response.context["grouped_accounts"]
+        self.assertEqual([g["type"] for g in grouped], [ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE])
+        self.assertEqual([a.name for a in grouped[0]["accounts"]], ["Checking"])
+        self.assertEqual(grouped[0]["accounts"][0].balance, 0)
+
 
 class AccountGroupViewTest(TestCase):
     """Tests for AccountGroup views."""
@@ -430,9 +441,7 @@ class AccountViewTest(TestCase):
 
     def test_account_create_sets_has_feed_false_for_expense(self):
         """Test that creating an expense account automatically sets has_feed=False."""
-        expense_group = AccountGroup.objects.create(
-            team=self.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
-        )
+        expense_group = AccountGroup.objects.create(team=self.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE)
         url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug})
         data = {
             "name": "Office Supplies",
@@ -446,9 +455,7 @@ class AccountViewTest(TestCase):
 
     def test_account_detail_view(self):
         """Test account detail view."""
-        account = Account.objects.create(
-            team=self.team, name="Test Account", account_group=self.account_group
-        )
+        account = Account.objects.create(team=self.team, name="Test Account", account_group=self.account_group)
         url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
@@ -456,9 +463,7 @@ class AccountViewTest(TestCase):
 
     def test_account_update_view(self):
         """Test account update view."""
-        account = Account.objects.create(
-            team=self.team, name="Old Name", account_group=self.account_group
-        )
+        account = Account.objects.create(team=self.team, name="Old Name", account_group=self.account_group)
         url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": account.pk})
         data = {
             "name": "New Name",
@@ -474,9 +479,7 @@ class AccountViewTest(TestCase):
 
     def test_account_delete_view(self):
         """Test account delete view."""
-        account = Account.objects.create(
-            team=self.team, name="To Delete", account_group=self.account_group
-        )
+        account = Account.objects.create(team=self.team, name="To Delete", account_group=self.account_group)
         url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account.pk})
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)
@@ -630,9 +633,7 @@ class AccountReturnTypeTest(TestCase):
         cls.account_group = AccountGroup.objects.create(
             team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
-        cls.account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.account_group
-        )
+        cls.account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.account_group)
 
     def setUp(self):
         self.client.login(username="testuser@example.com", password="testpass123")
@@ -693,9 +694,7 @@ class AccountReturnTypeTest(TestCase):
 
     def test_delete_view_success_url_with_return_type_redirects_to_filtered_list(self):
         """Test that deleting an account with return_type redirects to filtered account list."""
-        account_to_delete = Account.objects.create(
-            team=self.team, name="To Delete", account_group=self.account_group
-        )
+        account_to_delete = Account.objects.create(team=self.team, name="To Delete", account_group=self.account_group)
         url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
         response = self.client.post(url, {}, QUERY_STRING="return_type=asset")
         self.assertEqual(response.status_code, 302)
@@ -704,9 +703,7 @@ class AccountReturnTypeTest(TestCase):
 
     def test_delete_view_success_url_without_return_type_redirects_to_list(self):
         """Test that deleting without return_type redirects to plain account list."""
-        account_to_delete = Account.objects.create(
-            team=self.team, name="To Delete 2", account_group=self.account_group
-        )
+        account_to_delete = Account.objects.create(team=self.team, name="To Delete 2", account_group=self.account_group)
         url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)

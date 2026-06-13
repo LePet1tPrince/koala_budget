@@ -89,6 +89,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 - Plaid: `last_synced_at` on PlaidItem with "last synced" indicator in the bank feed UI; global webhook receiver at `/plaid/webhook/` queues incremental syncs on `SYNC_UPDATES_AVAILABLE`
 - Budget: amounts auto-save on change (no per-row Save button; `<noscript>` fallback); Budget rows created lazily on first save instead of on GET
 - UI: shared `currency` template filter (`{% load currency_tags %}`) replaces hardcoded `$…|floatformat:2`; loading skeletons on the Transactions and Bank Feed React mounts
+- UX: style audit + layout redesign (see `docs/style-audit.md`). Team home is now a real dashboard (net worth hero, review banner, budget/goals snapshot, recent activity, onboarding checklist for new teams). Nav restructured: Home → Inbox (Bank Feed, with uncategorized-count badge via `apps.bank_feed.context_processors.inbox_count`) → Transactions → Budget → Goals → Reports, with chart-of-accounts admin under a Settings group. Accounts home is a grouped account list with balances + tab row to Groups/Payees/Institutions (`accounts/components/manage_tabs.html`); Reports home is a simple link list. Breadcrumbs removed from app pages; Pegasus demo links (Examples Gallery, Example App, Subscription Demo) removed from nav; mobile bottom dock added in `app_base.html`
 
 ---
 

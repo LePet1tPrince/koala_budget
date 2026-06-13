@@ -1,13 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'accounts:payee_list' request.team.slug %}">{% translate "Payees" %}</a></li>
-    <li><a href="{{ payee.get_absolute_url }}">{{ payee.name }}</a></li>
-    <li class="pg-breadcrumb-active" aria-current="page">{% translate "Delete" %}</li>
-  </ol>
-</nav>
 <section class="app-card">
   <h3 class="pg-subtitle">{% translate "Delete Payee" %}</h3>
   <form method="post">{% csrf_token %}

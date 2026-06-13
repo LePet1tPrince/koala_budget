@@ -2,12 +2,6 @@
 {% load i18n %}
 {% load currency_tags %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    <li><a href="{% url 'accounts:account_list' request.team.slug %}{% if return_type %}?type={{ return_type }}{% endif %}">{% translate "Accounts" %}</a></li>
-    <li class="pg-breadcrumb-active" aria-current="page">{{ account.name }}</li>
-  </ol>
-</nav>
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
     <h3 class="pg-subtitle">{{ account.name }}</h3>

@@ -15,6 +15,9 @@ from .forms import AccountForm, AccountGroupForm, InstitutionForm, PayeeForm
 from .models import (
     ACCOUNT_TYPE_ASSET,
     ACCOUNT_TYPE_CHOICES,
+    ACCOUNT_TYPE_EQUITY,
+    ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_TYPE_INCOME,
     ACCOUNT_TYPE_LIABILITY,
     Account,
     AccountGroup,
@@ -32,12 +35,32 @@ class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "accounts"
-        context["page_title"] = _("accounts | {team}").format(team=self.request.team)
-        # Add counts for quick stats
+        context["page_title"] = _("Accounts | {team}").format(team=self.request.team)
         context["account_groups_count"] = AccountGroup.for_team.count()
         context["accounts_count"] = Account.for_team.count()
         context["payees_count"] = Payee.for_team.count()
         context["institutions_count"] = Institution.for_team.count()
+
+        # Accounts grouped by type, in balance-sheet order, with balances annotated
+        accounts = (
+            Account.objects.filter(team=self.request.team).with_balance().select_related("account_group", "institution")
+        )
+        by_type = {}
+        for account in accounts:
+            by_type.setdefault(account.account_group.account_type, []).append(account)
+        type_labels = dict(ACCOUNT_TYPE_CHOICES)
+        type_order = [
+            ACCOUNT_TYPE_ASSET,
+            ACCOUNT_TYPE_LIABILITY,
+            ACCOUNT_TYPE_INCOME,
+            ACCOUNT_TYPE_EXPENSE,
+            ACCOUNT_TYPE_EQUITY,
+        ]
+        context["grouped_accounts"] = [
+            {"type": account_type, "label": type_labels[account_type], "accounts": by_type[account_type]}
+            for account_type in type_order
+            if account_type in by_type
+        ]
         return context
 
 

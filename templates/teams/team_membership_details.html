@@ -3,12 +3,6 @@
 {% load static %}
 {% load form_tags %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
-    <li class=""><a href="{% url 'single_team:manage_team' request.team.slug %}">{{ request.team.name }}</a></li>
-    <li class="pg-breadcrumb-active" aria-current="page">{{ membership.user.get_display_name }}</li>
-  </ol>
-</nav>
 <section class="app-card">
   <div class="pg-columns">
     <div id="profile-picture" class="pg-column-one-quarter">
