@@ -33,6 +33,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
   const containerRef = useRef(null);
   const menuRef = useRef(null);
   const inputRef = useRef(null);
+  const triggerRef = useRef(null);
   const highlightedRef = useRef(null);
 
   const selectedAccount = useMemo(
@@ -152,10 +153,14 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
     }
   }, [highlightedIndex, open]);
 
-  const handleSelect = (accountId) => {
+  const handleSelect = (accountId, fromKeyboard = false) => {
     onChange(accountId);
     setOpen(false);
     setSearch('');
+    if (fromKeyboard && triggerRef.current) {
+      // Return focus to the trigger so Tab moves to the next card's button.
+      triggerRef.current.focus();
+    }
   };
 
   const handleClear = (e) => {
@@ -171,16 +176,23 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
     onCreateNew();
   };
 
-  const activateOption = (opt) => {
+  const activateOption = (opt, fromKeyboard = false) => {
     if (!opt) return;
-    if (opt.kind === 'uncategorized') handleSelect(null);
-    else if (opt.kind === 'account') handleSelect(opt.account.id);
+    if (opt.kind === 'uncategorized') handleSelect(null, fromKeyboard);
+    else if (opt.kind === 'account') handleSelect(opt.account.id, fromKeyboard);
     else if (opt.kind === 'create') handleCreateNew();
   };
 
   const handleSearchKeyDown = (e) => {
     if (e.key === 'Escape') {
       setOpen(false);
+      triggerRef.current && triggerRef.current.focus();
+      return;
+    }
+    if (e.key === 'Tab') {
+      // Close the dropdown and let Tab move focus to the next card's button.
+      setOpen(false);
+      setSearch('');
       return;
     }
     if (e.key === 'ArrowDown') {
@@ -192,7 +204,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
       setHighlightedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      activateOption(flatOptions[highlightedIndex]);
+      activateOption(flatOptions[highlightedIndex], true);
     }
     // ...Left/Right fall through so they move the cursor within the search text.
   };
@@ -201,6 +213,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
     <div ref={containerRef} className="relative w-full">
       {/* Trigger button */}
       <button
+        ref={triggerRef}
         type="button"
         className="btn btn-sm btn-outline w-full justify-between font-normal text-left"
         onClick={() => setOpen((o) => !o)}
