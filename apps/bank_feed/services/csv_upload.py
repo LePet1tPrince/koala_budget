@@ -14,7 +14,13 @@ from typing import BinaryIO
 from dateutil import parser as date_parser
 from openpyxl import load_workbook
 
-from apps.accounts.models import Account
+from apps.accounts.models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_TYPE_INCOME,
+    ACCOUNT_TYPE_LIABILITY,
+    Account,
+)
 
 
 @dataclass
@@ -43,11 +49,29 @@ class ParseResult:
 
 
 @dataclass
+class UnmappedCategory:
+    """
+    A category name from the file that couldn't be auto-matched to an account.
+
+    Carries the total money that flowed in/out under this category so the user
+    can tell, e.g., whether "Interest" is interest income or interest expense,
+    plus a deterministic best-guess account suggestion.
+    """
+
+    name: str
+    inflow: Decimal
+    outflow: Decimal
+    count: int
+    suggested_account_id: int | None = None
+    suggested_account_name: str | None = None
+
+
+@dataclass
 class PreviewResult:
     """Result of previewing parsed transactions."""
 
     transactions: list[ParsedTransaction]
-    unmapped_categories: list[str]
+    unmapped_categories: list[UnmappedCategory]
     error_count: int
     duplicate_count: int
 
@@ -297,6 +321,92 @@ def match_category(category_name: str, team) -> Account | None:
     return account
 
 
+# Tokens that carry no disambiguating signal when comparing category/account names.
+_SUGGESTION_STOPWORDS = {"the", "a", "an", "of", "and", "to", "for", "misc", "other", "general"}
+
+# Minimum similarity score (0-1) before we are willing to offer a suggestion.
+_SUGGESTION_THRESHOLD = 0.34
+
+
+def _normalize_name_tokens(text: str) -> set[str]:
+    """Lowercase, split on non-alphanumerics, and drop stopwords."""
+    tokens = re.split(r"[^a-z0-9]+", text.lower())
+    return {t for t in tokens if t and t not in _SUGGESTION_STOPWORDS}
+
+
+def suggest_account_for_category(
+    category_name: str,
+    accounts: list[Account],
+    *,
+    prefer_inflow: bool | None = None,
+) -> Account | None:
+    """
+    Deterministically guess which existing account best matches a category name.
+
+    This is a pure, side-effect-free heuristic intended to pre-fill (suggest) a
+    mapping for an unmatched category. It is NOT a definitive match -- callers
+    should always present the result to the user as a suggestion they can change.
+
+    Scoring (higher = better, capped near 1.0):
+      - Exact case-insensitive name match scores 1.0.
+      - Otherwise a Jaccard token overlap between the two names.
+      - A substring containment of one name in the other floors the score at 0.6.
+      - When ``prefer_inflow`` is known (derived from the category's net cash
+        direction), a small tie-breaking bonus nudges toward income/asset
+        accounts for inflows and expense/liability accounts for outflows. This is
+        what lets a bare "Interest" category resolve to "Interest Income" vs
+        "Interest Expense" based on whether the money came in or went out.
+
+    Ties are broken deterministically by the lowest account id so the same
+    inputs always yield the same suggestion. Returns ``None`` when no candidate
+    clears ``_SUGGESTION_THRESHOLD``.
+    """
+    if not category_name or not category_name.strip():
+        return None
+
+    cat_norm = category_name.strip().lower()
+    cat_tokens = _normalize_name_tokens(category_name)
+
+    best: Account | None = None
+    best_score = 0.0
+
+    for account in accounts:
+        name_norm = account.name.strip().lower()
+        if not name_norm:
+            continue
+
+        if name_norm == cat_norm:
+            score = 1.0
+        else:
+            acct_tokens = _normalize_name_tokens(account.name)
+            overlap = cat_tokens & acct_tokens
+            union = cat_tokens | acct_tokens
+            score = len(overlap) / len(union) if union else 0.0
+            # Substring containment is a strong signal (e.g. "Restaurant" vs
+            # "Restaurants"), but guard against tiny strings matching everything.
+            if len(cat_norm) >= 3 and len(name_norm) >= 3 and (cat_norm in name_norm or name_norm in cat_norm):
+                score = max(score, 0.6)
+
+        if score <= 0:
+            continue
+
+        # Direction-aware tie breaker (deterministic, never lowers the score).
+        account_type = account.account_group.account_type
+        if prefer_inflow is True and account_type in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_ASSET):
+            score += 0.05
+        elif prefer_inflow is False and account_type in (ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY):
+            score += 0.05
+
+        if score > best_score or (score == best_score and best is not None and account.id < best.id):
+            best_score = score
+            best = account
+
+    if best is None or best_score < _SUGGESTION_THRESHOLD:
+        return None
+
+    return best
+
+
 def get_all_rows_from_csv(file: BinaryIO, has_headers: bool = True) -> list[list[str]]:
     """Read all data rows from a CSV file."""
     content = file.read()
@@ -391,7 +501,8 @@ def preview_transactions(
         )
 
     transactions = []
-    unmapped_categories_set = set()
+    # category name -> {"inflow": Decimal, "outflow": Decimal, "count": int}
+    unmapped_categories_agg: dict[str, dict] = {}
     error_count = 0
     duplicate_count = 0
 
@@ -478,7 +589,19 @@ def preview_transactions(
                 if matched_account:
                     matched_category_id = matched_account.id
                 else:
-                    unmapped_categories_set.add(category_name)
+                    # Track the unmatched category and accumulate its cash flows
+                    # so we can show inflow/outflow totals per category later.
+                    agg = unmapped_categories_agg.setdefault(
+                        category_name,
+                        {"inflow": Decimal("0"), "outflow": Decimal("0"), "count": 0},
+                    )
+                    agg["count"] += 1
+                    if amount is not None:
+                        # Plaid convention: positive = outflow, negative = inflow
+                        if amount < 0:
+                            agg["inflow"] += -amount
+                        elif amount > 0:
+                            agg["outflow"] += amount
 
         # Check for potential duplicates
         is_duplicate = False
@@ -512,9 +635,38 @@ def preview_transactions(
             )
         )
 
+    # Build the unmapped-category list with cash-flow totals and a deterministic
+    # account suggestion for each. Candidate accounts are loaded once; the upload
+    # target account is excluded so we never suggest categorizing into itself.
+    candidate_accounts = [
+        account
+        for account in Account.objects.filter(team=team).select_related("account_group")
+        if account.id != account_id
+    ]
+
+    unmapped_categories: list[UnmappedCategory] = []
+    for name, agg in unmapped_categories_agg.items():
+        prefer_inflow = None
+        if agg["inflow"] != agg["outflow"]:
+            prefer_inflow = agg["inflow"] > agg["outflow"]
+        suggestion = suggest_account_for_category(name, candidate_accounts, prefer_inflow=prefer_inflow)
+        unmapped_categories.append(
+            UnmappedCategory(
+                name=name,
+                inflow=agg["inflow"],
+                outflow=agg["outflow"],
+                count=agg["count"],
+                suggested_account_id=suggestion.id if suggestion else None,
+                suggested_account_name=suggestion.name if suggestion else None,
+            )
+        )
+
+    # Stable, predictable display order
+    unmapped_categories.sort(key=lambda c: c.name.lower())
+
     return PreviewResult(
         transactions=transactions,
-        unmapped_categories=list(unmapped_categories_set),
+        unmapped_categories=unmapped_categories,
         error_count=error_count,
         duplicate_count=duplicate_count,
     )

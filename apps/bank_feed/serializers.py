@@ -325,18 +325,37 @@ class ParsedTransactionSerializer(serializers.Serializer):
 
 
 class UnmappedCategorySerializer(serializers.Serializer):
-    """Serializer for unmapped categories."""
+    """Serializer for unmapped categories, with cash-flow totals and a suggestion."""
 
     name = serializers.CharField(help_text="Category name that needs mapping")
+    inflow = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Total money that flowed in under this category",
+    )
+    outflow = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Total money that flowed out under this category",
+    )
+    count = serializers.IntegerField(help_text="Number of transactions using this category")
+    suggested_account_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="Deterministically guessed account id (a suggestion, not a match)",
+    )
+    suggested_account_name = serializers.CharField(
+        allow_null=True,
+        help_text="Name of the suggested account",
+    )
 
 
 class UploadPreviewResponseSerializer(serializers.Serializer):
     """Response serializer for the upload_preview endpoint."""
 
     transactions = ParsedTransactionSerializer(many=True, help_text="Parsed transactions")
-    unmapped_categories = serializers.ListField(
-        child=serializers.CharField(),
-        help_text="Category names that couldn't be auto-matched",
+    unmapped_categories = UnmappedCategorySerializer(
+        many=True,
+        help_text="Categories that couldn't be auto-matched, with totals and suggestions",
     )
     error_count = serializers.IntegerField(help_text="Number of rows with errors")
     duplicate_count = serializers.IntegerField(help_text="Number of potential duplicates")

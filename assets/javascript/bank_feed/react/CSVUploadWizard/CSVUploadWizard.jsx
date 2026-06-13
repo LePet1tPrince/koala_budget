@@ -176,7 +176,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
 
   return (
     <div className="modal modal-open">
-      <div className="modal-box max-w-4xl">
+      <div className="modal-box max-w-5xl">
         <h3 className="font-bold text-lg mb-2">
           {gettext('Upload Transactions to')} {selectedAccount.name}
         </h3>

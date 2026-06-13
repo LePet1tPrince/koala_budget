@@ -75,6 +75,7 @@ class SimpleAccountSerializer(serializers.ModelSerializer):
 
     account_group_name = serializers.CharField(source="account_group.name", read_only=True)
     account_type = serializers.CharField(source="account_group.account_type", read_only=True)
+    institution_name = serializers.CharField(source="institution.name", read_only=True, default=None)
 
     class Meta:
         model = Account
@@ -84,11 +85,12 @@ class SimpleAccountSerializer(serializers.ModelSerializer):
             "account_group",
             "account_group_name",
             "account_type",
+            "institution_name",
             "has_feed",
             "is_archived",
             "archived_at",
         ]
-        read_only_fields = ["account_group_name", "account_type", "archived_at"]
+        read_only_fields = ["account_group_name", "account_type", "institution_name", "archived_at"]
 
 
 class InstitutionSerializer(serializers.ModelSerializer):
