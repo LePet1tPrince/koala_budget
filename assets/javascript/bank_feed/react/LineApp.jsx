@@ -379,6 +379,21 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   };
 
   /**
+   * Permanently delete selected archived transactions
+   */
+  const handleBatchDelete = async () => {
+    try {
+      await batchApi.batchDelete([...selectedIds]);
+      setSelectedIds(new Set());
+      await loadLines();
+      showSnackbar(gettext('Transactions permanently deleted'), 'success');
+    } catch (err) {
+      console.error('Failed to batch delete:', err);
+      showSnackbar(err.message || gettext('Failed to delete transactions'), 'error');
+    }
+  };
+
+  /**
    * Batch duplicate selected transactions
    */
   const handleBatchDuplicate = async () => {
@@ -665,6 +680,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         onBulkEdit={handleBulkEdit}
         onArchive={handleBatchArchive}
         onUnarchive={handleBatchUnarchive}
+        onDelete={handleBatchDelete}
         onDuplicate={handleBatchDuplicate}
         onReconcile={handleBatchReconcile}
         onUnreconcile={handleBatchUnreconcile}

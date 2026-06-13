@@ -22,6 +22,7 @@ import {
   FileDownload as FileDownloadIcon,
   CheckCircle as CheckCircleIcon,
   RemoveCircle as RemoveCircleIcon,
+  DeleteForever as DeleteForeverIcon,
 } from '@mui/icons-material';
 import BulkEditModal from './BulkEditModal';
 
@@ -40,6 +41,7 @@ const BatchActionBar = ({
   onBulkEdit,
   onArchive,
   onUnarchive,
+  onDelete,
   onDuplicate,
   onExport,
   onClearSelection,
@@ -50,11 +52,14 @@ const BatchActionBar = ({
   filterMode = 'to_review',
   selectedAccount = null,
 }) => {
-  // In archived view, only allow unarchive and export
+  // In archived view, only allow unarchive, export, and delete
   const isArchivedView = filterMode === 'archived';
 
   // Bulk edit modal state
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Reconcile dialog states
   const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false);
@@ -197,6 +202,17 @@ const BatchActionBar = ({
               onClick={onUnarchive}
             >
               {gettext('Unarchive')}
+            </Button>
+          )}
+
+          {isArchivedView && (
+            <Button
+              size="small"
+              color="error"
+              startIcon={<DeleteForeverIcon />}
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              {gettext('Delete')}
             </Button>
           )}
 
@@ -354,6 +370,46 @@ const BatchActionBar = ({
           <Button onClick={() => setUnreconcileDialogOpen(false)}>{gettext('Cancel')}</Button>
           <Button onClick={handleUnreconcileSubmit} variant="contained" color="warning">
             {gettext('Unreconcile')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Permanent Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: 'error.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DeleteForeverIcon />
+          {gettext('Permanently Delete Transactions')}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 2 }}>
+              {gettext('This action cannot be undone.')}
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              {gettext('You are about to permanently delete')} <strong>{selectedCount}</strong> {gettext('transaction(s) and any associated accounting records.')}
+            </Typography>
+            <Typography variant="body2" color="error">
+              {gettext('Once deleted, this data cannot be recovered.')}
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>{gettext('Cancel')}</Button>
+          <Button
+            onClick={() => {
+              if (onDelete) onDelete();
+              setDeleteDialogOpen(false);
+            }}
+            variant="contained"
+            color="error"
+            startIcon={<DeleteForeverIcon />}
+          >
+            {gettext('Delete Forever')}
           </Button>
         </DialogActions>
       </Dialog>

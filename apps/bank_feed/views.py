@@ -1041,6 +1041,39 @@ class BankFeedViewSet(
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
+        operation_id="bank_feed_batch_delete",
+        tags=["bank-feed"],
+        request=BatchIdsSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_delete")
+    def batch_delete(self, request, team_slug=None):
+        """
+        Permanently delete multiple archived bank transactions.
+        Also deletes any linked journal entries.
+        """
+        serializer = BatchIdsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        ids = serializer.validated_data["ids"]
+
+        transactions = BankTransaction.objects.filter(
+            id__in=ids,
+            team=request.team,
+            is_archived=True,
+        ).select_related("journal_entry")
+
+        journal_entry_ids = [tx.journal_entry_id for tx in transactions if tx.journal_entry_id]
+
+        transactions.delete()
+
+        if journal_entry_ids:
+            JournalEntry.objects.filter(id__in=journal_entry_ids).delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
         operation_id="bank_feed_batch_duplicate",
         tags=["bank-feed"],
         request=BatchIdsSerializer,
