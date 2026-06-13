@@ -50,6 +50,12 @@ export interface SimpleAccount {
      */
     readonly accountType: string;
     /**
+     * 
+     * @type {string}
+     * @memberof SimpleAccount
+     */
+    readonly institutionName: string;
+    /**
      * Whether this account has a bank feed
      * @type {boolean}
      * @memberof SimpleAccount
@@ -78,6 +84,7 @@ export function instanceOfSimpleAccount(value: object): value is SimpleAccount {
     if (!('accountGroup' in value) || value['accountGroup'] === undefined) return false;
     if (!('accountGroupName' in value) || value['accountGroupName'] === undefined) return false;
     if (!('accountType' in value) || value['accountType'] === undefined) return false;
+    if (!('institutionName' in value) || value['institutionName'] === undefined) return false;
     if (!('archivedAt' in value) || value['archivedAt'] === undefined) return false;
     return true;
 }
@@ -97,6 +104,7 @@ export function SimpleAccountFromJSONTyped(json: any, ignoreDiscriminator: boole
         'accountGroup': json['account_group'],
         'accountGroupName': json['account_group_name'],
         'accountType': json['account_type'],
+        'institutionName': json['institution_name'],
         'hasFeed': json['has_feed'] == null ? undefined : json['has_feed'],
         'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
         'archivedAt': (json['archived_at'] == null ? null : new Date(json['archived_at'])),
@@ -107,7 +115,7 @@ export function SimpleAccountFromJSONTyped(json: any, ignoreDiscriminator: boole
       return SimpleAccountToJSONTyped(json, false);
   }
 
-  export function SimpleAccountToJSONTyped(value?: Omit<SimpleAccount, 'id'|'account_group_name'|'account_type'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function SimpleAccountToJSONTyped(value?: Omit<SimpleAccount, 'id'|'account_group_name'|'account_type'|'institution_name'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

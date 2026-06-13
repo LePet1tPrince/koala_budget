@@ -59,6 +59,7 @@ export * from './SubscriptionStatusEnum';
 export * from './Team';
 export * from './TransactionRow';
 export * from './TransactionToCreate';
+export * from './UnmappedCategory';
 export * from './UploadConfirmRequest';
 export * from './UploadConfirmResponse';
 export * from './UploadParseResponse';

@@ -66,6 +66,7 @@ models/SubscriptionStatusEnum.ts
 models/Team.ts
 models/TransactionRow.ts
 models/TransactionToCreate.ts
+models/UnmappedCategory.ts
 models/UploadConfirmRequest.ts
 models/UploadConfirmResponse.ts
 models/UploadParseResponse.ts

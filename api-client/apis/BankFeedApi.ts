@@ -71,6 +71,11 @@ export interface BankFeedBatchArchiveRequest {
     batchIds: BatchIds;
 }
 
+export interface BankFeedBatchDeleteRequest {
+    teamSlug: string;
+    batchIds: BatchIds;
+}
+
 export interface BankFeedBatchDuplicateRequest {
     teamSlug: string;
     batchIds: BatchIds;
@@ -242,6 +247,55 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedBatchArchive(requestParameters: BankFeedBatchArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedBatchArchiveRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Permanently delete multiple archived bank transactions. Also deletes any linked journal entries.
+     */
+    async bankFeedBatchDeleteRaw(requestParameters: BankFeedBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchDelete().'
+            );
+        }
+
+        if (requestParameters['batchIds'] == null) {
+            throw new runtime.RequiredError(
+                'batchIds',
+                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/batch_delete/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchIdsToJSON(requestParameters['batchIds']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Permanently delete multiple archived bank transactions. Also deletes any linked journal entries.
+     */
+    async bankFeedBatchDelete(requestParameters: BankFeedBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchDeleteRaw(requestParameters, initOverrides);
     }
 
     /**

@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { UnmappedCategory } from './UnmappedCategory';
+import {
+    UnmappedCategoryFromJSON,
+    UnmappedCategoryFromJSONTyped,
+    UnmappedCategoryToJSON,
+    UnmappedCategoryToJSONTyped,
+} from './UnmappedCategory';
 import type { ParsedTransaction } from './ParsedTransaction';
 import {
     ParsedTransactionFromJSON,
@@ -34,11 +41,11 @@ export interface UploadPreviewResponse {
      */
     transactions: Array<ParsedTransaction>;
     /**
-     * Category names that couldn't be auto-matched
-     * @type {Array<string>}
+     * Categories that couldn't be auto-matched, with totals and suggestions
+     * @type {Array<UnmappedCategory>}
      * @memberof UploadPreviewResponse
      */
-    unmappedCategories: Array<string>;
+    unmappedCategories: Array<UnmappedCategory>;
     /**
      * Number of rows with errors
      * @type {number}
@@ -75,7 +82,7 @@ export function UploadPreviewResponseFromJSONTyped(json: any, ignoreDiscriminato
     return {
         
         'transactions': ((json['transactions'] as Array<any>).map(ParsedTransactionFromJSON)),
-        'unmappedCategories': json['unmapped_categories'],
+        'unmappedCategories': ((json['unmapped_categories'] as Array<any>).map(UnmappedCategoryFromJSON)),
         'errorCount': json['error_count'],
         'duplicateCount': json['duplicate_count'],
     };
@@ -93,7 +100,7 @@ export function UploadPreviewResponseFromJSONTyped(json: any, ignoreDiscriminato
     return {
         
         'transactions': ((value['transactions'] as Array<any>).map(ParsedTransactionToJSON)),
-        'unmapped_categories': value['unmappedCategories'],
+        'unmapped_categories': ((value['unmappedCategories'] as Array<any>).map(UnmappedCategoryToJSON)),
         'error_count': value['errorCount'],
         'duplicate_count': value['duplicateCount'],
     };
