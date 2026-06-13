@@ -237,6 +237,7 @@ export function getBatchOperationsApi(teamSlug) {
     batchEdit: (ids, updates) => fetchJson('batch_edit', { ids, ...updates }, 'PATCH'),
     batchArchive: (ids) => fetchJson('batch_archive', { ids }),
     batchUnarchive: (ids) => fetchJson('batch_unarchive', { ids }),
+    batchDelete: (ids) => fetchJson('batch_delete', { ids }),
     batchDuplicate: (ids) => fetchJson('batch_duplicate', { ids }),
     batchReconcile: (ids, adjustmentAmount = 0) => fetchJson('batch_reconcile', { ids, adjustment_amount: adjustmentAmount }),
     batchUnreconcile: (ids) => fetchJson('batch_unreconcile', { ids }),
