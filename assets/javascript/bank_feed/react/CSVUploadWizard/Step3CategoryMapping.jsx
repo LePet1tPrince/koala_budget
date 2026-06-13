@@ -89,7 +89,9 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, allAccountGroup
             <div key={cat.name} className="card bg-base-200 p-4 flex flex-col gap-3">
               <div className="min-w-0">
                 <div className="font-medium flex items-center gap-2 flex-wrap">
-                  <span className="badge badge-warning">{gettext('Unmapped')}</span>
+                  {!mappings[cat.name] && (
+                    <span className="badge badge-warning">{gettext('Unmapped')}</span>
+                  )}
                   <span className="truncate" title={cat.name}>{cat.name}</span>
                 </div>
                 {cat.count != null && (
@@ -102,13 +104,13 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, allAccountGroup
               {/* Inflow / outflow totals for this category */}
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex flex-col">
-                  <span className="text-xs uppercase tracking-wide text-base-content/50">{gettext('Inflow')}</span>
+                  <span className="text-xs uppercase tracking-wide text-base-content/50">{gettext('In')}</span>
                   <span className={inflow > 0 ? 'text-success font-medium' : 'text-base-content/40'}>
                     {formatCurrency(inflow)}
                   </span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs uppercase tracking-wide text-base-content/50">{gettext('Outflow')}</span>
+                  <span className="text-xs uppercase tracking-wide text-base-content/50">{gettext('Out')}</span>
                   <span className={outflow > 0 ? 'text-error font-medium' : 'text-base-content/40'}>
                     {formatCurrency(outflow)}
                   </span>
