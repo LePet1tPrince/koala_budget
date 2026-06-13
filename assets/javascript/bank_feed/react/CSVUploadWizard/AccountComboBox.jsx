@@ -82,12 +82,12 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Focus search input when dropdown opens
+  // Focus search input once the portal is positioned and rendered in the DOM
   useEffect(() => {
-    if (open && inputRef.current) {
+    if (open && menuPos && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [open]);
+  }, [open, menuPos]);
 
   const groupedAccounts = useMemo(() => {
     const term = search.toLowerCase();
