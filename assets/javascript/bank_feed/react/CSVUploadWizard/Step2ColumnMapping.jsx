@@ -267,6 +267,42 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, onComplete, onBack
     </div>
   );
 
+  // Date format selector, shown beside the date column once a date column is
+  // chosen. The format is auto-detected where possible (pre-selected here) but
+  // always editable, and is required before the user can continue.
+  const renderDateFormat = () => (
+    <div className="form-control">
+      <label className="label">
+        <span className="label-text">
+          {gettext('Date Format')}
+          <span className="text-error ml-1">*</span>
+        </span>
+      </label>
+      <select
+        className={`select select-bordered w-full ${dateFormat ? '' : 'select-warning'}`}
+        value={dateFormat || ''}
+        onChange={(e) => setDateFormat(e.target.value || null)}
+      >
+        <option value="">{gettext('-- Select date format --')}</option>
+        {DATE_FORMAT_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label} ({opt.example})
+          </option>
+        ))}
+        {dateFormat && !DATE_FORMAT_OPTIONS.find((o) => o.value === dateFormat) && (
+          <option value={dateFormat}>{dateFormat}</option>
+        )}
+      </select>
+      <label className="label">
+        <span className="label-text-alt text-base-content/50">
+          {dateFormat
+            ? gettext('Applied consistently to every row.')
+            : gettext('Could not auto-detect — please select one to continue.')}
+        </span>
+      </label>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="text-sm text-base-content/70">
@@ -286,64 +322,15 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, onComplete, onBack
         </label>
       </div>
 
-      {/* Column Mapping Form */}
+      {/* Column Mapping Form. The date column is paired with its format
+          selector so they sit side by side. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {renderColumnSelect('date', gettext('Date'), true)}
+        {mapping.date !== null && renderDateFormat()}
         {renderColumnSelect('description', gettext('Description'), true)}
         {renderColumnSelect('payee', gettext('Payee (Optional)'))}
         {renderColumnSelect('category', gettext('Category (Optional)'))}
       </div>
-
-      {/* Date Format Selector */}
-      {mapping.date !== null && (
-        <div className="form-control">
-          <label className="label">
-            <span className="label-text font-medium">{gettext('Date Format')}</span>
-          </label>
-          {dateFormat ? (
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-base-content/70">
-                {gettext('Detected:')}
-              </span>
-              <select
-                className="select select-bordered select-sm"
-                value={dateFormat}
-                onChange={(e) => setDateFormat(e.target.value)}
-              >
-                {DATE_FORMAT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label} ({opt.example})
-                  </option>
-                ))}
-                {!DATE_FORMAT_OPTIONS.find((o) => o.value === dateFormat) && (
-                  <option value={dateFormat}>{dateFormat}</option>
-                )}
-              </select>
-              <span className="text-xs text-base-content/50">
-                {gettext('This format will be applied consistently to every row.')}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="alert alert-warning py-2 px-3 text-sm">
-                {gettext('Could not detect date format automatically — please select one to continue:')}
-              </div>
-              <select
-                className="select select-bordered select-sm select-warning"
-                value=""
-                onChange={(e) => setDateFormat(e.target.value || null)}
-              >
-                <option value="">{gettext('-- Select date format --')}</option>
-                {DATE_FORMAT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label} ({opt.example})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Amount Type Toggle */}
       <div className="form-control">
