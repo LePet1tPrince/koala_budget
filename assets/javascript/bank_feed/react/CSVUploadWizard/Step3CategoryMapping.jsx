@@ -3,12 +3,29 @@
 import React, { useState } from 'react';
 import AccountComboBox from './AccountComboBox';
 import CreateAccountModal from './CreateAccountModal';
+import { formatCurrency } from '../../../utilities/currency';
+
+/**
+ * Build the initial mapping from each category's deterministic suggestion.
+ * Suggestions pre-fill the dropdown but are clearly flagged so the user knows
+ * to double-check them.
+ */
+const buildInitialMappings = (unmappedCategories) => {
+  const initial = {};
+  unmappedCategories.forEach((cat) => {
+    if (cat.suggested_account_id != null) {
+      initial[cat.name] = cat.suggested_account_id;
+    }
+  });
+  return initial;
+};
 
 /**
  * Step3CategoryMapping - Map unrecognized categories to existing accounts
  *
  * Props:
- * - unmappedCategories: Array of category names that need mapping
+ * - unmappedCategories: Array of { name, inflow, outflow, count,
+ *     suggested_account_id, suggested_account_name } that need mapping
  * - allAccounts: All available accounts for selection
  * - allAccountGroups: All account groups (for creating new accounts)
  * - uploadApi: API helpers (includes createAccount)
@@ -17,7 +34,8 @@ import CreateAccountModal from './CreateAccountModal';
  * - onCancel: Callback when user cancels
  */
 const Step3CategoryMapping = ({ unmappedCategories, allAccounts, allAccountGroups, uploadApi, onComplete, onBack, onCancel }) => {
-  const [mappings, setMappings] = useState({});
+  // Seed mappings with the deterministic suggestions.
+  const [mappings, setMappings] = useState(() => buildInitialMappings(unmappedCategories));
   const [loading, setLoading] = useState(false);
 
   // Local copy of accounts so newly created accounts appear without a full page reload
@@ -58,28 +76,62 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, allAccountGroup
   return (
     <div className="space-y-6">
       <div className="text-sm text-base-content/70">
-        {gettext('The following categories from your file could not be automatically matched. Map them to existing accounts or leave them unmapped to categorize later.')}
+        {gettext('The following categories from your file could not be automatically matched. Map them to existing accounts or leave them unmapped to categorize later. We pre-fill a suggested account where we can — please double-check it.')}
       </div>
 
-      <div className="space-y-4 max-h-96 overflow-y-auto">
-        {unmappedCategories.map((categoryName) => (
-          <div key={categoryName} className="card bg-base-200 p-4">
-            <div className="flex items-start gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="font-medium mb-2">
-                  <span className="badge badge-warning mr-2">{gettext('Unmapped')}</span>
-                  {categoryName}
+      {/* Responsive multi-column grid of mapping cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[28rem] overflow-y-auto pr-1">
+        {unmappedCategories.map((cat) => {
+          const isSuggested = cat.suggested_account_id != null && mappings[cat.name] === cat.suggested_account_id;
+          const inflow = parseFloat(cat.inflow) || 0;
+          const outflow = parseFloat(cat.outflow) || 0;
+          return (
+            <div key={cat.name} className="card bg-base-200 p-4 flex flex-col gap-3">
+              <div className="min-w-0">
+                <div className="font-medium flex items-center gap-2 flex-wrap">
+                  <span className="badge badge-warning">{gettext('Unmapped')}</span>
+                  <span className="truncate" title={cat.name}>{cat.name}</span>
                 </div>
+                {cat.count != null && (
+                  <div className="text-xs text-base-content/50 mt-1">
+                    {cat.count} {cat.count === 1 ? gettext('transaction') : gettext('transactions')}
+                  </div>
+                )}
+              </div>
+
+              {/* Inflow / outflow totals for this category */}
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex flex-col">
+                  <span className="text-xs uppercase tracking-wide text-base-content/50">{gettext('Inflow')}</span>
+                  <span className={inflow > 0 ? 'text-success font-medium' : 'text-base-content/40'}>
+                    {formatCurrency(inflow)}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs uppercase tracking-wide text-base-content/50">{gettext('Outflow')}</span>
+                  <span className={outflow > 0 ? 'text-error font-medium' : 'text-base-content/40'}>
+                    {formatCurrency(outflow)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-auto">
                 <AccountComboBox
                   allAccounts={localAccounts}
-                  value={mappings[categoryName] || null}
-                  onChange={(accountId) => handleMappingChange(categoryName, accountId)}
-                  onCreateNew={() => setCreatingForCategory(categoryName)}
+                  value={mappings[cat.name] || null}
+                  onChange={(accountId) => handleMappingChange(cat.name, accountId)}
+                  onCreateNew={() => setCreatingForCategory(cat.name)}
                 />
+                {isSuggested && (
+                  <div className="text-xs text-info mt-1 flex items-center gap-1">
+                    <i className="fa fa-lightbulb-o"></i>
+                    {gettext('Suggested — please verify')}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="text-sm text-base-content/70">

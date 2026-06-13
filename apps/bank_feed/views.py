@@ -148,12 +148,13 @@ class BankFeedViewSet(
             )
             .select_related(
                 "account",
+                "account__institution",
                 "journal_entry",
                 "plaid_transaction",
                 "plaid_transaction__plaid_account",
                 "plaid_transaction__plaid_account__account",
             )
-            .prefetch_related("journal_entry__lines__account")
+            .prefetch_related("journal_entry__lines__account__institution")
         )
 
         # Filter by account if provided in query params
@@ -719,7 +720,7 @@ class BankFeedViewSet(
 
         response_data = {
             "transactions": transactions_data,
-            "unmapped_categories": result.unmapped_categories,
+            "unmapped_categories": [uc.__dict__ for uc in result.unmapped_categories],
             "error_count": result.error_count,
             "duplicate_count": result.duplicate_count,
         }
@@ -1302,7 +1303,7 @@ def bank_feed_home(request, team_slug):
     accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
 
     # Get all accounts, payees, and account groups for dropdowns
-    all_accounts = Account.for_team.select_related("account_group").order_by("name")
+    all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")
     all_payees = Payee.for_team.all().order_by("name")
     all_account_groups = AccountGroup.for_team.all().order_by("account_type", "name")
 

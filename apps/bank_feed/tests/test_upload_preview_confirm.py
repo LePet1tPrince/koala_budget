@@ -152,7 +152,66 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
             )
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            self.assertIn("UnknownCategory", response.data["unmapped_categories"])
+            names = [c["name"] for c in response.data["unmapped_categories"]]
+            self.assertIn("UnknownCategory", names)
+
+    def test_upload_preview_unmapped_category_includes_flow_totals(self):
+        """Unmapped categories carry per-category inflow/outflow totals and a count."""
+        # Two outflows and one inflow under the same unmatched category.
+        csv_content = (
+            "Date,Description,Category,Amount\n"
+            "2025-01-01,A,Mystery,100.00\n"
+            "2025-01-02,B,Mystery,25.00\n"
+            "2025-01-03,C,Mystery,-40.00"
+        )
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps({"date": 0, "description": 1, "category": 2, "amount": 3}),
+                },
+                format="multipart",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            unmapped = response.data["unmapped_categories"]
+            self.assertEqual(len(unmapped), 1)
+            cat = unmapped[0]
+            self.assertEqual(cat["name"], "Mystery")
+            self.assertEqual(cat["count"], 3)
+            # Outflows: 100 + 25; inflow: 40 (positive = outflow in Plaid convention)
+            self.assertEqual(Decimal(cat["outflow"]), Decimal("125.00"))
+            self.assertEqual(Decimal(cat["inflow"]), Decimal("40.00"))
+
+    def test_upload_preview_suggests_account_for_unmapped_category(self):
+        """A close-name account is offered as a suggestion for an unmapped category."""
+        Account.objects.create(
+            team=self.team,
+            name="Restaurants",
+            account_group=self.expense_group,
+        )
+        csv_content = "Date,Description,Category,Amount\n2025-01-01,Dinner,Restaurant,40.00"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps({"date": 0, "description": 1, "category": 2, "amount": 3}),
+                },
+                format="multipart",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            cat = response.data["unmapped_categories"][0]
+            self.assertEqual(cat["suggested_account_name"], "Restaurants")
+            self.assertIsNotNone(cat["suggested_account_id"])
 
     def test_upload_preview_handles_dual_column_amounts(self):
         """Test that preview handles separate inflow/outflow columns."""
