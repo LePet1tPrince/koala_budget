@@ -213,6 +213,11 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, onComplete, onBack
       return false;
     }
 
+    // A date format must be confirmed before proceeding
+    if (!dateFormat) {
+      return false;
+    }
+
     // Either single amount or at least one of inflow/outflow is required
     if (amountType === 'single') {
       return mapping.amount !== null;
@@ -320,15 +325,15 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, onComplete, onBack
             </div>
           ) : (
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-warning">
-                {gettext('Could not detect format automatically. Select one:')}
-              </span>
+              <div className="alert alert-warning py-2 px-3 text-sm">
+                {gettext('Could not detect date format automatically — please select one to continue:')}
+              </div>
               <select
-                className="select select-bordered select-sm"
-                value={dateFormat || ''}
+                className="select select-bordered select-sm select-warning"
+                value=""
                 onChange={(e) => setDateFormat(e.target.value || null)}
               >
-                <option value="">{gettext('-- Auto-detect per row --')}</option>
+                <option value="">{gettext('-- Select date format --')}</option>
                 {DATE_FORMAT_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label} ({opt.example})
