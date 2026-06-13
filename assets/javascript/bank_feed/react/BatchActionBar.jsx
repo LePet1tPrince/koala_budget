@@ -6,6 +6,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   IconButton,
   Paper,
   Slide,
@@ -66,13 +67,17 @@ const BatchActionBar = ({
   const [unreconcileDialogOpen, setUnreconcileDialogOpen] = useState(false);
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
 
-  // Calculate reconciling amount from selected rows
-  const reconcilingAmount = useMemo(() => {
-    return selectedRows.reduce((sum, row) => {
+  // Calculate inflow, outflow, and net from selected rows
+  const { totalInflow, totalOutflow, reconcilingAmount } = useMemo(() => {
+    return selectedRows.reduce((acc, row) => {
       const inflow = parseFloat(row.inflow) || 0;
       const outflow = parseFloat(row.outflow) || 0;
-      return sum + inflow - outflow;
-    }, 0);
+      return {
+        totalInflow: acc.totalInflow + inflow,
+        totalOutflow: acc.totalOutflow + outflow,
+        reconcilingAmount: acc.reconcilingAmount + inflow - outflow,
+      };
+    }, { totalInflow: 0, totalOutflow: 0, reconcilingAmount: 0 });
   }, [selectedRows]);
 
   // Check if all selected rows are categorized (have a category)
@@ -88,10 +93,13 @@ const BatchActionBar = ({
     return 0;
   }, [selectedAccount]);
 
-  // Calculate new reconciled balance after reconciling
+  // Calculate new reconciled balance after reconciling (or unreconciling)
   const newReconciledBalance = useMemo(() => {
+    if (filterMode === 'reconciled') {
+      return reconciledBalance - reconcilingAmount;
+    }
     return reconciledBalance + reconcilingAmount + (parseFloat(adjustmentAmount) || 0);
-  }, [reconciledBalance, reconcilingAmount, adjustmentAmount]);
+  }, [reconciledBalance, reconcilingAmount, adjustmentAmount, filterMode]);
 
   // Handle reconcile submit
   const handleReconcileSubmit = () => {
@@ -171,9 +179,47 @@ const BatchActionBar = ({
             justifyContent: 'center',
           }}
         >
-          <Typography variant="body2" sx={{ fontWeight: 'bold', mr: 1 }}>
-            {selectedCount} {gettext('selected')}
-          </Typography>
+          {/* Selection summary strip */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', width: '100%', justifyContent: 'center', mb: 1 }}>
+            <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+              {selectedCount} {gettext('selected')}
+            </Typography>
+            <Divider orientation="vertical" flexItem />
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary">{gettext('In:')}</Typography>
+              <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 'bold' }}>
+                {formatCurrency(totalInflow)}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary">{gettext('Out:')}</Typography>
+              <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                {formatCurrency(totalOutflow)}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary">{gettext('Net:')}</Typography>
+              <Typography variant="caption" sx={{ color: reconcilingAmount >= 0 ? 'success.main' : 'error.main', fontWeight: 'bold' }}>
+                {formatCurrency(reconcilingAmount)}
+              </Typography>
+            </Box>
+            {(filterMode === 'to_review' || filterMode === 'reconciled') && selectedAccount && (
+              <>
+                <Divider orientation="vertical" flexItem />
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">{gettext('Reconciled:')}</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                    {formatCurrency(reconciledBalance)}
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary">→</Typography>
+                <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                  {formatCurrency(newReconciledBalance)}
+                </Typography>
+              </>
+            )}
+          </Box>
+          <Divider sx={{ width: '100%', mb: 1 }} />
 
           {!isArchivedView && (
             <Button
