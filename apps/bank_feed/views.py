@@ -689,6 +689,8 @@ class BankFeedViewSet(
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        date_format = request.data.get("date_format") or None
+
         result = preview_transactions(
             file=uploaded_file,
             filename=uploaded_file.name,
@@ -696,6 +698,7 @@ class BankFeedViewSet(
             category_mappings=category_mappings,
             team=request.team,
             account_id=account_id,
+            date_format=date_format,
         )
 
         # Convert dataclass objects to dicts for serializer
