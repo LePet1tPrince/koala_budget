@@ -50,12 +50,13 @@ export function getUploadApiHelpers(teamSlug) {
     /**
      * Preview parsed transactions with column mapping
      */
-    uploadPreview: async (file, accountId, columnMapping, categoryMappings = []) => {
+    uploadPreview: async (file, accountId, columnMapping, categoryMappings = [], dateFormat = null) => {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('account_id', accountId);
       formData.append('column_mapping', JSON.stringify(columnMapping));
       formData.append('category_mappings', JSON.stringify(categoryMappings));
+      if (dateFormat) formData.append('date_format', dateFormat);
 
       const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_preview/`, {
         method: 'POST',

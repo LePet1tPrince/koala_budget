@@ -118,6 +118,23 @@ def parse_date(value: str) -> date | None:
     return None
 
 
+def parse_date_strict(value: str, fmt: str) -> date | None:
+    """
+    Parse a date string using exactly the specified strftime format.
+    Returns None if parsing fails. Used when the user has selected a format
+    to ensure the same format is applied to every row in the file.
+    """
+    if not value or not value.strip():
+        return None
+
+    from datetime import datetime
+
+    try:
+        return datetime.strptime(value.strip(), fmt).date()
+    except ValueError:
+        return None
+
+
 def parse_amount(value: str) -> Decimal | None:
     """
     Parse an amount string, handling:
@@ -330,6 +347,7 @@ def preview_transactions(
     category_mappings: dict,
     team,
     account_id: int,
+    date_format: str | None = None,
 ) -> PreviewResult:
     """
     Parse file with column mapping and return preview of transactions.
@@ -399,7 +417,10 @@ def preview_transactions(
 
         # Parse date
         if date_col is not None and date_col < len(row):
-            parsed_date = parse_date(row[date_col])
+            if date_format:
+                parsed_date = parse_date_strict(row[date_col], date_format)
+            else:
+                parsed_date = parse_date(row[date_col])
             if not parsed_date:
                 error = f"Invalid date: {row[date_col]}"
 

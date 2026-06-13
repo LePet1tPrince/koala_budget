@@ -38,6 +38,9 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
   const [amountType, setAmountType] = useState('single'); // 'single' or 'dual'
   const [hasHeaders, setHasHeaders] = useState(true);
 
+  // Step 2 extra state
+  const [dateFormat, setDateFormat] = useState(null);
+
   // Step 3 state
   const [categoryMappings, setCategoryMappings] = useState({});
 
@@ -70,10 +73,11 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
   /**
    * Handle column mapping (Step 2)
    */
-  const handleColumnMappingComplete = async (mapping, amtType, fileHasHeaders) => {
+  const handleColumnMappingComplete = async (mapping, amtType, fileHasHeaders, detectedDateFormat) => {
     setColumnMapping(mapping);
     setAmountType(amtType);
     setHasHeaders(fileHasHeaders);
+    setDateFormat(detectedDateFormat);
     setError(null);
 
     try {
@@ -81,7 +85,8 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
         file,
         selectedAccount.id,
         { ...mapping, has_headers: fileHasHeaders },
-        []
+        [],
+        detectedDateFormat
       );
 
       setPreviewResult(result);
@@ -116,7 +121,8 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
         file,
         selectedAccount.id,
         { ...columnMapping, has_headers: hasHeaders },
-        categoryMappingsList
+        categoryMappingsList,
+        dateFormat
       );
 
       setPreviewResult(result);
