@@ -20,14 +20,20 @@ const TYPE_ORDER = ['asset', 'liability', 'income', 'expense', 'goal'];
  *
  * The dropdown panel is rendered in a portal with fixed positioning so it is
  * not clipped by (or constrained to the width of) scrollable modal containers.
+ *
+ * Keyboard: while the search field is focused, Up/Down move the highlighted
+ * option and Enter selects it; Left/Right are left untouched so they still
+ * move the text cursor within the search query.
  */
 const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [menuPos, setMenuPos] = useState(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const containerRef = useRef(null);
   const menuRef = useRef(null);
   const inputRef = useRef(null);
+  const highlightedRef = useRef(null);
 
   const selectedAccount = useMemo(
     () => allAccounts.find((a) => a.id === value) || null,
@@ -76,12 +82,12 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Focus search input when dropdown opens
+  // Focus search input once the portal is positioned and rendered in the DOM
   useEffect(() => {
-    if (open && inputRef.current) {
+    if (open && menuPos && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [open]);
+  }, [open, menuPos]);
 
   const groupedAccounts = useMemo(() => {
     const term = search.toLowerCase();
@@ -108,6 +114,44 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
 
   const hasResults = orderedTypes.length > 0;
 
+  // Flat, ordered list of keyboard-selectable options, matching the visual
+  // order: "Leave uncategorized" (index 0), accounts, then "Create new account".
+  const flatOptions = useMemo(() => {
+    const opts = [{ kind: 'uncategorized' }];
+    orderedTypes.forEach((type) => {
+      groupedAccounts[type].forEach((account) => opts.push({ kind: 'account', account }));
+    });
+    opts.push({ kind: 'create' });
+    return opts;
+  }, [orderedTypes, groupedAccounts]);
+
+  // Map each account id to its index in flatOptions, plus the create index.
+  const accountFlatIndex = useMemo(() => {
+    const map = new Map();
+    let idx = 1; // 0 is the "Leave uncategorized" option
+    orderedTypes.forEach((type) => {
+      groupedAccounts[type].forEach((account) => map.set(account.id, idx++));
+    });
+    return map;
+  }, [orderedTypes, groupedAccounts]);
+  const createIndex = flatOptions.length - 1;
+
+  // When opening, highlight the currently selected account (or the top option).
+  useEffect(() => {
+    if (open) {
+      setHighlightedIndex(value != null && accountFlatIndex.has(value) ? accountFlatIndex.get(value) : 0);
+    }
+    // Only when open toggles; accountFlatIndex is stable while open with empty search.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Keep the highlighted option scrolled into view as it changes.
+  useEffect(() => {
+    if (open && highlightedRef.current) {
+      highlightedRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedIndex, open]);
+
   const handleSelect = (accountId) => {
     onChange(accountId);
     setOpen(false);
@@ -125,6 +169,32 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
     setOpen(false);
     setSearch('');
     onCreateNew();
+  };
+
+  const activateOption = (opt) => {
+    if (!opt) return;
+    if (opt.kind === 'uncategorized') handleSelect(null);
+    else if (opt.kind === 'account') handleSelect(opt.account.id);
+    else if (opt.kind === 'create') handleCreateNew();
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      // Vertical arrows drive option selection...
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.min(i + 1, flatOptions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      activateOption(flatOptions[highlightedIndex]);
+    }
+    // ...Left/Right fall through so they move the cursor within the search text.
   };
 
   return (
@@ -176,8 +246,11 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
               className="input input-bordered input-sm w-full"
               placeholder={gettext('Search accounts...')}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setHighlightedIndex(0);
+              }}
+              onKeyDown={handleSearchKeyDown}
             />
           </div>
 
@@ -185,8 +258,10 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
           <div className="overflow-y-auto flex-1">
             {/* Leave uncategorized option */}
             <div
-              className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm text-base-content/60 italic ${!value ? 'bg-primary/10 font-medium' : ''}`}
+              ref={highlightedIndex === 0 ? highlightedRef : null}
+              className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm text-base-content/60 italic ${!value ? 'bg-primary/10 font-medium' : ''} ${highlightedIndex === 0 ? 'bg-base-300' : ''}`}
               onMouseDown={() => handleSelect(null)}
+              onMouseEnter={() => setHighlightedIndex(0)}
             >
               {gettext('-- Leave uncategorized --')}
             </div>
@@ -202,21 +277,27 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
                 <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-base-content/50 bg-base-200/50 sticky top-0">
                   {ACCOUNT_TYPE_LABELS[type] || type}
                 </div>
-                {groupedAccounts[type].map((account) => (
-                  <div
-                    key={account.id}
-                    className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm flex items-center justify-between gap-2 ${value === account.id ? 'bg-primary/10 font-medium text-primary' : ''}`}
-                    onMouseDown={() => handleSelect(account.id)}
-                  >
-                    <span className="truncate">{account.name}</span>
-                    {account.institution_name && (
-                      <span className="badge badge-ghost badge-sm whitespace-nowrap shrink-0" title={gettext('Held at')}>
-                        <i className="fa fa-university text-[0.65rem] mr-1"></i>
-                        {account.institution_name}
-                      </span>
-                    )}
-                  </div>
-                ))}
+                {groupedAccounts[type].map((account) => {
+                  const idx = accountFlatIndex.get(account.id);
+                  const isHighlighted = highlightedIndex === idx;
+                  return (
+                    <div
+                      key={account.id}
+                      ref={isHighlighted ? highlightedRef : null}
+                      className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm flex items-center justify-between gap-2 ${value === account.id ? 'bg-primary/10 font-medium text-primary' : ''} ${isHighlighted ? 'bg-base-300' : ''}`}
+                      onMouseDown={() => handleSelect(account.id)}
+                      onMouseEnter={() => setHighlightedIndex(idx)}
+                    >
+                      <span className="truncate">{account.name}</span>
+                      {account.institution_name && (
+                        <span className="badge badge-ghost badge-sm whitespace-nowrap shrink-0" title={gettext('Held at')}>
+                          <i className="fa fa-university text-[0.65rem] mr-1"></i>
+                          {account.institution_name}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </div>
@@ -224,11 +305,13 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
           {/* Create new account */}
           <div className="border-t border-base-300 p-1">
             <div
-              className="px-3 py-2 cursor-pointer hover:bg-base-200 text-sm text-primary font-medium flex items-center gap-2 rounded"
+              ref={highlightedIndex === createIndex ? highlightedRef : null}
+              className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm text-primary font-medium flex items-center gap-2 rounded ${highlightedIndex === createIndex ? 'bg-base-300' : ''}`}
               onMouseDown={handleCreateNew}
+              onMouseEnter={() => setHighlightedIndex(createIndex)}
             >
               <i className="fa fa-plus text-xs"></i>
-              {gettext('+ Create new account')}
+              {gettext('Create new account')}
             </div>
           </div>
         </div>,
