@@ -13,6 +13,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import Account
+from apps.audit.models import AuditLog
+from apps.audit.serializers import AuditLogSerializer
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
@@ -90,6 +92,15 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         journal_entry.save()
 
         serializer = self.get_serializer(journal_entry)
+        return Response(serializer.data)
+
+    @extend_schema(operation_id="journal_entries_audit", tags=["journal"], responses=AuditLogSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path="audit")
+    def audit(self, request, team_slug=None, pk=None):
+        """Return the row-level audit history for this journal entry and its lines."""
+        entry = self.get_object()
+        logs = AuditLog.objects.filter(journal_entry_id=entry.pk).select_related("user", "event").order_by("-timestamp")
+        serializer = AuditLogSerializer(logs, many=True)
         return Response(serializer.data)
 
 
