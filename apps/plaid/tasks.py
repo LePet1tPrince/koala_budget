@@ -11,6 +11,8 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
+from apps.audit.models import AuditEvent
+from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
 from apps.teams.context import set_current_team
 
@@ -42,11 +44,14 @@ def sync_plaid_transactions(plaid_item_id: int):
         plaid_item_id: ID of the PlaidItem to sync
     """
     logger.info("Starting Plaid sync for item %s", plaid_item_id)
+    plaid_item = None
     try:
         plaid_item = PlaidItem.objects.select_related("team").get(id=plaid_item_id)
 
         # Set team context for the task
         set_current_team(plaid_item.team)
+
+        log_event(AuditEvent.PLAID_SYNC_STARTED, team=plaid_item.team, metadata={"plaid_item_id": plaid_item_id})
 
         # Get the cursor for incremental sync
         cursor = plaid_item.cursor
@@ -87,6 +92,17 @@ def sync_plaid_transactions(plaid_item_id: int):
         plaid_item.last_synced_at = timezone.now()
         plaid_item.save()
 
+        log_event(
+            AuditEvent.PLAID_SYNC_COMPLETED,
+            team=plaid_item.team,
+            metadata={
+                "plaid_item_id": plaid_item_id,
+                "added": total_added,
+                "modified": total_modified,
+                "removed": total_removed,
+            },
+        )
+
         return {
             "success": True,
             "added": total_added,
@@ -96,8 +112,13 @@ def sync_plaid_transactions(plaid_item_id: int):
 
     except PlaidItem.DoesNotExist:
         return {"success": False, "error": "PlaidItem not found"}
-    except Exception:
+    except Exception as e:
         logger.exception("Plaid sync failed for item %s", plaid_item_id)
+        log_event(
+            AuditEvent.PLAID_SYNC_FAILED,
+            team=plaid_item.team if plaid_item else None,
+            metadata={"plaid_item_id": plaid_item_id, "error": str(e)},
+        )
         raise
 
 
