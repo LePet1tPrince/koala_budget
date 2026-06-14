@@ -14,6 +14,8 @@ PERSONAL_BUDGET_TEMPLATE = {
         {"name": "Regular Expenses", "type": "expense", "description": "Recurring monthly expenses"},
         {"name": "Variable Expenses", "type": "expense", "description": "Flexible spending"},
         {"name": "Other Expenses", "type": "expense", "description": "Miscellaneous expenses"},
+        # Equity (system-managed, hidden from Goals UI)
+        {"name": "Equity Adjustments", "type": "goal", "description": "System equity accounts for reconciliation and opening balances", "is_system": True},
     ],
     "accounts": [
         # Assets (1000s)
@@ -35,6 +37,8 @@ PERSONAL_BUDGET_TEMPLATE = {
         {"number": 5400, "name": "Dining Out", "group": "Variable Expenses"},
         {"number": 5500, "name": "Entertainment", "group": "Variable Expenses"},
         {"number": 5900, "name": "Miscellaneous", "group": "Other Expenses"},
+        # Equity — system accounts (no number, not in Goals UI)
+        {"name": "Reconciliation Adjustments", "group": "Equity Adjustments", "is_system": True},
     ],
     "payees": [
         "Employer",

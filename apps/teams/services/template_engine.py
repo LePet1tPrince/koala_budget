@@ -26,6 +26,7 @@ def apply_template(team, template, month_start):
             defaults={
                 "account_type": g["type"],
                 "description": g.get("description", ""),
+                "is_system": g.get("is_system", False),
             },
         )
         group_map[g["name"]] = group
@@ -40,9 +41,11 @@ def apply_template(team, template, month_start):
             defaults={
                 "has_feed": a.get("has_feed", False),
                 "account_group": group_map[a["group"]],
+                "is_system": a.get("is_system", False),
             },
         )
-        account_map[a["number"]] = account
+        if a.get("number") is not None:
+            account_map[a["number"]] = account
 
     # -------------------------
     # Payees

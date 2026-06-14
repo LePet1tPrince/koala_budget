@@ -1137,6 +1137,7 @@ class BankFeedViewSet(
 
         ids = serializer.validated_data["ids"]
         adjustment_amount = serializer.validated_data.get("adjustment_amount", Decimal("0"))
+        reconciliation_date = serializer.validated_data.get("reconciliation_date") or timezone.localdate()
 
         # Get transactions that belong to this team
         transactions = BankTransaction.objects.filter(
@@ -1182,47 +1183,55 @@ class BankFeedViewSet(
                     team=request.team,
                     bank_account=bank_account,
                     amount=adjustment_amount,
+                    date=reconciliation_date,
                 )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
-    def _create_reconciliation_adjustment(self, team, bank_account, amount):
+    def _create_reconciliation_adjustment(self, team, bank_account, amount, date=None):
         """
         Create a reconciliation adjustment transaction.
-        Creates a BankTransaction with source='S' and a JournalEntry linking to an 'Adjustments' account.
-        The adjustment is marked as reconciled immediately.
+        Creates a BankTransaction and JournalEntry against the system equity
+        "Reconciliation Adjustments" account. The adjustment is marked as reconciled immediately.
         """
-        from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, AccountGroup
+        from apps.accounts.models import ACCOUNT_TYPE_EQUITY, AccountGroup
 
-        # First, find or create an expense group for adjustments
-        expense_group = AccountGroup.objects.filter(
+        if date is None:
+            date = timezone.localdate()
+
+        # Find or create the system equity group for reconciliation adjustments
+        equity_group, _ = AccountGroup.objects.get_or_create(
             team=team,
-            account_type=ACCOUNT_TYPE_EXPENSE,
-        ).first()
+            name="Equity Adjustments",
+            defaults={
+                "account_type": ACCOUNT_TYPE_EQUITY,
+                "is_system": True,
+            },
+        )
+        # Ensure existing group is marked system (in case it was created before this field existed)
+        if not equity_group.is_system:
+            equity_group.is_system = True
+            equity_group.save(update_fields=["is_system"])
 
-        if not expense_group:
-            # Create a default expense group if none exists
-            expense_group = AccountGroup.objects.create(
-                team=team,
-                name="Expenses",
-                account_type=ACCOUNT_TYPE_EXPENSE,
-            )
-
-        # Find or create the Adjustments account (account_group is required)
-        adjustments_account, created = Account.objects.get_or_create(
+        # Find or create the system reconciliation adjustments account
+        adjustments_account, _ = Account.objects.get_or_create(
             team=team,
             name="Reconciliation Adjustments",
             defaults={
                 "has_feed": False,
-                "account_group": expense_group,
+                "account_group": equity_group,
+                "is_system": True,
             },
         )
+        if not adjustments_account.is_system:
+            adjustments_account.is_system = True
+            adjustments_account.save(update_fields=["is_system"])
 
         # Create the journal entry
         journal_entry = JournalEntry.objects.create(
             team=team,
-            entry_date=timezone.localdate(),
+            entry_date=date,
             description="Reconciliation Adjustment",
             source=JournalEntry.SOURCE_BANK_MATCH,
             status=JournalEntry.STATUS_POSTED,
@@ -1238,7 +1247,7 @@ class BankFeedViewSet(
                 account=bank_account,
                 dr_amount=abs_amount,
                 cr_amount=Decimal("0"),
-                is_reconciled=True,  # Mark as reconciled immediately
+                is_reconciled=True,
             )
             JournalLine.objects.create(
                 journal_entry=journal_entry,
@@ -1255,7 +1264,7 @@ class BankFeedViewSet(
                 account=bank_account,
                 dr_amount=Decimal("0"),
                 cr_amount=abs_amount,
-                is_reconciled=True,  # Mark as reconciled immediately
+                is_reconciled=True,
             )
             JournalLine.objects.create(
                 journal_entry=journal_entry,
@@ -1270,7 +1279,7 @@ class BankFeedViewSet(
             team=team,
             account=bank_account,
             amount=-amount if amount > 0 else abs_amount,  # Plaid convention: positive = outflow
-            posted_date=timezone.localdate(),
+            posted_date=date,
             description="Reconciliation Adjustment",
             source=BankTransaction.SOURCE_SYSTEM,
             journal_entry=journal_entry,

@@ -411,7 +411,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   /**
    * Batch reconcile selected transactions
    */
-  const handleBatchReconcile = async (adjustmentAmount = 0) => {
+  const handleBatchReconcile = async (adjustmentAmount = 0, reconciliationDate = null) => {
     try {
       // Calculate the reconciling amount before clearing selection
       const reconcilingAmount = selectedRows.reduce((sum, row) => {
@@ -420,7 +420,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         return sum + inflow - outflow;
       }, 0);
 
-      await batchApi.batchReconcile([...selectedIds], adjustmentAmount);
+      await batchApi.batchReconcile([...selectedIds], adjustmentAmount, reconciliationDate);
       setSelectedIds(new Set());
       await loadLines();
 

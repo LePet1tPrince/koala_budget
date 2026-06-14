@@ -145,6 +145,12 @@ class BatchReconcileRequestSerializer(BatchIdsSerializer):
         default=0,
         help_text="Optional adjustment amount to create if balance doesn't match",
     )
+    reconciliation_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="Date for the reconciliation adjustment transaction (defaults to today)",
+    )
 
 
 class CategorySuggestionSerializer(serializers.Serializer):
