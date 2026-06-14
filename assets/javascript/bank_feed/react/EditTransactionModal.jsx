@@ -9,11 +9,14 @@ import {
   Autocomplete,
   Box,
   InputAdornment,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { buildCategoryOptions } from '../../common/categoryOptions';
+import TransactionHistory from './TransactionHistory';
 
 /* globals gettext */
 
@@ -36,6 +39,7 @@ const EditTransactionModal = ({
   allAccounts,
   allPayees = [],
   categorySuggestions = {},
+  teamSlug,
   onSave,
   mode: modeProp,
 }) => {
@@ -54,6 +58,8 @@ const EditTransactionModal = ({
   const [saving, setSaving] = useState(false);
   // Whether the current category came from a merchant-history suggestion
   const [categorySuggested, setCategorySuggested] = useState(false);
+  // Active tab: 0 = Details, 1 = History
+  const [activeTab, setActiveTab] = useState(0);
 
   // Create options array for category Autocomplete (grouped by account type)
   const categoryOptions = useMemo(() => {
@@ -66,6 +72,8 @@ const EditTransactionModal = ({
   // Initialize form when transaction changes or modal opens
   useEffect(() => {
     if (!open) return;
+
+    setActiveTab(0);
 
     if (isCreateMode) {
       // Create mode - set defaults
@@ -215,10 +223,26 @@ const EditTransactionModal = ({
     ? (saving ? gettext('Adding...') : gettext('Add'))
     : (saving ? gettext('Saving...') : gettext('Save'));
 
+  // The History tab is only meaningful for an existing, categorized transaction.
+  const showHistoryTab = !isCreateMode && Boolean(journalEntryId);
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth data-testid="edit-transaction-modal">
       <DialogTitle>{title}</DialogTitle>
+      {showHistoryTab && (
+        <Tabs
+          value={activeTab}
+          onChange={(_event, newValue) => setActiveTab(newValue)}
+          sx={{ px: 3, borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Tab label={gettext('Details')} data-testid="tab-details" />
+          <Tab label={gettext('History')} data-testid="tab-history" />
+        </Tabs>
+      )}
       <DialogContent>
+        {activeTab === 1 && showHistoryTab ? (
+          <TransactionHistory teamSlug={teamSlug} journalEntryId={journalEntryId} />
+        ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
           {/* Date */}
           <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -337,14 +361,17 @@ const EditTransactionModal = ({
             </Box>
           )}
         </Box>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={saving} data-testid="modal-cancel-btn">
-          {gettext('Cancel')}
+          {activeTab === 1 && showHistoryTab ? gettext('Close') : gettext('Cancel')}
         </Button>
-        <Button onClick={handleSave} variant="contained" disabled={saving} data-testid="modal-save-btn">
-          {saveButtonText}
-        </Button>
+        {!(activeTab === 1 && showHistoryTab) && (
+          <Button onClick={handleSave} variant="contained" disabled={saving} data-testid="modal-save-btn">
+            {saveButtonText}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );

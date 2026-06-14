@@ -40,6 +40,7 @@ const LineTableMaterial = ({
   allAccounts,
   allPayees = [],
   categorySuggestions = {},
+  teamSlug,
   onAdd,
   onDelete,
   onEditTransaction,
@@ -488,6 +489,7 @@ const LineTableMaterial = ({
           allAccounts={allAccounts}
           allPayees={allPayees}
           categorySuggestions={categorySuggestions}
+          teamSlug={teamSlug}
           onSave={handleEditSave}
           mode={modalMode}
         />
