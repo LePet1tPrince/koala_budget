@@ -147,6 +147,14 @@ make test-e2e-accounts  # Run specific test file
 - Invalid/unknown `return_type` values round-trip without error; list view ignores them
 - Pattern: pass `?return_type=<value>` in test URLs and assert the redirect or link targets include the param
 
+### Audit trail (`apps/audit/tests.py`)
+- `JournalEntry`/`JournalLine` create, update, and delete each write an `AuditLog` row with the right `action`; a no-op save writes nothing
+- UPDATE diffs capture `{before, after}` per changed field only
+- Frozen FK snapshots: changing a line's account then renaming the old account keeps the original name in the audit record
+- The request user reaches signals via thread-local storage — tests call `set_current_user(None)` in `setUp`/`tearDown` to avoid cross-test leakage (the thread-local persists across `TestCase` methods since middleware doesn't run for direct ORM writes)
+- Audit API is team-scoped: `event_type` filter works, cross-team events are excluded, non-members are denied
+- Per-entry history endpoint `GET …/journal-entries/{id}/audit/` returns CREATE + UPDATE rows
+
 ---
 
 ## Known Coverage Gaps
