@@ -32,6 +32,7 @@ class AccountGroup(BaseTeamModel):
     name = models.CharField(max_length=200)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES)
     description = models.TextField(blank=True)
+    is_system = models.BooleanField(default=False, help_text="System groups cannot be deleted by users")
 
     class Meta:
         ordering = ["name"]
@@ -67,6 +68,7 @@ class Account(BaseTeamModel):
         help_text="Bank or financial institution this account is held with",
     )
     has_feed = models.BooleanField(default=False, help_text="Whether this account has a bank feed")
+    is_system = models.BooleanField(default=False, help_text="System accounts cannot be deleted by users")
 
     # Override managers to use AccountQuerySet for optimized balance queries
     objects = AccountQuerySet.as_manager()

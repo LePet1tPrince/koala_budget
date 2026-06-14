@@ -66,6 +66,7 @@ const BatchActionBar = ({
   const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false);
   const [unreconcileDialogOpen, setUnreconcileDialogOpen] = useState(false);
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
+  const [reconciliationDate, setReconciliationDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Calculate inflow, outflow, and net from selected rows
   const { totalInflow, totalOutflow, reconcilingAmount } = useMemo(() => {
@@ -104,10 +105,11 @@ const BatchActionBar = ({
   // Handle reconcile submit
   const handleReconcileSubmit = () => {
     if (onReconcile) {
-      onReconcile(parseFloat(adjustmentAmount) || 0);
+      onReconcile(parseFloat(adjustmentAmount) || 0, reconciliationDate);
     }
     setReconcileDialogOpen(false);
     setAdjustmentAmount('');
+    setReconciliationDate(new Date().toISOString().split('T')[0]);
   };
 
   // Handle unreconcile submit
@@ -328,6 +330,7 @@ const BatchActionBar = ({
         onClose={() => {
           setReconcileDialogOpen(false);
           setAdjustmentAmount('');
+          setReconciliationDate(new Date().toISOString().split('T')[0]);
         }}
         maxWidth="sm"
         fullWidth
@@ -361,13 +364,23 @@ const BatchActionBar = ({
             </Box>
             <TextField
               margin="dense"
+              label={gettext('Reconciliation Date')}
+              fullWidth
+              type="date"
+              value={reconciliationDate}
+              onChange={(e) => setReconciliationDate(e.target.value)}
+              sx={{ mt: 3 }}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              margin="dense"
               label={gettext('Adjustment (optional)')}
               fullWidth
               type="number"
               value={adjustmentAmount}
               onChange={(e) => setAdjustmentAmount(e.target.value)}
               helperText={gettext('Creates a system adjustment if balance needs correction')}
-              sx={{ mt: 3 }}
+              sx={{ mt: 2 }}
               inputProps={{ step: "0.01" }}
             />
           </Box>
@@ -376,6 +389,7 @@ const BatchActionBar = ({
           <Button onClick={() => {
             setReconcileDialogOpen(false);
             setAdjustmentAmount('');
+            setReconciliationDate(new Date().toISOString().split('T')[0]);
           }}>
             {gettext('Cancel')}
           </Button>

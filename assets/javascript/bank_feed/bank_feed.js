@@ -239,7 +239,7 @@ export function getBatchOperationsApi(teamSlug) {
     batchUnarchive: (ids) => fetchJson('batch_unarchive', { ids }),
     batchDelete: (ids) => fetchJson('batch_delete', { ids }),
     batchDuplicate: (ids) => fetchJson('batch_duplicate', { ids }),
-    batchReconcile: (ids, adjustmentAmount = 0) => fetchJson('batch_reconcile', { ids, adjustment_amount: adjustmentAmount }),
+    batchReconcile: (ids, adjustmentAmount = 0, reconciliationDate = null) => fetchJson('batch_reconcile', { ids, adjustment_amount: adjustmentAmount, reconciliation_date: reconciliationDate }),
     batchUnreconcile: (ids) => fetchJson('batch_unreconcile', { ids }),
   };
 }
