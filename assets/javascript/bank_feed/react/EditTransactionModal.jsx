@@ -124,7 +124,7 @@ const EditTransactionModal = ({
 
   // Determine which fields can be edited
   const canEditDate = isCreateMode || (!isReadOnly && transaction?.source !== 'plaid');
-  const canEditAmounts = isCreateMode || (!isReadOnly && transaction?.source !== 'plaid');
+  const canEditAmounts = isCreateMode || (!isReadOnly && transaction?.source !== 'plaid' && !transaction?.is_reconciled);
   const canEditCategory = isCreateMode || !isReadOnly;
   const canEditPayee = true; // Always editable
   const canEditDescription = true; // Always editable
@@ -304,7 +304,7 @@ const EditTransactionModal = ({
                 startAdornment: <InputAdornment position="start">$</InputAdornment>,
               }}
               error={!!errors.amount}
-              helperText={!canEditAmounts && !isCreateMode ? gettext('Amount cannot be edited') : ''}
+              helperText={!canEditAmounts && !isCreateMode ? (transaction?.is_reconciled ? gettext('Amount locked — transaction is reconciled') : gettext('Amount cannot be edited')) : ''}
             />
             <TextField
               label={gettext('Outflow')}
