@@ -1020,11 +1020,20 @@ class BankFeedViewSet(
         ids = serializer.validated_data["ids"]
 
         # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
-        for tx in BankTransaction.objects.filter(id__in=ids, team=request.team):
+        archived_count = 0
+        for tx in BankTransaction.objects.filter(id__in=ids, team=request.team).prefetch_related(
+            "journal_entry__lines"
+        ):
+            # Reconciled transactions cannot be archived — skip them silently
+            if tx.journal_entry and tx.journal_entry.lines.filter(
+                account=tx.account, is_reconciled=True
+            ).exists():
+                continue
             tx.is_archived = True
             tx.save(update_fields=["is_archived", "updated_at"])
+            archived_count += 1
 
-        log_event(AuditEvent.BULK_ARCHIVE, request=request, metadata={"count": len(ids)})
+        log_event(AuditEvent.BULK_ARCHIVE, request=request, metadata={"count": archived_count})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
