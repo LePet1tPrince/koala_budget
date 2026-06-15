@@ -525,10 +525,11 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
    */
   // Handle both camelCase (from generated API client) and snake_case (raw API)
   const isArchived = (r) => r.isArchived ?? r.is_archived ?? false;
+  const isReconciled = (r) => r.isReconciled ?? r.is_reconciled ?? false;
 
   const showArchiveButton = useMemo(() => {
-    // Show archive if any selected row is not archived
-    return selectedRows.some(r => !isArchived(r));
+    // Show archive only if any selected row is not archived and not reconciled
+    return selectedRows.some(r => !isArchived(r) && !isReconciled(r));
   }, [selectedRows]);
 
   const showUnarchiveButton = useMemo(() => {
