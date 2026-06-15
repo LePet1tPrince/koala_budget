@@ -33,9 +33,12 @@ const buildInitialMappings = (unmappedCategories) => {
  * - onBack: Callback to go back
  * - onCancel: Callback when user cancels
  */
-const Step3CategoryMapping = ({ unmappedCategories, allAccounts, allAccountGroups, uploadApi, onComplete, onBack, onCancel }) => {
-  // Seed mappings with the deterministic suggestions.
-  const [mappings, setMappings] = useState(() => buildInitialMappings(unmappedCategories));
+const Step3CategoryMapping = ({ unmappedCategories, initialMappings = {}, allAccounts, allAccountGroups, uploadApi, onComplete, onBack, onCancel }) => {
+  // Seed with suggestions, then overlay any mappings the user already confirmed (initialMappings wins).
+  const [mappings, setMappings] = useState(() => ({
+    ...buildInitialMappings(unmappedCategories),
+    ...initialMappings,
+  }));
   const [loading, setLoading] = useState(false);
 
   // Local copy of accounts so newly created accounts appear without a full page reload
@@ -75,11 +78,19 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, allAccountGroup
 
   return (
     <div className="space-y-6">
-      <div className="text-sm text-base-content/70">
-        {gettext('The following categories from your file could not be automatically matched. Map them to existing accounts or leave them unmapped to categorize later. We pre-fill a suggested account where we can — please double-check it.')}
-      </div>
+      {unmappedCategories.length > 0 && (
+        <div className="text-sm text-base-content/70">
+          {gettext('The following categories from your file could not be automatically matched. Map them to existing accounts or leave them unmapped to categorize later. We pre-fill a suggested account where we can — please double-check it.')}
+        </div>
+      )}
 
       {/* Responsive multi-column grid of mapping cards */}
+      {unmappedCategories.length === 0 ? (
+        <div className="py-8 text-center text-base-content/50">
+          <i className="fa fa-check-circle text-2xl mb-2 block text-success"></i>
+          {gettext('No categories to map — all transactions are already categorized.')}
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[28rem] overflow-y-auto pr-1">
         {unmappedCategories.map((cat) => {
           const isSuggested = cat.suggested_account_id != null && mappings[cat.name] === cat.suggested_account_id;
@@ -136,10 +147,12 @@ const Step3CategoryMapping = ({ unmappedCategories, allAccounts, allAccountGroup
         })}
       </div>
 
-      <div className="text-sm text-base-content/70">
-        <i className="fa fa-info-circle mr-2"></i>
-        {Object.keys(mappings).length} {gettext('of')} {unmappedCategories.length} {gettext('categories mapped')}
-      </div>
+      {unmappedCategories.length > 0 && (
+        <div className="text-sm text-base-content/70">
+          <i className="fa fa-info-circle mr-2"></i>
+          {Object.keys(mappings).length} {gettext('of')} {unmappedCategories.length} {gettext('categories mapped')}
+        </div>
+      )}
 
       <div className="modal-action">
         <button className="btn btn-ghost" onClick={onCancel} disabled={loading}>
