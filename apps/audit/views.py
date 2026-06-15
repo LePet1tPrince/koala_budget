@@ -1,8 +1,11 @@
+from django.utils.translation import gettext_lazy as _
+
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from apps.audit.models import AuditEvent
 from apps.audit.serializers import AuditEventSerializer
+from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
 
@@ -33,3 +36,23 @@ class AuditEventViewSet(ReadOnlyModelViewSet):
         if event_type:
             qs = qs.filter(event_type=event_type)
         return qs
+
+
+@login_and_team_required
+def audit_log_view(request, team_slug):
+    from django.shortcuts import render
+
+    event_type_choices = [
+        (value, label)
+        for value, label in AuditEvent.EVENT_TYPE_CHOICES
+    ]
+    return render(
+        request,
+        "audit/audit_log.html",
+        {
+            "active_tab": "audit-log",
+            "page_title": _("Audit Log | {team}").format(team=request.team),
+            "api_base_url": f"/a/{team_slug}/audit/api/events/",
+            "event_type_choices": event_type_choices,
+        },
+    )

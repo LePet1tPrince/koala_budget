@@ -10,4 +10,5 @@ router.register(r"events", views.AuditEventViewSet, basename="audit-event")
 
 urlpatterns = [
     path("api/", include(router.urls)),
+    path("log/", views.audit_log_view, name="audit_log"),
 ]
