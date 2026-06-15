@@ -44,6 +44,9 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
 
   // Step 3 state
   const [categoryMappings, setCategoryMappings] = useState({});
+  // Original unmapped categories from the first preview — preserved so Step 3 always shows
+  // the full list even after mappings are applied and previewResult.unmapped_categories empties out.
+  const [originalUnmappedCategories, setOriginalUnmappedCategories] = useState(null);
 
   // Step 4 (duplicate review) state — row_numbers the user chose to exclude
   const [excludedDuplicateRows, setExcludedDuplicateRows] = useState(new Set());
@@ -51,8 +54,8 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
   // Step 5 state
   const [previewResult, setPreviewResult] = useState(null);
 
-  // Derived helpers
-  const showStep3 = previewResult?.unmapped_categories?.length > 0;
+  // Derived helpers — step 3 is always shown once we have a preview result
+  const showStep3 = originalUnmappedCategories !== null;
   const showStep4 = previewResult?.duplicate_count > 0;
 
   /**
@@ -98,14 +101,10 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
 
       setPreviewResult(result);
       setExcludedDuplicateRows(new Set());
-
-      if (result.unmapped_categories && result.unmapped_categories.length > 0) {
-        setCurrentStep(3);
-      } else if (result.duplicate_count > 0) {
-        setCurrentStep(4);
-      } else {
-        setCurrentStep(5);
-      }
+      // Freeze the original list so Step 3 can always show it, even after mappings are applied
+      setOriginalUnmappedCategories(result.unmapped_categories || []);
+      // Always visit step 3 so the user can review/map categories
+      setCurrentStep(3);
     } catch (err) {
       console.error('Preview error:', err);
       setError(err.message || gettext('Failed to preview transactions'));
@@ -257,9 +256,10 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
           />
         )}
 
-        {currentStep === 3 && previewResult && (
+        {currentStep === 3 && originalUnmappedCategories !== null && (
           <Step3CategoryMapping
-            unmappedCategories={previewResult.unmapped_categories}
+            unmappedCategories={originalUnmappedCategories}
+            initialMappings={categoryMappings}
             allAccounts={allAccounts}
             allAccountGroups={allAccountGroups}
             uploadApi={uploadApi}
