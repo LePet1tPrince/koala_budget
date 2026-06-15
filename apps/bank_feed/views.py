@@ -943,14 +943,19 @@ class BankFeedViewSet(
 
                 # --- Move account ---
                 if target_account is not None:
-                    old_account = tx.account
-                    tx.account = target_account
-                    if tx.journal_entry:
-                        for line in tx.journal_entry.lines.all():
-                            if line.account == old_account:
-                                line.account = target_account
-                                line.save()
-                                break
+                    # Reconciled transactions cannot be moved to another account
+                    is_reconciled = tx.journal_entry and tx.journal_entry.lines.filter(
+                        account=tx.account, is_reconciled=True
+                    ).exists()
+                    if not is_reconciled:
+                        old_account = tx.account
+                        tx.account = target_account
+                        if tx.journal_entry:
+                            for line in tx.journal_entry.lines.all():
+                                if line.account == old_account:
+                                    line.account = target_account
+                                    line.save()
+                                    break
 
                 # --- Payee ---
                 if payee_name is not None:
@@ -1114,11 +1119,19 @@ class BankFeedViewSet(
 
         ids = serializer.validated_data["ids"]
 
-        # Get transactions that belong to this team
+        # Get transactions that belong to this team, excluding reconciled ones
         transactions = BankTransaction.objects.filter(
             id__in=ids,
             team=request.team,
-        ).select_related("account")
+        ).select_related("account").prefetch_related("journal_entry__lines")
+
+        transactions = [
+            tx for tx in transactions
+            if not (
+                tx.journal_entry
+                and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
+            )
+        ]
 
         created_transactions = []
         for tx in transactions:
