@@ -691,54 +691,72 @@ def create_transactions(
     Returns:
         Dict with created_count, skipped_count, and error_count
     """
+    from apps.audit.models import AuditEvent
+    from apps.audit.utils import log_event
     from apps.bank_feed.models import BankTransaction
+
+    log_event(
+        AuditEvent.CSV_UPLOAD_STARTED,
+        team=team,
+        metadata={"account_id": account_id, "rows": len(transactions)},
+    )
 
     created_count = 0
     skipped_count = 0
     error_count = 0
 
-    for tx_data in transactions:
-        # Skip if marked to skip
-        if tx_data.get("skip"):
-            skipped_count += 1
-            continue
-
-        # Validate required fields
-        if not tx_data.get("date") or tx_data.get("amount") is None:
-            error_count += 1
-            continue
-
-        # Check for duplicates if skip_duplicates is True
-        if skip_duplicates:
-            existing = BankTransaction.objects.filter(
-                team=team,
-                account_id=account_id,
-                posted_date=tx_data["date"],
-                amount=tx_data["amount"],
-            )
-            if tx_data.get("description"):
-                existing = existing.filter(description__iexact=tx_data["description"])
-            if existing.exists():
+    try:
+        for tx_data in transactions:
+            # Skip if marked to skip
+            if tx_data.get("skip"):
                 skipped_count += 1
                 continue
 
-        # Create the BankTransaction
-        bank_tx = BankTransaction.objects.create(
-            team=team,
-            account_id=account_id,
-            posted_date=tx_data["date"],
-            description=tx_data.get("description") or "",
-            merchant_name=tx_data.get("payee"),
-            amount=tx_data["amount"],
-            source=BankTransaction.SOURCE_CSV,
-            raw=tx_data.get("raw"),
-        )
+            # Validate required fields
+            if not tx_data.get("date") or tx_data.get("amount") is None:
+                error_count += 1
+                continue
 
-        created_count += 1
+            # Check for duplicates if skip_duplicates is True
+            if skip_duplicates:
+                existing = BankTransaction.objects.filter(
+                    team=team,
+                    account_id=account_id,
+                    posted_date=tx_data["date"],
+                    amount=tx_data["amount"],
+                )
+                if tx_data.get("description"):
+                    existing = existing.filter(description__iexact=tx_data["description"])
+                if existing.exists():
+                    skipped_count += 1
+                    continue
 
-        # Auto-categorize if category_id is provided
-        if tx_data.get("category_id"):
-            _auto_categorize_transaction(bank_tx, tx_data["category_id"], team)
+            # Create the BankTransaction
+            bank_tx = BankTransaction.objects.create(
+                team=team,
+                account_id=account_id,
+                posted_date=tx_data["date"],
+                description=tx_data.get("description") or "",
+                merchant_name=tx_data.get("payee"),
+                amount=tx_data["amount"],
+                source=BankTransaction.SOURCE_CSV,
+                raw=tx_data.get("raw"),
+            )
+
+            created_count += 1
+
+            # Auto-categorize if category_id is provided
+            if tx_data.get("category_id"):
+                _auto_categorize_transaction(bank_tx, tx_data["category_id"], team)
+    except Exception as e:
+        log_event(AuditEvent.CSV_UPLOAD_FAILED, team=team, metadata={"account_id": account_id, "error": str(e)})
+        raise
+
+    log_event(
+        AuditEvent.CSV_UPLOAD_COMPLETED,
+        team=team,
+        metadata={"account_id": account_id, "transactions_created": created_count},
+    )
 
     return {
         "created_count": created_count,

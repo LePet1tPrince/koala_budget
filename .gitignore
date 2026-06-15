@@ -17,6 +17,7 @@ static_root/
 node_modules/
 # ai assistants
 .claude/settings.local.json
+.claude/worktrees/
 openapitools.json
 media/
 docs/_build

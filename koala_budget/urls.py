@@ -42,6 +42,7 @@ team_urlpatterns = [
     # path("budgeting/", include("apps.budgeting.urls")),
     path("accounts/", include("apps.accounts.urls")),
     path("journal/", include("apps.journal.urls")),
+    path("audit/", include("apps.audit.urls")),
     path("budget/", include("apps.budget.urls")),
     path("reports/", include("apps.reports.urls")),
     path("plaid/", include("apps.plaid.urls")),

@@ -22,6 +22,8 @@ from apps.accounts.serializers import (
     PayeeSerializer,
     SimpleAccountSerializer,
 )
+from apps.audit.models import AuditEvent
+from apps.audit.utils import log_event
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
@@ -228,6 +230,7 @@ class BankFeedViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        log_event(AuditEvent.BULK_CATEGORIZE, request=request, metadata={"count": len(transactions)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
@@ -975,6 +978,16 @@ class BankFeedViewSet(
 
                 tx.save()
 
+        log_event(
+            AuditEvent.BULK_EDIT,
+            request=request,
+            metadata={
+                "count": len(ids),
+                "fields": [
+                    k for k in ["category_id", "account_id", "payee", "description", "date"] if data.get(k) is not None
+                ],
+            },
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
@@ -1006,12 +1019,12 @@ class BankFeedViewSet(
 
         ids = serializer.validated_data["ids"]
 
-        # Update transactions that belong to this team
-        BankTransaction.objects.filter(
-            id__in=ids,
-            team=request.team,
-        ).update(is_archived=True)
+        # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
+        for tx in BankTransaction.objects.filter(id__in=ids, team=request.team):
+            tx.is_archived = True
+            tx.save(update_fields=["is_archived", "updated_at"])
 
+        log_event(AuditEvent.BULK_ARCHIVE, request=request, metadata={"count": len(ids)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
@@ -1032,12 +1045,12 @@ class BankFeedViewSet(
 
         ids = serializer.validated_data["ids"]
 
-        # Update transactions that belong to this team
-        BankTransaction.objects.filter(
-            id__in=ids,
-            team=request.team,
-        ).update(is_archived=False)
+        # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
+        for tx in BankTransaction.objects.filter(id__in=ids, team=request.team):
+            tx.is_archived = False
+            tx.save(update_fields=["is_archived", "updated_at"])
 
+        log_event(AuditEvent.BULK_UNARCHIVE, request=request, metadata={"count": len(ids)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
@@ -1071,6 +1084,7 @@ class BankFeedViewSet(
         if journal_entry_ids:
             JournalEntry.objects.filter(id__in=journal_entry_ids).delete()
 
+        log_event(AuditEvent.BULK_DELETE, request=request, metadata={"count": len(ids)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
@@ -1112,6 +1126,8 @@ class BankFeedViewSet(
                 journal_entry=None,
             )
             created_transactions.append(new_tx)
+
+        log_event(AuditEvent.BULK_DUPLICATE, request=request, metadata={"count": len(ids)})
 
         # Return the created transactions as feed rows
         rows = [bank_transaction_to_feed_row(tx) for tx in created_transactions]
@@ -1186,6 +1202,7 @@ class BankFeedViewSet(
                     date=reconciliation_date,
                 )
 
+        log_event(AuditEvent.BULK_RECONCILE, request=request, metadata={"count": len(ids)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
@@ -1320,6 +1337,7 @@ class BankFeedViewSet(
                         line.save()
                         break
 
+        log_event(AuditEvent.BULK_UNRECONCILE, request=request, metadata={"count": len(ids)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
