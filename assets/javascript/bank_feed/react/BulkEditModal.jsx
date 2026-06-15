@@ -39,6 +39,7 @@ const BulkEditModal = ({
   allPayees = [],
   bankFeedAccounts,
   onSave,
+  hasReconciledRows = false,
 }) => {
   const [date, setDate] = useState(null);
   const [category, setCategory] = useState(null);
@@ -153,22 +154,24 @@ const BulkEditModal = ({
             )}
           />
 
-          {/* Move to Account */}
-          <Autocomplete
-            value={account}
-            onChange={(_event, newValue) => setAccount(newValue)}
-            options={accountOptions}
-            getOptionLabel={(option) => option.label}
-            isOptionEqualToValue={(option, value) => option.id === value?.id}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={gettext('Move to Account')}
-                size="small"
-                placeholder={gettext('Leave blank to keep existing')}
-              />
-            )}
-          />
+          {/* Move to Account — hidden for reconciled transactions */}
+          {!hasReconciledRows && (
+            <Autocomplete
+              value={account}
+              onChange={(_event, newValue) => setAccount(newValue)}
+              options={accountOptions}
+              getOptionLabel={(option) => option.label}
+              isOptionEqualToValue={(option, value) => option.id === value?.id}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label={gettext('Move to Account')}
+                  size="small"
+                  placeholder={gettext('Leave blank to keep existing')}
+                />
+              )}
+            />
+          )}
 
           {/* Payee (free text with autocomplete from existing payees) */}
           <Autocomplete

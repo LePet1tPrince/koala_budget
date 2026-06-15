@@ -86,6 +86,11 @@ const BatchActionBar = ({
     return selectedRows.every(row => row.category);
   }, [selectedRows]);
 
+  // Check if any selected row is reconciled
+  const anyReconciled = useMemo(() => {
+    return selectedRows.some(r => r.isReconciled ?? r.is_reconciled ?? false);
+  }, [selectedRows]);
+
   // Get reconciled balance from selected account
   const reconciledBalance = useMemo(() => {
     if (selectedAccount?.reconciled_balance !== undefined && selectedAccount?.reconciled_balance !== null) {
@@ -289,7 +294,7 @@ const BatchActionBar = ({
             </Button>
           )}
 
-          {!isArchivedView && (
+          {!isArchivedView && !anyReconciled && (
             <Button
               size="small"
               startIcon={<ContentCopyIcon />}
@@ -322,6 +327,7 @@ const BatchActionBar = ({
         allPayees={allPayees}
         bankFeedAccounts={bankFeedAccounts}
         onSave={onBulkEdit}
+        hasReconciledRows={anyReconciled}
       />
 
       {/* Reconcile Dialog */}
