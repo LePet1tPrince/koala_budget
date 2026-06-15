@@ -5,7 +5,8 @@ import React, { useState } from 'react';
 import Step1FileUpload from './Step1FileUpload';
 import Step2ColumnMapping from './Step2ColumnMapping';
 import Step3CategoryMapping from './Step3CategoryMapping';
-import Step4Preview from './Step4Preview';
+import Step4DuplicateReview from './Step4DuplicateReview';
+import Step5Preview from './Step5Preview';
 
 /**
  * CSVUploadWizard - Multi-step wizard for uploading bank transactions from CSV/Excel
@@ -44,9 +45,15 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
   // Step 3 state
   const [categoryMappings, setCategoryMappings] = useState({});
 
-  // Step 4 state
+  // Step 4 (duplicate review) state — row_numbers the user chose to exclude
+  const [excludedDuplicateRows, setExcludedDuplicateRows] = useState(new Set());
+
+  // Step 5 state
   const [previewResult, setPreviewResult] = useState(null);
-  const [skipDuplicates, setSkipDuplicates] = useState(true);
+
+  // Derived helpers
+  const showStep3 = previewResult?.unmapped_categories?.length > 0;
+  const showStep4 = previewResult?.duplicate_count > 0;
 
   /**
    * Handle file upload and parsing (Step 1)
@@ -90,12 +97,14 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
       );
 
       setPreviewResult(result);
+      setExcludedDuplicateRows(new Set());
 
-      // If there are unmapped categories, go to step 3, otherwise skip to step 4
       if (result.unmapped_categories && result.unmapped_categories.length > 0) {
         setCurrentStep(3);
-      } else {
+      } else if (result.duplicate_count > 0) {
         setCurrentStep(4);
+      } else {
+        setCurrentStep(5);
       }
     } catch (err) {
       console.error('Preview error:', err);
@@ -111,7 +120,6 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
     setError(null);
 
     try {
-      // Re-run preview with category mappings
       const categoryMappingsList = Object.entries(mappings).map(([name, accountId]) => ({
         category_name: name,
         account_id: accountId,
@@ -126,7 +134,13 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
       );
 
       setPreviewResult(result);
-      setCurrentStep(4);
+      setExcludedDuplicateRows(new Set());
+
+      if (result.duplicate_count > 0) {
+        setCurrentStep(4);
+      } else {
+        setCurrentStep(5);
+      }
     } catch (err) {
       console.error('Preview error:', err);
       setError(err.message || gettext('Failed to preview transactions'));
@@ -134,16 +148,24 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
   };
 
   /**
-   * Handle import confirmation (Step 4)
+   * Handle duplicate review (Step 4)
+   */
+  const handleDuplicateReviewContinue = () => {
+    setCurrentStep(5);
+  };
+
+  /**
+   * Handle import confirmation (Step 5)
    */
   const handleConfirm = async (transactionsToImport) => {
     setError(null);
 
     try {
+      // skip_duplicates=false because the user already decided per-row in step 4
       const result = await uploadApi.uploadConfirm(
         selectedAccount.id,
         transactionsToImport,
-        skipDuplicates
+        false
       );
 
       onComplete(result);
@@ -157,22 +179,38 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
    * Go back to previous step
    */
   const handleBack = () => {
-    if (currentStep === 4 && previewResult?.unmapped_categories?.length > 0) {
-      setCurrentStep(3);
+    if (currentStep === 5) {
+      if (showStep4) {
+        setCurrentStep(4);
+      } else if (showStep3) {
+        setCurrentStep(3);
+      } else {
+        setCurrentStep(2);
+      }
+    } else if (currentStep === 4) {
+      if (showStep3) {
+        setCurrentStep(3);
+      } else {
+        setCurrentStep(2);
+      }
     } else if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
   };
 
+  // Build visible steps for the indicator
   const steps = [
     { number: 1, label: gettext('Upload') },
     { number: 2, label: gettext('Map Columns') },
-    { number: 3, label: gettext('Map Categories') },
-    { number: 4, label: gettext('Preview') },
+    ...(showStep3 ? [{ number: 3, label: gettext('Map Categories') }] : []),
+    ...(showStep4 ? [{ number: 4, label: gettext('Review Duplicates') }] : []),
+    { number: 5, label: gettext('Preview') },
   ];
 
-  // Determine if step 3 should be shown
-  const showStep3 = previewResult?.unmapped_categories?.length > 0;
+  // Map step numbers to display position for the indicator
+  const stepPosition = (stepNumber) => steps.findIndex((s) => s.number === stepNumber) + 1;
+  const currentPosition = stepPosition(currentStep);
+  const totalPositions = steps.length;
 
   return (
     <div className="modal modal-open">
@@ -183,20 +221,14 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
 
         {/* Step Indicator */}
         <ul className="steps steps-horizontal w-full mb-6">
-          {steps.map((step) => {
-            // Skip step 3 if no categories to map and we're past step 2
-            if (step.number === 3 && !showStep3 && currentStep > 2) {
-              return null;
-            }
-            return (
-              <li
-                key={step.number}
-                className={`step ${currentStep >= step.number ? 'step-primary' : ''}`}
-              >
-                {step.label}
-              </li>
-            );
-          })}
+          {steps.map((step, idx) => (
+            <li
+              key={step.number}
+              className={`step ${currentPosition >= idx + 1 ? 'step-primary' : ''}`}
+            >
+              {step.label}
+            </li>
+          ))}
         </ul>
 
         {error && (
@@ -238,12 +270,21 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
         )}
 
         {currentStep === 4 && previewResult && (
-          <Step4Preview
+          <Step4DuplicateReview
+            duplicates={previewResult.transactions.filter((tx) => tx.is_potential_duplicate)}
+            excludedRows={excludedDuplicateRows}
+            onExcludedRowsChange={setExcludedDuplicateRows}
+            onContinue={handleDuplicateReviewContinue}
+            onBack={handleBack}
+            onCancel={onCancel}
+          />
+        )}
+
+        {currentStep === 5 && previewResult && (
+          <Step5Preview
             transactions={previewResult.transactions}
             errorCount={previewResult.error_count}
-            duplicateCount={previewResult.duplicate_count}
-            skipDuplicates={skipDuplicates}
-            onSkipDuplicatesChange={setSkipDuplicates}
+            excludedDuplicateRows={excludedDuplicateRows}
             onConfirm={handleConfirm}
             onBack={handleBack}
             onCancel={onCancel}
