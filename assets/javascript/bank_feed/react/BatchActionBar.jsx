@@ -65,7 +65,7 @@ const BatchActionBar = ({
   // Reconcile dialog states
   const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false);
   const [unreconcileDialogOpen, setUnreconcileDialogOpen] = useState(false);
-  const [adjustmentAmount, setAdjustmentAmount] = useState('');
+  const [trueBalance, setTrueBalance] = useState('');
   const [reconciliationDate, setReconciliationDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Calculate inflow, outflow, and net from selected rows
@@ -99,21 +99,30 @@ const BatchActionBar = ({
     return 0;
   }, [selectedAccount]);
 
+  // Computed adjustment = trueBalance - (reconciledBalance + reconcilingAmount)
+  const computedAdjustment = useMemo(() => {
+    if (trueBalance === '' || trueBalance === null) return 0;
+    return parseFloat(trueBalance) - (reconciledBalance + reconcilingAmount);
+  }, [trueBalance, reconciledBalance, reconcilingAmount]);
+
   // Calculate new reconciled balance after reconciling (or unreconciling)
   const newReconciledBalance = useMemo(() => {
     if (filterMode === 'reconciled') {
       return reconciledBalance - reconcilingAmount;
     }
-    return reconciledBalance + reconcilingAmount + (parseFloat(adjustmentAmount) || 0);
-  }, [reconciledBalance, reconcilingAmount, adjustmentAmount, filterMode]);
+    if (trueBalance !== '' && trueBalance !== null) {
+      return parseFloat(trueBalance);
+    }
+    return reconciledBalance + reconcilingAmount;
+  }, [reconciledBalance, reconcilingAmount, trueBalance, filterMode]);
 
   // Handle reconcile submit
   const handleReconcileSubmit = () => {
     if (onReconcile) {
-      onReconcile(parseFloat(adjustmentAmount) || 0, reconciliationDate);
+      onReconcile(computedAdjustment, reconciliationDate);
     }
     setReconcileDialogOpen(false);
-    setAdjustmentAmount('');
+    setTrueBalance('');
     setReconciliationDate(new Date().toISOString().split('T')[0]);
   };
 
@@ -335,7 +344,7 @@ const BatchActionBar = ({
         open={reconcileDialogOpen}
         onClose={() => {
           setReconcileDialogOpen(false);
-          setAdjustmentAmount('');
+          setTrueBalance('');
           setReconciliationDate(new Date().toISOString().split('T')[0]);
         }}
         maxWidth="sm"
@@ -354,11 +363,11 @@ const BatchActionBar = ({
                 {formatCurrency(reconcilingAmount)}
               </Typography>
             </Box>
-            {adjustmentAmount && parseFloat(adjustmentAmount) !== 0 && (
+            {trueBalance !== '' && computedAdjustment !== 0 && (
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography>{gettext('Adjustment:')}</Typography>
-                <Typography sx={{ fontWeight: 'bold', color: parseFloat(adjustmentAmount) >= 0 ? 'success.main' : 'error.main' }}>
-                  {formatCurrency(parseFloat(adjustmentAmount))}
+                <Typography sx={{ fontWeight: 'bold', color: computedAdjustment >= 0 ? 'success.main' : 'error.main' }}>
+                  {formatCurrency(computedAdjustment)}
                 </Typography>
               </Box>
             )}
@@ -380,12 +389,12 @@ const BatchActionBar = ({
             />
             <TextField
               margin="dense"
-              label={gettext('Adjustment (optional)')}
+              label={gettext('True Balance (optional)')}
               fullWidth
               type="number"
-              value={adjustmentAmount}
-              onChange={(e) => setAdjustmentAmount(e.target.value)}
-              helperText={gettext('Creates a system adjustment if balance needs correction')}
+              value={trueBalance}
+              onChange={(e) => setTrueBalance(e.target.value)}
+              helperText={gettext('Enter your actual bank balance — an adjustment will be created automatically if needed')}
               sx={{ mt: 2 }}
               inputProps={{ step: "0.01" }}
             />
@@ -394,7 +403,7 @@ const BatchActionBar = ({
         <DialogActions>
           <Button onClick={() => {
             setReconcileDialogOpen(false);
-            setAdjustmentAmount('');
+            setTrueBalance('');
             setReconciliationDate(new Date().toISOString().split('T')[0]);
           }}>
             {gettext('Cancel')}
