@@ -47,8 +47,10 @@ def snapshot_journal_line(line):
     """Frozen snapshot of JournalLine fields (resolves FKs to display names)."""
     return {
         "account": {"id": line.account_id, "name": line.account.name} if line.account_id else None,
-        "dr_amount": str(line.dr_amount),
-        "cr_amount": str(line.cr_amount),
+        # Always format to 2dp so Decimal('0.00') and Decimal('0') compare equal and don't
+        # produce spurious diffs when lines are re-saved for budget re-linking.
+        "dr_amount": f"{line.dr_amount:.2f}",
+        "cr_amount": f"{line.cr_amount:.2f}",
         "is_reconciled": line.is_reconciled,
         "is_cleared": line.is_cleared,
     }

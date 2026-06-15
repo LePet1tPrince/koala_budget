@@ -55,6 +55,12 @@
     {% translate "Accounts" %}
   </a>
 </li>
+<li>
+  <a href="{% url 'audit:audit_log' request.team.slug %}" {% if active_tab == 'audit-log' %}class="menu-active"{% endif %}>
+    <i class="fa fa-history h-4 w-4"></i>
+    {% translate "Audit Log" %}
+  </a>
+</li>
 {% endif %}
 {% include "web/components/team_nav.html" %}
 <li>
