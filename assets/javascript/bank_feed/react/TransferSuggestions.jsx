@@ -102,7 +102,15 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
 
   const renderLeg = (leg, direction) => (
     <div className="rounded-lg border border-base-300 bg-base-100 p-3">
-      <div className="text-xs text-base-content/60">{leg.account?.name}</div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-base-content/60">{leg.account?.name}</span>
+        {leg.is_reconciled && (
+          <span className="badge badge-info badge-sm" title={gettext('Reconciled')}>
+            <i className="fa fa-lock mr-1"></i>
+            {gettext('Reconciled')}
+          </span>
+        )}
+      </div>
       <div className="font-medium">
         {direction === 'out'
           ? `- ${formatCurrency(leg.outflow)}`
@@ -112,6 +120,16 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
         {leg.posted_date}
         {leg.journal_entry_id ? ` · ${gettext('categorized')}` : ''}
       </div>
+      {leg.payee && (
+        <div className="text-xs text-base-content/80 mt-1">
+          <span className="text-base-content/50">{gettext('Payee:')}</span> {leg.payee}
+        </div>
+      )}
+      {leg.description && (
+        <div className="text-xs text-base-content/80 truncate" title={leg.description}>
+          <span className="text-base-content/50">{gettext('Memo:')}</span> {leg.description}
+        </div>
+      )}
     </div>
   );
 
@@ -150,6 +168,8 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
             <div className="space-y-3">
               {suggestions.map((pair) => {
                 const busy = busyKey === pairKey(pair);
+                const outReconciled = pair.outflow.is_reconciled;
+                const inReconciled = pair.inflow.is_reconciled;
                 return (
                   <div
                     key={pairKey(pair)}
@@ -164,17 +184,28 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
                       {renderLeg(pair.inflow, 'in')}
                     </div>
 
+                    {(outReconciled || inReconciled) && (
+                      <p className="text-xs text-info mt-2">
+                        <i className="fa fa-lock mr-1"></i>
+                        {gettext(
+                          'A reconciled leg cannot be archived — unreconcile it first if it really is a duplicate.',
+                        )}
+                      </p>
+                    )}
+
                     <div className="flex flex-wrap gap-2 mt-3 justify-end">
                       <button
                         className="btn btn-sm btn-outline btn-error"
-                        disabled={busy}
+                        disabled={busy || outReconciled}
+                        title={outReconciled ? gettext('This leg is reconciled') : undefined}
                         onClick={() => handleArchive(pair, pair.outflow, pair.inflow)}
                       >
                         {gettext('Duplicate — archive')} {pair.outflow.account?.name}
                       </button>
                       <button
                         className="btn btn-sm btn-outline btn-error"
-                        disabled={busy}
+                        disabled={busy || inReconciled}
+                        title={inReconciled ? gettext('This leg is reconciled') : undefined}
                         onClick={() => handleArchive(pair, pair.inflow, pair.outflow)}
                       >
                         {gettext('Duplicate — archive')} {pair.inflow.account?.name}
