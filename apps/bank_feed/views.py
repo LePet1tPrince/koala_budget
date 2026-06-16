@@ -47,6 +47,7 @@ from .serializers import (
 )
 from .services.csv_upload import create_transactions, parse_file, preview_transactions
 from .services.transfer_detection import find_transfer_candidates
+from .services.transfer_mirror import ensure_mirror_for, sync_counterpart_display
 
 
 class ManualTransactionSerializer(serializers.Serializer):
@@ -310,6 +311,10 @@ class BankFeedViewSet(
         bank_tx.journal_entry = journal_entry
         bank_tx.save()
 
+        # If this is a transfer to another feed account, surface the counterpart
+        # leg in that account's feed (linked to this same entry).
+        ensure_mirror_for(bank_tx)
+
         return journal_entry
 
     def list(self, request, team_slug=None):
@@ -434,6 +439,9 @@ class BankFeedViewSet(
                 source=BankTransaction.SOURCE_MANUAL,
                 journal_entry=journal_entry,
             )
+
+            # Mirror the leg into the counterpart account's feed if it's a transfer.
+            ensure_mirror_for(bank_tx)
 
         # Return the created transaction as a feed row
         row = bank_transaction_to_feed_row(bank_tx)
@@ -591,6 +599,13 @@ class BankFeedViewSet(
 
                 bank_tx.journal_entry = journal_entry
                 bank_tx.save()
+
+            # Keep the transfer's two legs in lockstep: create/update/remove the
+            # mirror from the primary, or sync display fields if the mirror was edited.
+            if bank_tx.is_transfer_mirror:
+                sync_counterpart_display(bank_tx)
+            else:
+                ensure_mirror_for(bank_tx)
 
         # Reload to get updated data
         bank_tx.refresh_from_db()
@@ -988,6 +1003,9 @@ class BankFeedViewSet(
 
                 tx.save()
 
+                # Keep a transfer's mirror leg aligned with any date/payee/desc edit.
+                sync_counterpart_display(tx)
+
         log_event(
             AuditEvent.BULK_EDIT,
             request=request,
@@ -1010,6 +1028,9 @@ class BankFeedViewSet(
                 line.account = new_category_account
                 line.save()
                 break
+
+        # The category drives whether this is a transfer: add/move/remove the mirror.
+        ensure_mirror_for(bank_tx)
 
     @extend_schema(
         operation_id="bank_feed_batch_archive",
@@ -1094,9 +1115,14 @@ class BankFeedViewSet(
             is_archived=True,
         ).select_related("journal_entry")
 
-        journal_entry_ids = [tx.journal_entry_id for tx in transactions if tx.journal_entry_id]
+        selected = list(transactions)
+        journal_entry_ids = [tx.journal_entry_id for tx in selected if tx.journal_entry_id]
 
-        transactions.delete()
+        # Delete both legs of any transfer being removed (the mirror leg may not be
+        # selected or archived), then any selected rows without an entry.
+        if journal_entry_ids:
+            BankTransaction.objects.filter(journal_entry_id__in=journal_entry_ids).delete()
+        BankTransaction.objects.filter(id__in=[tx.id for tx in selected]).delete()
 
         if journal_entry_ids:
             JournalEntry.objects.filter(id__in=journal_entry_ids).delete()
@@ -1440,6 +1466,13 @@ class BankFeedViewSet(
                 entry.save(update_fields=["status", "updated_at"])
 
             archive_tx.archive()
+
+            # If the voided leg had a mirror counterpart on the same entry, archive
+            # it too so the voided transfer disappears from both feeds.
+            if entry:
+                for leg in BankTransaction.objects.filter(journal_entry=entry).exclude(id=archive_tx.id):
+                    if not leg.is_archived:
+                        leg.archive()
 
         log_event(
             AuditEvent.TRANSFER_DUP_RESOLVED,

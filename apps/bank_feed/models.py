@@ -78,6 +78,14 @@ class BankTransaction(BaseTeamModel):
     )
     raw = models.JSONField(null=True, blank=True, help_text="Raw transaction data from source")
 
+    # When a transaction is categorized as a transfer to another feed account, a
+    # linked "mirror" leg is created in that account so the transfer shows up in
+    # both feeds. Both legs point at the same JournalEntry (no double-counting).
+    is_transfer_mirror = models.BooleanField(
+        default=False,
+        help_text="True if this row is the auto-created counterpart leg of a transfer",
+    )
+
     class Meta:
         ordering = ["-posted_date", "-created_at"]
         verbose_name = "Bank Transaction"

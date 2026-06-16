@@ -82,6 +82,10 @@ def find_transfer_candidates(team, window_days=None):
                     continue
                 if in_tx.account_id == out_tx.account_id:
                     continue
+                # The two legs of one transfer (a primary and its mirror) share a
+                # journal entry — they're one movement, not a duplicate.
+                if out_tx.journal_entry_id is not None and out_tx.journal_entry_id == in_tx.journal_entry_id:
+                    continue
                 if TransferMatchDismissal.normalize_pair(out_tx.id, in_tx.id) in dismissed:
                     continue
                 gap = abs((out_tx.posted_date - in_tx.posted_date).days)
