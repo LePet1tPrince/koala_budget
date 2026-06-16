@@ -1,16 +1,25 @@
 /* globals gettext */
 
 import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+} from '@mui/material';
 import { formatCurrency } from '../../utilities/currency';
 
 /**
  * TransferSuggestions
  *
- * Surfaces likely-duplicate transfers — a single movement of money between two
- * of the user's own accounts that both banks reported, so it appears in the feed
- * twice. The user reviews each pair and either archives one leg (keeping a single
- * journal entry, so balances aren't double-counted) or dismisses it as not a
- * duplicate. Nothing is auto-applied — the user is always in control.
+ * A notification button (with a count badge) that opens a modal for reviewing
+ * likely-duplicate transfers — a single movement of money between two of the
+ * user's own accounts that both banks reported, so it appears in the feed twice.
+ *
+ * In the modal the user reviews each pair and either archives one leg (keeping a
+ * single journal entry, so balances aren't double-counted) or dismisses it as
+ * not a duplicate. Nothing is auto-applied — the user is always in control.
  *
  * Props:
  *   batchApi     - object from getBatchOperationsApi (transferSuggestions/Resolve/Dismiss)
@@ -20,6 +29,7 @@ import { formatCurrency } from '../../utilities/currency';
 const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
 
   const pairKey = (pair) =>
@@ -83,8 +93,10 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
     }
   };
 
-  // Hide the panel entirely when there's nothing to review.
-  if (loading || suggestions.length === 0) {
+  const count = suggestions.length;
+
+  // Nothing to review and nothing in flight: render no button at all.
+  if ((loading || count === 0) && !open) {
     return null;
   }
 
@@ -104,63 +116,88 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
   );
 
   return (
-    <section className="app-card border-l-4 border-warning">
-      <div className="flex items-center gap-2 mb-1">
-        <i className="fa fa-exchange text-warning"></i>
-        <h2 className="pg-subtitle">{gettext('Possible duplicate transfers')}</h2>
-        <span className="badge badge-warning badge-sm">{suggestions.length}</span>
-      </div>
-      <p className="text-xs text-base-content/60 mb-4">
-        {gettext(
-          'These look like two sides of the same transfer between your accounts. Archive the duplicate to avoid double-counting, then categorize the one you keep as a transfer.',
-        )}
-      </p>
+    <>
+      <button
+        type="button"
+        className="btn btn-sm btn-outline btn-warning"
+        onClick={() => setOpen(true)}
+        data-testid="transfer-review-button"
+        aria-label={gettext('Review possible duplicate transfers')}
+      >
+        <i className="fa fa-exchange mr-2"></i>
+        {gettext('Review transfers')}
+        <span className="badge badge-warning badge-sm ml-2">{count}</span>
+      </button>
 
-      <div className="space-y-3">
-        {suggestions.map((pair) => {
-          const busy = busyKey === pairKey(pair);
-          return (
-            <div
-              key={pairKey(pair)}
-              className="rounded-lg bg-base-200 p-3"
-              data-testid={`transfer-suggestion-${pairKey(pair)}`}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-center">
-                {renderLeg(pair.outflow, 'out')}
-                <div className="text-center text-base-content/40">
-                  <i className="fa fa-arrow-right"></i>
-                </div>
-                {renderLeg(pair.inflow, 'in')}
-              </div>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {gettext('Possible duplicate transfers')}
+          {count > 0 ? ` (${count})` : ''}
+        </DialogTitle>
+        <DialogContent dividers>
+          <p className="text-xs text-base-content/60 mb-4">
+            {gettext(
+              'These look like two sides of the same transfer between your accounts. Archive the duplicate to avoid double-counting, then categorize the one you keep as a transfer.',
+            )}
+          </p>
 
-              <div className="flex flex-wrap gap-2 mt-3 justify-end">
-                <button
-                  className="btn btn-sm btn-outline btn-error"
-                  disabled={busy}
-                  onClick={() => handleArchive(pair, pair.outflow, pair.inflow)}
-                >
-                  {gettext('Duplicate — archive')} {pair.outflow.account?.name}
-                </button>
-                <button
-                  className="btn btn-sm btn-outline btn-error"
-                  disabled={busy}
-                  onClick={() => handleArchive(pair, pair.inflow, pair.outflow)}
-                >
-                  {gettext('Duplicate — archive')} {pair.inflow.account?.name}
-                </button>
-                <button
-                  className="btn btn-sm btn-ghost"
-                  disabled={busy}
-                  onClick={() => handleDismiss(pair)}
-                >
-                  {gettext('Not a duplicate')}
-                </button>
-              </div>
+          {count === 0 ? (
+            <div className="text-center text-base-content/60 py-8">
+              <i className="fa fa-check-circle text-success text-2xl mb-2"></i>
+              <p>{gettext('All transfers reviewed.')}</p>
             </div>
-          );
-        })}
-      </div>
-    </section>
+          ) : (
+            <div className="space-y-3">
+              {suggestions.map((pair) => {
+                const busy = busyKey === pairKey(pair);
+                return (
+                  <div
+                    key={pairKey(pair)}
+                    className="rounded-lg bg-base-200 p-3"
+                    data-testid={`transfer-suggestion-${pairKey(pair)}`}
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-center">
+                      {renderLeg(pair.outflow, 'out')}
+                      <div className="text-center text-base-content/40">
+                        <i className="fa fa-arrow-right"></i>
+                      </div>
+                      {renderLeg(pair.inflow, 'in')}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-3 justify-end">
+                      <button
+                        className="btn btn-sm btn-outline btn-error"
+                        disabled={busy}
+                        onClick={() => handleArchive(pair, pair.outflow, pair.inflow)}
+                      >
+                        {gettext('Duplicate — archive')} {pair.outflow.account?.name}
+                      </button>
+                      <button
+                        className="btn btn-sm btn-outline btn-error"
+                        disabled={busy}
+                        onClick={() => handleArchive(pair, pair.inflow, pair.outflow)}
+                      >
+                        {gettext('Duplicate — archive')} {pair.inflow.account?.name}
+                      </button>
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        disabled={busy}
+                        onClick={() => handleDismiss(pair)}
+                      >
+                        {gettext('Not a duplicate')}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>{gettext('Close')}</Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 
