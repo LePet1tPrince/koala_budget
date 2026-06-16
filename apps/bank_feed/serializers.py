@@ -161,6 +161,45 @@ class CategorySuggestionSerializer(serializers.Serializer):
     category_name = serializers.CharField(help_text="Name of the most recently used category")
 
 
+class TransferSuggestionSerializer(serializers.Serializer):
+    """A suggested pair of bank transactions that look like two legs of one transfer."""
+
+    outflow = serializers.SerializerMethodField(help_text="The source-account leg (money out)")
+    inflow = serializers.SerializerMethodField(help_text="The destination-account leg (money in)")
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, help_text="Transfer amount (magnitude)")
+    date_gap_days = serializers.IntegerField(help_text="Days between the two legs' posted dates")
+
+    def get_outflow(self, obj):
+        return BankFeedRowSerializer(bank_transaction_to_feed_row(obj["outflow"])).data
+
+    def get_inflow(self, obj):
+        return BankFeedRowSerializer(bank_transaction_to_feed_row(obj["inflow"])).data
+
+
+class TransferResolveRequestSerializer(serializers.Serializer):
+    """Resolve a duplicate transfer by archiving one leg and keeping the other."""
+
+    archive_id = serializers.IntegerField(help_text="BankTransaction id of the duplicate leg to archive")
+    keep_id = serializers.IntegerField(help_text="BankTransaction id of the leg to keep")
+
+    def validate(self, data):
+        if data["archive_id"] == data["keep_id"]:
+            raise serializers.ValidationError("archive_id and keep_id must be different transactions.")
+        return data
+
+
+class TransferDismissRequestSerializer(serializers.Serializer):
+    """Dismiss a suggested pair as 'not a duplicate' so it stops being suggested."""
+
+    transaction_a = serializers.IntegerField(help_text="BankTransaction id of one leg")
+    transaction_b = serializers.IntegerField(help_text="BankTransaction id of the other leg")
+
+    def validate(self, data):
+        if data["transaction_a"] == data["transaction_b"]:
+            raise serializers.ValidationError("transaction_a and transaction_b must be different transactions.")
+        return data
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.

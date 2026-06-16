@@ -219,7 +219,8 @@ export function getBatchOperationsApi(teamSlug) {
         'Content-Type': 'application/json',
         'X-CSRFToken': headers['X-CSRFToken'],
       },
-      body: JSON.stringify(body),
+      // GET requests must not carry a body.
+      ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
@@ -241,5 +242,10 @@ export function getBatchOperationsApi(teamSlug) {
     batchDuplicate: (ids) => fetchJson('batch_duplicate', { ids }),
     batchReconcile: (ids, adjustmentAmount = 0, reconciliationDate = null) => fetchJson('batch_reconcile', { ids, adjustment_amount: adjustmentAmount, reconciliation_date: reconciliationDate }),
     batchUnreconcile: (ids) => fetchJson('batch_unreconcile', { ids }),
+
+    // Transfer duplicate review: list suggested pairs, archive one leg, or dismiss.
+    transferSuggestions: () => fetchJson('transfers', null, 'GET'),
+    transferResolve: (archiveId, keepId) => fetchJson('transfers/resolve', { archive_id: archiveId, keep_id: keepId }),
+    transferDismiss: (transactionA, transactionB) => fetchJson('transfers/dismiss', { transaction_a: transactionA, transaction_b: transactionB }),
   };
 }

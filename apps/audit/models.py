@@ -28,6 +28,8 @@ class AuditEvent(models.Model):
     BULK_UNARCHIVE = "bulk_unarchive"
     BULK_DELETE = "bulk_delete"
     BULK_DUPLICATE = "bulk_duplicate"
+    TRANSFER_DUP_RESOLVED = "transfer_dup_resolved"
+    TRANSFER_DUP_DISMISSED = "transfer_dup_dismissed"
     TEAM_MEMBER_ADDED = "team_member_added"
     TEAM_MEMBER_REMOVED = "team_member_removed"
 
@@ -49,6 +51,8 @@ class AuditEvent(models.Model):
         (BULK_UNARCHIVE, "Bulk Unarchive"),
         (BULK_DELETE, "Bulk Delete"),
         (BULK_DUPLICATE, "Bulk Duplicate"),
+        (TRANSFER_DUP_RESOLVED, "Transfer Duplicate Resolved"),
+        (TRANSFER_DUP_DISMISSED, "Transfer Duplicate Dismissed"),
         (TEAM_MEMBER_ADDED, "Team Member Added"),
         (TEAM_MEMBER_REMOVED, "Team Member Removed"),
     ]

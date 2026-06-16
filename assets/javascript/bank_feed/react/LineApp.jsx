@@ -9,6 +9,7 @@ import LineTableMaterial from './LineTableMaterial';
 import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
+import TransferSuggestions from './TransferSuggestions';
 import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
 
 /**
@@ -575,6 +576,15 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           // </div>
         )}
       </section>
+
+      {/* Possible duplicate transfers (cross-account) */}
+      <TransferSuggestions
+        batchApi={batchApi}
+        showSnackbar={showSnackbar}
+        onResolved={() => {
+          if (selectedAccountRef.current) loadLines();
+        }}
+      />
 
       {/* Lines Table */}
       {selectedAccount && (

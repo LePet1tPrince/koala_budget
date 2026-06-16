@@ -107,3 +107,52 @@ class BankTransaction(BaseTeamModel):
             self.SOURCE_MANUAL: JournalEntry.SOURCE_MANUAL,
             self.SOURCE_SYSTEM: JournalEntry.SOURCE_BANK_MATCH,
         }.get(self.source, JournalEntry.SOURCE_IMPORT)
+
+
+class TransferMatchDismissal(BaseTeamModel):
+    """
+    Records that the user reviewed two bank transactions flagged as a possible
+    duplicated transfer and confirmed they are NOT the same movement of money.
+
+    The transfer detector excludes any pair recorded here, so a dismissed
+    suggestion does not keep reappearing on every sync. The two transactions are
+    stored in a normalized (low id, high id) order so the pair is unique
+    regardless of which side the user clicked.
+    """
+
+    transaction_low = models.ForeignKey(
+        "bank_feed.BankTransaction",
+        on_delete=models.CASCADE,
+        related_name="transfer_dismissals_as_low",
+        help_text="The paired transaction with the lower id",
+    )
+    transaction_high = models.ForeignKey(
+        "bank_feed.BankTransaction",
+        on_delete=models.CASCADE,
+        related_name="transfer_dismissals_as_high",
+        help_text="The paired transaction with the higher id",
+    )
+
+    class Meta:
+        verbose_name = "Transfer Match Dismissal"
+        verbose_name_plural = "Transfer Match Dismissals"
+        unique_together = ["team", "transaction_low", "transaction_high"]
+
+    def __str__(self):
+        return f"Not-a-transfer: {self.transaction_low_id} / {self.transaction_high_id}"
+
+    @staticmethod
+    def normalize_pair(tx_id_a, tx_id_b):
+        """Return (low_id, high_id) for a pair of transaction ids."""
+        return (tx_id_a, tx_id_b) if tx_id_a <= tx_id_b else (tx_id_b, tx_id_a)
+
+    @classmethod
+    def record(cls, team, tx_id_a, tx_id_b):
+        """Idempotently record a dismissed pair (order-independent)."""
+        low, high = cls.normalize_pair(tx_id_a, tx_id_b)
+        obj, _ = cls.objects.get_or_create(
+            team=team,
+            transaction_low_id=low,
+            transaction_high_id=high,
+        )
+        return obj
