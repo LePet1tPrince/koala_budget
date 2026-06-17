@@ -1,28 +1,29 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
 
-const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
-const ACCOUNT_TYPE_LABELS = {
-  expense: 'Expenses',
-  income: 'Income',
-  asset: 'Assets',
-  liability: 'Liabilities',
-  goal: 'Goals',
-};
-const ACCOUNT_TYPE_ICONS = {
-  expense: '💸',
-  income: '💰',
-  asset: '🏦',
-  liability: '💳',
-  goal: '🎯',
-};
-const ACCOUNT_TYPE_COLORS = {
-  expense: 'from-red-500 to-orange-500',
-  income: 'from-green-500 to-emerald-500',
-  asset: 'from-blue-500 to-cyan-500',
-  liability: 'from-purple-500 to-pink-500',
-  goal: 'from-amber-500 to-yellow-500',
-};
+const CATEGORY_GROUPS = [
+  {
+    key: 'income_expense',
+    label: 'Income / Expense',
+    icon: '💸',
+    gradient: 'from-green-500 to-orange-500',
+    types: ['income', 'expense'],
+  },
+  {
+    key: 'transfer',
+    label: 'Transfer',
+    icon: '🔄',
+    gradient: 'from-blue-500 to-purple-500',
+    types: ['asset', 'liability'],
+  },
+  {
+    key: 'goal',
+    label: 'Goals',
+    icon: '🎯',
+    gradient: 'from-amber-500 to-yellow-500',
+    types: ['goal'],
+  },
+];
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -134,7 +135,7 @@ function SimilarTransactionsTooltip({ transaction, allTransactions }) {
   );
 }
 
-function TransactionCard({ transaction, index, total, allTransactions, isExiting }) {
+function TransactionCard({ transaction, index, total, allTransactions, isExiting, isSkipping }) {
   const isTop = index === 0;
   const offset = Math.min(index, 4);
   const scale = 1 - offset * 0.03;
@@ -144,7 +145,7 @@ function TransactionCard({ transaction, index, total, allTransactions, isExiting
 
   return (
     <div
-      className={`absolute w-full transition-all duration-500 ease-out ${isExiting && isTop ? 'card-exit' : ''}`}
+      className={`absolute w-full transition-all duration-500 ease-out ${isExiting && isTop ? 'card-exit' : ''} ${isSkipping && isTop ? 'card-skip' : ''}`}
       style={{
         transform: `translateY(${translateY}px) scale(${scale})`,
         opacity,
@@ -189,8 +190,8 @@ function TransactionCard({ transaction, index, total, allTransactions, isExiting
 }
 
 function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect }) {
-  const [activeType, setActiveType] = useState(null);
-  const [activeGroup, setActiveGroup] = useState(null);
+  const [activeCategoryGroup, setActiveCategoryGroup] = useState(null);
+  const [activeAccountGroup, setActiveAccountGroup] = useState(null);
 
   const suggestedAccountId = useMemo(() => {
     if (!currentTransaction) return null;
@@ -202,54 +203,53 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
     return suggestion?.category_id || null;
   }, [currentTransaction, categorySuggestions]);
 
-  const hierarchy = useMemo(() => {
-    const tree = {};
-    ACCOUNT_TYPE_ORDER.forEach(type => {
-      const groups = allAccountGroups
-        .filter(g => g.account_type === type)
+  const groupedHierarchy = useMemo(() => {
+    return CATEGORY_GROUPS.map(cg => {
+      const accountGroups = allAccountGroups
+        .filter(g => cg.types.includes(g.account_type))
         .map(g => ({
           ...g,
           accounts: allAccounts.filter(a => a.account_group === g.id),
         }))
         .filter(g => g.accounts.length > 0);
-      if (groups.length > 0) tree[type] = groups;
-    });
-    return tree;
+      const totalAccounts = accountGroups.reduce((sum, g) => sum + g.accounts.length, 0);
+      return { ...cg, accountGroups, totalAccounts };
+    }).filter(cg => cg.totalAccounts > 0);
   }, [allAccounts, allAccountGroups]);
 
-  const visibleTypes = activeType ? [activeType] : Object.keys(hierarchy);
+  const resetNav = () => { setActiveCategoryGroup(null); setActiveAccountGroup(null); };
 
   return (
     <div className="flex flex-col h-full">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-4 min-h-[32px]">
         <button
-          onClick={() => { setActiveType(null); setActiveGroup(null); }}
-          className={`btn btn-xs ${!activeType ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={resetNav}
+          className={`btn btn-xs ${!activeCategoryGroup ? 'btn-primary' : 'btn-ghost'}`}
         >
           All
         </button>
-        {activeType && (
+        {activeCategoryGroup && (
           <>
             <span className="text-base-content/30">›</span>
             <button
-              onClick={() => setActiveGroup(null)}
-              className={`btn btn-xs ${!activeGroup ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setActiveAccountGroup(null)}
+              className={`btn btn-xs ${!activeAccountGroup ? 'btn-primary' : 'btn-ghost'}`}
             >
-              {ACCOUNT_TYPE_ICONS[activeType]} {ACCOUNT_TYPE_LABELS[activeType]}
+              {activeCategoryGroup.icon} {activeCategoryGroup.label}
             </button>
           </>
         )}
-        {activeGroup && (
+        {activeAccountGroup && (
           <>
             <span className="text-base-content/30">›</span>
-            <span className="btn btn-xs btn-primary">{activeGroup.name}</span>
+            <span className="btn btn-xs btn-primary">{activeAccountGroup.name}</span>
           </>
         )}
       </div>
 
       {/* Suggested account */}
-      {suggestedAccountId && !activeType && (
+      {suggestedAccountId && !activeCategoryGroup && (
         <div className="mb-4 animate-pulse-subtle">
           <p className="text-xs font-semibold text-success mb-2">✨ Suggested</p>
           {(() => {
@@ -270,19 +270,18 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
 
       {/* Hierarchy browser */}
       <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-        {!activeType && !activeGroup && (
-          // Show type buttons
-          ACCOUNT_TYPE_ORDER.filter(t => hierarchy[t]).map(type => (
+        {!activeCategoryGroup && !activeAccountGroup && (
+          groupedHierarchy.map(cg => (
             <button
-              key={type}
-              onClick={() => setActiveType(type)}
-              className={`w-full flex items-center gap-3 p-4 rounded-xl border border-base-300 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r ${ACCOUNT_TYPE_COLORS[type]} bg-opacity-5 hover:bg-opacity-10 group`}
+              key={cg.key}
+              onClick={() => setActiveCategoryGroup(cg)}
+              className={`w-full flex items-center gap-3 p-4 rounded-xl border border-base-300 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r ${cg.gradient} bg-opacity-5 hover:bg-opacity-10 group`}
             >
-              <span className="text-2xl">{ACCOUNT_TYPE_ICONS[type]}</span>
+              <span className="text-2xl">{cg.icon}</span>
               <div className="flex-1 text-left">
-                <div className="font-bold text-base-content">{ACCOUNT_TYPE_LABELS[type]}</div>
+                <div className="font-bold text-base-content">{cg.label}</div>
                 <div className="text-xs text-base-content/50">
-                  {hierarchy[type].reduce((sum, g) => sum + g.accounts.length, 0)} accounts
+                  {cg.totalAccounts} accounts
                 </div>
               </div>
               <span className="text-base-content/30 group-hover:text-primary transition-colors">›</span>
@@ -290,12 +289,11 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
           ))
         )}
 
-        {activeType && !activeGroup && (
-          // Show groups for this type
-          hierarchy[activeType]?.map(group => (
+        {activeCategoryGroup && !activeAccountGroup && (
+          activeCategoryGroup.accountGroups.map(group => (
             <button
               key={group.id}
-              onClick={() => setActiveGroup(group)}
+              onClick={() => setActiveAccountGroup(group)}
               className="w-full flex items-center gap-3 p-3 rounded-xl border border-base-300 hover:border-primary hover:shadow-md transition-all group"
             >
               <div className="flex-1 text-left">
@@ -307,9 +305,8 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
           ))
         )}
 
-        {activeType && activeGroup && (
-          // Show accounts in this group
-          activeGroup.accounts.map(account => (
+        {activeCategoryGroup && activeAccountGroup && (
+          activeAccountGroup.accounts.map(account => (
             <button
               key={account.id}
               onClick={() => onSelect(account)}
@@ -379,6 +376,8 @@ export default function CategorizeMode({
   const [showConfetti, setShowConfetti] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [undoStack, setUndoStack] = useState([]);
+  const [isSkipping, setIsSkipping] = useState(false);
+  const [skippedCount, setSkippedCount] = useState(0);
   const [categorySuggestions, setCategorySuggestions] = useState(initialSuggestions || []);
   const headers = getApiHeaders();
 
@@ -454,9 +453,22 @@ export default function CategorizeMode({
     }
   }, [transactions, categorized, streak, teamSlug, headers]);
 
+  const skipTransaction = useCallback(() => {
+    const tx = transactions[0];
+    if (!tx) return;
+    setIsSkipping(true);
+    setTimeout(() => {
+      setTransactions(prev => [...prev.slice(1), prev[0]]);
+      setSkippedCount(s => s + 1);
+      setStreak(0);
+      setIsSkipping(false);
+    }, 300);
+  }, [transactions]);
+
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') window.location.href = backUrl;
+      if (e.key === 's' && !e.ctrlKey && !e.metaKey) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
         e.preventDefault();
         // Undo not implemented on backend — just visual feedback
@@ -550,12 +562,21 @@ export default function CategorizeMode({
                 total={Math.min(transactions.length, 5)}
                 allTransactions={transactions}
                 isExiting={isExiting}
+                isSkipping={isSkipping}
               />
             ))}
           </div>
-          <div className="mt-6 text-center">
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <button
+              onClick={skipTransaction}
+              disabled={isExiting || isSkipping}
+              className="btn btn-ghost btn-sm gap-1 text-base-content/50 hover:text-base-content"
+            >
+              ⏭ Skip for now
+              <kbd className="kbd kbd-xs ml-1">S</kbd>
+            </button>
             <p className="text-sm text-base-content/40">
-              {transactions.length} transaction{transactions.length !== 1 ? 's' : ''} remaining
+              {transactions.length} remaining{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}
             </p>
           </div>
         </div>
@@ -580,6 +601,13 @@ export default function CategorizeMode({
         @keyframes cardExit {
           0% { transform: translateX(0) rotate(0deg); opacity: 1; }
           100% { transform: translateX(120%) rotate(15deg); opacity: 0; }
+        }
+        .card-skip {
+          animation: cardSkip 0.3s ease-in forwards;
+        }
+        @keyframes cardSkip {
+          0% { transform: translateY(0); opacity: 1; }
+          100% { transform: translateY(120%) scale(0.8); opacity: 0; }
         }
         .animate-in {
           animation: fadeIn 0.2s ease-out;
