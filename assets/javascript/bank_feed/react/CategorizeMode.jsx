@@ -3,6 +3,12 @@ import { getApiHeaders } from '../../api';
 
 const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
 
+const TOP_LEVEL_FILTERS = [
+  { key: 'income_expense', label: 'Income / Expense', icon: '💸', types: ['income', 'expense'] },
+  { key: 'transfer', label: 'Transfer', icon: '🔄', types: ['asset', 'liability'] },
+  { key: 'goal', label: 'Goals', icon: '🎯', types: ['goal'] },
+];
+
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
@@ -195,10 +201,16 @@ function fuzzyMatch(text, query) {
 
 function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState(null);       // 'income','expense','asset','liability','goal'
-  const [filterGroupId, setFilterGroupId] = useState(null);  // account_group id
-  const [filterInstitution, setFilterInstitution] = useState(null); // institution name
+  const [activeTopFilter, setActiveTopFilter] = useState(null); // TOP_LEVEL_FILTERS key
+  const [filterGroupId, setFilterGroupId] = useState(null);
+  const [filterInstitution, setFilterInstitution] = useState(null);
   const searchRef = useRef(null);
+
+  const activeTopGroup = useMemo(
+    () => TOP_LEVEL_FILTERS.find(f => f.key === activeTopFilter) || null,
+    [activeTopFilter]
+  );
+  const activeTypes = activeTopGroup?.types || null;
 
   const suggestedAccountId = useMemo(() => {
     if (!currentTransaction) return null;
@@ -215,32 +227,27 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
     return allAccounts.find(a => a.id === suggestedAccountId) || null;
   }, [suggestedAccountId, allAccounts]);
 
-  // Derive unique filter options
-  const accountTypes = useMemo(() => {
-    const types = new Set(allAccounts.map(a => a.account_type));
-    return ACCOUNT_TYPE_ORDER.filter(t => types.has(t));
-  }, [allAccounts]);
-
-  const accountGroupNames = useMemo(() => {
-    const groups = allAccountGroups
-      .filter(g => !filterType || g.account_type === filterType)
+  // Second-level filters: only shown when a top-level filter is active
+  const relevantGroups = useMemo(() => {
+    if (!activeTypes) return [];
+    return allAccountGroups
+      .filter(g => activeTypes.includes(g.account_type))
       .sort((a, b) => a.name.localeCompare(b.name));
-    return groups;
-  }, [allAccountGroups, filterType]);
+  }, [allAccountGroups, activeTypes]);
 
-  const institutions = useMemo(() => {
+  const relevantInstitutions = useMemo(() => {
+    if (!activeTypes) return [];
     const names = new Set(
       allAccounts
-        .filter(a => a.institution_name)
+        .filter(a => activeTypes.includes(a.account_type) && a.institution_name)
         .map(a => a.institution_name)
     );
     return [...names].sort();
-  }, [allAccounts]);
+  }, [allAccounts, activeTypes]);
 
-  // Build searchable text per account for fuzzy matching
   const filteredAccounts = useMemo(() => {
     return allAccounts.filter(a => {
-      if (filterType && a.account_type !== filterType) return false;
+      if (activeTypes && !activeTypes.includes(a.account_type)) return false;
       if (filterGroupId && a.account_group !== filterGroupId) return false;
       if (filterInstitution && a.institution_name !== filterInstitution) return false;
       if (searchQuery) {
@@ -250,9 +257,8 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
       }
       return true;
     });
-  }, [allAccounts, filterType, filterGroupId, filterInstitution, searchQuery]);
+  }, [allAccounts, activeTypes, filterGroupId, filterInstitution, searchQuery]);
 
-  // Group filtered accounts by account_group_name, sorted
   const groupedAccounts = useMemo(() => {
     const groups = {};
     filteredAccounts.forEach(a => {
@@ -265,21 +271,17 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
       .map(([name, accounts]) => ({ name, accounts: accounts.sort((a, b) => a.name.localeCompare(b.name)) }));
   }, [filteredAccounts]);
 
-  const hasActiveFilters = filterType || filterGroupId || filterInstitution;
-
   const clearFilters = () => {
-    setFilterType(null);
+    setActiveTopFilter(null);
     setFilterGroupId(null);
     setFilterInstitution(null);
     setSearchQuery('');
   };
 
-  // Auto-focus search on mount
   useEffect(() => { searchRef.current?.focus(); }, []);
 
-  // Reset filters when transaction changes
   useEffect(() => {
-    setFilterType(null);
+    setActiveTopFilter(null);
     setFilterGroupId(null);
     setFilterInstitution(null);
     setSearchQuery('');
@@ -309,37 +311,50 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
         )}
       </div>
 
-      {/* Filter tiles */}
+      {/* Filter tiles — progressive disclosure */}
       <div className="flex flex-wrap gap-1.5 mb-3">
-        {/* Type filters */}
-        {accountTypes.map(type => (
+        {/* Top level: Transfer / Income-Expense / Goals */}
+        {TOP_LEVEL_FILTERS.map(f => (
           <button
-            key={type}
-            onClick={() => setFilterType(filterType === type ? null : type)}
-            className={`badge badge-lg cursor-pointer transition-all hover:shadow ${
-              filterType === type ? 'badge-primary' : 'badge-outline'
+            key={f.key}
+            onClick={() => {
+              if (activeTopFilter === f.key) {
+                setActiveTopFilter(null);
+              } else {
+                setActiveTopFilter(f.key);
+              }
+              setFilterGroupId(null);
+              setFilterInstitution(null);
+            }}
+            className={`badge badge-lg cursor-pointer transition-all hover:shadow gap-1 ${
+              activeTopFilter === f.key ? 'badge-primary' : 'badge-outline'
             }`}
           >
-            {ACCOUNT_TYPE_LABELS[type] || type}
+            {f.icon} {f.label}
           </button>
         ))}
-        <span className="w-px h-6 bg-base-300 self-center mx-0.5" />
-        {/* Account group filters */}
-        {accountGroupNames.map(g => (
-          <button
-            key={g.id}
-            onClick={() => setFilterGroupId(filterGroupId === g.id ? null : g.id)}
-            className={`badge badge-lg cursor-pointer transition-all hover:shadow ${
-              filterGroupId === g.id ? 'badge-secondary' : 'badge-outline'
-            }`}
-          >
-            {g.name}
-          </button>
-        ))}
-        {institutions.length > 0 && (
+
+        {/* Second level: account groups + institutions (only when a top filter is active) */}
+        {activeTopGroup && relevantGroups.length > 0 && (
           <>
             <span className="w-px h-6 bg-base-300 self-center mx-0.5" />
-            {institutions.map(inst => (
+            {relevantGroups.map(g => (
+              <button
+                key={g.id}
+                onClick={() => setFilterGroupId(filterGroupId === g.id ? null : g.id)}
+                className={`badge badge-lg cursor-pointer transition-all hover:shadow ${
+                  filterGroupId === g.id ? 'badge-secondary' : 'badge-outline'
+                }`}
+              >
+                {g.name}
+              </button>
+            ))}
+          </>
+        )}
+        {activeTopGroup && relevantInstitutions.length > 0 && (
+          <>
+            <span className="w-px h-6 bg-base-300 self-center mx-0.5" />
+            {relevantInstitutions.map(inst => (
               <button
                 key={inst}
                 onClick={() => setFilterInstitution(filterInstitution === inst ? null : inst)}
@@ -352,7 +367,7 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
             ))}
           </>
         )}
-        {hasActiveFilters && (
+        {(activeTopFilter || filterGroupId || filterInstitution) && (
           <button onClick={clearFilters} className="badge badge-lg badge-ghost cursor-pointer">
             ✕ Clear
           </button>
