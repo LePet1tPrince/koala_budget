@@ -17,5 +17,6 @@ router.register(r"feed", views.BankFeedViewSet, basename="bank-feed")
 # URL patterns (all bank_feed URLs are team-based)
 urlpatterns = [
     path("", views.bank_feed_home, name="bank_feed_home"),
+    path("categorize/", views.categorize_mode, name="categorize_mode"),
     path("api/", include(router.urls)),
 ]

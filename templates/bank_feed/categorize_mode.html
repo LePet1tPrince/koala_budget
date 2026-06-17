@@ -1,0 +1,25 @@
+{% extends "web/base.html" %}
+{% load django_vite %}
+{% load i18n %}
+
+{% block body_wrapper %}
+  <div id="categorize-app">
+    <div class="min-h-screen flex items-center justify-center bg-base-200">
+      <span class="loading loading-spinner loading-lg text-primary"></span>
+    </div>
+  </div>
+
+  {{ all_accounts|json_script:'all-accounts' }}
+  {{ all_account_groups|json_script:'all-account-groups' }}
+  {{ team_slug|json_script:'team-slug' }}
+  {{ back_url|json_script:'back-url' }}
+  <script id="category-suggestions" type="application/json">[]</script>
+{% endblock %}
+
+{% block page_js %}
+  <script>
+    const SERVER_URL_BASE = "{{ request.scheme }}://{{ request.get_host }}";
+  </script>
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/bank_feed/react/categorize-app.jsx' %}
+{% endblock %}

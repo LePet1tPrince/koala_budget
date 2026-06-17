@@ -34,6 +34,7 @@ export default defineConfig({
         'chat': path.resolve(__dirname, './assets/javascript/chat/chat.jsx'),
         'reports': path.resolve(__dirname, './assets/javascript/reports/ReportsDateRangePicker.jsx'),
         'bank-feed': path.resolve(__dirname, './assets/javascript/bank_feed/react/line-app.jsx'),
+        'categorize-mode': path.resolve(__dirname, './assets/javascript/bank_feed/react/categorize-app.jsx'),
         'transactions': path.resolve(__dirname, './assets/javascript/transactions/transactions-app.jsx'),
         'budget-actual-app': path.resolve(__dirname, './assets/javascript/budget/budget-actual-app.jsx'),
         'budget-month-picker-app': path.resolve(__dirname, './assets/javascript/budget/budget-month-picker-app.jsx'),

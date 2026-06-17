@@ -544,6 +544,12 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         <div className="flex justify-between items-center mb-4">
           <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
           <div className="flex gap-2">
+            <a
+              href={`/a/${teamSlug}/bankfeed/categorize/`}
+              className="btn btn-primary btn-sm gap-1"
+            >
+              ⚡ {gettext('Categorize Mode')}
+            </a>
             <PlaidLinkButton
               teamSlug={teamSlug}
               allAccounts={allAccounts}
