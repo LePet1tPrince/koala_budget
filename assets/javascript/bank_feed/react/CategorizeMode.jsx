@@ -389,7 +389,7 @@ export default function CategorizeMode({
       while (url) {
         const resp = await fetch(url, { credentials: 'include', headers });
         const data = await resp.json();
-        const rows = (data.results || []).filter(r => !r.is_categorized && !r.is_archived);
+        const rows = (data.results || []).filter(r => r.category === null && !r.is_archived);
         allRows = allRows.concat(rows);
         url = data.next || null;
       }
