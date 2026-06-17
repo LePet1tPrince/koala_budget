@@ -1,29 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
 
-const CATEGORY_GROUPS = [
-  {
-    key: 'income_expense',
-    label: 'Income / Expense',
-    icon: '💸',
-    gradient: 'from-green-500 to-orange-500',
-    types: ['income', 'expense'],
-  },
-  {
-    key: 'transfer',
-    label: 'Transfer',
-    icon: '🔄',
-    gradient: 'from-blue-500 to-purple-500',
-    types: ['asset', 'liability'],
-  },
-  {
-    key: 'goal',
-    label: 'Goals',
-    icon: '🎯',
-    gradient: 'from-amber-500 to-yellow-500',
-    types: ['goal'],
-  },
-];
+const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -189,9 +167,38 @@ function TransactionCard({ transaction, index, total, allTransactions, isExiting
   );
 }
 
+const ACCOUNT_TYPE_LABELS = {
+  expense: 'Expense',
+  income: 'Income',
+  asset: 'Asset',
+  liability: 'Liability',
+  goal: 'Goal',
+};
+
+function fuzzyMatch(text, query) {
+  if (!query) return true;
+  const t = text.toLowerCase();
+  const q = query.toLowerCase().trim();
+  if (t.includes(q)) return true;
+  const words = q.split(/\s+/);
+  if (words.every(w => t.includes(w))) return true;
+  // Character-sequence match (letters appear in order, not necessarily adjacent)
+  let ti = 0;
+  for (let qi = 0; qi < q.length; qi++) {
+    if (q[qi] === ' ') continue;
+    while (ti < t.length && t[ti] !== q[qi]) ti++;
+    if (ti >= t.length) return false;
+    ti++;
+  }
+  return true;
+}
+
 function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect }) {
-  const [activeCategoryGroup, setActiveCategoryGroup] = useState(null);
-  const [activeAccountGroup, setActiveAccountGroup] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState(null);       // 'income','expense','asset','liability','goal'
+  const [filterGroupId, setFilterGroupId] = useState(null);  // account_group id
+  const [filterInstitution, setFilterInstitution] = useState(null); // institution name
+  const searchRef = useRef(null);
 
   const suggestedAccountId = useMemo(() => {
     if (!currentTransaction) return null;
@@ -203,131 +210,213 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
     return suggestion?.category_id || null;
   }, [currentTransaction, categorySuggestions]);
 
-  const groupedHierarchy = useMemo(() => {
-    return CATEGORY_GROUPS.map(cg => {
-      const accountGroups = allAccountGroups
-        .filter(g => cg.types.includes(g.account_type))
-        .map(g => ({
-          ...g,
-          accounts: allAccounts.filter(a => a.account_group === g.id),
-        }))
-        .filter(g => g.accounts.length > 0);
-      const totalAccounts = accountGroups.reduce((sum, g) => sum + g.accounts.length, 0);
-      return { ...cg, accountGroups, totalAccounts };
-    }).filter(cg => cg.totalAccounts > 0);
-  }, [allAccounts, allAccountGroups]);
+  const suggestedAccount = useMemo(() => {
+    if (!suggestedAccountId) return null;
+    return allAccounts.find(a => a.id === suggestedAccountId) || null;
+  }, [suggestedAccountId, allAccounts]);
 
-  const resetNav = () => { setActiveCategoryGroup(null); setActiveAccountGroup(null); };
+  // Derive unique filter options
+  const accountTypes = useMemo(() => {
+    const types = new Set(allAccounts.map(a => a.account_type));
+    return ACCOUNT_TYPE_ORDER.filter(t => types.has(t));
+  }, [allAccounts]);
+
+  const accountGroupNames = useMemo(() => {
+    const groups = allAccountGroups
+      .filter(g => !filterType || g.account_type === filterType)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return groups;
+  }, [allAccountGroups, filterType]);
+
+  const institutions = useMemo(() => {
+    const names = new Set(
+      allAccounts
+        .filter(a => a.institution_name)
+        .map(a => a.institution_name)
+    );
+    return [...names].sort();
+  }, [allAccounts]);
+
+  // Build searchable text per account for fuzzy matching
+  const filteredAccounts = useMemo(() => {
+    return allAccounts.filter(a => {
+      if (filterType && a.account_type !== filterType) return false;
+      if (filterGroupId && a.account_group !== filterGroupId) return false;
+      if (filterInstitution && a.institution_name !== filterInstitution) return false;
+      if (searchQuery) {
+        const searchable = [a.name, a.account_group_name, a.institution_name, a.account_type]
+          .filter(Boolean).join(' ');
+        if (!fuzzyMatch(searchable, searchQuery)) return false;
+      }
+      return true;
+    });
+  }, [allAccounts, filterType, filterGroupId, filterInstitution, searchQuery]);
+
+  // Group filtered accounts by account_group_name, sorted
+  const groupedAccounts = useMemo(() => {
+    const groups = {};
+    filteredAccounts.forEach(a => {
+      const key = a.account_group_name || 'Other';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(a);
+    });
+    return Object.entries(groups)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, accounts]) => ({ name, accounts: accounts.sort((a, b) => a.name.localeCompare(b.name)) }));
+  }, [filteredAccounts]);
+
+  const hasActiveFilters = filterType || filterGroupId || filterInstitution;
+
+  const clearFilters = () => {
+    setFilterType(null);
+    setFilterGroupId(null);
+    setFilterInstitution(null);
+    setSearchQuery('');
+  };
+
+  // Auto-focus search on mount
+  useEffect(() => { searchRef.current?.focus(); }, []);
+
+  // Reset filters when transaction changes
+  useEffect(() => {
+    setFilterType(null);
+    setFilterGroupId(null);
+    setFilterInstitution(null);
+    setSearchQuery('');
+    searchRef.current?.focus();
+  }, [currentTransaction?.id]);
 
   return (
     <div className="flex flex-col h-full">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-4 min-h-[32px]">
-        <button
-          onClick={resetNav}
-          className={`btn btn-xs ${!activeCategoryGroup ? 'btn-primary' : 'btn-ghost'}`}
-        >
-          All
-        </button>
-        {activeCategoryGroup && (
-          <>
-            <span className="text-base-content/30">›</span>
-            <button
-              onClick={() => setActiveAccountGroup(null)}
-              className={`btn btn-xs ${!activeAccountGroup ? 'btn-primary' : 'btn-ghost'}`}
-            >
-              {activeCategoryGroup.icon} {activeCategoryGroup.label}
-            </button>
-          </>
-        )}
-        {activeAccountGroup && (
-          <>
-            <span className="text-base-content/30">›</span>
-            <span className="btn btn-xs btn-primary">{activeAccountGroup.name}</span>
-          </>
+      {/* Search bar */}
+      <div className="relative mb-3">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40">🔍</span>
+        <input
+          ref={searchRef}
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search accounts..."
+          className="input input-bordered input-sm w-full pl-9 pr-8"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => { setSearchQuery(''); searchRef.current?.focus(); }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs btn-circle"
+          >
+            ✕
+          </button>
         )}
       </div>
 
-      {/* Suggested account */}
-      {suggestedAccountId && !activeCategoryGroup && (
-        <div className="mb-4 animate-pulse-subtle">
-          <p className="text-xs font-semibold text-success mb-2">✨ Suggested</p>
-          {(() => {
-            const acct = allAccounts.find(a => a.id === suggestedAccountId);
-            if (!acct) return null;
-            return (
+      {/* Filter tiles */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {/* Type filters */}
+        {accountTypes.map(type => (
+          <button
+            key={type}
+            onClick={() => setFilterType(filterType === type ? null : type)}
+            className={`badge badge-lg cursor-pointer transition-all hover:shadow ${
+              filterType === type ? 'badge-primary' : 'badge-outline'
+            }`}
+          >
+            {ACCOUNT_TYPE_LABELS[type] || type}
+          </button>
+        ))}
+        <span className="w-px h-6 bg-base-300 self-center mx-0.5" />
+        {/* Account group filters */}
+        {accountGroupNames.map(g => (
+          <button
+            key={g.id}
+            onClick={() => setFilterGroupId(filterGroupId === g.id ? null : g.id)}
+            className={`badge badge-lg cursor-pointer transition-all hover:shadow ${
+              filterGroupId === g.id ? 'badge-secondary' : 'badge-outline'
+            }`}
+          >
+            {g.name}
+          </button>
+        ))}
+        {institutions.length > 0 && (
+          <>
+            <span className="w-px h-6 bg-base-300 self-center mx-0.5" />
+            {institutions.map(inst => (
               <button
-                onClick={() => onSelect(acct)}
-                className="btn btn-outline btn-success w-full justify-start gap-2 text-left"
+                key={inst}
+                onClick={() => setFilterInstitution(filterInstitution === inst ? null : inst)}
+                className={`badge badge-lg cursor-pointer transition-all hover:shadow ${
+                  filterInstitution === inst ? 'badge-accent' : 'badge-outline'
+                }`}
               >
-                <span className="font-bold">{acct.name}</span>
-                <span className="text-xs opacity-60 ml-auto">{acct.account_group_name}</span>
+                🏦 {inst}
               </button>
-            );
-          })()}
+            ))}
+          </>
+        )}
+        {hasActiveFilters && (
+          <button onClick={clearFilters} className="badge badge-lg badge-ghost cursor-pointer">
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
+      {/* Suggested account — always at top */}
+      {suggestedAccount && (
+        <div className="mb-3 animate-pulse-subtle">
+          <p className="text-xs font-semibold text-success mb-1.5">✨ Suggested</p>
+          <button
+            onClick={() => onSelect(suggestedAccount)}
+            className="btn btn-outline btn-success w-full justify-start gap-2 text-left"
+          >
+            <span className="font-bold">{suggestedAccount.name}</span>
+            <span className="text-xs opacity-60 ml-auto">{suggestedAccount.account_group_name}</span>
+          </button>
         </div>
       )}
 
-      {/* Hierarchy browser */}
-      <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-        {!activeCategoryGroup && !activeAccountGroup && (
-          groupedHierarchy.map(cg => (
-            <button
-              key={cg.key}
-              onClick={() => setActiveCategoryGroup(cg)}
-              className={`w-full flex items-center gap-3 p-4 rounded-xl border border-base-300 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r ${cg.gradient} bg-opacity-5 hover:bg-opacity-10 group`}
-            >
-              <span className="text-2xl">{cg.icon}</span>
-              <div className="flex-1 text-left">
-                <div className="font-bold text-base-content">{cg.label}</div>
-                <div className="text-xs text-base-content/50">
-                  {cg.totalAccounts} accounts
-                </div>
-              </div>
-              <span className="text-base-content/30 group-hover:text-primary transition-colors">›</span>
-            </button>
-          ))
+      {/* Account list grouped by account group */}
+      <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
+        {groupedAccounts.length === 0 && (
+          <div className="text-center py-8 text-base-content/40">
+            <p className="text-lg mb-1">No matching accounts</p>
+            <p className="text-sm">Try a different search or clear filters</p>
+          </div>
         )}
-
-        {activeCategoryGroup && !activeAccountGroup && (
-          activeCategoryGroup.accountGroups.map(group => (
-            <button
-              key={group.id}
-              onClick={() => setActiveAccountGroup(group)}
-              className="w-full flex items-center gap-3 p-3 rounded-xl border border-base-300 hover:border-primary hover:shadow-md transition-all group"
-            >
-              <div className="flex-1 text-left">
-                <div className="font-semibold">{group.name}</div>
-                <div className="text-xs text-base-content/50">{group.accounts.length} accounts</div>
-              </div>
-              <span className="text-base-content/30 group-hover:text-primary transition-colors">›</span>
-            </button>
-          ))
-        )}
-
-        {activeCategoryGroup && activeAccountGroup && (
-          activeAccountGroup.accounts.map(account => (
-            <button
-              key={account.id}
-              onClick={() => onSelect(account)}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-lg active:scale-95 ${
-                account.id === suggestedAccountId
-                  ? 'border-success bg-success/10 hover:bg-success/20'
-                  : 'border-base-300 hover:border-primary hover:bg-primary/5'
-              }`}
-            >
-              <div className="flex-1 text-left">
-                <div className="font-medium">{account.name}</div>
-                {account.institution_name && (
-                  <div className="text-xs text-base-content/50">{account.institution_name}</div>
-                )}
-              </div>
-              {account.id === suggestedAccountId && (
-                <span className="badge badge-success badge-sm">Suggested</span>
-              )}
-            </button>
-          ))
-        )}
+        {groupedAccounts.map(group => (
+          <div key={group.name} className="mb-3">
+            <div className="text-xs font-semibold text-base-content/50 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-base-100 py-1 z-10">
+              {group.name}
+            </div>
+            <div className="space-y-1">
+              {group.accounts.map(account => (
+                <button
+                  key={account.id}
+                  onClick={() => onSelect(account)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-all hover:shadow-md active:scale-[0.98] ${
+                    account.id === suggestedAccountId
+                      ? 'border-success bg-success/10 hover:bg-success/20'
+                      : 'border-base-300 hover:border-primary hover:bg-primary/5'
+                  }`}
+                >
+                  <div className="flex-1 text-left min-w-0">
+                    <div className="font-medium truncate">{account.name}</div>
+                    <div className="text-xs text-base-content/40 flex gap-2">
+                      <span>{ACCOUNT_TYPE_LABELS[account.account_type] || account.account_type}</span>
+                      {account.institution_name && (
+                        <>
+                          <span>·</span>
+                          <span>{account.institution_name}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {account.id === suggestedAccountId && (
+                    <span className="badge badge-success badge-sm shrink-0">Suggested</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -468,7 +557,7 @@ export default function CategorizeMode({
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') window.location.href = backUrl;
-      if (e.key === 's' && !e.ctrlKey && !e.metaKey) skipTransaction();
+      if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
         e.preventDefault();
         // Undo not implemented on backend — just visual feedback
