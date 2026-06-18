@@ -202,6 +202,31 @@ class TransferMirrorTest(TestCase):
         self.assertFalse(BankTransaction.objects.filter(id=mirror.id).exists())
         self.assertFalse(JournalEntry.objects.filter(id=entry_id).exists())
 
+    def test_csv_auto_categorize_creates_mirror(self):
+        # Categorizing a transfer during CSV import must also create the mirror leg.
+        from apps.bank_feed.services.csv_upload import create_transactions
+
+        with current_team(self.team):
+            result = create_transactions(
+                transactions=[
+                    {
+                        "date": date(2026, 6, 1),
+                        "description": "Card payment",
+                        "payee": "",
+                        "amount": Decimal("100.00"),
+                        "category_id": self.credit_card.id,
+                    }
+                ],
+                team=self.team,
+                account_id=self.checking.id,
+            )
+        self.assertEqual(result["created_count"], 1)
+        primary = BankTransaction.objects.get(account=self.checking, is_transfer_mirror=False)
+        mirror = self._mirror_of(primary.journal_entry)
+        self.assertIsNotNone(mirror)
+        self.assertEqual(mirror.account_id, self.credit_card.id)
+        self.assertEqual(mirror.amount, Decimal("-100.00"))
+
     def test_detector_does_not_flag_the_two_legs(self):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
