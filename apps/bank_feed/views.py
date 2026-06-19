@@ -47,7 +47,7 @@ from .serializers import (
 )
 from .services.csv_upload import create_transactions, parse_file, preview_transactions
 from .services.transfer_detection import find_transfer_candidates
-from .services.transfer_mirror import ensure_mirror_for, sync_counterpart_display
+from .services.transfer_mirror import sync_transfer, would_orphan_primary
 
 
 class ManualTransactionSerializer(serializers.Serializer):
@@ -313,7 +313,7 @@ class BankFeedViewSet(
 
         # If this is a transfer to another feed account, surface the counterpart
         # leg in that account's feed (linked to this same entry).
-        ensure_mirror_for(bank_tx)
+        sync_transfer(bank_tx)
 
         return journal_entry
 
@@ -441,7 +441,7 @@ class BankFeedViewSet(
             )
 
             # Mirror the leg into the counterpart account's feed if it's a transfer.
-            ensure_mirror_for(bank_tx)
+            sync_transfer(bank_tx)
 
         # Return the created transaction as a feed row
         row = bank_transaction_to_feed_row(bank_tx)
@@ -491,6 +491,16 @@ class BankFeedViewSet(
             return Response(
                 {"error": "Category account not found"},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Re-pointing the mirror leg to a non-feed category would orphan the real
+        # primary transaction; reject it (edit the original transaction instead).
+        if would_orphan_primary(bank_tx, category_account):
+            return Response(
+                {
+                    "error": "This is the mirror side of a transfer. Edit the original transaction to change its category."  # noqa: E501
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
@@ -600,12 +610,9 @@ class BankFeedViewSet(
                 bank_tx.journal_entry = journal_entry
                 bank_tx.save()
 
-            # Keep the transfer's two legs in lockstep: create/update/remove the
-            # mirror from the primary, or sync display fields if the mirror was edited.
-            if bank_tx.is_transfer_mirror:
-                sync_counterpart_display(bank_tx)
-            else:
-                ensure_mirror_for(bank_tx)
+            # Keep the transfer's two legs in lockstep — moves/creates/removes the
+            # counterpart leg and syncs its display fields, in either direction.
+            sync_transfer(bank_tx)
 
         # Reload to get updated data
         bank_tx.refresh_from_db()
@@ -946,6 +953,18 @@ class BankFeedViewSet(
             team=request.team,
         ).select_related("account", "journal_entry")
 
+        # Reject up front: re-pointing a mirror leg to a non-feed category would
+        # orphan the real primary transaction.
+        if category_account is not None:
+            for tx in transactions:
+                if would_orphan_primary(tx, category_account):
+                    return Response(
+                        {
+                            "error": "This is the mirror side of a transfer. Edit the original transaction to change its category."  # noqa: E501
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
         with transaction.atomic():
             for tx in transactions:
                 # --- Category ---
@@ -1003,8 +1022,8 @@ class BankFeedViewSet(
 
                 tx.save()
 
-                # Keep a transfer's mirror leg aligned with any date/payee/desc edit.
-                sync_counterpart_display(tx)
+                # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
+                sync_transfer(tx)
 
         log_event(
             AuditEvent.BULK_EDIT,
@@ -1021,6 +1040,13 @@ class BankFeedViewSet(
     @transaction.atomic
     def _update_journal_category(self, bank_tx, new_category_account):
         """Update the category line of an existing journal entry."""
+        # Re-pointing the mirror leg to a non-feed category would orphan the real
+        # primary transaction; reject it (the user must edit the original instead).
+        if would_orphan_primary(bank_tx, new_category_account):
+            raise ValueError(
+                "This is the mirror side of a transfer. Edit the original transaction to change its category."
+            )
+
         journal_entry = bank_tx.journal_entry
         # Find the category line (the one that's not the bank account)
         for line in journal_entry.lines.all():
@@ -1029,8 +1055,9 @@ class BankFeedViewSet(
                 line.save()
                 break
 
-        # The category drives whether this is a transfer: add/move/remove the mirror.
-        ensure_mirror_for(bank_tx)
+        # The category drives whether this is a transfer: add/move/remove the
+        # counterpart leg (and move the primary if the mirror was re-pointed).
+        sync_transfer(bank_tx)
 
     @extend_schema(
         operation_id="bank_feed_batch_archive",

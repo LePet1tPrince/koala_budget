@@ -52,6 +52,9 @@ class TransferMirrorTest(TestCase):
         cls.credit_card = Account.objects.create(
             team=cls.team, name="Credit Card", account_group=cls.liability_group, has_feed=True
         )
+        cls.savings = Account.objects.create(
+            team=cls.team, name="Savings", account_group=cls.asset_group, has_feed=True
+        )
         cls.groceries = Account.objects.create(
             team=cls.team, name="Groceries", account_group=cls.expense_group, has_feed=False
         )
@@ -226,6 +229,57 @@ class TransferMirrorTest(TestCase):
         self.assertIsNotNone(mirror)
         self.assertEqual(mirror.account_id, self.credit_card.id)
         self.assertEqual(mirror.amount, Decimal("-100.00"))
+
+    def test_editing_primary_category_moves_mirror(self):
+        # Re-pointing the primary's transfer destination moves the mirror leg.
+        tx = self._tx(self.checking, "100.00")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
+        with current_team(self.team):
+            resp = self.client.patch(url, {"ids": [tx.id], "category_id": self.savings.id}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        mirror.refresh_from_db()
+        self.assertEqual(mirror.account_id, self.savings.id)  # mirror followed
+
+    def test_editing_mirror_category_moves_primary(self):
+        # The new feature: re-pointing the mirror's category moves the primary leg.
+        tx = self._tx(self.checking, "100.00")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
+        with current_team(self.team):
+            resp = self.client.patch(url, {"ids": [mirror.id], "category_id": self.savings.id}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        tx.refresh_from_db()
+        self.assertEqual(tx.account_id, self.savings.id)  # the primary moved
+        mirror.refresh_from_db()
+        self.assertEqual(mirror.account_id, self.credit_card.id)  # mirror stayed put
+        # Still one entry, both legs intact.
+        self.assertEqual(JournalEntry.objects.filter(team=self.team).count(), 1)
+
+    def test_pointing_mirror_at_non_feed_category_is_rejected(self):
+        # Pointing the mirror at an expense would orphan the real primary -> blocked.
+        tx = self._tx(self.checking, "100.00")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
+        with current_team(self.team):
+            resp = self.client.patch(url, {"ids": [mirror.id], "category_id": self.groceries.id}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Nothing changed: the primary still sits in checking, both legs intact.
+        tx.refresh_from_db()
+        self.assertEqual(tx.account_id, self.checking.id)
+        self.assertTrue(BankTransaction.objects.filter(id=mirror.id).exists())
 
     def test_detector_does_not_flag_the_two_legs(self):
         tx = self._tx(self.checking, "100.00")

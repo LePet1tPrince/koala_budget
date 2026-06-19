@@ -831,6 +831,6 @@ def _auto_categorize_transaction(bank_tx, category_id: int, team):
 
     # If this is a transfer to another feed account, surface the counterpart leg
     # in that account's feed (same path the in-feed categorize endpoints use).
-    from .transfer_mirror import ensure_mirror_for
+    from .transfer_mirror import sync_transfer
 
-    ensure_mirror_for(bank_tx)
+    sync_transfer(bank_tx)
