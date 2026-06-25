@@ -828,3 +828,9 @@ def _auto_categorize_transaction(bank_tx, category_id: int, team):
     # Link the bank transaction to the journal entry
     bank_tx.journal_entry = journal_entry
     bank_tx.save()
+
+    # If this is a transfer to another feed account, surface the counterpart leg
+    # in that account's feed (same path the in-feed categorize endpoints use).
+    from .transfer_mirror import sync_transfer
+
+    sync_transfer(bank_tx)

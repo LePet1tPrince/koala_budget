@@ -9,6 +9,7 @@ import LineTableMaterial from './LineTableMaterial';
 import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
+import TransferSuggestions from './TransferSuggestions';
 import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
 
 /**
@@ -543,7 +544,14 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       <section className="app-card">
         <div className="flex justify-between items-center mb-4">
           <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <TransferSuggestions
+              batchApi={batchApi}
+              showSnackbar={showSnackbar}
+              onResolved={() => {
+                if (selectedAccountRef.current) loadLines();
+              }}
+            />
             <a
               href={`/a/${teamSlug}/bankfeed/categorize/`}
               className="btn btn-primary btn-sm gap-1"

@@ -28,7 +28,7 @@ from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
-from .models import BankTransaction
+from .models import BankTransaction, TransferMatchDismissal
 from .serializers import (
     BankFeedRowSerializer,
     BatchEditRequestSerializer,
@@ -36,6 +36,9 @@ from .serializers import (
     BatchReconcileRequestSerializer,
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
+    TransferDismissRequestSerializer,
+    TransferResolveRequestSerializer,
+    TransferSuggestionSerializer,
     UploadConfirmRequestSerializer,
     UploadConfirmResponseSerializer,
     UploadParseResponseSerializer,
@@ -43,6 +46,8 @@ from .serializers import (
     bank_transaction_to_feed_row,
 )
 from .services.csv_upload import create_transactions, parse_file, preview_transactions
+from .services.transfer_detection import find_transfer_candidates
+from .services.transfer_mirror import sync_transfer, would_orphan_primary
 
 
 class ManualTransactionSerializer(serializers.Serializer):
@@ -306,6 +311,10 @@ class BankFeedViewSet(
         bank_tx.journal_entry = journal_entry
         bank_tx.save()
 
+        # If this is a transfer to another feed account, surface the counterpart
+        # leg in that account's feed (linked to this same entry).
+        sync_transfer(bank_tx)
+
         return journal_entry
 
     def list(self, request, team_slug=None):
@@ -431,6 +440,9 @@ class BankFeedViewSet(
                 journal_entry=journal_entry,
             )
 
+            # Mirror the leg into the counterpart account's feed if it's a transfer.
+            sync_transfer(bank_tx)
+
         # Return the created transaction as a feed row
         row = bank_transaction_to_feed_row(bank_tx)
         response_serializer = BankFeedRowSerializer(row)
@@ -479,6 +491,16 @@ class BankFeedViewSet(
             return Response(
                 {"error": "Category account not found"},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Re-pointing the mirror leg to a non-feed category would orphan the real
+        # primary transaction; reject it (edit the original transaction instead).
+        if would_orphan_primary(bank_tx, category_account):
+            return Response(
+                {
+                    "error": "This is the mirror side of a transfer. Edit the original transaction to change its category."  # noqa: E501
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
@@ -587,6 +609,10 @@ class BankFeedViewSet(
 
                 bank_tx.journal_entry = journal_entry
                 bank_tx.save()
+
+            # Keep the transfer's two legs in lockstep — moves/creates/removes the
+            # counterpart leg and syncs its display fields, in either direction.
+            sync_transfer(bank_tx)
 
         # Reload to get updated data
         bank_tx.refresh_from_db()
@@ -927,6 +953,18 @@ class BankFeedViewSet(
             team=request.team,
         ).select_related("account", "journal_entry")
 
+        # Reject up front: re-pointing a mirror leg to a non-feed category would
+        # orphan the real primary transaction.
+        if category_account is not None:
+            for tx in transactions:
+                if would_orphan_primary(tx, category_account):
+                    return Response(
+                        {
+                            "error": "This is the mirror side of a transfer. Edit the original transaction to change its category."  # noqa: E501
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
         with transaction.atomic():
             for tx in transactions:
                 # --- Category ---
@@ -944,9 +982,10 @@ class BankFeedViewSet(
                 # --- Move account ---
                 if target_account is not None:
                     # Reconciled transactions cannot be moved to another account
-                    is_reconciled = tx.journal_entry and tx.journal_entry.lines.filter(
-                        account=tx.account, is_reconciled=True
-                    ).exists()
+                    is_reconciled = (
+                        tx.journal_entry
+                        and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
+                    )
                     if not is_reconciled:
                         old_account = tx.account
                         tx.account = target_account
@@ -983,6 +1022,9 @@ class BankFeedViewSet(
 
                 tx.save()
 
+                # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
+                sync_transfer(tx)
+
         log_event(
             AuditEvent.BULK_EDIT,
             request=request,
@@ -998,6 +1040,13 @@ class BankFeedViewSet(
     @transaction.atomic
     def _update_journal_category(self, bank_tx, new_category_account):
         """Update the category line of an existing journal entry."""
+        # Re-pointing the mirror leg to a non-feed category would orphan the real
+        # primary transaction; reject it (the user must edit the original instead).
+        if would_orphan_primary(bank_tx, new_category_account):
+            raise ValueError(
+                "This is the mirror side of a transfer. Edit the original transaction to change its category."
+            )
+
         journal_entry = bank_tx.journal_entry
         # Find the category line (the one that's not the bank account)
         for line in journal_entry.lines.all():
@@ -1005,6 +1054,10 @@ class BankFeedViewSet(
                 line.account = new_category_account
                 line.save()
                 break
+
+        # The category drives whether this is a transfer: add/move/remove the
+        # counterpart leg (and move the primary if the mirror was re-pointed).
+        sync_transfer(bank_tx)
 
     @extend_schema(
         operation_id="bank_feed_batch_archive",
@@ -1030,9 +1083,7 @@ class BankFeedViewSet(
             "journal_entry__lines"
         ):
             # Reconciled transactions cannot be archived — skip them silently
-            if tx.journal_entry and tx.journal_entry.lines.filter(
-                account=tx.account, is_reconciled=True
-            ).exists():
+            if tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists():
                 continue
             tx.is_archived = True
             tx.save(update_fields=["is_archived", "updated_at"])
@@ -1091,9 +1142,14 @@ class BankFeedViewSet(
             is_archived=True,
         ).select_related("journal_entry")
 
-        journal_entry_ids = [tx.journal_entry_id for tx in transactions if tx.journal_entry_id]
+        selected = list(transactions)
+        journal_entry_ids = [tx.journal_entry_id for tx in selected if tx.journal_entry_id]
 
-        transactions.delete()
+        # Delete both legs of any transfer being removed (the mirror leg may not be
+        # selected or archived), then any selected rows without an entry.
+        if journal_entry_ids:
+            BankTransaction.objects.filter(journal_entry_id__in=journal_entry_ids).delete()
+        BankTransaction.objects.filter(id__in=[tx.id for tx in selected]).delete()
 
         if journal_entry_ids:
             JournalEntry.objects.filter(id__in=journal_entry_ids).delete()
@@ -1120,17 +1176,19 @@ class BankFeedViewSet(
         ids = serializer.validated_data["ids"]
 
         # Get transactions that belong to this team, excluding reconciled ones
-        transactions = BankTransaction.objects.filter(
-            id__in=ids,
-            team=request.team,
-        ).select_related("account").prefetch_related("journal_entry__lines")
+        transactions = (
+            BankTransaction.objects.filter(
+                id__in=ids,
+                team=request.team,
+            )
+            .select_related("account")
+            .prefetch_related("journal_entry__lines")
+        )
 
         transactions = [
-            tx for tx in transactions
-            if not (
-                tx.journal_entry
-                and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
-            )
+            tx
+            for tx in transactions
+            if not (tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists())
         ]
 
         created_transactions = []
@@ -1360,6 +1418,128 @@ class BankFeedViewSet(
                         break
 
         log_event(AuditEvent.BULK_UNRECONCILE, request=request, metadata={"count": len(ids)})
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="bank_feed_transfer_suggestions",
+        tags=["bank-feed"],
+        responses={200: TransferSuggestionSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="transfers", pagination_class=None)
+    def transfer_suggestions(self, request, team_slug=None):
+        """
+        List likely-duplicate transfer pairs (a transfer reported by both banks).
+
+        Each pair shows both legs so the user can archive the duplicate, archive
+        the other side, or dismiss the suggestion. Read-only; nothing is changed.
+        """
+        candidates = find_transfer_candidates(request.team)
+        serializer = TransferSuggestionSerializer(candidates, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="bank_feed_transfer_resolve",
+        tags=["bank-feed"],
+        request=TransferResolveRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="transfers/resolve")
+    def transfer_resolve(self, request, team_slug=None):
+        """
+        Resolve a duplicate transfer: archive one leg, keep the other.
+
+        Archiving the duplicate leg also voids its journal entry (if categorized)
+        so the movement stops double-counting. The kept leg is left untouched for
+        the user to categorize as a transfer. Reconciled legs are refused.
+        """
+        serializer = TransferResolveRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        archive_id = serializer.validated_data["archive_id"]
+        keep_id = serializer.validated_data["keep_id"]
+
+        # Both legs must belong to the team (the kept leg is validated but not mutated).
+        if not BankTransaction.objects.filter(id=keep_id, team=request.team).exists():
+            return Response(
+                {"error": "One or both transactions not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            archive_tx = BankTransaction.objects.select_related("journal_entry").get(id=archive_id, team=request.team)
+        except BankTransaction.DoesNotExist:
+            return Response(
+                {"error": "One or both transactions not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # A reconciled leg has been confirmed against a statement; refuse rather
+        # than silently voiding reconciled history.
+        if (
+            archive_tx.journal_entry
+            and archive_tx.journal_entry.lines.filter(account=archive_tx.account, is_reconciled=True).exists()
+        ):
+            return Response(
+                {"error": "This transaction is reconciled. Unreconcile it before archiving."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Void the duplicate leg's journal entry so it no longer affects any
+            # balance (voided entries are excluded everywhere via NOT_VOID).
+            entry = archive_tx.journal_entry
+            if entry and entry.status != JournalEntry.STATUS_VOID:
+                entry.status = JournalEntry.STATUS_VOID
+                entry.save(update_fields=["status", "updated_at"])
+
+            archive_tx.archive()
+
+            # If the voided leg had a mirror counterpart on the same entry, archive
+            # it too so the voided transfer disappears from both feeds.
+            if entry:
+                for leg in BankTransaction.objects.filter(journal_entry=entry).exclude(id=archive_tx.id):
+                    if not leg.is_archived:
+                        leg.archive()
+
+        log_event(
+            AuditEvent.TRANSFER_DUP_RESOLVED,
+            request=request,
+            metadata={"archived_id": archive_id, "kept_id": keep_id},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="bank_feed_transfer_dismiss",
+        tags=["bank-feed"],
+        request=TransferDismissRequestSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="transfers/dismiss")
+    def transfer_dismiss(self, request, team_slug=None):
+        """
+        Dismiss a suggested pair as 'not a duplicate' so it stops being suggested.
+        """
+        serializer = TransferDismissRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        tx_a = serializer.validated_data["transaction_a"]
+        tx_b = serializer.validated_data["transaction_b"]
+
+        # Both transactions must belong to the team before recording a dismissal.
+        found = set(BankTransaction.objects.filter(id__in=[tx_a, tx_b], team=request.team).values_list("id", flat=True))
+        if found != {tx_a, tx_b}:
+            return Response(
+                {"error": "One or both transactions not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        TransferMatchDismissal.record(request.team, tx_a, tx_b)
+        log_event(
+            AuditEvent.TRANSFER_DUP_DISMISSED,
+            request=request,
+            metadata={"transaction_a": tx_a, "transaction_b": tx_b},
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
