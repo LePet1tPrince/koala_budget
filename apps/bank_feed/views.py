@@ -1594,3 +1594,29 @@ def bank_feed_home(request, team_slug):
             "team_slug": team_slug,
         },
     )
+
+
+@login_and_team_required
+def categorize_mode(request, team_slug):
+    """Categorize mode — gamified single-transaction categorization view."""
+    from django.urls import reverse
+
+    all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")
+    all_account_groups = AccountGroup.for_team.all().order_by("account_type", "name")
+
+    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
+    all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
+
+    back_url = reverse("bank_feed:bank_feed_home", kwargs={"team_slug": team_slug})
+
+    return render(
+        request,
+        "bank_feed/categorize_mode.html",
+        {
+            "page_title": _("Categorize Mode | {team}").format(team=request.team),
+            "all_accounts": all_accounts_data,
+            "all_account_groups": all_account_groups_data,
+            "team_slug": team_slug,
+            "back_url": back_url,
+        },
+    )

@@ -552,6 +552,12 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
                 if (selectedAccountRef.current) loadLines();
               }}
             />
+            <a
+              href={`/a/${teamSlug}/bankfeed/categorize/`}
+              className="btn btn-primary btn-sm gap-1"
+            >
+              ⚡ {gettext('Categorize Mode')}
+            </a>
             <PlaidLinkButton
               teamSlug={teamSlug}
               allAccounts={allAccounts}
