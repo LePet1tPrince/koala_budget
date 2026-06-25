@@ -238,7 +238,7 @@ const LineTableMaterial = ({
       const q = searchText.trim().toLowerCase();
       filtered = filtered.filter((l) => {
         const payee = (l.payee || l.merchantName || l.merchant_name || '').toLowerCase();
-        const category = (l.category || '').toLowerCase();
+        const category = (l.category?.name || '').toLowerCase();
         const description = (l.description || '').toLowerCase();
         const inflow = String(l.inflow || '');
         const outflow = String(l.outflow || '');
