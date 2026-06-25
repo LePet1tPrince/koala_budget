@@ -120,6 +120,7 @@ export interface BankFeedFeedListRequest {
     teamSlug: string;
     account?: number;
     page?: number;
+    search?: string;
 }
 
 export interface BankFeedFeedUpdateRequest {
@@ -700,6 +701,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         if (requestParameters['page'] != null) {
             queryParameters['page'] = requestParameters['page'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};

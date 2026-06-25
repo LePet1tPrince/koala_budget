@@ -6,6 +6,7 @@ Provides API endpoints for imported transactions and unified bank feed.
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -109,6 +110,13 @@ class ManualTransactionSerializer(serializers.Serializer):
                 description="Ledger account ID to filter bank feed by",
                 required=False,
             ),
+            OpenApiParameter(
+                name="search",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Search bank transactions by payee, description, amount, or category name",
+                required=False,
+            ),
         ],
     ),
     create=extend_schema(
@@ -168,6 +176,24 @@ class BankFeedViewSet(
         account_id = self.request.query_params.get("account")
         if account_id:
             queryset = queryset.filter(account_id=account_id)
+
+        # Search by payee, description, amount, or category name
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            q = (
+                Q(merchant_name__icontains=search)
+                | Q(description__icontains=search)
+                | Q(journal_entry__lines__account__name__icontains=search)
+                | Q(journal_entry__payee__name__icontains=search)
+            )
+            try:
+                from decimal import InvalidOperation
+
+                amount = Decimal(search.replace(",", ""))
+                q = q | Q(amount=amount) | Q(amount=-amount)
+            except (InvalidOperation, ValueError):
+                pass
+            queryset = queryset.filter(q).distinct()
 
         return queryset
 

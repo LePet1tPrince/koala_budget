@@ -650,6 +650,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             allPayees={allPayees}
             categorySuggestions={categorySuggestions}
             teamSlug={teamSlug}
+            bankFeedClient={bankFeedClient}
             onAdd={handleAddLine}
             onDelete={handleDeleteLine}
             onEditTransaction={handleEditTransaction}

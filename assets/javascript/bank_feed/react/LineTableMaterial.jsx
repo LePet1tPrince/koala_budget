@@ -12,8 +12,8 @@ import {
   LastPage as LastPageIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { Alert, Box, Button, Checkbox, IconButton, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
-import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Box, Button, Checkbox, FormControlLabel, IconButton, InputAdornment, Snackbar, Switch, TextField, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
@@ -41,6 +41,7 @@ const LineTableMaterial = ({
   allPayees = [],
   categorySuggestions = {},
   teamSlug,
+  bankFeedClient,
   onAdd,
   onDelete,
   onEditTransaction,
@@ -55,6 +56,13 @@ const LineTableMaterial = ({
   // Controlled page size so it survives data reloads
   const [pageSize, setPageSize] = useState(10);
   const [showUncategorizedOnly, setShowUncategorizedOnly] = useState(false);
+
+  // Search state
+  const [searchText, setSearchText] = useState('');
+  const [searchAllAccounts, setSearchAllAccounts] = useState(false);
+  const [allAccountResults, setAllAccountResults] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchDebounceRef = useRef(null);
 
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
@@ -104,6 +112,43 @@ const LineTableMaterial = ({
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
   };
+
+  // Search all accounts via backend API (debounced)
+  const searchAllAccountsBackend = useCallback(async (query) => {
+    if (!query.trim() || !bankFeedClient) {
+      setAllAccountResults(null);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const results = [];
+      let data = await bankFeedClient.bankFeedFeedList({ teamSlug, search: query });
+      results.push(...(data.results || []));
+      while (data.next) {
+        const nextPage = Number(new URL(data.next, window.location.origin).searchParams.get('page'));
+        if (!nextPage) break;
+        data = await bankFeedClient.bankFeedFeedList({ teamSlug, search: query, page: nextPage });
+        results.push(...(data.results || []));
+      }
+      setAllAccountResults(results);
+    } catch (err) {
+      console.error('Search failed:', err);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [bankFeedClient, teamSlug]);
+
+  useEffect(() => {
+    if (!searchAllAccounts) {
+      setAllAccountResults(null);
+      return;
+    }
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      searchAllAccountsBackend(searchText);
+    }, 400);
+    return () => clearTimeout(searchDebounceRef.current);
+  }, [searchText, searchAllAccounts, searchAllAccountsBackend]);
 
   // Format date for display (handles both Date objects and strings).
   // Date-only values are rendered in UTC so users west of UTC don't see
@@ -188,8 +233,24 @@ const LineTableMaterial = ({
       filtered = filtered.filter((l) => !l.category);
     }
 
+    // Apply client-side search for current account mode
+    if (searchText.trim() && !searchAllAccounts) {
+      const q = searchText.trim().toLowerCase();
+      filtered = filtered.filter((l) => {
+        const payee = (l.payee || l.merchantName || l.merchant_name || '').toLowerCase();
+        const category = (l.category || '').toLowerCase();
+        const description = (l.description || '').toLowerCase();
+        const inflow = String(l.inflow || '');
+        const outflow = String(l.outflow || '');
+        return payee.includes(q) || category.includes(q) || description.includes(q) || inflow.includes(q) || outflow.includes(q);
+      });
+    }
+
     return filtered;
-  }, [lines, filterStart, filterEnd, filterMode, showUncategorizedOnly]);
+  }, [lines, filterStart, filterEnd, filterMode, showUncategorizedOnly, searchText, searchAllAccounts]);
+
+  // Determine which lines to display: all-account search results or filtered local lines
+  const displayLines = (searchAllAccounts && searchText.trim() && allAccountResults) ? allAccountResults : filteredLines;
 
   // Handle row selection
   const handleRowSelect = (rowId, checked) => {
@@ -207,7 +268,7 @@ const LineTableMaterial = ({
   const handleSelectAll = (checked) => {
     if (!onSelectionChange) return;
     if (checked) {
-      const allIds = new Set(filteredLines.map(l => l.id));
+      const allIds = new Set(displayLines.map(l => l.id));
       onSelectionChange(allIds);
     } else {
       onSelectionChange(new Set());
@@ -215,8 +276,8 @@ const LineTableMaterial = ({
   };
 
   // Check if all rows are selected
-  const allSelected = filteredLines.length > 0 && filteredLines.every(l => selectedIds.has(l.id));
-  const someSelected = filteredLines.some(l => selectedIds.has(l.id)) && !allSelected;
+  const allSelected = displayLines.length > 0 && displayLines.every(l => selectedIds.has(l.id));
+  const someSelected = displayLines.some(l => selectedIds.has(l.id)) && !allSelected;
 
   // Define columns for Material-Table
   const columns = [
@@ -357,7 +418,7 @@ const LineTableMaterial = ({
           </ToggleButtonGroup>
         </div>
 
-        {/* Date Range Filter */}
+        {/* Date Range Filter + Search */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <DateRangePicker
@@ -377,9 +438,44 @@ const LineTableMaterial = ({
                 {gettext('Uncategorized')}
               </Button>
             )}
+            <TextField
+              size="small"
+              placeholder={gettext('Search payee, category, amount, description…')}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: searchText ? (
+                    <InputAdornment position="end">
+                      <IconButton size="small" onClick={() => setSearchText('')}>
+                        <ClearIcon fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ) : null,
+                },
+              }}
+              sx={{ minWidth: 280 }}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={searchAllAccounts}
+                  onChange={(e) => setSearchAllAccounts(e.target.checked)}
+                />
+              }
+              label={<Typography variant="body2">{gettext('All accounts')}</Typography>}
+              sx={{ ml: 0, whiteSpace: 'nowrap' }}
+            />
           </div>
           <div className="text-sm text-gray-500">
-            {filteredLines.length} {gettext('lines')}
+            {searchLoading && <span className="loading loading-spinner loading-xs mr-1"></span>}
+            {displayLines.length} {gettext('lines')}
           </div>
         </div>
 
@@ -387,7 +483,7 @@ const LineTableMaterial = ({
         <MaterialTable
           title=""
           columns={columns}
-          data={filteredLines}
+          data={displayLines}
           components={{
             Toolbar: () => (
               <Toolbar variant="dense" sx={{ pl: 1, pr: 1, minHeight: 48 }}>
