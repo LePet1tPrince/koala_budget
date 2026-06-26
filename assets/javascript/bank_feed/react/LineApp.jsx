@@ -61,6 +61,20 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     setSnackbar({ ...snackbar, open: false });
   };
 
+  const loadAccounts = useCallback(async () => {
+    try {
+      const updatedAccounts = await batchApi.fetchFeedAccounts();
+      setAccounts(updatedAccounts);
+      const current = selectedAccountRef.current;
+      if (current) {
+        const updated = updatedAccounts.find(a => a.id === current.id);
+        if (updated) setSelectedAccount(updated);
+      }
+    } catch (err) {
+      console.error('Failed to refresh account balances:', err);
+    }
+  }, [batchApi]);
+
   // Monotonic id so a slow response for a previously selected account can't
   // overwrite the rows of the currently selected one
   const loadRequestRef = useRef(0);
@@ -233,8 +247,8 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         },
       });
 
-      // Reload the bank feed to show updated data
-      await loadLines();
+      // Reload the bank feed and account balances
+      await Promise.all([loadLines(), loadAccounts()]);
     } catch (err) {
       console.error('Failed to categorize:', err);
       throw err;
@@ -269,8 +283,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         account: selectedAccount.id,
       });
 
-      // Reload the bank feed to show updated data
-      await loadLines();
+      await Promise.all([loadLines(), loadAccounts()]);
     } catch (err) {
       console.error('Failed to add line:', err);
       throw err;
@@ -296,7 +309,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         account: selectedAccount.id,
       });
 
-      await loadLines();
+      await Promise.all([loadLines(), loadAccounts()]);
     } catch (err) {
       console.error('Failed to update transaction:', err);
       showSnackbar(err.message || gettext('Failed to update transaction'), 'error');
@@ -340,7 +353,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     try {
       await batchApi.batchEdit([...selectedIds], updates);
       setSelectedIds(new Set());
-      await loadLines();
+      await Promise.all([loadLines(), loadAccounts()]);
       showSnackbar(gettext('Transactions updated successfully'), 'success');
     } catch (err) {
       console.error('Failed to bulk edit:', err);
@@ -356,7 +369,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     try {
       await batchApi.batchArchive([...selectedIds]);
       setSelectedIds(new Set());
-      await loadLines();
+      await Promise.all([loadLines(), loadAccounts()]);
       showSnackbar(gettext('Transactions archived successfully'), 'success');
     } catch (err) {
       console.error('Failed to batch archive:', err);
@@ -371,7 +384,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     try {
       await batchApi.batchUnarchive([...selectedIds]);
       setSelectedIds(new Set());
-      await loadLines();
+      await Promise.all([loadLines(), loadAccounts()]);
       showSnackbar(gettext('Transactions unarchived successfully'), 'success');
     } catch (err) {
       console.error('Failed to batch unarchive:', err);
@@ -386,7 +399,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     try {
       await batchApi.batchDelete([...selectedIds]);
       setSelectedIds(new Set());
-      await loadLines();
+      await Promise.all([loadLines(), loadAccounts()]);
       showSnackbar(gettext('Transactions permanently deleted'), 'success');
     } catch (err) {
       console.error('Failed to batch delete:', err);
@@ -401,7 +414,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     try {
       await batchApi.batchDuplicate([...selectedIds]);
       setSelectedIds(new Set());
-      await loadLines();
+      await Promise.all([loadLines(), loadAccounts()]);
       showSnackbar(gettext('Transactions duplicated successfully'), 'success');
     } catch (err) {
       console.error('Failed to batch duplicate:', err);
@@ -414,20 +427,9 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
    */
   const handleBatchReconcile = async (adjustmentAmount = 0, reconciliationDate = null) => {
     try {
-      // Calculate the reconciling amount before clearing selection
-      const reconcilingAmount = selectedRows.reduce((sum, row) => {
-        const inflow = parseFloat(row.inflow) || 0;
-        const outflow = parseFloat(row.outflow) || 0;
-        return sum + inflow - outflow;
-      }, 0);
-
       await batchApi.batchReconcile([...selectedIds], adjustmentAmount, reconciliationDate);
       setSelectedIds(new Set());
-      await loadLines();
-
-      // Update the account's reconciled_balance
-      const totalChange = reconcilingAmount + (parseFloat(adjustmentAmount) || 0);
-      updateAccountReconciledBalance(totalChange);
+      await Promise.all([loadLines(), loadAccounts()]);
 
       showSnackbar(gettext('Transactions reconciled successfully'), 'success');
     } catch (err) {
@@ -441,53 +443,15 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
    */
   const handleBatchUnreconcile = async () => {
     try {
-      // Calculate the amount being unreconciled before clearing selection
-      const unreconcilingAmount = selectedRows.reduce((sum, row) => {
-        const inflow = parseFloat(row.inflow) || 0;
-        const outflow = parseFloat(row.outflow) || 0;
-        return sum + inflow - outflow;
-      }, 0);
-
       await batchApi.batchUnreconcile([...selectedIds]);
       setSelectedIds(new Set());
-      await loadLines();
-
-      // Update the account's reconciled_balance (subtract the unreconciled amount)
-      updateAccountReconciledBalance(-unreconcilingAmount);
+      await Promise.all([loadLines(), loadAccounts()]);
 
       showSnackbar(gettext('Transactions unreconciled successfully'), 'success');
     } catch (err) {
       console.error('Failed to batch unreconcile:', err);
       showSnackbar(err.message || gettext('Failed to unreconcile transactions'), 'error');
     }
-  };
-
-  /**
-   * Update the reconciled_balance on the selected account and in the accounts list
-   */
-  const updateAccountReconciledBalance = (amountChange) => {
-    if (!selectedAccount) return;
-
-    const currentBalance = parseFloat(selectedAccount.reconciled_balance) || 0;
-    // Round to cents: summing parsed floats accumulates binary-float noise
-    // (e.g. 1234.5600000000002) that would otherwise be stored and displayed
-    const newBalance = Math.round((currentBalance + amountChange) * 100) / 100;
-
-    // Update the selected account
-    const updatedSelectedAccount = {
-      ...selectedAccount,
-      reconciled_balance: String(newBalance),
-    };
-    setSelectedAccount(updatedSelectedAccount);
-
-    // Update the accounts list
-    setAccounts(prevAccounts =>
-      prevAccounts.map(acc =>
-        acc.id === selectedAccount.id
-          ? { ...acc, reconciled_balance: String(newBalance) }
-          : acc
-      )
-    );
   };
 
   /**
