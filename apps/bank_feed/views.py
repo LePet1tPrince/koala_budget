@@ -172,6 +172,24 @@ class BankFeedViewSet(
         return queryset
 
     @extend_schema(
+        operation_id="bank_feed_feed_accounts",
+        tags=["bank-feed"],
+        responses={200: AccountSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"])
+    def feed_accounts(self, request, team_slug=None):
+        """Return feed accounts with up-to-date balances."""
+        accounts = (
+            Account.for_team.filter(has_feed=True)
+            .with_balance()
+            .with_categorized_balance()
+            .with_reconciled_balance()
+            .select_related("account_group")
+            .order_by("name")
+        )
+        return Response(AccountSerializer(accounts, many=True).data)
+
+    @extend_schema(
         operation_id="bank_feed_transactions_categorize",
         tags=["bank-feed"],
         request=CategorizeTransactionsRequestSerializer,
@@ -1556,6 +1574,7 @@ def bank_feed_home(request, team_slug):
     accounts_with_feeds = (
         Account.for_team.filter(has_feed=True)
         .with_balance()
+        .with_categorized_balance()
         .with_reconciled_balance()
         .select_related("account_group")
         .order_by("name")

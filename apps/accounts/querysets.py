@@ -21,6 +21,20 @@ class AccountQuerySet(models.QuerySet):
             - Coalesce(Sum("journal_lines__cr_amount", filter=NOT_VOID), Decimal("0"))
         )
 
+    def with_categorized_balance(self):
+        """Balance excluding journal entries linked to archived bank transactions in this account."""
+        from apps.bank_feed.models import BankTransaction
+
+        archived_je_ids = BankTransaction.objects.filter(
+            is_archived=True,
+            journal_entry__isnull=False,
+        ).values("journal_entry_id")
+        categorized_filter = NOT_VOID & ~Q(journal_lines__journal_entry_id__in=archived_je_ids)
+        return self.annotate(
+            _categorized_balance=Coalesce(Sum("journal_lines__dr_amount", filter=categorized_filter), Decimal("0"))
+            - Coalesce(Sum("journal_lines__cr_amount", filter=categorized_filter), Decimal("0"))
+        )
+
     def with_reconciled_balance(self):
         """Annotate accounts with their reconciled balance (only reconciled journal lines)."""
         reconciled = Q(journal_lines__is_reconciled=True) & NOT_VOID

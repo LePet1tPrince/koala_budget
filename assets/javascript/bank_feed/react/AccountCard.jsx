@@ -41,7 +41,7 @@ const AccountCard = ({ account, isSelected, onClick }) => {
         </p>
         <div className="text-xs text-base-content/60 mt-2 space-y-1">
           <p>
-            {gettext('Categorized Balance:')} {formatCurrency(account.balance)}
+            {gettext('Categorized Balance:')} {formatCurrency(account.categorized_balance ?? account.balance)}
           </p>
           <p>
             {gettext('Reconciled Balance:')} {formatCurrency(account.reconciled_balance || 0)}

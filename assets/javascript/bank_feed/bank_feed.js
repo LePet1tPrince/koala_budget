@@ -247,5 +247,7 @@ export function getBatchOperationsApi(teamSlug) {
     transferSuggestions: () => fetchJson('transfers', null, 'GET'),
     transferResolve: (archiveId, keepId) => fetchJson('transfers/resolve', { archive_id: archiveId, keep_id: keepId }),
     transferDismiss: (transactionA, transactionB) => fetchJson('transfers/dismiss', { transaction_a: transactionA, transaction_b: transactionB }),
+
+    fetchFeedAccounts: () => fetchJson('feed_accounts', null, 'GET'),
   };
 }
