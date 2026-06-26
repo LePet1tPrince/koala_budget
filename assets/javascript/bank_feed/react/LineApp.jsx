@@ -427,9 +427,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
    */
   const handleBatchReconcile = async (adjustmentAmount = 0, reconciliationDate = null) => {
     try {
-      const ids = [...selectedIds];
-      console.log('DEBUG batch_reconcile ids=', ids, 'adjustmentAmount=', adjustmentAmount, 'reconciliationDate=', reconciliationDate);
-      await batchApi.batchReconcile(ids, adjustmentAmount, reconciliationDate);
+      await batchApi.batchReconcile([...selectedIds], adjustmentAmount, reconciliationDate);
       setSelectedIds(new Set());
       await Promise.all([loadLines(), loadAccounts()]);
 
