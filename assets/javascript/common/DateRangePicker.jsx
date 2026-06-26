@@ -44,7 +44,7 @@ const safeFormat = (date) => {
 // Helper to format date for display (e.g., "Jan 1, 2024")
 const formatDisplayDate = (date) => {
   if (!date || !isValid(date)) return '';
-  return format(date, 'MMM d, yyyy');
+  return format(date, 'yyyy-MM-dd');
 };
 
 const presetRanges = [
@@ -265,6 +265,7 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
                   setTempStartDate(newValue);
                   setActiveRange(''); // Clear preset selection
                 }}
+                format="yyyy-MM-dd"
                 slotProps={{ textField: { size: 'small' } }}
                 maxDate={tempEndDate || undefined} // Prevent start date after end date
               />
@@ -275,6 +276,7 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
                   setTempEndDate(newValue);
                   setActiveRange(''); // Clear preset selection
                 }}
+                format="yyyy-MM-dd"
                 slotProps={{ textField: { size: 'small' } }}
                 minDate={tempStartDate || undefined} // Prevent end date before start date
               />

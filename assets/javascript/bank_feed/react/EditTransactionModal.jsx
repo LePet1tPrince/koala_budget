@@ -251,6 +251,7 @@ const EditTransactionModal = ({
               value={date}
               onChange={(newValue) => setDate(newValue)}
               disabled={!canEditDate}
+              format="yyyy-MM-dd"
               slotProps={{
                 textField: {
                   fullWidth: true,

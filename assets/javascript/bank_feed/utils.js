@@ -19,10 +19,8 @@ function isUtcMidnight(date) {
  * @returns {string} Formatted date string
  */
 export function formatDate(dateString) {
-  const date = dateString instanceof Date ? dateString : new Date(dateString);
-  // Date-only values must be rendered in UTC, otherwise users west of UTC
-  // see the previous day.
-  return isUtcMidnight(date) ? date.toLocaleDateString(undefined, { timeZone: 'UTC' }) : date.toLocaleDateString();
+  if (!dateString) return '';
+  return formatDateForInput(dateString instanceof Date ? dateString : new Date(dateString));
 }
 
 /**
