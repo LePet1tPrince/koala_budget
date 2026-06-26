@@ -1245,8 +1245,12 @@ class BankFeedViewSet(
         Sets is_reconciled=True on the JournalLine for the bank account side.
         Optionally creates an adjustment if adjustment_amount is non-zero.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("DEBUG batch_reconcile request.data=%s", request.data)
         serializer = BatchReconcileRequestSerializer(data=request.data)
         if not serializer.is_valid():
+            logger.warning("DEBUG batch_reconcile serializer errors=%s", serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         ids = serializer.validated_data["ids"]
@@ -1262,6 +1266,7 @@ class BankFeedViewSet(
         # Validate: All transactions must be categorized (have journal_entry)
         uncategorized = [tx for tx in transactions if not tx.journal_entry]
         if uncategorized:
+            logger.warning("DEBUG batch_reconcile uncategorized ids=%s", [tx.id for tx in uncategorized])
             return Response(
                 {
                     "error": f"Cannot reconcile uncategorized transactions. {len(uncategorized)} transaction(s) need to be categorized first."  # noqa: E501
@@ -1275,6 +1280,7 @@ class BankFeedViewSet(
         # Reconciliation (and any adjustment) only makes sense against a single account
         account_ids = {tx.account_id for tx in transactions}
         if len(account_ids) > 1:
+            logger.warning("DEBUG batch_reconcile multi-account ids=%s", account_ids)
             return Response(
                 {"error": "All transactions must belong to the same account to reconcile."},
                 status=status.HTTP_400_BAD_REQUEST,
