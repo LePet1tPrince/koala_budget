@@ -125,6 +125,7 @@ const BulkEditModal = ({
               label={gettext('Date')}
               value={date}
               onChange={(newValue) => setDate(newValue)}
+              format="yyyy-MM-dd"
               slotProps={{
                 textField: {
                   fullWidth: true,

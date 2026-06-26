@@ -102,7 +102,7 @@ const BatchActionBar = ({
   // Computed adjustment = trueBalance - (reconciledBalance + reconcilingAmount)
   const computedAdjustment = useMemo(() => {
     if (trueBalance === '' || trueBalance === null) return 0;
-    return parseFloat(trueBalance) - (reconciledBalance + reconcilingAmount);
+    return Math.round((parseFloat(trueBalance) - (reconciledBalance + reconcilingAmount)) * 100) / 100;
   }, [trueBalance, reconciledBalance, reconcilingAmount]);
 
   // Calculate new reconciled balance after reconciling (or unreconciling)
