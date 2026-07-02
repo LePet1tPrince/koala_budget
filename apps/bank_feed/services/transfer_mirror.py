@@ -9,9 +9,11 @@ account's row. To make a transfer visible — and independently reconcilable —
 counterpart account pointing at the same journal entry.
 
 Both legs share one entry: the ledger is never double-counted, reconciliation is
-per-line (independent), editing one leg's date/amount/description propagates to
-the other, and re-pointing *either* leg's category moves the counterpart leg to
-follow (fully transversable mirrors).
+per-line (independent), and re-pointing *either* leg's category moves the
+counterpart leg to follow (fully transversable mirrors). Amounts stay in
+lockstep (one balanced entry), but each leg owns its display fields — date,
+payee, description — so editing them on one side never rewrites the other.
+They are only copied once, as defaults, when the mirror is first created.
 """
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY
@@ -60,7 +62,9 @@ def sync_transfer(edited_tx):
 
       - if the counterpart account is a transfer target, ensure a counterpart leg
         lives there (create the mirror the first time, or move the existing leg to
-        follow), with display fields mirrored from the edited leg;
+        follow). Only account and amount are kept in lockstep; date, payee and
+        description belong to each leg and are seeded from the edited leg only
+        when the mirror is first created;
       - otherwise it is no longer a transfer, so drop the mirror leg. The real
         (non-mirror) leg is never deleted here — :func:`would_orphan_primary`
         guards the only path that could strand it.
@@ -79,12 +83,13 @@ def sync_transfer(edited_tx):
                 journal_entry=entry,
                 is_transfer_mirror=True,
                 source=BankTransaction.SOURCE_SYSTEM,
+                # Initial defaults only — after creation each leg owns these.
+                posted_date=edited_tx.posted_date,
+                description=edited_tx.description,
+                merchant_name=edited_tx.merchant_name,
             )
         counterpart_tx.account = counterpart_account
         counterpart_tx.amount = -edited_tx.amount  # opposite direction
-        counterpart_tx.posted_date = edited_tx.posted_date
-        counterpart_tx.description = edited_tx.description
-        counterpart_tx.merchant_name = edited_tx.merchant_name
         counterpart_tx.save()
     elif counterpart_tx is not None and counterpart_tx.is_transfer_mirror:
         counterpart_tx.delete()

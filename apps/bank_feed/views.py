@@ -628,8 +628,9 @@ class BankFeedViewSet(
                 bank_tx.journal_entry = journal_entry
                 bank_tx.save()
 
-            # Keep the transfer's two legs in lockstep — moves/creates/removes the
-            # counterpart leg and syncs its display fields, in either direction.
+            # Keep the transfer's counterpart leg aligned (account + amount only;
+            # date/payee/description are per-leg) — moves/creates/removes it, in
+            # either direction.
             sync_transfer(bank_tx)
 
         # Reload to get updated data
@@ -1040,7 +1041,8 @@ class BankFeedViewSet(
 
                 tx.save()
 
-                # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
+                # Keep a transfer's counterpart leg aligned (account/amount only —
+                # date/payee/description edits stay on this leg).
                 sync_transfer(tx)
 
         log_event(

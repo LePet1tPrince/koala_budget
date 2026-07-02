@@ -3,8 +3,10 @@ Tests for transfer mirror legs.
 
 When a bank transaction is categorized as a transfer to another feed account, a
 linked "mirror" leg is created in that account so the transfer shows up in both
-feeds, reconciles independently, and stays in lockstep when edited — all backed
-by a single shared journal entry (no double-counting).
+feeds and reconciles independently — all backed by a single shared journal entry
+(no double-counting). Account and amount stay in lockstep across the two legs;
+date, payee and description belong to each leg and never propagate after the
+mirror is first created.
 """
 
 from datetime import date
@@ -147,7 +149,7 @@ class TransferMirrorTest(TestCase):
         self.assertTrue(cc_line.is_reconciled)  # the leg we reconciled
         self.assertFalse(chk_line.is_reconciled)  # the other leg, untouched
 
-    def test_editing_primary_syncs_mirror(self):
+    def test_editing_primary_syncs_amount_but_not_display_fields(self):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
@@ -161,6 +163,7 @@ class TransferMirrorTest(TestCase):
                     "category": self.credit_card.id,
                     "outflow": "150.00",
                     "account": self.checking.id,
+                    "payee": "My Bank",
                     "description": "Updated payment",
                 },
                 format="json",
@@ -168,9 +171,42 @@ class TransferMirrorTest(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
         mirror = self._mirror_of(tx.journal_entry)
-        self.assertEqual(mirror.posted_date, date(2026, 6, 9))
+        # Amount is one balanced entry — it must follow.
         self.assertEqual(mirror.amount, Decimal("-150.00"))
-        self.assertEqual(mirror.description, "Updated payment")
+        # Date/payee/description belong to each leg — the mirror keeps its own.
+        self.assertEqual(mirror.posted_date, date(2026, 6, 1))
+        self.assertEqual(mirror.description, "Payment")
+        self.assertFalse(mirror.merchant_name)  # still unset, not "My Bank"
+
+    def test_editing_mirror_display_fields_leaves_primary_untouched(self):
+        tx = self._tx(self.checking, "100.00", merchant_name="Original Payee")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
+        with current_team(self.team):
+            resp = self.client.patch(
+                url,
+                {
+                    "ids": [mirror.id],
+                    "date": "2026-06-09",
+                    "payee": "Card Payment",
+                    "description": "Autopay",
+                },
+                format="json",
+            )
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        mirror.refresh_from_db()
+        self.assertEqual(mirror.posted_date, date(2026, 6, 9))
+        self.assertEqual(mirror.merchant_name, "Card Payment")
+        self.assertEqual(mirror.description, "Autopay")
+        # The primary keeps its own display fields.
+        tx.refresh_from_db()
+        self.assertEqual(tx.posted_date, date(2026, 6, 1))
+        self.assertEqual(tx.merchant_name, "Original Payee")
+        self.assertEqual(tx.description, "Payment")
 
     def test_recategorizing_to_expense_removes_mirror(self):
         tx = self._tx(self.checking, "100.00")
