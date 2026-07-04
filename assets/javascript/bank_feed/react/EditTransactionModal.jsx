@@ -137,9 +137,7 @@ const EditTransactionModal = ({
       newErrors.date = gettext('Date is required');
     }
 
-    if (!category) {
-      newErrors.category = gettext('Category is required');
-    }
+    // Category is optional — a blank category leaves the transaction uncategorized.
 
     const hasInflow = inflow && parseFloat(inflow) > 0;
     const hasOutflow = outflow && parseFloat(outflow) > 0;
@@ -180,7 +178,7 @@ const EditTransactionModal = ({
           source: transaction.source,
           journal_entry_id: journalEntryId,
           date: canEditDate ? date : transaction.postedDate,
-          category: canEditCategory && category ? { id: category.id, name: category.name, account_number: category.accountNumber } : transaction.category,
+          category: canEditCategory ? (category ? { id: category.id, name: category.name, account_number: category.accountNumber } : null) : transaction.category,
           inflow: canEditAmounts ? (inflow || '0') : transaction.inflow,
           outflow: canEditAmounts ? (outflow || '0') : transaction.outflow,
           payee: payee,
@@ -278,7 +276,7 @@ const EditTransactionModal = ({
             renderInput={(params) => (
               <TextField
                 {...params}
-                label={gettext('Category')}
+                label={gettext('Category (optional)')}
                 size="small"
                 error={!!errors.category}
                 helperText={
