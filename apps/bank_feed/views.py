@@ -54,7 +54,12 @@ class ManualTransactionSerializer(serializers.Serializer):
     """Serializer for creating/updating manual transactions."""
 
     date = serializers.DateField(help_text="Transaction date")
-    category = serializers.IntegerField(help_text="Category account ID")
+    category = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="Category account ID (optional; leave blank to keep the transaction uncategorized)",
+    )
     inflow = serializers.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -378,13 +383,17 @@ class BankFeedViewSet(
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        try:
-            category_account = Account.for_team.get(id=data["category"])
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Category account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        # Category is optional — a blank category creates an uncategorized transaction
+        # (no journal entry) that the user can categorize later.
+        category_account = None
+        if data.get("category") is not None:
+            try:
+                category_account = Account.for_team.get(id=data["category"])
+            except Account.DoesNotExist:
+                return Response(
+                    {"error": "Category account not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
         inflow = data.get("inflow", Decimal("0")) or Decimal("0")
@@ -401,50 +410,53 @@ class BankFeedViewSet(
             )
 
         with transaction.atomic():
-            # Create journal entry
-            journal_entry = JournalEntry.objects.create(
-                team=request.team,
-                entry_date=data["date"],
-                description=data.get("description", ""),
-                payee=payee,
-                source=JournalEntry.SOURCE_MANUAL,
-                status=JournalEntry.STATUS_POSTED,
-            )
+            # Only categorized transactions get a journal entry; a blank category
+            # leaves the transaction uncategorized (journal_entry=None).
+            journal_entry = None
+            if category_account is not None:
+                journal_entry = JournalEntry.objects.create(
+                    team=request.team,
+                    entry_date=data["date"],
+                    description=data.get("description", ""),
+                    payee=payee,
+                    source=JournalEntry.SOURCE_MANUAL,
+                    status=JournalEntry.STATUS_POSTED,
+                )
 
-            # Create journal lines
-            abs_amount = abs(amount)
-            if inflow > 0:
-                # Money coming in: debit bank account, credit category
-                JournalLine.objects.create(
-                    journal_entry=journal_entry,
-                    team=request.team,
-                    account=bank_account,
-                    dr_amount=abs_amount,
-                    cr_amount=Decimal("0"),
-                )
-                JournalLine.objects.create(
-                    journal_entry=journal_entry,
-                    team=request.team,
-                    account=category_account,
-                    dr_amount=Decimal("0"),
-                    cr_amount=abs_amount,
-                )
-            else:
-                # Money going out: credit bank account, debit category
-                JournalLine.objects.create(
-                    journal_entry=journal_entry,
-                    team=request.team,
-                    account=bank_account,
-                    dr_amount=Decimal("0"),
-                    cr_amount=abs_amount,
-                )
-                JournalLine.objects.create(
-                    journal_entry=journal_entry,
-                    team=request.team,
-                    account=category_account,
-                    dr_amount=abs_amount,
-                    cr_amount=Decimal("0"),
-                )
+                # Create journal lines
+                abs_amount = abs(amount)
+                if inflow > 0:
+                    # Money coming in: debit bank account, credit category
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=bank_account,
+                        dr_amount=abs_amount,
+                        cr_amount=Decimal("0"),
+                    )
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=category_account,
+                        dr_amount=Decimal("0"),
+                        cr_amount=abs_amount,
+                    )
+                else:
+                    # Money going out: credit bank account, debit category
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=bank_account,
+                        dr_amount=Decimal("0"),
+                        cr_amount=abs_amount,
+                    )
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=category_account,
+                        dr_amount=abs_amount,
+                        cr_amount=Decimal("0"),
+                    )
 
             # Create bank transaction
             bank_tx = BankTransaction.objects.create(
@@ -459,6 +471,7 @@ class BankFeedViewSet(
             )
 
             # Mirror the leg into the counterpart account's feed if it's a transfer.
+            # (No-op for an uncategorized transaction with no journal entry.)
             sync_transfer(bank_tx)
 
         # Return the created transaction as a feed row
@@ -503,21 +516,36 @@ class BankFeedViewSet(
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        try:
-            category_account = Account.for_team.get(id=data["category"])
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Category account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        # Category is optional — clearing it de-categorizes the transaction.
+        category_account = None
+        if data.get("category") is not None:
+            try:
+                category_account = Account.for_team.get(id=data["category"])
+            except Account.DoesNotExist:
+                return Response(
+                    {"error": "Category account not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
-        # Re-pointing the mirror leg to a non-feed category would orphan the real
+        # Re-pointing (or clearing) the mirror leg's category would orphan the real
         # primary transaction; reject it (edit the original transaction instead).
         if would_orphan_primary(bank_tx, category_account):
             return Response(
                 {
                     "error": "This is the mirror side of a transfer. Edit the original transaction to change its category."  # noqa: E501
                 },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Removing the category from a reconciled transaction would drop confirmed
+        # history out of the ledger; refuse until it is unreconciled.
+        if (
+            category_account is None
+            and bank_tx.journal_entry
+            and bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists()
+        ):
+            return Response(
+                {"error": "This transaction is reconciled. Unreconcile it before removing its category."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -548,9 +576,15 @@ class BankFeedViewSet(
             bank_tx.merchant_name = payee_name
             bank_tx.save()
 
-            # Update or create journal entry
+            # Update, create, or remove the journal entry depending on the category
             journal_entry = bank_tx.journal_entry
-            if journal_entry:
+            if category_account is None:
+                # Blank category: leave the transaction uncategorized. Drop any
+                # existing journal entry (and its mirror leg) so it disappears from
+                # balances and reappears as an uncategorized feed row.
+                if journal_entry is not None:
+                    self._decategorize(bank_tx)
+            elif journal_entry:
                 # Update existing journal entry
                 journal_entry.entry_date = data["date"]
                 journal_entry.description = data.get("description", "")
@@ -1076,6 +1110,27 @@ class BankFeedViewSet(
         # The category drives whether this is a transfer: add/move/remove the
         # counterpart leg (and move the primary if the mirror was re-pointed).
         sync_transfer(bank_tx)
+
+    @transaction.atomic
+    def _decategorize(self, bank_tx):
+        """
+        Remove a transaction's categorization: unlink and delete its journal entry
+        (and any auto-created transfer mirror leg sharing it). The BankTransaction
+        stays in the feed as an uncategorized row.
+        """
+        entry = bank_tx.journal_entry
+        if entry is None:
+            return
+
+        # A transfer's counterpart mirror leg only exists to surface the shared
+        # entry in the other feed; drop it so it doesn't linger as an orphan.
+        for leg in BankTransaction.objects.filter(journal_entry=entry).exclude(id=bank_tx.id):
+            if leg.is_transfer_mirror:
+                leg.delete()
+
+        bank_tx.journal_entry = None
+        bank_tx.save(update_fields=["journal_entry", "updated_at"])
+        entry.delete()
 
     @extend_schema(
         operation_id="bank_feed_batch_archive",
