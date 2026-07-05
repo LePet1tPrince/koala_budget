@@ -4,17 +4,22 @@ import React from 'react';
 import { formatCurrency } from '../../utilities/currency';
 
 /**
- * AccountCard component - displays an account with bank feed
- * Shows account name, number, and selection state
+ * AccountCard component - a compact, scannable row for the account picker.
+ * Shows account name, institution, balance, and a badge when transactions need review.
  */
 const AccountCard = ({ account, isSelected, onClick }) => {
-  const cardClasses = `card bg-base-200 shadow-md cursor-pointer transition-all hover:shadow-lg ${
-    isSelected ? 'ring-2 ring-primary' : ''
+  const isLiability = account.account_type === 'liability';
+  const uncategorizedCount = account.uncategorized_count || 0;
+
+  const rowClasses = `flex items-center gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+    isSelected
+      ? 'border-primary bg-primary/10'
+      : 'border-base-300 bg-base-100 hover:border-primary/40 hover:bg-base-200'
   }`;
 
   return (
     <div
-      className={cardClasses}
+      className={rowClasses}
       onClick={() => onClick(account)}
       role="button"
       tabIndex={0}
@@ -27,27 +32,35 @@ const AccountCard = ({ account, isSelected, onClick }) => {
       }}
       data-testid={`account-card-${account.id}`}
     >
-      <div className="card-body p-4">
-        <h3 className="card-title text-base">
-          {account.name}
-          {isSelected && (
-            <span className="badge badge-primary badge-sm ml-2">
-              {gettext('Selected')}
-            </span>
-          )}
-        </h3>
-        <p className="text-xs text-base-content/60">
-          {account.account_group_name}
+      <span className="relative shrink-0">
+        <span
+          className={`flex items-center justify-center w-8 h-8 rounded-full text-xs ${
+            isLiability ? 'bg-warning/15 text-warning' : 'bg-primary/15 text-primary'
+          }`}
+          aria-hidden="true"
+        >
+          <i className={`fa ${isLiability ? 'fa-credit-card' : 'fa-university'}`}></i>
+        </span>
+        {uncategorizedCount > 0 && (
+          <span
+            className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-error text-error-content text-[10px] font-semibold leading-none"
+            title={`${uncategorizedCount} ${gettext('transactions awaiting categorization')}`}
+          >
+            {uncategorizedCount > 99 ? '99+' : uncategorizedCount}
+          </span>
+        )}
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-sm truncate">{account.name}</p>
+        <p className="text-xs text-base-content/60 truncate">
+          {account.institution_name || account.account_group_name}
         </p>
-        <div className="text-xs text-base-content/60 mt-2 space-y-1">
-          <p>
-            {gettext('Categorized Balance:')} {formatCurrency(account.categorized_balance ?? account.balance)}
-          </p>
-          <p>
-            {gettext('Reconciled Balance:')} {formatCurrency(account.reconciled_balance || 0)}
-          </p>
-        </div>
       </div>
+
+      <p className="text-sm font-semibold tabular-nums text-right shrink-0 w-24">
+        {formatCurrency(account.categorized_balance ?? account.balance)}
+      </p>
     </div>
   );
 };

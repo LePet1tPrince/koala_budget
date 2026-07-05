@@ -6,6 +6,7 @@ Provides API endpoints for imported transactions and unified bank feed.
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Count
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -18,7 +19,6 @@ from rest_framework.response import Response
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Payee
 from apps.accounts.serializers import (
     AccountGroupSerializer,
-    AccountSerializer,
     PayeeSerializer,
     SimpleAccountSerializer,
 )
@@ -36,6 +36,7 @@ from .serializers import (
     BatchReconcileRequestSerializer,
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
+    FeedAccountSerializer,
     TransferDismissRequestSerializer,
     TransferResolveRequestSerializer,
     TransferSuggestionSerializer,
@@ -179,20 +180,39 @@ class BankFeedViewSet(
     @extend_schema(
         operation_id="bank_feed_feed_accounts",
         tags=["bank-feed"],
-        responses={200: AccountSerializer(many=True)},
+        responses={200: FeedAccountSerializer(many=True)},
     )
     @action(detail=False, methods=["get"])
     def feed_accounts(self, request, team_slug=None):
-        """Return feed accounts with up-to-date balances."""
-        accounts = (
+        """Return feed accounts with up-to-date balances and review counts."""
+        accounts = list(
             Account.for_team.filter(has_feed=True)
             .with_balance()
             .with_categorized_balance()
             .with_reconciled_balance()
-            .select_related("account_group")
+            .select_related("account_group", "institution")
             .order_by("name")
         )
-        return Response(AccountSerializer(accounts, many=True).data)
+
+        # Computed as a separate query (not chained onto the balance annotations above) to
+        # avoid the join fan-out that would inflate the Sum() balances: bank_transactions and
+        # journal_lines are different reverse relations, so annotating both in one query would
+        # cross-multiply their rows per account.
+        uncategorized_counts = dict(
+            BankTransaction.objects.filter(
+                team=request.team,
+                account__has_feed=True,
+                journal_entry__isnull=True,
+                is_archived=False,
+            )
+            .values("account_id")
+            .annotate(count=Count("id"))
+            .values_list("account_id", "count")
+        )
+        for account in accounts:
+            account.uncategorized_count = uncategorized_counts.get(account.id, 0)
+
+        return Response(FeedAccountSerializer(accounts, many=True).data)
 
     @extend_schema(
         operation_id="bank_feed_transactions_categorize",
@@ -1626,17 +1646,32 @@ def bank_feed_home(request, team_slug):
     Displays accounts with bank feeds and bank transactions table.
     """
     # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
-    accounts_with_feeds = (
+    accounts_with_feeds = list(
         Account.for_team.filter(has_feed=True)
         .with_balance()
         .with_categorized_balance()
         .with_reconciled_balance()
-        .select_related("account_group")
+        .select_related("account_group", "institution")
         .order_by("name")
     )  # noqa: E501
 
+    # See feed_accounts() below for why this is a separate query rather than a chained annotation.
+    uncategorized_counts = dict(
+        BankTransaction.objects.filter(
+            team=request.team,
+            account__has_feed=True,
+            journal_entry__isnull=True,
+            is_archived=False,
+        )
+        .values("account_id")
+        .annotate(count=Count("id"))
+        .values_list("account_id", "count")
+    )
+    for account in accounts_with_feeds:
+        account.uncategorized_count = uncategorized_counts.get(account.id, 0)
+
     # Serialize accounts for React
-    accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
+    accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data
 
     # Get all accounts, payees, and account groups for dropdowns
     all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")

@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Alert, Snackbar } from '@mui/material';
 
-import AccountCard from './AccountCard';
 import AccountGrid from './AccountGrid';
 import LineTableMaterial from './LineTableMaterial';
 import PlaidLinkButton from './PlaidLinkButton';
@@ -25,6 +24,10 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showUploadWizard, setShowUploadWizard] = useState(false);
+
+  // Account picker is expanded until an account is chosen, then it collapses
+  // to a compact strip so the account list doesn't crowd the categorizing view
+  const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(true);
 
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -175,6 +178,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     // bar keep acting on rows that are no longer visible
     setSelectedIds(new Set());
     setSelectedAccount(account);
+    setIsAccountPickerOpen(false);
   };
 
   /**
@@ -507,7 +511,21 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       {/* Account Selection Cards */}
       <section className="app-card">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
+          <button
+            type="button"
+            className="flex items-center gap-2 min-w-0"
+            onClick={() => setIsAccountPickerOpen((open) => !open)}
+            aria-expanded={isAccountPickerOpen}
+            data-testid="account-picker-toggle"
+          >
+            <i className={`fa fa-chevron-${isAccountPickerOpen ? 'down' : 'right'} text-xs text-base-content/50 shrink-0`}></i>
+            <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
+            {!isAccountPickerOpen && selectedAccount && (
+              <span className="text-sm font-normal text-base-content/60 truncate">
+                — {selectedAccount.name}
+              </span>
+            )}
+          </button>
           <div className="flex gap-2 items-center">
             <TransferSuggestions
               batchApi={batchApi}
@@ -530,27 +548,19 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             />
           </div>
         </div>
-        {accounts.length === 0 ? (
-          <div className="alert alert-warning">
-            <i className="fa fa-exclamation-triangle"></i>
-            <span>
-              {gettext('No accounts with bank feeds found. Please link a bank account to get started.')}
-            </span>
-          </div>
-        ) : (
-          <AccountGrid accounts={accounts}
-             selectedAccount={selectedAccount}
-             handleAccountSelect={handleAccountSelect}  />
-          // <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          //   {accounts.map((account) => (
-          //     <AccountCard
-          //       key={account.id}
-          //       account={account}
-          //       isSelected={selectedAccount?.id === account.id}
-          //       onClick={handleAccountSelect}
-          //     />
-          //   ))}
-          // </div>
+        {isAccountPickerOpen && (
+          accounts.length === 0 ? (
+            <div className="alert alert-warning">
+              <i className="fa fa-exclamation-triangle"></i>
+              <span>
+                {gettext('No accounts with bank feeds found. Please link a bank account to get started.')}
+              </span>
+            </div>
+          ) : (
+            <AccountGrid accounts={accounts}
+               selectedAccount={selectedAccount}
+               handleAccountSelect={handleAccountSelect}  />
+          )
         )}
       </section>
 
