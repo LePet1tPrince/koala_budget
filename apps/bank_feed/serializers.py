@@ -7,10 +7,19 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.accounts.serializers import SimpleAccountSerializer
+from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
 from apps.plaid.serializers import PlaidTransactionSerializer
 
 from .models import BankTransaction
+
+
+class FeedAccountSerializer(AccountSerializer):
+    """AccountSerializer plus the count of transactions awaiting categorization, for the account picker."""
+
+    uncategorized_count = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta(AccountSerializer.Meta):
+        fields = AccountSerializer.Meta.fields + ["uncategorized_count"]
 
 
 class BankTransactionSerializer(serializers.ModelSerializer):
