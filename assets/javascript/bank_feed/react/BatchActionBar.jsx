@@ -86,6 +86,13 @@ const BatchActionBar = ({
     return selectedRows.every(row => row.category);
   }, [selectedRows]);
 
+  // Latest transaction date among selected rows (defaults the reconciliation date)
+  const maxSelectedDate = useMemo(() => {
+    const dates = selectedRows.map(row => row.date).filter(Boolean);
+    if (dates.length === 0) return new Date().toISOString().split('T')[0];
+    return dates.reduce((max, date) => (date > max ? date : max));
+  }, [selectedRows]);
+
   // Check if any selected row is reconciled
   const anyReconciled = useMemo(() => {
     return selectedRows.some(r => r.isReconciled ?? r.is_reconciled ?? false);
@@ -284,7 +291,10 @@ const BatchActionBar = ({
                 <Button
                   size="small"
                   startIcon={<CheckCircleIcon />}
-                  onClick={() => setReconcileDialogOpen(true)}
+                  onClick={() => {
+                    setReconciliationDate(maxSelectedDate);
+                    setReconcileDialogOpen(true);
+                  }}
                   disabled={!allCategorized}
                 >
                   {gettext('Reconcile')}
