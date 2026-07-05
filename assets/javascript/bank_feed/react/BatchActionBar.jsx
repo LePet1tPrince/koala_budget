@@ -26,6 +26,7 @@ import {
   DeleteForever as DeleteForeverIcon,
 } from '@mui/icons-material';
 import BulkEditModal from './BulkEditModal';
+import { formatDateForInput } from '../utils';
 
 /* globals gettext */
 
@@ -88,7 +89,7 @@ const BatchActionBar = ({
 
   // Latest transaction date among selected rows (defaults the reconciliation date)
   const maxSelectedDate = useMemo(() => {
-    const dates = selectedRows.map(row => row.date).filter(Boolean);
+    const dates = selectedRows.map(row => formatDateForInput(row.postedDate)).filter(Boolean);
     if (dates.length === 0) return new Date().toISOString().split('T')[0];
     return dates.reduce((max, date) => (date > max ? date : max));
   }, [selectedRows]);
