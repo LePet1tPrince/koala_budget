@@ -12,7 +12,7 @@ import {
   LastPage as LastPageIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { Alert, Box, Button, Checkbox, IconButton, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
+import { Alert, Badge, Box, Button, Checkbox, IconButton, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
@@ -191,6 +191,27 @@ const LineTableMaterial = ({
     return filtered;
   }, [lines, filterStart, filterEnd, filterMode, showUncategorizedOnly]);
 
+  // Counts per filter mode (independent of the active filter/date range) for the
+  // superscript badges on the To Review/Reconciled/Archived toggle buttons
+  const filterCounts = useMemo(() => {
+    if (!Array.isArray(lines)) return { to_review: 0, reconciled: 0, archived: 0 };
+    const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
+    const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
+    return lines.reduce(
+      (acc, l) => {
+        if (isArchived(l)) {
+          acc.archived += 1;
+        } else if (isReconciled(l)) {
+          acc.reconciled += 1;
+        } else {
+          acc.to_review += 1;
+        }
+        return acc;
+      },
+      { to_review: 0, reconciled: 0, archived: 0 }
+    );
+  }, [lines]);
+
   // Handle row selection
   const handleRowSelect = (rowId, checked) => {
     if (!onSelectionChange) return;
@@ -351,9 +372,36 @@ const LineTableMaterial = ({
             }}
             aria-label="Transaction filter"
           >
-            <ToggleButton value="to_review" data-testid="filter-to-review">{gettext('To Review')}</ToggleButton>
-            <ToggleButton value="reconciled" data-testid="filter-reconciled">{gettext('Reconciled')}</ToggleButton>
-            <ToggleButton value="archived" data-testid="filter-archived">{gettext('Archived')}</ToggleButton>
+            <ToggleButton value="to_review" data-testid="filter-to-review">
+              <Badge
+                badgeContent={filterCounts.to_review}
+                color="warning"
+                max={999}
+                sx={{ '& .MuiBadge-badge': { right: -10, top: -2 } }}
+              >
+                {gettext('To Review')}
+              </Badge>
+            </ToggleButton>
+            <ToggleButton value="reconciled" data-testid="filter-reconciled">
+              <Badge
+                badgeContent={filterCounts.reconciled}
+                color="success"
+                max={999}
+                sx={{ '& .MuiBadge-badge': { right: -10, top: -2 } }}
+              >
+                {gettext('Reconciled')}
+              </Badge>
+            </ToggleButton>
+            <ToggleButton value="archived" data-testid="filter-archived">
+              <Badge
+                badgeContent={filterCounts.archived}
+                color="default"
+                max={999}
+                sx={{ '& .MuiBadge-badge': { right: -10, top: -2 } }}
+              >
+                {gettext('Archived')}
+              </Badge>
+            </ToggleButton>
           </ToggleButtonGroup>
         </div>
 

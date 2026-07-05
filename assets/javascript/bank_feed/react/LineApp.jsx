@@ -10,6 +10,7 @@ import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
 import TransferSuggestions from './TransferSuggestions';
 import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
+import { formatCurrency } from '../../utilities/currency';
 
 /**
  * LineApp - Main application component for managing lines
@@ -567,7 +568,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       {/* Lines Table */}
       {selectedAccount && (
         <section className="app-card">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-2">
             <h2 className="pg-subtitle">
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
@@ -605,6 +606,20 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
                 )}
               </button>
             </div>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 mb-4 text-sm">
+            <span className="text-base-content/60">
+              {gettext('Categorized balance')}:{' '}
+              <span className="font-semibold text-base-content">
+                {formatCurrency(selectedAccount.categorized_balance ?? selectedAccount.balance)}
+              </span>
+            </span>
+            <span className="text-base-content/60">
+              {gettext('Reconciled balance')}:{' '}
+              <span className="font-semibold text-base-content">
+                {formatCurrency(selectedAccount.reconciled_balance ?? 0)}
+              </span>
+            </span>
           </div>
           {error && (
             <div className="alert alert-error mb-4">
