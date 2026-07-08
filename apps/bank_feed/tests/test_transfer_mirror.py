@@ -281,6 +281,79 @@ class TransferMirrorTest(TestCase):
         self.assertEqual(tx.account_id, self.checking.id)
         self.assertTrue(BankTransaction.objects.filter(id=mirror.id).exists())
 
+    def test_archiving_primary_archives_mirror(self):
+        tx = self._tx(self.checking, "100.00")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
+        with current_team(self.team):
+            resp = self.client.post(url, {"ids": [tx.id]}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        tx.refresh_from_db()
+        mirror.refresh_from_db()
+        self.assertTrue(tx.is_archived)
+        self.assertTrue(mirror.is_archived)
+
+    def test_archiving_mirror_archives_primary(self):
+        tx = self._tx(self.checking, "100.00")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
+        with current_team(self.team):
+            resp = self.client.post(url, {"ids": [mirror.id]}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        tx.refresh_from_db()
+        mirror.refresh_from_db()
+        self.assertTrue(tx.is_archived)
+        self.assertTrue(mirror.is_archived)
+
+    def test_unarchiving_one_leg_unarchives_the_other(self):
+        tx = self._tx(self.checking, "100.00")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+        tx.is_archived = True
+        tx.save(update_fields=["is_archived"])
+        mirror.is_archived = True
+        mirror.save(update_fields=["is_archived"])
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_unarchive/"
+        with current_team(self.team):
+            resp = self.client.post(url, {"ids": [mirror.id]}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        tx.refresh_from_db()
+        mirror.refresh_from_db()
+        self.assertFalse(tx.is_archived)
+        self.assertFalse(mirror.is_archived)
+
+    def test_archiving_primary_skips_reconciled_mirror(self):
+        # The mirror leg is reconciled and must not be force-archived, but the
+        # primary (unreconciled) leg still archives.
+        tx = self._tx(self.checking, "100.00")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+        cc_line = tx.journal_entry.lines.get(account=self.credit_card)
+        cc_line.is_reconciled = True
+        cc_line.save(update_fields=["is_reconciled"])
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
+        with current_team(self.team):
+            resp = self.client.post(url, {"ids": [tx.id]}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        tx.refresh_from_db()
+        mirror.refresh_from_db()
+        self.assertTrue(tx.is_archived)
+        self.assertFalse(mirror.is_archived)
+
     def test_detector_does_not_flag_the_two_legs(self):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
