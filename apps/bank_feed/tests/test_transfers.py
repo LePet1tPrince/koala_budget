@@ -296,6 +296,27 @@ class TransferResolveEndpointTest(TransferTestBase):
         entry.refresh_from_db()
         self.assertEqual(entry.status, JournalEntry.STATUS_POSTED)
 
+    def test_cannot_archive_leg_whose_mirror_is_reconciled(self):
+        # Resolving would void the entry and archive the mirror counterpart too,
+        # so a reconciled counterpart blocks the resolve just like a reconciled
+        # archive leg does.
+        out_tx = self._tx(self.checking, "100.00")
+        in_tx = self._tx(self.savings, "-100.00")
+        entry = self._categorize_as_transfer(in_tx, self.checking)
+        sync_transfer(in_tx)  # creates the mirror leg in checking
+        counterpart_line = entry.lines.get(account=self.checking)
+        counterpart_line.is_reconciled = True
+        counterpart_line.save()
+
+        with current_team(self.team):
+            resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("reconciled", resp.json()["error"])
+        in_tx.refresh_from_db()
+        self.assertFalse(in_tx.is_archived)
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, JournalEntry.STATUS_POSTED)
+
     def test_archive_and_keep_must_differ(self):
         tx = self._tx(self.checking, "100.00")
         with current_team(self.team):

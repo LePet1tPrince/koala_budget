@@ -1187,14 +1187,40 @@ class BankFeedViewSet(
                 and candidate.journal_entry.lines.filter(account=candidate.account, is_reconciled=True).exists()
             )
 
-        # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
-        archived_count = 0
-        for tx in BankTransaction.objects.filter(id__in=ids, team=request.team).prefetch_related(
-            "journal_entry__lines"
-        ):
+        transactions = list(
+            BankTransaction.objects.filter(id__in=ids, team=request.team).prefetch_related("journal_entry__lines")
+        )
+
+        # A transfer's two legs archive together, and a reconciled leg must never
+        # be archived — so a transfer with a reconciled leg (either side) cannot
+        # be archived at all. Refuse the whole batch up front rather than
+        # archiving one leg and silently leaving the reconciled one behind.
+        for tx in transactions:
             if tx.is_archived:
                 continue
-            # Reconciled transactions cannot be archived — skip them silently
+            legs = list(linked_legs(tx))
+            if not legs:
+                continue
+            if any(_is_reconciled(leg) for leg in legs):
+                return Response(
+                    {
+                        "error": "The other side of this transfer is already reconciled. "
+                        "Unreconcile the other transaction before archiving it."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if _is_reconciled(tx):
+                return Response(
+                    {"error": "This transfer is reconciled. Unreconcile it before archiving."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
+        archived_count = 0
+        for tx in transactions:
+            if tx.is_archived:
+                continue
+            # Reconciled (non-transfer) transactions cannot be archived — skip them silently
             if _is_reconciled(tx):
                 continue
             tx.is_archived = True
@@ -1203,7 +1229,7 @@ class BankFeedViewSet(
 
             # A transfer's two legs are archived together, in either direction.
             for leg in linked_legs(tx):
-                if leg.is_archived or _is_reconciled(leg):
+                if leg.is_archived:
                     continue
                 leg.is_archived = True
                 leg.save(update_fields=["is_archived", "updated_at"])
@@ -1606,15 +1632,23 @@ class BankFeedViewSet(
             )
 
         # A reconciled leg has been confirmed against a statement; refuse rather
-        # than silently voiding reconciled history.
-        if (
-            archive_tx.journal_entry
-            and archive_tx.journal_entry.lines.filter(account=archive_tx.account, is_reconciled=True).exists()
-        ):
-            return Response(
-                {"error": "This transaction is reconciled. Unreconcile it before archiving."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # than silently voiding reconciled history. This covers both the leg
+        # being archived and its mirror counterpart on the same entry (which
+        # gets voided and archived along with it).
+        if archive_tx.journal_entry:
+            if archive_tx.journal_entry.lines.filter(account=archive_tx.account, is_reconciled=True).exists():
+                return Response(
+                    {"error": "This transaction is reconciled. Unreconcile it before archiving."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if archive_tx.journal_entry.lines.filter(is_reconciled=True).exists():
+                return Response(
+                    {
+                        "error": "The other side of this transfer is already reconciled. "
+                        "Unreconcile the other transaction before archiving it."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         with transaction.atomic():
             # Void the duplicate leg's journal entry so it no longer affects any
