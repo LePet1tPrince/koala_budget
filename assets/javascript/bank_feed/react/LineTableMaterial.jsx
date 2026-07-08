@@ -104,6 +104,10 @@ const LineTableMaterial = ({
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [modalMode, setModalMode] = useState('edit'); // 'create' | 'edit'
 
+  // Id of the row whose checkbox was last clicked, used as the anchor for
+  // shift-click range selection
+  const [lastCheckedId, setLastCheckedId] = useState(null);
+
   const toggleQuickFilter = (key) => {
     setQuickFilters((prev) => {
       const next = { ...prev, [key]: !prev[key] };
@@ -116,6 +120,7 @@ const LineTableMaterial = ({
 
   // Clear selection and notify parent when switching between the active and archived views
   useEffect(() => {
+    setLastCheckedId(null);
     if (onSelectionChange) {
       onSelectionChange(new Set());
     }
@@ -126,6 +131,7 @@ const LineTableMaterial = ({
 
   // Clear selection when quick filters change so the batch bar doesn't act on rows that scrolled out of view
   useEffect(() => {
+    setLastCheckedId(null);
     if (onSelectionChange) {
       onSelectionChange(new Set());
     }
@@ -264,16 +270,38 @@ const LineTableMaterial = ({
     );
   }, [lines]);
 
-  // Handle row selection
-  const handleRowSelect = (rowId, checked) => {
+  // Handle row selection. Shift-click extends the selection to every row
+  // between the last-clicked checkbox and this one (in displayed order).
+  const handleRowSelect = (rowId, checked, shiftKey) => {
     if (!onSelectionChange) return;
     const newSelected = new Set(selectedIds);
+
+    if (shiftKey && lastCheckedId !== null) {
+      const ids = filteredLines.map((l) => l.id);
+      const anchorIndex = ids.indexOf(lastCheckedId);
+      const targetIndex = ids.indexOf(rowId);
+      if (anchorIndex !== -1 && targetIndex !== -1) {
+        const [start, end] = anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+        for (let i = start; i <= end; i += 1) {
+          if (checked) {
+            newSelected.add(ids[i]);
+          } else {
+            newSelected.delete(ids[i]);
+          }
+        }
+        onSelectionChange(newSelected);
+        setLastCheckedId(rowId);
+        return;
+      }
+    }
+
     if (checked) {
       newSelected.add(rowId);
     } else {
       newSelected.delete(rowId);
     }
     onSelectionChange(newSelected);
+    setLastCheckedId(rowId);
   };
 
   // Handle select all
@@ -303,7 +331,7 @@ const LineTableMaterial = ({
         <Checkbox
           size="small"
           checked={selectedIds.has(rowData.id)}
-          onChange={(e) => handleRowSelect(rowData.id, e.target.checked)}
+          onChange={(e) => handleRowSelect(rowData.id, e.target.checked, e.nativeEvent.shiftKey)}
           onClick={(e) => e.stopPropagation()}
         />
       ),
