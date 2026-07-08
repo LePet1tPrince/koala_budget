@@ -6,7 +6,7 @@ Provides API endpoints for imported transactions and unified bank feed.
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -209,8 +209,19 @@ class BankFeedViewSet(
             .annotate(count=Count("id"))
             .values_list("account_id", "count")
         )
+        latest_transaction_dates = dict(
+            BankTransaction.objects.filter(
+                team=request.team,
+                account__has_feed=True,
+                is_archived=False,
+            )
+            .values("account_id")
+            .annotate(latest_date=Max("posted_date"))
+            .values_list("account_id", "latest_date")
+        )
         for account in accounts:
             account.uncategorized_count = uncategorized_counts.get(account.id, 0)
+            account.latest_transaction_date = latest_transaction_dates.get(account.id)
 
         return Response(FeedAccountSerializer(accounts, many=True).data)
 
@@ -1695,8 +1706,19 @@ def bank_feed_home(request, team_slug):
         .annotate(count=Count("id"))
         .values_list("account_id", "count")
     )
+    latest_transaction_dates = dict(
+        BankTransaction.objects.filter(
+            team=request.team,
+            account__has_feed=True,
+            is_archived=False,
+        )
+        .values("account_id")
+        .annotate(latest_date=Max("posted_date"))
+        .values_list("account_id", "latest_date")
+    )
     for account in accounts_with_feeds:
         account.uncategorized_count = uncategorized_counts.get(account.id, 0)
+        account.latest_transaction_date = latest_transaction_dates.get(account.id)
 
     # Serialize accounts for React
     accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data

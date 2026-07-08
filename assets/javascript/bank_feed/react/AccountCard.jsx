@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { formatCurrency } from '../../utilities/currency';
+import { formatDate } from '../utils';
 
 /**
  * AccountCard component - a compact, scannable row for the account picker.
@@ -58,9 +59,16 @@ const AccountCard = ({ account, isSelected, onClick }) => {
         </p>
       </div>
 
-      <p className="text-sm font-semibold tabular-nums text-right shrink-0 w-24">
-        {formatCurrency(account.categorized_balance ?? account.balance)}
-      </p>
+      <div className="flex flex-col items-end shrink-0 w-24">
+        {account.latest_transaction_date && (
+          <p className="text-[10px] text-base-content/50 tabular-nums truncate">
+            {formatDate(account.latest_transaction_date)}
+          </p>
+        )}
+        <p className="text-sm font-semibold tabular-nums text-right">
+          {formatCurrency(account.categorized_balance ?? account.balance)}
+        </p>
+      </div>
     </div>
   );
 };
