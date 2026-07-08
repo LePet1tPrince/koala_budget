@@ -17,9 +17,10 @@ class FeedAccountSerializer(AccountSerializer):
     """AccountSerializer plus the count of transactions awaiting categorization, for the account picker."""
 
     uncategorized_count = serializers.IntegerField(read_only=True, default=0)
+    latest_transaction_date = serializers.DateField(read_only=True, default=None)
 
     class Meta(AccountSerializer.Meta):
-        fields = AccountSerializer.Meta.fields + ["uncategorized_count"]
+        fields = AccountSerializer.Meta.fields + ["uncategorized_count", "latest_transaction_date"]
 
 
 class BankTransactionSerializer(serializers.ModelSerializer):
