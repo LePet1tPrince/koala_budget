@@ -39,8 +39,8 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // Category suggestions: merchant/payee name -> {id, name} of last-used category
   const [categorySuggestions, setCategorySuggestions] = useState({});
 
-  // Filter mode state (synced from LineTableMaterial)
-  const [filterMode, setFilterMode] = useState('to_review');
+  // View mode state (synced from LineTableMaterial): 'active' | 'archived'
+  const [viewMode, setViewMode] = useState('active');
 
   // Snackbar state for batch operations
   const [snackbar, setSnackbar] = useState({
@@ -617,7 +617,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             onEditTransaction={handleEditTransaction}
             selectedIds={selectedIds}
             onSelectionChange={handleSelectionChange}
-            onFilterModeChange={setFilterMode}
+            onFilterModeChange={setViewMode}
             hidden={loading}
             onUploadClick={() => setShowUploadWizard(true)}
             onRefresh={handleRefresh}
@@ -671,7 +671,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         onClearSelection={() => setSelectedIds(new Set())}
         showArchive={showArchiveButton}
         showUnarchive={showUnarchiveButton}
-        filterMode={filterMode}
+        viewMode={viewMode}
         selectedAccount={selectedAccount}
       />
 

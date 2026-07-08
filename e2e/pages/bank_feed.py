@@ -39,7 +39,7 @@ class BankFeedPage(BasePage):
         return self.page.locator(f"[data-testid='account-card-{account_id}']").is_visible()
 
     def is_filter_visible(self) -> bool:
-        return self.page.locator("[data-testid='filter-to-review']").is_visible()
+        return self.page.locator("[data-testid='quick-filters-btn']").is_visible()
 
     # ------------------------------------------------------------------
     # Actions
@@ -49,7 +49,7 @@ class BankFeedPage(BasePage):
         """Select an account card to load its bank feed."""
         self.page.locator(f"[data-testid='account-card-{account_id}']").click()
         # After clicking, the filter toggles and table should appear
-        self.page.wait_for_selector("[data-testid='filter-to-review']", timeout=10_000)
+        self.page.wait_for_selector("[data-testid='quick-filters-btn']", timeout=10_000)
 
     def click_add_transaction(self):
         """Click the add-transaction button to open the edit modal."""
@@ -60,6 +60,15 @@ class BankFeedPage(BasePage):
         self.page.locator("[data-testid='modal-cancel-btn']").click()
 
     def click_filter(self, mode: str):
-        """Click a filter toggle. mode is one of: to_review, reconciled, archived."""
-        self.page.locator(f"[data-testid='filter-{mode}']").click()
+        """Click a filter toggle. mode is one of: to_review, reconciled, uncategorized, archived.
+
+        "archived" is a standalone toggle button; the others live inside the
+        "Quick Filters" dropdown menu and require opening it first.
+        """
+        if mode == "archived":
+            self.page.locator("[data-testid='filter-archived']").click()
+        else:
+            self.page.locator("[data-testid='quick-filters-btn']").click()
+            self.page.locator(f"[data-testid='filter-{mode}']").click()
+            self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(300)

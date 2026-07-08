@@ -25,6 +25,7 @@ import {
 } from 'date-fns';
 
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ClearIcon from '@mui/icons-material/Clear';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -190,11 +191,11 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
   const getDisplayText = () => {
     const start = safeParseISO(startDate);
     const end = safeParseISO(endDate);
-    if (!start && !end) return 'Select date range';
+    if (!start && !end) return 'Filter by Date';
     if (start && end) return `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`;
     if (start) return `From ${formatDisplayDate(start)}`;
     if (end) return `Until ${formatDisplayDate(end)}`;
-    return 'Select date range'; // Fallback
+    return 'Filter by Date'; // Fallback
   };
 
   return (
@@ -206,6 +207,7 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
           variant="outlined"
           onClick={handleClick}
           sx={{ textTransform: 'none', color: 'text.secondary', borderColor: 'grey.400' }}
+          startIcon={<CalendarMonthIcon fontSize="small" />}
           endIcon={
             (startDate || endDate) && (
               <Box
