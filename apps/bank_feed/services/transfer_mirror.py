@@ -51,6 +51,18 @@ def _counterpart_account(entry, primary_account):
     return None
 
 
+def linked_legs(tx):
+    """
+    The other BankTransaction leg(s) sharing this transfer's journal entry, if any.
+
+    A transfer's two legs are archived/restored together — archiving one side of
+    a transfer without the other would leave it half-hidden in one feed.
+    """
+    if tx.journal_entry_id is None:
+        return BankTransaction.objects.none()
+    return BankTransaction.objects.filter(journal_entry_id=tx.journal_entry_id).exclude(id=tx.id)
+
+
 def sync_transfer(edited_tx):
     """
     Reconcile a transfer's counterpart leg with the edited leg.

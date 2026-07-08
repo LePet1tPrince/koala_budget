@@ -48,7 +48,7 @@ from .serializers import (
 )
 from .services.csv_upload import create_transactions, parse_file, preview_transactions
 from .services.transfer_detection import find_transfer_candidates
-from .services.transfer_mirror import sync_transfer, would_orphan_primary
+from .services.transfer_mirror import linked_legs, sync_transfer, would_orphan_primary
 
 
 class ManualTransactionSerializer(serializers.Serializer):
@@ -1170,17 +1170,33 @@ class BankFeedViewSet(
 
         ids = serializer.validated_data["ids"]
 
+        def _is_reconciled(candidate):
+            return bool(
+                candidate.journal_entry
+                and candidate.journal_entry.lines.filter(account=candidate.account, is_reconciled=True).exists()
+            )
+
         # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
         archived_count = 0
         for tx in BankTransaction.objects.filter(id__in=ids, team=request.team).prefetch_related(
             "journal_entry__lines"
         ):
+            if tx.is_archived:
+                continue
             # Reconciled transactions cannot be archived — skip them silently
-            if tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists():
+            if _is_reconciled(tx):
                 continue
             tx.is_archived = True
             tx.save(update_fields=["is_archived", "updated_at"])
             archived_count += 1
+
+            # A transfer's two legs are archived together, in either direction.
+            for leg in linked_legs(tx):
+                if leg.is_archived or _is_reconciled(leg):
+                    continue
+                leg.is_archived = True
+                leg.save(update_fields=["is_archived", "updated_at"])
+                archived_count += 1
 
         log_event(AuditEvent.BULK_ARCHIVE, request=request, metadata={"count": archived_count})
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -1204,11 +1220,23 @@ class BankFeedViewSet(
         ids = serializer.validated_data["ids"]
 
         # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
+        unarchived_count = 0
         for tx in BankTransaction.objects.filter(id__in=ids, team=request.team):
+            if not tx.is_archived:
+                continue
             tx.is_archived = False
             tx.save(update_fields=["is_archived", "updated_at"])
+            unarchived_count += 1
 
-        log_event(AuditEvent.BULK_UNARCHIVE, request=request, metadata={"count": len(ids)})
+            # A transfer's two legs are restored together, in either direction.
+            for leg in linked_legs(tx):
+                if not leg.is_archived:
+                    continue
+                leg.is_archived = False
+                leg.save(update_fields=["is_archived", "updated_at"])
+                unarchived_count += 1
+
+        log_event(AuditEvent.BULK_UNARCHIVE, request=request, metadata={"count": unarchived_count})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
