@@ -12,11 +12,13 @@ import {
   FilterList as FilterListIcon,
   FirstPage as FirstPageIcon,
   LastPage as LastPageIcon,
+  Lock as LockIcon,
+  LockOpen as LockOpenIcon,
   Refresh as RefreshIcon,
   Search as SearchIcon,
   Upload as UploadIcon,
 } from '@mui/icons-material';
-import { Alert, Badge, Box, Button, ButtonGroup, Checkbox, CircularProgress, Divider, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
+import { Alert, Badge, Box, Button, ButtonGroup, Checkbox, Chip, CircularProgress, Divider, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, Toolbar, Tooltip, Typography } from '@mui/material';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
@@ -71,9 +73,10 @@ const LineTableMaterial = ({
   const [filterEnd, setFilterEnd] = useState('');
   // Controlled page size so it survives data reloads
   const [pageSize, setPageSize] = useState(10);
-  const [showUncategorizedOnly, setShowUncategorizedOnly] = useState(false);
   // Anchor for the "Add Transaction" split button's dropdown menu
   const [actionsMenuAnchorEl, setActionsMenuAnchorEl] = useState(null);
+  // Anchor for the "Quick Filters" dropdown menu
+  const [quickFiltersAnchorEl, setQuickFiltersAnchorEl] = useState(null);
 
   // Plaid "Link Bank Account" flow, triggered from the dropdown menu below
   const { handleClick: handleLinkBankClick, loading: linkBankLoading, modal: linkBankModal } = usePlaidLinkFlow({
@@ -90,8 +93,11 @@ const LineTableMaterial = ({
     severity: 'info', // 'success', 'error', 'warning', 'info'
   });
 
-  // Filter state for Feed/Reconciled/Archived toggle
-  const [filterMode, setFilterMode] = useState('to_review');
+  // Archived is its own view, separate from the quick filters below
+  const [showArchived, setShowArchived] = useState(false);
+  // Quick filters: independently toggleable, applied only outside the archived view.
+  // "To Review" and "Reconciled" are mutually exclusive (opposite states); "Uncategorized" is orthogonal.
+  const [quickFilters, setQuickFilters] = useState({ toReview: false, reconciled: false, uncategorized: false });
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -102,17 +108,34 @@ const LineTableMaterial = ({
   // shift-click range selection
   const [lastCheckedId, setLastCheckedId] = useState(null);
 
-  // Clear selection and notify parent when filter mode changes
+  const toggleQuickFilter = (key) => {
+    setQuickFilters((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (key === 'toReview' && next.toReview) next.reconciled = false;
+      if (key === 'reconciled' && next.reconciled) next.toReview = false;
+      return next;
+    });
+  };
+  const activeQuickFilterCount = Object.values(quickFilters).filter(Boolean).length;
+
+  // Clear selection and notify parent when switching between the active and archived views
   useEffect(() => {
-    setShowUncategorizedOnly(false);
     setLastCheckedId(null);
     if (onSelectionChange) {
       onSelectionChange(new Set());
     }
     if (onFilterModeChange) {
-      onFilterModeChange(filterMode);
+      onFilterModeChange(showArchived ? 'archived' : 'active');
     }
-  }, [filterMode]);
+  }, [showArchived]);
+
+  // Clear selection when quick filters change so the batch bar doesn't act on rows that scrolled out of view
+  useEffect(() => {
+    setLastCheckedId(null);
+    if (onSelectionChange) {
+      onSelectionChange(new Set());
+    }
+  }, [quickFilters]);
 
   // Create MUI theme that adapts to existing theme
   const theme = useMemo(() => {
@@ -180,25 +203,28 @@ const LineTableMaterial = ({
     }
   };
 
-  // Filter lines by selected date range and filter mode
+  // Filter lines by selected date range, view (active/archived), and quick filters
   const filteredLines = useMemo(() => {
     if (!Array.isArray(lines)) return [];
     let filtered = lines;
 
-    // Apply filter mode (Feed/Reconciled/Archived)
     // Handle both camelCase (from generated API client) and snake_case (raw API)
     const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
     const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
 
-    if (filterMode === 'to_review') {
-      // To Review: not reconciled and not archived
-      filtered = filtered.filter((l) => !isReconciled(l) && !isArchived(l));
-    } else if (filterMode === 'reconciled') {
-      // Reconciled: reconciled and not archived
-      filtered = filtered.filter((l) => isReconciled(l) && !isArchived(l));
-    } else if (filterMode === 'archived') {
-      // Archived: show archived transactions
+    if (showArchived) {
       filtered = filtered.filter((l) => isArchived(l));
+    } else {
+      // Default: everything not archived, regardless of categorized/reconciled state
+      filtered = filtered.filter((l) => !isArchived(l));
+      if (quickFilters.toReview) {
+        filtered = filtered.filter((l) => !isReconciled(l));
+      } else if (quickFilters.reconciled) {
+        filtered = filtered.filter((l) => isReconciled(l));
+      }
+      if (quickFilters.uncategorized) {
+        filtered = filtered.filter((l) => !l.category);
+      }
     }
 
     // Apply date range filter. Compare YYYY-MM-DD strings so UTC-parsed
@@ -215,32 +241,32 @@ const LineTableMaterial = ({
       });
     }
 
-    // Apply uncategorized filter
-    if (showUncategorizedOnly) {
-      filtered = filtered.filter((l) => !l.category);
-    }
-
     return filtered;
-  }, [lines, filterStart, filterEnd, filterMode, showUncategorizedOnly]);
+  }, [lines, filterStart, filterEnd, showArchived, quickFilters]);
 
-  // Counts per filter mode (independent of the active filter/date range) for the
-  // superscript badges on the To Review/Reconciled/Archived toggle buttons
+  // Counts (independent of the active filter/date range) for the badges shown
+  // on the Quick Filters menu items and the Archived button
   const filterCounts = useMemo(() => {
-    if (!Array.isArray(lines)) return { to_review: 0, reconciled: 0, archived: 0 };
+    if (!Array.isArray(lines)) return { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0 };
     const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
     const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
     return lines.reduce(
       (acc, l) => {
         if (isArchived(l)) {
           acc.archived += 1;
-        } else if (isReconciled(l)) {
+          return acc;
+        }
+        if (isReconciled(l)) {
           acc.reconciled += 1;
         } else {
           acc.to_review += 1;
         }
+        if (!l.category) {
+          acc.uncategorized += 1;
+        }
         return acc;
       },
-      { to_review: 0, reconciled: 0, archived: 0 }
+      { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0 }
     );
   }, [lines]);
 
@@ -374,45 +400,26 @@ const LineTableMaterial = ({
       cellStyle: TRUNCATE_CELL_STYLE(),
     },
     {
-      title: '',
-      field: 'source',
-      width: 30,
+      title: gettext('Reconciled'),
+      field: 'isReconciled',
+      width: 40,
+      sorting: false,
       render: (rowData) => {
-        const source = rowData.source;
+        const reconciled = rowData.isReconciled ?? rowData.is_reconciled ?? false;
+        const tooltip = reconciled ? gettext('Reconciled') : gettext('Not yet reconciled');
         // Class names must be full literals, otherwise Tailwind's compiler
         // can't see them and strips them from the build.
-        let letter = 'S';
-        let tooltip = gettext('System transaction');
-        let colorClasses = 'bg-gray-100 text-gray-700';
-
-        if (source === 'plaid') {
-          letter = 'P';
-          tooltip = gettext('Plaid transaction');
-          colorClasses = 'bg-blue-100 text-blue-700';
-        } else if (source === 'csv') {
-          letter = 'U';
-          tooltip = gettext('Uploaded transaction');
-          colorClasses = 'bg-orange-100 text-orange-700';
-        } else if (source === 'manual') {
-          letter = 'M';
-          tooltip = gettext('Manual transaction');
-          colorClasses = 'bg-purple-100 text-purple-700';
-        } else if (source === 'ledger') {
-          letter = 'L';
-          tooltip = gettext('Ledger transaction');
-          colorClasses = 'bg-green-100 text-green-700';
-        }
-
+        const colorClasses = reconciled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400';
         return (
           <Tooltip title={tooltip} arrow placement="top">
-            <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-xs font-semibold ${colorClasses} cursor-default`}>
-              {letter}
+            <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${colorClasses} cursor-default`}>
+              {reconciled ? <LockIcon sx={{ fontSize: 14 }} /> : <LockOpenIcon sx={{ fontSize: 14 }} />}
             </span>
           </Tooltip>
         );
       },
-      headerStyle: { width: 30, paddingLeft: 4, paddingRight: 4 },
-      cellStyle: { width: 30, paddingLeft: 4, paddingRight: 4 },
+      headerStyle: { width: 40, textAlign: 'center', paddingLeft: 4, paddingRight: 4 },
+      cellStyle: { width: 40, textAlign: 'center', paddingLeft: 4, paddingRight: 4 },
     },
   ];
 
@@ -429,137 +436,153 @@ const LineTableMaterial = ({
     <div style={hidden ? { display: 'none' } : undefined}>
     <ThemeProvider theme={theme}>
       <div className="space-y-4">
-        {/* Toolbar: view tabs on the left, filters + actions grouped on the right */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <ToggleButtonGroup
+        {/* Toolbar: quick filters, archived view, date filter, and actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
             size="small"
+            variant={activeQuickFilterCount > 0 ? 'contained' : 'outlined'}
             color="primary"
-            value={filterMode}
-            exclusive
-            onChange={(_event, newMode) => {
-              if (newMode !== null) {
-                setFilterMode(newMode);
-              }
-            }}
-            aria-label="Transaction filter"
+            disabled={showArchived}
+            startIcon={<FilterListIcon fontSize="small" />}
+            endIcon={<ArrowDropDownIcon fontSize="small" />}
+            onClick={(e) => setQuickFiltersAnchorEl(e.currentTarget)}
+            data-testid="quick-filters-btn"
           >
-            <ToggleButton value="to_review" data-testid="filter-to-review">
-              <Badge
-                badgeContent={filterCounts.to_review}
-                color="warning"
-                max={999}
-                sx={{ '& .MuiBadge-badge': { right: -10, top: -2 } }}
+            {gettext('Quick Filters')}
+          </Button>
+          <Menu
+            anchorEl={quickFiltersAnchorEl}
+            open={Boolean(quickFiltersAnchorEl)}
+            onClose={() => setQuickFiltersAnchorEl(null)}
+          >
+            <MenuItem onClick={() => toggleQuickFilter('toReview')} data-testid="filter-to-review" sx={{ justifyContent: 'space-between', gap: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Checkbox size="small" checked={quickFilters.toReview} tabIndex={-1} onChange={() => {}} sx={{ p: 0, mr: 1, pointerEvents: 'none' }} />
+                <ListItemText>{gettext('To Review')}</ListItemText>
+              </Box>
+              <Chip label={filterCounts.to_review} size="small" color="warning" variant="outlined" sx={{ height: 20 }} />
+            </MenuItem>
+            <MenuItem onClick={() => toggleQuickFilter('reconciled')} data-testid="filter-reconciled" sx={{ justifyContent: 'space-between', gap: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Checkbox size="small" checked={quickFilters.reconciled} tabIndex={-1} onChange={() => {}} sx={{ p: 0, mr: 1, pointerEvents: 'none' }} />
+                <ListItemText>{gettext('Reconciled')}</ListItemText>
+              </Box>
+              <Chip label={filterCounts.reconciled} size="small" color="success" variant="outlined" sx={{ height: 20 }} />
+            </MenuItem>
+            <MenuItem onClick={() => toggleQuickFilter('uncategorized')} data-testid="filter-uncategorized" sx={{ justifyContent: 'space-between', gap: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Checkbox size="small" checked={quickFilters.uncategorized} tabIndex={-1} onChange={() => {}} sx={{ p: 0, mr: 1, pointerEvents: 'none' }} />
+                <ListItemText>{gettext('Uncategorized')}</ListItemText>
+              </Box>
+              <Chip label={filterCounts.uncategorized} size="small" variant="outlined" sx={{ height: 20 }} />
+            </MenuItem>
+            {activeQuickFilterCount > 0 && [
+              <Divider key="quick-filters-divider" />,
+              <MenuItem
+                key="quick-filters-clear"
+                onClick={() => {
+                  setQuickFilters({ toReview: false, reconciled: false, uncategorized: false });
+                  setQuickFiltersAnchorEl(null);
+                }}
               >
-                {gettext('To Review')}
-              </Badge>
-            </ToggleButton>
-            <ToggleButton value="reconciled" data-testid="filter-reconciled">
-              <Badge
-                badgeContent={filterCounts.reconciled}
-                color="success"
-                max={999}
-                sx={{ '& .MuiBadge-badge': { right: -10, top: -2 } }}
-              >
-                {gettext('Reconciled')}
-              </Badge>
-            </ToggleButton>
-            <ToggleButton value="archived" data-testid="filter-archived">
-              <Badge
-                badgeContent={filterCounts.archived}
-                color="default"
-                max={999}
-                sx={{ '& .MuiBadge-badge': { right: -10, top: -2 } }}
-              >
-                {gettext('Archived')}
-              </Badge>
-            </ToggleButton>
-          </ToggleButtonGroup>
+                <ListItemText>{gettext('Clear filters')}</ListItemText>
+              </MenuItem>,
+            ]}
+          </Menu>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <DateRangePicker
-              startDate={filterStart}
-              endDate={filterEnd}
-              onApply={(s, e) => {
-                setFilterStart(s);
-                setFilterEnd(e);
-              }}
-            />
-            {filterMode === 'to_review' && (
-              <Button
-                size="small"
-                variant={showUncategorizedOnly ? 'contained' : 'outlined'}
-                onClick={() => setShowUncategorizedOnly(v => !v)}
-              >
-                {gettext('Uncategorized')}
-              </Button>
-            )}
-            <span className="text-sm text-gray-500 whitespace-nowrap">
-              {filteredLines.length} {gettext('lines')}
-            </span>
-
-            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-            <ButtonGroup size="small" variant="contained" color="primary" data-testid="add-transaction-btn">
-              <Button startIcon={<AddIcon fontSize="small" />} onClick={handleAddClick}>
-                {gettext('Add Transaction')}
-              </Button>
-              <Button
-                size="small"
-                sx={{ px: 0.5 }}
-                aria-label={gettext('More actions')}
-                aria-haspopup="true"
-                aria-controls={actionsMenuAnchorEl ? 'toolbar-actions-menu' : undefined}
-                onClick={(e) => setActionsMenuAnchorEl(e.currentTarget)}
-              >
-                <ArrowDropDownIcon fontSize="small" />
-              </Button>
-            </ButtonGroup>
-            <Menu
-              id="toolbar-actions-menu"
-              anchorEl={actionsMenuAnchorEl}
-              open={Boolean(actionsMenuAnchorEl)}
-              onClose={() => setActionsMenuAnchorEl(null)}
+          <Button
+            size="small"
+            variant={showArchived ? 'contained' : 'outlined'}
+            color="inherit"
+            onClick={() => setShowArchived((v) => !v)}
+            data-testid="filter-archived"
+          >
+            <Badge
+              badgeContent={filterCounts.archived}
+              color="default"
+              max={999}
+              sx={{ '& .MuiBadge-badge': { right: -10, top: -2 } }}
             >
-              <MenuItem
-                onClick={() => {
-                  setActionsMenuAnchorEl(null);
-                  onUploadClick();
-                }}
-                disabled={uploadDisabled}
-              >
-                <ListItemIcon>
-                  <UploadIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>{gettext('Upload CSV/Excel')}</ListItemText>
-              </MenuItem>
-              <Divider />
-              <MenuItem
-                onClick={() => {
-                  setActionsMenuAnchorEl(null);
-                  handleLinkBankClick();
-                }}
-                disabled={linkBankLoading}
-              >
-                <ListItemIcon>
-                  {linkBankLoading ? <CircularProgress size={16} /> : <AccountBalanceIcon fontSize="small" />}
-                </ListItemIcon>
-                <ListItemText>{linkBankLoading ? gettext('Loading...') : gettext('Link Bank Account')}</ListItemText>
-              </MenuItem>
-              <MenuItem
-                onClick={() => {
-                  setActionsMenuAnchorEl(null);
-                  onRefresh();
-                }}
-                disabled={refreshing || uploadDisabled}
-              >
-                <ListItemIcon>
-                  {refreshing ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
-                </ListItemIcon>
-                <ListItemText>{refreshing ? gettext('Refreshing...') : gettext('Refresh')}</ListItemText>
-              </MenuItem>
-            </Menu>
-            {linkBankModal}
-          </div>
+              {gettext('Archived')}
+            </Badge>
+          </Button>
+
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+          <DateRangePicker
+            startDate={filterStart}
+            endDate={filterEnd}
+            onApply={(s, e) => {
+              setFilterStart(s);
+              setFilterEnd(e);
+            }}
+          />
+          <span className="text-sm text-gray-500 whitespace-nowrap">
+            {filteredLines.length} {gettext('lines')}
+          </span>
+
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+          <ButtonGroup size="small" variant="contained" color="primary" data-testid="add-transaction-btn">
+            <Button startIcon={<AddIcon fontSize="small" />} onClick={handleAddClick}>
+              {gettext('Add Transaction')}
+            </Button>
+            <Button
+              size="small"
+              sx={{ px: 0.5 }}
+              aria-label={gettext('More actions')}
+              aria-haspopup="true"
+              aria-controls={actionsMenuAnchorEl ? 'toolbar-actions-menu' : undefined}
+              onClick={(e) => setActionsMenuAnchorEl(e.currentTarget)}
+            >
+              <ArrowDropDownIcon fontSize="small" />
+            </Button>
+          </ButtonGroup>
+          <Menu
+            id="toolbar-actions-menu"
+            anchorEl={actionsMenuAnchorEl}
+            open={Boolean(actionsMenuAnchorEl)}
+            onClose={() => setActionsMenuAnchorEl(null)}
+          >
+            <MenuItem
+              onClick={() => {
+                setActionsMenuAnchorEl(null);
+                onUploadClick();
+              }}
+              disabled={uploadDisabled}
+            >
+              <ListItemIcon>
+                <UploadIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>{gettext('Upload CSV/Excel')}</ListItemText>
+            </MenuItem>
+            <Divider />
+            <MenuItem
+              onClick={() => {
+                setActionsMenuAnchorEl(null);
+                handleLinkBankClick();
+              }}
+              disabled={linkBankLoading}
+            >
+              <ListItemIcon>
+                {linkBankLoading ? <CircularProgress size={16} /> : <AccountBalanceIcon fontSize="small" />}
+              </ListItemIcon>
+              <ListItemText>{linkBankLoading ? gettext('Loading...') : gettext('Link Bank Account')}</ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setActionsMenuAnchorEl(null);
+                onRefresh();
+              }}
+              disabled={refreshing || uploadDisabled}
+            >
+              <ListItemIcon>
+                {refreshing ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+              </ListItemIcon>
+              <ListItemText>{refreshing ? gettext('Refreshing...') : gettext('Refresh')}</ListItemText>
+            </MenuItem>
+          </Menu>
+          {linkBankModal}
         </div>
 
         {/* Material Table */}
@@ -616,8 +639,8 @@ const LineTableMaterial = ({
             tableLayout: 'fixed',
             emptyRowsWhenPaging: false,
             rowStyle: (rowData) => {
-              // Style uncategorized transactions with grey text in 'to_review' mode only
-              if (filterMode === 'to_review' && rowData.category === null) {
+              // Style uncategorized transactions with grey text outside the archived view
+              if (!showArchived && rowData.category === null) {
                 return {
                   color: '#9CA3AF',
                   cursor: 'pointer',

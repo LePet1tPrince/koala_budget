@@ -51,11 +51,11 @@ const BatchActionBar = ({
   onUnreconcile,
   showArchive = true,
   showUnarchive = false,
-  filterMode = 'to_review',
+  viewMode = 'active',
   selectedAccount = null,
 }) => {
   // In archived view, only allow unarchive, export, and delete
-  const isArchivedView = filterMode === 'archived';
+  const isArchivedView = viewMode === 'archived';
 
   // Bulk edit modal state
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
@@ -94,9 +94,15 @@ const BatchActionBar = ({
     return dates.reduce((max, date) => (date > max ? date : max));
   }, [selectedRows]);
 
-  // Check if any selected row is reconciled
+  // Check if any/all selected rows are reconciled. The quick filters no longer guarantee
+  // a homogeneous selection, so reconcile/unreconcile availability is derived from the
+  // actual selected rows rather than the active filter.
   const anyReconciled = useMemo(() => {
     return selectedRows.some(r => r.isReconciled ?? r.is_reconciled ?? false);
+  }, [selectedRows]);
+
+  const allReconciled = useMemo(() => {
+    return selectedRows.length > 0 && selectedRows.every(r => r.isReconciled ?? r.is_reconciled ?? false);
   }, [selectedRows]);
 
   // Get reconciled balance from selected account
@@ -115,14 +121,14 @@ const BatchActionBar = ({
 
   // Calculate new reconciled balance after reconciling (or unreconciling)
   const newReconciledBalance = useMemo(() => {
-    if (filterMode === 'reconciled') {
+    if (allReconciled) {
       return reconciledBalance - reconcilingAmount;
     }
     if (trueBalance !== '' && trueBalance !== null) {
       return parseFloat(trueBalance);
     }
     return reconciledBalance + reconcilingAmount;
-  }, [reconciledBalance, reconcilingAmount, trueBalance, filterMode]);
+  }, [reconciledBalance, reconcilingAmount, trueBalance, allReconciled]);
 
   // Handle reconcile submit
   const handleReconcileSubmit = () => {
@@ -227,7 +233,7 @@ const BatchActionBar = ({
                 {formatCurrency(reconcilingAmount)}
               </Typography>
             </Box>
-            {(filterMode === 'to_review' || filterMode === 'reconciled') && selectedAccount && (
+            {!isArchivedView && selectedAccount && (
               <>
                 <Divider orientation="vertical" flexItem />
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -286,7 +292,7 @@ const BatchActionBar = ({
             </Button>
           )}
 
-          {!isArchivedView && filterMode === 'to_review' && (
+          {!isArchivedView && !anyReconciled && (
             <Tooltip title={!allCategorized ? gettext('Categorize all transactions to reconcile') : ''}>
               <span>
                 <Button
@@ -304,7 +310,7 @@ const BatchActionBar = ({
             </Tooltip>
           )}
 
-          {filterMode === 'reconciled' && (
+          {allReconciled && (
             <Button
               size="small"
               startIcon={<RemoveCircleIcon />}
