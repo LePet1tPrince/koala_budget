@@ -1,5 +1,7 @@
 import {
+  AccountBalance as AccountBalanceIcon,
   Add as AddIcon,
+  ArrowDropDown as ArrowDropDownIcon,
   ArrowUpward as ArrowUpwardIcon,
   Check as CheckIcon,
   ChevronLeft as ChevronLeftIcon,
@@ -10,23 +12,32 @@ import {
   FilterList as FilterListIcon,
   FirstPage as FirstPageIcon,
   LastPage as LastPageIcon,
+  Refresh as RefreshIcon,
   Search as SearchIcon,
+  Upload as UploadIcon,
 } from '@mui/icons-material';
-import { Alert, Badge, Box, Button, Checkbox, IconButton, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
+import { Alert, Badge, Box, Button, ButtonGroup, Checkbox, CircularProgress, Divider, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, ToggleButton, ToggleButtonGroup, Toolbar, Tooltip, Typography } from '@mui/material';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
 import EditTransactionModal from './EditTransactionModal';
 import MaterialTable from '@material-table/core';
+import { usePlaidLinkFlow } from './PlaidLinkButton';
 import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc, formatDateForInput } from '../utils';
 
 /* globals gettext */
 
-
-
-
+// Single-line, ellipsis-truncated cell so long payees/categories/descriptions
+// never wrap the row height. Width is omitted for the Description column so
+// it absorbs whatever space the fixed-width columns leave behind.
+const TRUNCATE_CELL_STYLE = (width) => ({
+  ...(width ? { width, maxWidth: width } : {}),
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+});
 
 
 
@@ -48,6 +59,12 @@ const LineTableMaterial = ({
   onSelectionChange,
   onFilterModeChange,
   hidden = false,
+  onUploadClick,
+  onRefresh,
+  refreshing = false,
+  uploadDisabled = false,
+  plaidClient,
+  onLinkSuccess,
 }) => {
   // Date range filter state (YYYY-MM-DD strings)
   const [filterStart, setFilterStart] = useState('');
@@ -55,6 +72,16 @@ const LineTableMaterial = ({
   // Controlled page size so it survives data reloads
   const [pageSize, setPageSize] = useState(10);
   const [showUncategorizedOnly, setShowUncategorizedOnly] = useState(false);
+  // Anchor for the "Add Transaction" split button's dropdown menu
+  const [actionsMenuAnchorEl, setActionsMenuAnchorEl] = useState(null);
+
+  // Plaid "Link Bank Account" flow, triggered from the dropdown menu below
+  const { handleClick: handleLinkBankClick, loading: linkBankLoading, modal: linkBankModal } = usePlaidLinkFlow({
+    teamSlug,
+    allAccounts,
+    onSuccess: onLinkSuccess,
+    plaidClient,
+  });
 
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
@@ -262,46 +289,62 @@ const LineTableMaterial = ({
       title: gettext('Date'),
       field: 'postedDate',
       type: 'date',
+      width: 90,
       render: (rowData) => formatDate(rowData.postedDate),
+      headerStyle: { width: 90 },
+      cellStyle: { width: 90, whiteSpace: 'nowrap' },
     },
     {
       title: gettext('Payee'),
       field: 'payee',
+      width: 150,
       render: (rowData) => rowData.payee || '',
+      headerStyle: { width: 150 },
+      cellStyle: TRUNCATE_CELL_STYLE(150),
     },
     {
       title: gettext('Category'),
       field: 'category',
+      width: 150,
       render: (rowData) => {
         const category = rowData.category;
         return category ? gettext(category.name) : gettext('Uncategorized');
       },
+      headerStyle: { width: 150 },
+      cellStyle: TRUNCATE_CELL_STYLE(150),
     },
     {
       title: gettext('Inflow'),
       field: 'inflow',
       type: 'numeric',
+      width: 90,
       render: (rowData) => {
         const value = rowData.inflow;
         return value && parseFloat(value) > 0 ? formatCurrency(value) : '';
       },
+      headerStyle: { width: 90 },
+      cellStyle: { width: 90, whiteSpace: 'nowrap' },
     },
     {
       title: gettext('Outflow'),
       field: 'outflow',
       type: 'numeric',
+      width: 90,
       render: (rowData) => {
         const value = rowData.outflow;
         return value && parseFloat(value) > 0 ? formatCurrency(value) : '';
       },
+      headerStyle: { width: 90 },
+      cellStyle: { width: 90, whiteSpace: 'nowrap' },
     },
     {
       title: gettext('Description'),
       field: 'description',
       render: (rowData) => {
         const desc = rowData.description || '';
-        return desc.length > 26 ? desc.slice(0, 26) + '...' : desc;
+        return <span title={desc}>{desc}</span>;
       },
+      cellStyle: TRUNCATE_CELL_STYLE(),
     },
     {
       title: '',
@@ -359,9 +402,10 @@ const LineTableMaterial = ({
     <div style={hidden ? { display: 'none' } : undefined}>
     <ThemeProvider theme={theme}>
       <div className="space-y-4">
-        {/* Filter Mode Toggle */}
-        <div className="flex items-center justify-center">
+        {/* Toolbar: view tabs on the left, filters + actions grouped on the right */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <ToggleButtonGroup
+            size="small"
             color="primary"
             value={filterMode}
             exclusive
@@ -403,11 +447,8 @@ const LineTableMaterial = ({
               </Badge>
             </ToggleButton>
           </ToggleButtonGroup>
-        </div>
 
-        {/* Date Range Filter */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <DateRangePicker
               startDate={filterStart}
               endDate={filterEnd}
@@ -425,9 +466,72 @@ const LineTableMaterial = ({
                 {gettext('Uncategorized')}
               </Button>
             )}
-          </div>
-          <div className="text-sm text-gray-500">
-            {filteredLines.length} {gettext('lines')}
+            <span className="text-sm text-gray-500 whitespace-nowrap">
+              {filteredLines.length} {gettext('lines')}
+            </span>
+
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+            <ButtonGroup size="small" variant="contained" color="primary" data-testid="add-transaction-btn">
+              <Button startIcon={<AddIcon fontSize="small" />} onClick={handleAddClick}>
+                {gettext('Add Transaction')}
+              </Button>
+              <Button
+                size="small"
+                sx={{ px: 0.5 }}
+                aria-label={gettext('More actions')}
+                aria-haspopup="true"
+                aria-controls={actionsMenuAnchorEl ? 'toolbar-actions-menu' : undefined}
+                onClick={(e) => setActionsMenuAnchorEl(e.currentTarget)}
+              >
+                <ArrowDropDownIcon fontSize="small" />
+              </Button>
+            </ButtonGroup>
+            <Menu
+              id="toolbar-actions-menu"
+              anchorEl={actionsMenuAnchorEl}
+              open={Boolean(actionsMenuAnchorEl)}
+              onClose={() => setActionsMenuAnchorEl(null)}
+            >
+              <MenuItem
+                onClick={() => {
+                  setActionsMenuAnchorEl(null);
+                  onUploadClick();
+                }}
+                disabled={uploadDisabled}
+              >
+                <ListItemIcon>
+                  <UploadIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>{gettext('Upload CSV/Excel')}</ListItemText>
+              </MenuItem>
+              <Divider />
+              <MenuItem
+                onClick={() => {
+                  setActionsMenuAnchorEl(null);
+                  handleLinkBankClick();
+                }}
+                disabled={linkBankLoading}
+              >
+                <ListItemIcon>
+                  {linkBankLoading ? <CircularProgress size={16} /> : <AccountBalanceIcon fontSize="small" />}
+                </ListItemIcon>
+                <ListItemText>{linkBankLoading ? gettext('Loading...') : gettext('Link Bank Account')}</ListItemText>
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setActionsMenuAnchorEl(null);
+                  onRefresh();
+                }}
+                disabled={refreshing || uploadDisabled}
+              >
+                <ListItemIcon>
+                  {refreshing ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                </ListItemIcon>
+                <ListItemText>{refreshing ? gettext('Refreshing...') : gettext('Refresh')}</ListItemText>
+              </MenuItem>
+            </Menu>
+            {linkBankModal}
           </div>
         </div>
 
@@ -438,7 +542,7 @@ const LineTableMaterial = ({
           data={filteredLines}
           components={{
             Toolbar: () => (
-              <Toolbar variant="dense" sx={{ pl: 1, pr: 1, minHeight: 48 }}>
+              <Toolbar variant="dense" sx={{ pl: 1, pr: 1, minHeight: 40 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
                   <Checkbox
                     size="small"
@@ -453,16 +557,6 @@ const LineTableMaterial = ({
                     </Typography>
                   )}
                 </Box>
-                <Tooltip title={gettext('Add Transaction')} arrow placement="top">
-                  <IconButton
-                    size="small"
-                    onClick={handleAddClick}
-                    color="primary"
-                    data-testid="add-transaction-btn"
-                  >
-                    <AddIcon />
-                  </IconButton>
-                </Tooltip>
               </Toolbar>
             ),
           }}
@@ -492,6 +586,7 @@ const LineTableMaterial = ({
             toolbar: true,
             showTitle: false,
             padding: 'dense',
+            tableLayout: 'fixed',
             emptyRowsWhenPaging: false,
             rowStyle: (rowData) => {
               // Style uncategorized transactions with grey text in 'to_review' mode only

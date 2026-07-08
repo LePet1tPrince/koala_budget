@@ -6,16 +6,14 @@ import PlaidAccountMapper from './PlaidAccountMapper';
 import { usePlaidLink } from 'react-plaid-link';
 
 /**
- * PlaidLinkButton - Component to handle Plaid Link integration
+ * usePlaidLinkFlow - headless Plaid Link integration
  *
- * This component:
- * 1. Fetches a link_token from the backend
- * 2. Initializes Plaid Link with the token
- * 3. Handles the OAuth flow
- * 4. Exchanges the public_token for an access_token on the backend
- * 5. Triggers the account mapping flow
+ * Handles the full flow (fetch link_token, open Plaid Link, exchange the
+ * public_token, show the account mapper) and hands back a `handleClick`
+ * trigger plus a `modal` element to render (error alert + account mapper
+ * dialog) so callers can supply their own trigger UI (button, menu item, …).
  */
-const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
+export const usePlaidLinkFlow = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
   const [linkToken, setLinkToken] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -106,7 +104,7 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
   }, [linkToken, ready, open, showMapper]);
 
   /**
-   * Handle button click - fetch token to start the flow
+   * Handle trigger click - fetch token to start the flow
    */
   const handleClick = () => {
     if (!linkToken) {
@@ -116,26 +114,8 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
     }
   };
 
-  return (
+  const modal = (
     <>
-      <button
-        onClick={handleClick}
-        disabled={loading}
-        className="btn btn-primary"
-      >
-        {loading ? (
-          <>
-            <span className="loading loading-spinner loading-sm"></span>
-            {gettext('Loading...')}
-          </>
-        ) : (
-          <>
-            <i className="fa fa-plus mr-2"></i>
-            {gettext('Link Bank Account')}
-          </>
-        )}
-      </button>
-
       {error && (
         <div className="alert alert-error mt-4">
           <i className="fa fa-exclamation-circle"></i>
@@ -163,6 +143,39 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
           }}
         />
       )}
+    </>
+  );
+
+  return { handleClick, loading, modal };
+};
+
+/**
+ * PlaidLinkButton - default button trigger built on usePlaidLinkFlow
+ */
+const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
+  const { handleClick, loading, modal } = usePlaidLinkFlow({ teamSlug, allAccounts, onSuccess, plaidClient });
+
+  return (
+    <>
+      <button
+        onClick={handleClick}
+        disabled={loading}
+        className="btn btn-primary"
+      >
+        {loading ? (
+          <>
+            <span className="loading loading-spinner loading-sm"></span>
+            {gettext('Loading...')}
+          </>
+        ) : (
+          <>
+            <i className="fa fa-plus mr-2"></i>
+            {gettext('Link Bank Account')}
+          </>
+        )}
+      </button>
+
+      {modal}
     </>
   );
 };

@@ -541,12 +541,6 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             >
               ⚡ {gettext('Categorize Mode')}
             </a>
-            <PlaidLinkButton
-              teamSlug={teamSlug}
-              allAccounts={allAccounts}
-              onSuccess={handlePlaidSuccess}
-              plaidClient={plaidClient}
-            />
           </div>
         </div>
         {isAccountPickerOpen && (
@@ -556,6 +550,12 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               <span>
                 {gettext('No accounts with bank feeds found. Please link a bank account to get started.')}
               </span>
+              <PlaidLinkButton
+                teamSlug={teamSlug}
+                allAccounts={allAccounts}
+                onSuccess={handlePlaidSuccess}
+                plaidClient={plaidClient}
+              />
             </div>
           ) : (
             <AccountGrid accounts={accounts}
@@ -572,40 +572,13 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             <h2 className="pg-subtitle">
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
-            <div className="flex gap-2 items-center">
-              {selectedPlaidItem && (
-                <span className="text-xs text-base-content/60" title={selectedPlaidItem.institutionName}>
-                  {refreshing
-                    ? gettext('Syncing…')
-                    : formatLastSynced(selectedPlaidItem.lastSyncedAt)}
-                </span>
-              )}
-              <button
-                onClick={() => setShowUploadWizard(true)}
-                disabled={loading}
-                className="btn btn-outline btn-sm"
-              >
-                <i className="fa fa-upload mr-2"></i>
-                {gettext('Upload CSV/Excel')}
-              </button>
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing || loading}
-                className="btn btn-outline btn-sm"
-              >
-                {refreshing ? (
-                  <>
-                    <span className="loading loading-spinner loading-xs"></span>
-                    {gettext('Refreshing...')}
-                  </>
-                ) : (
-                  <>
-                    <i className="fa fa-refresh mr-2"></i>
-                    {gettext('Refresh')}
-                  </>
-                )}
-              </button>
-            </div>
+            {selectedPlaidItem && (
+              <span className="text-xs text-base-content/60" title={selectedPlaidItem.institutionName}>
+                {refreshing
+                  ? gettext('Syncing…')
+                  : formatLastSynced(selectedPlaidItem.lastSyncedAt)}
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 mb-4 text-sm">
             <span className="text-base-content/60">
@@ -646,6 +619,12 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             onSelectionChange={handleSelectionChange}
             onFilterModeChange={setFilterMode}
             hidden={loading}
+            onUploadClick={() => setShowUploadWizard(true)}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
+            uploadDisabled={loading}
+            plaidClient={plaidClient}
+            onLinkSuccess={handlePlaidSuccess}
           />
         </section>
       )}
