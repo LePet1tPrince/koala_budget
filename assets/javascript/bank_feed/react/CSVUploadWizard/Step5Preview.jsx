@@ -9,6 +9,7 @@ import React, { useMemo, useState } from 'react';
  * - transactions: Array of parsed transactions
  * - errorCount: Number of rows with errors
  * - excludedDuplicateRows: Set of row_numbers the user excluded in the duplicate review step
+ * - importProgress: { completed, total } while the import is in flight, else null
  * - onConfirm: Callback to confirm import
  * - onBack: Callback to go back
  * - onCancel: Callback when user cancels
@@ -17,6 +18,7 @@ const Step5Preview = ({
   transactions,
   errorCount,
   excludedDuplicateRows,
+  importProgress,
   onConfirm,
   onBack,
   onCancel,
@@ -220,6 +222,19 @@ const Step5Preview = ({
           </span>
         )}
       </div>
+
+      {importProgress && (
+        <div className="space-y-1">
+          <progress
+            className="progress progress-primary w-full"
+            value={importProgress.completed}
+            max={importProgress.total}
+          ></progress>
+          <div className="text-sm text-base-content/70 text-right">
+            {gettext('Importing')} {importProgress.completed} / {importProgress.total}
+          </div>
+        </div>
+      )}
 
       <div className="modal-action">
         <button

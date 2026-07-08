@@ -8,6 +8,10 @@ import Step3CategoryMapping from './Step3CategoryMapping';
 import Step4DuplicateReview from './Step4DuplicateReview';
 import Step5Preview from './Step5Preview';
 
+// Number of transactions sent per upload_confirm request — smaller batches give the
+// progress bar more, and more frequent, steps to render for large imports.
+const IMPORT_BATCH_SIZE = 25;
+
 /**
  * CSVUploadWizard - Multi-step wizard for uploading bank transactions from CSV/Excel
  *
@@ -53,6 +57,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
 
   // Step 5 state
   const [previewResult, setPreviewResult] = useState(null);
+  const [importProgress, setImportProgress] = useState(null); // { completed, total }
 
   // Derived helpers — step 3 is always shown once we have a preview result
   const showStep3 = originalUnmappedCategories !== null;
@@ -158,19 +163,34 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
    */
   const handleConfirm = async (transactionsToImport) => {
     setError(null);
+    setImportProgress({ completed: 0, total: transactionsToImport.length });
+
+    // Send in batches (rather than one request) so we can report incremental progress
+    const batches = [];
+    for (let i = 0; i < transactionsToImport.length; i += IMPORT_BATCH_SIZE) {
+      batches.push(transactionsToImport.slice(i, i + IMPORT_BATCH_SIZE));
+    }
+
+    const aggregateResult = { created_count: 0, skipped_count: 0, error_count: 0 };
 
     try {
-      // skip_duplicates=false because the user already decided per-row in step 4
-      const result = await uploadApi.uploadConfirm(
-        selectedAccount.id,
-        transactionsToImport,
-        false
-      );
+      for (const batch of batches) {
+        // skip_duplicates=false because the user already decided per-row in step 4
+        const result = await uploadApi.uploadConfirm(selectedAccount.id, batch, false);
 
-      onComplete(result);
+        aggregateResult.created_count += result.created_count || 0;
+        aggregateResult.skipped_count += result.skipped_count || 0;
+        aggregateResult.error_count += result.error_count || 0;
+
+        setImportProgress((prev) => ({ ...prev, completed: prev.completed + batch.length }));
+      }
+
+      onComplete(aggregateResult);
     } catch (err) {
       console.error('Import error:', err);
       setError(err.message || gettext('Failed to import transactions'));
+    } finally {
+      setImportProgress(null);
     }
   };
 
@@ -285,6 +305,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
             transactions={previewResult.transactions}
             errorCount={previewResult.error_count}
             excludedDuplicateRows={excludedDuplicateRows}
+            importProgress={importProgress}
             onConfirm={handleConfirm}
             onBack={handleBack}
             onCancel={onCancel}
