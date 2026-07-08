@@ -17,6 +17,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, Account, AccountGroup
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.bank_feed.services.transfer_detection import find_transfer_candidates
+from apps.bank_feed.services.transfer_mirror import sync_transfer
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.context import current_team
 from apps.teams.models import Team
@@ -39,6 +40,9 @@ class TransferTestBase(TestCase):
         )
         cls.savings = Account.objects.create(
             team=cls.team, name="Savings", account_group=cls.asset_group, has_feed=True
+        )
+        cls.credit_card = Account.objects.create(
+            team=cls.team, name="Credit Card", account_group=cls.asset_group, has_feed=True
         )
 
     def setUp(self):
@@ -187,6 +191,27 @@ class TransferDetectionTest(TransferTestBase):
         self.assertEqual(len(pairs), 1)
         self.assertEqual(pairs[0]["inflow"].id, near.id)
         self.assertEqual(pairs[0]["outflow"].id, out_tx.id)
+
+    def test_ignores_transfer_mirror_legs(self):
+        # A real transfer, checking -> savings, gets categorized. That creates a
+        # synthetic mirror leg in savings (linked to the same journal entry as the
+        # real checking outflow). The bank also separately reported the real
+        # duplicate leg in savings (uncategorized) -- that's the one real pair to
+        # suggest. An unrelated real transaction in a third account, which happens
+        # to share the same amount/date, must not get spuriously paired with the
+        # synthetic mirror leg.
+        out_tx = self._tx(self.checking, "100.00")
+        real_dup = self._tx(self.savings, "-100.00")
+        self._categorize_as_transfer(out_tx, self.savings)
+        sync_transfer(out_tx)  # creates the mirror leg in savings
+
+        unrelated = self._tx(self.credit_card, "100.00")  # unrelated real outflow, same amount/date
+
+        pairs = self.candidates()
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0]["outflow"].id, out_tx.id)
+        self.assertEqual(pairs[0]["inflow"].id, real_dup.id)
+        self.assertTrue(unrelated)  # left unmatched, not spuriously paired with the mirror leg
 
 
 class TransferSuggestionsEndpointTest(TransferTestBase):

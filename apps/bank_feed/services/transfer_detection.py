@@ -47,8 +47,14 @@ def find_transfer_candidates(team, window_days=None):
     if window_days is None:
         window_days = get_window_days()
 
+    # Mirror legs are synthetic counterparts auto-created when their primary leg
+    # was categorized as a transfer to another feed account (see transfer_mirror.py) —
+    # they were never independently reported by a bank, so they must not be treated
+    # as a candidate duplicate for a *different* transaction. Without this exclusion
+    # a mirror leg can pair with an unrelated real transaction, surfacing the same
+    # underlying transfer as a second, spurious suggestion.
     transactions = list(
-        BankTransaction.objects.filter(team=team, is_archived=False)
+        BankTransaction.objects.filter(team=team, is_archived=False, is_transfer_mirror=False)
         .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
         .select_related("account", "journal_entry")
         .order_by("posted_date", "id")
