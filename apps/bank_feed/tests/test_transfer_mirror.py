@@ -333,9 +333,10 @@ class TransferMirrorTest(TestCase):
         self.assertFalse(tx.is_archived)
         self.assertFalse(mirror.is_archived)
 
-    def test_archiving_primary_skips_reconciled_mirror(self):
-        # The mirror leg is reconciled and must not be force-archived, but the
-        # primary (unreconciled) leg still archives.
+    def test_archiving_primary_with_reconciled_mirror_is_rejected(self):
+        # The two legs archive together and a reconciled leg must never be
+        # archived — so archiving the primary while the mirror is reconciled is
+        # refused outright (instead of archiving one leg and stranding the other).
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
@@ -347,12 +348,57 @@ class TransferMirrorTest(TestCase):
         url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
         with current_team(self.team):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("reconciled", resp.json()["error"])
 
         tx.refresh_from_db()
         mirror.refresh_from_db()
-        self.assertTrue(tx.is_archived)
+        self.assertFalse(tx.is_archived)
         self.assertFalse(mirror.is_archived)
+
+    def test_archiving_reconciled_leg_of_transfer_is_rejected(self):
+        # Archiving the reconciled leg itself is refused with an explicit error
+        # (not silently skipped) so the user knows to unreconcile first.
+        tx = self._tx(self.checking, "100.00")
+        self._categorize(tx, self.credit_card)
+        tx.refresh_from_db()
+        mirror = self._mirror_of(tx.journal_entry)
+        checking_line = tx.journal_entry.lines.get(account=self.checking)
+        checking_line.is_reconciled = True
+        checking_line.save(update_fields=["is_reconciled"])
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
+        with current_team(self.team):
+            resp = self.client.post(url, {"ids": [tx.id]}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("reconciled", resp.json()["error"])
+
+        tx.refresh_from_db()
+        mirror.refresh_from_db()
+        self.assertFalse(tx.is_archived)
+        self.assertFalse(mirror.is_archived)
+
+    def test_blocked_transfer_rejects_whole_batch(self):
+        # A batch containing a blocked transfer archives nothing — all-or-nothing
+        # so the user isn't left guessing which rows went through.
+        blocked = self._tx(self.checking, "100.00")
+        self._categorize(blocked, self.credit_card)
+        blocked.refresh_from_db()
+        cc_line = blocked.journal_entry.lines.get(account=self.credit_card)
+        cc_line.is_reconciled = True
+        cc_line.save(update_fields=["is_reconciled"])
+
+        plain = self._tx(self.checking, "25.00")
+
+        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
+        with current_team(self.team):
+            resp = self.client.post(url, {"ids": [plain.id, blocked.id]}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        plain.refresh_from_db()
+        blocked.refresh_from_db()
+        self.assertFalse(plain.is_archived)
+        self.assertFalse(blocked.is_archived)
 
     def test_detector_does_not_flag_the_two_legs(self):
         tx = self._tx(self.checking, "100.00")
