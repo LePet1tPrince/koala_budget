@@ -15,6 +15,7 @@ from apps.accounts.models import (
     AccountGroup,
 )
 from apps.bank_feed.models import BankTransaction
+from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN, ROLE_MEMBER
@@ -87,6 +88,34 @@ class BankFeedHomeViewTest(TestCase):
         api_urls = response.context["api_urls"]
         self.assertIn("feed_list", api_urls)
         self.assertIn(self.team.slug, api_urls["feed_list"])
+
+    def test_bank_feed_home_context_contains_latest_reconciled_date(self):
+        """Test that the initial page-load context includes latest_reconciled_date."""
+        today = date.today()
+
+        entry = JournalEntry.objects.create(team=self.team, posted_date=today)
+        JournalLine.objects.create(
+            team=self.team,
+            journal_entry=entry,
+            account=self.bank_account,
+            dr_amount=Decimal("100.00"),
+            is_reconciled=True,
+        )
+        BankTransaction.objects.create(
+            team=self.team,
+            account=self.bank_account,
+            posted_date=today,
+            description="Test transaction",
+            amount=Decimal("100.00"),
+            source=BankTransaction.SOURCE_CSV,
+            journal_entry=entry,
+        )
+
+        response = self.client.get(f"/a/{self.team.slug}/bankfeed/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        accounts_by_name = {a["name"]: a for a in response.context["accounts"]}
+        self.assertEqual(accounts_by_name["Checking"]["latest_reconciled_date"], str(today))
 
 
 class BankFeedPermissionsTest(TestCase):

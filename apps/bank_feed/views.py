@@ -51,6 +51,56 @@ from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_mirror import linked_legs, sync_transfer, would_orphan_primary
 
 
+def _annotate_feed_account_activity(accounts, team):
+    """
+    Attach per-account review/activity fields to feed accounts: uncategorized_count,
+    latest_transaction_date, latest_reconciled_date.
+
+    Computed as separate queries (not chained onto the with_balance()/with_categorized_balance()/
+    with_reconciled_balance() annotations) to avoid the join fan-out that would inflate the Sum()
+    balances: bank_transactions and journal_lines are different reverse relations, so annotating
+    both in one query would cross-multiply their rows per account.
+    """
+    uncategorized_counts = dict(
+        BankTransaction.objects.filter(
+            team=team,
+            account__has_feed=True,
+            journal_entry__isnull=True,
+            is_archived=False,
+        )
+        .values("account_id")
+        .annotate(count=Count("id"))
+        .values_list("account_id", "count")
+    )
+    latest_transaction_dates = dict(
+        BankTransaction.objects.filter(
+            team=team,
+            account__has_feed=True,
+            is_archived=False,
+        )
+        .values("account_id")
+        .annotate(latest_date=Max("posted_date"))
+        .values_list("account_id", "latest_date")
+    )
+    latest_reconciled_dates = dict(
+        BankTransaction.objects.filter(
+            team=team,
+            account__has_feed=True,
+            is_archived=False,
+            journal_entry__isnull=False,
+            journal_entry__lines__account_id=F("account_id"),
+            journal_entry__lines__is_reconciled=True,
+        )
+        .distinct("account_id")
+        .order_by("account_id", "-posted_date")
+        .values_list("account_id", "posted_date")
+    )
+    for account in accounts:
+        account.uncategorized_count = uncategorized_counts.get(account.id, 0)
+        account.latest_transaction_date = latest_transaction_dates.get(account.id)
+        account.latest_reconciled_date = latest_reconciled_dates.get(account.id)
+
+
 class ManualTransactionSerializer(serializers.Serializer):
     """Serializer for creating/updating manual transactions."""
 
@@ -194,48 +244,7 @@ class BankFeedViewSet(
             .order_by("name")
         )
 
-        # Computed as a separate query (not chained onto the balance annotations above) to
-        # avoid the join fan-out that would inflate the Sum() balances: bank_transactions and
-        # journal_lines are different reverse relations, so annotating both in one query would
-        # cross-multiply their rows per account.
-        uncategorized_counts = dict(
-            BankTransaction.objects.filter(
-                team=request.team,
-                account__has_feed=True,
-                journal_entry__isnull=True,
-                is_archived=False,
-            )
-            .values("account_id")
-            .annotate(count=Count("id"))
-            .values_list("account_id", "count")
-        )
-        latest_transaction_dates = dict(
-            BankTransaction.objects.filter(
-                team=request.team,
-                account__has_feed=True,
-                is_archived=False,
-            )
-            .values("account_id")
-            .annotate(latest_date=Max("posted_date"))
-            .values_list("account_id", "latest_date")
-        )
-        latest_reconciled_dates = dict(
-            BankTransaction.objects.filter(
-                team=request.team,
-                account__has_feed=True,
-                is_archived=False,
-                journal_entry__isnull=False,
-                journal_entry__lines__account_id=F("account_id"),
-                journal_entry__lines__is_reconciled=True,
-            )
-            .distinct("account_id")
-            .order_by("account_id", "-posted_date")
-            .values_list("account_id", "posted_date")
-        )
-        for account in accounts:
-            account.uncategorized_count = uncategorized_counts.get(account.id, 0)
-            account.latest_transaction_date = latest_transaction_dates.get(account.id)
-            account.latest_reconciled_date = latest_reconciled_dates.get(account.id)
+        _annotate_feed_account_activity(accounts, request.team)
 
         return Response(FeedAccountSerializer(accounts, many=True).data)
 
@@ -1742,31 +1751,7 @@ def bank_feed_home(request, team_slug):
         .order_by("name")
     )  # noqa: E501
 
-    # See feed_accounts() below for why this is a separate query rather than a chained annotation.
-    uncategorized_counts = dict(
-        BankTransaction.objects.filter(
-            team=request.team,
-            account__has_feed=True,
-            journal_entry__isnull=True,
-            is_archived=False,
-        )
-        .values("account_id")
-        .annotate(count=Count("id"))
-        .values_list("account_id", "count")
-    )
-    latest_transaction_dates = dict(
-        BankTransaction.objects.filter(
-            team=request.team,
-            account__has_feed=True,
-            is_archived=False,
-        )
-        .values("account_id")
-        .annotate(latest_date=Max("posted_date"))
-        .values_list("account_id", "latest_date")
-    )
-    for account in accounts_with_feeds:
-        account.uncategorized_count = uncategorized_counts.get(account.id, 0)
-        account.latest_transaction_date = latest_transaction_dates.get(account.id)
+    _annotate_feed_account_activity(accounts_with_feeds, request.team)
 
     # Serialize accounts for React
     accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data
