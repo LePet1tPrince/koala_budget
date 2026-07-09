@@ -592,6 +592,11 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               <span className="font-semibold text-base-content">
                 {formatCurrency(selectedAccount.reconciled_balance ?? 0)}
               </span>
+              {selectedAccount.latest_reconciled_date && (
+                <span className="text-base-content/50 ml-2">
+                  {gettext('as of')} {new Date(selectedAccount.latest_reconciled_date).toLocaleDateString()}
+                </span>
+              )}
             </span>
           </div>
           {error && (
