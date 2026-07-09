@@ -1764,9 +1764,23 @@ def bank_feed_home(request, team_slug):
         .annotate(latest_date=Max("posted_date"))
         .values_list("account_id", "latest_date")
     )
+    latest_reconciled_dates = dict(
+        BankTransaction.objects.filter(
+            team=request.team,
+            account__has_feed=True,
+            is_archived=False,
+            journal_entry__isnull=False,
+            journal_entry__lines__account_id=F("account_id"),
+            journal_entry__lines__is_reconciled=True,
+        )
+        .distinct("account_id")
+        .order_by("account_id", "-posted_date")
+        .values_list("account_id", "posted_date")
+    )
     for account in accounts_with_feeds:
         account.uncategorized_count = uncategorized_counts.get(account.id, 0)
         account.latest_transaction_date = latest_transaction_dates.get(account.id)
+        account.latest_reconciled_date = latest_reconciled_dates.get(account.id)
 
     # Serialize accounts for React
     accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data
