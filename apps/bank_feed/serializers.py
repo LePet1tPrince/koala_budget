@@ -7,11 +7,20 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.accounts.serializers import SimpleAccountSerializer
+from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
 from apps.journal.models import JournalLine
 from apps.plaid.serializers import PlaidTransactionSerializer
 
 from .models import BankTransaction
+
+
+class FeedAccountSerializer(AccountSerializer):
+    """AccountSerializer plus the latest reconciled transaction date."""
+
+    latest_reconciled_date = serializers.DateField(read_only=True, default=None)
+
+    class Meta(AccountSerializer.Meta):
+        fields = AccountSerializer.Meta.fields + ["latest_reconciled_date"]
 
 
 class BankTransactionSerializer(serializers.ModelSerializer):
