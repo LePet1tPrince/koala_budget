@@ -15,17 +15,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const flows = [];
 
-  // Income accounts -> "Income"
+  // Income accounts -> "Income". An account with a negative net for the period
+  // (e.g. refunds/chargebacks exceeded income) flows the other way instead of
+  // being dropped, so every account is represented and the diagram stays
+  // flow-conservative with the Total Income/Expenses figures above it.
   income.forEach(item => {
     if (item.amount > 0) {
       flows.push({from: item.name, to: 'Income', flow: item.amount});
+    } else if (item.amount < 0) {
+      flows.push({from: 'Income', to: item.name, flow: Math.abs(item.amount)});
     }
   });
 
-  // "Income" -> Expense accounts
+  // "Income" -> Expense accounts. Likewise, an expense account with a negative
+  // net (refunds exceeded spending) flows back into Income instead of vanishing.
   expenses.forEach(item => {
     if (item.amount > 0) {
       flows.push({from: 'Income', to: item.name, flow: item.amount});
+    } else if (item.amount < 0) {
+      flows.push({from: item.name, to: 'Income', flow: Math.abs(item.amount)});
     }
   });
 

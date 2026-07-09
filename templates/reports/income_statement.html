@@ -10,9 +10,9 @@
      Sticky cells need opaque backgrounds; the row tints are recreated with
      color-mix over the theme vars so scrolled content can't bleed through. */
   #income-statement-scroll {
-    /* Fill the rest of the viewport (header + summary + tabs take ~27rem) but
+    /* Fill the rest of the viewport (header + summary + tabs take ~22rem) but
        never shrink below a usable window */
-    max-height: max(20rem, calc(100vh - 27rem));
+    max-height: max(24rem, calc(100vh - 22rem));
   }
   #income-statement-scroll table {
     --row-bg: var(--color-base-100);
