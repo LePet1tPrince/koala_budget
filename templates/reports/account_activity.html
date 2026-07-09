@@ -3,46 +3,49 @@
 {% load form_tags %}
 {% load django_vite %}
 {% load static %}
+{% load currency_tags %}
 
 {% block app %}
 <section class="app-card">
-  <div class="flex justify-between items-center mb-6">
-    <h1 class="pg-title">{% translate "Account Activity" %}</h1>
-    <div class="flex gap-2">
+  <!-- Header: back button on the left, date picker + export on the right -->
+  <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <a href="{{ back_url }}" class="btn btn-outline btn-sm">
+      <i class="fa fa-arrow-left mr-2"></i>
+      {{ back_label }}
+    </a>
+    <div class="flex flex-wrap items-center gap-2">
+      <div id="date-range-picker"></div>
       {% if account %}
       <a href="{% url 'reports:export_account_activity' request.team.slug account.pk %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm">
         <i class="fa fa-download mr-2"></i>
         {% translate "Export CSV" %}
       </a>
       {% endif %}
-      <a href="{{ back_url }}" class="btn btn-primary">
-        <i class="fa fa-arrow-left mr-2"></i>
-        {{ back_label }}
-      </a>
     </div>
   </div>
 
-  {% if account %}
-  <div class="mb-6">
-    <h2 class="text-xl font-bold">{{ account.name }}</h2>
-    <p class="text-sm text-gray-600">{{ account.account_group.name }} ({{ account.account_group.account_type }})</p>
-  </div>
-  {% endif %}
-
-  <div class="bg-base-200 p-4 rounded-lg mb-6">
-    <div id="date-range-picker"></div>
+  <div class="mb-4">
+    {% if account %}
+    <h1 class="pg-title">{{ account.name }}</h1>
+    <p class="text-sm text-base-content/60">
+      {{ account.account_group.name }} · {{ account.account_group.get_account_type_display }}
+      {% if start_date and end_date %}
+      · {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" trimmed %}
+          {{ start }} – {{ end }}
+        {% endblocktranslate %}
+      {% endif %}
+    </p>
+    {% else %}
+    <h1 class="pg-title">{% translate "Account Activity" %}</h1>
+    {% endif %}
   </div>
 
   {% if report_data %}
   <!-- Transactions Section -->
   <div class="card bg-base-100 shadow-lg">
-    <div class="card-body">
-      <h2 class="card-title">
-        <i class="fa fa-list"></i>
-        {% translate "Transactions" %}
-      </h2>
+    <div class="card-body p-4">
       <div class="overflow-x-auto">
-        <table class="table table-zebra w-full">
+        <table class="table table-sm table-zebra w-full">
           <thead>
             <tr>
               <th>{% translate "Date" %}</th>
@@ -54,35 +57,27 @@
           <tbody>
             {% for transaction in report_data.transactions %}
             <tr>
-              <td>{{ transaction.date|date:"M j, Y" }}</td>
+              <td class="whitespace-nowrap">{{ transaction.date|date:"M j, Y" }}</td>
               <td>{{ transaction.payee }}</td>
               <td>{{ transaction.memo }}</td>
-              <td class="text-right {% if transaction.amount >= 0 %}text-success{% else %}text-error{% endif %}">{{ transaction.amount|floatformat:2 }}</td>
+              <td class="text-right tabular-nums {% if transaction.amount >= 0 %}text-success{% else %}text-error{% endif %}">{{ transaction.amount|currency }}</td>
             </tr>
             {% empty %}
             <tr>
-              <td colspan="4" class="text-center text-gray-500">{% translate "No transactions for this account in the selected period" %}</td>
+              <td colspan="4" class="text-center text-base-content/60 py-4">{% translate "No transactions for this account in the selected period" %}</td>
             </tr>
             {% endfor %}
           </tbody>
           <tfoot>
-            <tr class="font-bold">
+            <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
               <td colspan="3">{% translate "Total" %}</td>
-              <td class="text-right {% if report_data.total >= 0 %}text-success{% else %}text-error{% endif %}">{{ report_data.total|floatformat:2 }}</td>
+              <td class="text-right tabular-nums {% if report_data.total >= 0 %}text-success{% else %}text-error{% endif %}">{{ report_data.total|currency }}</td>
             </tr>
           </tfoot>
         </table>
       </div>
     </div>
   </div>
-
-  {% if start_date and end_date %}
-  <p class="text-sm text-gray-600 mt-4">
-    {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" %}
-    Report period: {{ start }} to {{ end }}
-    {% endblocktranslate %}
-  </p>
-  {% endif %}
   {% else %}
   <div class="alert alert-warning">
     <div>

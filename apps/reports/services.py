@@ -27,6 +27,8 @@ class ReportService:
             dict: {
                 'income': [{'account': Account, 'amount': Decimal}, ...],
                 'expenses': [{'account': Account, 'amount': Decimal}, ...],
+                'income_groups': [{'group': AccountGroup, 'accounts': [...], 'subtotal': Decimal}, ...],
+                'expense_groups': [{'group': AccountGroup, 'accounts': [...], 'subtotal': Decimal}, ...],
                 'total_income': Decimal,
                 'total_expenses': Decimal,
                 'net_profit': Decimal
@@ -79,7 +81,7 @@ class ReportService:
                     expense_data.append({"account": account, "amount": amount})
                     total_expenses += amount
 
-        # Sort by account number
+        # Sort by account name
         income_data.sort(key=lambda x: x["account"].name)
         expense_data.sort(key=lambda x: x["account"].name)
 
@@ -88,10 +90,30 @@ class ReportService:
         return {
             "income": income_data,
             "expenses": expense_data,
+            "income_groups": self._group_by_account_group(income_data),
+            "expense_groups": self._group_by_account_group(expense_data),
             "total_income": total_income,
             "total_expenses": total_expenses,
             "net_profit": net_profit,
         }
+
+    @staticmethod
+    def _group_by_account_group(items):
+        """
+        Group [{'account': Account, 'amount': Decimal}, ...] by the account's group.
+
+        Returns:
+            list: [{'group': AccountGroup, 'accounts': [items...], 'subtotal': Decimal}, ...]
+            sorted by group name (items keep their incoming order within each group).
+        """
+        groups = {}
+        for item in items:
+            group = item["account"].account_group
+            if group.pk not in groups:
+                groups[group.pk] = {"group": group, "accounts": [], "subtotal": Decimal("0")}
+            groups[group.pk]["accounts"].append(item)
+            groups[group.pk]["subtotal"] += item["amount"]
+        return sorted(groups.values(), key=lambda g: g["group"].name)
 
     def get_balance_sheet_data(self, as_of_date):
         """
