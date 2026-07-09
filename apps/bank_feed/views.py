@@ -27,6 +27,7 @@ from .serializers import (
     BatchIdsSerializer,
     BatchReconcileRequestSerializer,
     CategorizeTransactionsRequestSerializer,
+    FeedAccountSerializer,
     UploadConfirmRequestSerializer,
     UploadConfirmResponseSerializer,
     UploadParseResponseSerializer,
@@ -1157,7 +1158,7 @@ def bank_feed_home(request, team_slug):
     Displays accounts with bank feeds and bank transactions table.
     """
     # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
-    accounts_with_feeds = (
+    accounts_with_feeds = list(
         Account.for_team.filter(has_feed=True)
         .with_balance()
         .with_reconciled_balance()
@@ -1165,8 +1166,24 @@ def bank_feed_home(request, team_slug):
         .order_by("name")
     )  # noqa: E501
 
+    # Compute latest reconciled date for each account
+    for account in accounts_with_feeds:
+        reconciled_tx = (
+            BankTransaction.objects.filter(
+                team=request.team,
+                account=account,
+                is_archived=False,
+                journal_entry__isnull=False,
+                journal_entry__lines__account=account,
+                journal_entry__lines__is_reconciled=True,
+            )
+            .order_by("-posted_date")
+            .first()
+        )
+        account.latest_reconciled_date = reconciled_tx.posted_date if reconciled_tx else None
+
     # Serialize accounts for React
-    accounts_data = AccountSerializer(accounts_with_feeds, many=True).data
+    accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data
 
     # Get all accounts and payees for dropdowns
     all_accounts = Account.for_team.select_related("account_group").order_by("account_number")
