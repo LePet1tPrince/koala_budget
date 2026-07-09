@@ -62,19 +62,22 @@ def income_statement(request, team_slug):
         start_date = today.replace(day=1)
         end_date = today
 
-    by_month = request.GET.get("view") == "monthly"
-    report_data = service.get_income_statement_data(start_date, end_date, by_month=by_month)
+    period_views = {"monthly": "month", "quarterly": "quarter", "yearly": "year"}
+    period = period_views.get(request.GET.get("view"))
+    report_data = service.get_income_statement_data(start_date, end_date, period=period)
 
     savings_rate = None
     if report_data and report_data["total_income"]:
         savings_rate = report_data["net_profit"] / report_data["total_income"] * 100
 
-    # Querystrings for the Total / By Month display toggle (preserve other params)
+    # Querystrings for the Total / By Month|Quarter|Year display toggle (preserve other params)
     toggle_params = request.GET.copy()
     toggle_params.pop("view", None)
     total_view_qs = toggle_params.urlencode()
-    toggle_params["view"] = "monthly"
-    monthly_view_qs = toggle_params.urlencode()
+    period_view_qs = {}
+    for view_name in period_views:
+        toggle_params["view"] = view_name
+        period_view_qs[view_name] = toggle_params.urlencode()
 
     sankey_data = None
     if report_data:
@@ -97,9 +100,9 @@ def income_statement(request, team_slug):
             "report_data": report_data,
             "sankey_data": sankey_data,
             "savings_rate": savings_rate,
-            "by_month": by_month,
+            "period": period,
             "total_view_qs": total_view_qs,
-            "monthly_view_qs": monthly_view_qs,
+            "period_view_qs": period_view_qs,
             "start_date": start_date,
             "end_date": end_date,
         },

@@ -4,6 +4,62 @@
 {% load static %}
 {% load currency_tags %}
 
+{% block page_head %}
+<style>
+  /* Frozen header row + first column inside the statement scroll window.
+     Sticky cells need opaque backgrounds; the row tints are recreated with
+     color-mix over the theme vars so scrolled content can't bleed through. */
+  #income-statement-scroll {
+    /* Fill the rest of the viewport (header + summary + tabs take ~27rem) but
+       never shrink below a usable window */
+    max-height: max(20rem, calc(100vh - 27rem));
+  }
+  #income-statement-scroll table {
+    --row-bg: var(--color-base-100);
+  }
+  #income-statement-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--color-base-100);
+  }
+  #income-statement-scroll tfoot td {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    background: var(--color-base-100);
+  }
+  #income-statement-scroll th:first-child,
+  #income-statement-scroll td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: var(--row-bg);
+    box-shadow: 4px 0 6px -4px oklch(0% 0 0 / 0.25);
+  }
+  #income-statement-scroll thead th:first-child,
+  #income-statement-scroll tfoot td:first-child {
+    z-index: 30;
+  }
+  #income-statement-scroll .row-income {
+    --row-bg: color-mix(in oklab, var(--color-success) 10%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+  #income-statement-scroll .row-expenses {
+    --row-bg: color-mix(in oklab, var(--color-error) 10%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+  #income-statement-scroll .row-group {
+    --row-bg: var(--color-base-200);
+    background: var(--row-bg);
+  }
+  #income-statement-scroll .row-account:hover {
+    --row-bg: color-mix(in oklab, var(--color-base-200) 50%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+</style>
+{% endblock %}
+
 {% block app %}
 <section class="app-card">
   <!-- Header: title, date range picker, and actions on one row -->
@@ -21,8 +77,18 @@
     <div class="flex flex-wrap items-center gap-2">
       <div id="date-range-picker"></div>
       <div class="join" data-testid="display-toggle">
-        <a href="?{{ total_view_qs }}" class="btn btn-sm join-item {% if not by_month %}btn-active{% endif %}">{% translate "Total" %}</a>
-        <a href="?{{ monthly_view_qs }}" class="btn btn-sm join-item {% if by_month %}btn-active{% endif %}">{% translate "By Month" %}</a>
+        <a href="?{{ total_view_qs }}" class="btn btn-sm join-item {% if not period %}btn-active{% endif %}">{% translate "Total" %}</a>
+        <div class="dropdown dropdown-end join-item">
+          <div tabindex="0" role="button" class="btn btn-sm {% if period %}btn-active{% endif %}" data-testid="period-dropdown">
+            {% if period == "quarter" %}{% translate "By Quarter" %}{% elif period == "year" %}{% translate "By Year" %}{% else %}{% translate "By Month" %}{% endif %}
+            <i class="fa fa-caret-down ml-1"></i>
+          </div>
+          <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-50 w-40 p-2 shadow">
+            <li><a href="?{{ period_view_qs.monthly }}" class="{% if period == 'month' %}menu-active{% endif %}">{% translate "By Month" %}</a></li>
+            <li><a href="?{{ period_view_qs.quarterly }}" class="{% if period == 'quarter' %}menu-active{% endif %}">{% translate "By Quarter" %}</a></li>
+            <li><a href="?{{ period_view_qs.yearly }}" class="{% if period == 'year' %}menu-active{% endif %}">{% translate "By Year" %}</a></li>
+          </ul>
+        </div>
       </div>
       <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
         <i class="fa fa-download mr-2"></i>
@@ -81,18 +147,17 @@
 
     <!-- Statement tab -->
     <div x-show="tab === 'statement'">
-      {% with months=report_data.months %}
-      {% with value_colspan=months|length|add:1 %}
+      {% with value_colspan=report_data.periods|length|add:1 %}
       <div class="card bg-base-100 shadow-lg">
         <div class="card-body p-4">
-          <div class="overflow-x-auto">
+          <div id="income-statement-scroll" class="overflow-auto">
             <table class="table table-sm w-full" data-testid="income-statement-table">
               <thead>
                 <tr>
                   <th>{% translate "Account" %}</th>
-                  {% if by_month %}
-                    {% for month in months %}
-                    <th class="text-right whitespace-nowrap">{{ month|date:"M Y" }}</th>
+                  {% if period %}
+                    {% for label in report_data.period_labels %}
+                    <th class="text-right whitespace-nowrap">{{ label }}</th>
                     {% endfor %}
                     <th class="text-right">{% translate "Total" %}</th>
                   {% else %}
@@ -103,31 +168,31 @@
 
               <!-- Income section -->
               <tbody data-testid="income-table">
-                <tr class="cursor-pointer select-none bg-success/10 font-bold" @click="sec.income = !sec.income">
+                <tr class="cursor-pointer select-none row-income font-bold" @click="sec.income = !sec.income">
                   <td class="whitespace-nowrap">
                     <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.income ? '' : '-rotate-90'"></i>
                     <span class="text-success ml-1">{% translate "Income" %}</span>
                   </td>
-                  {% if by_month %}{% for amount in report_data.total_income_monthly %}
+                  {% if period %}{% for amount in report_data.total_income_per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap text-success">{{ report_data.total_income|currency }}</td>
                 </tr>
                 {% for group_data in report_data.income_groups %}
-                <tr x-show="sec.income" class="cursor-pointer select-none bg-base-200 font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
+                <tr x-show="sec.income" class="cursor-pointer select-none row-group font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
                   <td class="pl-6 whitespace-nowrap">
                     <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
                     <span class="ml-1">{{ group_data.group.name }}</span>
                   </td>
-                  {% if by_month %}{% for amount in group_data.monthly %}
+                  {% if period %}{% for amount in group_data.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.subtotal|currency }}</td>
                 </tr>
                 {% for item in group_data.accounts %}
-                <tr x-show="sec.income && grp.g{{ group_data.group.pk }}" class="hover:bg-base-200/50">
-                  <td class="pl-12"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
-                  {% if by_month %}{% for amount in item.monthly %}
+                <tr x-show="sec.income && grp.g{{ group_data.group.pk }}" class="row-account">
+                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
+                  {% if period %}{% for amount in item.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap">{{ item.amount|currency }}</td>
@@ -142,31 +207,31 @@
 
               <!-- Expenses section -->
               <tbody data-testid="expenses-table">
-                <tr class="cursor-pointer select-none bg-error/10 font-bold" @click="sec.expenses = !sec.expenses">
+                <tr class="cursor-pointer select-none row-expenses font-bold" @click="sec.expenses = !sec.expenses">
                   <td class="whitespace-nowrap">
                     <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.expenses ? '' : '-rotate-90'"></i>
                     <span class="text-error ml-1">{% translate "Expenses" %}</span>
                   </td>
-                  {% if by_month %}{% for amount in report_data.total_expenses_monthly %}
+                  {% if period %}{% for amount in report_data.total_expenses_per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap text-error">{{ report_data.total_expenses|currency }}</td>
                 </tr>
                 {% for group_data in report_data.expense_groups %}
-                <tr x-show="sec.expenses" class="cursor-pointer select-none bg-base-200 font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
+                <tr x-show="sec.expenses" class="cursor-pointer select-none row-group font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
                   <td class="pl-6 whitespace-nowrap">
                     <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
                     <span class="ml-1">{{ group_data.group.name }}</span>
                   </td>
-                  {% if by_month %}{% for amount in group_data.monthly %}
+                  {% if period %}{% for amount in group_data.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.subtotal|currency }}</td>
                 </tr>
                 {% for item in group_data.accounts %}
-                <tr x-show="sec.expenses && grp.g{{ group_data.group.pk }}" class="hover:bg-base-200/50">
-                  <td class="pl-12"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
-                  {% if by_month %}{% for amount in item.monthly %}
+                <tr x-show="sec.expenses && grp.g{{ group_data.group.pk }}" class="row-account">
+                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
+                  {% if period %}{% for amount in item.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap">{{ item.amount|currency }}</td>
@@ -181,9 +246,9 @@
 
               <tfoot>
                 <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
-                  <td>{% translate "Net Profit" %}</td>
-                  {% if by_month %}{% for amount in report_data.net_profit_monthly %}
-                  <td class="text-right tabular-nums whitespace-nowrap {% if amount >= 0 %}text-success{% else %}text-error{% endif %}">{{ amount|currency }}</td>
+                  <td class="whitespace-nowrap">{% translate "Net Profit" %}</td>
+                  {% if period %}{% for amount in report_data.net_profit_per_period %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %} {% if amount >= 0 %}text-success{% else %}text-error{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_profit >= 0 %}text-success{% else %}text-error{% endif %}">{{ report_data.net_profit|currency }}</td>
                 </tr>
@@ -192,7 +257,6 @@
           </div>
         </div>
       </div>
-      {% endwith %}
       {% endwith %}
     </div>
 

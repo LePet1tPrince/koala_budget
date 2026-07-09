@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.utils.formats import date_format
+
 from apps.accounts.models import (
     ACCOUNT_TYPE_ASSET,
     ACCOUNT_TYPE_EQUITY,
@@ -19,27 +21,29 @@ class ReportService:
     def __init__(self, team):
         self.team = team
 
-    def get_income_statement_data(self, start_date, end_date, by_month=False):
+    def get_income_statement_data(self, start_date, end_date, period=None):
         """
         Calculate income statement data (Income vs Expenses) for the given date range.
 
-        When by_month is True, every item/group/total also carries a per-month breakdown
-        aligned with the returned 'months' list (first day of each month in the range).
+        When period is "month", "quarter", or "year", every item/group/total also carries
+        a per-period breakdown aligned with the returned 'periods' list (first day of each
+        period in the range), with matching human-readable 'period_labels'.
 
         Returns:
             dict: {
-                'income': [{'account': Account, 'amount': Decimal[, 'monthly': [Decimal, ...]]}, ...],
-                'expenses': [{'account': Account, 'amount': Decimal[, 'monthly': [...]]}, ...],
+                'income': [{'account': Account, 'amount': Decimal[, 'per_period': [Decimal, ...]]}, ...],
+                'expenses': [{'account': Account, 'amount': Decimal[, 'per_period': [...]]}, ...],
                 'income_groups': [{'group': AccountGroup, 'accounts': [...], 'subtotal': Decimal
-                                   [, 'monthly': [...]]}, ...],
+                                   [, 'per_period': [...]]}, ...],
                 'expense_groups': [...same shape...],
-                'months': [date, ...] (empty unless by_month),
+                'periods': [date, ...] (empty unless period given),
+                'period_labels': [str, ...] (empty unless period given),
                 'total_income': Decimal,
                 'total_expenses': Decimal,
                 'net_profit': Decimal,
-                'total_income_monthly': [Decimal, ...] (empty unless by_month),
-                'total_expenses_monthly': [...],
-                'net_profit_monthly': [...],
+                'total_income_per_period': [Decimal, ...] (empty unless period given),
+                'total_expenses_per_period': [...],
+                'net_profit_per_period': [...],
             }
         """
         # Get all journal lines in the date range (voided entries don't count)
@@ -52,7 +56,7 @@ class ReportService:
             .select_related("account", "account__account_group", "journal_entry")
         )
 
-        months = self._month_range(start_date, end_date) if by_month else []
+        periods = self._period_range(start_date, end_date, period) if period else []
 
         income_data = []
         expense_data = []
@@ -61,7 +65,7 @@ class ReportService:
 
         # Group by account and calculate balances
         account_balances = {}
-        account_monthly = {}  # account -> {month: Decimal}
+        account_periodic = {}  # account -> {period start date: Decimal}
 
         for line in journal_lines:
             account = line.account
@@ -81,18 +85,18 @@ class ReportService:
                 account_balances[account] = Decimal("0")
             account_balances[account] += amount
 
-            if by_month:
-                month = line.journal_entry.entry_date.replace(day=1)
-                per_month = account_monthly.setdefault(account, {})
-                per_month[month] = per_month.get(month, Decimal("0")) + amount
+            if period:
+                bucket = self._period_start(line.journal_entry.entry_date, period)
+                per_period = account_periodic.setdefault(account, {})
+                per_period[bucket] = per_period.get(bucket, Decimal("0")) + amount
 
         # Sort accounts and build result data
         for account, amount in account_balances.items():
             if amount != 0:  # Only include accounts with activity
                 item = {"account": account, "amount": amount}
-                if by_month:
-                    per_month = account_monthly.get(account, {})
-                    item["monthly"] = [per_month.get(month, Decimal("0")) for month in months]
+                if period:
+                    per_period = account_periodic.get(account, {})
+                    item["per_period"] = [per_period.get(bucket, Decimal("0")) for bucket in periods]
                 account_type = account.account_group.account_type
                 if account_type == ACCOUNT_TYPE_INCOME:
                     income_data.append(item)
@@ -107,53 +111,78 @@ class ReportService:
 
         net_profit = total_income - total_expenses
 
-        total_income_monthly = self._sum_monthly(income_data, len(months)) if by_month else []
-        total_expenses_monthly = self._sum_monthly(expense_data, len(months)) if by_month else []
-        net_profit_monthly = [inc - exp for inc, exp in zip(total_income_monthly, total_expenses_monthly, strict=True)]
+        total_income_per_period = self._sum_periods(income_data, len(periods)) if period else []
+        total_expenses_per_period = self._sum_periods(expense_data, len(periods)) if period else []
+        net_profit_per_period = [
+            inc - exp for inc, exp in zip(total_income_per_period, total_expenses_per_period, strict=True)
+        ]
 
         return {
             "income": income_data,
             "expenses": expense_data,
-            "income_groups": self._group_by_account_group(income_data, len(months) if by_month else None),
-            "expense_groups": self._group_by_account_group(expense_data, len(months) if by_month else None),
-            "months": months,
+            "income_groups": self._group_by_account_group(income_data, len(periods) if period else None),
+            "expense_groups": self._group_by_account_group(expense_data, len(periods) if period else None),
+            "periods": periods,
+            "period_labels": [self._period_label(bucket, period) for bucket in periods],
             "total_income": total_income,
             "total_expenses": total_expenses,
             "net_profit": net_profit,
-            "total_income_monthly": total_income_monthly,
-            "total_expenses_monthly": total_expenses_monthly,
-            "net_profit_monthly": net_profit_monthly,
+            "total_income_per_period": total_income_per_period,
+            "total_expenses_per_period": total_expenses_per_period,
+            "net_profit_per_period": net_profit_per_period,
         }
 
     @staticmethod
-    def _month_range(start_date, end_date):
-        """Return the first day of each month between start_date and end_date, inclusive."""
-        months = []
-        current = start_date.replace(day=1)
+    def _period_start(day, period):
+        """First day of the month/quarter/year containing the given date."""
+        if period == "year":
+            return date(day.year, 1, 1)
+        if period == "quarter":
+            return date(day.year, 3 * ((day.month - 1) // 3) + 1, 1)
+        return day.replace(day=1)
+
+    @classmethod
+    def _period_range(cls, start_date, end_date, period):
+        """Return the first day of each month/quarter/year between the dates, inclusive."""
+        step_months = {"month": 1, "quarter": 3, "year": 12}[period]
+        periods = []
+        current = cls._period_start(start_date, period)
         while current <= end_date:
-            months.append(current)
-            current = (current + timedelta(days=32)).replace(day=1)
-        return months
+            periods.append(current)
+            month = current.month + step_months
+            year = current.year + (month - 1) // 12
+            month = (month - 1) % 12 + 1
+            current = date(year, month, 1)
+        return periods
 
     @staticmethod
-    def _sum_monthly(items, num_months):
-        """Element-wise sum of the 'monthly' lists across items."""
-        totals = [Decimal("0")] * num_months
+    def _period_label(bucket, period):
+        """Human-readable column label for a period start date."""
+        if period == "year":
+            return str(bucket.year)
+        if period == "quarter":
+            return f"Q{(bucket.month - 1) // 3 + 1} {bucket.year}"
+        return date_format(bucket, "M Y")
+
+    @staticmethod
+    def _sum_periods(items, num_periods):
+        """Element-wise sum of the 'per_period' lists across items."""
+        totals = [Decimal("0")] * num_periods
         for item in items:
-            for i, amount in enumerate(item["monthly"]):
+            for i, amount in enumerate(item["per_period"]):
                 totals[i] += amount
         return totals
 
     @classmethod
-    def _group_by_account_group(cls, items, num_months=None):
+    def _group_by_account_group(cls, items, num_periods=None):
         """
         Group [{'account': Account, 'amount': Decimal}, ...] by the account's group.
 
         Returns:
             list: [{'group': AccountGroup, 'accounts': [items...], 'subtotal': Decimal}, ...]
             sorted by group name (items keep their incoming order within each group).
-            When num_months is given, each group also gets a 'monthly' element-wise
-            subtotal of its accounts' 'monthly' lists.
+            When num_periods is given, each group also gets a 'per_period' element-wise
+            subtotal of its accounts' 'per_period' lists.
         """
         groups = {}
         for item in items:
@@ -163,9 +192,9 @@ class ReportService:
             groups[group.pk]["accounts"].append(item)
             groups[group.pk]["subtotal"] += item["amount"]
         result = sorted(groups.values(), key=lambda g: g["group"].name)
-        if num_months is not None:
+        if num_periods is not None:
             for group_data in result:
-                group_data["monthly"] = cls._sum_monthly(group_data["accounts"], num_months)
+                group_data["per_period"] = cls._sum_periods(group_data["accounts"], num_periods)
         return result
 
     def get_balance_sheet_data(self, as_of_date):
