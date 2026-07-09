@@ -6,7 +6,7 @@ Provides API endpoints for imported transactions and unified bank feed.
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, Max
+from django.db.models import Count, F, Max
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -219,9 +219,23 @@ class BankFeedViewSet(
             .annotate(latest_date=Max("posted_date"))
             .values_list("account_id", "latest_date")
         )
+        latest_reconciled_dates = dict(
+            BankTransaction.objects.filter(
+                team=request.team,
+                account__has_feed=True,
+                is_archived=False,
+                journal_entry__isnull=False,
+                journal_entry__lines__account_id=F("account_id"),
+                journal_entry__lines__is_reconciled=True,
+            )
+            .distinct("account_id")
+            .order_by("account_id", "-posted_date")
+            .values_list("account_id", "posted_date")
+        )
         for account in accounts:
             account.uncategorized_count = uncategorized_counts.get(account.id, 0)
             account.latest_transaction_date = latest_transaction_dates.get(account.id)
+            account.latest_reconciled_date = latest_reconciled_dates.get(account.id)
 
         return Response(FeedAccountSerializer(accounts, many=True).data)
 
