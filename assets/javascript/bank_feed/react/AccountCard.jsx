@@ -32,11 +32,6 @@ const AccountCard = ({ account, isSelected, onClick }) => {
           </p>
           <p>
             {gettext('Reconciled Balance:')} {formatCurrency(account.reconciled_balance || 0)}
-            {account.latest_reconciled_date && (
-              <span className="text-base-content/50 ml-2">
-                {gettext('as of')} {new Date(account.latest_reconciled_date).toLocaleDateString()}
-              </span>
-            )}
           </p>
         </div>
       </div>
