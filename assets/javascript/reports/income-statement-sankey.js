@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('sankey-chart');
   if (!canvas) return;
 
-  new Chart(canvas, {
+  const createChart = () => new Chart(canvas, {
     type: 'sankey',
     data: {
       datasets: [{
@@ -84,4 +84,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   });
+
+  // The canvas starts inside a hidden tab (display:none), where Chart.js would
+  // size itself to 0x0 — defer creation until the canvas is first shown.
+  const observer = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) {
+      observer.disconnect();
+      createChart();
+    }
+  });
+  observer.observe(canvas);
 });

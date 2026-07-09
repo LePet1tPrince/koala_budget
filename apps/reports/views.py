@@ -62,11 +62,19 @@ def income_statement(request, team_slug):
         start_date = today.replace(day=1)
         end_date = today
 
-    report_data = service.get_income_statement_data(start_date, end_date)
+    by_month = request.GET.get("view") == "monthly"
+    report_data = service.get_income_statement_data(start_date, end_date, by_month=by_month)
 
     savings_rate = None
     if report_data and report_data["total_income"]:
         savings_rate = report_data["net_profit"] / report_data["total_income"] * 100
+
+    # Querystrings for the Total / By Month display toggle (preserve other params)
+    toggle_params = request.GET.copy()
+    toggle_params.pop("view", None)
+    total_view_qs = toggle_params.urlencode()
+    toggle_params["view"] = "monthly"
+    monthly_view_qs = toggle_params.urlencode()
 
     sankey_data = None
     if report_data:
@@ -89,6 +97,9 @@ def income_statement(request, team_slug):
             "report_data": report_data,
             "sankey_data": sankey_data,
             "savings_rate": savings_rate,
+            "by_month": by_month,
+            "total_view_qs": total_view_qs,
+            "monthly_view_qs": monthly_view_qs,
             "start_date": start_date,
             "end_date": end_date,
         },

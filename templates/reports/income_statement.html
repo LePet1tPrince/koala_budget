@@ -20,6 +20,10 @@
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <div id="date-range-picker"></div>
+      <div class="join" data-testid="display-toggle">
+        <a href="?{{ total_view_qs }}" class="btn btn-sm join-item {% if not by_month %}btn-active{% endif %}">{% translate "Total" %}</a>
+        <a href="?{{ monthly_view_qs }}" class="btn btn-sm join-item {% if by_month %}btn-active{% endif %}">{% translate "By Month" %}</a>
+      </div>
       <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
         <i class="fa fa-download mr-2"></i>
         {% translate "Export CSV" %}
@@ -60,110 +64,146 @@
     </div>
   </div>
 
-  <!-- Report Section -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
-    <!-- Income Section -->
-    <div class="card bg-base-100 shadow-lg">
-      <div class="card-body p-4">
-        <h2 class="card-title text-success text-base">
-          <i class="fa fa-arrow-up"></i>
-          {% translate "Income" %}
-        </h2>
-        <div class="overflow-x-auto">
-          <table class="table table-sm w-full" data-testid="income-table">
-            <thead>
-              <tr>
-                <th>{% translate "Account" %}</th>
-                <th class="text-right">{% translate "Amount" %}</th>
-              </tr>
-            </thead>
-            {% for group_data in report_data.income_groups %}
-            <tbody>
-              <tr class="bg-base-200 font-semibold">
-                <td>{{ group_data.group.name }}</td>
-                <td class="text-right tabular-nums">{{ group_data.subtotal|currency }}</td>
-              </tr>
-              {% for item in group_data.accounts %}
-              <tr class="hover:bg-base-200/50">
-                <td class="pl-6"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
-                <td class="text-right tabular-nums">{{ item.amount|currency }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-            {% empty %}
-            <tbody>
-              <tr>
-                <td colspan="2" class="text-center text-base-content/60 py-4">{% translate "No income data for this period" %}</td>
-              </tr>
-            </tbody>
-            {% endfor %}
-            <tfoot>
-              <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
-                <td>{% translate "Total Income" %}</td>
-                <td class="text-right tabular-nums text-success">{{ report_data.total_income|currency }}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
+  <div x-data="{
+        tab: 'statement',
+        sec: { income: true, expenses: true },
+        grp: { {% for group_data in report_data.income_groups %}g{{ group_data.group.pk }}: true, {% endfor %}{% for group_data in report_data.expense_groups %}g{{ group_data.group.pk }}: true{% if not forloop.last %}, {% endif %}{% endfor %} }
+      }">
+    <!-- Statement / Income Flow tabs -->
+    <div role="tablist" class="tabs tabs-box w-fit mb-4">
+      <a role="tab" class="tab" :class="tab === 'statement' ? 'tab-active' : ''" @click.prevent="tab = 'statement'" data-testid="tab-statement">
+        <i class="fa fa-table-list mr-2"></i>{% translate "Statement" %}
+      </a>
+      <a role="tab" class="tab" :class="tab === 'flow' ? 'tab-active' : ''" @click.prevent="tab = 'flow'" data-testid="tab-flow">
+        <i class="fa fa-diagram-project mr-2"></i>{% translate "Income Flow" %}
+      </a>
     </div>
 
-    <!-- Expenses Section -->
-    <div class="card bg-base-100 shadow-lg">
-      <div class="card-body p-4">
-        <h2 class="card-title text-error text-base">
-          <i class="fa fa-arrow-down"></i>
-          {% translate "Expenses" %}
-        </h2>
-        <div class="overflow-x-auto">
-          <table class="table table-sm w-full" data-testid="expenses-table">
-            <thead>
-              <tr>
-                <th>{% translate "Account" %}</th>
-                <th class="text-right">{% translate "Amount" %}</th>
-              </tr>
-            </thead>
-            {% for group_data in report_data.expense_groups %}
-            <tbody>
-              <tr class="bg-base-200 font-semibold">
-                <td>{{ group_data.group.name }}</td>
-                <td class="text-right tabular-nums">{{ group_data.subtotal|currency }}</td>
-              </tr>
-              {% for item in group_data.accounts %}
-              <tr class="hover:bg-base-200/50">
-                <td class="pl-6"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
-                <td class="text-right tabular-nums">{{ item.amount|currency }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-            {% empty %}
-            <tbody>
-              <tr>
-                <td colspan="2" class="text-center text-base-content/60 py-4">{% translate "No expense data for this period" %}</td>
-              </tr>
-            </tbody>
-            {% endfor %}
-            <tfoot>
-              <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
-                <td>{% translate "Total Expenses" %}</td>
-                <td class="text-right tabular-nums text-error">{{ report_data.total_expenses|currency }}</td>
-              </tr>
-            </tfoot>
-          </table>
+    <!-- Statement tab -->
+    <div x-show="tab === 'statement'">
+      {% with months=report_data.months %}
+      {% with value_colspan=months|length|add:1 %}
+      <div class="card bg-base-100 shadow-lg">
+        <div class="card-body p-4">
+          <div class="overflow-x-auto">
+            <table class="table table-sm w-full" data-testid="income-statement-table">
+              <thead>
+                <tr>
+                  <th>{% translate "Account" %}</th>
+                  {% if by_month %}
+                    {% for month in months %}
+                    <th class="text-right whitespace-nowrap">{{ month|date:"M Y" }}</th>
+                    {% endfor %}
+                    <th class="text-right">{% translate "Total" %}</th>
+                  {% else %}
+                    <th class="text-right">{% translate "Amount" %}</th>
+                  {% endif %}
+                </tr>
+              </thead>
+
+              <!-- Income section -->
+              <tbody data-testid="income-table">
+                <tr class="cursor-pointer select-none bg-success/10 font-bold" @click="sec.income = !sec.income">
+                  <td class="whitespace-nowrap">
+                    <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.income ? '' : '-rotate-90'"></i>
+                    <span class="text-success ml-1">{% translate "Income" %}</span>
+                  </td>
+                  {% if by_month %}{% for amount in report_data.total_income_monthly %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap text-success">{{ report_data.total_income|currency }}</td>
+                </tr>
+                {% for group_data in report_data.income_groups %}
+                <tr x-show="sec.income" class="cursor-pointer select-none bg-base-200 font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
+                  <td class="pl-6 whitespace-nowrap">
+                    <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
+                    <span class="ml-1">{{ group_data.group.name }}</span>
+                  </td>
+                  {% if by_month %}{% for amount in group_data.monthly %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.subtotal|currency }}</td>
+                </tr>
+                {% for item in group_data.accounts %}
+                <tr x-show="sec.income && grp.g{{ group_data.group.pk }}" class="hover:bg-base-200/50">
+                  <td class="pl-12"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
+                  {% if by_month %}{% for amount in item.monthly %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap">{{ item.amount|currency }}</td>
+                </tr>
+                {% endfor %}
+                {% empty %}
+                <tr x-show="sec.income">
+                  <td colspan="{{ value_colspan|add:1 }}" class="text-center text-base-content/60 py-3">{% translate "No income data for this period" %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+
+              <!-- Expenses section -->
+              <tbody data-testid="expenses-table">
+                <tr class="cursor-pointer select-none bg-error/10 font-bold" @click="sec.expenses = !sec.expenses">
+                  <td class="whitespace-nowrap">
+                    <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.expenses ? '' : '-rotate-90'"></i>
+                    <span class="text-error ml-1">{% translate "Expenses" %}</span>
+                  </td>
+                  {% if by_month %}{% for amount in report_data.total_expenses_monthly %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap text-error">{{ report_data.total_expenses|currency }}</td>
+                </tr>
+                {% for group_data in report_data.expense_groups %}
+                <tr x-show="sec.expenses" class="cursor-pointer select-none bg-base-200 font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
+                  <td class="pl-6 whitespace-nowrap">
+                    <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
+                    <span class="ml-1">{{ group_data.group.name }}</span>
+                  </td>
+                  {% if by_month %}{% for amount in group_data.monthly %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.subtotal|currency }}</td>
+                </tr>
+                {% for item in group_data.accounts %}
+                <tr x-show="sec.expenses && grp.g{{ group_data.group.pk }}" class="hover:bg-base-200/50">
+                  <td class="pl-12"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
+                  {% if by_month %}{% for amount in item.monthly %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap">{{ item.amount|currency }}</td>
+                </tr>
+                {% endfor %}
+                {% empty %}
+                <tr x-show="sec.expenses">
+                  <td colspan="{{ value_colspan|add:1 }}" class="text-center text-base-content/60 py-3">{% translate "No expense data for this period" %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+
+              <tfoot>
+                <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
+                  <td>{% translate "Net Profit" %}</td>
+                  {% if by_month %}{% for amount in report_data.net_profit_monthly %}
+                  <td class="text-right tabular-nums whitespace-nowrap {% if amount >= 0 %}text-success{% else %}text-error{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_profit >= 0 %}text-success{% else %}text-error{% endif %}">{{ report_data.net_profit|currency }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </div>
+      {% endwith %}
+      {% endwith %}
     </div>
-  </div>
 
-  <!-- Sankey Diagram Section -->
-  <div class="card bg-base-100 shadow-lg">
-    <div class="card-body p-4">
-      <h2 class="card-title text-base">
-        <i class="fa fa-diagram-project"></i>
-        {% translate "Income Flow" %}
-      </h2>
-      <div class="w-full" style="height: 360px;">
-        <canvas id="sankey-chart" class="w-full h-full"></canvas>
+    <!-- Income Flow (Sankey) tab -->
+    <div x-show="tab === 'flow'" style="display: none;">
+      <div class="card bg-base-100 shadow-lg">
+        <div class="card-body p-4">
+          <div class="w-full" style="height: 420px;">
+            <canvas id="sankey-chart" class="w-full h-full"></canvas>
+          </div>
+        </div>
       </div>
     </div>
   </div>

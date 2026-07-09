@@ -19,19 +19,27 @@ class ReportService:
     def __init__(self, team):
         self.team = team
 
-    def get_income_statement_data(self, start_date, end_date):
+    def get_income_statement_data(self, start_date, end_date, by_month=False):
         """
         Calculate income statement data (Income vs Expenses) for the given date range.
 
+        When by_month is True, every item/group/total also carries a per-month breakdown
+        aligned with the returned 'months' list (first day of each month in the range).
+
         Returns:
             dict: {
-                'income': [{'account': Account, 'amount': Decimal}, ...],
-                'expenses': [{'account': Account, 'amount': Decimal}, ...],
-                'income_groups': [{'group': AccountGroup, 'accounts': [...], 'subtotal': Decimal}, ...],
-                'expense_groups': [{'group': AccountGroup, 'accounts': [...], 'subtotal': Decimal}, ...],
+                'income': [{'account': Account, 'amount': Decimal[, 'monthly': [Decimal, ...]]}, ...],
+                'expenses': [{'account': Account, 'amount': Decimal[, 'monthly': [...]]}, ...],
+                'income_groups': [{'group': AccountGroup, 'accounts': [...], 'subtotal': Decimal
+                                   [, 'monthly': [...]]}, ...],
+                'expense_groups': [...same shape...],
+                'months': [date, ...] (empty unless by_month),
                 'total_income': Decimal,
                 'total_expenses': Decimal,
-                'net_profit': Decimal
+                'net_profit': Decimal,
+                'total_income_monthly': [Decimal, ...] (empty unless by_month),
+                'total_expenses_monthly': [...],
+                'net_profit_monthly': [...],
             }
         """
         # Get all journal lines in the date range (voided entries don't count)
@@ -41,8 +49,10 @@ class ReportService:
                 journal_entry__entry_date__range=(start_date, end_date),
             )
             .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
-            .select_related("account", "account__account_group")
+            .select_related("account", "account__account_group", "journal_entry")
         )
+
+        months = self._month_range(start_date, end_date) if by_month else []
 
         income_data = []
         expense_data = []
@@ -51,6 +61,7 @@ class ReportService:
 
         # Group by account and calculate balances
         account_balances = {}
+        account_monthly = {}  # account -> {month: Decimal}
 
         for line in journal_lines:
             account = line.account
@@ -70,15 +81,24 @@ class ReportService:
                 account_balances[account] = Decimal("0")
             account_balances[account] += amount
 
+            if by_month:
+                month = line.journal_entry.entry_date.replace(day=1)
+                per_month = account_monthly.setdefault(account, {})
+                per_month[month] = per_month.get(month, Decimal("0")) + amount
+
         # Sort accounts and build result data
         for account, amount in account_balances.items():
             if amount != 0:  # Only include accounts with activity
+                item = {"account": account, "amount": amount}
+                if by_month:
+                    per_month = account_monthly.get(account, {})
+                    item["monthly"] = [per_month.get(month, Decimal("0")) for month in months]
                 account_type = account.account_group.account_type
                 if account_type == ACCOUNT_TYPE_INCOME:
-                    income_data.append({"account": account, "amount": amount})
+                    income_data.append(item)
                     total_income += amount
                 elif account_type == ACCOUNT_TYPE_EXPENSE:
-                    expense_data.append({"account": account, "amount": amount})
+                    expense_data.append(item)
                     total_expenses += amount
 
         # Sort by account name
@@ -87,24 +107,53 @@ class ReportService:
 
         net_profit = total_income - total_expenses
 
+        total_income_monthly = self._sum_monthly(income_data, len(months)) if by_month else []
+        total_expenses_monthly = self._sum_monthly(expense_data, len(months)) if by_month else []
+        net_profit_monthly = [inc - exp for inc, exp in zip(total_income_monthly, total_expenses_monthly, strict=True)]
+
         return {
             "income": income_data,
             "expenses": expense_data,
-            "income_groups": self._group_by_account_group(income_data),
-            "expense_groups": self._group_by_account_group(expense_data),
+            "income_groups": self._group_by_account_group(income_data, len(months) if by_month else None),
+            "expense_groups": self._group_by_account_group(expense_data, len(months) if by_month else None),
+            "months": months,
             "total_income": total_income,
             "total_expenses": total_expenses,
             "net_profit": net_profit,
+            "total_income_monthly": total_income_monthly,
+            "total_expenses_monthly": total_expenses_monthly,
+            "net_profit_monthly": net_profit_monthly,
         }
 
     @staticmethod
-    def _group_by_account_group(items):
+    def _month_range(start_date, end_date):
+        """Return the first day of each month between start_date and end_date, inclusive."""
+        months = []
+        current = start_date.replace(day=1)
+        while current <= end_date:
+            months.append(current)
+            current = (current + timedelta(days=32)).replace(day=1)
+        return months
+
+    @staticmethod
+    def _sum_monthly(items, num_months):
+        """Element-wise sum of the 'monthly' lists across items."""
+        totals = [Decimal("0")] * num_months
+        for item in items:
+            for i, amount in enumerate(item["monthly"]):
+                totals[i] += amount
+        return totals
+
+    @classmethod
+    def _group_by_account_group(cls, items, num_months=None):
         """
         Group [{'account': Account, 'amount': Decimal}, ...] by the account's group.
 
         Returns:
             list: [{'group': AccountGroup, 'accounts': [items...], 'subtotal': Decimal}, ...]
             sorted by group name (items keep their incoming order within each group).
+            When num_months is given, each group also gets a 'monthly' element-wise
+            subtotal of its accounts' 'monthly' lists.
         """
         groups = {}
         for item in items:
@@ -113,7 +162,11 @@ class ReportService:
                 groups[group.pk] = {"group": group, "accounts": [], "subtotal": Decimal("0")}
             groups[group.pk]["accounts"].append(item)
             groups[group.pk]["subtotal"] += item["amount"]
-        return sorted(groups.values(), key=lambda g: g["group"].name)
+        result = sorted(groups.values(), key=lambda g: g["group"].name)
+        if num_months is not None:
+            for group_data in result:
+                group_data["monthly"] = cls._sum_monthly(group_data["accounts"], num_months)
+        return result
 
     def get_balance_sheet_data(self, as_of_date):
         """

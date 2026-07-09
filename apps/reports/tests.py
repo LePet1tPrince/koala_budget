@@ -207,6 +207,58 @@ class ReportServiceTest(TestCase):
         # Subtotals sum to the report total
         self.assertEqual(data["total_expenses"], Decimal("1650.00"))
 
+    def test_income_statement_by_month(self):
+        """by_month=True adds aligned per-month breakdowns for accounts, groups, and totals."""
+
+        def record(account, amount, when, kind):
+            entry = JournalEntry.objects.create(team=self.team, entry_date=when, description="tx")
+            if kind == "income":
+                JournalLine.objects.create(
+                    team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=amount
+                )
+                JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, cr_amount=amount)
+            else:
+                JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=amount)
+                JournalLine.objects.create(
+                    team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=amount
+                )
+
+        record(self.income_account, Decimal("1000.00"), date(2024, 10, 15), "income")
+        record(self.income_account, Decimal("1100.00"), date(2024, 12, 15), "income")
+        record(self.expense_account, Decimal("300.00"), date(2024, 11, 5), "expense")
+
+        data = self.service.get_income_statement_data(date(2024, 10, 1), date(2024, 12, 31), by_month=True)
+
+        self.assertEqual(data["months"], [date(2024, 10, 1), date(2024, 11, 1), date(2024, 12, 1)])
+
+        income_item = data["income"][0]
+        self.assertEqual(income_item["monthly"], [Decimal("1000.00"), Decimal("0"), Decimal("1100.00")])
+        self.assertEqual(income_item["amount"], Decimal("2100.00"))
+
+        expense_group = data["expense_groups"][0]
+        self.assertEqual(expense_group["monthly"], [Decimal("0"), Decimal("300.00"), Decimal("0")])
+
+        self.assertEqual(data["total_income_monthly"], [Decimal("1000.00"), Decimal("0"), Decimal("1100.00")])
+        self.assertEqual(data["total_expenses_monthly"], [Decimal("0"), Decimal("300.00"), Decimal("0")])
+        self.assertEqual(data["net_profit_monthly"], [Decimal("1000.00"), Decimal("-300.00"), Decimal("1100.00")])
+
+    def test_income_statement_without_by_month_has_no_monthly_keys(self):
+        """Default call keeps months/monthly lists empty and items free of 'monthly'."""
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 12, 15), description="Sale")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("100.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("100.00")
+        )
+
+        data = self.service.get_income_statement_data(date(2024, 12, 1), date(2024, 12, 31))
+
+        self.assertEqual(data["months"], [])
+        self.assertEqual(data["total_income_monthly"], [])
+        self.assertNotIn("monthly", data["income"][0])
+        self.assertNotIn("monthly", data["income_groups"][0])
+
     def test_balance_sheet_no_data(self):
         """Test balance sheet with no transactions."""
         as_of_date = date(2024, 12, 31)
@@ -259,6 +311,32 @@ class IncomeStatementDateParamsTest(TestCase):
         # Grouped data and savings rate are exposed for the template
         self.assertEqual(len(response.context["report_data"]["income_groups"]), 1)
         self.assertEqual(response.context["savings_rate"], Decimal("100"))
+        self.assertFalse(response.context["by_month"])
+
+    def test_monthly_view_param(self):
+        """?view=monthly turns on the per-month breakdown and renders month columns."""
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June sale")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("500.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("500.00")
+        )
+
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url, {"start_date": "2024-05-01", "end_date": "2024-07-31", "view": "monthly"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["by_month"])
+        self.assertEqual(
+            response.context["report_data"]["months"],
+            [date(2024, 5, 1), date(2024, 6, 1), date(2024, 7, 1)],
+        )
+        self.assertContains(response, "Jun 2024")
+        # The display toggle preserves the date range in both modes
+        self.assertIn("view=monthly", response.context["monthly_view_qs"])
+        self.assertIn("start_date=2024-05-01", response.context["total_view_qs"])
+        self.assertNotIn("view=monthly", response.context["total_view_qs"])
 
     def test_no_params_defaults_to_current_month(self):
         """Test that no date params defaults to current month."""
