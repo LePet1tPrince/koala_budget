@@ -64,6 +64,10 @@ def income_statement(request, team_slug):
 
     report_data = service.get_income_statement_data(start_date, end_date)
 
+    savings_rate = None
+    if report_data and report_data["total_income"]:
+        savings_rate = report_data["net_profit"] / report_data["total_income"] * 100
+
     sankey_data = None
     if report_data:
         sankey_data = {
@@ -84,6 +88,7 @@ def income_statement(request, team_slug):
             "page_title": _("Income Statement"),
             "report_data": report_data,
             "sankey_data": sankey_data,
+            "savings_rate": savings_rate,
             "start_date": start_date,
             "end_date": end_date,
         },

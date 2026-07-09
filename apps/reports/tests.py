@@ -46,18 +46,12 @@ class ReportServiceTest(TestCase):
         )
 
         # Create accounts
-        cls.asset_account = Account.objects.create(
-            team=cls.team, name="Cash", account_group=cls.asset_group
-        )
-        cls.liability_account = Account.objects.create(
-            team=cls.team, name="Loans", account_group=cls.liability_group
-        )
+        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
+        cls.liability_account = Account.objects.create(team=cls.team, name="Loans", account_group=cls.liability_group)
         cls.equity_account = Account.objects.create(
             team=cls.team, name="Retained Earnings", account_group=cls.equity_group
         )
-        cls.income_account = Account.objects.create(
-            team=cls.team, name="Sales Revenue", account_group=cls.income_group
-        )
+        cls.income_account = Account.objects.create(team=cls.team, name="Sales Revenue", account_group=cls.income_group)
         cls.expense_account = Account.objects.create(
             team=cls.team, name="Operating Expenses", account_group=cls.expense_group
         )
@@ -174,9 +168,44 @@ class ReportServiceTest(TestCase):
 
         self.assertEqual(len(data["income"]), 0)
         self.assertEqual(len(data["expenses"]), 0)
+        self.assertEqual(len(data["income_groups"]), 0)
+        self.assertEqual(len(data["expense_groups"]), 0)
         self.assertEqual(data["total_income"], Decimal("0"))
         self.assertEqual(data["total_expenses"], Decimal("0"))
         self.assertEqual(data["net_profit"], Decimal("0"))
+
+    def test_income_statement_grouped_by_account_group(self):
+        """Accounts are grouped by account group with per-group subtotals, sorted by group name."""
+        housing_group = AccountGroup.objects.create(team=self.team, name="Housing", account_type=ACCOUNT_TYPE_EXPENSE)
+        rent_account = Account.objects.create(team=self.team, name="Rent", account_group=housing_group)
+        utilities_account = Account.objects.create(team=self.team, name="Utilities", account_group=housing_group)
+
+        def spend(account, amount, day):
+            entry = JournalEntry.objects.create(
+                team=self.team, entry_date=date(2024, 12, day), description=f"Spend {account.name}"
+            )
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=amount)
+            JournalLine.objects.create(
+                team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=amount
+            )
+
+        spend(rent_account, Decimal("1200.00"), 1)
+        spend(utilities_account, Decimal("150.00"), 5)
+        spend(self.expense_account, Decimal("300.00"), 10)
+
+        data = self.service.get_income_statement_data(date(2024, 12, 1), date(2024, 12, 31))
+
+        self.assertEqual(len(data["expense_groups"]), 2)
+        # Sorted by group name: "Expenses" before "Housing"
+        first, second = data["expense_groups"]
+        self.assertEqual(first["group"], self.expense_group)
+        self.assertEqual(first["subtotal"], Decimal("300.00"))
+        self.assertEqual([item["account"] for item in first["accounts"]], [self.expense_account])
+        self.assertEqual(second["group"], housing_group)
+        self.assertEqual(second["subtotal"], Decimal("1350.00"))
+        self.assertEqual([item["account"] for item in second["accounts"]], [rent_account, utilities_account])
+        # Subtotals sum to the report total
+        self.assertEqual(data["total_expenses"], Decimal("1650.00"))
 
     def test_balance_sheet_no_data(self):
         """Test balance sheet with no transactions."""
@@ -202,12 +231,8 @@ class IncomeStatementDateParamsTest(TestCase):
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
         cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
         cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
-        cls.asset_account = Account.objects.create(
-            team=cls.team, name="Cash", account_group=cls.asset_group
-        )
-        cls.income_account = Account.objects.create(
-            team=cls.team, name="Sales", account_group=cls.income_group
-        )
+        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
+        cls.income_account = Account.objects.create(team=cls.team, name="Sales", account_group=cls.income_group)
 
     def setUp(self):
         self.client.login(username="isuser", password="testpass123")
@@ -231,6 +256,9 @@ class IncomeStatementDateParamsTest(TestCase):
         self.assertEqual(response.context["end_date"], date(2024, 6, 30))
         self.assertIsNotNone(response.context["report_data"])
         self.assertEqual(response.context["report_data"]["total_income"], Decimal("500.00"))
+        # Grouped data and savings rate are exposed for the template
+        self.assertEqual(len(response.context["report_data"]["income_groups"]), 1)
+        self.assertEqual(response.context["savings_rate"], Decimal("100"))
 
     def test_no_params_defaults_to_current_month(self):
         """Test that no date params defaults to current month."""
@@ -253,6 +281,62 @@ class IncomeStatementDateParamsTest(TestCase):
         self.assertEqual(response.context["end_date"], today)
 
 
+class AccountActivityViewTest(TestCase):
+    """Tests for the account activity drill-down view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="AA View Team", slug="aa-view-team")
+        cls.user = CustomUser.objects.create_user(username="aauser", email="aa@example.com", password="testpass123")
+        cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
+        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.expense_group = AccountGroup.objects.create(team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(team=cls.team, name="Rent", account_group=cls.expense_group)
+
+    def setUp(self):
+        self.client.login(username="aauser", password="testpass123")
+
+    def test_account_activity_renders_with_data(self):
+        """Happy path: the drill-down renders transactions and totals for the account."""
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June rent")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
+        )
+
+        url = reverse(
+            "reports:account_activity",
+            kwargs={"team_slug": self.team.slug, "account_id": self.expense_account.pk},
+        )
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "reports/account_activity.html")
+        self.assertEqual(response.context["account"], self.expense_account)
+        self.assertEqual(response.context["report_data"]["total"], Decimal("1200.00"))
+        self.assertContains(response, "Back to Summary")
+
+    def test_account_activity_other_team_account(self):
+        """Permission: an account from another team is not exposed."""
+        other_team = Team.objects.create(name="Other AA Team", slug="other-aa-team")
+        other_group = AccountGroup.objects.create(team=other_team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        other_account = Account.objects.create(team=other_team, name="Secret Cash", account_group=other_group)
+
+        url = reverse(
+            "reports:account_activity",
+            kwargs={"team_slug": self.team.slug, "account_id": other_account.pk},
+        )
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["account"])
+        self.assertIsNone(response.context["report_data"])
+        self.assertNotContains(response, "Secret Cash")
+
+
 class BalanceSheetDateParamsTest(TestCase):
     """Tests for balance sheet date parameter handling (React datepicker)."""
 
@@ -263,9 +347,7 @@ class BalanceSheetDateParamsTest(TestCase):
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
         cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
         cls.equity_group = AccountGroup.objects.create(team=cls.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
-        cls.asset_account = Account.objects.create(
-            team=cls.team, name="Cash", account_group=cls.asset_group
-        )
+        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
         cls.equity_account = Account.objects.create(
             team=cls.team, name="Retained Earnings", account_group=cls.equity_group
         )
@@ -359,9 +441,7 @@ class ReportViewsTest(TestCase):
 
         # Create account groups and accounts for testing
         cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.asset_account = Account.objects.create(
-            team=cls.team, name="Cash", account_group=cls.asset_group
-        )
+        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
 
     def setUp(self):
         self.client.login(username="testuser", password="testpass123")

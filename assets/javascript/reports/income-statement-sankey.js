@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
           callbacks: {
             label: (ctx) => {
               const item = ctx.dataset.data[ctx.dataIndex];
-              return `${item.from} → ${item.to}: ${item.flow.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+              return `${item.from} → ${item.to}: $${item.flow.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
             }
           }
         }
