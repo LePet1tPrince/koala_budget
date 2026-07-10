@@ -623,3 +623,50 @@ class BudgetGridViewTest(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 404)
+
+
+class BudgetSectionOrderingTest(TestCase):
+    """Income categories render above expenses, with separate section totals."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Order Test Team", slug="order-test-team")
+        cls.user = CustomUser.objects.create_user(username="orderuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        # "Alpha Expenses" sorts before "Zeta Income" alphabetically, so these
+        # verify the income-before-expense ordering is deliberate
+        expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Alpha Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        income_group = AccountGroup.objects.create(team=cls.team, name="Zeta Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.expense_account = Account.objects.create(team=cls.team, name="Order Rent", account_group=expense_group)
+        cls.income_account = Account.objects.create(team=cls.team, name="Order Salary", account_group=income_group)
+
+    def setUp(self):
+        self.client.login(username="orderuser@example.com", password="testpass123")
+
+    def test_month_view_sections_income_first_with_totals(self):
+        Budget.objects.create(
+            team=self.team, category=self.income_account, month=date(2026, 5, 1), budget_amount=Decimal("4000.00")
+        )
+        Budget.objects.create(
+            team=self.team, category=self.expense_account, month=date(2026, 5, 1), budget_amount=Decimal("1500.00")
+        )
+        response = self.client.get(f"/a/{self.team.slug}/budget/?month=2026-05-01")
+        self.assertEqual(response.status_code, 200)
+        income_section, expense_section = response.context["sections"]
+        self.assertEqual(income_section["key"], "income")
+        self.assertEqual(income_section["groups"][0]["name"], "Zeta Income")
+        self.assertEqual(income_section["totals"]["budgeted"], Decimal("4000.00"))
+        self.assertEqual(expense_section["key"], "expense")
+        self.assertEqual(expense_section["groups"][0]["name"], "Alpha Expenses")
+        self.assertEqual(expense_section["totals"]["budgeted"], Decimal("1500.00"))
+
+    def test_grid_view_groups_income_first(self):
+        response = self.client.get(f"/a/{self.team.slug}/budget/grid/?start=2026-01-01")
+        groups = response.context["grid_props"]["groups"]
+        self.assertEqual([g["type"] for g in groups], ["income", "expense"])
+        self.assertEqual(groups[0]["name"], "Zeta Income")
