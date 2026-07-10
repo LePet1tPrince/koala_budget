@@ -34,6 +34,33 @@
         <i class="fa fa-chevron-right text-base-content/40"></i>
       </a>
     </li>
+    <li>
+      <a href="{% url 'reports:cash_flow' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-cash-flow">
+        <div>
+          <div class="font-medium">{% translate "Cash Flow" %}</div>
+          <div class="text-sm text-base-content/60">{% translate "Money in vs money out each month, and what you kept." %}</div>
+        </div>
+        <i class="fa fa-chevron-right text-base-content/40"></i>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'reports:budget_vs_actual' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-budget-vs-actual">
+        <div>
+          <div class="font-medium">{% translate "Budget vs Actual" %}</div>
+          <div class="text-sm text-base-content/60">{% translate "How this month's spending compares to your budget, category by category." %}</div>
+        </div>
+        <i class="fa fa-chevron-right text-base-content/40"></i>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'reports:goal_progress' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-goal-progress">
+        <div>
+          <div class="font-medium">{% translate "Goal Progress" %}</div>
+          <div class="text-sm text-base-content/60">{% translate "Savings goals over time, with the pace needed to hit each target." %}</div>
+        </div>
+        <i class="fa fa-chevron-right text-base-content/40"></i>
+      </a>
+    </li>
   </ul>
 
   <div class="flex justify-between items-center mt-6 pt-4 border-t border-base-300">

@@ -1,0 +1,135 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+{% load currency_tags %}
+
+{% block app %}
+<section class="app-card">
+  <!-- Header -->
+  <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <div>
+      <h1 class="pg-title">{% translate "Goal Progress" %}</h1>
+      <p class="text-sm text-base-content/60">{% translate "How your savings goals are tracking toward their targets." %}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a href="{% url 'budget:goals_list' request.team.slug %}" class="btn btn-outline btn-sm">
+        <i class="fa fa-bullseye mr-2"></i>
+        {% translate "Manage Goals" %}
+      </a>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm">
+        <i class="fa fa-arrow-left mr-2"></i>
+        {% translate "Back to Reports" %}
+      </a>
+    </div>
+  </div>
+
+  {% if goal_rows %}
+  <!-- Summary Section -->
+  <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="goal-progress-summary">
+    <div class="stat py-3">
+      <div class="stat-figure text-success hidden sm:block"><i class="fa fa-piggy-bank fa-lg"></i></div>
+      <div class="stat-title">{% translate "Total Saved" %}</div>
+      <div class="stat-value text-2xl text-success">{{ totals.saved|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-info hidden sm:block"><i class="fa fa-bullseye fa-lg"></i></div>
+      <div class="stat-title">{% translate "Total Target" %}</div>
+      <div class="stat-value text-2xl text-info">{{ totals.target|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-secondary hidden sm:block"><i class="fa fa-percent fa-lg"></i></div>
+      <div class="stat-title">{% translate "Overall Progress" %}</div>
+      <div class="stat-value text-2xl text-secondary">
+        {% if totals.pct is not None %}{{ totals.pct|floatformat:1 }}%{% else %}—{% endif %}
+      </div>
+      <div class="stat-desc">
+        {% blocktranslate count counter=goal_rows|length trimmed %}
+          {{ counter }} active goal
+        {% plural %}
+          {{ counter }} active goals
+        {% endblocktranslate %}
+      </div>
+    </div>
+  </div>
+
+  {% if chart_data %}
+  <!-- Chart Section -->
+  <div class="card bg-base-100 shadow-lg mb-4">
+    <div class="card-body p-4">
+      <h2 class="card-title text-base">{% translate "Saved over time" %}</h2>
+      <p class="text-xs text-base-content/60 -mt-1">{% translate "Solid lines show actual savings; dashed lines project the pace needed to hit each target on time." %}</p>
+      <div class="w-full" style="height: 380px;">
+        <canvas id="goal-progress-chart" class="w-full h-full"></canvas>
+      </div>
+      {% if num_goals > num_charted %}
+      <p class="text-xs text-base-content/60">
+        {% blocktranslate with shown=num_charted total=num_goals trimmed %}
+          Showing the first {{ shown }} of {{ total }} goals — all goals appear in the table below.
+        {% endblocktranslate %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Goals Table Section -->
+  <div class="card bg-base-100 shadow-lg">
+    <div class="card-body p-4">
+      <div class="overflow-x-auto">
+        <table class="table table-sm table-zebra w-full" data-testid="goal-progress-table">
+          <thead>
+            <tr>
+              <th>{% translate "Goal" %}</th>
+              <th class="text-right">{% translate "Saved" %}</th>
+              <th class="text-right">{% translate "Target" %}</th>
+              <th class="w-1/5">{% translate "Progress" %}</th>
+              <th>{% translate "Target Date" %}</th>
+              <th class="text-right">{% translate "Needed / Month" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in goal_rows %}
+            <tr>
+              <td class="whitespace-nowrap">
+                <a href="{{ row.goal.get_absolute_url }}" class="link link-hover link-primary">{{ row.goal.name }}</a>
+                {% if row.goal.is_complete %}
+                <span class="badge badge-success badge-sm ml-1 align-middle"><i class="fa fa-check mr-1"></i>{% translate "Complete" %}</span>
+                {% endif %}
+              </td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ row.saved|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ row.goal.target_amount|currency }}</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <progress class="progress progress-success flex-1" value="{{ row.goal.progress_percentage|floatformat:0 }}" max="100"></progress>
+                  <span class="text-xs text-base-content/60 tabular-nums w-10 text-right">{{ row.goal.progress_percentage|floatformat:0 }}%</span>
+                </div>
+              </td>
+              <td class="whitespace-nowrap">{% if row.goal.target_date %}{{ row.goal.target_date|date:"M j, Y" }}{% else %}—{% endif %}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">
+                {% if row.needed_per_month is not None %}{{ row.needed_per_month|currency }}{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card bg-base-100 shadow-lg">
+    <div class="card-body items-center text-center py-10">
+      <i class="fa fa-bullseye text-4xl text-base-content/30"></i>
+      <p class="text-base-content/60">{% translate "No savings goals yet." %}</p>
+      <a href="{% url 'budget:goals_list' request.team.slug %}" class="btn btn-primary btn-sm">{% translate "Create a goal" %}</a>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block page_js %}
+{% if chart_data %}
+{{ chart_data|json_script:'goal-progress-data' }}
+{% vite_asset 'assets/javascript/reports/goal-progress-chart.js' %}
+{% endif %}
+{% endblock %}

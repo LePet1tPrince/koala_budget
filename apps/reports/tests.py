@@ -761,3 +761,283 @@ class ReportViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         # Falls back to defaults, still generates report data
         self.assertIsNotNone(response.context.get("report_data"))
+
+
+class BalanceCompositionTest(TestCase):
+    """Tests for the balance composition service data (stacked-area chart)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Comp Team", slug="comp-team")
+        cls.bank_group = AccountGroup.objects.create(team=cls.team, name="Banks", account_type=ACCOUNT_TYPE_ASSET)
+        cls.invest_group = AccountGroup.objects.create(
+            team=cls.team, name="Investments", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.card_group = AccountGroup.objects.create(team=cls.team, name="Cards", account_type=ACCOUNT_TYPE_LIABILITY)
+        cls.equity_group = AccountGroup.objects.create(team=cls.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
+        cls.bank = Account.objects.create(team=cls.team, name="Checking", account_group=cls.bank_group)
+        cls.invest = Account.objects.create(team=cls.team, name="Brokerage", account_group=cls.invest_group)
+        cls.card = Account.objects.create(team=cls.team, name="Visa", account_group=cls.card_group)
+        cls.equity = Account.objects.create(team=cls.team, name="Opening", account_group=cls.equity_group)
+
+    def _entry(self, day, dr_account, cr_account, amount):
+        entry = JournalEntry.objects.create(team=self.team, entry_date=day, description="t")
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=dr_account, dr_amount=amount)
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=cr_account, cr_amount=amount)
+
+    def test_composition_running_balances_per_group(self):
+        # Opening balance before the range
+        self._entry(date(2023, 12, 10), self.bank, self.equity, Decimal("1000.00"))
+        # January: move 400 into investments, borrow 200 on the card
+        self._entry(date(2024, 1, 15), self.invest, self.bank, Decimal("400.00"))
+        self._entry(date(2024, 1, 20), self.bank, self.card, Decimal("200.00"))
+        # February: invest another 100
+        self._entry(date(2024, 2, 5), self.invest, self.bank, Decimal("100.00"))
+
+        service = ReportService(self.team)
+        data = service.get_balance_composition_data(date(2024, 1, 1), date(2024, 2, 29))
+
+        self.assertEqual(data["labels"], ["2024-01-31", "2024-02-29"])
+        by_name = {s["name"]: s["values"] for s in data["asset_groups"]}
+        self.assertEqual(by_name["Banks"], [800.0, 700.0])
+        self.assertEqual(by_name["Investments"], [400.0, 500.0])
+        self.assertEqual(len(data["liability_groups"]), 1)
+        self.assertEqual(data["liability_groups"][0]["name"], "Cards")
+        self.assertEqual(data["liability_groups"][0]["values"], [200.0, 200.0])
+
+    def test_composition_drops_zero_groups_and_sorts_by_final_balance(self):
+        self._entry(date(2024, 1, 10), self.bank, self.equity, Decimal("100.00"))
+        self._entry(date(2024, 1, 12), self.invest, self.equity, Decimal("900.00"))
+
+        service = ReportService(self.team)
+        data = service.get_balance_composition_data(date(2024, 1, 1), date(2024, 1, 31))
+
+        self.assertEqual([s["name"] for s in data["asset_groups"]], ["Investments", "Banks"])
+        self.assertEqual(data["liability_groups"], [])
+
+
+class CashFlowViewTest(TestCase):
+    """Tests for the cash flow report view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="CF Team", slug="cf-team")
+        cls.user = CustomUser.objects.create_user(username="cfuser", email="cf@example.com", password="testpass123")
+        cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
+        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
+        cls.income_account = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
+        cls.expense_account = Account.objects.create(team=cls.team, name="Rent", account_group=cls.expense_group)
+
+    def setUp(self):
+        self.client.login(username="cfuser", password="testpass123")
+
+    def test_cash_flow_months_and_stats(self):
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 1, 5), description="Pay")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("3000.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("3000.00")
+        )
+        entry2 = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 2, 1), description="Rent")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry2, account=self.expense_account, dr_amount=Decimal("1000.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry2, account=self.asset_account, cr_amount=Decimal("1000.00")
+        )
+
+        url = reverse("reports:cash_flow", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url, {"start_month": "2024-01", "end_month": "2024-02"})
+
+        self.assertEqual(response.status_code, 200)
+        months = response.context["months"]
+        self.assertEqual(len(months), 2)
+        self.assertEqual(months[0]["income"], Decimal("3000.00"))
+        self.assertEqual(months[0]["net"], Decimal("3000.00"))
+        self.assertEqual(months[1]["expenses"], Decimal("1000.00"))
+        self.assertEqual(months[1]["net"], Decimal("-1000.00"))
+
+        stats = response.context["stats"]
+        self.assertEqual(stats["net"], Decimal("2000.00"))
+        self.assertEqual(stats["avg_net"], Decimal("1000.00"))
+
+        chart_data = response.context["chart_data"]
+        self.assertEqual(chart_data["income"], [3000.0, 0.0])
+        self.assertEqual(chart_data["expenses"], [0.0, 1000.0])
+        self.assertEqual(chart_data["net"], [3000.0, -1000.0])
+
+    def test_cash_flow_requires_team_membership(self):
+        self.client.logout()
+        url = reverse("reports:cash_flow", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url)
+        self.assertNotEqual(response.status_code, 200)
+
+
+class BudgetVsActualViewTest(TestCase):
+    """Tests for the budget vs actual report view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.budget.models import Budget
+
+        cls.team = Team.objects.create(name="BVA Team", slug="bva-team")
+        cls.user = CustomUser.objects.create_user(username="bvauser", email="bva@example.com", password="testpass123")
+        cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
+        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.expense_group = AccountGroup.objects.create(team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
+        cls.rent = Account.objects.create(team=cls.team, name="Rent", account_group=cls.expense_group)
+        cls.food = Account.objects.create(team=cls.team, name="Food", account_group=cls.expense_group)
+        cls.fun = Account.objects.create(team=cls.team, name="Fun", account_group=cls.expense_group)
+
+        Budget.objects.create(team=cls.team, month=date(2024, 6, 1), category=cls.rent, budget_amount=Decimal("1500"))
+        Budget.objects.create(team=cls.team, month=date(2024, 6, 1), category=cls.food, budget_amount=Decimal("400"))
+
+    def setUp(self):
+        self.client.login(username="bvauser", password="testpass123")
+
+    def _spend(self, account, amount, day):
+        entry = JournalEntry.objects.create(team=self.team, entry_date=day, description="spend")
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=amount)
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=amount)
+
+    def test_budget_vs_actual_rows(self):
+        self._spend(self.rent, Decimal("1500.00"), date(2024, 6, 1))  # exactly on budget
+        self._spend(self.food, Decimal("500.00"), date(2024, 6, 10))  # over budget
+        self._spend(self.fun, Decimal("50.00"), date(2024, 6, 15))  # unbudgeted
+
+        url = reverse("reports:budget_vs_actual", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url, {"month": "2024-06"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["month"], date(2024, 6, 1))
+        groups = response.context["expense_groups"]
+        self.assertEqual(len(groups), 1)
+        rows = {row["account"].name: row for row in groups[0]["rows"]}
+
+        self.assertFalse(rows["Rent"]["over"])
+        self.assertEqual(rows["Rent"]["pct"], 100.0)
+        self.assertTrue(rows["Food"]["over"])
+        self.assertEqual(rows["Food"]["remaining"], Decimal("-100.00"))
+        self.assertTrue(rows["Fun"]["unbudgeted"])
+        self.assertIsNone(rows["Fun"]["pct"])
+
+        totals = response.context["expense_totals"]
+        self.assertEqual(totals["budget"], Decimal("1900"))
+        self.assertEqual(totals["actual"], Decimal("2050.00"))
+        self.assertEqual(totals["over_count"], 2)  # Food over, Fun unbudgeted-with-spend
+
+    def test_budgeted_category_without_activity_still_listed(self):
+        url = reverse("reports:budget_vs_actual", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url, {"month": "2024-06"})
+
+        rows = {row["account"].name: row for row in response.context["expense_groups"][0]["rows"]}
+        self.assertEqual(rows["Rent"]["actual"], Decimal("0"))
+        self.assertEqual(rows["Rent"]["pct_capped"], 0)
+
+
+class GoalProgressViewTest(TestCase):
+    """Tests for the goal progress report view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="GP Team", slug="gp-team")
+        cls.user = CustomUser.objects.create_user(username="gpuser", email="gp@example.com", password="testpass123")
+        cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
+
+    def setUp(self):
+        self.client.login(username="gpuser", password="testpass123")
+
+    def test_goal_progress_chart_and_pace(self):
+        from apps.budget.models import Goal, GoalAllocation
+
+        today_month = date.today().replace(day=1)
+
+        def add_months(month, n):
+            total = month.year * 12 + (month.month - 1) + n
+            return date(total // 12, total % 12 + 1, 1)
+
+        goal = Goal.objects.create(
+            team=self.team,
+            name="Vacation",
+            target_amount=Decimal("1200.00"),
+            target_date=add_months(today_month, 4),
+        )
+        GoalAllocation.objects.create(
+            team=self.team, goal=goal, month=add_months(today_month, -2), amount=Decimal("100")
+        )
+        GoalAllocation.objects.create(
+            team=self.team, goal=goal, month=add_months(today_month, -1), amount=Decimal("100")
+        )
+
+        url = reverse("reports:goal_progress", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        chart_data = response.context["chart_data"]
+        # Axis runs from the first allocation to the target date
+        self.assertEqual(chart_data["labels"][0], add_months(today_month, -2).isoformat())
+        self.assertEqual(chart_data["labels"][-1], add_months(today_month, 4).isoformat())
+
+        goal_series = chart_data["goals"][0]
+        # Cumulative record: 100 then 200, carried through the current month
+        self.assertEqual(goal_series["actual"][0], 100.0)
+        self.assertEqual(goal_series["actual"][1], 200.0)
+        self.assertEqual(goal_series["actual"][2], 200.0)  # today
+        self.assertIsNone(goal_series["actual"][3])  # future months are not "actual"
+        # Projection anchors at today's saved amount and ends at the target
+        self.assertEqual(goal_series["projection"][2], 200.0)
+        self.assertEqual(goal_series["projection"][-1], 1200.0)
+
+        row = response.context["goal_rows"][0]
+        self.assertEqual(row["saved"], Decimal("200"))
+        self.assertEqual(row["months_left"], 4)
+        self.assertEqual(row["needed_per_month"], Decimal("250"))
+
+    def test_goal_progress_no_goals(self):
+        url = reverse("reports:goal_progress", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["goal_rows"], [])
+        self.assertIsNone(response.context["chart_data"])
+
+
+class IncomeStatementTrendChartTest(TestCase):
+    """The spending-trends chart data is exposed only with a period breakdown."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Trend Team", slug="trend-team")
+        cls.user = CustomUser.objects.create_user(username="tuser", email="t@example.com", password="testpass123")
+        cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
+        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.expense_group = AccountGroup.objects.create(team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
+        cls.rent = Account.objects.create(team=cls.team, name="Rent", account_group=cls.expense_group)
+
+    def setUp(self):
+        self.client.login(username="tuser", password="testpass123")
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 1), description="rent")
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.rent, dr_amount=Decimal("1000"))
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1000")
+        )
+
+    def test_trend_chart_data_with_monthly_view(self):
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url, {"start_date": "2024-05-01", "end_date": "2024-07-31", "view": "monthly"})
+
+        trend = response.context["trend_chart_data"]
+        self.assertEqual(trend["labels"], ["May 2024", "Jun 2024", "Jul 2024"])
+        self.assertEqual(trend["expense_groups"], [{"name": "Living", "values": [0.0, 1000.0, 0.0]}])
+
+    def test_no_trend_chart_data_without_period(self):
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+        self.assertIsNone(response.context["trend_chart_data"])
