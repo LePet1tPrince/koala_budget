@@ -1,8 +1,9 @@
 {% load i18n %}
+{% load currency_tags %}
 
 <!-- Budget Table -->
 <div class="overflow-x-auto bg-base-100 rounded-lg shadow">
-  <table class="table w-full" data-testid="budget-table">
+  <table class="table table-sm w-full" data-testid="budget-table">
     <thead>
       <tr>
         <th>{% translate "Category" %}</th>
@@ -13,106 +14,116 @@
       </tr>
     </thead>
     <tbody>
-      {% for group_name, group_data in groups %}
-        <!-- Group Header -->
-        <tr class="bg-base-200">
-          <td colspan="5" class="font-bold text-lg">{{ group_name }}</td>
-        </tr>
-
-        <!-- Group Rows -->
-        {% for row in group_data.rows %}
-        <tr data-testid="budget-row">
-          <td class="pl-8">
-            <a href="{% url 'reports:account_activity' request.team.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget" class="link link-primary">
-              <div class="font-medium">{{ row.category.name }}</div>
-            </a>
-          </td>
-
-          <td class="text-right">
-            <form method="post" class="inline-flex items-center gap-2" id="budget-form-{{ row.category.pk }}" data-budget-autosave>
-              {% csrf_token %}
-              {% if row.form.instance.pk %}
-              <input type="hidden" name="budget_id" value="{{ row.form.instance.pk }}">
-              {% else %}
-              <input type="hidden" name="category_id" value="{{ row.category.pk }}">
-              <input type="hidden" name="budget_month" value="{{ month|date:'Y-m-d' }}">
-              {% endif %}
-              <div class="form-control w-32">
-                {{ row.form.budget_amount }}
-              </div>
-            </form>
-          </td>
-
-          <td class="text-right">
-            <div data-actual-tooltip
-                 data-category-id="{{ row.category.id }}"
-                 data-category-name="{{ row.category.name }}"
-                 data-amount="{{ row.actual }}"
-                 data-month="{{ month|date:'Y-m-d' }}">
-              <span class="font-mono">{{ row.actual|floatformat:2 }}</span>
-            </div>
-          </td>
-
-          <td class="text-right">
-            <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}">
-              {{ row.available|floatformat:2 }}
-            </span>
-          </td>
-
-          <td class="text-center">
-            <noscript>
-              <button type="submit" form="budget-form-{{ row.category.pk }}" class="btn btn-primary btn-sm" data-testid="budget-save-btn">
-                {% translate "Save" %}
-              </button>
-            </noscript>
-          </td>
-        </tr>
-        {% endfor %}
-
-        <!-- Group Subtotal -->
-        <tr class="bg-base-200 font-bold">
-          <td class="pl-8">{% translate "Subtotal" %} - {{ group_name }}</td>
-          <td class="text-right">
-            <span class="font-mono">{{ group_data.subtotals.budgeted|floatformat:2 }}</span>
-          </td>
-          <td class="text-right">
-            <span class="font-mono">{{ group_data.subtotals.actual|floatformat:2 }}</span>
-          </td>
-          <td class="text-right">
-            <span class="font-mono {% if group_data.subtotals.available < 0 %}text-error{% elif group_data.subtotals.available > 0 %}text-success{% endif %}">
-              {{ group_data.subtotals.available|floatformat:2 }}
-            </span>
-          </td>
-          <td></td>
-        </tr>
-
-        <!-- Spacer row between groups -->
-        <tr class="h-2">
-          <td colspan="5"></td>
-        </tr>
-      {% empty %}
+      {% if not has_categories %}
       <tr>
         <td colspan="5" class="text-center text-gray-500 py-8" data-testid="budget-empty-state">
           {% translate "No budget categories found. Please add income or expense accounts first." %}
         </td>
       </tr>
+      {% endif %}
+
+      {% for section in sections %}
+        {% if section.groups %}
+        <!-- Section Header -->
+        <tr class="bg-base-300">
+          <td colspan="5" class="font-bold text-lg">{{ section.label }}</td>
+        </tr>
+
+        {% for group in section.groups %}
+          <!-- Group Header -->
+          <tr class="bg-base-200">
+            <td colspan="5" class="font-bold">{{ group.name }}</td>
+          </tr>
+
+          <!-- Group Rows -->
+          {% for row in group.rows %}
+          <tr data-testid="budget-row">
+            <td class="pl-8">
+              <a href="{% url 'reports:account_activity' request.team.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget" class="link link-primary">
+                <div class="font-medium">{{ row.category.name }}</div>
+              </a>
+            </td>
+
+            <td class="text-right py-1">
+              <form method="post" class="inline-flex items-center" id="budget-form-{{ row.category.pk }}" data-budget-autosave>
+                {% csrf_token %}
+                {% if row.form.instance.pk %}
+                <input type="hidden" name="budget_id" value="{{ row.form.instance.pk }}">
+                {% else %}
+                <input type="hidden" name="category_id" value="{{ row.category.pk }}">
+                <input type="hidden" name="budget_month" value="{{ month|date:'Y-m-d' }}">
+                {% endif %}
+                {{ row.form.budget_amount }}
+              </form>
+            </td>
+
+            <td class="text-right">
+              <div data-actual-tooltip
+                   data-category-id="{{ row.category.id }}"
+                   data-category-name="{{ row.category.name }}"
+                   data-amount="{{ row.actual }}"
+                   data-month="{{ month|date:'Y-m-d' }}">
+                <span class="font-mono">{{ row.actual|currency }}</span>
+              </div>
+            </td>
+
+            <td class="text-right">
+              <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}">
+                {{ row.available|currency }}
+              </span>
+            </td>
+
+            <td class="text-center">
+              <noscript>
+                <button type="submit" form="budget-form-{{ row.category.pk }}" class="btn btn-primary btn-sm" data-testid="budget-save-btn">
+                  {% translate "Save" %}
+                </button>
+              </noscript>
+            </td>
+          </tr>
+          {% endfor %}
+
+          <!-- Group Subtotal -->
+          <tr class="bg-base-200 font-bold">
+            <td class="pl-8">{% translate "Subtotal" %} - {{ group.name }}</td>
+            <td class="text-right">
+              <span class="font-mono">{{ group.subtotals.budgeted|currency }}</span>
+            </td>
+            <td class="text-right">
+              <span class="font-mono">{{ group.subtotals.actual|currency }}</span>
+            </td>
+            <td class="text-right">
+              <span class="font-mono {% if group.subtotals.available < 0 %}text-error{% elif group.subtotals.available > 0 %}text-success{% endif %}">
+                {{ group.subtotals.available|currency }}
+              </span>
+            </td>
+            <td></td>
+          </tr>
+        {% endfor %}
+
+        <!-- Section Total -->
+        <tr class="bg-primary text-primary-content font-bold"
+            data-testid="{% if section.key == 'expense' %}budget-grand-total{% else %}budget-total-income{% endif %}">
+          <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
+          <td class="text-right">
+            <span class="font-mono">{{ section.totals.budgeted|currency }}</span>
+          </td>
+          <td class="text-right">
+            <span class="font-mono">{{ section.totals.actual|currency }}</span>
+          </td>
+          <td class="text-right">
+            <span class="font-mono">{{ section.totals.available|currency }}</span>
+          </td>
+          <td></td>
+        </tr>
+
+        <!-- Spacer row between sections -->
+        <tr class="h-2">
+          <td colspan="5"></td>
+        </tr>
+        {% endif %}
       {% endfor %}
     </tbody>
-    <tfoot>
-      <tr class="bg-primary text-primary-content font-bold text-lg" data-testid="budget-grand-total">
-        <td>{% translate "Grand Total" %}</td>
-        <td class="text-right">
-          <span class="font-mono">{{ grand_totals.budgeted|floatformat:2 }}</span>
-        </td>
-        <td class="text-right">
-          <span class="font-mono">{{ grand_totals.actual|floatformat:2 }}</span>
-        </td>
-        <td class="text-right">
-          <span class="font-mono">{{ grand_totals.available|floatformat:2 }}</span>
-        </td>
-        <td></td>
-      </tr>
-    </tfoot>
   </table>
 </div>
 
@@ -128,13 +139,6 @@
     </div>
   </div>
 </div>
-
-<style>
-  /* Custom styling for budget input fields */
-  .budget-input {
-    @apply input input-bordered input-sm w-full text-right font-mono;
-  }
-</style>
 
 <script>
   // Auto-save budget amounts when an input value changes (blur/Enter).

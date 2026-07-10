@@ -5,6 +5,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Case, IntegerField, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.dateparse import parse_date
@@ -33,9 +34,6 @@ def _parse_month(value):
 
 @login_and_team_required
 def budget_month_view(request, team_slug):
-    from collections import defaultdict
-    from decimal import Decimal
-
     month = _parse_month(request.GET.get("month"))
 
     if request.method == "POST":
@@ -69,13 +67,7 @@ def budget_month_view(request, team_slug):
 
     service = BudgetService(request.team)
 
-    categories = list(
-        Account.for_team.filter(
-            account_group__account_type__in=("expense", "income"),
-        )
-        .select_related("account_group")
-        .order_by("account_group__name", "name")
-    )
+    categories = list(_budget_categories(request.team))
 
     # Fetch existing budgets for this month; categories without one are shown
     # with a zero amount and a row is only created when the user saves a value
@@ -85,10 +77,15 @@ def budget_month_view(request, team_slug):
     actuals_map = service.get_actuals_by_category(month)
     available_map = service.get_available_by_category(month, categories)
 
-    # Group categories by account_group
-    grouped_data = defaultdict(
-        lambda: {"rows": [], "subtotals": {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}}
-    )  # noqa: E501
+    def zero_totals():
+        return {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}
+
+    # Income section first, then expenses; groups within a section keep the
+    # category ordering (alphabetical by group, then name)
+    sections = {
+        "income": {"key": "income", "label": _("Income"), "groups": [], "totals": zero_totals()},
+        "expense": {"key": "expense", "label": _("Expenses"), "groups": [], "totals": zero_totals()},
+    }
 
     for category in categories:
         budget = existing_budgets.get(category.pk)
@@ -96,9 +93,13 @@ def budget_month_view(request, team_slug):
         actual = actuals_map.get(category.pk, Decimal("0"))
         available = available_map.get(category.pk, Decimal("0"))
 
+        section = sections["income" if category.account_group.account_type == "income" else "expense"]
         group_name = category.account_group.name
+        if not section["groups"] or section["groups"][-1]["name"] != group_name:
+            section["groups"].append({"name": group_name, "rows": [], "subtotals": zero_totals()})
+        group = section["groups"][-1]
 
-        grouped_data[group_name]["rows"].append(
+        group["rows"].append(
             {
                 "category": category,
                 "form": BudgetAmountForm(instance=budget),
@@ -108,20 +109,18 @@ def budget_month_view(request, team_slug):
             }
         )
 
-        # Add to subtotals
-        grouped_data[group_name]["subtotals"]["budgeted"] += budgeted
-        grouped_data[group_name]["subtotals"]["actual"] += actual
-        grouped_data[group_name]["subtotals"]["available"] += available
+        for field, amount in (("budgeted", budgeted), ("actual", actual), ("available", available)):
+            group["subtotals"][field] += amount
+            section["totals"][field] += amount
 
-    # Convert to list of tuples for template
-    groups = [(name, data) for name, data in grouped_data.items()]
+    section_list = [sections["income"], sections["expense"]]
 
-    # Calculate grand totals across all groups
+    # Grand totals across both sections (sidebar summary)
     grand_totals = {
-        "budgeted": sum(data["subtotals"]["budgeted"] for _, data in groups),
-        "actual": sum(data["subtotals"]["actual"] for _, data in groups),
-        "available": sum(data["subtotals"]["available"] for _, data in groups),
+        field: sections["income"]["totals"][field] + sections["expense"]["totals"][field]
+        for field in ("budgeted", "actual", "available")
     }
+    has_categories = bool(categories)
 
     # Get previous month available totals for sidebar summary
     prev_month = month - relativedelta(months=1)
@@ -163,7 +162,8 @@ def budget_month_view(request, team_slug):
             "page_title": f"Budget | {request.team}",
             "month": month,
             "end_date": month + relativedelta(months=1, days=-1),
-            "groups": groups,
+            "sections": section_list,
+            "has_categories": has_categories,
             "grand_totals": grand_totals,
             "net_worth_card": net_worth_card,
             "sidebar_summary": sidebar_summary,
@@ -277,11 +277,19 @@ GRID_MAX_AMOUNT = Decimal("9999999999999.99")
 
 
 def _budget_categories(team):
-    """Income/expense category accounts for a team, in budget-table display order."""
+    """Income/expense category accounts for a team, in budget-table display order:
+    income sections first, then expenses, each grouped alphabetically."""
     return (
         Account.objects.filter(team=team, account_group__account_type__in=("expense", "income"))
         .select_related("account_group")
-        .order_by("account_group__name", "name")
+        .annotate(
+            type_order=Case(
+                When(account_group__account_type="income", then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        )
+        .order_by("type_order", "account_group__name", "name")
     )
 
 

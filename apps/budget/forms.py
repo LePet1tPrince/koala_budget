@@ -15,7 +15,7 @@ class BudgetAmountForm(forms.ModelForm):
         widget=forms.NumberInput(
             attrs={
                 "step": "0.01",
-                "class": "budget-input",
+                "class": "input input-bordered input-sm w-28 text-right font-mono",
             }
         ),
     )
