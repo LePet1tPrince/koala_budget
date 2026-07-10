@@ -1,14 +1,20 @@
+import json
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
+from django.db import transaction
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.http import require_POST
 
 from apps.accounts.models import Account
 from apps.accounts.serializers import SimpleAccountSerializer
+from apps.audit.models import AuditEvent
+from apps.audit.utils import log_event
 from apps.teams.decorators import login_and_team_required
 
 from .forms import BudgetAmountForm, GoalAllocationForm, GoalForm
@@ -258,6 +264,168 @@ def budget_autofill_view(request, team_slug):
         messages.success(request, _("Budgets adjusted so all available amounts are zero."))
 
     return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
+
+
+# =============================================================================
+# Multi-month grid editor
+# =============================================================================
+
+GRID_MAX_MONTHS = 24
+GRID_DEFAULT_MONTHS = 12
+# budget_amount is max_digits=15 / decimal_places=2, so 13 integer digits
+GRID_MAX_AMOUNT = Decimal("9999999999999.99")
+
+
+def _budget_categories(team):
+    """Income/expense category accounts for a team, in budget-table display order."""
+    return (
+        Account.objects.filter(team=team, account_group__account_type__in=("expense", "income"))
+        .select_related("account_group")
+        .order_by("account_group__name", "name")
+    )
+
+
+@login_and_team_required
+def budget_grid_view(request, team_slug):
+    """Multi-month budget editor: one row per category, one column per month."""
+    start_param = request.GET.get("start")
+    # Default to January of the current year so the grid lines up with a typical Jan–Dec spreadsheet
+    start = _parse_month(start_param) if start_param else date.today().replace(month=1, day=1)
+
+    try:
+        num_months = int(request.GET.get("months", GRID_DEFAULT_MONTHS))
+    except (TypeError, ValueError):
+        num_months = GRID_DEFAULT_MONTHS
+    num_months = max(1, min(num_months, GRID_MAX_MONTHS))
+
+    months = [start + relativedelta(months=i) for i in range(num_months)]
+
+    categories = list(_budget_categories(request.team))
+
+    amounts = {}
+    for budget in Budget.objects.filter(team=request.team, month__gte=months[0], month__lte=months[-1]):
+        amounts.setdefault(budget.category_id, {})[budget.month.isoformat()] = str(budget.budget_amount)
+
+    groups = []
+    for category in categories:
+        group_name = category.account_group.name
+        if not groups or groups[-1]["name"] != group_name:
+            groups.append({"name": group_name, "type": category.account_group.account_type, "rows": []})
+        groups[-1]["rows"].append(
+            {
+                "id": category.pk,
+                "name": category.name,
+                "amounts": amounts.get(category.pk, {}),
+            }
+        )
+
+    grid_props = {
+        "months": [{"key": m.isoformat(), "label": m.strftime("%b %Y")} for m in months],
+        "groups": groups,
+        "start": start.isoformat(),
+        "numMonths": num_months,
+        "prevStart": (start - relativedelta(months=num_months)).isoformat(),
+        "nextStart": (start + relativedelta(months=num_months)).isoformat(),
+        "saveUrl": f"/a/{team_slug}/budget/grid/save/",
+        "budgetUrl": f"/a/{team_slug}/budget/",
+    }
+
+    return render(
+        request,
+        "budget/budget_grid.html",
+        {
+            "active_tab": "budget",
+            "page_title": f"Edit Budgets | {request.team}",
+            "grid_props": grid_props,
+            "start": start,
+            "end": months[-1],
+        },
+    )
+
+
+@login_and_team_required
+@require_POST
+def budget_grid_save(request, team_slug):
+    """Bulk upsert budget amounts from the grid editor.
+
+    Body: {"changes": [{"category_id": int, "month": "YYYY-MM-DD", "amount": "123.45"}, ...]}
+    All-or-nothing: any invalid change rejects the whole batch.
+    """
+    try:
+        payload = json.loads(request.body)
+        changes = payload["changes"]
+    except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+    if not isinstance(changes, list):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+    if len(changes) > 10000:
+        return JsonResponse({"error": "Too many changes in one request."}, status=400)
+
+    category_ids = {c.get("category_id") for c in changes if isinstance(c, dict)}
+    valid_category_ids = set(_budget_categories(request.team).filter(pk__in=category_ids).values_list("pk", flat=True))
+
+    # Last write wins if the same cell appears twice
+    merged = {}
+    for change in changes:
+        if not isinstance(change, dict):
+            return JsonResponse({"error": "Invalid request body."}, status=400)
+
+        category_id = change.get("category_id")
+        if category_id not in valid_category_ids:
+            return JsonResponse({"error": "Unknown budget category."}, status=400)
+
+        month = parse_date(str(change.get("month") or ""))
+        if month is None:
+            return JsonResponse({"error": "Invalid month."}, status=400)
+        month = month.replace(day=1)
+
+        try:
+            amount = Decimal(str(change.get("amount"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        except (InvalidOperation, TypeError, ValueError):
+            return JsonResponse({"error": "Invalid amount."}, status=400)
+        if not amount.is_finite() or abs(amount) > GRID_MAX_AMOUNT:
+            return JsonResponse({"error": "Invalid amount."}, status=400)
+
+        merged[(category_id, month)] = amount
+
+    if not merged:
+        return JsonResponse({"saved": 0})
+
+    with transaction.atomic():
+        existing = {
+            (b.category_id, b.month): b
+            for b in Budget.objects.select_for_update().filter(
+                team=request.team,
+                category_id__in={cid for cid, _month in merged},
+                month__in={month for _cid, month in merged},
+            )
+            if (b.category_id, b.month) in merged
+        }
+        updates = []
+        creates = []
+        for (category_id, month), amount in merged.items():
+            budget = existing.get((category_id, month))
+            if budget:
+                if budget.budget_amount != amount:
+                    budget.budget_amount = amount
+                    updates.append(budget)
+            else:
+                creates.append(Budget(team=request.team, category_id=category_id, month=month, budget_amount=amount))
+        if updates:
+            Budget.objects.bulk_update(updates, ["budget_amount"])
+        if creates:
+            Budget.objects.bulk_create(creates)
+
+    log_event(
+        AuditEvent.BULK_EDIT,
+        request=request,
+        metadata={
+            "scope": "budget_grid",
+            "saved": len(merged),
+            "months": sorted({month.isoformat() for _cid, month in merged}),
+        },
+    )
+    return JsonResponse({"saved": len(merged)})
 
 
 # =============================================================================

@@ -32,6 +32,10 @@
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-3xl font-bold">{% translate "Budget" %}</h1>
       <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}"></div>
+      <a href="{% url 'budget:budget_grid' team_slug=request.team.slug %}?start={{ month|date:'Y' }}-01-01"
+         class="btn btn-outline btn-sm" data-testid="budget-grid-link">
+        {% translate "Edit Multiple Months" %}
+      </a>
       <noscript>
         <div class="flex gap-2">
           <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Previous" %}</a>

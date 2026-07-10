@@ -1,0 +1,39 @@
+{% extends "budget/budget_base.html" %}
+{% load static %}
+{% load django_vite %}
+{% load i18n %}
+
+{% block app %}
+  {{ grid_props|json_script:'budget-grid-props' }}
+
+  <div class="container mx-auto px-4 py-6">
+    <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+      <div>
+        <h1 class="text-3xl font-bold">{% translate "Edit Budgets" %}</h1>
+        <p class="text-sm opacity-70">
+          {% blocktranslate trimmed %}
+            One row per category, one column per month. Paste values straight from a spreadsheet.
+          {% endblocktranslate %}
+        </p>
+      </div>
+      <a href="{% url 'budget:budget_home' team_slug=request.team.slug %}?month={{ start|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
+        {% translate "Back to Budget" %}
+      </a>
+    </div>
+
+    <div id="budget-grid">
+      <div class="skeleton h-96 w-full"></div>
+    </div>
+
+    <noscript>
+      <div class="alert alert-warning mt-4">
+        {% translate "The multi-month budget editor requires JavaScript. Use the monthly Budget page instead." %}
+      </div>
+    </noscript>
+  </div>
+{% endblock %}
+
+{% block page_js %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/budget/budget-grid-app.jsx' %}
+{% endblock %}
