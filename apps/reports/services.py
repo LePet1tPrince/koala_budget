@@ -206,6 +206,9 @@ class ReportService:
                 'assets': [{'account': Account, 'amount': Decimal}, ...],
                 'liabilities': [{'account': Account, 'amount': Decimal}, ...],
                 'equity': [{'account': Account, 'amount': Decimal}, ...],
+                'asset_groups': [{'group': AccountGroup, 'accounts': [...], 'subtotal': Decimal}, ...],
+                'liability_groups': [...same shape...],
+                'equity_groups': [...same shape...],
                 'total_assets': Decimal,
                 'total_liabilities': Decimal,
                 'total_equity': Decimal,
@@ -275,45 +278,14 @@ class ReportService:
             "assets": asset_data,
             "liabilities": liability_data,
             "equity": equity_data,
+            "asset_groups": self._group_by_account_group(asset_data),
+            "liability_groups": self._group_by_account_group(liability_data),
+            "equity_groups": self._group_by_account_group(equity_data),
             "total_assets": total_assets,
             "total_liabilities": total_liabilities,
             "total_equity": total_equity,
             "net_worth": net_worth,
         }
-
-    def get_net_worth_trend_data(self, num_months):
-        """
-        Calculate net worth trend data for the last num_months.
-
-        Returns:
-            list: [{'date': date, 'net_worth': Decimal}, ...]
-        """
-        end_date = date.today()
-        start_date = end_date - timedelta(days=num_months * 30)  # Approximate months
-
-        trend_data = []
-
-        # Calculate net worth for each month end
-        current_date = start_date.replace(day=1)
-        while current_date <= end_date:
-            month_end = (current_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
-            # Don't calculate future months
-            if month_end > end_date:
-                month_end = end_date
-
-            balance_data = self.get_balance_sheet_data(month_end)
-            trend_data.append(
-                {
-                    "date": month_end,
-                    "net_worth": balance_data["net_worth"],
-                }
-            )
-
-            # Move to next month
-            current_date = (current_date + timedelta(days=32)).replace(day=1)
-
-        return trend_data
 
     def get_account_activity(self, account, start_date=None, end_date=None):
         """
@@ -381,35 +353,59 @@ class ReportService:
 
     def get_net_worth_trend_data_by_date_range(self, start_date, end_date):
         """
-        Calculate net worth trend data for the given date range, showing monthly data.
+        Calculate month-end net worth for each month in the given date range, with the
+        assets/liabilities breakdown behind each point.
+
+        A single aggregated query buckets asset/liability movement by month; running
+        totals then produce each month-end balance (instead of one full balance-sheet
+        query per month).
 
         Returns:
-            list: [{'date': date, 'net_worth': Decimal}, ...]
+            list: [{'date': date, 'net_worth': Decimal, 'assets': Decimal, 'liabilities': Decimal}, ...]
         """
+        from django.db.models import F, Sum
+        from django.db.models.functions import TruncMonth
+
+        monthly_deltas = (
+            JournalLine.objects.filter(
+                team=self.team,
+                journal_entry__entry_date__lte=end_date,
+                account__account_group__account_type__in=[ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY],
+            )
+            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .annotate(month=TruncMonth("journal_entry__entry_date"))
+            .values("month", "account__account_group__account_type")
+            .annotate(delta=Sum(F("dr_amount") - F("cr_amount")))
+        )
+
+        asset_deltas = {}
+        liability_deltas = {}
+        for row in monthly_deltas:
+            month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
+            if row["account__account_group__account_type"] == ACCOUNT_TYPE_ASSET:
+                asset_deltas[month] = row["delta"]  # debit balance: dr - cr
+            else:
+                liability_deltas[month] = -row["delta"]  # credit balance: cr - dr
+
+        # Opening balances from all activity before the first month in range
+        first_month = start_date.replace(day=1)
+        assets = sum((amount for month, amount in asset_deltas.items() if month < first_month), Decimal("0"))
+        liabilities = sum((amount for month, amount in liability_deltas.items() if month < first_month), Decimal("0"))
+
         trend_data = []
-
-        # Calculate net worth for each month end within the date range
-        current_date = start_date.replace(day=1)
-        while current_date <= end_date:
-            month_end = (current_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
-            # Don't calculate months beyond the end date
-            if month_end > end_date:
-                month_end = end_date
-
-            balance_data = self.get_balance_sheet_data(month_end)
+        current = first_month
+        while current <= end_date:
+            assets += asset_deltas.get(current, Decimal("0"))
+            liabilities += liability_deltas.get(current, Decimal("0"))
+            month_end = (current + timedelta(days=32)).replace(day=1) - timedelta(days=1)
             trend_data.append(
                 {
-                    "date": month_end,
-                    "net_worth": balance_data["net_worth"],
+                    "date": min(month_end, end_date),
+                    "net_worth": assets - liabilities,
+                    "assets": assets,
+                    "liabilities": liabilities,
                 }
             )
-
-            # Move to next month
-            current_date = (current_date + timedelta(days=32)).replace(day=1)
-
-            # Prevent infinite loop if we somehow go beyond end_date
-            if current_date > end_date and month_end >= end_date:
-                break
+            current = (current + timedelta(days=32)).replace(day=1)
 
         return trend_data

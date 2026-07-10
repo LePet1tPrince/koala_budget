@@ -34,18 +34,11 @@ const NetWorthTrendMonthPickerWrapper = () => {
       setStartMonth(urlStartMonth);
       setEndMonth(urlEndMonth);
     } else {
-      // Set default to last 12 months and auto-load report
+      // Mirror the server-side default (last 12 months) — the server already
+      // rendered that report, so no redirect is needed.
       const now = new Date();
-      const defaultEnd = format(now, 'yyyy-MM');
-      const defaultStart = format(subMonths(now, 11), 'yyyy-MM');
-
-      setStartMonth(defaultStart);
-      setEndMonth(defaultEnd);
-
-      // Auto-load report with default months
-      setTimeout(() => {
-        handleMonthRangeApply(defaultStart, defaultEnd);
-      }, 100);
+      setStartMonth(format(subMonths(now, 12), 'yyyy-MM'));
+      setEndMonth(format(now, 'yyyy-MM'));
     }
   }, []);
 
