@@ -83,11 +83,29 @@ def income_statement(request, team_slug):
     if report_data:
         sankey_data = {
             "income": [
-                {"name": item["account"].name, "amount": float(item["amount"])} for item in report_data["income"]
-            ],  # noqa: E501
+                {
+                    "name": item["account"].name,
+                    "amount": float(item["amount"]),
+                    "group": item["account"].account_group.name,
+                }
+                for item in report_data["income"]
+            ],
             "expenses": [
-                {"name": item["account"].name, "amount": float(item["amount"])} for item in report_data["expenses"]
-            ],  # noqa: E501
+                {
+                    "name": item["account"].name,
+                    "amount": float(item["amount"]),
+                    "group": item["account"].account_group.name,
+                }
+                for item in report_data["expenses"]
+            ],
+            "income_groups": [
+                {"name": group_data["group"].name, "amount": float(group_data["subtotal"])}
+                for group_data in report_data["income_groups"]
+            ],
+            "expense_groups": [
+                {"name": group_data["group"].name, "amount": float(group_data["subtotal"])}
+                for group_data in report_data["expense_groups"]
+            ],
             "net_profit": float(report_data["net_profit"]),
         }
 
