@@ -455,3 +455,171 @@ class BudgetMonthViewTest(TestCase):
         budget.refresh_from_db()
         self.assertEqual(budget.budget_amount, Decimal("55.00"))
         self.assertEqual(Budget.objects.filter(team=self.team).count(), 1)
+
+
+class BudgetGridViewTest(TestCase):
+    """Tests for the multi-month budget grid editor and its bulk save endpoint."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Grid Test Team", slug="grid-test-team")
+        cls.user = CustomUser.objects.create_user(username="griduser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Grid Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.income_group = AccountGroup.objects.create(
+            team=cls.team, name="Grid Income", account_type=ACCOUNT_TYPE_INCOME
+        )
+        cls.groceries = Account.objects.create(team=cls.team, name="Grid Groceries", account_group=cls.expense_group)
+        cls.salary = Account.objects.create(team=cls.team, name="Grid Salary", account_group=cls.income_group)
+
+        # An account on another team, to verify cross-tenant writes are rejected
+        cls.other_team = Team.objects.create(name="Grid Other Team", slug="grid-other-team")
+        other_group = AccountGroup.objects.create(
+            team=cls.other_team, name="Other Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.other_account = Account.objects.create(team=cls.other_team, name="Other Rent", account_group=other_group)
+
+        cls.grid_url = f"/a/{cls.team.slug}/budget/grid/"
+        cls.save_url = f"/a/{cls.team.slug}/budget/grid/save/"
+
+    def setUp(self):
+        self.client.login(username="griduser@example.com", password="testpass123")
+
+    def post_save(self, changes):
+        return self.client.post(self.save_url, {"changes": changes}, content_type="application/json")
+
+    # ------------------------------------------------------------------ GET
+
+    def test_grid_view_renders_with_existing_amounts(self):
+        Budget.objects.create(
+            team=self.team, category=self.groceries, month=date(2026, 3, 1), budget_amount=Decimal("250.00")
+        )
+        response = self.client.get(f"{self.grid_url}?start=2026-01-01")
+        self.assertEqual(response.status_code, 200)
+        props = response.context["grid_props"]
+        self.assertEqual(len(props["months"]), 12)
+        self.assertEqual(props["months"][0], {"key": "2026-01-01", "label": "Jan 2026"})
+        groceries_row = next(
+            row for group in props["groups"] for row in group["rows"] if row["id"] == self.groceries.pk
+        )
+        self.assertEqual(groceries_row["amounts"]["2026-03-01"], "250.00")
+
+    def test_grid_view_does_not_create_budget_rows(self):
+        response = self.client.get(f"{self.grid_url}?start=2031-01-01")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Budget.objects.filter(team=self.team).count(), 0)
+
+    def test_grid_view_excludes_other_teams_accounts(self):
+        response = self.client.get(self.grid_url)
+        row_ids = {row["id"] for group in response.context["grid_props"]["groups"] for row in group["rows"]}
+        self.assertNotIn(self.other_account.pk, row_ids)
+
+    def test_grid_view_clamps_months_param(self):
+        response = self.client.get(f"{self.grid_url}?start=2026-01-01&months=999")
+        self.assertEqual(len(response.context["grid_props"]["months"]), 24)
+
+    def test_grid_view_requires_login(self):
+        self.client.logout()
+        response = self.client.get(self.grid_url)
+        self.assertEqual(response.status_code, 302)
+
+    def test_grid_view_requires_team_membership(self):
+        response = self.client.get(f"/a/{self.other_team.slug}/budget/grid/")
+        self.assertEqual(response.status_code, 404)
+
+    # ----------------------------------------------------------------- POST
+
+    def test_save_creates_and_updates_budgets(self):
+        existing = Budget.objects.create(
+            team=self.team, category=self.groceries, month=date(2026, 1, 1), budget_amount=Decimal("100.00")
+        )
+        response = self.post_save(
+            [
+                {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "150.00"},
+                {"category_id": self.groceries.pk, "month": "2026-02-01", "amount": "175.50"},
+                {"category_id": self.salary.pk, "month": "2026-01-01", "amount": "4000"},
+            ]
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"saved": 3})
+        existing.refresh_from_db()
+        self.assertEqual(existing.budget_amount, Decimal("150.00"))
+        self.assertEqual(
+            Budget.objects.get(team=self.team, category=self.groceries, month=date(2026, 2, 1)).budget_amount,
+            Decimal("175.50"),
+        )
+        self.assertEqual(
+            Budget.objects.get(team=self.team, category=self.salary, month=date(2026, 1, 1)).budget_amount,
+            Decimal("4000.00"),
+        )
+
+    def test_save_logs_audit_event(self):
+        from apps.audit.models import AuditEvent
+
+        self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "10"}])
+        event = AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.BULK_EDIT).latest("timestamp")
+        self.assertEqual(event.metadata["scope"], "budget_grid")
+        self.assertEqual(event.metadata["saved"], 1)
+
+    def test_save_rejects_other_teams_category(self):
+        response = self.post_save(
+            [
+                {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "50.00"},
+                {"category_id": self.other_account.pk, "month": "2026-01-01", "amount": "50.00"},
+            ]
+        )
+        self.assertEqual(response.status_code, 400)
+        # All-or-nothing: the valid change must not have been applied either
+        self.assertEqual(Budget.objects.count(), 0)
+
+    def test_save_rejects_invalid_amount(self):
+        response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "abc"}])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Budget.objects.count(), 0)
+
+    def test_save_rejects_invalid_month(self):
+        response = self.post_save([{"category_id": self.groceries.pk, "month": "not-a-date", "amount": "10"}])
+        self.assertEqual(response.status_code, 400)
+
+    def test_save_rejects_malformed_body(self):
+        response = self.client.post(self.save_url, "not json", content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        response = self.client.post(self.save_url, {"changes": "nope"}, content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_save_normalizes_month_to_first_day(self):
+        response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-15", "amount": "20"}])
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Budget.objects.filter(team=self.team, category=self.groceries, month=date(2026, 1, 1)).exists())
+
+    def test_save_last_write_wins_for_duplicate_cells(self):
+        response = self.post_save(
+            [
+                {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "10"},
+                {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "30"},
+            ]
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"saved": 1})
+        self.assertEqual(
+            Budget.objects.get(team=self.team, category=self.groceries, month=date(2026, 1, 1)).budget_amount,
+            Decimal("30.00"),
+        )
+
+    def test_save_requires_post(self):
+        response = self.client.get(self.save_url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_save_requires_team_membership(self):
+        response = self.client.post(
+            f"/a/{self.other_team.slug}/budget/grid/save/",
+            {"changes": []},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)

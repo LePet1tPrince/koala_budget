@@ -38,6 +38,7 @@ export default defineConfig({
         'transactions': path.resolve(__dirname, './assets/javascript/transactions/transactions-app.jsx'),
         'budget-actual-app': path.resolve(__dirname, './assets/javascript/budget/budget-actual-app.jsx'),
         'budget-month-picker-app': path.resolve(__dirname, './assets/javascript/budget/budget-month-picker-app.jsx'),
+        'budget-grid-app': path.resolve(__dirname, './assets/javascript/budget/budget-grid-app.jsx'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
         'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
         'expense-trend-chart': path.resolve(__dirname, './assets/javascript/reports/expense-trend-chart.js'),
