@@ -287,6 +287,86 @@ class ReportService:
             "net_worth": net_worth,
         }
 
+    def get_balance_composition_data(self, start_date, end_date):
+        """
+        Month-end running balances per account group for asset and liability accounts,
+        chart-ready (floats), for a stacked-area composition view.
+
+        Returns:
+            dict: {
+                'labels': ['YYYY-MM-DD' month-end isoformat, ...],
+                'asset_groups': [{'name': str, 'values': [float, ...]}, ...],
+                'liability_groups': [{'name': str, 'values': [float, ...]}, ...],
+            }
+            Groups are sorted by final balance (largest first); groups with no
+            balance in any month are dropped.
+        """
+        from django.db.models import F, Sum
+        from django.db.models.functions import TruncMonth
+
+        monthly_deltas = (
+            JournalLine.objects.filter(
+                team=self.team,
+                journal_entry__entry_date__lte=end_date,
+                account__account_group__account_type__in=[ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY],
+            )
+            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .annotate(month=TruncMonth("journal_entry__entry_date"))
+            .values(
+                "month",
+                "account__account_group_id",
+                "account__account_group__name",
+                "account__account_group__account_type",
+            )
+            .annotate(delta=Sum(F("dr_amount") - F("cr_amount")))
+        )
+
+        groups = {}  # group id -> {'name', 'type', 'deltas': {month: Decimal}}
+        for row in monthly_deltas:
+            month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
+            group = groups.setdefault(
+                row["account__account_group_id"],
+                {
+                    "name": row["account__account_group__name"],
+                    "type": row["account__account_group__account_type"],
+                    "deltas": {},
+                },
+            )
+            # Assets carry debit balances (dr - cr); liabilities credit balances (cr - dr)
+            sign = 1 if group["type"] == ACCOUNT_TYPE_ASSET else -1
+            group["deltas"][month] = group["deltas"].get(month, Decimal("0")) + sign * row["delta"]
+
+        # Month axis
+        months = []
+        current = start_date.replace(day=1)
+        while current <= end_date:
+            month_end = (current + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            months.append((current, min(month_end, end_date)))
+            current = (current + timedelta(days=32)).replace(day=1)
+
+        first_month = start_date.replace(day=1)
+        asset_series = []
+        liability_series = []
+        for group in groups.values():
+            running = sum((amount for month, amount in group["deltas"].items() if month < first_month), Decimal("0"))
+            values = []
+            for month_start, _month_end in months:
+                running += group["deltas"].get(month_start, Decimal("0"))
+                values.append(float(running))
+            if not any(values):
+                continue
+            target = asset_series if group["type"] == ACCOUNT_TYPE_ASSET else liability_series
+            target.append({"name": group["name"], "values": values})
+
+        for series in (asset_series, liability_series):
+            series.sort(key=lambda s: s["values"][-1], reverse=True)
+
+        return {
+            "labels": [month_end.isoformat() for _start, month_end in months],
+            "asset_groups": asset_series,
+            "liability_groups": liability_series,
+        }
+
     def get_account_activity(self, account, start_date=None, end_date=None):
         """
         Get detailed activity for a specific account within a date range.

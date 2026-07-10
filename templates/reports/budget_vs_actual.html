@@ -1,0 +1,205 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load currency_tags %}
+
+{% block page_head %}
+<style>
+  /* Bullet-style meter: track is a light step of the fill's own color */
+  .bva-meter {
+    height: 0.5rem;
+    border-radius: 9999px;
+    overflow: hidden;
+    background: color-mix(in oklab, var(--color-success) 18%, var(--color-base-100));
+  }
+  .bva-meter > div {
+    height: 100%;
+    border-radius: 9999px;
+    background: var(--color-success);
+  }
+  .bva-meter.bva-over {
+    background: color-mix(in oklab, var(--color-error) 18%, var(--color-base-100));
+  }
+  .bva-meter.bva-over > div {
+    background: var(--color-error);
+  }
+  .bva-meter.bva-income {
+    background: color-mix(in oklab, var(--color-info) 18%, var(--color-base-100));
+  }
+  .bva-meter.bva-income > div {
+    background: var(--color-info);
+  }
+</style>
+{% endblock %}
+
+{% block app %}
+<section class="app-card">
+  <!-- Header: title, month navigation, and actions on one row -->
+  <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <div>
+      <h1 class="pg-title">{% translate "Budget vs Actual" %}</h1>
+      <p class="text-sm text-base-content/60">{{ month|date:"F Y" }}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="join">
+        <a href="?month={{ prev_month|date:'Y-m' }}" class="btn btn-outline btn-sm join-item" data-testid="bva-prev-month" aria-label="{% translate 'Previous month' %}">
+          <i class="fa fa-chevron-left"></i>
+        </a>
+        <a href="?" class="btn btn-outline btn-sm join-item">{% translate "This Month" %}</a>
+        <a href="?month={{ next_month|date:'Y-m' }}" class="btn btn-outline btn-sm join-item" data-testid="bva-next-month" aria-label="{% translate 'Next month' %}">
+          <i class="fa fa-chevron-right"></i>
+        </a>
+      </div>
+      <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
+        <i class="fa fa-pen-to-square mr-2"></i>
+        {% translate "Edit Budget" %}
+      </a>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm">
+        <i class="fa fa-arrow-left mr-2"></i>
+        {% translate "Back to Reports" %}
+      </a>
+    </div>
+  </div>
+
+  <!-- Summary Section -->
+  <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="bva-summary">
+    <div class="stat py-3">
+      <div class="stat-figure text-info hidden sm:block"><i class="fa fa-bullseye fa-lg"></i></div>
+      <div class="stat-title">{% translate "Budgeted" %}</div>
+      <div class="stat-value text-2xl text-info">{{ expense_totals.budget|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-error hidden sm:block"><i class="fa fa-arrow-down fa-lg"></i></div>
+      <div class="stat-title">{% translate "Spent" %}</div>
+      <div class="stat-value text-2xl text-error">{{ expense_totals.actual|currency }}</div>
+      {% if expense_totals.over_count %}
+      <div class="stat-desc text-error">
+        {% blocktranslate count counter=expense_totals.over_count trimmed %}
+          {{ counter }} category over budget
+        {% plural %}
+          {{ counter }} categories over budget
+        {% endblocktranslate %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure {% if expense_totals.remaining >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block"><i class="fa fa-piggy-bank fa-lg"></i></div>
+      <div class="stat-title">{% translate "Left to Spend" %}</div>
+      <div class="stat-value text-2xl {% if expense_totals.remaining >= 0 %}text-success{% else %}text-error{% endif %}">{{ expense_totals.remaining|currency }}</div>
+    </div>
+  </div>
+
+  <!-- Expenses Section -->
+  <div class="card bg-base-100 shadow-lg mb-4">
+    <div class="card-body p-4">
+      <h2 class="card-title text-base text-error">{% translate "Expenses" %}</h2>
+      {% if expense_groups %}
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" data-testid="bva-expenses-table">
+          <thead>
+            <tr>
+              <th class="w-1/4">{% translate "Category" %}</th>
+              <th class="w-2/5">{% translate "Progress" %}</th>
+              <th class="text-right">{% translate "Spent" %}</th>
+              <th class="text-right">{% translate "Budget" %}</th>
+              <th class="text-right">{% translate "Left" %}</th>
+            </tr>
+          </thead>
+          {% for group_data in expense_groups %}
+          <tbody>
+            <tr class="bg-base-200 font-semibold">
+              <td>{{ group_data.group.name }}</td>
+              <td></td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.actual|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.budget|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap"></td>
+            </tr>
+            {% for row in group_data.rows %}
+            <tr>
+              <td class="pl-6 whitespace-nowrap">
+                {{ row.account.name }}
+                {% if row.over %}
+                <span class="badge badge-error badge-sm ml-1 align-middle"><i class="fa fa-triangle-exclamation mr-1"></i>{% translate "Over" %}</span>
+                {% elif row.unbudgeted %}
+                <span class="badge badge-ghost badge-sm ml-1 align-middle">{% translate "No budget" %}</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <div class="bva-meter flex-1 {% if row.over or row.unbudgeted %}bva-over{% endif %}">
+                    <div style="width: {{ row.pct_capped|floatformat:0 }}%;"></div>
+                  </div>
+                  <span class="text-xs text-base-content/60 tabular-nums w-12 text-right">
+                    {% if row.pct is not None %}{{ row.pct|floatformat:0 }}%{% else %}—{% endif %}
+                  </span>
+                </div>
+              </td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ row.actual|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ row.budget|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap {% if row.remaining < 0 %}text-error{% endif %}">{{ row.remaining|currency }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          {% endfor %}
+        </table>
+      </div>
+      {% else %}
+      <p class="text-base-content/60 py-2">
+        {% translate "No budget or spending for this month yet." %}
+        <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="link link-primary">{% translate "Set up your budget" %}</a>
+      </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Income Section -->
+  {% if income_groups %}
+  <div class="card bg-base-100 shadow-lg">
+    <div class="card-body p-4">
+      <h2 class="card-title text-base text-success">{% translate "Income" %}</h2>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" data-testid="bva-income-table">
+          <thead>
+            <tr>
+              <th class="w-1/4">{% translate "Category" %}</th>
+              <th class="w-2/5">{% translate "Progress" %}</th>
+              <th class="text-right">{% translate "Received" %}</th>
+              <th class="text-right">{% translate "Expected" %}</th>
+              <th class="text-right">{% translate "To Go" %}</th>
+            </tr>
+          </thead>
+          {% for group_data in income_groups %}
+          <tbody>
+            <tr class="bg-base-200 font-semibold">
+              <td>{{ group_data.group.name }}</td>
+              <td></td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.actual|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.budget|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap"></td>
+            </tr>
+            {% for row in group_data.rows %}
+            <tr>
+              <td class="pl-6 whitespace-nowrap">{{ row.account.name }}</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <div class="bva-meter bva-income flex-1">
+                    <div style="width: {{ row.pct_capped|floatformat:0 }}%;"></div>
+                  </div>
+                  <span class="text-xs text-base-content/60 tabular-nums w-12 text-right">
+                    {% if row.pct is not None %}{{ row.pct|floatformat:0 }}%{% else %}—{% endif %}
+                  </span>
+                </div>
+              </td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ row.actual|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ row.budget|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ row.remaining|currency }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

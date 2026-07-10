@@ -1,0 +1,126 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+{% load currency_tags %}
+
+{% block page_head %}
+<style>
+  #cash-flow-scroll {
+    max-height: 24rem;
+  }
+  #cash-flow-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--color-base-100);
+  }
+</style>
+{% endblock %}
+
+{% block app %}
+<section class="app-card">
+  <!-- Header: title, month range picker, and actions on one row -->
+  <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <div>
+      <h1 class="pg-title">{% translate "Cash Flow" %}</h1>
+      {% if start_date and end_date %}
+      <p class="text-sm text-base-content/60">
+        {% blocktranslate with start=start_date|date:"M Y" end=end_date|date:"M Y" trimmed %}
+          {{ start }} – {{ end }}
+        {% endblocktranslate %}
+      </p>
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div id="month-range-picker"></div>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm">
+        <i class="fa fa-arrow-left mr-2"></i>
+        {% translate "Back to Reports" %}
+      </a>
+    </div>
+  </div>
+
+  <!-- Summary Section -->
+  <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="cash-flow-summary">
+    <div class="stat py-3">
+      <div class="stat-figure text-success hidden sm:block"><i class="fa fa-arrow-up fa-lg"></i></div>
+      <div class="stat-title">{% translate "Money In" %}</div>
+      <div class="stat-value text-2xl text-success">{{ stats.total_income|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-error hidden sm:block"><i class="fa fa-arrow-down fa-lg"></i></div>
+      <div class="stat-title">{% translate "Money Out" %}</div>
+      <div class="stat-value text-2xl text-error">{{ stats.total_expenses|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure {% if stats.net >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
+      <div class="stat-title">{% translate "Net Cash Flow" %}</div>
+      <div class="stat-value text-2xl {% if stats.net >= 0 %}text-success{% else %}text-error{% endif %}">{% if stats.net >= 0 %}+{% endif %}{{ stats.net|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-info hidden sm:block"><i class="fa fa-calendar fa-lg"></i></div>
+      <div class="stat-title">{% translate "Average per Month" %}</div>
+      <div class="stat-value text-2xl {% if stats.avg_net >= 0 %}text-success{% else %}text-error{% endif %}">{% if stats.avg_net >= 0 %}+{% endif %}{{ stats.avg_net|currency }}</div>
+      <div class="stat-desc">
+        {% blocktranslate with months=stats.num_months trimmed %}
+          Over {{ months }} months
+        {% endblocktranslate %}
+      </div>
+    </div>
+  </div>
+
+  {% if chart_data %}
+  <!-- Chart Section -->
+  <div class="card bg-base-100 shadow-lg mb-4">
+    <div class="card-body p-4">
+      <div class="w-full" style="height: 380px;">
+        <canvas id="cash-flow-chart" class="w-full h-full"></canvas>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Data Table Section -->
+  <div class="card bg-base-100 shadow-lg">
+    <div class="card-body p-4">
+      <div id="cash-flow-scroll" class="overflow-auto">
+        <table class="table table-sm table-zebra w-full" data-testid="cash-flow-table">
+          <thead>
+            <tr>
+              <th>{% translate "Month" %}</th>
+              <th class="text-right">{% translate "Money In" %}</th>
+              <th class="text-right">{% translate "Money Out" %}</th>
+              <th class="text-right">{% translate "Net" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in months %}
+            <tr>
+              <td class="whitespace-nowrap">{{ item.label }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ item.income|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ item.expenses|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap font-medium {% if item.net >= 0 %}text-success{% else %}text-error{% endif %}">
+                {% if item.net >= 0 %}+{% endif %}{{ item.net|currency }}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="4" class="text-center text-base-content/60 py-3">{% translate "No activity in this period" %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/reports/NetWorthTrendMonthPicker.jsx' %}
+{% if chart_data %}
+{{ chart_data|json_script:'cash-flow-data' }}
+{% vite_asset 'assets/javascript/reports/cash-flow-chart.js' %}
+{% endif %}
+{% endblock %}

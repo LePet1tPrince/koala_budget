@@ -143,6 +143,11 @@
       <a role="tab" class="tab" :class="tab === 'flow' ? 'tab-active' : ''" @click.prevent="tab = 'flow'" data-testid="tab-flow">
         <i class="fa fa-diagram-project mr-2"></i>{% translate "Income Flow" %}
       </a>
+      {% if trend_chart_data %}
+      <a role="tab" class="tab" :class="tab === 'trends' ? 'tab-active' : ''" @click.prevent="tab = 'trends'" data-testid="tab-trends">
+        <i class="fa fa-chart-column mr-2"></i>{% translate "Spending Trends" %}
+      </a>
+      {% endif %}
     </div>
 
     <!-- Statement tab -->
@@ -270,6 +275,20 @@
         </div>
       </div>
     </div>
+
+    {% if trend_chart_data %}
+    <!-- Spending Trends (stacked bar by account group) tab -->
+    <div x-show="tab === 'trends'" style="display: none;">
+      <div class="card bg-base-100 shadow-lg">
+        <div class="card-body p-4">
+          <h2 class="card-title text-base">{% translate "Expenses by group" %}</h2>
+          <div class="w-full" style="height: 400px;">
+            <canvas id="expense-trend-chart" class="w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 </section>
@@ -284,5 +303,9 @@
 {% if sankey_data %}
 {{ sankey_data|json_script:'sankey-data' }}
 {% vite_asset 'assets/javascript/reports/income-statement-sankey.js' %}
+{% endif %}
+{% if trend_chart_data %}
+{{ trend_chart_data|json_script:'trend-chart-data' }}
+{% vite_asset 'assets/javascript/reports/expense-trend-chart.js' %}
 {% endif %}
 {% endblock %}

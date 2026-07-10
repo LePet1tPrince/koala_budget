@@ -80,13 +80,53 @@
     </div>
   </div>
 
-  <!-- Chart Section -->
-  <div class="card bg-base-100 shadow-lg mb-4">
-    <div class="card-body p-4">
-      <div class="w-full" style="height: 380px;">
-        <canvas id="net-worth-chart" class="w-full h-full"></canvas>
+  <div x-data="{ tab: 'trend' }">
+    {% if composition_chart_data %}
+    <!-- Trend / Composition tabs -->
+    <div role="tablist" class="tabs tabs-box w-fit mb-4">
+      <a role="tab" class="tab" :class="tab === 'trend' ? 'tab-active' : ''" @click.prevent="tab = 'trend'" data-testid="tab-trend">
+        <i class="fa fa-chart-line mr-2"></i>{% translate "Trend" %}
+      </a>
+      <a role="tab" class="tab" :class="tab === 'composition' ? 'tab-active' : ''" @click.prevent="tab = 'composition'" data-testid="tab-composition">
+        <i class="fa fa-layer-group mr-2"></i>{% translate "Composition" %}
+      </a>
+    </div>
+    {% endif %}
+
+    <div x-show="tab === 'trend'">
+      <!-- Chart Section -->
+      <div class="card bg-base-100 shadow-lg mb-4">
+        <div class="card-body p-4">
+          <div class="w-full" style="height: 380px;">
+            <canvas id="net-worth-chart" class="w-full h-full"></canvas>
+          </div>
+        </div>
       </div>
     </div>
+
+    {% if composition_chart_data %}
+    <!-- Composition (stacked areas by account group) tab -->
+    <div x-show="tab === 'composition'" style="display: none;">
+      <div class="card bg-base-100 shadow-lg mb-4">
+        <div class="card-body p-4">
+          <h2 class="card-title text-base">{% translate "Assets by group" %}</h2>
+          <div class="w-full" style="height: 320px;">
+            <canvas id="assets-composition-chart" class="w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+      {% if composition_chart_data.liability_groups %}
+      <div class="card bg-base-100 shadow-lg mb-4">
+        <div class="card-body p-4">
+          <h2 class="card-title text-base">{% translate "Liabilities by group" %}</h2>
+          <div class="w-full" style="height: 320px;">
+            <canvas id="liabilities-composition-chart" class="w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
   <!-- Data Table Section -->
@@ -132,5 +172,9 @@
 {% if chart_data %}
 {{ chart_data|json_script:'net-worth-data' }}
 {% vite_asset 'assets/javascript/reports/net-worth-chart.js' %}
+{% endif %}
+{% if composition_chart_data %}
+{{ composition_chart_data|json_script:'composition-data' }}
+{% vite_asset 'assets/javascript/reports/balance-composition-chart.js' %}
 {% endif %}
 {% endblock %}
