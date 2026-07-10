@@ -123,6 +123,14 @@ class ReportServiceTest(TestCase):
         self.assertEqual(data["total_liabilities"], Decimal("2000.00"))
         self.assertEqual(data["total_equity"], Decimal("5000.00"))
         self.assertEqual(data["net_worth"], Decimal("5000.00"))
+        # Accounts are also grouped by account group with subtotals
+        self.assertEqual(len(data["asset_groups"]), 1)
+        self.assertEqual(data["asset_groups"][0]["group"], self.asset_group)
+        self.assertEqual(data["asset_groups"][0]["subtotal"], Decimal("7000.00"))
+        self.assertEqual(len(data["liability_groups"]), 1)
+        self.assertEqual(data["liability_groups"][0]["subtotal"], Decimal("2000.00"))
+        self.assertEqual(len(data["equity_groups"]), 1)
+        self.assertEqual(data["equity_groups"][0]["subtotal"], Decimal("5000.00"))
 
     def test_net_worth_trend_data_by_date_range(self):
         """Test net worth trend data calculation by date range."""
@@ -155,10 +163,66 @@ class ReportServiceTest(TestCase):
         # January: assets=1000, liabilities=0, net_worth=1000
         self.assertEqual(data[0]["date"], date(2024, 1, 31))
         self.assertEqual(data[0]["net_worth"], Decimal("1000.00"))
+        self.assertEqual(data[0]["assets"], Decimal("1000.00"))
+        self.assertEqual(data[0]["liabilities"], Decimal("0.00"))
 
         # February: assets=1500, liabilities=500, net_worth=1000
-        self.assertEqual(data[1]["date"], date(2024, 2, 28))  # Last day of Feb 2024 (not leap year)
+        self.assertEqual(data[1]["date"], date(2024, 2, 28))
         self.assertEqual(data[1]["net_worth"], Decimal("1000.00"))
+        self.assertEqual(data[1]["assets"], Decimal("1500.00"))
+        self.assertEqual(data[1]["liabilities"], Decimal("500.00"))
+
+    def test_net_worth_trend_includes_opening_balances(self):
+        """Activity before the range is carried in as the opening balance of the first month."""
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2023, 6, 15), description="Old capital")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("2000.00")
+        )
+        entry2 = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 3, 10), description="Mar loan")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("300.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry2, account=self.liability_account, cr_amount=Decimal("300.00")
+        )
+
+        data = self.service.get_net_worth_trend_data_by_date_range(date(2024, 3, 1), date(2024, 4, 30))
+
+        self.assertEqual(len(data), 2)
+        # March: opening 2000 + 300 new assets, 300 new liabilities
+        self.assertEqual(data[0]["assets"], Decimal("2300.00"))
+        self.assertEqual(data[0]["liabilities"], Decimal("300.00"))
+        self.assertEqual(data[0]["net_worth"], Decimal("2000.00"))
+        # April: no activity, balances carry forward
+        self.assertEqual(data[1]["assets"], Decimal("2300.00"))
+        self.assertEqual(data[1]["net_worth"], Decimal("2000.00"))
+
+    def test_net_worth_trend_excludes_voided_entries(self):
+        """Voided journal entries don't move the trend balances."""
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 1, 15), description="Capital")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("1000.00")
+        )
+        voided = JournalEntry.objects.create(
+            team=self.team, entry_date=date(2024, 1, 20), description="Void", status=JournalEntry.STATUS_VOID
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=voided, account=self.asset_account, dr_amount=Decimal("9999.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=voided, account=self.equity_account, cr_amount=Decimal("9999.00")
+        )
+
+        data = self.service.get_net_worth_trend_data_by_date_range(date(2024, 1, 1), date(2024, 1, 31))
+
+        self.assertEqual(data[0]["assets"], Decimal("1000.00"))
+        self.assertEqual(data[0]["net_worth"], Decimal("1000.00"))
 
     def test_income_statement_no_data(self):
         """Test income statement with no transactions."""
@@ -456,6 +520,27 @@ class AccountActivityViewTest(TestCase):
         self.assertIsNone(response.context["report_data"])
         self.assertNotContains(response, "Secret Cash")
 
+    def test_account_activity_back_to_balance_sheet(self):
+        """source=balance_sheet links back to the balance sheet with the as-of date."""
+        url = reverse(
+            "reports:account_activity",
+            kwargs={"team_slug": self.team.slug, "account_id": self.asset_account.pk},
+        )
+        response = self.client.get(
+            url,
+            {
+                "source": "balance_sheet",
+                "as_of_date": "2024-12-31",
+                "start_date": "2024-01-01",
+                "end_date": "2024-12-31",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Back to Balance Sheet")
+        expected_back = reverse("reports:balance_sheet", args=[self.team.slug]) + "?as_of_date=2024-12-31"
+        self.assertEqual(response.context["back_url"], expected_back)
+
 
 class BalanceSheetDateParamsTest(TestCase):
     """Tests for balance sheet date parameter handling (React datepicker)."""
@@ -492,6 +577,31 @@ class BalanceSheetDateParamsTest(TestCase):
         self.assertEqual(response.context["as_of_date"], date(2024, 12, 31))
         self.assertIsNotNone(response.context["report_data"])
         self.assertEqual(response.context["report_data"]["total_assets"], Decimal("1000.00"))
+        # Grouped data and drill-down links are exposed for the template
+        self.assertEqual(len(response.context["report_data"]["asset_groups"]), 1)
+        self.assertEqual(response.context["debt_ratio"], Decimal("0"))
+        self.assertIn("source=balance_sheet", response.context["drill_qs"])
+        self.assertIn("as_of_date=2024-12-31", response.context["drill_qs"])
+
+    def test_debt_ratio_computed(self):
+        """Liabilities as a percentage of assets is exposed for the summary strip."""
+        liability_group = AccountGroup.objects.create(team=self.team, name="Debts", account_type=ACCOUNT_TYPE_LIABILITY)
+        liability_account = Account.objects.create(team=self.team, name="Loan", account_group=liability_group)
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 12, 15), description="Loan")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=liability_account, cr_amount=Decimal("250.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("750.00")
+        )
+
+        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url, {"as_of_date": "2024-12-31"})
+
+        self.assertEqual(response.context["debt_ratio"], Decimal("25"))
 
     def test_no_params_defaults_to_today(self):
         """Test that no as_of_date param defaults to today."""
@@ -609,6 +719,40 @@ class ReportViewsTest(TestCase):
         response = self.client.get(url, {"start_month": "2024-01", "end_month": "2024-12"})
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.context.get("report_data"))
+
+    def test_net_worth_trend_stats_and_chart_data(self):
+        """The view exposes summary stats, chart series, and month-over-month changes."""
+        income_group = AccountGroup.objects.create(team=self.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        income_account = Account.objects.create(team=self.team, name="Sales", account_group=income_group)
+        for month, amount in [(1, "1000.00"), (2, "500.00")]:
+            entry = JournalEntry.objects.create(
+                team=self.team, entry_date=date(2024, month, 15), description=f"Sale {month}"
+            )
+            JournalLine.objects.create(
+                team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal(amount)
+            )
+            JournalLine.objects.create(
+                team=self.team, journal_entry=entry, account=income_account, cr_amount=Decimal(amount)
+            )
+
+        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug})
+        response = self.client.get(url, {"start_month": "2024-01", "end_month": "2024-02"})
+
+        trend_stats = response.context["trend_stats"]
+        self.assertEqual(trend_stats["latest"]["net_worth"], Decimal("1500.00"))
+        self.assertEqual(trend_stats["change"], Decimal("500.00"))
+        self.assertEqual(trend_stats["pct_change"], Decimal("50"))
+        self.assertEqual(trend_stats["num_months"], 2)
+
+        chart_data = response.context["chart_data"]
+        self.assertEqual(chart_data["labels"], ["2024-01-31", "2024-02-29"])
+        self.assertEqual(chart_data["net_worth"], [1000.0, 1500.0])
+        self.assertEqual(chart_data["assets"], [1000.0, 1500.0])
+        self.assertEqual(chart_data["liabilities"], [0.0, 0.0])
+
+        report_data = response.context["report_data"]
+        self.assertIsNone(report_data[0]["change"])
+        self.assertEqual(report_data[1]["change"], Decimal("500.00"))
 
     def test_net_worth_trend_view_with_invalid_params(self):
         """Test net worth trend view with invalid date params falls back to defaults."""

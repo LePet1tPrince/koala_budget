@@ -1,31 +1,89 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
 {% load django_vite %}
+{% load currency_tags %}
+
+{% block page_head %}
+<style>
+  /* Frozen header row inside the monthly-data scroll window */
+  #net-worth-scroll {
+    max-height: 24rem;
+  }
+  #net-worth-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--color-base-100);
+  }
+</style>
+{% endblock %}
 
 {% block app %}
 <section class="app-card">
-  <div class="flex justify-between items-center mb-6">
-    <h1 class="pg-title">{% translate "Net Worth Trend" %}</h1>
-    <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline">
-      <i class="fa fa-arrow-left mr-2"></i>
-      {% translate "Back to Reports" %}
-    </a>
-  </div>
-
-  <!-- Month Range Picker Section -->
-  <div class="bg-base-200 p-4 rounded-lg mb-6">
-    <div id="month-range-picker"></div>
+  <!-- Header: title, month range picker, and actions on one row -->
+  <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <div>
+      <h1 class="pg-title">{% translate "Net Worth Trend" %}</h1>
+      {% if start_date and end_date %}
+      <p class="text-sm text-base-content/60">
+        {% blocktranslate with start=start_date|date:"M Y" end=end_date|date:"M Y" trimmed %}
+          {{ start }} – {{ end }}
+        {% endblocktranslate %}
+      </p>
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div id="month-range-picker"></div>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm">
+        <i class="fa fa-arrow-left mr-2"></i>
+        {% translate "Back to Reports" %}
+      </a>
+    </div>
   </div>
 
   {% if report_data %}
+  <!-- Summary Section -->
+  <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="net-worth-summary">
+    <div class="stat py-3">
+      <div class="stat-figure {% if trend_stats.latest.net_worth >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
+      <div class="stat-title">{% translate "Net Worth" %}</div>
+      <div class="stat-value text-2xl {% if trend_stats.latest.net_worth >= 0 %}text-success{% else %}text-error{% endif %}">{{ trend_stats.latest.net_worth|currency }}</div>
+      <div class="stat-desc">
+        {% blocktranslate with date=trend_stats.latest.date|date:"M j, Y" trimmed %}
+          As of {{ date }}
+        {% endblocktranslate %}
+      </div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure {% if trend_stats.change >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block">
+        <i class="fa {% if trend_stats.change >= 0 %}fa-arrow-trend-up{% else %}fa-arrow-trend-down{% endif %} fa-lg"></i>
+      </div>
+      <div class="stat-title">{% translate "Change Over Period" %}</div>
+      <div class="stat-value text-2xl {% if trend_stats.change >= 0 %}text-success{% else %}text-error{% endif %}">{% if trend_stats.change >= 0 %}+{% endif %}{{ trend_stats.change|currency }}</div>
+      {% if trend_stats.pct_change is not None %}
+      <div class="stat-desc">
+        {% blocktranslate with pct=trend_stats.pct_change|floatformat:1 months=trend_stats.num_months trimmed %}
+          {{ pct }}% over {{ months }} months
+        {% endblocktranslate %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-info hidden sm:block"><i class="fa fa-coins fa-lg"></i></div>
+      <div class="stat-title">{% translate "Assets" %}</div>
+      <div class="stat-value text-2xl text-info">{{ trend_stats.latest.assets|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-warning hidden sm:block"><i class="fa fa-credit-card fa-lg"></i></div>
+      <div class="stat-title">{% translate "Liabilities" %}</div>
+      <div class="stat-value text-2xl text-warning">{{ trend_stats.latest.liabilities|currency }}</div>
+    </div>
+  </div>
+
   <!-- Chart Section -->
-  <div class="card bg-base-100 shadow-lg mb-6">
-    <div class="card-body">
-      <h2 class="card-title">
-        <i class="fa fa-chart-area"></i>
-        {% translate "Net Worth Over Time" %}
-      </h2>
-      <div class="w-full" style="height: 400px;">
+  <div class="card bg-base-100 shadow-lg mb-4">
+    <div class="card-body p-4">
+      <div class="w-full" style="height: 380px;">
         <canvas id="net-worth-chart" class="w-full h-full"></canvas>
       </div>
     </div>
@@ -33,25 +91,29 @@
 
   <!-- Data Table Section -->
   <div class="card bg-base-100 shadow-lg">
-    <div class="card-body">
-      <h2 class="card-title">
-        <i class="fa fa-table"></i>
-        {% translate "Monthly Data" %}
-      </h2>
-      <div class="overflow-x-auto">
-        <table class="table table-zebra w-full">
+    <div class="card-body p-4">
+      <div id="net-worth-scroll" class="overflow-auto">
+        <table class="table table-sm table-zebra w-full" data-testid="net-worth-table">
           <thead>
             <tr>
               <th>{% translate "Month" %}</th>
+              <th class="text-right">{% translate "Assets" %}</th>
+              <th class="text-right">{% translate "Liabilities" %}</th>
               <th class="text-right">{% translate "Net Worth" %}</th>
+              <th class="text-right">{% translate "Change" %}</th>
             </tr>
           </thead>
           <tbody>
             {% for item in report_data %}
             <tr>
-              <td>{{ item.date|date:"M Y" }}</td>
-              <td class="text-right {% if item.net_worth >= 0 %}text-success{% else %}text-error{% endif %}">
-                {{ item.net_worth|floatformat:2 }}
+              <td class="whitespace-nowrap">{{ item.date|date:"M Y" }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ item.assets|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ item.liabilities|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap font-medium {% if item.net_worth >= 0 %}text-success{% else %}text-error{% endif %}">
+                {{ item.net_worth|currency }}
+              </td>
+              <td class="text-right tabular-nums whitespace-nowrap {% if item.change is None %}opacity-40{% elif item.change >= 0 %}text-success{% else %}text-error{% endif %}">
+                {% if item.change is None %}—{% else %}{% if item.change >= 0 %}+{% endif %}{{ item.change|currency }}{% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -67,27 +129,8 @@
 {% block page_js %}
 {% vite_react_refresh %}
 {% vite_asset 'assets/javascript/reports/NetWorthTrendMonthPicker.jsx' %}
-{% if report_data %}
-{{ report_data|json_script:'net-worth-data' }}
-{% vite_asset 'assets/javascript/pegasus/pegasus.js' %}
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const netWorthData = JSON.parse(document.getElementById('net-worth-data').textContent);
-
-    // Transform data to format expected by pegasus charts: [[label, value], ...]
-    const chartData = netWorthData.map(item => {
-      const date = new Date(item.date);
-      const label = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
-      const value = parseFloat(item.net_worth);
-      return [label, value];
-    });
-
-    if (chartData.length > 0) {
-      SiteJS.pegasus.Charts.renderChart('line', 'net-worth-chart', chartData, true);
-    } else {
-      document.getElementById('net-worth-chart').parentElement.innerHTML = '<p class="pg-text-centered">No data available for the selected period.</p>';
-    }
-  });
-</script>
+{% if chart_data %}
+{{ chart_data|json_script:'net-worth-data' }}
+{% vite_asset 'assets/javascript/reports/net-worth-chart.js' %}
 {% endif %}
 {% endblock %}

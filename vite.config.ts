@@ -39,6 +39,7 @@ export default defineConfig({
         'budget-actual-app': path.resolve(__dirname, './assets/javascript/budget/budget-actual-app.jsx'),
         'budget-month-picker-app': path.resolve(__dirname, './assets/javascript/budget/budget-month-picker-app.jsx'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
+        'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
       },
       output: {
         // Output JS bundles to js/ directory with -bundle suffix

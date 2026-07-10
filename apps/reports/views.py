@@ -132,27 +132,35 @@ def balance_sheet(request, team_slug):
     """
     Balance Sheet report view.
     """
-    service = ReportService(request.team)
+    from urllib.parse import urlencode
 
-    report_data = None
-    as_of_date = None
+    service = ReportService(request.team)
 
     # Check for direct as_of_date parameter
     as_of_date_param = request.GET.get("as_of_date")
 
+    as_of_date = date.today()
     if as_of_date_param:
-        # Parse date directly from URL parameter
-        try:
+        # Parse date directly from URL parameter (invalid format falls back to today)
+        with contextlib.suppress(ValueError):
             as_of_date = datetime.strptime(as_of_date_param, "%Y-%m-%d").date()
-            report_data = service.get_balance_sheet_data(as_of_date)
-        except ValueError:
-            # Invalid date format, fall back to today
-            as_of_date = date.today()
-            report_data = service.get_balance_sheet_data(as_of_date)
-    else:
-        # No parameter provided, set default to today
-        as_of_date = date.today()
-        report_data = service.get_balance_sheet_data(as_of_date)
+
+    report_data = service.get_balance_sheet_data(as_of_date)
+
+    debt_ratio = None
+    if report_data["total_assets"]:
+        debt_ratio = report_data["total_liabilities"] / report_data["total_assets"] * 100
+
+    # Account drill-down links: year-to-date activity up to the as-of date, with a
+    # source marker so the activity page links back here.
+    drill_qs = urlencode(
+        {
+            "source": "balance_sheet",
+            "as_of_date": as_of_date.isoformat(),
+            "start_date": date(as_of_date.year, 1, 1).isoformat(),
+            "end_date": as_of_date.isoformat(),
+        }
+    )
 
     return render(
         request,
@@ -162,6 +170,8 @@ def balance_sheet(request, team_slug):
             "page_title": _("Balance Sheet"),
             "report_data": report_data,
             "as_of_date": as_of_date,
+            "debt_ratio": debt_ratio,
+            "drill_qs": drill_qs,
         },
     )
 
@@ -215,6 +225,14 @@ def account_activity(request, team_slug, account_id):
         if start_date:
             back_url += f"?month={start_date.isoformat()}"
         back_label = _("Back to Budget")
+    elif source == "balance_sheet":
+        from django.urls import reverse
+
+        back_url = reverse("reports:balance_sheet", args=[team_slug])
+        as_of_date_param = request.GET.get("as_of_date")
+        if as_of_date_param:
+            back_url += f"?as_of_date={as_of_date_param}"
+        back_label = _("Back to Balance Sheet")
     else:
         from django.urls import reverse
 
@@ -288,6 +306,30 @@ def net_worth_trend(request, team_slug):
         end_date = today
         report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
 
+    # Month-over-month change for the table (first month has no prior point)
+    previous_net_worth = None
+    for item in report_data:
+        item["change"] = item["net_worth"] - previous_net_worth if previous_net_worth is not None else None
+        previous_net_worth = item["net_worth"]
+
+    trend_stats = None
+    chart_data = None
+    if report_data:
+        first, latest = report_data[0], report_data[-1]
+        change = latest["net_worth"] - first["net_worth"]
+        trend_stats = {
+            "latest": latest,
+            "change": change,
+            "pct_change": change / abs(first["net_worth"]) * 100 if first["net_worth"] else None,
+            "num_months": len(report_data),
+        }
+        chart_data = {
+            "labels": [item["date"].isoformat() for item in report_data],
+            "net_worth": [float(item["net_worth"]) for item in report_data],
+            "assets": [float(item["assets"]) for item in report_data],
+            "liabilities": [float(item["liabilities"]) for item in report_data],
+        }
+
     return render(
         request,
         "reports/net_worth_trend.html",
@@ -295,6 +337,8 @@ def net_worth_trend(request, team_slug):
             "active_tab": "reports",
             "page_title": _("Net Worth Trend"),
             "report_data": report_data,
+            "trend_stats": trend_stats,
+            "chart_data": chart_data,
             "start_date": start_date,
             "end_date": end_date,
         },
