@@ -11,21 +11,47 @@ document.addEventListener('DOMContentLoaded', () => {
   const data = JSON.parse(dataEl.textContent);
   const income = data.income || [];
   const expenses = data.expenses || [];
+  const incomeGroups = data.income_groups || [];
+  const expenseGroups = data.expense_groups || [];
   const netProfit = data.net_profit || 0;
 
   const flows = [];
 
-  // Income accounts -> "Income"
+  // Five layers: income accounts -> their account group -> "Income" -> their
+  // account group -> expense accounts. An account or group with a negative net
+  // for the period (e.g. refunds/chargebacks exceeding income/spending) flows
+  // the other way instead of being dropped, so everything is represented and
+  // the diagram stays flow-conservative with the Total Income/Expenses figures
+  // above it.
   income.forEach(item => {
     if (item.amount > 0) {
-      flows.push({from: item.name, to: 'Income', flow: item.amount});
+      flows.push({from: item.name, to: item.group, flow: item.amount});
+    } else if (item.amount < 0) {
+      flows.push({from: item.group, to: item.name, flow: Math.abs(item.amount)});
     }
   });
 
-  // "Income" -> Expense accounts
+  incomeGroups.forEach(group => {
+    if (group.amount > 0) {
+      flows.push({from: group.name, to: 'Income', flow: group.amount});
+    } else if (group.amount < 0) {
+      flows.push({from: 'Income', to: group.name, flow: Math.abs(group.amount)});
+    }
+  });
+
+  expenseGroups.forEach(group => {
+    if (group.amount > 0) {
+      flows.push({from: 'Income', to: group.name, flow: group.amount});
+    } else if (group.amount < 0) {
+      flows.push({from: group.name, to: 'Income', flow: Math.abs(group.amount)});
+    }
+  });
+
   expenses.forEach(item => {
     if (item.amount > 0) {
-      flows.push({from: 'Income', to: item.name, flow: item.amount});
+      flows.push({from: item.group, to: item.name, flow: item.amount});
+    } else if (item.amount < 0) {
+      flows.push({from: item.name, to: item.group, flow: Math.abs(item.amount)});
     }
   });
 
@@ -38,18 +64,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (flows.length === 0) return;
 
-  // Build color map
+  // Build color map. Groups get a darker shade of their side's color so the
+  // account -> group -> hub -> group -> account hierarchy reads at a glance.
   const colorMap = {};
-  const incomeColor = 'rgba(34, 197, 94, 0.6)';   // green
-  const expenseColor = 'rgba(239, 68, 68, 0.6)';   // red
-  const savingsColor = 'rgba(59, 130, 246, 0.6)';   // blue
-  const deficitColor = 'rgba(251, 146, 60, 0.6)';   // orange
-  const hubColor = 'rgba(107, 114, 128, 0.6)';      // gray
+  const incomeColor = 'rgba(34, 197, 94, 0.6)';        // green
+  const incomeGroupColor = 'rgba(21, 128, 61, 0.7)';   // dark green
+  const expenseColor = 'rgba(239, 68, 68, 0.6)';       // red
+  const expenseGroupColor = 'rgba(185, 28, 28, 0.7)';  // dark red
+  const savingsColor = 'rgba(59, 130, 246, 0.6)';      // blue
+  const deficitColor = 'rgba(251, 146, 60, 0.6)';      // orange
+  const hubColor = 'rgba(107, 114, 128, 0.6)';         // gray
 
   colorMap['Income'] = hubColor;
   colorMap['Savings'] = savingsColor;
   colorMap['Deficit'] = deficitColor;
   income.forEach(item => { colorMap[item.name] = incomeColor; });
+  incomeGroups.forEach(group => { colorMap[group.name] = incomeGroupColor; });
+  expenseGroups.forEach(group => { colorMap[group.name] = expenseGroupColor; });
   expenses.forEach(item => { colorMap[item.name] = expenseColor; });
 
   const getColor = (key) => colorMap[key] || hubColor;
@@ -57,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('sankey-chart');
   if (!canvas) return;
 
-  new Chart(canvas, {
+  const createChart = () => new Chart(canvas, {
     type: 'sankey',
     data: {
       datasets: [{
@@ -84,4 +115,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   });
+
+  // The canvas starts inside a hidden tab (display:none), where Chart.js would
+  // size itself to 0x0 — defer creation until the canvas is first shown.
+  const observer = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) {
+      observer.disconnect();
+      createChart();
+    }
+  });
+  observer.observe(canvas);
 });

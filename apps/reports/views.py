@@ -62,21 +62,50 @@ def income_statement(request, team_slug):
         start_date = today.replace(day=1)
         end_date = today
 
-    report_data = service.get_income_statement_data(start_date, end_date)
+    period_views = {"monthly": "month", "quarterly": "quarter", "yearly": "year"}
+    period = period_views.get(request.GET.get("view"))
+    report_data = service.get_income_statement_data(start_date, end_date, period=period)
 
     savings_rate = None
     if report_data and report_data["total_income"]:
         savings_rate = report_data["net_profit"] / report_data["total_income"] * 100
 
+    # Querystrings for the Total / By Month|Quarter|Year display toggle (preserve other params)
+    toggle_params = request.GET.copy()
+    toggle_params.pop("view", None)
+    total_view_qs = toggle_params.urlencode()
+    period_view_qs = {}
+    for view_name in period_views:
+        toggle_params["view"] = view_name
+        period_view_qs[view_name] = toggle_params.urlencode()
+
     sankey_data = None
     if report_data:
         sankey_data = {
             "income": [
-                {"name": item["account"].name, "amount": float(item["amount"])} for item in report_data["income"]
-            ],  # noqa: E501
+                {
+                    "name": item["account"].name,
+                    "amount": float(item["amount"]),
+                    "group": item["account"].account_group.name,
+                }
+                for item in report_data["income"]
+            ],
             "expenses": [
-                {"name": item["account"].name, "amount": float(item["amount"])} for item in report_data["expenses"]
-            ],  # noqa: E501
+                {
+                    "name": item["account"].name,
+                    "amount": float(item["amount"]),
+                    "group": item["account"].account_group.name,
+                }
+                for item in report_data["expenses"]
+            ],
+            "income_groups": [
+                {"name": group_data["group"].name, "amount": float(group_data["subtotal"])}
+                for group_data in report_data["income_groups"]
+            ],
+            "expense_groups": [
+                {"name": group_data["group"].name, "amount": float(group_data["subtotal"])}
+                for group_data in report_data["expense_groups"]
+            ],
             "net_profit": float(report_data["net_profit"]),
         }
 
@@ -89,6 +118,9 @@ def income_statement(request, team_slug):
             "report_data": report_data,
             "sankey_data": sankey_data,
             "savings_rate": savings_rate,
+            "period": period,
+            "total_view_qs": total_view_qs,
+            "period_view_qs": period_view_qs,
             "start_date": start_date,
             "end_date": end_date,
         },
