@@ -807,6 +807,116 @@ class TransactionAPITest(TestCase):
         self.assertIn("Entry 149", descriptions)
 
 
+class TransactionSearchFilterAPITest(TestCase):
+    """Test server-side search and date-range filtering on the Transactions endpoint."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up test data for all tests."""
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.asset_group = AccountGroup.objects.create(
+            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.bank_account = Account.objects.create(
+            team=cls.team, name="Checking", account_group=cls.asset_group
+        )
+        cls.expense_account = Account.objects.create(
+            team=cls.team, name="Groceries", account_group=cls.expense_group
+        )
+        cls.coffee_account = Account.objects.create(
+            team=cls.team, name="Coffee Shops", account_group=cls.expense_group
+        )
+        cls.old_payee = Payee.objects.create(team=cls.team, name="Very Old Payee Inc")
+
+        with current_team(cls.team):
+            # 250 recent, generic entries -- newest-first pagination puts the
+            # oldest 50 of these on page 2 (page size 200).
+            for i in range(250):
+                entry = JournalEntry.objects.create(
+                    team=cls.team,
+                    entry_date=date(2024, 1, 1) + timedelta(days=i),
+                    description=f"Entry {i}",
+                )
+                JournalLine.objects.create(
+                    team=cls.team, journal_entry=entry, account=cls.bank_account, dr_amount=Decimal("10.00")
+                )
+                JournalLine.objects.create(
+                    team=cls.team, journal_entry=entry, account=cls.expense_account, cr_amount=Decimal("10.00")
+                )
+
+            # A single, much older, distinctive entry that only shows up on
+            # page 2 of the unfiltered newest-first list.
+            cls.old_entry = JournalEntry.objects.create(
+                team=cls.team, entry_date=date(2020, 1, 1), payee=cls.old_payee, description="Ancient purchase"
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.old_entry, account=cls.coffee_account, dr_amount=Decimal("42.42")
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.old_entry, account=cls.bank_account, cr_amount=Decimal("42.42")
+            )
+
+    def setUp(self):
+        """Set up for each test."""
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_search_finds_entry_beyond_first_page_by_payee(self):
+        """A payee-name search must reach entries outside the first page of results."""
+        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/", {"search": "Very Old"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.old_entry.pk)
+
+    def test_search_matches_account_name(self):
+        """Search should match against either side's account name."""
+        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/", {"search": "Coffee"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.old_entry.pk)
+
+    def test_search_matches_description(self):
+        """Search should match the entry description."""
+        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/", {"search": "Ancient"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.old_entry.pk)
+
+    def test_search_matches_amount(self):
+        """Search should match the transaction amount."""
+        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/", {"search": "42.42"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.old_entry.pk)
+
+    def test_date_range_filters_entries(self):
+        """Date range filtering should narrow results to entries in range."""
+        response = self.client.get(
+            f"/a/{self.team.slug}/journal/api/transactions/",
+            {"start_date": "2020-01-01", "end_date": "2020-01-01"},
+        )
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.old_entry.pk)
+
+    def test_search_and_date_range_combine(self):
+        """Search and date range filters should apply together (AND)."""
+        response = self.client.get(
+            f"/a/{self.team.slug}/journal/api/transactions/",
+            {"search": "Entry", "start_date": "2024-01-01", "end_date": "2024-01-03"},
+        )
+
+        descriptions = {row["description"] for row in response.data["results"]}
+        self.assertEqual(descriptions, {"Entry 0", "Entry 1", "Entry 2"})
+
+
 class JournalPermissionsTest(TestCase):
     """Tests for journal permissions."""
 
