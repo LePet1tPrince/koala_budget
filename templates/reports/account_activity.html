@@ -49,29 +49,42 @@
           <thead>
             <tr>
               <th>{% translate "Date" %}</th>
+              <th>{% translate "Linked Account" %}</th>
               <th>{% translate "Payee" %}</th>
               <th>{% translate "Memo" %}</th>
               <th class="text-right">{% translate "Amount" %}</th>
+              <th>{% translate "Source" %}</th>
             </tr>
           </thead>
           <tbody>
             {% for transaction in report_data.transactions %}
             <tr>
               <td class="whitespace-nowrap">{{ transaction.date|date:"M j, Y" }}</td>
+              <td>
+                {% if transaction.contra_accounts %}
+                  {% for contra in transaction.contra_accounts %}
+                    <a href="{{ contra.url }}" class="link link-hover">{{ contra.name }}</a>{% if not forloop.last %}, {% endif %}
+                  {% endfor %}
+                {% else %}
+                  <span class="text-base-content/40">&mdash;</span>
+                {% endif %}
+              </td>
               <td>{{ transaction.payee }}</td>
               <td>{{ transaction.memo }}</td>
-              <td class="text-right tabular-nums {% if transaction.amount >= 0 %}text-success{% else %}text-error{% endif %}">{{ transaction.amount|currency }}</td>
+              <td class="text-right tabular-nums {% if transaction.amount < 0 %}text-error{% endif %}">{{ transaction.amount|currency }}</td>
+              <td class="text-base-content/60 whitespace-nowrap">{{ transaction.source }}</td>
             </tr>
             {% empty %}
             <tr>
-              <td colspan="4" class="text-center text-base-content/60 py-4">{% translate "No transactions for this account in the selected period" %}</td>
+              <td colspan="6" class="text-center text-base-content/60 py-4">{% translate "No transactions for this account in the selected period" %}</td>
             </tr>
             {% endfor %}
           </tbody>
           <tfoot>
             <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
-              <td colspan="3">{% translate "Total" %}</td>
-              <td class="text-right tabular-nums {% if report_data.total >= 0 %}text-success{% else %}text-error{% endif %}">{{ report_data.total|currency }}</td>
+              <td colspan="4">{% translate "Total" %}</td>
+              <td class="text-right tabular-nums {% if report_data.total < 0 %}text-error{% endif %}">{{ report_data.total|currency }}</td>
+              <td></td>
             </tr>
           </tfoot>
         </table>

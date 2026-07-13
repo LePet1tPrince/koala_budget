@@ -503,6 +503,29 @@ class AccountActivityViewTest(TestCase):
         self.assertEqual(response.context["report_data"]["total"], Decimal("1200.00"))
         self.assertContains(response, "Back to Summary")
 
+    def test_account_activity_shows_contra_account_and_source(self):
+        """Each row surfaces the other side of the entry plus its source."""
+        entry = JournalEntry.objects.create(
+            team=self.team, entry_date=date(2024, 6, 15), description="June rent", source=JournalEntry.SOURCE_IMPORT
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
+        )
+
+        url = reverse(
+            "reports:account_activity",
+            kwargs={"team_slug": self.team.slug, "account_id": self.expense_account.pk},
+        )
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+
+        txn = response.context["report_data"]["transactions"][0]
+        self.assertEqual(txn["contra_accounts"], [{"name": "Cash", "url": self.asset_account.get_absolute_url()}])
+        self.assertEqual(txn["source"], "Import")
+        self.assertContains(response, "Cash")
+
     def test_account_activity_other_team_account(self):
         """Permission: an account from another team is not exposed."""
         other_team = Team.objects.create(name="Other AA Team", slug="other-aa-team")

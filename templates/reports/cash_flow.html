@@ -53,14 +53,14 @@
       <div class="stat-value text-2xl text-error">{{ stats.total_expenses|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure {% if stats.net >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
+      <div class="stat-figure {% if stats.net < 0 %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
       <div class="stat-title">{% translate "Net Cash Flow" %}</div>
-      <div class="stat-value text-2xl {% if stats.net >= 0 %}text-success{% else %}text-error{% endif %}">{% if stats.net >= 0 %}+{% endif %}{{ stats.net|currency }}</div>
+      <div class="stat-value text-2xl {% if stats.net < 0 %}text-error{% endif %}">{% if stats.net >= 0 %}+{% endif %}{{ stats.net|currency }}</div>
     </div>
     <div class="stat py-3">
       <div class="stat-figure text-info hidden sm:block"><i class="fa fa-calendar fa-lg"></i></div>
       <div class="stat-title">{% translate "Average per Month" %}</div>
-      <div class="stat-value text-2xl {% if stats.avg_net >= 0 %}text-success{% else %}text-error{% endif %}">{% if stats.avg_net >= 0 %}+{% endif %}{{ stats.avg_net|currency }}</div>
+      <div class="stat-value text-2xl {% if stats.avg_net < 0 %}text-error{% endif %}">{% if stats.avg_net >= 0 %}+{% endif %}{{ stats.avg_net|currency }}</div>
       <div class="stat-desc">
         {% blocktranslate with months=stats.num_months trimmed %}
           Over {{ months }} months
@@ -99,7 +99,7 @@
               <td class="whitespace-nowrap">{{ item.label }}</td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ item.income|currency }}</td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ item.expenses|currency }}</td>
-              <td class="text-right tabular-nums whitespace-nowrap font-medium {% if item.net >= 0 %}text-success{% else %}text-error{% endif %}">
+              <td class="text-right tabular-nums whitespace-nowrap font-medium {% if item.net < 0 %}text-error{% endif %}">
                 {% if item.net >= 0 %}+{% endif %}{{ item.net|currency }}
               </td>
             </tr>
