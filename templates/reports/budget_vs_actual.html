@@ -82,9 +82,9 @@
       {% endif %}
     </div>
     <div class="stat py-3">
-      <div class="stat-figure {% if expense_totals.remaining >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block"><i class="fa fa-piggy-bank fa-lg"></i></div>
+      <div class="stat-figure {% if expense_totals.remaining < 0 %}text-error{% endif %} hidden sm:block"><i class="fa fa-piggy-bank fa-lg"></i></div>
       <div class="stat-title">{% translate "Left to Spend" %}</div>
-      <div class="stat-value text-2xl {% if expense_totals.remaining >= 0 %}text-success{% else %}text-error{% endif %}">{{ expense_totals.remaining|currency }}</div>
+      <div class="stat-value text-2xl {% if expense_totals.remaining < 0 %}text-error{% endif %}">{{ expense_totals.remaining|currency }}</div>
     </div>
   </div>
 

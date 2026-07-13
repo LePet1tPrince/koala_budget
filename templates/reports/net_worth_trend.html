@@ -45,9 +45,9 @@
   <!-- Summary Section -->
   <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="net-worth-summary">
     <div class="stat py-3">
-      <div class="stat-figure {% if trend_stats.latest.net_worth >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
+      <div class="stat-figure {% if trend_stats.latest.net_worth < 0 %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
       <div class="stat-title">{% translate "Net Worth" %}</div>
-      <div class="stat-value text-2xl {% if trend_stats.latest.net_worth >= 0 %}text-success{% else %}text-error{% endif %}">{{ trend_stats.latest.net_worth|currency }}</div>
+      <div class="stat-value text-2xl {% if trend_stats.latest.net_worth < 0 %}text-error{% endif %}">{{ trend_stats.latest.net_worth|currency }}</div>
       <div class="stat-desc">
         {% blocktranslate with date=trend_stats.latest.date|date:"M j, Y" trimmed %}
           As of {{ date }}
@@ -55,11 +55,11 @@
       </div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure {% if trend_stats.change >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block">
+      <div class="stat-figure {% if trend_stats.change < 0 %}text-error{% endif %} hidden sm:block">
         <i class="fa {% if trend_stats.change >= 0 %}fa-arrow-trend-up{% else %}fa-arrow-trend-down{% endif %} fa-lg"></i>
       </div>
       <div class="stat-title">{% translate "Change Over Period" %}</div>
-      <div class="stat-value text-2xl {% if trend_stats.change >= 0 %}text-success{% else %}text-error{% endif %}">{% if trend_stats.change >= 0 %}+{% endif %}{{ trend_stats.change|currency }}</div>
+      <div class="stat-value text-2xl {% if trend_stats.change < 0 %}text-error{% endif %}">{% if trend_stats.change >= 0 %}+{% endif %}{{ trend_stats.change|currency }}</div>
       {% if trend_stats.pct_change is not None %}
       <div class="stat-desc">
         {% blocktranslate with pct=trend_stats.pct_change|floatformat:1 months=trend_stats.num_months trimmed %}
@@ -149,10 +149,10 @@
               <td class="whitespace-nowrap">{{ item.date|date:"M Y" }}</td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ item.assets|currency }}</td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ item.liabilities|currency }}</td>
-              <td class="text-right tabular-nums whitespace-nowrap font-medium {% if item.net_worth >= 0 %}text-success{% else %}text-error{% endif %}">
+              <td class="text-right tabular-nums whitespace-nowrap font-medium {% if item.net_worth < 0 %}text-error{% endif %}">
                 {{ item.net_worth|currency }}
               </td>
-              <td class="text-right tabular-nums whitespace-nowrap {% if item.change is None %}opacity-40{% elif item.change >= 0 %}text-success{% else %}text-error{% endif %}">
+              <td class="text-right tabular-nums whitespace-nowrap {% if item.change is None %}opacity-40{% elif item.change < 0 %}text-error{% endif %}">
                 {% if item.change is None %}—{% else %}{% if item.change >= 0 %}+{% endif %}{{ item.change|currency }}{% endif %}
               </td>
             </tr>

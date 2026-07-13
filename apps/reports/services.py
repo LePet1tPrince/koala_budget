@@ -375,8 +375,7 @@ class ReportService:
             dict: {
                 'account': Account,
                 'transactions': [{
-                    'date': date, 'payee': str, 'memo': str, 'amount': Decimal,
-                    'source': str, 'is_reconciled': bool, 'is_cleared': bool,
+                    'date': date, 'payee': str, 'memo': str, 'amount': Decimal, 'source': str,
                     'contra_accounts': [{'name': str, 'url': str}, ...],
                 }, ...],
                 'total': Decimal
@@ -432,8 +431,6 @@ class ReportService:
                     "memo": line.journal_entry.description,
                     "amount": line.signed_amount,
                     "source": line.journal_entry.get_source_display(),
-                    "is_reconciled": line.is_reconciled,
-                    "is_cleared": line.is_cleared,
                     "contra_accounts": contra_accounts,
                 }
             )

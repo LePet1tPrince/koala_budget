@@ -115,9 +115,9 @@
       <div class="stat-value text-2xl text-error">{{ report_data.total_expenses|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure {% if report_data.net_profit >= 0 %}text-success{% else %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
+      <div class="stat-figure {% if report_data.net_profit < 0 %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
       <div class="stat-title">{% translate "Net Profit" %}</div>
-      <div class="stat-value text-2xl {% if report_data.net_profit >= 0 %}text-success{% else %}text-error{% endif %}">
+      <div class="stat-value text-2xl {% if report_data.net_profit < 0 %}text-error{% endif %}">
         {{ report_data.net_profit|currency }}
       </div>
       {% if savings_rate is not None %}
@@ -253,9 +253,9 @@
                 <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
                   <td class="whitespace-nowrap">{% translate "Net Profit" %}</td>
                   {% if period %}{% for amount in report_data.net_profit_per_period %}
-                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %} {% if amount >= 0 %}text-success{% else %}text-error{% endif %}">{{ amount|currency }}</td>
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %} {% if amount < 0 %}text-error{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
-                  <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_profit >= 0 %}text-success{% else %}text-error{% endif %}">{{ report_data.net_profit|currency }}</td>
+                  <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_profit < 0 %}text-error{% endif %}">{{ report_data.net_profit|currency }}</td>
                 </tr>
               </tfoot>
             </table>

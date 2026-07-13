@@ -503,17 +503,13 @@ class AccountActivityViewTest(TestCase):
         self.assertEqual(response.context["report_data"]["total"], Decimal("1200.00"))
         self.assertContains(response, "Back to Summary")
 
-    def test_account_activity_shows_contra_account_and_status(self):
-        """Each row surfaces the other side of the entry plus source/reconciled status."""
+    def test_account_activity_shows_contra_account_and_source(self):
+        """Each row surfaces the other side of the entry plus its source."""
         entry = JournalEntry.objects.create(
             team=self.team, entry_date=date(2024, 6, 15), description="June rent", source=JournalEntry.SOURCE_IMPORT
         )
         JournalLine.objects.create(
-            team=self.team,
-            journal_entry=entry,
-            account=self.expense_account,
-            dr_amount=Decimal("1200.00"),
-            is_reconciled=True,
+            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
         )
         JournalLine.objects.create(
             team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
@@ -528,7 +524,6 @@ class AccountActivityViewTest(TestCase):
         txn = response.context["report_data"]["transactions"][0]
         self.assertEqual(txn["contra_accounts"], [{"name": "Cash", "url": self.asset_account.get_absolute_url()}])
         self.assertEqual(txn["source"], "Import")
-        self.assertTrue(txn["is_reconciled"])
         self.assertContains(response, "Cash")
 
     def test_account_activity_other_team_account(self):
