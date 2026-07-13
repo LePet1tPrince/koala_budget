@@ -10,6 +10,7 @@ from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from apps.accounts.models import Account
@@ -257,8 +258,12 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     Only entries with exactly 2 lines are returned (simple debit/credit pairs).
     """
 
+    class Pagination(PageNumberPagination):
+        page_size = 200
+
     serializer_class = TransactionRowSerializer
     permission_classes = [TeamModelAccessPermissions]
+    pagination_class = Pagination
 
     def get_queryset(self):
         return (

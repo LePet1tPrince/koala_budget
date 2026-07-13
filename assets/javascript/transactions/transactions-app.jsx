@@ -16,14 +16,25 @@ const TransactionsApp = () => {
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
-        const response = await fetch(apiUrls.transactions_list, {
-          headers: getApiHeaders(),
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+        const results = [];
+        let url = apiUrls.transactions_list;
+        while (url) {
+          const response = await fetch(url, {
+            headers: getApiHeaders(),
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            results.push(...data);
+            url = null;
+          } else {
+            results.push(...(data.results || []));
+            url = data.next || null;
+          }
         }
-        const data = await response.json();
-        setTransactions(data.results || data);
+        setTransactions(results);
       } catch (err) {
         setError(err.message);
       } finally {

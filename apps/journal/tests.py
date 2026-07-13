@@ -3,7 +3,7 @@ Tests for journal app.
 Tests models, views, serializers, and API endpoints.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -747,6 +747,64 @@ class JournalEntryAPITest(TestCase):
             response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/", data, format="json")
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class TransactionAPITest(TestCase):
+    """Test the Transactions list API endpoint's pagination."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up test data for all tests."""
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.asset_group = AccountGroup.objects.create(
+            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.bank_account = Account.objects.create(
+            team=cls.team, name="Checking", account_group=cls.asset_group
+        )
+        cls.expense_account = Account.objects.create(
+            team=cls.team, name="Groceries", account_group=cls.expense_group
+        )
+
+        with current_team(cls.team):
+            for i in range(150):
+                entry = JournalEntry.objects.create(
+                    team=cls.team, entry_date=date(2025, 1, 1) + timedelta(days=i), description=f"Entry {i}"
+                )
+                JournalLine.objects.create(
+                    team=cls.team, journal_entry=entry, account=cls.bank_account, dr_amount=Decimal("10.00")
+                )
+                JournalLine.objects.create(
+                    team=cls.team, journal_entry=entry, account=cls.expense_account, cr_amount=Decimal("10.00")
+                )
+
+    def setUp(self):
+        """Set up for each test."""
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_page_size_exceeds_old_default(self):
+        """The transactions endpoint should paginate above DRF's global default of 100."""
+        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 150)
+        self.assertEqual(len(response.data["results"]), 150)
+        self.assertIsNone(response.data["next"])
+
+    def test_all_entries_reachable_by_following_pagination(self):
+        """Every entry, including the oldest, must be reachable via the paginated results."""
+        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/")
+
+        descriptions = {row["description"] for row in response.data["results"]}
+        self.assertIn("Entry 0", descriptions)
+        self.assertIn("Entry 149", descriptions)
 
 
 class JournalPermissionsTest(TestCase):
