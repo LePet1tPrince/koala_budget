@@ -331,7 +331,7 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
                               <input
                                 type="text"
                                 inputMode="decimal"
-                                className={`input input-bordered input-sm w-full min-w-24 text-right font-mono ${dirty ? 'input-warning bg-warning/10 pr-6' : ''}`}
+                                className={`input input-bordered input-sm w-full min-w-24 text-right font-mono ${dirty ? 'input-warning bg-warning/10' : ''}`}
                                 value={values[key]}
                                 data-row={r}
                                 data-col={colIdx}
@@ -342,12 +342,17 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
                                 onFocus={(e) => e.target.select()}
                               />
                               {dirty && (
-                                <div className="absolute inset-y-0 right-0" data-menu-key={key}>
+                                <div
+                                  className="absolute -top-2 -right-2 z-30"
+                                  data-menu-key={key}
+                                >
                                   <button
                                     type="button"
-                                    className="h-full px-1 flex items-center leading-none text-xs opacity-70 hover:opacity-100"
+                                    tabIndex={-1}
+                                    className="flex items-center justify-center w-5 h-5 rounded-full border border-base-300 bg-base-100 shadow text-xs leading-none hover:bg-base-200"
                                     aria-label={`More options for ${row.name} ${month.label}`}
                                     data-testid="budget-grid-cell-menu-btn"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => setMenuOpenKey((prevKey) => (prevKey === key ? null : key))}
                                   >
                                     ⋮
