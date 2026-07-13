@@ -348,6 +348,54 @@ class ReportServiceTest(TestCase):
         self.assertNotIn("per_period", data["income"][0])
         self.assertNotIn("per_period", data["income_groups"][0])
 
+    def _record_transfer(self, dr_account, cr_account, amount, entry_date, description=""):
+        entry = JournalEntry.objects.create(team=self.team, entry_date=entry_date, description=description)
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=dr_account, dr_amount=amount)
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=cr_account, cr_amount=amount)
+        return entry
+
+    def test_account_activity_asset_running_balance(self):
+        """Asset drill-down carries a starting balance and a running balance per transaction."""
+        # Before the period: 500 into Cash
+        self._record_transfer(self.asset_account, self.equity_account, Decimal("500.00"), date(2024, 5, 10))
+        # In the period: +1000 then -300
+        self._record_transfer(self.asset_account, self.income_account, Decimal("1000.00"), date(2024, 6, 5))
+        self._record_transfer(self.expense_account, self.asset_account, Decimal("300.00"), date(2024, 6, 20))
+
+        data = self.service.get_account_activity(self.asset_account, date(2024, 6, 1), date(2024, 6, 30))
+
+        self.assertTrue(data["is_balance_account"])
+        self.assertEqual(data["starting_balance"], Decimal("500.00"))
+        self.assertEqual([txn["balance"] for txn in data["transactions"]], [Decimal("1500.00"), Decimal("1200.00")])
+        self.assertEqual(data["total"], Decimal("700.00"))
+        self.assertEqual(data["ending_balance"], Decimal("1200.00"))
+
+    def test_account_activity_liability_signed_like_balance_sheet(self):
+        """Liability amounts are cr - dr so the ending balance matches the balance sheet figure."""
+        # Take a 2000 loan before the period, repay 500 during it
+        self._record_transfer(self.asset_account, self.liability_account, Decimal("2000.00"), date(2024, 5, 1))
+        self._record_transfer(self.liability_account, self.asset_account, Decimal("500.00"), date(2024, 6, 10))
+
+        data = self.service.get_account_activity(self.liability_account, date(2024, 6, 1), date(2024, 6, 30))
+
+        self.assertEqual(data["starting_balance"], Decimal("2000.00"))
+        self.assertEqual(data["transactions"][0]["amount"], Decimal("-500.00"))
+        self.assertEqual(data["ending_balance"], Decimal("1500.00"))
+
+        balance_sheet = self.service.get_balance_sheet_data(date(2024, 6, 30))
+        self.assertEqual(balance_sheet["liabilities"][0]["amount"], data["ending_balance"])
+
+    def test_account_activity_expense_has_no_running_balance(self):
+        """Income/expense drill-downs keep their period-total semantics — no balances."""
+        self._record_transfer(self.expense_account, self.asset_account, Decimal("300.00"), date(2024, 6, 20))
+
+        data = self.service.get_account_activity(self.expense_account, date(2024, 6, 1), date(2024, 6, 30))
+
+        self.assertFalse(data["is_balance_account"])
+        self.assertIsNone(data["starting_balance"])
+        self.assertIsNone(data["ending_balance"])
+        self.assertNotIn("balance", data["transactions"][0])
+
     def test_balance_sheet_no_data(self):
         """Test balance sheet with no transactions."""
         as_of_date = date(2024, 12, 31)
@@ -525,6 +573,63 @@ class AccountActivityViewTest(TestCase):
         self.assertEqual(txn["contra_accounts"], [{"name": "Cash", "url": self.asset_account.get_absolute_url()}])
         self.assertEqual(txn["source"], "Import")
         self.assertContains(response, "Cash")
+
+    def test_account_activity_balance_account_shows_chart_and_running_balance(self):
+        """Asset drill-down gets balance chart data, a starting-balance row, and a Balance column."""
+        prior = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 5, 10), description="Opening")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=prior, account=self.asset_account, dr_amount=Decimal("500.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=prior, account=self.expense_account, cr_amount=Decimal("500.00")
+        )
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June rent")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
+        )
+
+        url = reverse(
+            "reports:account_activity",
+            kwargs={"team_slug": self.team.slug, "account_id": self.asset_account.pk},
+        )
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+
+        self.assertEqual(response.status_code, 200)
+        report_data = response.context["report_data"]
+        self.assertTrue(report_data["is_balance_account"])
+        self.assertEqual(report_data["starting_balance"], Decimal("500.00"))
+        self.assertEqual(report_data["ending_balance"], Decimal("-700.00"))
+        chart_data = response.context["balance_chart_data"]
+        self.assertEqual(chart_data["start_date"], "2024-06-01")
+        self.assertEqual(chart_data["end_date"], "2024-06-30")
+        self.assertEqual(chart_data["starting_balance"], 500.0)
+        self.assertEqual(chart_data["points"], [{"date": "2024-06-15", "balance": -700.0}])
+        self.assertContains(response, "Starting Balance")
+        self.assertContains(response, "account-balance-chart")
+
+    def test_account_activity_expense_account_has_no_chart_or_balance(self):
+        """Income/expense drill-downs keep the plain table — no chart, no Balance column."""
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June rent")
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
+        )
+
+        url = reverse(
+            "reports:account_activity",
+            kwargs={"team_slug": self.team.slug, "account_id": self.expense_account.pk},
+        )
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["balance_chart_data"])
+        self.assertNotContains(response, "Starting Balance")
+        self.assertNotContains(response, "account-balance-chart")
 
     def test_account_activity_other_team_account(self):
         """Permission: an account from another team is not exposed."""

@@ -130,20 +130,31 @@ def export_account_activity_csv(team, account, start_date, end_date):
     writer.writerow([f"Period: {start_date} to {end_date}"])
     writer.writerow([])
 
-    writer.writerow(["Date", "Linked Account", "Payee", "Description", "Amount", "Source"])
-    for txn in data["transactions"]:
+    is_balance_account = data["is_balance_account"]
+    header = ["Date", "Linked Account", "Payee", "Description", "Amount", "Source"]
+    if is_balance_account:
+        header.insert(5, "Balance")
+    writer.writerow(header)
+    if is_balance_account:
         writer.writerow(
-            [
-                txn["date"].isoformat(),
-                ", ".join(contra["name"] for contra in txn["contra_accounts"]),
-                txn["payee"],
-                txn["memo"],
-                _decimal_str(txn["amount"]),
-                txn["source"],
-            ]
+            [start_date.isoformat(), "", "", "Starting Balance", "", _decimal_str(data["starting_balance"]), ""]
         )
+    for txn in data["transactions"]:
+        row = [
+            txn["date"].isoformat(),
+            ", ".join(contra["name"] for contra in txn["contra_accounts"]),
+            txn["payee"],
+            txn["memo"],
+            _decimal_str(txn["amount"]),
+            txn["source"],
+        ]
+        if is_balance_account:
+            row.insert(5, _decimal_str(txn["balance"]))
+        writer.writerow(row)
     writer.writerow([])
     writer.writerow(["", "", "Total", _decimal_str(data["total"])])
+    if is_balance_account:
+        writer.writerow(["", "", "Ending Balance", _decimal_str(data["ending_balance"])])
 
     return response
 

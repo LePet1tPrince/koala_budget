@@ -377,11 +377,20 @@ class ReportService:
                 'transactions': [{
                     'date': date, 'payee': str, 'memo': str, 'amount': Decimal, 'source': str,
                     'contra_accounts': [{'name': str, 'url': str}, ...],
+                    'balance': Decimal,  # running balance, balance-type accounts only
                 }, ...],
-                'total': Decimal
+                'total': Decimal,
+                'is_balance_account': bool,
+                'starting_balance': Decimal | None,  # balance-type accounts only
+                'ending_balance': Decimal | None,
             }
+
+        For asset/liability/equity accounts the amounts are signed so that positive
+        means the account's balance-sheet balance increased (assets: dr - cr,
+        liabilities/equity: cr - dr), a starting balance is computed from all
+        activity before start_date, and each transaction carries a running balance.
         """
-        from django.db.models import F
+        from django.db.models import F, Sum
 
         # Build the queryset (voided entries don't count)
         queryset = (
@@ -400,6 +409,7 @@ class ReportService:
 
         # Determine account type for sign logic
         account_type = account.account_group.account_type
+        is_balance_account = account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, ACCOUNT_TYPE_EQUITY)
 
         # Annotate signed amount based on account type
         if account_type == ACCOUNT_TYPE_INCOME:
@@ -408,15 +418,34 @@ class ReportService:
         elif account_type == ACCOUNT_TYPE_EXPENSE:
             # Expenses: debits increase expenses
             signed_amount = F("dr_amount") - F("cr_amount")
-        else:
-            # For other account types, use debit - credit (asset/liability/equity logic)
+        elif account_type == ACCOUNT_TYPE_ASSET:
+            # Assets: debit balances are positive
             signed_amount = F("dr_amount") - F("cr_amount")
+        else:
+            # Liabilities/Equity: credit balances are positive (matches the balance sheet)
+            signed_amount = F("cr_amount") - F("dr_amount")
 
-        transactions = queryset.annotate(signed_amount=signed_amount).order_by("journal_entry__entry_date")
+        transactions = queryset.annotate(signed_amount=signed_amount).order_by(
+            "journal_entry__entry_date", "journal_entry_id", "pk"
+        )
+
+        # Starting balance: everything before the period, signed the same way
+        starting_balance = None
+        if is_balance_account:
+            starting_balance = Decimal("0")
+            if start_date:
+                starting_balance = JournalLine.objects.filter(
+                    team=self.team,
+                    account=account,
+                    journal_entry__entry_date__lt=start_date,
+                ).exclude(journal_entry__status=JournalEntry.STATUS_VOID).aggregate(balance=Sum(signed_amount))[
+                    "balance"
+                ] or Decimal("0")
 
         # Build transaction list
         transaction_list = []
         total = Decimal("0")
+        running_balance = starting_balance
 
         for line in transactions:
             contra_accounts = [
@@ -424,22 +453,27 @@ class ReportService:
                 for contra in line.journal_entry.lines.all()
                 if contra.pk != line.pk
             ]
-            transaction_list.append(
-                {
-                    "date": line.journal_entry.entry_date,
-                    "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
-                    "memo": line.journal_entry.description,
-                    "amount": line.signed_amount,
-                    "source": line.journal_entry.get_source_display(),
-                    "contra_accounts": contra_accounts,
-                }
-            )
+            transaction = {
+                "date": line.journal_entry.entry_date,
+                "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
+                "memo": line.journal_entry.description,
+                "amount": line.signed_amount,
+                "source": line.journal_entry.get_source_display(),
+                "contra_accounts": contra_accounts,
+            }
+            if is_balance_account:
+                running_balance += line.signed_amount
+                transaction["balance"] = running_balance
+            transaction_list.append(transaction)
             total += line.signed_amount
 
         return {
             "account": account,
             "transactions": transaction_list,
             "total": total,
+            "is_balance_account": is_balance_account,
+            "starting_balance": starting_balance,
+            "ending_balance": starting_balance + total if is_balance_account else None,
         }
 
     def get_net_worth_trend_data_by_date_range(self, start_date, end_date):

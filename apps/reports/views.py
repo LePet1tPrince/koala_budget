@@ -260,6 +260,21 @@ def account_activity(request, team_slug, account_id):
 
         report_data = service.get_account_activity(account, start_date, end_date)
 
+    # Balance-over-time chart data: the starting balance plus the end-of-day
+    # balance for each day with activity (the chart steps between them).
+    balance_chart_data = None
+    if report_data and report_data["is_balance_account"]:
+        day_balances = {}
+        for transaction in report_data["transactions"]:
+            day_balances[transaction["date"].isoformat()] = float(transaction["balance"])
+        balance_chart_data = {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "starting_balance": float(report_data["starting_balance"]),
+            "ending_balance": float(report_data["ending_balance"]),
+            "points": [{"date": day, "balance": balance} for day, balance in day_balances.items()],
+        }
+
     # Determine back navigation based on source parameter
     source = request.GET.get("source")
     if source == "budget":
@@ -296,6 +311,7 @@ def account_activity(request, team_slug, account_id):
             "page_title": _("Account Activity"),
             "account": account,
             "report_data": report_data,
+            "balance_chart_data": balance_chart_data,
             "start_date": start_date,
             "end_date": end_date,
             "back_url": back_url,
