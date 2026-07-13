@@ -3,13 +3,15 @@ Views for journal app.
 Provides both template views and REST API endpoints for journal entries and lines.
 """
 
-from django.db.models import Count
+from django.db.models import CharField, Count, Q
+from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from apps.accounts.models import Account
@@ -249,25 +251,82 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
 
 
 @extend_schema_view(
-    list=extend_schema(operation_id="transactions_list", tags=["journal"]),
+    list=extend_schema(
+        operation_id="transactions_list",
+        tags=["journal"],
+        parameters=[
+            OpenApiParameter(
+                name="search",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Case-insensitive search across payee, description, account name, and amount",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="start_date",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Only include entries on or after this date (YYYY-MM-DD)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="end_date",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Only include entries on or before this date (YYYY-MM-DD)",
+                required=False,
+            ),
+        ],
+    ),
 )
 class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """
     Read-only list of journal entries flattened into transaction rows.
     Only entries with exactly 2 lines are returned (simple debit/credit pairs).
+
+    Supports `search`, `start_date`, and `end_date` query params so that
+    filtering runs against the whole ledger, not just whatever page the
+    client has fetched so far.
     """
+
+    class Pagination(PageNumberPagination):
+        page_size = 200
 
     serializer_class = TransactionRowSerializer
     permission_classes = [TeamModelAccessPermissions]
+    pagination_class = Pagination
 
     def get_queryset(self):
-        return (
+        queryset = (
             JournalEntry.for_team.select_related("payee")
             .prefetch_related("lines__account")
             .annotate(line_count=Count("lines"))
             .filter(line_count=2)
-            .order_by("-entry_date", "-created_at")
         )
+
+        params = self.request.query_params
+        start_date = parse_date(params.get("start_date") or "")
+        end_date = parse_date(params.get("end_date") or "")
+        if start_date:
+            queryset = queryset.filter(entry_date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(entry_date__lte=end_date)
+
+        search = (params.get("search") or "").strip()
+        if search:
+            matching_line_entries = (
+                JournalLine.for_team.annotate(
+                    dr_str=Cast("dr_amount", CharField()),
+                    cr_str=Cast("cr_amount", CharField()),
+                )
+                .filter(Q(account__name__icontains=search) | Q(dr_str__icontains=search) | Q(cr_str__icontains=search))
+                .values_list("journal_entry_id", flat=True)
+            )
+            queryset = queryset.filter(
+                Q(payee__name__icontains=search) | Q(description__icontains=search) | Q(id__in=matching_line_entries)
+            )
+
+        return queryset.order_by("-entry_date", "-created_at")
 
 
 @login_and_team_required
