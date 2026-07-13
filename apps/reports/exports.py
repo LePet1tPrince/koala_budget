@@ -130,7 +130,7 @@ def export_account_activity_csv(team, account, start_date, end_date):
     writer.writerow([f"Period: {start_date} to {end_date}"])
     writer.writerow([])
 
-    writer.writerow(["Date", "Payee", "Description", "Amount"])
+    writer.writerow(["Date", "Payee", "Description", "Amount", "Contra Account", "Source", "Reconciled"])
     for txn in data["transactions"]:
         writer.writerow(
             [
@@ -138,6 +138,9 @@ def export_account_activity_csv(team, account, start_date, end_date):
                 txn["payee"],
                 txn["memo"],
                 _decimal_str(txn["amount"]),
+                ", ".join(contra["name"] for contra in txn["contra_accounts"]),
+                txn["source"],
+                "Yes" if txn["is_reconciled"] else "No",
             ]
         )
     writer.writerow([])

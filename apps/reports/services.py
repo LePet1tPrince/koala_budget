@@ -374,7 +374,11 @@ class ReportService:
         Returns:
             dict: {
                 'account': Account,
-                'transactions': [{'date': date, 'payee': str, 'memo': str, 'amount': Decimal}, ...],
+                'transactions': [{
+                    'date': date, 'payee': str, 'memo': str, 'amount': Decimal,
+                    'source': str, 'is_reconciled': bool, 'is_cleared': bool,
+                    'contra_accounts': [{'name': str, 'url': str}, ...],
+                }, ...],
                 'total': Decimal
             }
         """
@@ -388,6 +392,7 @@ class ReportService:
             )
             .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
             .select_related("journal_entry", "journal_entry__payee")
+            .prefetch_related("journal_entry__lines__account__account_group")
         )
 
         # Apply date filter if provided
@@ -415,12 +420,21 @@ class ReportService:
         total = Decimal("0")
 
         for line in transactions:
+            contra_accounts = [
+                {"name": contra.account.name, "url": contra.account.get_absolute_url()}
+                for contra in line.journal_entry.lines.all()
+                if contra.pk != line.pk
+            ]
             transaction_list.append(
                 {
                     "date": line.journal_entry.entry_date,
                     "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
                     "memo": line.journal_entry.description,
                     "amount": line.signed_amount,
+                    "source": line.journal_entry.get_source_display(),
+                    "is_reconciled": line.is_reconciled,
+                    "is_cleared": line.is_cleared,
+                    "contra_accounts": contra_accounts,
                 }
             )
             total += line.signed_amount
