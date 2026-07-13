@@ -77,6 +77,7 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
   const [values, setValues] = useState(buildInitialValues);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null); // {type: 'success'|'error', message}
+  const [menuOpenKey, setMenuOpenKey] = useState(null);
   const containerRef = useRef(null);
 
   const isDirty = useCallback(
@@ -105,6 +106,16 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
     const timer = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // Close the cell menu on any click outside of it
+  useEffect(() => {
+    if (!menuOpenKey) return undefined;
+    const handleClick = (e) => {
+      if (!e.target.closest(`[data-menu-key="${menuOpenKey}"]`)) setMenuOpenKey(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuOpenKey]);
 
   const setCell = (rowIdx, colIdx, text) => {
     const key = cellKey(flatRows[rowIdx].id, months[colIdx].key);
@@ -218,6 +229,27 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
 
   const handleDiscard = () => setValues(savedValues);
 
+  // Copy a cell's value to other months in the same calendar year for the
+  // same category. `mode: 'year'` fills the whole year; `mode: 'forward'`
+  // fills only that month and later ones, leaving earlier months untouched.
+  // Only edits in-memory — the user still has to Save to persist it.
+  const applyToYear = (rowIdx, colIdx, mode) => {
+    const row = flatRows[rowIdx];
+    const sourceMonth = months[colIdx];
+    const year = sourceMonth.key.slice(0, 4);
+    const sourceValue = values[cellKey(row.id, sourceMonth.key)];
+    setValues((prev) => {
+      const next = { ...prev };
+      months.forEach((month, idx) => {
+        if (month.key.slice(0, 4) !== year) return;
+        if (mode === 'forward' && idx < colIdx) return;
+        next[cellKey(row.id, month.key)] = sourceValue;
+      });
+      return next;
+    });
+    setMenuOpenKey(null);
+  };
+
   const navigate = (start) => {
     if (dirtyKeys.length > 0 && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     const url = new URL(window.location);
@@ -295,19 +327,59 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
                         const dirty = isDirty(key);
                         return (
                           <td key={month.key} className="p-1">
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              className={`input input-bordered input-sm w-full min-w-24 text-right font-mono ${dirty ? 'input-warning bg-warning/10' : ''}`}
-                              value={values[key]}
-                              data-row={r}
-                              data-col={colIdx}
-                              aria-label={`${row.name} ${month.label}`}
-                              onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-                              onPaste={(e) => handlePaste(e, r, colIdx)}
-                              onKeyDown={(e) => handleKeyDown(e, r, colIdx)}
-                              onFocus={(e) => e.target.select()}
-                            />
+                            <div className="relative">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                className={`input input-bordered input-sm w-full min-w-24 text-right font-mono ${dirty ? 'input-warning bg-warning/10 pr-6' : ''}`}
+                                value={values[key]}
+                                data-row={r}
+                                data-col={colIdx}
+                                aria-label={`${row.name} ${month.label}`}
+                                onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                                onPaste={(e) => handlePaste(e, r, colIdx)}
+                                onKeyDown={(e) => handleKeyDown(e, r, colIdx)}
+                                onFocus={(e) => e.target.select()}
+                              />
+                              {dirty && (
+                                <div className="absolute inset-y-0 right-0" data-menu-key={key}>
+                                  <button
+                                    type="button"
+                                    className="h-full px-1 flex items-center leading-none text-xs opacity-70 hover:opacity-100"
+                                    aria-label={`More options for ${row.name} ${month.label}`}
+                                    data-testid="budget-grid-cell-menu-btn"
+                                    onClick={() => setMenuOpenKey((prevKey) => (prevKey === key ? null : key))}
+                                  >
+                                    ⋮
+                                  </button>
+                                  {menuOpenKey === key && (
+                                    <ul
+                                      className="dropdown-content menu menu-sm absolute right-0 top-full mt-1 z-40 w-52 bg-base-100 rounded-box shadow border border-base-300 p-1"
+                                      data-testid="budget-grid-cell-menu"
+                                    >
+                                      <li>
+                                        <button
+                                          type="button"
+                                          data-testid="budget-grid-apply-year"
+                                          onClick={() => applyToYear(r, colIdx, 'year')}
+                                        >
+                                          Apply to entire year
+                                        </button>
+                                      </li>
+                                      <li>
+                                        <button
+                                          type="button"
+                                          data-testid="budget-grid-apply-forward"
+                                          onClick={() => applyToYear(r, colIdx, 'forward')}
+                                        >
+                                          Apply forward (rest of year)
+                                        </button>
+                                      </li>
+                                    </ul>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </td>
                         );
                       })}
