@@ -6,6 +6,10 @@
   <table class="table table-sm w-full" data-testid="budget-table">
     <thead>
       <tr>
+        <th class="text-center w-8">
+          <input type="checkbox" class="checkbox checkbox-sm" id="budget-select-all" checked
+                 title="{% translate 'Select all categories' %}">
+        </th>
         <th>{% translate "Category" %}</th>
         <th class="text-right">{% translate "Budgeted" %}</th>
         <th class="text-right">{% translate "Actual" %}</th>
@@ -16,7 +20,7 @@
     <tbody>
       {% if not has_categories %}
       <tr>
-        <td colspan="5" class="text-center text-gray-500 py-8" data-testid="budget-empty-state">
+        <td colspan="6" class="text-center text-gray-500 py-8" data-testid="budget-empty-state">
           {% translate "No budget categories found. Please add income or expense accounts first." %}
         </td>
       </tr>
@@ -26,18 +30,25 @@
         {% if section.groups %}
         <!-- Section Header -->
         <tr class="bg-base-300">
-          <td colspan="5" class="font-bold text-lg">{{ section.label }}</td>
+          <td colspan="6" class="font-bold text-lg">{{ section.label }}</td>
         </tr>
 
         {% for group in section.groups %}
           <!-- Group Header -->
           <tr class="bg-base-200">
-            <td colspan="5" class="font-bold">{{ group.name }}</td>
+            <td colspan="6" class="font-bold">{{ group.name }}</td>
           </tr>
 
           <!-- Group Rows -->
           {% for row in group.rows %}
           <tr data-testid="budget-row">
+            <td class="text-center">
+              <input type="checkbox" class="checkbox checkbox-sm budget-row-checkbox" checked
+                     data-testid="budget-row-checkbox"
+                     data-category-id="{{ row.category.pk }}"
+                     data-category-name="{{ row.category.name }}"
+                     data-budgeted="{{ row.budgeted }}">
+            </td>
             <td class="pl-8">
               <a href="{% url 'reports:account_activity' request.team.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget" class="link link-primary">
                 <div class="font-medium">{{ row.category.name }}</div>
@@ -85,6 +96,7 @@
 
           <!-- Group Subtotal -->
           <tr class="bg-base-200 font-bold">
+            <td></td>
             <td class="pl-8">{% translate "Subtotal" %} - {{ group.name }}</td>
             <td class="text-right">
               <span class="font-mono">{{ group.subtotals.budgeted|currency }}</span>
@@ -104,6 +116,7 @@
         <!-- Section Total -->
         <tr class="bg-primary text-primary-content font-bold"
             data-testid="{% if section.key == 'expense' %}budget-grand-total{% else %}budget-total-income{% endif %}">
+          <td></td>
           <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
           <td class="text-right">
             <span class="font-mono">{{ section.totals.budgeted|currency }}</span>
@@ -119,7 +132,7 @@
 
         <!-- Spacer row between sections -->
         <tr class="h-2">
-          <td colspan="5"></td>
+          <td colspan="6"></td>
         </tr>
         {% endif %}
       {% endfor %}
@@ -151,4 +164,24 @@
       }
     });
   });
+
+  // "Select all" checkbox in the header keeps in sync with the per-row checkboxes
+  // used to scope the Auto-Assign actions (see budget_sidebar.html).
+  (function () {
+    const selectAll = document.getElementById('budget-select-all');
+    if (!selectAll) return;
+    const rowCheckboxes = () => Array.from(document.querySelectorAll('.budget-row-checkbox'));
+
+    selectAll.addEventListener('change', function () {
+      rowCheckboxes().forEach(function (cb) { cb.checked = selectAll.checked; });
+    });
+
+    rowCheckboxes().forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        const boxes = rowCheckboxes();
+        selectAll.checked = boxes.every(function (b) { return b.checked; });
+        selectAll.indeterminate = !selectAll.checked && boxes.some(function (b) { return b.checked; });
+      });
+    });
+  })();
 </script>

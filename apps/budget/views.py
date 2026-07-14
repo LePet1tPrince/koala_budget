@@ -196,6 +196,13 @@ def budget_autofill_view(request, team_slug):
         .order_by("account_group__name", "name")
     )
 
+    # The frontend lets the user pick which categories this action applies to
+    # (checkboxes next to each budget row). "filtered" distinguishes an explicit
+    # empty selection from the no-JS fallback, which still applies to everything.
+    if request.POST.get("filtered"):
+        selected_ids = {cid for cid in request.POST.getlist("category_ids") if cid}
+        categories = [c for c in categories if str(c.pk) in selected_ids]
+
     # Ensure budgets exist for this month
     existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
     missing_budgets = []
@@ -239,8 +246,11 @@ def budget_autofill_view(request, team_slug):
         messages.success(request, _("Budgets set to last month's spending."))
 
     elif action == "assign_zero":
-        Budget.objects.filter(team=request.team, month=month).update(budget_amount=Decimal("0"))
-        messages.success(request, _("All budgets set to zero."))
+        category_pks = [cat.pk for cat in categories]
+        Budget.objects.filter(team=request.team, month=month, category_id__in=category_pks).update(
+            budget_amount=Decimal("0")
+        )
+        messages.success(request, _("Budgets set to zero."))
 
     elif action == "reset_available_zero":
         prev_available = service.get_available_by_category(prev_month, categories)

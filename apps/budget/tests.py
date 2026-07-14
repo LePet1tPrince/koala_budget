@@ -457,6 +457,65 @@ class BudgetMonthViewTest(TestCase):
         self.assertEqual(Budget.objects.filter(team=self.team).count(), 1)
 
 
+class BudgetAutofillViewTest(TestCase):
+    """Tests for budget_autofill_view, including the category_ids selection filter."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Autofill Test Team", slug="autofill-test-team")
+        cls.user = CustomUser.objects.create_user(username="autofilluser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Autofill Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.groceries = Account.objects.create(
+            team=cls.team, name="Autofill Groceries", account_group=cls.expense_group
+        )
+        cls.rent = Account.objects.create(team=cls.team, name="Autofill Rent", account_group=cls.expense_group)
+
+    def setUp(self):
+        self.client.login(username="autofilluser@example.com", password="testpass123")
+        self.prev_month = date(2025, 5, 1)
+        self.month = date(2025, 6, 1)
+        Budget.objects.create(
+            team=self.team, category=self.groceries, month=self.prev_month, budget_amount=Decimal("100.00")
+        )
+        Budget.objects.create(
+            team=self.team, category=self.rent, month=self.prev_month, budget_amount=Decimal("900.00")
+        )
+
+    def test_assigned_last_month_applies_to_all_when_not_filtered(self):
+        """Without the 'filtered' marker (no-JS fallback), the action applies to every category."""
+        response = self.client.post(
+            f"/a/{self.team.slug}/budget/autofill/",
+            {"month": "2025-06-01", "action": "assigned_last_month"},
+        )
+        self.assertEqual(response.status_code, 302)
+        groceries_budget = Budget.objects.get(team=self.team, category=self.groceries, month=self.month)
+        rent_budget = Budget.objects.get(team=self.team, category=self.rent, month=self.month)
+        self.assertEqual(groceries_budget.budget_amount, Decimal("100.00"))
+        self.assertEqual(rent_budget.budget_amount, Decimal("900.00"))
+
+    def test_assigned_last_month_respects_category_selection(self):
+        """When filtered, only the selected category_ids are touched."""
+        response = self.client.post(
+            f"/a/{self.team.slug}/budget/autofill/",
+            {
+                "month": "2025-06-01",
+                "action": "assigned_last_month",
+                "filtered": "1",
+                "category_ids": [str(self.groceries.pk)],
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        groceries_budget = Budget.objects.get(team=self.team, category=self.groceries, month=self.month)
+        self.assertEqual(groceries_budget.budget_amount, Decimal("100.00"))
+        self.assertFalse(Budget.objects.filter(team=self.team, category=self.rent, month=self.month).exists())
+
+
 class BudgetGridViewTest(TestCase):
     """Tests for the multi-month budget grid editor and its bulk save endpoint."""
 
