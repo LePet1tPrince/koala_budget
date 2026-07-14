@@ -10,13 +10,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const data = JSON.parse(dataEl.textContent);
   if (!data.labels || data.labels.length === 0) return;
 
-  // Actual earns green for income, spends red for expenses; Budgeted stays a
-  // recessive neutral (it's the plan); the Available rollover line is blue.
-  const actualColor = data.account_type === 'income' ? MONEY.in : MONEY.out;
-  const budgetColor = 'rgba(128, 128, 128, 0.45)';
+  // Green for income, red for expenses; the Available rollover line is blue.
+  // Budgeted and Actual fully overlap (grouped: false) so each month reads as
+  // a progress bar: the Budgeted outline is the container, the solid Actual
+  // fill shows how much of it is used. The outline is a darker step of the
+  // same hue so it stays visible where an over-budget fill overflows it.
+  const income = data.account_type === 'income';
+  const seriesColor = income ? MONEY.in : MONEY.out;
+  const outlineColor = income ? 'rgb(15, 118, 66)' : 'rgb(185, 28, 28)';
 
   const ink = getInk(canvas);
   const surface = getSurface(canvas);
+  const barLayout = {grouped: false, barPercentage: 0.6, categoryPercentage: 0.8};
 
   const chart = new Chart(canvas, {
     data: {
@@ -38,18 +43,26 @@ document.addEventListener('DOMContentLoaded', () => {
           tension: 0.3,
         },
         {
+          // Outline only — drawn over the Actual fill so the budget container
+          // stays visible whether the fill is inside it or overflows it.
           type: 'bar',
           label: 'Budgeted',
           data: data.budgeted,
-          backgroundColor: budgetColor,
+          backgroundColor: 'transparent',
+          borderColor: outlineColor,
+          borderWidth: 2,
+          borderSkipped: false,
           borderRadius: 4,
+          ...barLayout,
         },
         {
           type: 'bar',
           label: 'Actual',
           data: data.actual,
-          backgroundColor: actualColor,
+          backgroundColor: seriesColor,
+          borderWidth: 0,
           borderRadius: 4,
+          ...barLayout,
         },
       ],
     },
