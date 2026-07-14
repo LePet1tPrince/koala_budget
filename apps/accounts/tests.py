@@ -461,6 +461,82 @@ class AccountViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["object"], account)
 
+    def test_account_detail_view_activity_section(self):
+        """The detail view embeds the activity section: report data, chart data, and date range."""
+        from datetime import date
+        from decimal import Decimal
+
+        from apps.journal.models import JournalEntry, JournalLine
+
+        expense_group = AccountGroup.objects.create(team=self.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        account = Account.objects.create(team=self.team, name="Detail Cash", account_group=self.account_group)
+        expense = Account.objects.create(team=self.team, name="Detail Rent", account_group=expense_group)
+
+        prior = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 5, 10), description="Opening")
+        JournalLine.objects.create(team=self.team, journal_entry=prior, account=account, dr_amount=Decimal("500.00"))
+        JournalLine.objects.create(team=self.team, journal_entry=prior, account=expense, cr_amount=Decimal("500.00"))
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="Rent")
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, cr_amount=Decimal("1200.00"))
+
+        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["start_date"], date(2024, 6, 1))
+        self.assertEqual(response.context["end_date"], date(2024, 6, 30))
+        report_data = response.context["report_data"]
+        self.assertEqual(report_data["starting_balance"], Decimal("500.00"))
+        self.assertEqual(report_data["ending_balance"], Decimal("-700.00"))
+        chart_data = response.context["balance_chart_data"]
+        self.assertEqual(chart_data["points"], [{"date": "2024-06-15", "balance": -700.0}])
+        self.assertContains(response, "Starting Balance")
+        self.assertContains(response, "account-balance-chart")
+        self.assertContains(response, "date-range-picker")
+
+    def test_account_detail_view_expense_budget_chart(self):
+        """Expense account detail embeds the budget-vs-actual chart instead of the balance chart."""
+        from datetime import date
+        from decimal import Decimal
+
+        from apps.budget.models import Budget
+        from apps.journal.models import JournalEntry, JournalLine
+
+        expense_group = AccountGroup.objects.create(team=self.team, name="Bills", account_type=ACCOUNT_TYPE_EXPENSE)
+        asset = Account.objects.create(team=self.team, name="Chart Cash", account_group=self.account_group)
+        expense = Account.objects.create(team=self.team, name="Chart Rent", account_group=expense_group)
+        Budget.objects.create(
+            team=self.team, category=expense, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
+        )
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="Rent")
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=asset, cr_amount=Decimal("1200.00"))
+
+        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": expense.pk})
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["balance_chart_data"])
+        budget_chart = response.context["budget_chart_data"]
+        self.assertEqual(budget_chart["budgeted"], [1500.0])
+        self.assertEqual(budget_chart["actual"], [1200.0])
+        self.assertEqual(budget_chart["available"], [300.0])
+        self.assertContains(response, "account-budget-chart")
+        self.assertNotContains(response, "account-balance-chart")
+
+    def test_account_detail_view_defaults_to_current_month(self):
+        """Without date params the activity section defaults to the current month."""
+        from datetime import date
+
+        account = Account.objects.create(team=self.team, name="Default Range", account_group=self.account_group)
+        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        response = self.client.get(url)
+
+        today = date.today()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["start_date"], today.replace(day=1))
+        self.assertEqual(response.context["end_date"], today)
+
     def test_account_update_view(self):
         """Test account update view."""
         account = Account.objects.create(team=self.team, name="Old Name", account_group=self.account_group)

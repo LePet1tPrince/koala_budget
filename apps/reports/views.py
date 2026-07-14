@@ -260,6 +260,11 @@ def account_activity(request, team_slug, account_id):
 
         report_data = service.get_account_activity(account, start_date, end_date)
 
+    balance_chart_data = (
+        ReportService.build_balance_chart_data(report_data, start_date, end_date) if report_data else None
+    )
+    budget_chart_data = service.get_budget_vs_actual_chart_data(account, start_date, end_date) if account else None
+
     # Determine back navigation based on source parameter
     source = request.GET.get("source")
     if source == "budget":
@@ -296,6 +301,8 @@ def account_activity(request, team_slug, account_id):
             "page_title": _("Account Activity"),
             "account": account,
             "report_data": report_data,
+            "balance_chart_data": balance_chart_data,
+            "budget_chart_data": budget_chart_data,
             "start_date": start_date,
             "end_date": end_date,
             "back_url": back_url,

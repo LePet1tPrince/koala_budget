@@ -41,56 +41,7 @@
   </div>
 
   {% if report_data %}
-  <!-- Transactions Section -->
-  <div class="card bg-base-100 shadow-lg">
-    <div class="card-body p-4">
-      <div class="overflow-x-auto">
-        <table class="table table-sm table-zebra w-full">
-          <thead>
-            <tr>
-              <th>{% translate "Date" %}</th>
-              <th>{% translate "Linked Account" %}</th>
-              <th>{% translate "Payee" %}</th>
-              <th>{% translate "Memo" %}</th>
-              <th class="text-right">{% translate "Amount" %}</th>
-              <th>{% translate "Source" %}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for transaction in report_data.transactions %}
-            <tr>
-              <td class="whitespace-nowrap">{{ transaction.date|date:"M j, Y" }}</td>
-              <td>
-                {% if transaction.contra_accounts %}
-                  {% for contra in transaction.contra_accounts %}
-                    <a href="{{ contra.url }}" class="link link-hover">{{ contra.name }}</a>{% if not forloop.last %}, {% endif %}
-                  {% endfor %}
-                {% else %}
-                  <span class="text-base-content/40">&mdash;</span>
-                {% endif %}
-              </td>
-              <td>{{ transaction.payee }}</td>
-              <td>{{ transaction.memo }}</td>
-              <td class="text-right tabular-nums {% if transaction.amount < 0 %}text-error{% endif %}">{{ transaction.amount|currency }}</td>
-              <td class="text-base-content/60 whitespace-nowrap">{{ transaction.source }}</td>
-            </tr>
-            {% empty %}
-            <tr>
-              <td colspan="6" class="text-center text-base-content/60 py-4">{% translate "No transactions for this account in the selected period" %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-          <tfoot>
-            <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
-              <td colspan="4">{% translate "Total" %}</td>
-              <td class="text-right tabular-nums {% if report_data.total < 0 %}text-error{% endif %}">{{ report_data.total|currency }}</td>
-              <td></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </div>
-  </div>
+  {% include "reports/components/account_activity_section.html" %}
   {% else %}
   <div class="alert alert-warning">
     <div>
@@ -108,4 +59,12 @@
 </script>
 {% vite_react_refresh %}
 {% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
+{% if balance_chart_data %}
+{{ balance_chart_data|json_script:'account-balance-data' }}
+{% vite_asset 'assets/javascript/reports/account-balance-chart.js' %}
+{% endif %}
+{% if budget_chart_data %}
+{{ budget_chart_data|json_script:'account-budget-data' }}
+{% vite_asset 'assets/javascript/reports/account-budget-chart.js' %}
+{% endif %}
 {% endblock %}

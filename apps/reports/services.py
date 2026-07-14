@@ -367,6 +367,130 @@ class ReportService:
             "liability_groups": liability_series,
         }
 
+    def get_budget_vs_actual_chart_data(self, account, start_date, end_date):
+        """
+        Per-month Budgeted vs Actual (plus rolling Available) chart data for an
+        income/expense account, chart-ready floats. None for other account types.
+
+        Available follows the budget page's rollover semantics (BudgetService):
+        expense: Budget - Actual + previous Available; income: Actual - Budget +
+        previous Available — accumulated from the account's first budget or
+        activity month, which may predate the displayed range.
+
+        Returns:
+            dict | None: {
+                'labels': ['Jan 2026', ...],
+                'budgeted': [float, ...], 'actual': [float, ...], 'available': [float, ...],
+                'account_type': 'income' | 'expense',
+            }
+        """
+        from django.db.models import F, Sum
+        from django.db.models.functions import TruncMonth
+
+        from apps.budget.models import Budget
+
+        account_type = account.account_group.account_type
+        if account_type not in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE):
+            return None
+
+        months = self._period_range(start_date, end_date, "month")
+        if not months:
+            return None
+        month_after_last = (months[-1] + timedelta(days=32)).replace(day=1)
+
+        # Available accumulates from the account's first budget/activity month.
+        first_budget_month = (
+            Budget.objects.filter(team=self.team, category=account)
+            .order_by("month")
+            .values_list("month", flat=True)
+            .first()
+        )
+        first_activity_date = (
+            JournalLine.objects.filter(team=self.team, account=account)
+            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .order_by("journal_entry__entry_date")
+            .values_list("journal_entry__entry_date", flat=True)
+            .first()
+        )
+        candidates = [months[0]]
+        if first_budget_month:
+            candidates.append(first_budget_month)
+        if first_activity_date:
+            candidates.append(first_activity_date.replace(day=1))
+        first_month = min(candidates)
+
+        budgets = dict(
+            Budget.objects.filter(
+                team=self.team, category=account, month__gte=first_month, month__lt=month_after_last
+            ).values_list("month", "budget_amount")
+        )
+
+        if account_type == ACCOUNT_TYPE_INCOME:
+            signed_amount = F("cr_amount") - F("dr_amount")
+        else:
+            signed_amount = F("dr_amount") - F("cr_amount")
+        actuals = {
+            row["month"]: row["total"]
+            for row in (
+                JournalLine.objects.filter(
+                    team=self.team,
+                    account=account,
+                    journal_entry__entry_date__gte=first_month,
+                    journal_entry__entry_date__lt=month_after_last,
+                )
+                .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+                .annotate(month=TruncMonth("journal_entry__entry_date"))
+                .values("month")
+                .annotate(total=Sum(signed_amount))
+            )
+        }
+
+        displayed = set(months)
+        budgeted_series, actual_series, available_series = [], [], []
+        available = Decimal("0")
+        current = first_month
+        while current < month_after_last:
+            budgeted = budgets.get(current, Decimal("0"))
+            actual = actuals.get(current, Decimal("0"))
+            if account_type == ACCOUNT_TYPE_INCOME:
+                available = actual - budgeted + available
+            else:
+                available = budgeted - actual + available
+            if current in displayed:
+                budgeted_series.append(float(budgeted))
+                actual_series.append(float(actual))
+                available_series.append(float(available))
+            month = current.month + 1
+            current = date(current.year + (month - 1) // 12, (month - 1) % 12 + 1, 1)
+
+        return {
+            "labels": [self._period_label(bucket, "month") for bucket in months],
+            "budgeted": budgeted_series,
+            "actual": actual_series,
+            "available": available_series,
+            "account_type": account_type,
+        }
+
+    @staticmethod
+    def build_balance_chart_data(report_data, start_date, end_date):
+        """
+        Chart-ready floats for the balance-over-time chart on an account activity
+        page: the starting balance plus the end-of-day balance for each day with
+        activity (the chart steps between them). None for income/expense accounts.
+        """
+        if not report_data["is_balance_account"]:
+            return None
+        day_balances = {}
+        for transaction in report_data["transactions"]:
+            day_balances[transaction["date"].isoformat()] = float(transaction["balance"])
+        return {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "starting_balance": float(report_data["starting_balance"]),
+            "ending_balance": float(report_data["ending_balance"]),
+            "points": [{"date": day, "balance": balance} for day, balance in day_balances.items()],
+        }
+
     def get_account_activity(self, account, start_date=None, end_date=None):
         """
         Get detailed activity for a specific account within a date range.
@@ -377,11 +501,20 @@ class ReportService:
                 'transactions': [{
                     'date': date, 'payee': str, 'memo': str, 'amount': Decimal, 'source': str,
                     'contra_accounts': [{'name': str, 'url': str}, ...],
+                    'balance': Decimal,  # running balance, balance-type accounts only
                 }, ...],
-                'total': Decimal
+                'total': Decimal,
+                'is_balance_account': bool,
+                'starting_balance': Decimal | None,  # balance-type accounts only
+                'ending_balance': Decimal | None,
             }
+
+        For asset/liability/equity accounts the amounts are signed so that positive
+        means the account's balance-sheet balance increased (assets: dr - cr,
+        liabilities/equity: cr - dr), a starting balance is computed from all
+        activity before start_date, and each transaction carries a running balance.
         """
-        from django.db.models import F
+        from django.db.models import F, Sum
 
         # Build the queryset (voided entries don't count)
         queryset = (
@@ -400,6 +533,7 @@ class ReportService:
 
         # Determine account type for sign logic
         account_type = account.account_group.account_type
+        is_balance_account = account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, ACCOUNT_TYPE_EQUITY)
 
         # Annotate signed amount based on account type
         if account_type == ACCOUNT_TYPE_INCOME:
@@ -408,15 +542,34 @@ class ReportService:
         elif account_type == ACCOUNT_TYPE_EXPENSE:
             # Expenses: debits increase expenses
             signed_amount = F("dr_amount") - F("cr_amount")
-        else:
-            # For other account types, use debit - credit (asset/liability/equity logic)
+        elif account_type == ACCOUNT_TYPE_ASSET:
+            # Assets: debit balances are positive
             signed_amount = F("dr_amount") - F("cr_amount")
+        else:
+            # Liabilities/Equity: credit balances are positive (matches the balance sheet)
+            signed_amount = F("cr_amount") - F("dr_amount")
 
-        transactions = queryset.annotate(signed_amount=signed_amount).order_by("journal_entry__entry_date")
+        transactions = queryset.annotate(signed_amount=signed_amount).order_by(
+            "journal_entry__entry_date", "journal_entry_id", "pk"
+        )
+
+        # Starting balance: everything before the period, signed the same way
+        starting_balance = None
+        if is_balance_account:
+            starting_balance = Decimal("0")
+            if start_date:
+                starting_balance = JournalLine.objects.filter(
+                    team=self.team,
+                    account=account,
+                    journal_entry__entry_date__lt=start_date,
+                ).exclude(journal_entry__status=JournalEntry.STATUS_VOID).aggregate(balance=Sum(signed_amount))[
+                    "balance"
+                ] or Decimal("0")
 
         # Build transaction list
         transaction_list = []
         total = Decimal("0")
+        running_balance = starting_balance
 
         for line in transactions:
             contra_accounts = [
@@ -424,22 +577,27 @@ class ReportService:
                 for contra in line.journal_entry.lines.all()
                 if contra.pk != line.pk
             ]
-            transaction_list.append(
-                {
-                    "date": line.journal_entry.entry_date,
-                    "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
-                    "memo": line.journal_entry.description,
-                    "amount": line.signed_amount,
-                    "source": line.journal_entry.get_source_display(),
-                    "contra_accounts": contra_accounts,
-                }
-            )
+            transaction = {
+                "date": line.journal_entry.entry_date,
+                "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
+                "memo": line.journal_entry.description,
+                "amount": line.signed_amount,
+                "source": line.journal_entry.get_source_display(),
+                "contra_accounts": contra_accounts,
+            }
+            if is_balance_account:
+                running_balance += line.signed_amount
+                transaction["balance"] = running_balance
+            transaction_list.append(transaction)
             total += line.signed_amount
 
         return {
             "account": account,
             "transactions": transaction_list,
             "total": total,
+            "is_balance_account": is_balance_account,
+            "starting_balance": starting_balance,
+            "ending_balance": starting_balance + total if is_balance_account else None,
         }
 
     def get_net_worth_trend_data_by_date_range(self, start_date, end_date):
