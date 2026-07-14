@@ -38,8 +38,11 @@
     <!-- Auto-Assign Options -->
     <div class="bg-base-100 rounded-lg shadow p-5">
       <h3 class="font-bold text-lg mb-4">{% translate "Auto-Assign" %}</h3>
+      <p class="text-xs text-gray-500 -mt-2 mb-2">
+        {% translate "Applies to the categories checked in the table. Uncheck any you want to leave alone." %}
+      </p>
       <div class="flex flex-col gap-2">
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}">
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}" data-autofill-form>
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
           <input type="hidden" name="action" value="assigned_last_month">
@@ -48,7 +51,7 @@
           </button>
         </form>
 
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}">
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}" data-autofill-form>
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
           <input type="hidden" name="action" value="spent_last_month">
@@ -57,7 +60,7 @@
           </button>
         </form>
 
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}">
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}" data-autofill-form>
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
           <input type="hidden" name="action" value="assign_zero">
@@ -66,7 +69,7 @@
           </button>
         </form>
 
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}">
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}" data-autofill-form>
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
           <input type="hidden" name="action" value="reset_available_zero">
@@ -78,3 +81,98 @@
     </div>
   </div>
 </div>
+
+<!-- Confirmation dialog shown when an Auto-Assign action would overwrite an existing budget amount -->
+<dialog id="budget-autofill-confirm-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg">{% translate "Override existing budget?" %}</h3>
+    <p class="py-4" id="budget-autofill-confirm-message"></p>
+    <div class="modal-action">
+      <form method="dialog">
+        <button class="btn">{% translate "Cancel" %}</button>
+      </form>
+      <button type="button" id="budget-autofill-confirm-btn" class="btn btn-primary">
+        {% translate "Override" %}
+      </button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>{% translate "close" %}</button>
+  </form>
+</dialog>
+
+<script>
+  (function () {
+    const modal = document.getElementById('budget-autofill-confirm-modal');
+    const modalMessage = document.getElementById('budget-autofill-confirm-message');
+    const modalConfirmBtn = document.getElementById('budget-autofill-confirm-btn');
+    let pendingForm = null;
+
+    const rowCheckboxes = () => Array.from(document.querySelectorAll('.budget-row-checkbox'));
+
+    document.querySelectorAll('form[data-autofill-form]').forEach(function (form) {
+      form.addEventListener('submit', function (e) {
+        if (form.dataset.confirmed === '1') {
+          // Already confirmed (or nothing to confirm) — let this submission through.
+          form.dataset.confirmed = '';
+          return;
+        }
+        e.preventDefault();
+
+        const selected = rowCheckboxes().filter(function (cb) { return cb.checked; });
+
+        if (rowCheckboxes().length && !selected.length) {
+          window.alert("{% translate 'Select at least one category to apply this to.' %}");
+          return;
+        }
+
+        form.querySelectorAll('input[name="category_ids"]').forEach(function (el) { el.remove(); });
+        selected.forEach(function (cb) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'category_ids';
+          input.value = cb.dataset.categoryId;
+          form.appendChild(input);
+        });
+
+        let filteredInput = form.querySelector('input[name="filtered"]');
+        if (!filteredInput) {
+          filteredInput = document.createElement('input');
+          filteredInput.type = 'hidden';
+          filteredInput.name = 'filtered';
+          form.appendChild(filteredInput);
+        }
+        filteredInput.value = '1';
+
+        const existingCount = selected.filter(function (cb) {
+          return parseFloat(cb.dataset.budgeted || '0') !== 0;
+        }).length;
+
+        if (existingCount > 0 && modal) {
+          pendingForm = form;
+          modalMessage.textContent = (
+            existingCount + (existingCount === 1 ? " of the selected categories already has" : " of the selected categories already have") +
+            " a budget amount set for this month. Continuing will overwrite " +
+            (existingCount === 1 ? "it" : "them") +
+            ". This can't be undone. Continue?"
+          );
+          modal.showModal();
+        } else {
+          form.dataset.confirmed = '1';
+          form.requestSubmit();
+        }
+      });
+    });
+
+    if (modalConfirmBtn) {
+      modalConfirmBtn.addEventListener('click', function () {
+        if (pendingForm) {
+          pendingForm.dataset.confirmed = '1';
+          pendingForm.requestSubmit();
+          pendingForm = null;
+        }
+        modal.close();
+      });
+    }
+  })();
+</script>
