@@ -367,6 +367,26 @@ class ReportService:
             "liability_groups": liability_series,
         }
 
+    @staticmethod
+    def build_balance_chart_data(report_data, start_date, end_date):
+        """
+        Chart-ready floats for the balance-over-time chart on an account activity
+        page: the starting balance plus the end-of-day balance for each day with
+        activity (the chart steps between them). None for income/expense accounts.
+        """
+        if not report_data["is_balance_account"]:
+            return None
+        day_balances = {}
+        for transaction in report_data["transactions"]:
+            day_balances[transaction["date"].isoformat()] = float(transaction["balance"])
+        return {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "starting_balance": float(report_data["starting_balance"]),
+            "ending_balance": float(report_data["ending_balance"]),
+            "points": [{"date": day, "balance": balance} for day, balance in day_balances.items()],
+        }
+
     def get_account_activity(self, account, start_date=None, end_date=None):
         """
         Get detailed activity for a specific account within a date range.

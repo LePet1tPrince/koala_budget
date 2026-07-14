@@ -1,0 +1,85 @@
+{% load i18n %}
+{% load currency_tags %}
+{# Shared account activity section: balance-over-time chart + transactions table. #}
+{# Context: report_data, balance_chart_data, start_date. #}
+{% if balance_chart_data %}
+<!-- Balance-over-time chart (collapsible, open by default) -->
+<div class="collapse collapse-arrow bg-base-100 shadow-lg mb-4" data-testid="account-balance-chart-panel">
+  <input type="checkbox" checked aria-label="{% translate 'Toggle balance chart' %}" />
+  <div class="collapse-title font-medium">{% translate "Balance Over Time" %}</div>
+  <div class="collapse-content">
+    <div class="h-64 md:h-72">
+      <canvas id="account-balance-chart" class="w-full h-full"></canvas>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Transactions Section -->
+<div class="card bg-base-100 shadow-lg">
+  <div class="card-body p-4">
+    <div class="overflow-x-auto">
+      <table class="table table-sm table-zebra w-full">
+        <thead>
+          <tr>
+            <th>{% translate "Date" %}</th>
+            <th>{% translate "Linked Account" %}</th>
+            <th>{% translate "Payee" %}</th>
+            <th>{% translate "Memo" %}</th>
+            <th class="text-right">{% translate "Amount" %}</th>
+            {% if report_data.is_balance_account %}
+            <th class="text-right">{% translate "Balance" %}</th>
+            {% endif %}
+            <th>{% translate "Source" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if report_data.is_balance_account %}
+          <tr data-testid="starting-balance-row">
+            <td class="whitespace-nowrap">{{ start_date|date:"M j, Y" }}</td>
+            <td colspan="3" class="italic text-base-content/60">{% translate "Starting Balance" %}</td>
+            <td></td>
+            <td class="text-right tabular-nums {% if report_data.starting_balance < 0 %}text-error{% endif %}">{{ report_data.starting_balance|currency }}</td>
+            <td></td>
+          </tr>
+          {% endif %}
+          {% for transaction in report_data.transactions %}
+          <tr>
+            <td class="whitespace-nowrap">{{ transaction.date|date:"M j, Y" }}</td>
+            <td>
+              {% if transaction.contra_accounts %}
+                {% for contra in transaction.contra_accounts %}
+                  <a href="{{ contra.url }}" class="link link-hover">{{ contra.name }}</a>{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+              {% else %}
+                <span class="text-base-content/40">&mdash;</span>
+              {% endif %}
+            </td>
+            <td>{{ transaction.payee }}</td>
+            <td>{{ transaction.memo }}</td>
+            <td class="text-right tabular-nums {% if transaction.amount < 0 %}text-error{% endif %}">{{ transaction.amount|currency }}</td>
+            {% if report_data.is_balance_account %}
+            <td class="text-right tabular-nums {% if transaction.balance < 0 %}text-error{% endif %}">{{ transaction.balance|currency }}</td>
+            {% endif %}
+            <td class="text-base-content/60 whitespace-nowrap">{{ transaction.source }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="{% if report_data.is_balance_account %}7{% else %}6{% endif %}" class="text-center text-base-content/60 py-4">{% translate "No transactions for this account in the selected period" %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
+            <td colspan="4">{% if report_data.is_balance_account %}{% translate "Total / Ending Balance" %}{% else %}{% translate "Total" %}{% endif %}</td>
+            <td class="text-right tabular-nums {% if report_data.total < 0 %}text-error{% endif %}">{{ report_data.total|currency }}</td>
+            {% if report_data.is_balance_account %}
+            <td class="text-right tabular-nums {% if report_data.ending_balance < 0 %}text-error{% endif %}" data-testid="ending-balance">{{ report_data.ending_balance|currency }}</td>
+            {% endif %}
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>

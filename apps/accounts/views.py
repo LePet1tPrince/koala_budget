@@ -205,9 +205,29 @@ class AccountDetailView(AccountViewMixin, DetailView):
     """View details of an account."""
 
     def get_context_data(self, **kwargs):
+        from datetime import date, datetime
+
+        from apps.reports.services import ReportService
+
         context = super().get_context_data(**kwargs)
         context["journal_lines"] = self.object.journal_lines.all()
         context["return_type"] = self.request.GET.get("return_type", "")
+
+        # Activity section (same components as the reports drill-down):
+        # date range from ?start_date/?end_date, defaulting to the current month.
+        try:
+            start_date = datetime.strptime(self.request.GET.get("start_date", ""), "%Y-%m-%d").date()
+            end_date = datetime.strptime(self.request.GET.get("end_date", ""), "%Y-%m-%d").date()
+        except ValueError:
+            today = date.today()
+            start_date = today.replace(day=1)
+            end_date = today
+
+        report_data = ReportService(self.request.team).get_account_activity(self.object, start_date, end_date)
+        context["report_data"] = report_data
+        context["balance_chart_data"] = ReportService.build_balance_chart_data(report_data, start_date, end_date)
+        context["start_date"] = start_date
+        context["end_date"] = end_date
         return context
 
 

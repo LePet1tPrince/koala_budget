@@ -1,6 +1,7 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
 {% load currency_tags %}
+{% load django_vite %}
 {% block app %}
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
@@ -45,4 +46,30 @@
     </div>
   </dl>
 </section>
+
+<section class="app-card">
+  <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <div>
+      <h3 class="pg-subtitle">{% translate "Activity" %}</h3>
+      {% if start_date and end_date %}
+      <p class="text-sm text-base-content/60">
+        {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" trimmed %}
+          {{ start }} – {{ end }}
+        {% endblocktranslate %}
+      </p>
+      {% endif %}
+    </div>
+    <div id="date-range-picker"></div>
+  </div>
+  {% include "reports/components/account_activity_section.html" %}
+</section>
+{% endblock %}
+
+{% block page_js %}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
+{% if balance_chart_data %}
+{{ balance_chart_data|json_script:'account-balance-data' }}
+{% vite_asset 'assets/javascript/reports/account-balance-chart.js' %}
+{% endif %}
 {% endblock %}
