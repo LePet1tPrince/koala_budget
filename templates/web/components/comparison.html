@@ -1,0 +1,81 @@
+{% load i18n %}
+<section id="comparison">
+  <div class="py-8 px-4 mx-auto max-w-(--breakpoint-xl) sm:py-16 lg:px-6">
+    <div class="mx-auto text-center max-w-(--breakpoint-md) mb-8 lg:mb-12">
+      <h2 class="text-base font-semibold leading-7 text-primary">{% translate "An honest comparison" %}</h2>
+      <h2 class="mt-2 mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-gray-100">
+        {% translate "Koala Budget vs. YNAB vs. Monarch" %}
+      </h2>
+      <p class="text-gray-500 dark:text-gray-400">
+        {% blocktranslate trimmed %}
+          Both are good apps. Neither was built for Canadians who want accounting-grade numbers.
+        {% endblocktranslate %}
+      </p>
+    </div>
+    <div class="overflow-x-auto max-w-4xl mx-auto">
+      <table class="table w-full">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="text-center text-primary text-base">Koala Budget</th>
+            <th class="text-center text-base">YNAB</th>
+            <th class="text-center text-base">Monarch</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-medium">{% translate "Annual price" %}</td>
+            <td class="text-center font-bold text-primary">
+              $79 CAD<br>
+              <span class="text-xs font-normal">{% translate "$59 CAD for founding members" %}</span>
+            </td>
+            <td class="text-center">{% translate "~$109 USD (≈$150 CAD)" %}</td>
+            <td class="text-center">{% translate "~$100 USD (≈$137 CAD)" %}</td>
+          </tr>
+          <tr>
+            <td class="font-medium">{% translate "Priced in Canadian dollars" %}</td>
+            <td class="text-center text-success font-bold">✓</td>
+            <td class="text-center text-gray-400">—</td>
+            <td class="text-center text-gray-400">—</td>
+          </tr>
+          <tr>
+            <td class="font-medium">{% translate "True double-entry accounting" %}</td>
+            <td class="text-center text-success font-bold">✓</td>
+            <td class="text-center text-gray-400">—</td>
+            <td class="text-center text-gray-400">—</td>
+          </tr>
+          <tr>
+            <td class="font-medium">{% translate "Personal income statement & balance sheet" %}</td>
+            <td class="text-center text-success font-bold">✓</td>
+            <td class="text-center text-gray-400">—</td>
+            <td class="text-center text-gray-400">—</td>
+          </tr>
+          <tr>
+            <td class="font-medium">{% translate "Paste your budget straight from Excel / Sheets" %}</td>
+            <td class="text-center text-success font-bold">✓</td>
+            <td class="text-center text-gray-400">—</td>
+            <td class="text-center text-gray-400">—</td>
+          </tr>
+          <tr>
+            <td class="font-medium">{% translate "Full edit history on every transaction" %}</td>
+            <td class="text-center text-success font-bold">✓</td>
+            <td class="text-center text-gray-400">—</td>
+            <td class="text-center text-gray-400">—</td>
+          </tr>
+          <tr>
+            <td class="font-medium">{% translate "Reconcile-to-the-penny guarantee" %}</td>
+            <td class="text-center text-success font-bold">✓</td>
+            <td class="text-center text-gray-400">—</td>
+            <td class="text-center text-gray-400">—</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="mt-4 text-xs text-gray-400 dark:text-gray-500 text-center">
+        {% blocktranslate trimmed %}
+          Competitor pricing and features as of July 2026, converted at approximate exchange rates —
+          please verify current details on their websites.
+        {% endblocktranslate %}
+      </p>
+    </div>
+  </div>
+</section>
