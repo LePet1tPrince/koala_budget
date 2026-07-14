@@ -367,6 +367,110 @@ class ReportService:
             "liability_groups": liability_series,
         }
 
+    def get_budget_vs_actual_chart_data(self, account, start_date, end_date):
+        """
+        Per-month Budgeted vs Actual (plus rolling Available) chart data for an
+        income/expense account, chart-ready floats. None for other account types.
+
+        Available follows the budget page's rollover semantics (BudgetService):
+        expense: Budget - Actual + previous Available; income: Actual - Budget +
+        previous Available — accumulated from the account's first budget or
+        activity month, which may predate the displayed range.
+
+        Returns:
+            dict | None: {
+                'labels': ['Jan 2026', ...],
+                'budgeted': [float, ...], 'actual': [float, ...], 'available': [float, ...],
+                'account_type': 'income' | 'expense',
+            }
+        """
+        from django.db.models import F, Sum
+        from django.db.models.functions import TruncMonth
+
+        from apps.budget.models import Budget
+
+        account_type = account.account_group.account_type
+        if account_type not in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE):
+            return None
+
+        months = self._period_range(start_date, end_date, "month")
+        if not months:
+            return None
+        month_after_last = (months[-1] + timedelta(days=32)).replace(day=1)
+
+        # Available accumulates from the account's first budget/activity month.
+        first_budget_month = (
+            Budget.objects.filter(team=self.team, category=account)
+            .order_by("month")
+            .values_list("month", flat=True)
+            .first()
+        )
+        first_activity_date = (
+            JournalLine.objects.filter(team=self.team, account=account)
+            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .order_by("journal_entry__entry_date")
+            .values_list("journal_entry__entry_date", flat=True)
+            .first()
+        )
+        candidates = [months[0]]
+        if first_budget_month:
+            candidates.append(first_budget_month)
+        if first_activity_date:
+            candidates.append(first_activity_date.replace(day=1))
+        first_month = min(candidates)
+
+        budgets = dict(
+            Budget.objects.filter(
+                team=self.team, category=account, month__gte=first_month, month__lt=month_after_last
+            ).values_list("month", "budget_amount")
+        )
+
+        if account_type == ACCOUNT_TYPE_INCOME:
+            signed_amount = F("cr_amount") - F("dr_amount")
+        else:
+            signed_amount = F("dr_amount") - F("cr_amount")
+        actuals = {
+            row["month"]: row["total"]
+            for row in (
+                JournalLine.objects.filter(
+                    team=self.team,
+                    account=account,
+                    journal_entry__entry_date__gte=first_month,
+                    journal_entry__entry_date__lt=month_after_last,
+                )
+                .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+                .annotate(month=TruncMonth("journal_entry__entry_date"))
+                .values("month")
+                .annotate(total=Sum(signed_amount))
+            )
+        }
+
+        displayed = set(months)
+        budgeted_series, actual_series, available_series = [], [], []
+        available = Decimal("0")
+        current = first_month
+        while current < month_after_last:
+            budgeted = budgets.get(current, Decimal("0"))
+            actual = actuals.get(current, Decimal("0"))
+            if account_type == ACCOUNT_TYPE_INCOME:
+                available = actual - budgeted + available
+            else:
+                available = budgeted - actual + available
+            if current in displayed:
+                budgeted_series.append(float(budgeted))
+                actual_series.append(float(actual))
+                available_series.append(float(available))
+            month = current.month + 1
+            current = date(current.year + (month - 1) // 12, (month - 1) % 12 + 1, 1)
+
+        return {
+            "labels": [self._period_label(bucket, "month") for bucket in months],
+            "budgeted": budgeted_series,
+            "actual": actual_series,
+            "available": available_series,
+            "account_type": account_type,
+        }
+
     @staticmethod
     def build_balance_chart_data(report_data, start_date, end_date):
         """

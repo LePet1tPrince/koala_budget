@@ -46,6 +46,7 @@ export default defineConfig({
         'balance-composition-chart': path.resolve(__dirname, './assets/javascript/reports/balance-composition-chart.js'),
         'goal-progress-chart': path.resolve(__dirname, './assets/javascript/reports/goal-progress-chart.js'),
         'account-balance-chart': path.resolve(__dirname, './assets/javascript/reports/account-balance-chart.js'),
+        'account-budget-chart': path.resolve(__dirname, './assets/javascript/reports/account-budget-chart.js'),
       },
       output: {
         // Output JS bundles to js/ directory with -bundle suffix

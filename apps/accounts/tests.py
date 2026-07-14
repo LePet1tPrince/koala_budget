@@ -494,6 +494,36 @@ class AccountViewTest(TestCase):
         self.assertContains(response, "account-balance-chart")
         self.assertContains(response, "date-range-picker")
 
+    def test_account_detail_view_expense_budget_chart(self):
+        """Expense account detail embeds the budget-vs-actual chart instead of the balance chart."""
+        from datetime import date
+        from decimal import Decimal
+
+        from apps.budget.models import Budget
+        from apps.journal.models import JournalEntry, JournalLine
+
+        expense_group = AccountGroup.objects.create(team=self.team, name="Bills", account_type=ACCOUNT_TYPE_EXPENSE)
+        asset = Account.objects.create(team=self.team, name="Chart Cash", account_group=self.account_group)
+        expense = Account.objects.create(team=self.team, name="Chart Rent", account_group=expense_group)
+        Budget.objects.create(
+            team=self.team, category=expense, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
+        )
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="Rent")
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=asset, cr_amount=Decimal("1200.00"))
+
+        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": expense.pk})
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["balance_chart_data"])
+        budget_chart = response.context["budget_chart_data"]
+        self.assertEqual(budget_chart["budgeted"], [1500.0])
+        self.assertEqual(budget_chart["actual"], [1200.0])
+        self.assertEqual(budget_chart["available"], [300.0])
+        self.assertContains(response, "account-budget-chart")
+        self.assertNotContains(response, "account-balance-chart")
+
     def test_account_detail_view_defaults_to_current_month(self):
         """Without date params the activity section defaults to the current month."""
         from datetime import date

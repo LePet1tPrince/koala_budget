@@ -223,9 +223,11 @@ class AccountDetailView(AccountViewMixin, DetailView):
             start_date = today.replace(day=1)
             end_date = today
 
-        report_data = ReportService(self.request.team).get_account_activity(self.object, start_date, end_date)
+        service = ReportService(self.request.team)
+        report_data = service.get_account_activity(self.object, start_date, end_date)
         context["report_data"] = report_data
         context["balance_chart_data"] = ReportService.build_balance_chart_data(report_data, start_date, end_date)
+        context["budget_chart_data"] = service.get_budget_vs_actual_chart_data(self.object, start_date, end_date)
         context["start_date"] = start_date
         context["end_date"] = end_date
         return context

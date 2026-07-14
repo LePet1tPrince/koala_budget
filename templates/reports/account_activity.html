@@ -63,4 +63,8 @@
 {{ balance_chart_data|json_script:'account-balance-data' }}
 {% vite_asset 'assets/javascript/reports/account-balance-chart.js' %}
 {% endif %}
+{% if budget_chart_data %}
+{{ budget_chart_data|json_script:'account-budget-data' }}
+{% vite_asset 'assets/javascript/reports/account-budget-chart.js' %}
+{% endif %}
 {% endblock %}

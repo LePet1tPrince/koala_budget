@@ -396,6 +396,57 @@ class ReportServiceTest(TestCase):
         self.assertIsNone(data["ending_balance"])
         self.assertNotIn("balance", data["transactions"][0])
 
+    def test_budget_vs_actual_chart_expense_with_rollover(self):
+        """Expense chart: per-month budgeted/actual, Available rolls forward from pre-range months."""
+        from apps.budget.models import Budget
+
+        Budget.objects.create(
+            team=self.team, category=self.expense_account, month=date(2024, 5, 1), budget_amount=Decimal("100.00")
+        )
+        Budget.objects.create(
+            team=self.team, category=self.expense_account, month=date(2024, 6, 1), budget_amount=Decimal("100.00")
+        )
+        Budget.objects.create(
+            team=self.team, category=self.expense_account, month=date(2024, 7, 1), budget_amount=Decimal("150.00")
+        )
+        # May: spend 80 of 100 (rolls 20 into June); June: spend 120
+        self._record_transfer(self.expense_account, self.asset_account, Decimal("80.00"), date(2024, 5, 10))
+        self._record_transfer(self.expense_account, self.asset_account, Decimal("120.00"), date(2024, 6, 15))
+
+        data = self.service.get_budget_vs_actual_chart_data(self.expense_account, date(2024, 6, 1), date(2024, 7, 31))
+
+        self.assertEqual(data["labels"], ["Jun 2024", "Jul 2024"])
+        self.assertEqual(data["budgeted"], [100.0, 150.0])
+        self.assertEqual(data["actual"], [120.0, 0.0])
+        # June: 20 (May leftover) + 100 - 120 = 0; July: 0 + 150 - 0 = 150
+        self.assertEqual(data["available"], [0.0, 150.0])
+        self.assertEqual(data["account_type"], "expense")
+
+    def test_budget_vs_actual_chart_income_sign(self):
+        """Income chart: Available = Actual - Budget (earning above plan is positive)."""
+        from apps.budget.models import Budget
+
+        Budget.objects.create(
+            team=self.team, category=self.income_account, month=date(2024, 6, 1), budget_amount=Decimal("1000.00")
+        )
+        self._record_transfer(self.asset_account, self.income_account, Decimal("1200.00"), date(2024, 6, 5))
+
+        data = self.service.get_budget_vs_actual_chart_data(self.income_account, date(2024, 6, 1), date(2024, 6, 30))
+
+        self.assertEqual(data["budgeted"], [1000.0])
+        self.assertEqual(data["actual"], [1200.0])
+        self.assertEqual(data["available"], [200.0])
+        self.assertEqual(data["account_type"], "income")
+
+    def test_budget_vs_actual_chart_none_for_balance_accounts(self):
+        """Balance-type accounts get no budget chart."""
+        self.assertIsNone(
+            self.service.get_budget_vs_actual_chart_data(self.asset_account, date(2024, 6, 1), date(2024, 6, 30))
+        )
+        self.assertIsNone(
+            self.service.get_budget_vs_actual_chart_data(self.liability_account, date(2024, 6, 1), date(2024, 6, 30))
+        )
+
     def test_balance_sheet_no_data(self):
         """Test balance sheet with no transactions."""
         as_of_date = date(2024, 12, 31)
@@ -610,8 +661,13 @@ class AccountActivityViewTest(TestCase):
         self.assertContains(response, "Starting Balance")
         self.assertContains(response, "account-balance-chart")
 
-    def test_account_activity_expense_account_has_no_chart_or_balance(self):
-        """Income/expense drill-downs keep the plain table — no chart, no Balance column."""
+    def test_account_activity_expense_account_gets_budget_chart_not_balance(self):
+        """Income/expense drill-downs keep the plain table but gain a budget-vs-actual chart."""
+        from apps.budget.models import Budget
+
+        Budget.objects.create(
+            team=self.team, category=self.expense_account, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
+        )
         entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June rent")
         JournalLine.objects.create(
             team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
@@ -630,6 +686,23 @@ class AccountActivityViewTest(TestCase):
         self.assertIsNone(response.context["balance_chart_data"])
         self.assertNotContains(response, "Starting Balance")
         self.assertNotContains(response, "account-balance-chart")
+        budget_chart = response.context["budget_chart_data"]
+        self.assertEqual(budget_chart["budgeted"], [1500.0])
+        self.assertEqual(budget_chart["actual"], [1200.0])
+        self.assertEqual(budget_chart["available"], [300.0])
+        self.assertContains(response, "account-budget-chart")
+
+    def test_account_activity_asset_account_has_no_budget_chart(self):
+        """Balance-type drill-downs get the balance chart only."""
+        url = reverse(
+            "reports:account_activity",
+            kwargs={"team_slug": self.team.slug, "account_id": self.asset_account.pk},
+        )
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["budget_chart_data"])
+        self.assertNotContains(response, "account-budget-chart")
 
     def test_account_activity_other_team_account(self):
         """Permission: an account from another team is not exposed."""
