@@ -22,5 +22,6 @@ urlpatterns = [
     path("goals/<int:pk>/edit/", views.goal_update_view, name="goal_update"),
     path("goals/<int:pk>/delete/", views.goal_delete_view, name="goal_delete"),
     path("goals/<int:pk>/allocate/", views.goal_allocation_update_view, name="goal_allocate"),
+    path("goals/<int:pk>/assign-available/", views.goal_assign_available, name="goal_assign_available"),
     path("goals/<int:pk>/complete/", views.goal_complete_view, name="goal_complete"),
 ]

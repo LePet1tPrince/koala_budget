@@ -32,6 +32,7 @@ class AuditEvent(models.Model):
     TRANSFER_DUP_DISMISSED = "transfer_dup_dismissed"
     TEAM_MEMBER_ADDED = "team_member_added"
     TEAM_MEMBER_REMOVED = "team_member_removed"
+    GOAL_FUNDS_ASSIGNED = "goal_funds_assigned"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -55,6 +56,7 @@ class AuditEvent(models.Model):
         (TRANSFER_DUP_DISMISSED, "Transfer Duplicate Dismissed"),
         (TEAM_MEMBER_ADDED, "Team Member Added"),
         (TEAM_MEMBER_REMOVED, "Team Member Removed"),
+        (GOAL_FUNDS_ASSIGNED, "Goal Funds Assigned"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)

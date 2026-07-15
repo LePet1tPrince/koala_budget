@@ -29,7 +29,7 @@
           </svg>
           {% translate "Goals" %}
         </div>
-        <span class="font-mono font-semibold text-sm">{{ net_worth_card.save|currency }}</span>
+        <span class="font-mono font-semibold text-sm" data-saved-display>{{ net_worth_card.save|currency }}</span>
       </div>
 
       <div class="divider my-0"></div>
@@ -41,7 +41,7 @@
           </svg>
           {% translate "Available" %}
         </div>
-        <span class="font-mono font-bold text-sm {% if net_worth_card.available < 0 %}text-error{% elif net_worth_card.available > 0 %}text-success{% endif %}">{{ net_worth_card.available|currency }}</span>
+        <span class="font-mono font-bold text-sm {% if net_worth_card.available < 0 %}text-error{% elif net_worth_card.available > 0 %}text-success{% endif %}" data-available-display>{{ net_worth_card.available|currency }}</span>
       </div>
     </div>
   </div>

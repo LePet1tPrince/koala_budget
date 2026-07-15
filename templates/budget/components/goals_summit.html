@@ -1,0 +1,183 @@
+{% load i18n %}
+{% load currency_tags %}
+{% comment %}
+Goals page style: "Summit" — professional and clear. Vertical thermometers,
+pace/projection numbers, context-aware quick-assign.
+{% endcomment %}
+
+<style>
+  .thermo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 4.5rem;
+  }
+  .thermo-track {
+    position: relative;
+    width: 2rem;
+    height: 13rem;
+    border-radius: 1rem 1rem 0 0;
+    background: color-mix(in oklab, var(--color-base-content) 8%, var(--color-base-100));
+    border: 1px solid var(--color-base-300);
+    border-bottom: none;
+    overflow: hidden;
+  }
+  .thermo-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(to top, var(--color-primary), color-mix(in oklab, var(--color-primary) 60%, white));
+    transition: height 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .is-funded .thermo-fill {
+    background: linear-gradient(to top, var(--color-success), color-mix(in oklab, var(--color-success) 60%, white));
+  }
+  .thermo-tick {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px dashed color-mix(in oklab, var(--color-base-content) 25%, transparent);
+  }
+  .thermo-bulb {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 9999px;
+    margin-top: -0.5rem;
+    background: var(--color-primary);
+    border: 1px solid var(--color-base-300);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-primary-content);
+    font-size: 1.1rem;
+    z-index: 1;
+  }
+  .is-funded .thermo-bulb { background: var(--color-success); color: var(--color-success-content); }
+</style>
+
+<!-- Summary strip -->
+<div class="stats stats-vertical sm:stats-horizontal shadow mb-6 w-full" data-testid="goals-summary">
+  <div class="stat">
+    <div class="stat-title">{% translate "Available to Assign" %}</div>
+    <div class="stat-value {% if available > 0 %}text-success{% elif available < 0 %}text-error{% endif %}" data-available-display>{{ available|currency }}</div>
+    <div class="stat-desc">{% translate "Unallocated money, ready for your goals" %}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-title">{% translate "Total Saved" %}</div>
+    <div class="stat-value text-primary" data-saved-display>{{ summary.total_saved|currency }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-title">{% translate "Total Target" %}</div>
+    <div class="stat-value">{{ summary.total_target|currency }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-title">{% translate "On Track" %}</div>
+    <div class="stat-value">{{ on_track_count }}<span class="text-base-content/40 text-2xl">/{{ summary.goal_count }}</span></div>
+    <div class="stat-desc">{% translate "goals on pace or funded" %}</div>
+  </div>
+</div>
+
+{% if goal_items %}
+<div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+  {% for item in goal_items %}
+  <div class="card bg-base-100 shadow-lg {% if item.funded %}is-funded{% endif %}"
+       data-goal-card
+       data-remaining="{{ item.remaining }}"
+       data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug pk=item.goal.pk %}"
+       data-testid="goal-card">
+    <div class="card-body">
+      <div class="flex justify-between items-start gap-2">
+        <h2 class="card-title">
+          <a href="{% url 'budget:goal_detail' team_slug=request.team.slug pk=item.goal.pk %}" class="link link-hover">{{ item.goal.name }}</a>
+        </h2>
+        <span class="badge badge-success gap-1" data-funded-badge {% if not item.funded %}hidden{% endif %}>✓ {% translate "Funded" %}</span>
+      </div>
+
+      <div class="flex gap-5 items-center mt-2">
+        <div class="thermo">
+          <div class="thermo-track">
+            <div class="thermo-tick" style="bottom: 25%"></div>
+            <div class="thermo-tick" style="bottom: 50%"></div>
+            <div class="thermo-tick" style="bottom: 75%"></div>
+            <div class="thermo-fill" data-fill data-pct="{{ item.pct|floatformat:1 }}" style="height: {{ item.pct|floatformat:1 }}%"></div>
+          </div>
+          <div class="thermo-bulb">$</div>
+        </div>
+
+        <div class="flex-1 min-w-0">
+          <div class="text-4xl font-bold" data-num="pct" data-format="pct">{{ item.pct|floatformat:0 }}%</div>
+          <div class="text-sm mt-1">
+            <span class="font-mono font-semibold text-success" data-num="saved">{{ item.saved|currency }}</span>
+            <span class="text-base-content/60">{% translate "of" %} {{ item.goal.target_amount|currency }}</span>
+          </div>
+          <div class="text-sm text-base-content/70 mt-2">
+            {% translate "To go:" %} <span class="font-mono" data-num="remaining">{{ item.remaining|currency }}</span>
+          </div>
+          <div class="text-sm text-base-content/70">
+            {% translate "This month:" %} <span class="font-mono" data-num="this-month">{{ item.this_month|currency }}</span>
+          </div>
+          {% if item.streak >= 2 %}
+            <div class="badge badge-warning badge-sm gap-1 mt-2">🔥 {% blocktranslate trimmed with n=item.streak %}{{ n }}-month streak{% endblocktranslate %}</div>
+          {% endif %}
+          <div class="text-xs text-base-content/60 mt-2 space-y-0.5">
+            {% if item.funded %}
+              <div class="text-success font-medium">{% translate "Target reached — nice work!" %}</div>
+            {% else %}
+              {% if item.needed_per_month %}
+                <div>{{ item.needed_per_month|currency }}{% translate "/mo to hit" %} {{ item.goal.target_date|date:"M Y" }}</div>
+              {% endif %}
+              {% if item.behind_pace %}
+                <div class="badge badge-outline badge-warning badge-sm">⚠ {% translate "Behind pace" %}</div>
+              {% elif item.projected_date %}
+                <div>{% translate "On pace for" %} {{ item.projected_date|date:"M Y" }}</div>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card-actions flex-col gap-2 mt-4">
+        <button type="button" class="btn btn-primary btn-sm w-full"
+                data-assign-all
+                data-label-all="{% translate 'Add all available' %}"
+                data-label-finish="{% translate 'Finish it!' %}"
+                data-testid="assign-available-btn"
+                {% if item.funded or available <= 0 %}disabled{% endif %}>
+          <span data-assign-label>
+            {% if not item.funded and available >= item.remaining and item.remaining > 0 %}
+              {% translate "Finish it!" %} ({{ item.remaining|currency }})
+            {% else %}
+              {% translate "Add all available" %} ({{ available|currency }})
+            {% endif %}
+          </span>
+        </button>
+        <div class="join w-full">
+          <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Custom amount' %}"
+                 class="input input-bordered input-sm join-item w-full font-mono" data-custom-input>
+          <button type="button" class="btn btn-outline btn-sm join-item" data-assign-custom>{% translate "Add" %}</button>
+        </div>
+        <noscript>
+          <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
+            <input type="number" min="0" step="0.01" name="amount" value="{{ item.this_month }}"
+                   class="input input-bordered input-sm join-item w-full font-mono" aria-label="{% translate 'This month' %}">
+            <button type="submit" class="btn btn-outline btn-sm join-item">{% translate "Set month" %}</button>
+          </form>
+        </noscript>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card bg-base-100 shadow-lg" data-testid="goals-empty-state">
+  <div class="card-body items-center text-center py-16">
+    <div class="text-5xl mb-2">🎯</div>
+    <h2 class="card-title">{% translate "No goals yet" %}</h2>
+    <p class="text-base-content/60">{% translate "Set a target, assign money each month, and watch the thermometer climb." %}</p>
+    <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-primary mt-4">+ {% translate "Create your first goal" %}</a>
+  </div>
+</div>
+{% endif %}

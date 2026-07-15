@@ -20,8 +20,11 @@ class BudgetPage(BasePage):
     def goto_budget(self, team_slug: str):
         self.goto(self.path(team_slug), wait_for="[data-testid='budget-table'], [data-testid='budget-empty-state']")
 
-    def goto_goals(self, team_slug: str):
-        self.goto(self.goals_path(team_slug), wait_for="[data-testid='goals-table'], [data-testid='goals-summary']")
+    def goto_goals(self, team_slug: str, style: str | None = None):
+        path = self.goals_path(team_slug)
+        if style:
+            path = f"{path}?style={style}"
+        self.goto(path, wait_for="[data-testid='goals-page']")
 
     def goto_goal_create(self, team_slug: str):
         self.goto(self.goal_create_path(team_slug), wait_for="[data-testid='goal-form']")
@@ -46,14 +49,17 @@ class BudgetPage(BasePage):
     # Goals queries
     # ------------------------------------------------------------------
 
-    def has_goals_table(self) -> bool:
-        return self.page.locator("[data-testid='goals-table']").is_visible()
-
-    def get_goal_row_count(self) -> int:
-        return self.page.locator("[data-testid='goal-row']").count()
+    def get_goal_card_count(self) -> int:
+        return self.page.locator("[data-testid='goal-card']").count()
 
     def has_goals_summary(self) -> bool:
         return self.page.locator("[data-testid='goals-summary']").is_visible()
+
+    def has_goals_empty_state(self) -> bool:
+        return self.page.locator("[data-testid='goals-empty-state']").is_visible()
+
+    def assign_available(self, goal_index: int = 0):
+        self.page.locator("[data-testid='assign-available-btn']").nth(goal_index).click()
 
     # ------------------------------------------------------------------
     # Actions

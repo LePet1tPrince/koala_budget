@@ -41,6 +41,10 @@
         <i class="fa fa-wallet"></i>
         <span class="dock-label">{% translate "Budget" %}</span>
       </a>
+      <a href="{% url 'budget:goals_list' request.team.slug %}" {% if active_tab == 'goals' %}class="dock-active"{% endif %}>
+        <i class="fa fa-bullseye"></i>
+        <span class="dock-label">{% translate "Goals" %}</span>
+      </a>
       <a href="{% url 'reports:reports_home' request.team.slug %}" {% if active_tab == 'reports' %}class="dock-active"{% endif %}>
         <i class="fa fa-chart-bar"></i>
         <span class="dock-label">{% translate "Reports" %}</span>
