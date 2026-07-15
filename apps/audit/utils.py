@@ -24,6 +24,9 @@ def log_event(event_type, user=None, team=None, metadata=None, request=None):
             user = request.user if request.user.is_authenticated else None
         if team is None:
             team = getattr(request, "team", None)
+    # On non-team URLs (e.g. the login page) request.team is a SimpleLazyObject
+    # resolving to None, which Django rejects as an FK value — force-resolve it.
+    team = team or None
     return AuditEvent.objects.create(
         event_type=event_type,
         user=user,

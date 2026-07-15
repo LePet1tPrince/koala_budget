@@ -1,11 +1,15 @@
-"""Page Object Model for the Accounts section (Django-template rendered)."""
+"""Page Object Model for the Accounts section.
+
+The accounts home is a React drag-and-drop board (requires the Vite dev
+server); the create/edit forms are Django-template rendered.
+"""
 
 from .base import BasePage
 
 
 class AccountsPage(BasePage):
-    def list_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/accounts/accounts/"
+    def home_path(self, team_slug: str) -> str:
+        return f"/a/{team_slug}/accounts/"
 
     def create_path(self, team_slug: str) -> str:
         return f"/a/{team_slug}/accounts/accounts/new/"
@@ -14,8 +18,8 @@ class AccountsPage(BasePage):
     # Navigation
     # ------------------------------------------------------------------
 
-    def goto_list(self, team_slug: str):
-        self.goto(self.list_path(team_slug), wait_for="[data-testid='accounts-table'], [data-testid='new-account-btn']")
+    def goto_home(self, team_slug: str):
+        self.goto(self.home_path(team_slug), wait_for="[data-testid='account-type-section']")
 
     def goto_create(self, team_slug: str):
         self.goto(self.create_path(team_slug), wait_for="[data-testid='account-form']")
@@ -30,8 +34,8 @@ class AccountsPage(BasePage):
     def get_row_count(self) -> int:
         return self.page.locator("[data-testid='account-row']").count()
 
-    def has_table(self) -> bool:
-        return self.page.locator("[data-testid='accounts-table']").is_visible()
+    def get_group_names(self) -> list[str]:
+        return self.page.locator("[data-testid='group-name']").all_text_contents()
 
     # ------------------------------------------------------------------
     # Actions
@@ -41,9 +45,12 @@ class AccountsPage(BasePage):
         self.page.locator("[data-testid='new-account-btn']").click()
         self.page.wait_for_selector("[data-testid='account-form']")
 
-    def fill_account_form(self, name: str, account_group_name: str):
+    def fill_account_form(self, name: str, account_group_name: str, account_type: str = "expense"):
         self.page.locator("[name='name']").fill(name)
-        self.page.select_option("[name='account_group']", label=account_group_name)
+        # The create form uses Alpine button pickers (not <select>s): choose the
+        # account type first, which reveals that type's group buttons.
+        self.page.locator(f"[data-testid='type-btn-{account_type}']").click()
+        self.page.locator("[data-testid='group-btn']", has_text=account_group_name).first.click()
 
     def submit_form(self):
         self.page.locator("[data-testid='save-btn']").click()
@@ -51,14 +58,13 @@ class AccountsPage(BasePage):
     def click_cancel(self):
         self.page.locator("[data-testid='cancel-btn']").click()
 
-    def click_edit(self, index: int = 0):
-        self.page.locator("[data-testid='edit-account-btn']").nth(index).click()
-        self.page.wait_for_selector("[data-testid='account-form']")
+    def click_account(self, name: str):
+        self.page.locator("[data-testid='account-name']", has_text=name).first.click()
 
-    def create_account(self, name: str, account_group_name: str, team_slug: str):
+    def create_account(self, name: str, account_group_name: str, team_slug: str, account_type: str = "expense"):
         """High-level helper: navigate to create form, fill, and submit."""
         self.goto_create(team_slug)
-        self.fill_account_form(name, account_group_name)
+        self.fill_account_form(name, account_group_name, account_type)
         self.submit_form()
-        # After save, Django redirects back to the list
+        # After save, Django redirects to the account detail page
         self.page.wait_for_url(f"**/a/{team_slug}/accounts/**", timeout=10_000)

@@ -105,9 +105,9 @@ class ReportService:
                     expense_data.append(item)
                     total_expenses += amount
 
-        # Sort by account name
-        income_data.sort(key=lambda x: x["account"].name)
-        expense_data.sort(key=lambda x: x["account"].name)
+        # Sort by the user's chart-of-accounts order
+        income_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
+        expense_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
 
         net_profit = total_income - total_expenses
 
@@ -180,7 +180,8 @@ class ReportService:
 
         Returns:
             list: [{'group': AccountGroup, 'accounts': [items...], 'subtotal': Decimal}, ...]
-            sorted by group name (items keep their incoming order within each group).
+            sorted by the group's manual sort order, then name (items keep their
+            incoming order within each group).
             When num_periods is given, each group also gets a 'per_period' element-wise
             subtotal of its accounts' 'per_period' lists.
         """
@@ -191,7 +192,7 @@ class ReportService:
                 groups[group.pk] = {"group": group, "accounts": [], "subtotal": Decimal("0")}
             groups[group.pk]["accounts"].append(item)
             groups[group.pk]["subtotal"] += item["amount"]
-        result = sorted(groups.values(), key=lambda g: g["group"].name)
+        result = sorted(groups.values(), key=lambda g: (g["group"].sort_order, g["group"].name))
         if num_periods is not None:
             for group_data in result:
                 group_data["per_period"] = cls._sum_periods(group_data["accounts"], num_periods)
@@ -267,10 +268,10 @@ class ReportService:
                     equity_data.append({"account": account, "amount": amount})
                     total_equity += amount
 
-        # Sort by account number
-        asset_data.sort(key=lambda x: x["account"].name)
-        liability_data.sort(key=lambda x: x["account"].name)
-        equity_data.sort(key=lambda x: x["account"].name)
+        # Sort by the user's chart-of-accounts order
+        asset_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
+        liability_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
+        equity_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
 
         net_worth = total_assets - total_liabilities
 

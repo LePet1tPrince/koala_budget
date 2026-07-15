@@ -555,8 +555,8 @@ def budget_vs_actual(request, team_slug):
             totals["over_count"] += 1 if over else 0
 
         for group_data in groups.values():
-            group_data["rows"].sort(key=lambda r: r["account"].name)
-        section_groups = sorted(groups.values(), key=lambda g: g["group"].name)
+            group_data["rows"].sort(key=lambda r: (r["account"].sort_order, r["account"].name))
+        section_groups = sorted(groups.values(), key=lambda g: (g["group"].sort_order, g["group"].name))
         totals["remaining"] = totals["budget"] - totals["actual"]
         return section_groups, totals
 

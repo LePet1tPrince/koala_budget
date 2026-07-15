@@ -33,9 +33,10 @@ class AccountGroup(BaseTeamModel):
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES)
     description = models.TextField(blank=True)
     is_system = models.BooleanField(default=False, help_text="System groups cannot be deleted by users")
+    sort_order = models.PositiveIntegerField(default=0, help_text="Manual display order within the account type")
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["sort_order", "name"]
         unique_together = ["team", "name"]
 
     def __str__(self):
@@ -69,13 +70,20 @@ class Account(BaseTeamModel):
     )
     has_feed = models.BooleanField(default=False, help_text="Whether this account has a bank feed")
     is_system = models.BooleanField(default=False, help_text="System accounts cannot be deleted by users")
+    sort_order = models.PositiveIntegerField(default=0, help_text="Manual display order within the account group")
 
     # Override managers to use AccountQuerySet for optimized balance queries
     objects = AccountQuerySet.as_manager()
     for_team = AccountTeamScopedManager()
 
     class Meta:
-        ordering = ["account_group__account_type", "account_group__name", "name"]
+        ordering = [
+            "account_group__account_type",
+            "account_group__sort_order",
+            "account_group__name",
+            "sort_order",
+            "name",
+        ]
 
     def __str__(self):
         return self.name
