@@ -1,11 +1,13 @@
 import json
+import math
+from collections import defaultdict
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, IntegerField, Sum, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.dateparse import parse_date
@@ -18,7 +20,7 @@ from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.teams.decorators import login_and_team_required
 
-from .forms import BudgetAmountForm, GoalAllocationForm, GoalForm
+from .forms import BudgetAmountForm, GoalForm
 from .models import Budget, Goal, GoalAllocation
 from .services import BudgetService, GoalService, NetWorthService
 
@@ -32,9 +34,25 @@ def _parse_month(value):
     return date.today().replace(day=1)
 
 
+def _month_from_request(request):
+    """Selected budget/goals month: an explicit ?month= wins (and is remembered for
+    the session), otherwise the last month viewed, otherwise the current month.
+    Keeps the month stable when switching between the Budget and Goals pages via
+    the nav, which carries no query string."""
+    value = request.GET.get("month")
+    if value:
+        month = _parse_month(value)
+        request.session["budget_month"] = month.isoformat()
+        return month
+    stored = request.session.get("budget_month")
+    if stored:
+        return _parse_month(stored)
+    return date.today().replace(day=1)
+
+
 @login_and_team_required
 def budget_month_view(request, team_slug):
-    month = _parse_month(request.GET.get("month"))
+    month = _month_from_request(request)
 
     if request.method == "POST":
         # Budget rows are created lazily on first save (a GET must not write).
@@ -450,35 +468,204 @@ def budget_grid_save(request, team_slug):
 # Goal Views
 # =============================================================================
 
+GOAL_STYLES = {
+    "summit": _("Summit"),
+    "koala": _("Koala Climb"),
+    "arcade": _("Save-o-Tron"),
+}
+
+# Arcade style: 1 XP per dollar ever saved to goals; level N spans ARCADE_LEVEL_STEP * N XP
+ARCADE_LEVEL_STEP = 500
+ARCADE_LEVEL_NAMES = [
+    "Piggy Bank Rookie",
+    "Coin Collector",
+    "Cash Cadet",
+    "Budget Brawler",
+    "Savings Samurai",
+    "Bamboo Baron",
+    "Vault Virtuoso",
+    "Money Machine",
+    "Fortune Fabler",
+    "Koala Tycoon",
+]
+
+
+def _goals_style(request):
+    """Which of the three goal-page designs to render; remembered per session."""
+    style = request.GET.get("style")
+    if style in GOAL_STYLES:
+        request.session["goals_style"] = style
+        return style
+    stored = request.session.get("goals_style")
+    return stored if stored in GOAL_STYLES else "summit"
+
+
+def _goal_streak(saved_months, month):
+    """Consecutive months with a positive allocation, counting backwards from the
+    selected month (a not-yet-funded selected month doesn't break the streak)."""
+    cursor = month
+    if cursor not in saved_months:
+        cursor -= relativedelta(months=1)
+    streak = 0
+    while cursor in saved_months:
+        streak += 1
+        cursor -= relativedelta(months=1)
+    return streak
+
+
+def _arcade_level(xp):
+    """Level number/name and progress through the current level for a given XP total."""
+    level = 1
+    floor = 0
+    while xp >= floor + ARCADE_LEVEL_STEP * level:
+        floor += ARCADE_LEVEL_STEP * level
+        level += 1
+    span = ARCADE_LEVEL_STEP * level
+    into = xp - floor
+    return {
+        "number": level,
+        "name": ARCADE_LEVEL_NAMES[min(level - 1, len(ARCADE_LEVEL_NAMES) - 1)],
+        "xp": xp,
+        "into": into,
+        "span": span,
+        "pct": into / span * 100,
+    }
+
 
 @login_and_team_required
 def goals_list_view(request, team_slug):
     """List all goals with progress for the selected month."""
-    month = _parse_month(request.GET.get("month"))
+    month = _month_from_request(request)
+    style = _goals_style(request)
     service = GoalService(request.team)
     summary = service.get_goal_summary(month)
+    goals = list(summary["goals"])
 
-    # Build forms for inline allocation editing
-    goals_with_forms = []
-    for goal in summary["goals"]:
-        allocation = GoalAllocation.objects.filter(team=request.team, goal=goal, month=month).first()
+    # Every allocation for these goals in one query; used for streaks and pace
+    amounts_by_goal = defaultdict(dict)
+    for goal_id, alloc_month, amount in GoalAllocation.objects.filter(team=request.team, goal__in=goals).values_list(
+        "goal_id", "month", "amount"
+    ):
+        amounts_by_goal[goal_id][alloc_month] = amount
 
-        if allocation:
-            form = GoalAllocationForm(instance=allocation)
-        else:
-            form = GoalAllocationForm(initial={"amount": Decimal("0")})
+    goal_items = []
+    any_streak_3 = False
+    any_half_way = False
+    big_month = False
+    for goal in goals:
+        amounts = amounts_by_goal.get(goal.pk, {})
+        saved = goal.total_saved or Decimal("0")
+        remaining = max(goal.target_amount - saved, Decimal("0"))
+        pct = goal.progress_percentage
 
-        goals_with_forms.append(
+        saved_months = {m for m, amt in amounts.items() if amt > 0}
+        streak = _goal_streak(saved_months, month)
+
+        # Pace to hit the target date, from the selected month
+        months_left = None
+        needed_per_month = None
+        if goal.target_date and remaining > 0:
+            target_month = goal.target_date.replace(day=1)
+            if target_month >= month:
+                months_left = max((target_month.year - month.year) * 12 + target_month.month - month.month, 1)
+                needed_per_month = remaining / months_left
+
+        # Projection from the recent saving rate (average of the last 3 months)
+        recent = [amounts.get(month - relativedelta(months=i), Decimal("0")) for i in range(3)]
+        recent_avg = sum(recent) / 3
+        projected_date = None
+        if remaining > 0 and recent_avg > 0:
+            projected_date = month + relativedelta(months=math.ceil(remaining / recent_avg))
+        behind_pace = bool(
+            goal.target_date
+            and remaining > 0
+            and (projected_date is None or projected_date > goal.target_date.replace(day=1))
+        )
+
+        any_streak_3 = any_streak_3 or streak >= 3
+        any_half_way = any_half_way or pct >= 50
+        big_month = big_month or any(amt >= 500 for amt in amounts.values())
+
+        goal_items.append(
             {
                 "goal": goal,
-                "form": form,
-                "allocation": allocation,
+                "saved": saved,
+                "remaining": remaining,
+                "pct": pct,
+                "this_month": goal.saved_this_month or Decimal("0"),
+                "streak": streak,
+                "months_left": months_left,
+                "needed_per_month": needed_per_month,
+                "projected_date": projected_date,
+                "behind_pace": behind_pace,
+                "funded": goal.is_complete or (goal.target_amount > 0 and saved >= goal.target_amount),
+                "milestones": [25, 50, 75, 100],
             }
         )
 
     # Get net worth card data
     net_worth_service = NetWorthService(request.team)
     net_worth_card = net_worth_service.get_net_worth_card_data(month)
+    available = net_worth_card["available"]
+
+    on_track_count = sum(1 for item in goal_items if item["funded"] or not item["behind_pace"])
+
+    total_saved = summary["total_saved"]
+    has_completed_goal = Goal.objects.filter(team=request.team, is_complete=True).exists()
+    achievements = [
+        {
+            "key": "first_save",
+            "icon": "🪙",
+            "name": _("Opening Bid"),
+            "desc": _("Save your first dollar"),
+            "earned": total_saved > 0,
+        },
+        {
+            "key": "first_1k",
+            "icon": "🥇",
+            "name": _("Grand Club"),
+            "desc": _("Save $1,000 in total"),
+            "earned": total_saved >= 1000,
+        },
+        {
+            "key": "half_way",
+            "icon": "🚀",
+            "name": _("50% Club"),
+            "desc": _("Get a goal halfway funded"),
+            "earned": any_half_way,
+        },
+        {
+            "key": "streak_3",
+            "icon": "🔥",
+            "name": _("Hot Streak"),
+            "desc": _("Save 3 months in a row"),
+            "earned": any_streak_3,
+        },
+        {
+            "key": "big_month",
+            "icon": "💪",
+            "name": _("Heavy Lifter"),
+            "desc": _("Save $500+ in one month"),
+            "earned": big_month,
+        },
+        {
+            "key": "finisher",
+            "icon": "🔔",
+            "name": _("Bell Ringer"),
+            "desc": _("Complete a goal"),
+            "earned": has_completed_goal,
+        },
+    ]
+
+    goals_props = {
+        "style": style,
+        "month": month.isoformat(),
+        "available": float(available),
+        "totalSaved": float(total_saved),
+        "xp": int(total_saved),
+        "levelStep": ARCADE_LEVEL_STEP,
+        "levelNames": ARCADE_LEVEL_NAMES,
+    }
 
     return render(
         request,
@@ -487,12 +674,197 @@ def goals_list_view(request, team_slug):
             "active_tab": "goals",
             "page_title": f"Goals | {request.team}",
             "month": month,
-            "goals_with_forms": goals_with_forms,
+            "style": style,
+            "style_label": GOAL_STYLES[style],
+            "goal_styles": GOAL_STYLES,
+            "goal_items": goal_items,
             "summary": summary,
+            "available": available,
+            "on_track_count": on_track_count,
+            "achievements": achievements,
+            "arcade_level": _arcade_level(int(total_saved)),
             "net_worth_card": net_worth_card,
+            "goals_props": goals_props,
             "prev_month": month - relativedelta(months=1),
             "next_month": month + relativedelta(months=1),
         },
+    )
+
+
+@login_and_team_required
+@require_POST
+def goal_assign_available(request, team_slug, pk):
+    """Assign funds to a goal for a month (JSON endpoint for the goals page).
+
+    Body: {"month": "YYYY-MM-DD", "amount": "123.45"}. Without "amount", assigns
+    all currently-available funds, capped at what the goal still needs. Amounts
+    are *added* to the month's existing allocation.
+    """
+    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+
+    try:
+        payload = json.loads(request.body) if request.body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if goal.is_archived or goal.is_complete:
+        return JsonResponse({"error": "This goal is no longer active."}, status=400)
+
+    month = _parse_month(payload.get("month"))
+
+    with transaction.atomic():
+        allocation = (
+            GoalAllocation.objects.select_for_update().filter(team=request.team, goal=goal, month=month).first()
+        )
+        month_amount = allocation.amount if allocation else Decimal("0")
+        old_saved = goal.allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        remaining = goal.target_amount - old_saved
+        available = NetWorthService(request.team).get_net_worth_card_data(month)["available"]
+
+        raw_amount = payload.get("amount")
+        if raw_amount is None:
+            if remaining <= 0:
+                return JsonResponse({"error": "This goal is already fully funded."}, status=400)
+            amount = min(available, remaining)
+            if amount <= 0:
+                return JsonResponse({"error": "No available funds to assign right now."}, status=400)
+        else:
+            try:
+                amount = Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            except (InvalidOperation, TypeError, ValueError):
+                return JsonResponse({"error": "Invalid amount."}, status=400)
+            if not amount.is_finite() or amount <= 0 or amount > GRID_MAX_AMOUNT:
+                return JsonResponse({"error": "Invalid amount."}, status=400)
+
+        amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        GoalService(request.team).update_allocation(goal, month, month_amount + amount)
+
+    new_saved = old_saved + amount
+    if goal.target_amount > 0:
+        old_pct = min(float(old_saved / goal.target_amount * 100), 100)
+        new_pct = min(float(new_saved / goal.target_amount * 100), 100)
+    else:
+        old_pct = new_pct = 0
+
+    log_event(
+        AuditEvent.GOAL_FUNDS_ASSIGNED,
+        request=request,
+        metadata={
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "month": month.isoformat(),
+            "amount": str(amount),
+            "quick_assign": raw_amount is None,
+        },
+    )
+
+    return JsonResponse(
+        {
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "assigned": float(amount),
+            "old_saved": float(old_saved),
+            "new_saved": float(new_saved),
+            "old_pct": old_pct,
+            "new_pct": new_pct,
+            "remaining": float(max(goal.target_amount - new_saved, Decimal("0"))),
+            "this_month": float(month_amount + amount),
+            "new_available": float(available - amount),
+            "completed": new_saved >= goal.target_amount and goal.target_amount > 0,
+        }
+    )
+
+
+@login_and_team_required
+@require_POST
+def goal_withdraw(request, team_slug, pk):
+    """Take funds back out of a goal (JSON endpoint for the goals page).
+
+    Body: {"month": "YYYY-MM-DD", "amount": "123.45"}. Without "amount",
+    withdraws everything the goal has saved. The withdrawal is recorded against
+    the given month's allocation (which may go negative), so past months'
+    contribution history is never rewritten.
+    """
+    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+
+    try:
+        payload = json.loads(request.body) if request.body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    # Complete goals stay withdrawable — that's how a finished goal is cashed out
+    if goal.is_archived:
+        return JsonResponse({"error": "This goal is archived."}, status=400)
+
+    month = _parse_month(payload.get("month"))
+
+    with transaction.atomic():
+        allocation = (
+            GoalAllocation.objects.select_for_update().filter(team=request.team, goal=goal, month=month).first()
+        )
+        month_amount = allocation.amount if allocation else Decimal("0")
+        old_saved = goal.allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        available = NetWorthService(request.team).get_net_worth_card_data(month)["available"]
+
+        if old_saved <= 0:
+            return JsonResponse({"error": "Nothing saved to withdraw."}, status=400)
+
+        raw_amount = payload.get("amount")
+        if raw_amount is None:
+            amount = old_saved
+        else:
+            try:
+                amount = Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            except (InvalidOperation, TypeError, ValueError):
+                return JsonResponse({"error": "Invalid amount."}, status=400)
+            if not amount.is_finite() or amount <= 0 or amount > GRID_MAX_AMOUNT:
+                return JsonResponse({"error": "Invalid amount."}, status=400)
+            if amount > old_saved:
+                return JsonResponse(
+                    {"error": f"This goal only has ${old_saved:,.2f} saved."},
+                    status=400,
+                )
+
+        amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        GoalService(request.team).update_allocation(goal, month, month_amount - amount)
+
+    new_saved = old_saved - amount
+    if goal.target_amount > 0:
+        old_pct = min(float(old_saved / goal.target_amount * 100), 100)
+        new_pct = min(float(new_saved / goal.target_amount * 100), 100)
+    else:
+        old_pct = new_pct = 0
+
+    log_event(
+        AuditEvent.GOAL_FUNDS_WITHDRAWN,
+        request=request,
+        metadata={
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "month": month.isoformat(),
+            "amount": str(amount),
+            "withdraw_all": raw_amount is None,
+        },
+    )
+
+    return JsonResponse(
+        {
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "withdrawn": float(amount),
+            "old_saved": float(old_saved),
+            "new_saved": float(new_saved),
+            "old_pct": old_pct,
+            "new_pct": new_pct,
+            "remaining": float(max(goal.target_amount - new_saved, Decimal("0"))),
+            "this_month": float(month_amount - amount),
+            "new_available": float(available + amount),
+            "funded": new_saved >= goal.target_amount and goal.target_amount > 0,
+        }
     )
 
 

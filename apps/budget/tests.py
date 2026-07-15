@@ -14,7 +14,7 @@ from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 
 from .forms import BudgetAmountForm
-from .models import Budget
+from .models import Budget, Goal, GoalAllocation
 from .services import BudgetService
 
 
@@ -729,3 +729,346 @@ class BudgetSectionOrderingTest(TestCase):
         groups = response.context["grid_props"]["groups"]
         self.assertEqual([g["type"] for g in groups], ["income", "expense"])
         self.assertEqual(groups[0]["name"], "Zeta Income")
+
+
+class GoalAssignAvailableTest(TestCase):
+    """Tests for the quick-assign JSON endpoint on the goals page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Assign Test Team", slug="assign-test-team")
+        cls.user = CustomUser.objects.create_user(username="assignuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.other_team = Team.objects.create(name="Assign Other Team", slug="assign-other-team")
+        cls.outsider = CustomUser.objects.create_user(username="assignoutsider@example.com", password="testpass123")
+        cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
+
+        # Net worth of 2000 from an opening-balance entry (asset dr / equity cr) so
+        # nothing lands in budget-category availability
+        asset_group = AccountGroup.objects.create(team=cls.team, name="Assign Assets", account_type="asset")
+        equity_group = AccountGroup.objects.create(team=cls.team, name="Assign Equity", account_type="equity")
+        cls.checking = Account.objects.create(team=cls.team, name="Assign Checking", account_group=asset_group)
+        cls.opening = Account.objects.create(team=cls.team, name="Assign Opening", account_group=equity_group)
+        entry = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 1, 5), description="Opening")
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=entry, account=cls.checking, dr_amount=Decimal("2000.00")
+        )
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=entry, account=cls.opening, cr_amount=Decimal("2000.00")
+        )
+
+        cls.goal = Goal.objects.create(team=cls.team, name="Assign Trip", target_amount=Decimal("5000.00"))
+        cls.month = "2026-02-01"
+
+    def setUp(self):
+        self.client.login(username="assignuser@example.com", password="testpass123")
+
+    def assign_url(self, goal=None):
+        goal = goal or self.goal
+        return f"/a/{self.team.slug}/budget/goals/{goal.pk}/assign-available/"
+
+    def post_assign(self, body=None, goal=None):
+        return self.client.post(self.assign_url(goal), body or {"month": self.month}, content_type="application/json")
+
+    def test_quick_assign_assigns_all_available(self):
+        response = self.post_assign()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["assigned"], 2000.0)
+        self.assertEqual(data["new_saved"], 2000.0)
+        self.assertEqual(data["new_pct"], 40.0)
+        self.assertEqual(data["new_available"], 0.0)
+        self.assertFalse(data["completed"])
+        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1))
+        self.assertEqual(allocation.amount, Decimal("2000.00"))
+
+    def test_quick_assign_clamps_to_goal_remaining(self):
+        small = Goal.objects.create(team=self.team, name="Assign Small", target_amount=Decimal("500.00"))
+        response = self.post_assign(goal=small)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["assigned"], 500.0)
+        self.assertTrue(data["completed"])
+        self.assertEqual(data["new_available"], 1500.0)
+
+    def test_quick_assign_adds_to_existing_month_allocation(self):
+        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2026, 2, 1), amount=Decimal("300"))
+        response = self.post_assign()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # 300 already saved leaves available = 2000 - 300 = 1700
+        self.assertEqual(data["assigned"], 1700.0)
+        self.assertEqual(data["this_month"], 2000.0)
+        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1))
+        self.assertEqual(allocation.amount, Decimal("2000.00"))
+
+    def test_quick_assign_rejects_when_nothing_available(self):
+        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2026, 1, 1), amount=Decimal("2000"))
+        response = self.post_assign()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("available", response.json()["error"].lower())
+
+    def test_quick_assign_rejects_fully_funded_goal(self):
+        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2026, 1, 1), amount=Decimal("5000"))
+        response = self.post_assign()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("fully funded", response.json()["error"])
+
+    def test_quick_assign_rejects_archived_and_complete_goals(self):
+        archived = Goal.objects.create(
+            team=self.team, name="Assign Archived", target_amount=Decimal("100"), is_archived=True
+        )
+        complete = Goal.objects.create(
+            team=self.team, name="Assign Complete", target_amount=Decimal("100"), is_complete=True
+        )
+        self.assertEqual(self.post_assign(goal=archived).status_code, 400)
+        self.assertEqual(self.post_assign(goal=complete).status_code, 400)
+
+    def test_custom_amount_is_added(self):
+        response = self.post_assign({"month": self.month, "amount": "123.45"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["assigned"], 123.45)
+        response = self.post_assign({"month": self.month, "amount": "100"})
+        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1))
+        self.assertEqual(allocation.amount, Decimal("223.45"))
+
+    def test_custom_amount_rejects_invalid_values(self):
+        for bad in ("abc", "-5", "0"):
+            body = {"month": self.month, "amount": bad}
+            response = self.post_assign(body)
+            self.assertEqual(response.status_code, 400, bad)
+        self.assertFalse(GoalAllocation.objects.filter(team=self.team).exists())
+
+    def test_assign_logs_audit_event(self):
+        from apps.audit.models import AuditEvent
+
+        self.post_assign()
+        event = AuditEvent.objects.get(event_type=AuditEvent.GOAL_FUNDS_ASSIGNED)
+        self.assertEqual(event.team, self.team)
+        self.assertEqual(event.metadata["goal_id"], self.goal.pk)
+        self.assertEqual(event.metadata["amount"], "2000.00")
+
+    def test_assign_requires_login(self):
+        self.client.logout()
+        response = self.post_assign()
+        self.assertEqual(response.status_code, 302)
+
+    def test_assign_requires_team_membership(self):
+        self.client.logout()
+        self.client.login(username="assignoutsider@example.com", password="testpass123")
+        response = self.post_assign()
+        self.assertEqual(response.status_code, 404)
+
+    def test_assign_requires_post(self):
+        response = self.client.get(self.assign_url())
+        self.assertEqual(response.status_code, 405)
+
+
+class GoalsListViewTest(TestCase):
+    """Tests for the redesigned goals page: styles, month persistence, context."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Goals Page Team", slug="goals-page-team")
+        cls.user = CustomUser.objects.create_user(username="goalspage@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        cls.goal = Goal.objects.create(
+            team=cls.team, name="Page Trip", target_amount=Decimal("1000.00"), target_date=date(2026, 12, 1)
+        )
+        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("100"))
+        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("150"))
+        cls.url = f"/a/{cls.team.slug}/budget/goals/"
+
+    def setUp(self):
+        self.client.login(username="goalspage@example.com", password="testpass123")
+
+    def test_default_style_is_summit(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["style"], "summit")
+        self.assertContains(response, 'data-testid="goal-card"')
+
+    def test_style_param_is_remembered_in_session(self):
+        response = self.client.get(f"{self.url}?style=arcade")
+        self.assertEqual(response.context["style"], "arcade")
+        self.assertContains(response, "SAVE-O-TRON")
+        response = self.client.get(self.url)
+        self.assertEqual(response.context["style"], "arcade")
+
+    def test_invalid_style_falls_back_to_summit(self):
+        response = self.client.get(f"{self.url}?style=vaporwave")
+        self.assertEqual(response.context["style"], "summit")
+
+    def test_goal_items_carry_progress_and_streak(self):
+        response = self.client.get(f"{self.url}?month=2026-02-01")
+        item = response.context["goal_items"][0]
+        self.assertEqual(item["saved"], Decimal("250"))
+        self.assertEqual(item["remaining"], Decimal("750"))
+        self.assertEqual(item["streak"], 2)
+        self.assertIsNotNone(item["needed_per_month"])
+
+    def test_month_is_remembered_across_budget_and_goals(self):
+        self.client.get(f"/a/{self.team.slug}/budget/?month=2026-03-01")
+        response = self.client.get(self.url)
+        self.assertEqual(response.context["month"], date(2026, 3, 1))
+        response = self.client.get(f"{self.url}?month=2026-05-01")
+        self.assertEqual(response.context["month"], date(2026, 5, 1))
+        response = self.client.get(f"/a/{self.team.slug}/budget/")
+        self.assertEqual(response.context["month"], date(2026, 5, 1))
+
+
+class GoalWithdrawTest(TestCase):
+    """Tests for the withdraw JSON endpoint on the goals page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Withdraw Test Team", slug="withdraw-test-team")
+        cls.user = CustomUser.objects.create_user(username="withdrawuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.other_team = Team.objects.create(name="Withdraw Other Team", slug="withdraw-other-team")
+        cls.outsider = CustomUser.objects.create_user(username="withdrawoutsider@example.com", password="testpass123")
+        cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
+
+        # Net worth of 2000 (asset dr / equity cr) so `available` starts positive
+        asset_group = AccountGroup.objects.create(team=cls.team, name="Withdraw Assets", account_type="asset")
+        equity_group = AccountGroup.objects.create(team=cls.team, name="Withdraw Equity", account_type="equity")
+        cls.checking = Account.objects.create(team=cls.team, name="Withdraw Checking", account_group=asset_group)
+        cls.opening = Account.objects.create(team=cls.team, name="Withdraw Opening", account_group=equity_group)
+        entry = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 1, 5), description="Opening")
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=entry, account=cls.checking, dr_amount=Decimal("2000.00")
+        )
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=entry, account=cls.opening, cr_amount=Decimal("2000.00")
+        )
+
+        cls.goal = Goal.objects.create(team=cls.team, name="Withdraw Trip", target_amount=Decimal("5000.00"))
+        # Saved 700 across two prior months + 100 in the selected month = 800 total
+        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("300"))
+        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("400"))
+        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 3, 1), amount=Decimal("100"))
+        cls.month = "2026-03-01"
+
+    def setUp(self):
+        self.client.login(username="withdrawuser@example.com", password="testpass123")
+
+    def withdraw_url(self, goal=None):
+        goal = goal or self.goal
+        return f"/a/{self.team.slug}/budget/goals/{goal.pk}/withdraw/"
+
+    def post_withdraw(self, body=None, goal=None):
+        return self.client.post(self.withdraw_url(goal), body or {"month": self.month}, content_type="application/json")
+
+    def test_withdraw_reduces_this_months_allocation(self):
+        response = self.post_withdraw({"month": self.month, "amount": "50"})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["withdrawn"], 50.0)
+        self.assertEqual(data["old_saved"], 800.0)
+        self.assertEqual(data["new_saved"], 750.0)
+        self.assertEqual(data["this_month"], 50.0)
+        # available was 2000 - 800 = 1200; withdrawing 50 frees it back up
+        self.assertEqual(data["new_available"], 1250.0)
+        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        self.assertEqual(allocation.amount, Decimal("50.00"))
+
+    def test_withdraw_beyond_this_month_goes_negative_and_keeps_history(self):
+        response = self.post_withdraw({"month": self.month, "amount": "500"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["this_month"], -400.0)
+        this_month = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        self.assertEqual(this_month.amount, Decimal("-400.00"))
+        # Prior months untouched
+        self.assertEqual(
+            GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 1, 1)).amount,
+            Decimal("300.00"),
+        )
+        self.assertEqual(
+            GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1)).amount,
+            Decimal("400.00"),
+        )
+
+    def test_withdraw_all_empties_the_goal(self):
+        response = self.post_withdraw()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["withdrawn"], 800.0)
+        self.assertEqual(data["new_saved"], 0.0)
+        self.assertEqual(data["new_available"], 2000.0)
+        this_month = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        self.assertEqual(this_month.amount, Decimal("-700.00"))
+
+    def test_withdraw_creates_negative_allocation_in_untouched_month(self):
+        response = self.post_withdraw({"month": "2026-04-01", "amount": "100"})
+        self.assertEqual(response.status_code, 200)
+        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 4, 1))
+        self.assertEqual(allocation.amount, Decimal("-100.00"))
+
+    def test_withdraw_more_than_saved_is_rejected(self):
+        response = self.post_withdraw({"month": self.month, "amount": "800.01"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("only has $800.00 saved", response.json()["error"])
+
+    def test_withdraw_from_empty_goal_is_rejected(self):
+        empty = Goal.objects.create(team=self.team, name="Withdraw Empty", target_amount=Decimal("100"))
+        response = self.post_withdraw(goal=empty)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Nothing saved", response.json()["error"])
+
+    def test_withdraw_rejects_invalid_amounts(self):
+        for bad in ("abc", "-5", "0"):
+            response = self.post_withdraw({"month": self.month, "amount": bad})
+            self.assertEqual(response.status_code, 400, bad)
+
+    def test_withdraw_allowed_on_complete_goal(self):
+        self.goal.is_complete = True
+        self.goal.save()
+        response = self.post_withdraw({"month": self.month, "amount": "100"})
+        self.assertEqual(response.status_code, 200)
+
+    def test_withdraw_rejected_on_archived_goal(self):
+        self.goal.is_archived = True
+        self.goal.save()
+        response = self.post_withdraw({"month": self.month, "amount": "100"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("archived", response.json()["error"])
+
+    def test_withdraw_unfunds_a_funded_goal(self):
+        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2025, 12, 1), amount=Decimal("4200"))
+        response = self.post_withdraw({"month": self.month, "amount": "1000"})
+        data = response.json()
+        self.assertEqual(data["old_pct"], 100.0)
+        self.assertEqual(data["new_pct"], 80.0)
+        self.assertFalse(data["funded"])
+
+    def test_withdraw_logs_audit_event(self):
+        from apps.audit.models import AuditEvent
+
+        self.post_withdraw({"month": self.month, "amount": "25"})
+        event = AuditEvent.objects.get(event_type=AuditEvent.GOAL_FUNDS_WITHDRAWN)
+        self.assertEqual(event.team, self.team)
+        self.assertEqual(event.metadata["amount"], "25.00")
+        self.assertFalse(event.metadata["withdraw_all"])
+
+    def test_withdraw_requires_login(self):
+        self.client.logout()
+        self.assertEqual(self.post_withdraw().status_code, 302)
+
+    def test_withdraw_requires_team_membership(self):
+        self.client.logout()
+        self.client.login(username="withdrawoutsider@example.com", password="testpass123")
+        self.assertEqual(self.post_withdraw().status_code, 404)
+
+    def test_withdraw_requires_post(self):
+        self.assertEqual(self.client.get(self.withdraw_url()).status_code, 405)

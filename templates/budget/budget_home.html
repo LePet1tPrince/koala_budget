@@ -10,41 +10,13 @@
   {{ team_slug|json_script:'team-slug' }}
 
   <div class="container mx-auto px-4 py-6">
-
-
-    <!-- Tab Navigation -->
-    <div role="tablist" class="tabs tabs-box mb-6">
-      <a role="tab" class="tab tab-active" href="{% url 'budget:budget_home' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
-        {% translate "Budget" %}
-      </a>
-      <a role="tab" class="tab" href="{% url 'budget:goals_list' team_slug=request.team.slug %}?month={{ month|date:'Y-m-d' }}">
-        {% translate "Goals" %}
-      </a>
-    </div>
-
-    <!-- Net Worth Card -->
+    {% translate "Budget" as budget_title %}
+    {% include "budget/components/budget_page_header.html" with header_title=budget_title show_grid_link=True %}
 
     <!-- Main Content: Budget Table + Sidebar -->
     <div class="flex gap-6 items-start">
       <!-- Budget Table (left, takes remaining space) -->
       <div class="flex-1 min-w-0">
-          <!-- Header with Month Picker -->
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-3xl font-bold">{% translate "Budget" %}</h1>
-      <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}"></div>
-      <a href="{% url 'budget:budget_grid' team_slug=request.team.slug %}?start={{ month|date:'Y' }}-01-01"
-         class="btn btn-outline btn-sm" data-testid="budget-grid-link">
-        {% translate "Edit Multiple Months" %}
-      </a>
-      <noscript>
-        <div class="flex gap-2">
-          <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Previous" %}</a>
-          <span class="font-bold">{{ month|date:"F Y" }}</span>
-          <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Next" %}</a>
-        </div>
-      </noscript>
-    </div>
-
         {% include "budget/components/net_worth_card.html" %}
         {% include "budget/components/budget_table.html" %}
       </div>

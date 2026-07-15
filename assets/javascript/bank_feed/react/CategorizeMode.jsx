@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
+import { createConfetti } from '../../common/confetti';
 
 const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
 
@@ -15,54 +16,10 @@ function formatCurrency(amount) {
 
 function Confetti({ active }) {
   const canvasRef = useRef(null);
-  const animRef = useRef(null);
 
   useEffect(() => {
     if (!active || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    const colors = ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff', '#5f27cd', '#01a3a4', '#f368e0'];
-    const particles = Array.from({ length: 150 }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height - canvas.height,
-      w: Math.random() * 10 + 5,
-      h: Math.random() * 6 + 3,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      vx: (Math.random() - 0.5) * 6,
-      vy: Math.random() * 3 + 2,
-      rot: Math.random() * 360,
-      rotV: (Math.random() - 0.5) * 10,
-      opacity: 1,
-    }));
-
-    let frame = 0;
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      frame++;
-      let alive = false;
-      particles.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.05;
-        p.rot += p.rotV;
-        if (frame > 60) p.opacity -= 0.01;
-        if (p.opacity <= 0) return;
-        alive = true;
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate((p.rot * Math.PI) / 180);
-        ctx.globalAlpha = Math.max(0, p.opacity);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-        ctx.restore();
-      });
-      if (alive) animRef.current = requestAnimationFrame(animate);
-    };
-    animRef.current = requestAnimationFrame(animate);
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+    return createConfetti(canvasRef.current, { origin: 'sky' });
   }, [active]);
 
   if (!active) return null;
