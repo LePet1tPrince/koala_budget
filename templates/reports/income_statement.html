@@ -65,6 +65,10 @@
   <!-- Header: title, date range picker, and actions on one row -->
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
+        <i class="fa fa-arrow-left mr-2"></i>
+        {% translate "Back to Reports" %}
+      </a>
       <h1 class="pg-title">{% translate "Income Statement" %}</h1>
       {% if start_date and end_date %}
       <p class="text-sm text-base-content/60">
@@ -93,10 +97,6 @@
       <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
         <i class="fa fa-download mr-2"></i>
         {% translate "Export CSV" %}
-      </a>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm">
-        <i class="fa fa-arrow-left mr-2"></i>
-        {% translate "Back to Reports" %}
       </a>
     </div>
   </div>
