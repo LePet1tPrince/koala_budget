@@ -67,7 +67,7 @@ test-e2e: ## Run E2E tests with Playwright. React-page tests need 'make start-bg
 		-e VITE_DEV_SERVER_HOST=vite \
 		web bash -c "uv sync --group e2e && uv run pytest e2e/ -v $(ARGS)"
 
-test-e2e-accounts: ## Run only the accounts E2E tests (no Vite dev server required)
+test-e2e-accounts: ## Run only the accounts E2E tests (the accounts board is React, so 'make start-bg' / Vite is required)
 	@docker compose run --rm \
 		-e DJANGO_SETTINGS_MODULE=koala_budget.settings_e2e \
 		-e PLAYWRIGHT_BROWSERS_PATH=/code/.playwright-browsers \

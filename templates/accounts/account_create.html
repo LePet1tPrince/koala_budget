@@ -96,7 +96,7 @@
               class="pg-button-secondary" data-testid="save-and-create-another-btn">
         {% translate "Save and create another" %}
       </button>
-      <a href="{% url 'accounts:account_list' request.team.slug %}" class="pg-button-secondary" data-testid="cancel-btn">{% translate "Cancel" %}</a>
+      <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="pg-button-secondary" data-testid="cancel-btn">{% translate "Cancel" %}</a>
     </div>
   </form>
 </section>

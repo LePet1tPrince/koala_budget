@@ -18,7 +18,6 @@ urlpatterns = [
     path("account-groups/<int:pk>/update/", views.AccountGroupUpdateView.as_view(), name="accountgroup_update"),
     path("account-groups/<int:pk>/delete/", views.AccountGroupDeleteView.as_view(), name="accountgroup_delete"),
     # Account URLs
-    path("accounts/", views.AccountListView.as_view(), name="account_list"),
     path("accounts/new/", views.AccountCreateView.as_view(), name="account_create"),
     path("accounts/<int:pk>/", views.AccountDetailView.as_view(), name="account_detail"),
     path("accounts/<int:pk>/update/", views.AccountUpdateView.as_view(), name="account_update"),
@@ -35,4 +34,9 @@ urlpatterns = [
     path("institutions/<int:pk>/", views.InstitutionDetailView.as_view(), name="institution_detail"),
     path("institutions/<int:pk>/update/", views.InstitutionUpdateView.as_view(), name="institution_update"),
     path("institutions/<int:pk>/delete/", views.InstitutionDeleteView.as_view(), name="institution_delete"),
+    # JSON API for the drag-and-drop chart-of-accounts board
+    path("api/reorder-accounts/", views.api_reorder_accounts, name="api_reorder_accounts"),
+    path("api/reorder-groups/", views.api_reorder_groups, name="api_reorder_groups"),
+    path("api/create-account/", views.api_create_account, name="api_create_account"),
+    path("api/create-group/", views.api_create_group, name="api_create_group"),
 ]

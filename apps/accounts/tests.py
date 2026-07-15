@@ -285,20 +285,8 @@ class AccountsHomeViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "accounts/accounts_home.html")
 
-    def test_accounts_home_view_context(self):
-        """Test that accounts home view includes counts in context."""
-        with current_team(self.team):
-            AccountGroup.objects.create(team=self.team, name="Test Group", account_type=ACCOUNT_TYPE_ASSET)
-            Payee.objects.create(team=self.team, name="Test Payee")
-
-        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
-        response = self.client.get(url)
-        self.assertEqual(response.context["account_groups_count"], 1)
-        self.assertEqual(response.context["accounts_count"], 0)
-        self.assertEqual(response.context["payees_count"], 1)
-
     def test_accounts_home_groups_accounts_by_type(self):
-        """Accounts are grouped by type, in balance-sheet order, with balances."""
+        """Board props group accounts by type, in balance-sheet order, with balances."""
         with current_team(self.team):
             asset_group = AccountGroup.objects.create(team=self.team, name="Cash", account_type=ACCOUNT_TYPE_ASSET)
             expense_group = AccountGroup.objects.create(
@@ -309,10 +297,14 @@ class AccountsHomeViewTest(TestCase):
 
         url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
         response = self.client.get(url)
-        grouped = response.context["grouped_accounts"]
-        self.assertEqual([g["type"] for g in grouped], [ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE])
-        self.assertEqual([a.name for a in grouped[0]["accounts"]], ["Checking"])
-        self.assertEqual(grouped[0]["accounts"][0].balance, 0)
+        sections = response.context["manage_props"]["types"]
+        self.assertEqual(
+            [s["key"] for s in sections], ["asset", "liability", "income", "expense", "goal"]
+        )
+        by_key = {s["key"]: s for s in sections}
+        asset_accounts = by_key[ACCOUNT_TYPE_ASSET]["groups"][0]["accounts"]
+        self.assertEqual([a["name"] for a in asset_accounts], ["Checking"])
+        self.assertEqual(asset_accounts[0]["balance"], "0")
 
 
 class AccountGroupViewTest(TestCase):
@@ -396,15 +388,18 @@ class AccountViewTest(TestCase):
     def setUp(self):
         self.client.login(username="testuser@example.com", password="testpass123")
 
-    def test_account_list_view(self):
-        """Test account list view."""
+    def test_accounts_home_view(self):
+        """Test the accounts home (board) view includes accounts in its props."""
         with current_team(self.team):
             Account.objects.create(team=self.team, name="Checking", account_group=self.account_group)
 
-        url = reverse("accounts:account_list", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Checking")
+        sections = {section["key"]: section for section in response.context["manage_props"]["types"]}
+        group_names = [g["name"] for g in sections[ACCOUNT_TYPE_ASSET]["groups"]]
+        self.assertIn("Bank Accounts", group_names)
 
     def test_account_create_view_get(self):
         """Test account create view GET request."""
@@ -698,8 +693,8 @@ class TeamIsolationTest(TestCase):
             self.assertEqual(payees[0].name, "Team 2 Payee")
 
 
-class AccountReturnTypeTest(TestCase):
-    """Tests for return_type filter persistence in Account views."""
+class AccountRedirectTest(TestCase):
+    """Tests for post-save/post-delete redirects in Account views."""
 
     @classmethod
     def setUpTestData(cls):
@@ -714,48 +709,8 @@ class AccountReturnTypeTest(TestCase):
     def setUp(self):
         self.client.login(username="testuser@example.com", password="testpass123")
 
-    def test_detail_view_passes_return_type_to_context(self):
-        """Test that detail view passes return_type from GET to template context."""
-        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
-        response = self.client.get(url, {"return_type": "asset"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["return_type"], "asset")
-
-    def test_detail_view_no_return_type_is_empty_string(self):
-        """Test that detail view context has empty return_type when not provided."""
-        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["return_type"], "")
-
-    def test_update_view_passes_return_type_to_context(self):
-        """Test that update view passes return_type from GET to template context."""
-        url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
-        response = self.client.get(url, {"return_type": "asset"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["return_type"], "asset")
-
-    def test_update_view_success_url_with_return_type_redirects_to_filtered_list(self):
-        """Test that saving edit with return_type redirects to filtered account list."""
-        url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
-        data = {
-            "name": "Checking Updated",
-            "account_type": ACCOUNT_TYPE_ASSET,
-            "account_group": self.account_group.pk,
-            "has_feed": False,
-            "return_type": "asset",
-        }
-        response = self.client.post(url, data)
-        self.assertEqual(response.status_code, 302)
-        list_url = reverse("accounts:account_list", kwargs={"team_slug": self.team.slug})
-        self.assertRedirects(response, f"{list_url}?type=asset", fetch_redirect_response=False)
-        # Restore name for other tests
-        self.account.refresh_from_db()
-        self.account.name = "Checking"
-        self.account.save()
-
-    def test_update_view_success_url_without_return_type_redirects_to_detail(self):
-        """Test that saving edit without return_type redirects to account detail page."""
+    def test_update_view_redirects_to_detail(self):
+        """Saving an edit redirects to the account detail page."""
         url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
         data = {
             "name": "Checking",
@@ -768,27 +723,172 @@ class AccountReturnTypeTest(TestCase):
         detail_url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
         self.assertRedirects(response, detail_url, fetch_redirect_response=False)
 
-    def test_delete_view_success_url_with_return_type_redirects_to_filtered_list(self):
-        """Test that deleting an account with return_type redirects to filtered account list."""
+    def test_delete_view_redirects_to_accounts_home(self):
+        """Deleting an account redirects to the accounts home board."""
         account_to_delete = Account.objects.create(team=self.team, name="To Delete", account_group=self.account_group)
-        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
-        response = self.client.post(url, {}, QUERY_STRING="return_type=asset")
-        self.assertEqual(response.status_code, 302)
-        list_url = reverse("accounts:account_list", kwargs={"team_slug": self.team.slug})
-        self.assertRedirects(response, f"{list_url}?type=asset", fetch_redirect_response=False)
-
-    def test_delete_view_success_url_without_return_type_redirects_to_list(self):
-        """Test that deleting without return_type redirects to plain account list."""
-        account_to_delete = Account.objects.create(team=self.team, name="To Delete 2", account_group=self.account_group)
         url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)
-        list_url = reverse("accounts:account_list", kwargs={"team_slug": self.team.slug})
-        self.assertRedirects(response, list_url, fetch_redirect_response=False)
+        home_url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        self.assertRedirects(response, home_url, fetch_redirect_response=False)
 
-    def test_delete_view_passes_return_type_to_context(self):
-        """Test that delete confirm view passes return_type to template context."""
-        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
-        response = self.client.get(url, {"return_type": "asset"})
+
+class AccountsBoardApiTest(TestCase):
+    """Tests for the drag-and-drop board JSON API (reorder / move / inline create)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.other_team = Team.objects.create(name="Other Team", slug="other-team")
+        cls.other_user = CustomUser.objects.create_user(username="other@example.com", password="testpass123")
+        cls.other_team.members.add(cls.other_user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.bank_group = AccountGroup.objects.create(
+            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET, sort_order=0
+        )
+        cls.invest_group = AccountGroup.objects.create(
+            team=cls.team, name="Investments", account_type=ACCOUNT_TYPE_ASSET, sort_order=1
+        )
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE, sort_order=0
+        )
+        cls.checking = Account.objects.create(
+            team=cls.team, name="Checking", account_group=cls.bank_group, sort_order=0
+        )
+        cls.savings = Account.objects.create(
+            team=cls.team, name="Savings", account_group=cls.bank_group, sort_order=1
+        )
+        cls.groceries = Account.objects.create(
+            team=cls.team, name="Groceries", account_group=cls.expense_group, sort_order=0
+        )
+        cls.other_group = AccountGroup.objects.create(
+            team=cls.other_team, name="Other Bank", account_type=ACCOUNT_TYPE_ASSET
+        )
+
+    def setUp(self):
+        self.client.login(username="testuser@example.com", password="testpass123")
+
+    def _post(self, url_name, payload):
+        url = reverse(f"accounts:{url_name}", kwargs={"team_slug": self.team.slug})
+        return self.client.post(url, payload, content_type="application/json")
+
+    def test_reorder_accounts_within_group(self):
+        response = self._post(
+            "api_reorder_accounts",
+            {"groups": [{"group_id": self.bank_group.pk, "account_ids": [self.savings.pk, self.checking.pk]}]},
+        )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["return_type"], "asset")
+        self.savings.refresh_from_db()
+        self.checking.refresh_from_db()
+        self.assertEqual(self.savings.sort_order, 0)
+        self.assertEqual(self.checking.sort_order, 1)
+
+    def test_move_account_to_other_group_same_type(self):
+        response = self._post(
+            "api_reorder_accounts",
+            {
+                "groups": [
+                    {"group_id": self.bank_group.pk, "account_ids": [self.checking.pk]},
+                    {"group_id": self.invest_group.pk, "account_ids": [self.savings.pk]},
+                ]
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.savings.refresh_from_db()
+        self.assertEqual(self.savings.account_group, self.invest_group)
+        self.assertEqual(self.savings.sort_order, 0)
+
+    def test_move_account_across_types_is_rejected(self):
+        response = self._post(
+            "api_reorder_accounts",
+            {"groups": [{"group_id": self.expense_group.pk, "account_ids": [self.checking.pk]}]},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.checking.refresh_from_db()
+        self.assertEqual(self.checking.account_group, self.bank_group)
+
+    def test_reorder_rejects_other_teams_objects(self):
+        response = self._post(
+            "api_reorder_accounts",
+            {"groups": [{"group_id": self.other_group.pk, "account_ids": [self.checking.pk]}]},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_reorder_requires_membership(self):
+        self.client.login(username="other@example.com", password="testpass123")
+        url = reverse("accounts:api_reorder_accounts", kwargs={"team_slug": self.team.slug})
+        response = self.client.post(
+            url,
+            {"groups": [{"group_id": self.bank_group.pk, "account_ids": [self.checking.pk]}]},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_reorder_groups(self):
+        response = self._post(
+            "api_reorder_groups",
+            {"account_type": ACCOUNT_TYPE_ASSET, "group_ids": [self.invest_group.pk, self.bank_group.pk]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.invest_group.refresh_from_db()
+        self.bank_group.refresh_from_db()
+        self.assertEqual(self.invest_group.sort_order, 0)
+        self.assertEqual(self.bank_group.sort_order, 1)
+
+    def test_reorder_groups_rejects_wrong_type(self):
+        response = self._post(
+            "api_reorder_groups",
+            {"account_type": ACCOUNT_TYPE_ASSET, "group_ids": [self.expense_group.pk]},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_create_account_appends_to_group(self):
+        response = self._post("api_create_account", {"name": "Chequing 2", "group_id": self.bank_group.pk})
+        self.assertEqual(response.status_code, 201)
+        account = Account.objects.get(team=self.team, name="Chequing 2")
+        self.assertEqual(account.account_group, self.bank_group)
+        self.assertEqual(account.sort_order, 2)  # after Checking (0) and Savings (1)
+        self.assertTrue(account.has_feed)  # asset accounts get a feed
+        self.assertEqual(response.json()["account"]["name"], "Chequing 2")
+
+    def test_create_expense_account_has_no_feed(self):
+        response = self._post("api_create_account", {"name": "Utilities", "group_id": self.expense_group.pk})
+        self.assertEqual(response.status_code, 201)
+        account = Account.objects.get(team=self.team, name="Utilities")
+        self.assertFalse(account.has_feed)
+
+    def test_create_account_duplicate_name_rejected(self):
+        response = self._post("api_create_account", {"name": "Checking", "group_id": self.invest_group.pk})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("already exists", response.json()["error"])
+
+    def test_create_group_appends_to_type(self):
+        response = self._post("api_create_group", {"name": "Property", "account_type": ACCOUNT_TYPE_ASSET})
+        self.assertEqual(response.status_code, 201)
+        group = AccountGroup.objects.get(team=self.team, name="Property")
+        self.assertEqual(group.account_type, ACCOUNT_TYPE_ASSET)
+        self.assertEqual(group.sort_order, 2)  # after Bank Accounts (0) and Investments (1)
+
+    def test_create_group_duplicate_name_rejected(self):
+        response = self._post("api_create_group", {"name": "Bank Accounts", "account_type": ACCOUNT_TYPE_ASSET})
+        self.assertEqual(response.status_code, 400)
+
+    def test_custom_order_flows_into_default_queryset(self):
+        """Account.Meta.ordering follows group sort_order then account sort_order."""
+        self._post(
+            "api_reorder_accounts",
+            {"groups": [{"group_id": self.bank_group.pk, "account_ids": [self.savings.pk, self.checking.pk]}]},
+        )
+        self._post(
+            "api_reorder_groups",
+            {"account_type": ACCOUNT_TYPE_ASSET, "group_ids": [self.invest_group.pk, self.bank_group.pk]},
+        )
+        names = list(
+            Account.objects.filter(team=self.team, account_group__account_type=ACCOUNT_TYPE_ASSET).values_list(
+                "name", flat=True
+            )
+        )
+        self.assertEqual(names, ["Savings", "Checking"])

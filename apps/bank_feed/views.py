@@ -241,7 +241,7 @@ class BankFeedViewSet(
             .with_categorized_balance()
             .with_reconciled_balance()
             .select_related("account_group", "institution")
-            .order_by("name")
+            .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
         )
 
         _annotate_feed_account_activity(accounts, request.team)
@@ -1748,7 +1748,7 @@ def bank_feed_home(request, team_slug):
         .with_categorized_balance()
         .with_reconciled_balance()
         .select_related("account_group", "institution")
-        .order_by("name")
+        .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
     )  # noqa: E501
 
     _annotate_feed_account_activity(accounts_with_feeds, request.team)

@@ -1,10 +1,15 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
-{% load currency_tags %}
+{% load django_vite %}
 {% block app %}
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
-    <h1 class="text-2xl font-semibold">{% translate "Accounts" %}</h1>
+    <div>
+      <h1 class="text-2xl font-semibold">{% translate "Accounts" %}</h1>
+      <p class="text-sm text-base-content/60">
+        {% translate "Drag accounts to reorder them or move them between groups — this order is used across reports and budgets." %}
+      </p>
+    </div>
     <a href="{% url 'accounts:account_create' request.team.slug %}" class="btn btn-primary" data-testid="new-account-btn">
       {% translate "New Account" %}
     </a>
@@ -12,32 +17,23 @@
 
   {% include "accounts/components/manage_tabs.html" with manage_tab="accounts" %}
 
-  {% if grouped_accounts %}
-    {% for group in grouped_accounts %}
-      <div class="mb-6" data-testid="account-type-section">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60 mb-2">{{ group.label }}</h2>
-        <ul class="divide-y divide-base-300">
-          {% for account in group.accounts %}
-            <li>
-              <a href="{{ account.get_absolute_url }}" class="flex justify-between items-center py-3 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="account-row">
-                <div class="min-w-0">
-                  <div class="font-medium truncate" data-testid="account-name">{{ account.name }}</div>
-                  <div class="text-sm text-base-content/60 truncate">
-                    {{ account.account_group.name }}{% if account.institution %} · {{ account.institution.name }}{% endif %}{% if account.has_feed %} · <i class="fa fa-link" title="{% translate 'Linked to a bank feed' %}"></i>{% endif %}
-                  </div>
-                </div>
-                <span class="font-mono text-sm shrink-0">{{ account.balance|currency }}</span>
-              </a>
-            </li>
-          {% endfor %}
-        </ul>
-      </div>
-    {% endfor %}
-  {% else %}
-    <p class="text-base-content/60">
-      {% translate "No accounts yet." %}
-      <a href="{% url 'accounts:account_create' request.team.slug %}" class="link">{% translate "Create your first account" %}</a>
-    </p>
-  {% endif %}
+  {{ manage_props|json_script:'accounts-board-props' }}
+  <div id="accounts-board">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div class="skeleton h-64 w-full"></div>
+      <div class="skeleton h-64 w-full"></div>
+    </div>
+  </div>
+
+  <noscript>
+    <div class="alert alert-warning mt-4">
+      {% translate "The accounts board requires JavaScript. Use the Groups tab to manage the chart of accounts instead." %}
+    </div>
+  </noscript>
 </section>
+{% endblock %}
+
+{% block page_js %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/accounts/accounts-board-app.jsx' %}
 {% endblock %}

@@ -299,7 +299,7 @@ def _budget_categories(team):
                 output_field=IntegerField(),
             )
         )
-        .order_by("type_order", "account_group__name", "name")
+        .order_by("type_order", "account_group__sort_order", "account_group__name", "sort_order", "name")
     )
 
 
