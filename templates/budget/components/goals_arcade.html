@@ -129,6 +129,18 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.12); }
   }
+  .withdrawing { animation: withdraw-dip 0.9s ease; }
+  @keyframes withdraw-dip {
+    0%, 100% { transform: translateY(0); filter: none; }
+    35% { transform: translateY(6px); filter: saturate(0.3) brightness(0.8); }
+  }
+  .cashout-btn {
+    border: 1px dashed #f59e0b88;
+    color: #fbbf24cc;
+    background: transparent;
+    font-family: ui-monospace, monospace;
+  }
+  .cashout-btn:hover { background: rgba(245, 158, 11, 0.15); }
 </style>
 
 <!-- Marquee: title + XP level bar + hopper -->
@@ -157,7 +169,9 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
   <div class="striker-card card {% if item.funded %}is-funded{% endif %}"
        data-goal-card
        data-remaining="{{ item.remaining }}"
+       data-saved="{{ item.saved }}"
        data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug pk=item.goal.pk %}"
+       data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug pk=item.goal.pk %}"
        data-testid="goal-card">
     <div class="card-body">
       <div class="flex justify-between items-start gap-2">
@@ -221,6 +235,28 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
           <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Place your bet…' %}"
                  class="input input-bordered input-sm join-item w-full font-mono bg-black/40 border-purple-700 text-amber-200 placeholder:text-purple-300/50" data-custom-input>
           <button type="button" class="btn btn-outline btn-sm join-item border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-black" data-assign-custom>{% translate "DROP IN" %}</button>
+        </div>
+        <button type="button" class="btn btn-xs w-full cashout-btn"
+                data-withdraw-toggle data-testid="withdraw-toggle">
+          🎰 {% translate "CASH OUT…" %}
+        </button>
+        <div class="w-full flex flex-col gap-2" data-withdraw-row hidden>
+          <div class="join w-full">
+            <input type="number" min="0.01" step="0.01" placeholder="{% translate 'How much to cash out…' %}"
+                   class="input input-bordered input-sm join-item w-full font-mono bg-black/40 border-amber-600 text-amber-200 placeholder:text-amber-200/40" data-withdraw-input>
+            <button type="button" class="btn btn-outline btn-sm join-item border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-black"
+                    data-withdraw-btn data-testid="withdraw-btn"
+                    {% if item.saved <= 0 %}disabled{% endif %}>{% translate "TAKE IT" %}</button>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm w-full border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-black font-mono"
+                  data-withdraw-all data-label-all="{% translate '🎰 CASH OUT EVERYTHING' %}"
+                  data-testid="withdraw-all-btn"
+                  {% if item.saved <= 0 %}disabled{% endif %}>
+            <span data-withdraw-all-label>🎰 {% translate "CASH OUT EVERYTHING" %} ({{ item.saved|currency }})</span>
+          </button>
+          <p class="text-[0.65rem] font-mono opacity-50">
+            {% translate "CASHED-OUT COINS DROP BACK IN THE HOPPER. THIS MONTH TAKES THE HIT — HISTORY STANDS." %}
+          </p>
         </div>
         <noscript>
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">

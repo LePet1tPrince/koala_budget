@@ -54,6 +54,11 @@ pace/projection numbers, context-aware quick-assign.
     z-index: 1;
   }
   .is-funded .thermo-bulb { background: var(--color-success); color: var(--color-success-content); }
+  .withdrawing { animation: withdraw-dip 0.9s ease; }
+  @keyframes withdraw-dip {
+    0%, 100% { transform: translateY(0); filter: none; }
+    35% { transform: translateY(6px); filter: saturate(0.4); }
+  }
 </style>
 
 <!-- Summary strip -->
@@ -84,7 +89,9 @@ pace/projection numbers, context-aware quick-assign.
   <div class="card bg-base-100 shadow-lg {% if item.funded %}is-funded{% endif %}"
        data-goal-card
        data-remaining="{{ item.remaining }}"
+       data-saved="{{ item.saved }}"
        data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug pk=item.goal.pk %}"
+       data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug pk=item.goal.pk %}"
        data-testid="goal-card">
     <div class="card-body">
       <div class="flex justify-between items-start gap-2">
@@ -156,6 +163,28 @@ pace/projection numbers, context-aware quick-assign.
           <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Custom amount' %}"
                  class="input input-bordered input-sm join-item w-full font-mono" data-custom-input>
           <button type="button" class="btn btn-outline btn-sm join-item" data-assign-custom>{% translate "Add" %}</button>
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs w-full text-base-content/50"
+                data-withdraw-toggle data-testid="withdraw-toggle">
+          {% translate "Withdraw funds…" %}
+        </button>
+        <div class="w-full flex flex-col gap-2" data-withdraw-row hidden>
+          <div class="join w-full">
+            <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Amount to withdraw' %}"
+                   class="input input-bordered input-sm join-item w-full font-mono" data-withdraw-input>
+            <button type="button" class="btn btn-outline btn-error btn-sm join-item"
+                    data-withdraw-btn data-testid="withdraw-btn"
+                    {% if item.saved <= 0 %}disabled{% endif %}>{% translate "Withdraw" %}</button>
+          </div>
+          <button type="button" class="btn btn-outline btn-error btn-sm w-full"
+                  data-withdraw-all data-label-all="{% translate 'Withdraw all' %}"
+                  data-testid="withdraw-all-btn"
+                  {% if item.saved <= 0 %}disabled{% endif %}>
+            <span data-withdraw-all-label>{% translate "Withdraw all" %} ({{ item.saved|currency }})</span>
+          </button>
+          <p class="text-xs text-base-content/50">
+            {% translate "Withdrawn money returns to Available. It's recorded against this month, so past months' history stays intact." %}
+          </p>
         </div>
         <noscript>
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">

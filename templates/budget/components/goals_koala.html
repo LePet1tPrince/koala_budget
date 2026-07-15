@@ -86,6 +86,11 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
     border-radius: 9999px;
     background: color-mix(in oklab, #66bb6a 55%, var(--color-base-200));
   }
+  .withdrawing { animation: withdraw-dip 0.9s ease; }
+  @keyframes withdraw-dip {
+    0%, 100% { transform: translateY(0); filter: none; }
+    35% { transform: translateY(6px); filter: saturate(0.4); }
+  }
 </style>
 
 <!-- Month banner -->
@@ -113,7 +118,9 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
   <div class="card bg-base-100 shadow-lg {% if item.funded %}is-funded{% endif %}"
        data-goal-card
        data-remaining="{{ item.remaining }}"
+       data-saved="{{ item.saved }}"
        data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug pk=item.goal.pk %}"
+       data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug pk=item.goal.pk %}"
        data-testid="goal-card">
     <div class="card-body">
       <div class="flex justify-between items-start gap-2">
@@ -196,6 +203,28 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
           <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Custom boost' %}"
                  class="input input-bordered input-sm join-item w-full font-mono" data-custom-input>
           <button type="button" class="btn btn-outline btn-sm join-item" data-assign-custom>{% translate "Add" %}</button>
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs w-full text-base-content/50"
+                data-withdraw-toggle data-testid="withdraw-toggle">
+          🍂 {% translate "Climb down (take money out)…" %}
+        </button>
+        <div class="w-full flex flex-col gap-2" data-withdraw-row hidden>
+          <div class="join w-full">
+            <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Leaves to hand back' %}"
+                   class="input input-bordered input-sm join-item w-full font-mono" data-withdraw-input>
+            <button type="button" class="btn btn-outline btn-error btn-sm join-item"
+                    data-withdraw-btn data-testid="withdraw-btn"
+                    {% if item.saved <= 0 %}disabled{% endif %}>{% translate "Climb down" %}</button>
+          </div>
+          <button type="button" class="btn btn-outline btn-error btn-sm w-full"
+                  data-withdraw-all data-label-all="{% translate '🍂 Back to the ground' %}"
+                  data-testid="withdraw-all-btn"
+                  {% if item.saved <= 0 %}disabled{% endif %}>
+            <span data-withdraw-all-label>🍂 {% translate "Back to the ground" %} ({{ item.saved|currency }})</span>
+          </button>
+          <p class="text-xs text-base-content/50">
+            {% translate "The koala hands the money back to Available — this month's record shows the climb down, past months stay untouched." %}
+          </p>
         </div>
         <noscript>
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">

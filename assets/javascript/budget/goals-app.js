@@ -180,7 +180,7 @@ function updateXp(assigned) {
   const bar = document.querySelector('[data-xp-bar]');
   if (!bar) return;
   const before = arcadeLevel(xp);
-  xp += Math.round(assigned);
+  xp = Math.max(xp + Math.round(assigned), 0);
   const after = arcadeLevel(xp);
   bar.style.width = `${after.pct}%`;
   const num = document.querySelector('[data-xp-num]');
@@ -200,16 +200,26 @@ function updateXp(assigned) {
 
 function refreshAssignButtons() {
   document.querySelectorAll('[data-goal-card]').forEach((card) => {
-    const btn = card.querySelector('[data-assign-all]');
-    if (!btn) return;
     const remaining = parseFloat(card.dataset.remaining || '0');
-    const funded = card.classList.contains('is-funded') || remaining <= 0;
-    const finish = !funded && available >= remaining && remaining > 0;
-    const amount = finish ? remaining : available;
-    const label = finish ? btn.dataset.labelFinish : btn.dataset.labelAll;
-    const labelEl = btn.querySelector('[data-assign-label]') || btn;
-    labelEl.textContent = `${label} (${fmt(Math.max(amount, 0))})`;
-    btn.disabled = funded || available <= 0;
+    const saved = parseFloat(card.dataset.saved || '0');
+    const btn = card.querySelector('[data-assign-all]');
+    if (btn) {
+      const funded = card.classList.contains('is-funded') || remaining <= 0;
+      const finish = !funded && available >= remaining && remaining > 0;
+      const amount = finish ? remaining : available;
+      const label = finish ? btn.dataset.labelFinish : btn.dataset.labelAll;
+      const labelEl = btn.querySelector('[data-assign-label]') || btn;
+      labelEl.textContent = `${label} (${fmt(Math.max(amount, 0))})`;
+      btn.disabled = funded || available <= 0;
+    }
+    const withdrawAll = card.querySelector('[data-withdraw-all]');
+    if (withdrawAll) {
+      const labelEl = withdrawAll.querySelector('[data-withdraw-all-label]') || withdrawAll;
+      labelEl.textContent = `${withdrawAll.dataset.labelAll} (${fmt(Math.max(saved, 0))})`;
+      withdrawAll.disabled = saved <= 0;
+    }
+    const withdrawBtn = card.querySelector('[data-withdraw-btn]');
+    if (withdrawBtn) withdrawBtn.disabled = saved <= 0;
   });
   document.querySelectorAll('[data-available-display]').forEach((el) => {
     el.textContent = fmt(available);
@@ -223,6 +233,10 @@ function refreshAssignButtons() {
 
 function updateCard(card, data) {
   card.dataset.remaining = String(data.remaining);
+  card.dataset.saved = String(data.new_saved);
+
+  // Works in both directions: positive delta = assignment, negative = withdrawal
+  const delta = data.new_saved - data.old_saved;
 
   animateNumber(card.querySelector('[data-num="saved"]'), data.old_saved, data.new_saved, {
     jitter: style === 'arcade',
@@ -230,11 +244,11 @@ function updateCard(card, data) {
   animateNumber(card.querySelector('[data-num="pct"]'), data.old_pct, data.new_pct);
   const remainingEl = card.querySelector('[data-num="remaining"]');
   if (remainingEl) {
-    animateNumber(remainingEl, Math.max(data.remaining + data.assigned, 0), data.remaining);
+    animateNumber(remainingEl, Math.max(data.remaining + delta, 0), data.remaining);
   }
   const thisMonthEl = card.querySelector('[data-num="this-month"]');
   if (thisMonthEl) {
-    animateNumber(thisMonthEl, data.this_month - data.assigned, data.this_month);
+    animateNumber(thisMonthEl, data.this_month - delta, data.this_month);
   }
 
   const fill = card.querySelector('[data-fill]');
@@ -248,23 +262,25 @@ function updateCard(card, data) {
     if (reached && !marker.classList.contains('milestone-reached')) {
       marker.classList.add('milestone-reached', 'milestone-pop');
       setTimeout(() => marker.classList.remove('milestone-pop'), 1500);
+    } else if (!reached) {
+      marker.classList.remove('milestone-reached', 'milestone-pop');
     }
   });
 
-  if (data.completed) {
-    card.classList.add('is-funded');
-    const fundedBadge = card.querySelector('[data-funded-badge]');
-    if (fundedBadge) fundedBadge.hidden = false;
-  }
+  const funded = data.completed != null ? data.completed : data.funded;
+  card.classList.toggle('is-funded', !!funded);
+  const fundedBadge = card.querySelector('[data-funded-badge]');
+  if (fundedBadge) fundedBadge.hidden = !funded;
 }
 
 // ---------------------------------------------------------------------------
-// Assign flow
+// Assign / withdraw flows
 // ---------------------------------------------------------------------------
 
-async function assign(card, amount) {
-  const url = card.dataset.assignUrl;
-  const buttons = card.querySelectorAll('[data-assign-all], [data-assign-custom]');
+async function postMoney(card, url, amount, failMessage) {
+  const buttons = card.querySelectorAll(
+    '[data-assign-all], [data-assign-custom], [data-withdraw-btn], [data-withdraw-all]'
+  );
   buttons.forEach((b) => b.classList.add('btn-disabled'));
   try {
     const body = { month: root.dataset.month };
@@ -279,23 +295,58 @@ async function assign(card, amount) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      toast(data.error || 'Could not assign funds.', 'error');
-      return;
+      toast(data.error || failMessage, 'error');
+      return null;
     }
-    available = data.new_available;
-    totalSaved += data.assigned;
-    updateCard(card, data);
-    refreshAssignButtons();
-    updateXp(data.assigned);
-    celebrate(card, data);
-    toast(successMessage(data), 'success');
-    const input = card.querySelector('[data-custom-input]');
-    if (input) input.value = '';
+    return data;
   } catch (e) {
-    toast('Could not assign funds. Check your connection and try again.', 'error');
+    toast(`${failMessage} Check your connection and try again.`, 'error');
+    return null;
   } finally {
     buttons.forEach((b) => b.classList.remove('btn-disabled'));
   }
+}
+
+async function assign(card, amount) {
+  const data = await postMoney(card, card.dataset.assignUrl, amount, 'Could not assign funds.');
+  if (!data) return;
+  available = data.new_available;
+  totalSaved += data.assigned;
+  updateCard(card, data);
+  refreshAssignButtons();
+  updateXp(data.assigned);
+  celebrate(card, data);
+  toast(successMessage(data), 'success');
+  const input = card.querySelector('[data-custom-input]');
+  if (input) input.value = '';
+}
+
+const CASH_OUT_SOUND = [[1319, 0, 0.08], [988, 0.08, 0.1], [659, 0.18, 0.25]];
+
+function withdrawMessage(data) {
+  if (style === 'koala') {
+    return `🍂 −${fmt(data.withdrawn)} — the koala climbed down to ${Math.round(data.new_pct)}%. ${fmt(data.new_available)} back in Available.`;
+  }
+  if (style === 'arcade') {
+    return `🎰 CASH OUT! −${fmt(data.withdrawn)} from ${data.goal_name} — ${fmt(data.new_available)} in the hopper.`;
+  }
+  return `−${fmt(data.withdrawn)} from ${data.goal_name} — ${fmt(data.new_available)} back in Available.`;
+}
+
+async function withdraw(card, amount) {
+  const data = await postMoney(card, card.dataset.withdrawUrl, amount, 'Could not withdraw funds.');
+  if (!data) return;
+  available = data.new_available;
+  totalSaved -= data.withdrawn;
+  updateCard(card, data);
+  refreshAssignButtons();
+  updateXp(-data.withdrawn);
+  card.classList.add('withdrawing');
+  setTimeout(() => card.classList.remove('withdrawing'), 900);
+  if (style === 'arcade') beep(CASH_OUT_SOUND);
+  toast(withdrawMessage(data), 'info');
+  const input = card.querySelector('[data-withdraw-input]');
+  if (input) input.value = '';
 }
 
 function init() {
@@ -321,6 +372,30 @@ function init() {
       if (event.key === 'Enter') {
         event.preventDefault();
         submitCustom();
+      }
+    });
+
+    const withdrawRow = card.querySelector('[data-withdraw-row]');
+    card.querySelector('[data-withdraw-toggle]')?.addEventListener('click', () => {
+      withdrawRow.hidden = !withdrawRow.hidden;
+      if (!withdrawRow.hidden) withdrawRow.querySelector('[data-withdraw-input]')?.focus();
+    });
+    card.querySelector('[data-withdraw-all]')?.addEventListener('click', () => withdraw(card, null));
+    const withdrawBtn = card.querySelector('[data-withdraw-btn]');
+    const withdrawInput = card.querySelector('[data-withdraw-input]');
+    const submitWithdraw = () => {
+      const value = parseFloat(withdrawInput?.value);
+      if (!value || value <= 0) {
+        toast('Enter an amount above zero first.', 'warning');
+        return;
+      }
+      withdraw(card, value);
+    };
+    withdrawBtn?.addEventListener('click', submitWithdraw);
+    withdrawInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitWithdraw();
       }
     });
   });

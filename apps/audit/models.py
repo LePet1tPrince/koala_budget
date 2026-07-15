@@ -33,6 +33,7 @@ class AuditEvent(models.Model):
     TEAM_MEMBER_ADDED = "team_member_added"
     TEAM_MEMBER_REMOVED = "team_member_removed"
     GOAL_FUNDS_ASSIGNED = "goal_funds_assigned"
+    GOAL_FUNDS_WITHDRAWN = "goal_funds_withdrawn"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -57,6 +58,7 @@ class AuditEvent(models.Model):
         (TEAM_MEMBER_ADDED, "Team Member Added"),
         (TEAM_MEMBER_REMOVED, "Team Member Removed"),
         (GOAL_FUNDS_ASSIGNED, "Goal Funds Assigned"),
+        (GOAL_FUNDS_WITHDRAWN, "Goal Funds Withdrawn"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)

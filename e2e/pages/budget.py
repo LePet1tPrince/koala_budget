@@ -61,6 +61,16 @@ class BudgetPage(BasePage):
     def assign_available(self, goal_index: int = 0):
         self.page.locator("[data-testid='assign-available-btn']").nth(goal_index).click()
 
+    def withdraw(self, goal_index: int = 0, amount: str | None = None):
+        """Open a goal card's withdraw row and withdraw `amount` (or everything)."""
+        card = self.page.locator("[data-testid='goal-card']").nth(goal_index)
+        card.locator("[data-testid='withdraw-toggle']").click()
+        if amount is None:
+            card.locator("[data-testid='withdraw-all-btn']").click()
+        else:
+            card.locator("[data-withdraw-input]").fill(amount)
+            card.locator("[data-testid='withdraw-btn']").click()
+
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------

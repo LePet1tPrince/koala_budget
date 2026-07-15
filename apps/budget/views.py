@@ -778,6 +778,97 @@ def goal_assign_available(request, team_slug, pk):
 
 
 @login_and_team_required
+@require_POST
+def goal_withdraw(request, team_slug, pk):
+    """Take funds back out of a goal (JSON endpoint for the goals page).
+
+    Body: {"month": "YYYY-MM-DD", "amount": "123.45"}. Without "amount",
+    withdraws everything the goal has saved. The withdrawal is recorded against
+    the given month's allocation (which may go negative), so past months'
+    contribution history is never rewritten.
+    """
+    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+
+    try:
+        payload = json.loads(request.body) if request.body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    # Complete goals stay withdrawable — that's how a finished goal is cashed out
+    if goal.is_archived:
+        return JsonResponse({"error": "This goal is archived."}, status=400)
+
+    month = _parse_month(payload.get("month"))
+
+    with transaction.atomic():
+        allocation = (
+            GoalAllocation.objects.select_for_update().filter(team=request.team, goal=goal, month=month).first()
+        )
+        month_amount = allocation.amount if allocation else Decimal("0")
+        old_saved = goal.allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        available = NetWorthService(request.team).get_net_worth_card_data(month)["available"]
+
+        if old_saved <= 0:
+            return JsonResponse({"error": "Nothing saved to withdraw."}, status=400)
+
+        raw_amount = payload.get("amount")
+        if raw_amount is None:
+            amount = old_saved
+        else:
+            try:
+                amount = Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            except (InvalidOperation, TypeError, ValueError):
+                return JsonResponse({"error": "Invalid amount."}, status=400)
+            if not amount.is_finite() or amount <= 0 or amount > GRID_MAX_AMOUNT:
+                return JsonResponse({"error": "Invalid amount."}, status=400)
+            if amount > old_saved:
+                return JsonResponse(
+                    {"error": f"This goal only has ${old_saved:,.2f} saved."},
+                    status=400,
+                )
+
+        amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        GoalService(request.team).update_allocation(goal, month, month_amount - amount)
+
+    new_saved = old_saved - amount
+    if goal.target_amount > 0:
+        old_pct = min(float(old_saved / goal.target_amount * 100), 100)
+        new_pct = min(float(new_saved / goal.target_amount * 100), 100)
+    else:
+        old_pct = new_pct = 0
+
+    log_event(
+        AuditEvent.GOAL_FUNDS_WITHDRAWN,
+        request=request,
+        metadata={
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "month": month.isoformat(),
+            "amount": str(amount),
+            "withdraw_all": raw_amount is None,
+        },
+    )
+
+    return JsonResponse(
+        {
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "withdrawn": float(amount),
+            "old_saved": float(old_saved),
+            "new_saved": float(new_saved),
+            "old_pct": old_pct,
+            "new_pct": new_pct,
+            "remaining": float(max(goal.target_amount - new_saved, Decimal("0"))),
+            "this_month": float(month_amount - amount),
+            "new_available": float(available + amount),
+            "funded": new_saved >= goal.target_amount and goal.target_amount > 0,
+        }
+    )
+
+
+@login_and_team_required
 def goal_create_view(request, team_slug):
     """Create a new goal."""
     if request.method == "POST":

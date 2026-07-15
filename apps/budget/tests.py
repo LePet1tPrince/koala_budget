@@ -922,3 +922,153 @@ class GoalsListViewTest(TestCase):
         self.assertEqual(response.context["month"], date(2026, 5, 1))
         response = self.client.get(f"/a/{self.team.slug}/budget/")
         self.assertEqual(response.context["month"], date(2026, 5, 1))
+
+
+class GoalWithdrawTest(TestCase):
+    """Tests for the withdraw JSON endpoint on the goals page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Withdraw Test Team", slug="withdraw-test-team")
+        cls.user = CustomUser.objects.create_user(username="withdrawuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.other_team = Team.objects.create(name="Withdraw Other Team", slug="withdraw-other-team")
+        cls.outsider = CustomUser.objects.create_user(username="withdrawoutsider@example.com", password="testpass123")
+        cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
+
+        # Net worth of 2000 (asset dr / equity cr) so `available` starts positive
+        asset_group = AccountGroup.objects.create(team=cls.team, name="Withdraw Assets", account_type="asset")
+        equity_group = AccountGroup.objects.create(team=cls.team, name="Withdraw Equity", account_type="equity")
+        cls.checking = Account.objects.create(team=cls.team, name="Withdraw Checking", account_group=asset_group)
+        cls.opening = Account.objects.create(team=cls.team, name="Withdraw Opening", account_group=equity_group)
+        entry = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 1, 5), description="Opening")
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=entry, account=cls.checking, dr_amount=Decimal("2000.00")
+        )
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=entry, account=cls.opening, cr_amount=Decimal("2000.00")
+        )
+
+        cls.goal = Goal.objects.create(team=cls.team, name="Withdraw Trip", target_amount=Decimal("5000.00"))
+        # Saved 700 across two prior months + 100 in the selected month = 800 total
+        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("300"))
+        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("400"))
+        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 3, 1), amount=Decimal("100"))
+        cls.month = "2026-03-01"
+
+    def setUp(self):
+        self.client.login(username="withdrawuser@example.com", password="testpass123")
+
+    def withdraw_url(self, goal=None):
+        goal = goal or self.goal
+        return f"/a/{self.team.slug}/budget/goals/{goal.pk}/withdraw/"
+
+    def post_withdraw(self, body=None, goal=None):
+        return self.client.post(self.withdraw_url(goal), body or {"month": self.month}, content_type="application/json")
+
+    def test_withdraw_reduces_this_months_allocation(self):
+        response = self.post_withdraw({"month": self.month, "amount": "50"})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["withdrawn"], 50.0)
+        self.assertEqual(data["old_saved"], 800.0)
+        self.assertEqual(data["new_saved"], 750.0)
+        self.assertEqual(data["this_month"], 50.0)
+        # available was 2000 - 800 = 1200; withdrawing 50 frees it back up
+        self.assertEqual(data["new_available"], 1250.0)
+        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        self.assertEqual(allocation.amount, Decimal("50.00"))
+
+    def test_withdraw_beyond_this_month_goes_negative_and_keeps_history(self):
+        response = self.post_withdraw({"month": self.month, "amount": "500"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["this_month"], -400.0)
+        this_month = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        self.assertEqual(this_month.amount, Decimal("-400.00"))
+        # Prior months untouched
+        self.assertEqual(
+            GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 1, 1)).amount,
+            Decimal("300.00"),
+        )
+        self.assertEqual(
+            GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1)).amount,
+            Decimal("400.00"),
+        )
+
+    def test_withdraw_all_empties_the_goal(self):
+        response = self.post_withdraw()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["withdrawn"], 800.0)
+        self.assertEqual(data["new_saved"], 0.0)
+        self.assertEqual(data["new_available"], 2000.0)
+        this_month = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        self.assertEqual(this_month.amount, Decimal("-700.00"))
+
+    def test_withdraw_creates_negative_allocation_in_untouched_month(self):
+        response = self.post_withdraw({"month": "2026-04-01", "amount": "100"})
+        self.assertEqual(response.status_code, 200)
+        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 4, 1))
+        self.assertEqual(allocation.amount, Decimal("-100.00"))
+
+    def test_withdraw_more_than_saved_is_rejected(self):
+        response = self.post_withdraw({"month": self.month, "amount": "800.01"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("only has $800.00 saved", response.json()["error"])
+
+    def test_withdraw_from_empty_goal_is_rejected(self):
+        empty = Goal.objects.create(team=self.team, name="Withdraw Empty", target_amount=Decimal("100"))
+        response = self.post_withdraw(goal=empty)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Nothing saved", response.json()["error"])
+
+    def test_withdraw_rejects_invalid_amounts(self):
+        for bad in ("abc", "-5", "0"):
+            response = self.post_withdraw({"month": self.month, "amount": bad})
+            self.assertEqual(response.status_code, 400, bad)
+
+    def test_withdraw_allowed_on_complete_goal(self):
+        self.goal.is_complete = True
+        self.goal.save()
+        response = self.post_withdraw({"month": self.month, "amount": "100"})
+        self.assertEqual(response.status_code, 200)
+
+    def test_withdraw_rejected_on_archived_goal(self):
+        self.goal.is_archived = True
+        self.goal.save()
+        response = self.post_withdraw({"month": self.month, "amount": "100"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("archived", response.json()["error"])
+
+    def test_withdraw_unfunds_a_funded_goal(self):
+        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2025, 12, 1), amount=Decimal("4200"))
+        response = self.post_withdraw({"month": self.month, "amount": "1000"})
+        data = response.json()
+        self.assertEqual(data["old_pct"], 100.0)
+        self.assertEqual(data["new_pct"], 80.0)
+        self.assertFalse(data["funded"])
+
+    def test_withdraw_logs_audit_event(self):
+        from apps.audit.models import AuditEvent
+
+        self.post_withdraw({"month": self.month, "amount": "25"})
+        event = AuditEvent.objects.get(event_type=AuditEvent.GOAL_FUNDS_WITHDRAWN)
+        self.assertEqual(event.team, self.team)
+        self.assertEqual(event.metadata["amount"], "25.00")
+        self.assertFalse(event.metadata["withdraw_all"])
+
+    def test_withdraw_requires_login(self):
+        self.client.logout()
+        self.assertEqual(self.post_withdraw().status_code, 302)
+
+    def test_withdraw_requires_team_membership(self):
+        self.client.logout()
+        self.client.login(username="withdrawoutsider@example.com", password="testpass123")
+        self.assertEqual(self.post_withdraw().status_code, 404)
+
+    def test_withdraw_requires_post(self):
+        self.assertEqual(self.client.get(self.withdraw_url()).status_code, 405)
