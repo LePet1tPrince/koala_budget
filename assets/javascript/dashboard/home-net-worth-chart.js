@@ -14,6 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const ink = getInk(canvas);
   const surface = getSurface(canvas);
 
+  const formatChange = (value) => `${value >= 0 ? '+' : '-'}${currency(Math.abs(value))}`;
+
   const chart = new Chart(canvas, {
     type: 'line',
     data: {
@@ -44,6 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
         tooltip: {
           callbacks: {
             label: (ctx) => currency(ctx.parsed.y),
+            afterLabel: (ctx) => {
+              if (ctx.dataIndex === 0) return undefined;
+              const change = ctx.parsed.y - ctx.dataset.data[ctx.dataIndex - 1];
+              return `Change: ${formatChange(change)}`;
+            },
           },
         },
       },
