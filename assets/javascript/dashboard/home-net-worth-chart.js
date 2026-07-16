@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
           pointBorderColor: surface,
           pointBackgroundColor: MONEY.net,
           pointHoverRadius: 5,
-          tension: 0.3,
+          tension: 0,
           fill: true,
         },
       ],
