@@ -19,12 +19,14 @@
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if income_ytd.net_profit < 0 %}text-error{% else %}text-success{% endif %}">
         {{ income_ytd.net_profit|currency }}
       </div>
+      <a href="{% url 'reports:income_statement' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View profit & loss" %}</a>
     </section>
     <section class="app-card" data-testid="metric-budget-available">
       <div class="text-sm text-base-content/60">{% translate "Total budget available" %}</div>
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth_card.spend < 0 %}text-error{% endif %}">
         {{ net_worth_card.spend|currency }}
       </div>
+      <a href="{% url 'budget:budget_home' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View budget" %}</a>
     </section>
     <section class="app-card" data-testid="metric-goals-remaining">
       <div class="text-sm text-base-content/60">{% translate "To reach all goals" %}</div>
@@ -103,52 +105,31 @@
     </div>
   {% endif %}
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-    {# Budget snapshot #}
-    <section class="app-card" data-testid="dashboard-budget">
-      <div class="flex justify-between items-center mb-2">
-        <h2 class="text-2xl font-semibold">{{ month|date:"F" }} {% translate "budget" %}</h2>
-        <a href="{% url 'budget:budget_home' request.team.slug %}" class="link text-sm">{% translate "Open budget" %}</a>
-      </div>
-      {% if has_budget %}
-        <div class="text-sm text-base-content/60">{% translate "Left to spend" %}</div>
-        <div class="text-3xl font-semibold {% if net_worth_card.spend < 0 %}text-error{% endif %}">
-          {{ net_worth_card.spend|currency }}
-        </div>
-      {% else %}
-        <p class="text-base-content/60">
-          {% translate "No budget yet." %}
-          <a href="{% url 'budget:budget_home' request.team.slug %}" class="link">{% translate "Set one up" %}</a>
-        </p>
-      {% endif %}
-    </section>
-
-    {# Goals #}
-    <section class="app-card" data-testid="dashboard-goals">
-      <div class="flex justify-between items-center mb-2">
-        <h2 class="text-2xl font-semibold">{% translate "Goals" %}</h2>
-        <a href="{% url 'budget:goals_list' request.team.slug %}" class="link text-sm">{% translate "All goals" %}</a>
-      </div>
-      {% if goals %}
-        <ul class="space-y-3">
-          {% for goal in goals %}
-            <li>
-              <div class="flex justify-between text-sm mb-1">
-                <a href="{{ goal.get_absolute_url }}" class="link link-hover font-medium">{{ goal.name }}</a>
-                <span class="text-base-content/60">{{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}</span>
-              </div>
-              <progress class="progress progress-accent w-full" value="{{ goal.progress_percentage }}" max="100"></progress>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="text-base-content/60">
-          {% translate "Nothing you're saving for yet." %}
-          <a href="{% url 'budget:goal_create' request.team.slug %}" class="link">{% translate "Create a goal" %}</a>
-        </p>
-      {% endif %}
-    </section>
-  </div>
+  {# Goals #}
+  <section class="app-card mt-6" data-testid="dashboard-goals">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-2xl font-semibold">{% translate "Goals" %}</h2>
+      <a href="{% url 'budget:goals_list' request.team.slug %}" class="link text-sm">{% translate "All goals" %}</a>
+    </div>
+    {% if goals %}
+      <ul class="space-y-3">
+        {% for goal in goals %}
+          <li>
+            <div class="flex justify-between text-sm mb-1">
+              <a href="{{ goal.get_absolute_url }}" class="link link-hover font-medium">{{ goal.name }}</a>
+              <span class="text-base-content/60">{{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}</span>
+            </div>
+            <progress class="progress progress-accent w-full" value="{{ goal.progress_percentage }}" max="100"></progress>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-base-content/60">
+        {% translate "Nothing you're saving for yet." %}
+        <a href="{% url 'budget:goal_create' request.team.slug %}" class="link">{% translate "Create a goal" %}</a>
+      </p>
+    {% endif %}
+  </section>
 
 {% endblock %}
 

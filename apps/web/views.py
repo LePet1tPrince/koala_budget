@@ -1,6 +1,5 @@
 from decimal import Decimal
 
-from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib import messages
 from django.http import Http404, HttpResponseRedirect
@@ -76,7 +75,14 @@ def team_home(request, team_slug):
     goals_qs = Goal.objects.filter(team=team).active().with_progress(month)
     amount_to_reach_goals = sum((max(goal.remaining, Decimal("0")) for goal in goals_qs), Decimal("0"))
 
-    chart_start = month - relativedelta(months=5)
+    first_entry_date = (
+        JournalEntry.objects.filter(team=team)
+        .exclude(status=JournalEntry.STATUS_VOID)
+        .order_by("entry_date")
+        .values_list("entry_date", flat=True)
+        .first()
+    )
+    chart_start = first_entry_date.replace(day=1) if first_entry_date else month
     trend_data = report_service.get_net_worth_trend_data_by_date_range(chart_start, today)
     net_worth_chart_data = None
     if trend_data:

@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
           ticks: {color: ink, maxRotation: 0, autoSkip: true},
         },
         y: {
+          beginAtZero: true,
           grid: {color: GRID},
           border: {display: false},
           ticks: {color: ink, callback: (value) => `$${value.toLocaleString()}`},
