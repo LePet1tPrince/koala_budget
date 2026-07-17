@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Palette validated (light + dark) for CVD separation and surface contrast:
   // net worth blue, assets green, liabilities red.
   const netWorthColor = 'rgb(59, 130, 246)';
-  const netWorthFill = 'rgba(59, 130, 246, 0.10)';
   const assetsColor = 'rgb(22, 163, 74)';
   const liabilitiesColor = 'rgb(239, 68, 68)';
 
@@ -33,45 +32,42 @@ document.addEventListener('DOMContentLoaded', () => {
   const currency = (value) =>
     `$${value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
 
-  const lineDefaults = {
-    borderWidth: 2,
-    pointRadius: 3,
-    pointBorderWidth: 2,
-    pointBorderColor: surface,
-    pointHoverRadius: 5,
-    tension: 0.3,
-    fill: false,
-  };
-
   const chart = new Chart(canvas, {
-    type: 'line',
+    type: 'bar',
     data: {
       labels,
       datasets: [
         {
-          ...lineDefaults,
+          type: 'line',
           label: 'Net Worth',
           data: data.net_worth,
           borderColor: netWorthColor,
-          backgroundColor: netWorthFill,
+          backgroundColor: netWorthColor,
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBorderWidth: 2,
+          pointBorderColor: surface,
           pointBackgroundColor: netWorthColor,
-          fill: true,
+          pointHoverRadius: 5,
+          tension: 0,
+          fill: false,
+          order: 0,
         },
         {
-          ...lineDefaults,
+          type: 'bar',
           label: 'Assets',
           data: data.assets,
-          borderColor: assetsColor,
           backgroundColor: assetsColor,
-          pointBackgroundColor: assetsColor,
+          borderRadius: 4,
+          order: 1,
         },
         {
-          ...lineDefaults,
+          type: 'bar',
           label: 'Liabilities',
           data: data.liabilities,
-          borderColor: liabilitiesColor,
           backgroundColor: liabilitiesColor,
-          pointBackgroundColor: liabilitiesColor,
+          borderRadius: 4,
+          order: 1,
         },
       ],
     },
@@ -92,15 +88,13 @@ document.addEventListener('DOMContentLoaded', () => {
       scales: {
         x: {
           grid: {display: false},
-          ticks: {color: ink, maxRotation: 0, autoSkip: true, maxTicksLimit: 12},
+          ticks: {color: ink, maxRotation: 0, autoSkip: true},
         },
         y: {
+          beginAtZero: true,
           grid: {color: grid},
           border: {display: false},
-          ticks: {
-            color: ink,
-            callback: (value) => `$${value.toLocaleString()}`,
-          },
+          ticks: {color: ink, callback: (value) => `$${value.toLocaleString()}`},
         },
       },
     },
@@ -114,7 +108,9 @@ document.addEventListener('DOMContentLoaded', () => {
     chart.options.scales.x.ticks.color = newInk;
     chart.options.scales.y.ticks.color = newInk;
     chart.data.datasets.forEach((dataset) => {
-      dataset.pointBorderColor = newSurface;
+      if (dataset.type === 'line') {
+        dataset.pointBorderColor = newSurface;
+      }
     });
     chart.update('none');
   });

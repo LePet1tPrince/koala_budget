@@ -1,20 +1,54 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
+{% load django_vite %}
 {% load currency_tags %}
 {% block app %}
 
-  {# Hero: the one number that matters #}
-  <section class="app-card" data-testid="dashboard-hero">
-    <div class="text-sm text-base-content/60">{% translate "Net worth" %}</div>
-    <div class="text-4xl font-semibold tracking-tight mt-1" data-testid="dashboard-net-worth">
-      {{ net_worth_card.net_worth|currency }}
+  <h1 class="text-2xl font-semibold" data-testid="dashboard-greeting">{{ greeting }}</h1>
+
+  {# Headline metrics #}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4" data-testid="dashboard-metrics">
+    <section class="app-card" data-testid="metric-net-worth">
+      <div class="text-sm text-base-content/60">{% translate "Net worth" %}</div>
+      <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth_card.net_worth < 0 %}text-error{% endif %}">
+        {{ net_worth_card.net_worth|currency }}
+      </div>
+    </section>
+    <section class="app-card" data-testid="metric-income-ytd">
+      <div class="text-sm text-base-content/60">{% translate "Income − expenses (YTD)" %}</div>
+      <div class="text-2xl font-semibold tracking-tight mt-1 {% if income_ytd.net_profit < 0 %}text-error{% else %}text-success{% endif %}">
+        {{ income_ytd.net_profit|currency }}
+      </div>
+      <a href="{% url 'reports:income_statement' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View profit & loss" %}</a>
+    </section>
+    <section class="app-card" data-testid="metric-budget-available">
+      <div class="text-sm text-base-content/60">{% translate "Total budget available" %}</div>
+      <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth_card.spend < 0 %}text-error{% endif %}">
+        {{ net_worth_card.spend|currency }}
+      </div>
+      <a href="{% url 'budget:budget_home' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View budget" %}</a>
+    </section>
+    <section class="app-card" data-testid="metric-goals-remaining">
+      <div class="text-sm text-base-content/60">{% translate "To reach all goals" %}</div>
+      <div class="text-2xl font-semibold tracking-tight mt-1">
+        {{ amount_to_reach_goals|currency }}
+      </div>
+    </section>
+  </div>
+
+  {# Net worth trend #}
+  <section class="app-card mt-6" data-testid="dashboard-net-worth-chart">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-2xl font-semibold">{% translate "Net worth" %}</h2>
+      <a href="{% url 'reports:net_worth_trend' request.team.slug %}" class="link text-sm">{% translate "See more reports" %}</a>
     </div>
-    <div class="text-sm text-base-content/60 mt-2">
-      {% translate "Available" %}:
-      <span class="font-semibold {% if net_worth_card.available < 0 %}text-error{% elif net_worth_card.available > 0 %}text-success{% endif %}">{{ net_worth_card.available|currency }}</span>
-      · {% translate "Budgeted" %}: {{ net_worth_card.spend|currency }}
-      · {% translate "Saved to goals" %}: {{ net_worth_card.save|currency }}
-    </div>
+    {% if net_worth_chart_data %}
+      <div class="w-full" style="height: 220px;">
+        <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
+      </div>
+    {% else %}
+      <p class="text-base-content/60">{% translate "Add accounts and transactions to see your net worth trend." %}</p>
+    {% endif %}
   </section>
 
   {% if show_onboarding %}
@@ -71,76 +105,37 @@
     </div>
   {% endif %}
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-    {# Budget snapshot #}
-    <section class="app-card" data-testid="dashboard-budget">
-      <div class="flex justify-between items-center mb-2">
-        <h2 class="text-2xl font-semibold">{{ month|date:"F" }} {% translate "budget" %}</h2>
-        <a href="{% url 'budget:budget_home' request.team.slug %}" class="link text-sm">{% translate "Open budget" %}</a>
-      </div>
-      {% if has_budget %}
-        <div class="text-sm text-base-content/60">{% translate "Left to spend" %}</div>
-        <div class="text-3xl font-semibold {% if net_worth_card.spend < 0 %}text-error{% endif %}">
-          {{ net_worth_card.spend|currency }}
-        </div>
-      {% else %}
-        <p class="text-base-content/60">
-          {% translate "No budget yet." %}
-          <a href="{% url 'budget:budget_home' request.team.slug %}" class="link">{% translate "Set one up" %}</a>
-        </p>
-      {% endif %}
-    </section>
-
-    {# Goals #}
-    <section class="app-card" data-testid="dashboard-goals">
-      <div class="flex justify-between items-center mb-2">
-        <h2 class="text-2xl font-semibold">{% translate "Goals" %}</h2>
-        <a href="{% url 'budget:goals_list' request.team.slug %}" class="link text-sm">{% translate "All goals" %}</a>
-      </div>
-      {% if goals %}
-        <ul class="space-y-3">
-          {% for goal in goals %}
-            <li>
-              <div class="flex justify-between text-sm mb-1">
-                <a href="{{ goal.get_absolute_url }}" class="link link-hover font-medium">{{ goal.name }}</a>
-                <span class="text-base-content/60">{{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}</span>
-              </div>
-              <progress class="progress progress-accent w-full" value="{{ goal.progress_percentage }}" max="100"></progress>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="text-base-content/60">
-          {% translate "Nothing you're saving for yet." %}
-          <a href="{% url 'budget:goal_create' request.team.slug %}" class="link">{% translate "Create a goal" %}</a>
-        </p>
-      {% endif %}
-    </section>
-  </div>
-
-  {# Recent activity #}
-  <section class="app-card mt-6" data-testid="dashboard-recent">
+  {# Goals #}
+  <section class="app-card mt-6" data-testid="dashboard-goals">
     <div class="flex justify-between items-center mb-2">
-      <h2 class="text-2xl font-semibold">{% translate "Recent activity" %}</h2>
-      <a href="{% url 'journal:transactions_home' request.team.slug %}" class="link text-sm">{% translate "See all" %}</a>
+      <h2 class="text-2xl font-semibold">{% translate "Goals" %}</h2>
+      <a href="{% url 'budget:goals_list' request.team.slug %}" class="link text-sm">{% translate "All goals" %}</a>
     </div>
-    {% if recent_entries %}
-      <ul class="divide-y divide-base-300">
-        {% for entry in recent_entries %}
-          <li class="flex justify-between items-center py-3 gap-4">
-            <div class="min-w-0">
-              <div class="font-medium truncate">{{ entry.description }}</div>
-              <div class="text-sm text-base-content/60">
-                {{ entry.entry_date|date:"M j" }}{% if entry.payee %} · {{ entry.payee.name }}{% endif %}
-              </div>
+    {% if goals %}
+      <ul class="space-y-3">
+        {% for goal in goals %}
+          <li>
+            <div class="flex justify-between text-sm mb-1">
+              <a href="{{ goal.get_absolute_url }}" class="link link-hover font-medium">{{ goal.name }}</a>
+              <span class="text-base-content/60">{{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}</span>
             </div>
-            <span class="font-mono text-sm shrink-0">{{ entry.total_debits|currency }}</span>
+            <progress class="progress progress-accent w-full" value="{{ goal.progress_percentage }}" max="100"></progress>
           </li>
         {% endfor %}
       </ul>
     {% else %}
-      <p class="text-base-content/60">{% translate "No transactions yet." %}</p>
+      <p class="text-base-content/60">
+        {% translate "Nothing you're saving for yet." %}
+        <a href="{% url 'budget:goal_create' request.team.slug %}" class="link">{% translate "Create a goal" %}</a>
+      </p>
     {% endif %}
   </section>
 
+{% endblock %}
+
+{% block page_js %}
+{% if net_worth_chart_data %}
+{{ net_worth_chart_data|json_script:'home-net-worth-data' }}
+{% vite_asset 'assets/javascript/dashboard/home-net-worth-chart.js' %}
+{% endif %}
 {% endblock %}

@@ -7,7 +7,6 @@ from django.urls import reverse
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal, GoalAllocation
-from apps.journal.models import JournalEntry
 from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_MEMBER
@@ -45,19 +44,32 @@ class TeamHomeDashboardTest(TestCase):
         self.assertTemplateUsed(response, "web/app_home.html")
         self.assertIn("net_worth_card", response.context)
         self.assertIn("goals", response.context)
-        self.assertIn("recent_entries", response.context)
+        self.assertIn("income_ytd", response.context)
+        self.assertIn("amount_to_reach_goals", response.context)
+        self.assertIn("greeting", response.context)
 
-    def test_dashboard_shows_goals_and_recent_activity(self):
+    def test_dashboard_shows_goals(self):
         with current_team(self.team):
             goal = Goal.objects.create(team=self.team, name="Vacation", target_amount=Decimal("1000.00"))
             GoalAllocation.objects.create(team=self.team, goal=goal, month=date(2026, 1, 1), amount=Decimal("250.00"))
-            entry = JournalEntry.objects.create(
-                team=self.team, entry_date="2026-01-15", description="Coffee shop", status=JournalEntry.STATUS_POSTED
-            )
         response = self.client.get(self.url)
         self.assertContains(response, "Vacation")
-        self.assertContains(response, "Coffee shop")
-        self.assertEqual(list(response.context["recent_entries"]), [entry])
+
+    def test_greeting_includes_first_name(self):
+        self.user.first_name = "Timmy"
+        self.user.save()
+        response = self.client.get(self.url)
+        self.assertIn("Timmy", response.context["greeting"])
+
+    def test_amount_to_reach_all_goals_sums_remaining(self):
+        with current_team(self.team):
+            goal1 = Goal.objects.create(team=self.team, name="Vacation", target_amount=Decimal("1000.00"))
+            GoalAllocation.objects.create(team=self.team, goal=goal1, month=date(2026, 1, 1), amount=Decimal("250.00"))
+            goal2 = Goal.objects.create(team=self.team, name="Emergency Fund", target_amount=Decimal("500.00"))
+            GoalAllocation.objects.create(team=self.team, goal=goal2, month=date(2026, 1, 1), amount=Decimal("500.00"))
+        response = self.client.get(self.url)
+        # goal1 needs 750 more; goal2 is fully funded (0 remaining, clamped at 0)
+        self.assertEqual(response.context["amount_to_reach_goals"], Decimal("750.00"))
 
     def test_onboarding_shown_for_empty_team(self):
         response = self.client.get(self.url)

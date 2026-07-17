@@ -43,6 +43,7 @@ export default defineConfig({
         'accounts-board-app': path.resolve(__dirname, './assets/javascript/accounts/accounts-board-app.jsx'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
         'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
+        'home-net-worth-chart': path.resolve(__dirname, './assets/javascript/dashboard/home-net-worth-chart.js'),
         'expense-trend-chart': path.resolve(__dirname, './assets/javascript/reports/expense-trend-chart.js'),
         'cash-flow-chart': path.resolve(__dirname, './assets/javascript/reports/cash-flow-chart.js'),
         'balance-composition-chart': path.resolve(__dirname, './assets/javascript/reports/balance-composition-chart.js'),
