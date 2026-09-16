@@ -337,6 +337,11 @@ class ColumnMappingSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Column index for outflow (dual column mode)",
     )
+    invert_amounts = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Flip the sign of a single amount column, so its inflows become outflows and vice versa",
+    )
 
 
 class CategoryMappingSerializer(serializers.Serializer):

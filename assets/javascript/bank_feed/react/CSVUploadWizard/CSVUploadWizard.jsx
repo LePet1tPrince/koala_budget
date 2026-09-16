@@ -42,6 +42,8 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
   });
   const [amountType, setAmountType] = useState('single'); // 'single' or 'dual'
   const [hasHeaders, setHasHeaders] = useState(true);
+  // Single-column sign flip — see Step2ColumnMapping's "Swap + and −" checkbox.
+  const [invertAmounts, setInvertAmounts] = useState(false);
 
   // Step 2 extra state
   const [dateFormat, setDateFormat] = useState(null);
@@ -88,18 +90,25 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
   /**
    * Handle column mapping (Step 2)
    */
-  const handleColumnMappingComplete = async (mapping, amtType, fileHasHeaders, detectedDateFormat) => {
+  const handleColumnMappingComplete = async (
+    mapping,
+    amtType,
+    fileHasHeaders,
+    detectedDateFormat,
+    flipAmountSign
+  ) => {
     setColumnMapping(mapping);
     setAmountType(amtType);
     setHasHeaders(fileHasHeaders);
     setDateFormat(detectedDateFormat);
+    setInvertAmounts(flipAmountSign);
     setError(null);
 
     try {
       const result = await uploadApi.uploadPreview(
         file,
         selectedAccount.id,
-        { ...mapping, has_headers: fileHasHeaders },
+        { ...mapping, has_headers: fileHasHeaders, invert_amounts: flipAmountSign },
         [],
         detectedDateFormat
       );
@@ -132,7 +141,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
       const result = await uploadApi.uploadPreview(
         file,
         selectedAccount.id,
-        { ...columnMapping, has_headers: hasHeaders },
+        { ...columnMapping, has_headers: hasHeaders, invert_amounts: invertAmounts },
         categoryMappingsList,
         dateFormat
       );

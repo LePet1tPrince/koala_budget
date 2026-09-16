@@ -607,6 +607,7 @@ def preview_transactions(
                 "inflow": 4,  # for dual amount columns
                 "outflow": 5,  # for dual amount columns
                 "has_headers": True,  # whether first row is headers
+                "invert_amounts": False,  # flip the sign of a single amount column
             }
         category_mappings: Dict mapping category names to account IDs
         team: The team object
@@ -648,6 +649,12 @@ def preview_transactions(
     outflow_col = column_mapping.get("outflow")
 
     use_dual_amount = inflow_col is not None or outflow_col is not None
+    # Single-column files disagree on sign: some banks write a purchase as -50,
+    # others as 50. When the user flips this, every amount is negated so the
+    # file's inflows land as outflows and vice versa. Applied at parse time so
+    # every downstream consumer -- duplicate matching, the per-category
+    # inflow/outflow totals, the account suggestion -- sees the corrected sign.
+    invert_amounts = bool(column_mapping.get("invert_amounts", False))
 
     for row_num, row in enumerate(rows, start=2):  # Start at 2 (1-indexed, skip header)
         error = None
@@ -716,6 +723,9 @@ def preview_transactions(
                 if amount is None and row[amount_col].strip():
                     error = f"Invalid amount: {row[amount_col]}"
                     error_field = "amount"
+                elif invert_amounts and amount:
+                    # `and amount` keeps zero as 0.00 rather than -0.00.
+                    amount = -amount
 
         # Match category
         if category_name:

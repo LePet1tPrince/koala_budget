@@ -164,6 +164,10 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
     outflow: null,
   });
   const [amountType, setAmountType] = useState('single'); // 'single' or 'dual'
+  // Single-column files disagree on sign: some banks write a purchase as -50,
+  // others as 50. Flipping this negates every amount, so the file's inflows land
+  // as outflows and vice versa.
+  const [invertAmounts, setInvertAmounts] = useState(false);
   const [dateFormat, setDateFormat] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -272,6 +276,9 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
         outflow: null,
       }));
     } else {
+      // Dual mode swaps direction by re-picking the two columns, so the flip
+      // doesn't apply and must not linger.
+      setInvertAmounts(false);
       setMapping((prev) => ({
         ...prev,
         amount: null,
@@ -302,7 +309,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
     if (!isValid()) return;
 
     setLoading(true);
-    await onComplete(mapping, amountType, hasHeaders, dateFormat);
+    await onComplete(mapping, amountType, hasHeaders, dateFormat, amountType === 'single' && invertAmounts);
     setLoading(false);
   };
 
@@ -510,7 +517,37 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
       {/* Amount Column(s) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {amountType === 'single' ? (
-          renderColumnSelect('amount', gettext('Amount'), true)
+          <>
+            {renderColumnSelect('amount', gettext('Amount'), true)}
+
+            {/* Sign convention for the single amount column. Banks disagree on
+                which direction a positive number means, so let the user say. */}
+            {/* `flex flex-col` because DaisyUI 5's `.label` is inline-flex: the
+                heading, the checkbox row and the hint would otherwise share a
+                line instead of stacking like the column selects do. */}
+            <div className="form-control flex flex-col">
+              <div className="label">
+                <span className="label-text">{gettext('Sign Convention')}</span>
+              </div>
+              <label className="label cursor-pointer justify-start gap-4 py-0 h-12">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-primary"
+                  checked={invertAmounts}
+                  onChange={(e) => setInvertAmounts(e.target.checked)}
+                  data-testid="invert-amounts"
+                />
+                <span className="label-text">{gettext('Swap + and −')}</span>
+              </label>
+              <div className="label">
+                <span className="label-text-alt text-base-content/50">
+                  {invertAmounts
+                    ? gettext('Positive amounts are money in, negative are money out.')
+                    : gettext('Positive amounts are money out, negative are money in.')}
+                </span>
+              </div>
+            </div>
+          </>
         ) : (
           <>
             {renderColumnSelect('inflow', gettext('Inflow (Money In)'))}
