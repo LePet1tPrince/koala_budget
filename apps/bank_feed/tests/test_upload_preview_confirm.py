@@ -150,6 +150,108 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
             self.assertIsNone(tx["error_field"])
             self.assertEqual(tx["raw_date"], "2025-01-01")
 
+    def test_upload_preview_inverts_single_column_amounts(self):
+        """invert_amounts flips a single amount column: the file's outflow becomes an inflow."""
+        csv_content = "Date,Description,Amount\n2025-01-01,Purchase,100.00\n2025-01-02,Refund,-25.00"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps({"date": 0, "description": 1, "amount": 2, "invert_amounts": True}),
+                },
+                format="multipart",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            amounts = [tx["amount"] for tx in response.data["transactions"]]
+            self.assertEqual(amounts, ["-100.00", "25.00"])
+
+    def test_upload_preview_without_invert_keeps_signs(self):
+        """The flag defaults off, leaving the file's own signs untouched."""
+        csv_content = "Date,Description,Amount\n2025-01-01,Purchase,100.00\n2025-01-02,Refund,-25.00"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps({"date": 0, "description": 1, "amount": 2}),
+                },
+                format="multipart",
+            )
+
+            amounts = [tx["amount"] for tx in response.data["transactions"]]
+            self.assertEqual(amounts, ["100.00", "-25.00"])
+
+    def test_upload_preview_invert_leaves_zero_unsigned(self):
+        """A zero amount must not come back as -0.00."""
+        csv_content = "Date,Description,Amount\n2025-01-01,Zero fee,0.00"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps({"date": 0, "description": 1, "amount": 2, "invert_amounts": True}),
+                },
+                format="multipart",
+            )
+
+            self.assertEqual(response.data["transactions"][0]["amount"], "0.00")
+
+    def test_upload_preview_invert_is_ignored_in_dual_column_mode(self):
+        """Dual-column files swap direction by re-picking columns, so the flag must not apply."""
+        csv_content = "Date,Description,In,Out\n2025-01-01,Purchase,,100.00"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps(
+                        {"date": 0, "description": 1, "inflow": 2, "outflow": 3, "invert_amounts": True}
+                    ),
+                },
+                format="multipart",
+            )
+
+            # Outflow stays positive under the Plaid convention.
+            self.assertEqual(response.data["transactions"][0]["amount"], "100.00")
+
+    def test_upload_preview_invert_flows_into_category_totals(self):
+        """The flip happens at parse time, so per-category inflow/outflow totals follow it."""
+        csv_content = "Date,Description,Category,Amount\n2025-01-01,Payday,Salary,1000.00"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps(
+                        {"date": 0, "description": 1, "category": 2, "amount": 3, "invert_amounts": True}
+                    ),
+                },
+                format="multipart",
+            )
+
+            unmapped = response.data["unmapped_categories"][0]
+            self.assertEqual(unmapped["name"], "Salary")
+            # Without the flip this would have counted as 1000 of outflow.
+            self.assertEqual(unmapped["inflow"], "1000.00")
+            self.assertEqual(unmapped["outflow"], "0.00")
+
     def test_upload_preview_detects_duplicates(self):
         """Test that preview detects potential duplicates."""
         # Create existing transaction
