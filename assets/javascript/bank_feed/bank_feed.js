@@ -76,6 +76,34 @@ export function getUploadApiHelpers(teamSlug) {
     },
 
     /**
+     * Check every row's date cell against a chosen date format.
+     * Returns { total_rows, invalid_count, invalid_samples, suggested_format, error }.
+     */
+    uploadValidateDates: async (file, dateColumn, dateFormat, hasHeaders = true) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('date_column', dateColumn);
+      formData.append('date_format', dateFormat);
+      formData.append('has_headers', hasHeaders ? 'true' : 'false');
+
+      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_validate_dates/`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': headers['X-CSRFToken'],
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Failed to validate dates');
+      }
+
+      return response.json();
+    },
+
+    /**
      * Create a new account (for use during category mapping)
      */
     createAccount: async (name, accountGroupId) => {

@@ -3,6 +3,17 @@
 import React, { useMemo, useState } from 'react';
 
 /**
+ * Short, specific badge label for a row's error. The server tags each error with
+ * the field it came from, so the preview can name the problem ("Invalid date")
+ * instead of a bare "Error" the user has to hover to understand.
+ */
+const errorLabel = (tx) => {
+  if (tx.error_field === 'date') return gettext('Invalid date');
+  if (tx.error_field === 'amount') return gettext('Invalid amount');
+  return gettext('Error');
+};
+
+/**
  * Step5Preview - Final preview and confirmation before import
  *
  * Props:
@@ -56,6 +67,25 @@ const Step5Preview = ({
     });
     return { importCount: importable, autoCategorizedCount: categorized };
   }, [transactions, excludedDuplicateRows, skippedRows]);
+
+  // Split the error total by cause so the summary can say what actually went
+  // wrong — a wrong date-format mapping is by far the most common case.
+  const { dateErrorCount, amountErrorCount, otherErrorCount } = useMemo(() => {
+    let dateErrors = 0;
+    let amountErrors = 0;
+    let otherErrors = 0;
+    transactions.forEach((tx) => {
+      if (!tx.error) return;
+      if (tx.error_field === 'date') dateErrors++;
+      else if (tx.error_field === 'amount') amountErrors++;
+      else otherErrors++;
+    });
+    return {
+      dateErrorCount: dateErrors,
+      amountErrorCount: amountErrors,
+      otherErrorCount: otherErrors,
+    };
+  }, [transactions]);
 
   const toggleSkipRow = (rowNumber) => {
     setSkippedRows((prev) => {
@@ -123,13 +153,30 @@ const Step5Preview = ({
         )}
       </div>
 
-      {/* Error Summary */}
+      {/* Error Summary — broken down by cause, so a wrong date-format mapping
+          reads as such instead of a generic error count. */}
       {errorCount > 0 && (
-        <div className="alert alert-error">
+        <div className="alert alert-error" data-testid="preview-error-summary">
           <i className="fa fa-times-circle"></i>
-          <span>
-            {errorCount} {gettext('row(s) have errors and will be skipped')}
-          </span>
+          <div>
+            <div>
+              {errorCount} {gettext('row(s) have errors and will be skipped')}
+            </div>
+            <div className="text-sm opacity-90">
+              {[
+                dateErrorCount > 0 && `${dateErrorCount} ${gettext('invalid date(s)')}`,
+                amountErrorCount > 0 && `${amountErrorCount} ${gettext('invalid amount(s)')}`,
+                otherErrorCount > 0 && `${otherErrorCount} ${gettext('other')}`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+            {dateErrorCount > 0 && (
+              <div className="text-sm opacity-90">
+                {gettext('Go back to Map Columns to pick a different date format.')}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -171,7 +218,17 @@ const Step5Preview = ({
                     )}
                   </td>
                   <td>{tx.row_number}</td>
-                  <td>{tx.date || '-'}</td>
+                  <td>
+                    {tx.date ? (
+                      tx.date
+                    ) : tx.error_field === 'date' ? (
+                      <span className="text-error font-mono" title={tx.error}>
+                        {tx.raw_date || gettext('(blank)')}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                   <td className="max-w-48 truncate">{tx.description || '-'}</td>
                   <td>{formatAmount(tx.amount)}</td>
                   <td>
@@ -186,7 +243,7 @@ const Step5Preview = ({
                   <td>
                     {hasError ? (
                       <span className="badge badge-error badge-xs" title={tx.error}>
-                        {gettext('Error')}
+                        {errorLabel(tx)}
                       </span>
                     ) : dupExcluded ? (
                       <span className="badge badge-ghost badge-xs">

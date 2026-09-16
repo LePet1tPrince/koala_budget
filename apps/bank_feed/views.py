@@ -44,9 +44,10 @@ from .serializers import (
     UploadConfirmResponseSerializer,
     UploadParseResponseSerializer,
     UploadPreviewResponseSerializer,
+    UploadValidateDatesResponseSerializer,
     bank_transaction_to_feed_row,
 )
-from .services.csv_upload import create_transactions, parse_file, preview_transactions
+from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_mirror import linked_legs, sync_transfer, would_orphan_primary
 
@@ -758,6 +759,82 @@ class BankFeedViewSet(
         return Response(serializer.data)
 
     @extend_schema(
+        operation_id="bank_feed_upload_validate_dates",
+        tags=["bank-feed"],
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "format": "binary"},
+                    "date_column": {"type": "integer"},
+                    "date_format": {"type": "string"},
+                    "has_headers": {"type": "boolean"},
+                },
+            }
+        },
+        responses={200: UploadValidateDatesResponseSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="upload_validate_dates")
+    def upload_validate_dates(self, request, team_slug=None):
+        """
+        Check every row's date cell against the chosen date format.
+
+        Used by the column-mapping step of the upload wizard to warn about rows
+        that would be rejected, before the user walks the rest of the wizard.
+
+        Request: multipart/form-data with file, date_column, date_format, has_headers
+        Response: total_rows, invalid_count, invalid_samples, suggested_format
+        """
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "No file provided"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            date_column = int(request.data.get("date_column"))
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "Invalid date_column"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if date_column < 0:
+            return Response(
+                {"error": "Invalid date_column"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        date_format = request.data.get("date_format") or ""
+        if not date_format:
+            return Response(
+                {"error": "No date_format provided"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        has_headers = str(request.data.get("has_headers", "true")).lower() not in ("false", "0")
+
+        uploaded_file = request.FILES["file"]
+        result = validate_date_column(
+            file=uploaded_file,
+            filename=uploaded_file.name,
+            date_col=date_column,
+            date_format=date_format,
+            has_headers=has_headers,
+        )
+
+        serializer = UploadValidateDatesResponseSerializer(
+            {
+                "total_rows": result.total_rows,
+                "invalid_count": result.invalid_count,
+                "invalid_samples": [sample.__dict__ for sample in result.invalid_samples],
+                "suggested_format": result.suggested_format,
+                "error": result.error,
+            }
+        )
+        return Response(serializer.data)
+
+    @extend_schema(
         operation_id="bank_feed_upload_preview",
         tags=["bank-feed"],
         request={
@@ -849,6 +926,8 @@ class BankFeedViewSet(
                 "error": tx.error,
                 "matched_category_id": tx.matched_category_id,
                 "is_potential_duplicate": tx.is_potential_duplicate,
+                "error_field": tx.error_field,
+                "raw_date": tx.raw_date,
             }
             for tx in result.transactions
         ]
