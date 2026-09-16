@@ -1,6 +1,7 @@
 /* globals gettext */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const DATE_FORMAT_OPTIONS = [
   { value: '%d/%m/%Y', label: 'DD/MM/YYYY', example: '28/02/2025' },
@@ -14,6 +15,22 @@ const DATE_FORMAT_OPTIONS = [
   { value: '%b %d, %Y', label: 'Mon DD, YYYY', example: 'Feb 28, 2025' },
   { value: '%d %b %Y', label: 'DD Mon YYYY', example: '28 Feb 2025' },
 ];
+
+// How long to wait after the last change before asking the server to re-check
+// every row's date -- long enough that flipping through the format dropdown
+// doesn't fire a request per keystroke.
+const DATE_CHECK_DEBOUNCE_MS = 400;
+
+// How long the invalid-date toast stays on screen before dismissing itself.
+const DATE_TOAST_TIMEOUT_MS = 9000;
+
+/**
+ * Human label for a strftime format, falling back to the raw format string.
+ */
+const formatLabel = (value) => {
+  const option = DATE_FORMAT_OPTIONS.find((o) => o.value === value);
+  return option ? option.label : value;
+};
 
 /**
  * Detect the most likely date format from a list of sample date strings.
@@ -80,8 +97,8 @@ const COLUMN_KEYWORDS = {
   payee: ['payee', 'merchant', 'vendor', 'recipient', 'paid to'],
   category: ['category', 'type', 'classification', 'account', 'expense type'],
   amount: ['amount', 'sum', 'total', 'value', 'transaction amount'],
-  inflow: ['inflow', 'credit', 'deposit', 'income', 'money in', 'credits'],
-  outflow: ['outflow', 'debit', 'withdrawal', 'expense', 'money out', 'debits', 'payment'],
+  inflow: ['inflow', 'credit', 'deposit', 'income', 'money in', 'funds in', 'credits'],
+  outflow: ['outflow', 'debit', 'withdrawal', 'expense', 'money out', 'funds out', 'debits', 'payment'],
 };
 
 /**
@@ -129,11 +146,13 @@ const guessAllMappings = (headers) => {
  * - headers: Array of column headers from the file
  * - sampleRows: Sample data rows for preview
  * - totalRows: Total number of rows in the file
+ * - file: The uploaded file, re-posted to validate dates across every row
+ * - uploadApi: Upload API helpers (used for uploadValidateDates)
  * - onComplete: Callback with column mapping
  * - onBack: Callback to go back
  * - onCancel: Callback when user cancels
  */
-const Step2ColumnMapping = ({ headers, sampleRows, totalRows, onComplete, onBack, onCancel }) => {
+const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, onComplete, onBack, onCancel }) => {
   const [hasHeaders, setHasHeaders] = useState(true);
   const [mapping, setMapping] = useState({
     date: null,
@@ -147,6 +166,14 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, onComplete, onBack
   const [amountType, setAmountType] = useState('single'); // 'single' or 'dual'
   const [dateFormat, setDateFormat] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Whole-file date check: result of applying the chosen format to every row.
+  const [dateCheck, setDateCheck] = useState(null);
+  const [dateChecking, setDateChecking] = useState(false);
+  const [dateToast, setDateToast] = useState(null);
+  // Monotonic token so a slow response for an earlier format can't overwrite a
+  // newer one's result.
+  const dateCheckToken = useRef(0);
 
   // Auto-guess mappings when component mounts or when hasHeaders changes
   useEffect(() => {
@@ -181,6 +208,51 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, onComplete, onBack
       setDateFormat(null);
     }
   }, [mapping.date, sampleRows]);
+
+  // Validate every row's date against the chosen format, so a wrong format is
+  // caught here rather than at the preview step. Debounced, and re-run whenever
+  // the date column, the format, or the header toggle changes.
+  useEffect(() => {
+    if (mapping.date === null || !dateFormat || !file || !uploadApi?.uploadValidateDates) {
+      setDateCheck(null);
+      setDateChecking(false);
+      setDateToast(null);
+      return undefined;
+    }
+
+    const token = ++dateCheckToken.current;
+    setDateChecking(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const result = await uploadApi.uploadValidateDates(file, mapping.date, dateFormat, hasHeaders);
+        if (token !== dateCheckToken.current) return;
+
+        setDateCheck(result);
+        setDateToast(result.invalid_count > 0 ? result : null);
+      } catch (err) {
+        if (token !== dateCheckToken.current) return;
+        // A failed check is not a blocker -- the preview step still reports the
+        // real per-row errors, so stay quiet rather than alarming the user.
+        console.error('Date validation error:', err);
+        setDateCheck(null);
+        setDateToast(null);
+      } finally {
+        if (token === dateCheckToken.current) {
+          setDateChecking(false);
+        }
+      }
+    }, DATE_CHECK_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [mapping.date, dateFormat, hasHeaders, file, uploadApi]);
+
+  // Auto-dismiss the toast; the inline warning under the selector persists.
+  useEffect(() => {
+    if (!dateToast) return undefined;
+    const timer = setTimeout(() => setDateToast(null), DATE_TOAST_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [dateToast]);
 
   const handleMappingChange = (field, columnIndex) => {
     const value = columnIndex === '' ? null : parseInt(columnIndex, 10);
@@ -300,11 +372,85 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, onComplete, onBack
             : gettext('Could not auto-detect — please select one to continue.')}
         </span>
       </label>
+
+      {/* Whole-file check on the chosen format. The toast is transient, so this
+          inline note keeps the warning visible while the user works. */}
+      {dateChecking && (
+        <div className="text-xs text-base-content/50 flex items-center gap-2">
+          <span className="loading loading-spinner loading-xs"></span>
+          {gettext('Checking dates…')}
+        </div>
+      )}
+      {!dateChecking && dateCheck && dateCheck.invalid_count > 0 && (
+        <div className="text-xs text-warning" data-testid="date-format-warning">
+          <i className="fa fa-exclamation-triangle mr-1"></i>
+          {dateCheck.invalid_count} {gettext('of')} {dateCheck.total_rows}{' '}
+          {gettext("row(s) don't match this format")}
+          {dateCheck.suggested_format && (
+            <>
+              {' — '}
+              {gettext('try')} {formatLabel(dateCheck.suggested_format)}
+            </>
+          )}
+        </div>
+      )}
+      {!dateChecking && dateCheck && dateCheck.invalid_count === 0 && dateCheck.total_rows > 0 && (
+        <div className="text-xs text-success" data-testid="date-format-ok">
+          <i className="fa fa-check mr-1"></i>
+          {gettext('All')} {dateCheck.total_rows} {gettext('dates match this format')}
+        </div>
+      )}
     </div>
   );
 
+  // Transient warning shown as soon as a bad format is detected. Portaled to the
+  // body: the wizard's modal-box is transformed, which would otherwise make the
+  // toast's fixed positioning resolve against the modal instead of the viewport.
+  const renderDateToast = () =>
+    dateToast &&
+    createPortal(
+      <div className="toast toast-top toast-end z-[1100]" data-testid="date-format-toast">
+        <div className="alert alert-warning shadow-lg max-w-sm">
+          <i className="fa fa-exclamation-triangle"></i>
+          <div className="text-sm">
+            <div className="font-semibold">
+              {dateToast.invalid_count} {gettext('of')} {dateToast.total_rows}{' '}
+              {gettext("row(s) don't match the date format")} {formatLabel(dateFormat)}
+            </div>
+            {dateToast.invalid_samples?.length > 0 && (
+              <div className="opacity-80">
+                {gettext('For example, row')} {dateToast.invalid_samples[0].row_number}:{' '}
+                <span className="font-mono">
+                  {dateToast.invalid_samples[0].value || gettext('(blank)')}
+                </span>
+              </div>
+            )}
+            {dateToast.suggested_format ? (
+              <div className="opacity-80">
+                {gettext('Try')} {formatLabel(dateToast.suggested_format)} {gettext('instead.')}
+              </div>
+            ) : (
+              <div className="opacity-80">
+                {gettext('These rows will be skipped at the preview step.')}
+              </div>
+            )}
+          </div>
+          <button
+            className="btn btn-ghost btn-xs"
+            onClick={() => setDateToast(null)}
+            aria-label={gettext('Dismiss')}
+          >
+            <i className="fa fa-times"></i>
+          </button>
+        </div>
+      </div>,
+      document.body
+    );
+
   return (
     <div className="space-y-6">
+      {renderDateToast()}
+
       <div className="text-sm text-base-content/70">
         {gettext('Found')} {totalRows} {gettext('rows in file. Map the columns to transaction fields below.')}
       </div>

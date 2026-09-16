@@ -85,6 +85,71 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
             self.assertEqual(tx["description"], "Test transaction")
             self.assertEqual(tx["amount"], "100.00")
 
+    def test_upload_preview_tags_date_errors_with_the_field_and_raw_value(self):
+        """A row rejected by the chosen date format reports error_field='date' and its raw cell."""
+        csv_content = "Date,Description,Amount\n28/02/2025,Test transaction,100.00"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps({"date": 0, "description": 1, "amount": 2}),
+                    "date_format": "%m/%d/%Y",
+                },
+                format="multipart",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            tx = response.data["transactions"][0]
+            self.assertEqual(tx["error_field"], "date")
+            self.assertEqual(tx["raw_date"], "28/02/2025")
+            self.assertIn("Invalid date", tx["error"])
+            self.assertEqual(response.data["error_count"], 1)
+
+    def test_upload_preview_tags_amount_errors_with_the_field(self):
+        """A row with an unparseable amount reports error_field='amount'."""
+        csv_content = "Date,Description,Amount\n2025-01-01,Test transaction,not-a-number"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps({"date": 0, "description": 1, "amount": 2}),
+                },
+                format="multipart",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            tx = response.data["transactions"][0]
+            self.assertEqual(tx["error_field"], "amount")
+            self.assertIn("Invalid amount", tx["error"])
+
+    def test_upload_preview_valid_row_has_no_error_field(self):
+        """A clean row carries no error_field but still reports its raw date cell."""
+        csv_content = "Date,Description,Amount\n2025-01-01,Test transaction,100.00"
+        csv_file = self._create_csv_file(csv_content)
+
+        with current_team(self.team):
+            response = self.client.post(
+                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                {
+                    "file": csv_file,
+                    "account_id": self.bank_account.id,
+                    "column_mapping": json.dumps({"date": 0, "description": 1, "amount": 2}),
+                },
+                format="multipart",
+            )
+
+            tx = response.data["transactions"][0]
+            self.assertIsNone(tx["error_field"])
+            self.assertEqual(tx["raw_date"], "2025-01-01")
+
     def test_upload_preview_detects_duplicates(self):
         """Test that preview detects potential duplicates."""
         # Create existing transaction

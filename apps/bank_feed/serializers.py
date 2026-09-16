@@ -378,6 +378,14 @@ class ParsedTransactionSerializer(serializers.Serializer):
         help_text="Matched/mapped category account ID",
     )
     is_potential_duplicate = serializers.BooleanField(help_text="Whether this may be a duplicate")
+    error_field = serializers.CharField(
+        allow_null=True,
+        help_text='Which field the error came from ("date" or "amount"), for a specific UI message',
+    )
+    raw_date = serializers.CharField(
+        allow_null=True,
+        help_text="The raw, unparsed date cell from the file",
+    )
 
 
 class UnmappedCategorySerializer(serializers.Serializer):
@@ -415,6 +423,29 @@ class UploadPreviewResponseSerializer(serializers.Serializer):
     )
     error_count = serializers.IntegerField(help_text="Number of rows with errors")
     duplicate_count = serializers.IntegerField(help_text="Number of potential duplicates")
+
+
+class InvalidDateSampleSerializer(serializers.Serializer):
+    """A single row whose date cell failed to parse with the chosen format."""
+
+    row_number = serializers.IntegerField(help_text="Row number in the original file")
+    value = serializers.CharField(allow_blank=True, help_text="The raw date cell that failed to parse")
+
+
+class UploadValidateDatesResponseSerializer(serializers.Serializer):
+    """Response serializer for the upload_validate_dates endpoint."""
+
+    total_rows = serializers.IntegerField(help_text="Total number of data rows checked")
+    invalid_count = serializers.IntegerField(help_text="Number of rows whose date cell failed to parse")
+    invalid_samples = InvalidDateSampleSerializer(
+        many=True,
+        help_text="Up to 5 example rows that failed, for the warning message",
+    )
+    suggested_format = serializers.CharField(
+        allow_null=True,
+        help_text="A strftime format that would parse every non-blank date, if one exists",
+    )
+    error = serializers.CharField(allow_null=True, help_text="Error message if the file could not be read")
 
 
 class TransactionToCreateSerializer(serializers.Serializer):
