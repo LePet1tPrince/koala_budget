@@ -319,6 +319,8 @@ pre-Phase-1 baseline, so this is pre-existing breakage that Phase 3 fixes, not a
 
 ### Phase 2 — Shell and sidebar ✅ *shipped*
 
+![Sidebar before and after Phase 2](images/restyle-phase2-sidebar.png)
+
 - `templates/web/app/app_base.html` — sticky `w-[248px] shrink-0` sidebar, `min-w-0` content column capped at
   `max-w-[1180px]`; the top navbar now renders only below `lg`
 - `templates/web/components/app_nav.html` — team switcher, nav panel, and a user menu holding Profile / Change
