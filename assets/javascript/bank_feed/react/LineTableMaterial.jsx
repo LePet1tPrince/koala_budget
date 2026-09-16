@@ -20,9 +20,10 @@ import {
 } from '@mui/icons-material';
 import { Alert, Badge, Box, Button, ButtonGroup, Checkbox, Chip, CircularProgress, Divider, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, Toolbar, Tooltip, Typography } from '@mui/material';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
+import useMuiTheme from '../../common/useMuiTheme';
 import EditTransactionModal from './EditTransactionModal';
 import MaterialTable from '@material-table/core';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
@@ -137,32 +138,7 @@ const LineTableMaterial = ({
     }
   }, [quickFilters]);
 
-  // Create MUI theme that adapts to existing theme.
-  //
-  // `syncDarkMode` in web/base.html is the single source of truth: it resolves
-  // the stored preference (which may be an explicit theme, not "system") and
-  // toggles the `dark` class plus `data-theme` to match. Reading
-  // prefers-color-scheme here as well would put MUI in dark mode for a user who
-  // explicitly chose light on a dark-set OS, so the class alone decides.
-  const [isDarkMode, setIsDarkMode] = useState(
-    () => document.documentElement.classList.contains('dark')
-  );
-
-  // Re-read on theme flips, otherwise the table keeps its original palette
-  // until a full page reload. Same approach as reports/chart-theme.js.
-  useEffect(() => {
-    const root = document.documentElement;
-    const observer = new MutationObserver(() => {
-      setIsDarkMode(root.classList.contains('dark'));
-    });
-    observer.observe(root, { attributes: true, attributeFilter: ['class', 'data-theme'] });
-    return () => observer.disconnect();
-  }, []);
-
-  const theme = useMemo(
-    () => createTheme({ palette: { mode: isDarkMode ? 'dark' : 'light' } }),
-    [isDarkMode]
-  );
+  const theme = useMuiTheme();
 
   // Show snackbar helper
   const showSnackbar = (message, severity = 'info') => {

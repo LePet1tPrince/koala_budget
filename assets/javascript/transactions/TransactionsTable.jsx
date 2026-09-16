@@ -10,7 +10,7 @@ import DateRangePicker from '../common/DateRangePicker';
  * Badge component for displaying status/source labels.
  */
 const Badge = ({ children, className }) => (
-  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${className}`}>
+  <span className={`badge badge-sm ${className}`}>
     {children}
   </span>
 );
@@ -19,17 +19,19 @@ const Badge = ({ children, className }) => (
  * Map source values to human-readable labels and badge colours.
  */
 const SOURCE_STYLES = {
-  manual: { label: 'Manual', className: 'bg-gray-100 text-gray-800' },
-  import: { label: 'Import', className: 'bg-blue-100 text-blue-800' },
-  bank_match: { label: 'Bank', className: 'bg-indigo-100 text-indigo-800' },
-  recurring: { label: 'Recurring', className: 'bg-purple-100 text-purple-800' },
+  manual: { label: 'Manual', className: 'badge-ghost' },
+  import: { label: 'Import', className: 'badge-soft badge-info' },
+  bank_match: { label: 'Bank', className: 'badge-soft badge-accent' },
+  recurring: { label: 'Recurring', className: 'badge-soft badge-secondary' },
 };
 
 const STATUS_STYLES = {
-  draft: { label: 'Draft', className: 'bg-yellow-100 text-yellow-800' },
-  posted: { label: 'Posted', className: 'bg-green-100 text-green-800' },
-  void: { label: 'Void', className: 'bg-red-100 text-red-800' },
+  draft: { label: 'Draft', className: 'badge-soft badge-warning' },
+  posted: { label: 'Posted', className: 'badge-soft badge-success' },
+  void: { label: 'Void', className: 'badge-soft badge-error' },
 };
+
+const FALLBACK_BADGE = 'badge-ghost';
 
 /**
  * TransactionsTable - displays a flat list of journal entries as transaction rows.
@@ -101,70 +103,70 @@ const TransactionsTable = ({
       </div>
 
       {refetching && (
-        <div className="text-sm text-gray-500" data-testid="transactions-refetching">
+        <div className="text-sm text-base-content/60" data-testid="transactions-refetching">
           {gettext('Searching…')}
         </div>
       )}
 
       {error && (
-        <div className="text-sm text-red-500" data-testid="transactions-error">
+        <div className="text-sm text-error" data-testid="transactions-error">
           {gettext('Error loading transactions:')} {error}
         </div>
       )}
 
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200" data-testid="transactions-table">
-          <thead className="bg-gray-50">
+        <table className="min-w-full divide-y divide-base-300" data-testid="transactions-table">
+          <thead className="bg-base-200">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
                 {gettext('Date')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
                 {gettext('Payee')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
                 {gettext('Description')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
                 {gettext('Debit Account')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
                 {gettext('Credit Account')}
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-base-content/60 uppercase tracking-wider">
                 {gettext('Amount')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
                 {gettext('Source')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
                 {gettext('Status')}
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-base-100 divide-y divide-base-300">
             {transactions.map((tx) => {
-              const source = SOURCE_STYLES[tx.source] || { label: tx.source, className: 'bg-gray-100 text-gray-800' };
-              const statusStyle = STATUS_STYLES[tx.status] || { label: tx.status, className: 'bg-gray-100 text-gray-800' };
+              const source = SOURCE_STYLES[tx.source] || { label: tx.source, className: FALLBACK_BADGE };
+              const statusStyle = STATUS_STYLES[tx.status] || { label: tx.status, className: FALLBACK_BADGE };
 
               return (
                 <tr key={tx.id} data-testid="transaction-row">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content">
                     {formatDate(tx.date)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {tx.payee_name || <span className="text-gray-400 italic">{gettext('—')}</span>}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content">
+                    {tx.payee_name || <span className="text-base-content/40 italic">{gettext('—')}</span>}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                  <td className="px-6 py-4 text-sm text-base-content max-w-xs truncate">
                     {tx.description}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content">
                     {tx.debit_account || '—'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content">
                     {tx.credit_account || '—'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content text-right money">
                     {formatCurrency(tx.amount)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -181,7 +183,7 @@ const TransactionsTable = ({
       </div>
 
       {transactions.length === 0 && !refetching && (
-        <div className="text-center py-12 text-gray-500" data-testid="transactions-empty-state">
+        <div className="text-center py-12 text-base-content/60" data-testid="transactions-empty-state">
           {gettext('No transactions found.')}
         </div>
       )}
@@ -189,7 +191,7 @@ const TransactionsTable = ({
       <div ref={sentinelRef} />
 
       {loadingMore && (
-        <div className="text-center py-4 text-gray-500" data-testid="transactions-loading-more">
+        <div className="text-center py-4 text-base-content/60" data-testid="transactions-loading-more">
           {gettext('Loading more transactions…')}
         </div>
       )}
