@@ -317,14 +317,30 @@ Reskinned all 179 templates and all 85 `.app-card` sites without editing any of 
 canvas in light mode. In *dark* mode the Transactions table is a white slab — but it renders identically on the
 pre-Phase-1 baseline, so this is pre-existing breakage that Phase 3 fixes, not a regression.
 
-### Phase 2 — Shell and sidebar
+### Phase 2 — Shell and sidebar ✅ *shipped*
 
-- `templates/web/app/app_base.html` — new shell grid; `shrink-0` on the sidebar column; drop the top navbar block
-- `templates/web/components/app_nav.html` — team switcher + nav panel + user row
-- `templates/web/components/app_nav_menu_items.html` — 13 items → 9 in two groups
-- `assets/styles/app/tailwind/app-components.css` — `.side-link` primitives (§2.3)
-- New `templates/web/components/page_header.html` — the title/action row, adopted page by page
-- **Also fixes:** the sidebar-reflow bug (§1.1)
+- `templates/web/app/app_base.html` — sticky `w-[248px] shrink-0` sidebar, `min-w-0` content column capped at
+  `max-w-[1180px]`; the top navbar now renders only below `lg`
+- `templates/web/components/app_nav.html` — team switcher, nav panel, and a user menu holding Profile / Change
+  Password / theme / Sign out
+- `templates/web/components/app_nav_menu_items.html` — 13 flat items → 9 in two groups (`Manage`), as plain anchors so
+  the desktop sidebar and the mobile dropdown share one source
+- `templates/web/components/top_nav_app.html` — rebuilt around the shared anchors; repeats the account actions, since
+  the sidebar's user menu is hidden on mobile
+- `assets/styles/app/tailwind/app-components.css` — `.side-link`, `.side-link-active`, `.side-section`, `.side-tile`,
+  `.side-avatar`
+- `templates/web/components/team_nav.html` — **deleted**; its one Subscription link moved into the Manage group
+- **Fixed:** the sidebar-reflow bug — verified stable at 248px across Home, Transactions and Budget
+
+**`page_header.html` was not created.** Pages already carry their own titles, and removing the navbar did not leave a
+gap, so the include would have been dead code. It belongs with whichever phase first restyles page headers.
+
+**Django's `{# … #}` comment is single-line only.** A multi-line one renders as literal text on the page — it does not
+error. The first cut of this phase shipped four of them and the comment bodies appeared in the UI. Use
+`{% comment %}…{% endcomment %}` for anything spanning lines.
+
+**Pre-existing, not introduced here:** the budget page overflows its viewport by 22px at 420px wide. Measured
+identically before and after this phase.
 
 ### Phase 3 — Tables and color violations
 
