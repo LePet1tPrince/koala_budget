@@ -4,9 +4,31 @@
 
 .help {
   /* forms */
-  @apply text-xs text-gray-700 dark:text-gray-300;
+  @apply text-xs text-base-content/70;
 }
 
+/*
+  The standard content container: a raised surface on the app canvas.
+
+  Cards read as cards because they sit a step above `base-200` and carry a
+  hairline, NOT because of a shadow — see docs/restyle-plan.md §2. Adding a
+  shadow back here would undo that.
+*/
 .app-card {
-  @apply lg:shadow-md p-4 mb-2 mt-2 lg:mt-0 lg:p-8;
+  @apply bg-base-100 border border-base-300 rounded-box p-5 lg:p-6;
+}
+
+/* Same surface, no padding — for cards that own their own internal layout
+   (a table that needs to bleed to the card's edges, a toolbar + body split). */
+.app-surface {
+  @apply bg-base-100 border border-base-300 rounded-box;
+}
+
+/*
+  Tabular numerals for money. Digits get a uniform advance width so amounts
+  line up down a column, without the typewriter texture of `font-mono`.
+  Use this on any element whose text is a currency figure.
+*/
+.money {
+  font-variant-numeric: tabular-nums;
 }

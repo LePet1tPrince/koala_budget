@@ -1,4 +1,16 @@
+/*
+  Every @import has to sit at the top of the file, before any other rule.
+  CSS drops an @import that follows a regular at-rule (e.g. `@theme { … }`),
+  silently and without a build error, taking the whole imported file with it.
+
+  Order within the block matters too: `./theme.css` registers the daisyUI
+  plugin, and the component files below `@apply` theme colors such as
+  `bg-base-100` — a utility can only be applied once the plugin defining it
+  has been registered.
+*/
 @import 'tailwindcss';
+
+@import './theme.css';
 
 /*
    add custom components using imports, as described here:
@@ -13,7 +25,10 @@
 @config "../../tailwind.config.js";
 
 @plugin "@tailwindcss/typography";
-@plugin "daisyui";
+
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
 
 /*
   The default border color has changed to `currentColor` in Tailwind CSS v4,
@@ -36,6 +51,7 @@
 /* set pegasus css variables to DaisyUI default colors: https://daisyui.com/docs/colors/ */
 
 :root {
+  font-family: var(--font-sans);
   --primary: var(--color-primary);
   --danger: var(--color-error);
   --success: var(--color-success);

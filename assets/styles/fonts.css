@@ -1,0 +1,11 @@
+/*
+  Self-hosted Inter (variable), shipped as its own stylesheet entry.
+
+  This deliberately does NOT live in site-tailwind.css. Tailwind inlines
+  `@import`s itself, before Vite's CSS pipeline runs, so the `src: url(./files/…)`
+  paths inside the fontsource package are never rebased — they end up resolving
+  against /static/css/ and 404, and the font silently falls back to system UI
+  with no build error. Keeping it in a plain stylesheet lets Vite resolve and
+  fingerprint the .woff2 files normally.
+*/
+@import '@fontsource-variable/inter';

@@ -137,18 +137,32 @@ const LineTableMaterial = ({
     }
   }, [quickFilters]);
 
-  // Create MUI theme that adapts to existing theme
-  const theme = useMemo(() => {
-    // Detect if dark mode is active by checking document classes or CSS variables
-    const isDarkMode = document.documentElement.classList.contains('dark') ||
-                       window.matchMedia('(prefers-color-scheme: dark)').matches;
+  // Create MUI theme that adapts to existing theme.
+  //
+  // `syncDarkMode` in web/base.html is the single source of truth: it resolves
+  // the stored preference (which may be an explicit theme, not "system") and
+  // toggles the `dark` class plus `data-theme` to match. Reading
+  // prefers-color-scheme here as well would put MUI in dark mode for a user who
+  // explicitly chose light on a dark-set OS, so the class alone decides.
+  const [isDarkMode, setIsDarkMode] = useState(
+    () => document.documentElement.classList.contains('dark')
+  );
 
-    return createTheme({
-      palette: {
-        mode: isDarkMode ? 'dark' : 'light',
-      },
+  // Re-read on theme flips, otherwise the table keeps its original palette
+  // until a full page reload. Same approach as reports/chart-theme.js.
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(root.classList.contains('dark'));
     });
+    observer.observe(root, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    return () => observer.disconnect();
   }, []);
+
+  const theme = useMemo(
+    () => createTheme({ palette: { mode: isDarkMode ? 'dark' : 'light' } }),
+    [isDarkMode]
+  );
 
   // Show snackbar helper
   const showSnackbar = (message, severity = 'info') => {

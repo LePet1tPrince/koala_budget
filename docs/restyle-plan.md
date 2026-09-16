@@ -285,18 +285,37 @@ Replace `.app-card` (`assets/styles/app/tailwind/app-components.css`) and add th
 
 Ordered by visible-impact-per-unit-of-risk. Each phase ships independently.
 
-### Phase 1 — Theme + primitives *(highest impact, lowest risk)*
+### Phase 1 — Theme + primitives ✅ *shipped*
 
-Pure CSS and two settings constants. No template or component edits.
+![Team home before and after Phase 1](images/restyle-phase1-home.png)
 
-- `assets/styles/site-tailwind.css` — the `koala` / `koala-dark` theme blocks (§2.1)
+- `assets/styles/theme.css` **(new)** — the `koala` / `koala-dark` theme blocks (§2.1), registering daisyUI once
+- `assets/styles/site-tailwind.css` — imports the theme instead of `@plugin "daisyui"`
+- `assets/styles/fonts.css` **(new)** + `vite.config.ts` — self-hosted Inter as its own stylesheet entry
+- `frontend/src/index.css` — the SPA imports the same theme and font, so auth and app finally match
 - `koala_budget/settings.py:550-551` — `LIGHT_THEME = "koala"`, `DARK_THEME = "koala-dark"`
-- `assets/styles/app/tailwind/app-components.css` — redefine `.app-card`, add `.app-surface`, `.money` (§2.3)
-- `templates/web/base.html:55` — `bg-base-100` → `bg-base-200` on `<body>`
-- `templates/web/base.html` — self-hosted Inter
+- `tailwind.config.js` — `darkMode` selector follows the renamed dark theme
+- `assets/styles/app/tailwind/app-components.css` — `.app-card` gains a surface and border; adds `.app-surface`,
+  `.money`; `.help` drops its hardcoded gray
+- `templates/web/base.html` — `body_class` block + legacy theme-name migration in `syncDarkMode`
+- `templates/web/app/app_base.html` — app pages opt into `bg-base-200`
+- `assets/javascript/bank_feed/react/LineTableMaterial.jsx` — the dark-mode `useMemo` bug from §1.3
 
-Reskins all 179 templates and all 85 `.app-card` sites at once. **Risk:** the 64 hardcoded-gray sites will now look
-visibly wrong against the warm canvas — Phase 3 cleans them up, and they are no worse than today in the interim.
+Reskinned all 179 templates and all 85 `.app-card` sites without editing any of them.
+
+**Two things worth knowing before Phase 2:**
+
+1. **Import order is load-bearing, and failures are silent.** Every `@import` must sit at the top of
+   `site-tailwind.css`, before any other rule — CSS drops an `@import` that follows a regular at-rule (such as
+   `@theme { … }`) with no build error, taking the whole imported file with it. The theme import must also precede the
+   component imports, because those `@apply` theme colors that do not exist until daisyUI is registered.
+2. **Font CSS cannot live in the Tailwind entry.** Tailwind inlines `@import`s before Vite's CSS pipeline runs, so the
+   `src: url(./files/…)` paths inside `@fontsource-variable/inter` are never rebased; they resolve against `/static/css/`
+   and 404, and the font silently falls back to system UI. Hence `assets/styles/fonts.css` as a separate entry.
+
+**The predicted risk did not materialise as expected.** The 64 hardcoded-gray sites read acceptably against the warm
+canvas in light mode. In *dark* mode the Transactions table is a white slab — but it renders identically on the
+pre-Phase-1 baseline, so this is pre-existing breakage that Phase 3 fixes, not a regression.
 
 ### Phase 2 — Shell and sidebar
 
