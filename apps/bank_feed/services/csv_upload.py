@@ -36,6 +36,12 @@ class ParsedTransaction:
     error: str | None = None
     matched_category_id: int | None = None
     is_potential_duplicate: bool = False
+    # Which field the error came from ("date" / "amount"), so the UI can show a
+    # specific message instead of a generic "Error".
+    error_field: str | None = None
+    # The raw, unparsed date cell from the file -- kept so the preview table can
+    # show what was actually in the file when the date failed to parse.
+    raw_date: str | None = None
 
 
 @dataclass
@@ -45,6 +51,30 @@ class ParseResult:
     headers: list[str]
     sample_rows: list[list[str]]
     total_rows: int
+    error: str | None = None
+
+
+@dataclass
+class InvalidDateSample:
+    """A single row whose date cell could not be parsed with the chosen format."""
+
+    row_number: int
+    value: str
+
+
+@dataclass
+class DateValidationResult:
+    """
+    Result of checking every row's date cell against a chosen date format.
+
+    Used by the column-mapping step to warn the user *before* they walk the rest
+    of the wizard, rather than letting them discover broken rows at the preview.
+    """
+
+    total_rows: int
+    invalid_count: int
+    invalid_samples: list["InvalidDateSample"]
+    suggested_format: str | None = None
     error: str | None = None
 
 
@@ -90,6 +120,25 @@ DATE_FORMATS = [
     "%B %d, %Y",  # January 15, 2024
     "%d %b %Y",  # 15 Jan 2024
     "%d %B %Y",  # 15 January 2024
+]
+
+
+# The date formats a user can pick in the column-mapping step, in the order we
+# try them when suggesting a replacement for a format that does not fit the file.
+# Kept in sync with DATE_FORMAT_OPTIONS in Step2ColumnMapping.jsx. Unambiguous
+# (year-first / text-month) formats come first so a file that only fits one of
+# them is never "suggested" an ambiguous day/month ordering instead.
+SELECTABLE_DATE_FORMATS = [
+    "%Y-%m-%d",  # 2025-02-28
+    "%Y/%m/%d",  # 2025/02/28
+    "%b %d, %Y",  # Feb 28, 2025
+    "%d %b %Y",  # 28 Feb 2025
+    "%d/%m/%Y",  # 28/02/2025
+    "%m/%d/%Y",  # 02/28/2025
+    "%d-%m-%Y",  # 28-02-2025
+    "%m-%d-%Y",  # 02-28-2025
+    "%d/%m/%y",  # 28/02/25
+    "%m/%d/%y",  # 02/28/25
 ]
 
 
@@ -450,6 +499,89 @@ def get_all_rows_from_excel(file: BinaryIO, has_headers: bool = True) -> list[li
     return rows  # Return all rows including first row
 
 
+# How many offending rows we send back for the warning -- enough to recognise the
+# problem, few enough to keep the response (and the toast) small.
+MAX_INVALID_DATE_SAMPLES = 5
+
+
+def validate_date_column(
+    file: BinaryIO,
+    filename: str,
+    date_col: int,
+    date_format: str,
+    has_headers: bool = True,
+) -> DateValidationResult:
+    """
+    Check every row's date cell against ``date_format``.
+
+    This applies exactly the same strict parse the import itself will use
+    (``parse_date_strict``), so the count it reports is the number of rows that
+    would be rejected at the preview step. When the chosen format does not fit,
+    we look for the one of ``SELECTABLE_DATE_FORMATS`` that parses the most
+    non-blank values and offer it as ``suggested_format`` -- but only when it
+    strictly beats the chosen format, so a file with a few genuinely broken
+    cells still gets a useful suggestion instead of none.
+
+    Blank date cells count as invalid: the import rejects them too, and no
+    format change will fix them.
+    """
+    filename_lower = filename.lower()
+
+    try:
+        if filename_lower.endswith((".xlsx", ".xls")):
+            rows = get_all_rows_from_excel(file, has_headers=has_headers)
+        elif filename_lower.endswith(".csv"):
+            rows = get_all_rows_from_csv(file, has_headers=has_headers)
+        else:
+            return DateValidationResult(
+                total_rows=0,
+                invalid_count=0,
+                invalid_samples=[],
+                error="Unsupported file type. Please upload a CSV or Excel file.",
+            )
+    except Exception as e:  # noqa: BLE001 - surface any read/decode failure to the caller
+        return DateValidationResult(total_rows=0, invalid_count=0, invalid_samples=[], error=str(e))
+
+    invalid_samples: list[InvalidDateSample] = []
+    invalid_count = 0
+    # Non-blank values only -- used to look for a format that would fit the file.
+    non_blank_values: list[str] = []
+
+    for row_num, row in enumerate(rows, start=2):  # Start at 2 to match preview_transactions
+        value = row[date_col] if date_col < len(row) else ""
+        value = (value or "").strip()
+
+        if value:
+            non_blank_values.append(value)
+
+        if parse_date_strict(value, date_format) is not None:
+            continue
+
+        invalid_count += 1
+        if len(invalid_samples) < MAX_INVALID_DATE_SAMPLES:
+            invalid_samples.append(InvalidDateSample(row_number=row_num, value=value))
+
+    suggested_format = None
+    if invalid_count and non_blank_values:
+        # How many non-blank values the chosen format handles -- the bar a
+        # suggestion has to clear.
+        best_hits = sum(1 for v in non_blank_values if parse_date_strict(v, date_format) is not None)
+        for candidate in SELECTABLE_DATE_FORMATS:
+            if candidate == date_format:
+                continue
+            hits = sum(1 for v in non_blank_values if parse_date_strict(v, candidate) is not None)
+            if hits > best_hits:
+                best_hits = hits
+                suggested_format = candidate
+
+    return DateValidationResult(
+        total_rows=len(rows),
+        invalid_count=invalid_count,
+        invalid_samples=invalid_samples,
+        suggested_format=suggested_format,
+    )
+
+
 def preview_transactions(
     file: BinaryIO,
     filename: str,
@@ -519,6 +651,8 @@ def preview_transactions(
 
     for row_num, row in enumerate(rows, start=2):  # Start at 2 (1-indexed, skip header)
         error = None
+        error_field = None
+        raw_date = None
         parsed_date = None
         description = None
         payee = None
@@ -528,12 +662,14 @@ def preview_transactions(
 
         # Parse date
         if date_col is not None and date_col < len(row):
+            raw_date = (row[date_col] or "").strip() or None
             if date_format:
                 parsed_date = parse_date_strict(row[date_col], date_format)
             else:
                 parsed_date = parse_date(row[date_col])
             if not parsed_date:
                 error = f"Invalid date: {row[date_col]}"
+                error_field = "date"
 
         # Parse description
         if desc_col is not None and desc_col < len(row):
@@ -557,6 +693,7 @@ def preview_transactions(
                 inflow_val = parse_amount(row[inflow_col])
                 if inflow_val is None:
                     error = f"Invalid inflow amount: {row[inflow_col]}"
+                    error_field = "amount"
                     inflow_val = Decimal("0")
                 else:
                     inflow_val = abs(inflow_val)
@@ -565,6 +702,7 @@ def preview_transactions(
                 outflow_val = parse_amount(row[outflow_col])
                 if outflow_val is None:
                     error = f"Invalid outflow amount: {row[outflow_col]}"
+                    error_field = "amount"
                     outflow_val = Decimal("0")
                 else:
                     outflow_val = abs(outflow_val)
@@ -577,6 +715,7 @@ def preview_transactions(
                 amount = parse_amount(row[amount_col])
                 if amount is None and row[amount_col].strip():
                     error = f"Invalid amount: {row[amount_col]}"
+                    error_field = "amount"
 
         # Match category
         if category_name:
@@ -632,6 +771,8 @@ def preview_transactions(
                 error=error,
                 matched_category_id=matched_category_id,
                 is_potential_duplicate=is_duplicate,
+                error_field=error_field,
+                raw_date=raw_date,
             )
         )
 
