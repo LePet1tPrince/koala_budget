@@ -43,6 +43,8 @@ statement from §10 — see §12.
 | Account/group create JSON API | `apps/accounts/urls.py` `api/create-account/`, `api/create-group/` | Inline edits during CoA review |
 | Audit events | `apps/audit/utils.py::log_event` | Funnel instrumentation |
 | `sort_order` on Account/AccountGroup | `apps/accounts/models.py` | Generated CoA sets explicit order |
+| Restyled design system | `docs/restyle-plan.md`, `assets/styles/theme.css`, `app-components.css` | `koala`/`koala-dark` themes and the `.app-card` / `.app-surface` / `.money` / `.side-link` primitives the whole flow is built from (§6.1) |
+| Shared MUI theme hook | `assets/javascript/common/useMuiTheme.js` | Any MUI control in the flow themes through this, not `prefers-color-scheme` |
 
 ---
 
@@ -315,6 +317,43 @@ in the data migration and never see the flow.
 
 ## 6. Motion and visual design
 
+The walkthrough is built **on the restyled app** (`docs/restyle-plan.md`, Phases 1–4,
+merged 2026-09-17), not alongside it. That plan governs; anything below that contradicts it
+is wrong and should be changed to match.
+
+### 6.1 Design-system conformance
+
+| Rule | What it means here |
+|---|---|
+| Canvas recedes, surfaces advance | Takeover panels are `.app-card` / `.app-surface` (`bg-base-100` + `border-base-300` hairline) on the `base-200` canvas. Never a bare `<div>` with a shadow. |
+| `--depth: 0` — borders separate, not shadows | No `shadow-*` on any onboarding panel. The one exception the restyle allows is a true overlay: the takeover and its backdrop may carry a shadow, because they float above the app rather than sit on it. |
+| One brand hue | Eucalyptus `primary` is the flow's colour: progress fill, selected option, active rail step, primary CTA. Ochre `accent` is for attention only — an unlocked-task nudge, not decoration. Nothing else introduces a hue. |
+| `/70` is the muted-text token | Helper copy, question subtitles, gate reasons: `text-base-content/70`. `/40`–`/45` is for decorative icons and chevrons only. `/50` and `/60` are retired app-wide and must not come back with this feature. |
+| Money uses `.money`, never `font-mono` | Opening-balance inputs, the net-worth reveal, and any figure in the finish card get tabular numerals via `.money`. |
+| No hardcoded Tailwind greys | `text-gray-*`, `bg-white`, `divide-gray-*` are theme-blind. Tokens only — the restyle removed all 34 remaining instances and this feature must not reintroduce one. |
+| No `pg-*` classes | The Pegasus layer is deleted. Links are `link link-primary` (the former `pg-link`). |
+| Tables | `.table-quiet`, never `table-zebra`. Note it is a plain class and cannot be `@apply`-ed. |
+| MUI components | If the opening-balance rows or any picker use MUI, theme them with the shared `common/useMuiTheme.js` hook. Reading `prefers-color-scheme` directly is the bug that hook exists to fix — it ignores an explicit light choice on a dark-set OS. |
+
+**Selected-option state** reuses the sidebar's active idiom rather than inventing one:
+`bg-primary/10` tint, `font-medium text-primary`, and for the task rail the same 3px
+`bg-primary` left rail as `.side-link-active`. A user who has learned the nav already knows
+what "selected" looks like.
+
+**Shell fit.** Phase D's rail mounts from `templates/web/app/app_base.html`, which is now a
+sticky `w-[248px] shrink-0` sidebar next to a `min-w-0` content column capped at
+`max-w-[1180px]`. The rail must not compete with that sidebar: it docks bottom-right on
+desktop as a collapsible `.app-surface` panel, and becomes a bottom sheet below `lg`, where
+the sidebar is hidden and the mobile top nav is in play. It never adds a third vertical
+column — the `shrink-0` fix exists precisely because a wide element used to squeeze the nav.
+
+**Type** is Inter (self-hosted variable, `assets/styles/fonts.css`). Question headings take
+the restyle's page-title step (`text-xl font-semibold tracking-tight`); the finish card's
+net-worth figure takes the metric step (`text-[1.75rem] font-semibold tracking-tight
+tabular-nums`).
+
+### 6.2 Motion
+
 The "fade into" is the first impression, so it is specified rather than left to the
 implementer.
 
@@ -322,12 +361,12 @@ implementer.
 |---|---|---|
 | Takeover entry | Backdrop `opacity 0→1` + `backdrop-blur-none→sm`; card `opacity 0→1`, `translateY 12px→0`, `scale .98→1` | 420ms `cubic-bezier(.16,1,.3,1)`, card delayed 120ms |
 | Question → question | Outgoing `opacity→0`, `translateX -16px`; incoming from `+16px`; height animated to avoid jump | 260ms out / 300ms in, 60ms overlap |
-| Option select | Card border → `--color-primary`, `scale 1→1.02→1` | 180ms |
-| Phase → phase | Progress dot fills, heading cross-fades | 300ms |
+| Option select | Fills to `bg-primary/10`, border to `border-primary`, `scale 1→1.02→1` | 180ms |
+| Phase → phase | Progress dot fills `primary`, heading cross-fades | 300ms |
 | CoA reveal (Phase C) | Account chips stagger in, 30ms apart, capped at 400ms total | — |
-| Takeover exit → Task 1 | Backdrop fades, rail slides in from the right, CSV wizard coach mark pulses once | 380ms |
+| Takeover exit → Task 1 | Backdrop fades, rail docks in, CSV wizard coach mark pulses once | 380ms |
 | Task unlock | Locked row's padlock cross-fades to the step number, row lifts `translateY 2px→0` | 240ms |
-| Net worth reveal (Task 5) | Chart line draws left→right; the number counts up from the pre-opening-balance figure to the post | 900ms draw, 700ms count |
+| Net worth reveal (Task 5) | Chart line draws left→right; the `.money` figure counts up from the pre-opening-balance value to the post | 900ms draw, 700ms count |
 | Finish | `fireConfetti` from `common/confetti.js`, `burst` origin | — |
 
 Constraints:
@@ -338,12 +377,12 @@ Constraints:
   flow stays at 60fps on a mid-range phone.
 - Full-screen takeover is mobile-first: one question per screen, thumb-reachable options,
   a sticky bottom bar with Back / Continue / Skip.
-- Theme: DaisyUI tokens only (`--color-primary`, `--color-base-*`), so light and dark both
-  work without a second palette.
+- Both themes: `koala` and `koala-dark`. Theme is read from the `data-theme` attribute /
+  `dark` class, not from `prefers-color-scheme`, and an in-page toggle must recolour the
+  flow without a reload.
 - The koala mascot from the Goals "Koala Climb" style is a natural progress motif —
   optional, cheap to add later since it is just an illustration swap.
 
----
 
 ## 7. Behaviour rules
 
@@ -516,7 +555,22 @@ errors, inflows landing as negative amounts (a paycheque must not read as spendi
 rows arriving uncategorized, a positive net after import, and endpoint auth including a
 non-member refusal.
 
+### Verified against the restyle
+
+The app restyle (`docs/restyle-plan.md` Phases 1–4) merged into this branch after the
+above was built. The sample-file affordance was re-checked on the new theme rather than
+assumed: it renders correctly in both `koala` and `koala-dark`, uses `text-base-content/70`
+(the new muted-text token) and `link link-primary` (the former `pg-link`), and introduces
+no hardcoded grey, no `pg-*` class and no `table-zebra`.
+
+Driven end to end in a real browser on the restyled UI: the link downloads
+`koala-sample-statement.csv`, and uploading that file straight back through the wizard
+auto-maps every column with no manual input — 69 rows, `%Y-%m-%d` detected with "All 69
+dates match this format", dual-amount mode auto-selected, `Funds In` → Inflow and
+`Funds Out` → Outflow.
+
 ### Not yet built
 
 Everything else in §10: the `apps/onboarding` app, the takeover UI, the task rail and
-gates, opening balances, and the E2E suite.
+gates, opening balances, and the E2E suite. Its visual spec is §6, now written against
+the restyled design system.
