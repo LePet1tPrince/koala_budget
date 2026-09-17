@@ -519,10 +519,10 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             aria-expanded={isAccountPickerOpen}
             data-testid="account-picker-toggle"
           >
-            <i className={`fa fa-chevron-${isAccountPickerOpen ? 'down' : 'right'} text-xs text-base-content/50 shrink-0`}></i>
+            <i className={`fa fa-chevron-${isAccountPickerOpen ? 'down' : 'right'} text-xs text-base-content/70 shrink-0`}></i>
             <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
             {!isAccountPickerOpen && selectedAccount && (
-              <span className="text-sm font-normal text-base-content/60 truncate">
+              <span className="text-sm font-normal text-base-content/70 truncate">
                 — {selectedAccount.name}
               </span>
             )}
@@ -573,7 +573,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
             {selectedPlaidItem && (
-              <span className="text-xs text-base-content/60" title={selectedPlaidItem.institutionName}>
+              <span className="text-xs text-base-content/70" title={selectedPlaidItem.institutionName}>
                 {refreshing
                   ? gettext('Syncing…')
                   : formatLastSynced(selectedPlaidItem.lastSyncedAt)}
@@ -581,19 +581,19 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             )}
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 mb-4 text-sm">
-            <span className="text-base-content/60">
+            <span className="text-base-content/70">
               {gettext('Categorized balance')}:{' '}
               <span className="font-semibold text-base-content">
                 {formatCurrency(selectedAccount.categorized_balance ?? selectedAccount.balance)}
               </span>
             </span>
-            <span className="text-base-content/60">
+            <span className="text-base-content/70">
               {gettext('Reconciled balance')}:{' '}
               <span className="font-semibold text-base-content">
                 {formatCurrency(selectedAccount.reconciled_balance ?? 0)}
               </span>
               {selectedAccount.latest_reconciled_date && (
-                <span className="text-base-content/50 ml-2">
+                <span className="text-base-content/70 ml-2">
                   {gettext('as of')} {new Date(selectedAccount.latest_reconciled_date).toLocaleDateString()}
                 </span>
               )}

@@ -366,7 +366,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
         )}
       </select>
       <label className="label">
-        <span className="label-text-alt text-base-content/50">
+        <span className="label-text-alt text-base-content/70">
           {dateFormat
             ? gettext('Applied consistently to every row.')
             : gettext('Could not auto-detect — please select one to continue.')}
@@ -376,7 +376,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
       {/* Whole-file check on the chosen format. The toast is transient, so this
           inline note keeps the warning visible while the user works. */}
       {dateChecking && (
-        <div className="text-xs text-base-content/50 flex items-center gap-2">
+        <div className="text-xs text-base-content/70 flex items-center gap-2">
           <span className="loading loading-spinner loading-xs"></span>
           {gettext('Checking dates…')}
         </div>
@@ -523,7 +523,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
       {displaySampleRows.length > 0 && (
         <div className="overflow-x-auto">
           <h4 className="font-medium mb-2">{gettext('Data Preview')}</h4>
-          <table className="table table-xs table-zebra">
+          <table className="table table-xs table-quiet">
             <thead>
               <tr>
                 {displayHeaders.map((header, index) => (

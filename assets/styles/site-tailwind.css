@@ -35,6 +35,11 @@
   so we've added these compatibility styles to make sure everything still
   looks the same as it did with Tailwind CSS v3.
 
+  The fallback is the theme's hairline token rather than a fixed gray: this
+  rule catches every `border`/`border-t`/... written without an explicit color,
+  and a fixed gray there is theme-blind by construction — it stayed light in
+  dark mode on every such element in the app.
+
   If we ever want to remove these styles, we need to add an explicit border
   color utility to any element that depends on these defaults.
 */
@@ -44,7 +49,7 @@
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentColor);
+    border-color: var(--color-base-300, currentColor);
   }
 }
 

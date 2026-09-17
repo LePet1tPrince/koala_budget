@@ -51,19 +51,19 @@ function SimilarTransactionsTooltip({ transaction, allTransactions }) {
     <div className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="btn btn-ghost btn-xs btn-circle text-base-content/50 hover:text-primary"
+        className="btn btn-ghost btn-xs btn-circle text-base-content/70 hover:text-primary"
         title="Similar transactions"
       >
         🔍
       </button>
       {open && (
         <div className="absolute right-0 top-8 z-50 bg-base-100 border border-base-300 rounded-xl shadow-2xl p-3 w-72 animate-in">
-          <p className="text-xs font-semibold text-base-content/60 mb-2">Similar transactions</p>
+          <p className="text-xs font-semibold text-base-content/70 mb-2">Similar transactions</p>
           {similar.map(t => (
             <div key={t.id} className="flex justify-between items-center py-1.5 border-b border-base-200 last:border-0 text-xs">
               <div>
                 <div className="font-medium">{t.merchant_name || t.description}</div>
-                <div className="text-base-content/50">{t.posted_date}</div>
+                <div className="text-base-content/70">{t.posted_date}</div>
               </div>
               <div className={t.outflow > 0 ? 'text-error font-semibold' : 'text-success font-semibold'}>
                 {t.outflow > 0 ? `-${formatCurrency(t.outflow)}` : `+${formatCurrency(t.inflow)}`}
@@ -102,19 +102,19 @@ function TransactionCard({ transaction, index, total, allTransactions, isExiting
           )}
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-base-content/50 mb-1">
+              <p className="text-xs text-base-content/70 mb-1">
                 {transaction.account?.name || 'Unknown Account'}
               </p>
               <h3 className="font-bold text-lg truncate">
                 {transaction.merchant_name || transaction.description || 'No description'}
               </h3>
               {transaction.merchant_name && transaction.description && (
-                <p className="text-sm text-base-content/60 truncate">{transaction.description}</p>
+                <p className="text-sm text-base-content/70 truncate">{transaction.description}</p>
               )}
             </div>
           </div>
           <div className="flex items-center justify-between mt-3">
-            <span className="text-sm text-base-content/60">{transaction.posted_date}</span>
+            <span className="text-sm text-base-content/70">{transaction.posted_date}</span>
             <span className={`text-2xl font-black ${isOutflow ? 'text-error' : 'text-success'}`}>
               {isOutflow ? `-${formatCurrency(transaction.outflow)}` : `+${formatCurrency(transaction.inflow)}`}
             </span>
@@ -355,7 +355,7 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
         )}
         {groupedAccounts.map(group => (
           <div key={group.name} className="mb-3">
-            <div className="text-xs font-semibold text-base-content/50 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-base-100 py-1 z-10">
+            <div className="text-xs font-semibold text-base-content/70 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-base-100 py-1 z-10">
               {group.name}
             </div>
             <div className="space-y-1">
@@ -400,7 +400,7 @@ function ProgressBar({ done, total }) {
     <div className="w-full">
       <div className="flex justify-between text-sm mb-1">
         <span className="font-semibold text-primary">{done} categorized</span>
-        <span className="text-base-content/50">{total - done} remaining</span>
+        <span className="text-base-content/70">{total - done} remaining</span>
       </div>
       <div className="w-full bg-base-300 rounded-full h-3 overflow-hidden">
         <div
@@ -544,7 +544,7 @@ export default function CategorizeMode({
       <div className="min-h-screen flex items-center justify-center bg-base-200">
         <div className="text-center">
           <span className="loading loading-spinner loading-lg text-primary"></span>
-          <p className="mt-4 text-base-content/60">Loading transactions...</p>
+          <p className="mt-4 text-base-content/70">Loading transactions...</p>
         </div>
       </div>
     );
@@ -559,7 +559,7 @@ export default function CategorizeMode({
           <h2 className="text-2xl font-black mb-2">
             {categorized > 0 ? 'All Done!' : 'Nothing to categorize'}
           </h2>
-          <p className="text-base-content/60 mb-2">
+          <p className="text-base-content/70 mb-2">
             {categorized > 0
               ? `You categorized ${categorized} transactions!`
               : 'All your transactions are already categorized.'}
@@ -631,7 +631,7 @@ export default function CategorizeMode({
             <button
               onClick={skipTransaction}
               disabled={isExiting || isSkipping}
-              className="btn btn-ghost btn-sm gap-1 text-base-content/50 hover:text-base-content"
+              className="btn btn-ghost btn-sm gap-1 text-base-content/70 hover:text-base-content"
             >
               ⏭ Skip for now
               <kbd className="kbd kbd-xs ml-1">S</kbd>

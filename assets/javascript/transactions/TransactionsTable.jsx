@@ -103,7 +103,7 @@ const TransactionsTable = ({
       </div>
 
       {refetching && (
-        <div className="text-sm text-base-content/60" data-testid="transactions-refetching">
+        <div className="text-sm text-base-content/70" data-testid="transactions-refetching">
           {gettext('Searching…')}
         </div>
       )}
@@ -118,28 +118,28 @@ const TransactionsTable = ({
         <table className="min-w-full divide-y divide-base-300" data-testid="transactions-table">
           <thead className="bg-base-200">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
                 {gettext('Date')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
                 {gettext('Payee')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
                 {gettext('Description')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
                 {gettext('Debit Account')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
                 {gettext('Credit Account')}
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-base-content/60 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-base-content/70 uppercase tracking-wider">
                 {gettext('Amount')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
                 {gettext('Source')}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/60 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
                 {gettext('Status')}
               </th>
             </tr>
@@ -183,7 +183,7 @@ const TransactionsTable = ({
       </div>
 
       {transactions.length === 0 && !refetching && (
-        <div className="text-center py-12 text-base-content/60" data-testid="transactions-empty-state">
+        <div className="text-center py-12 text-base-content/70" data-testid="transactions-empty-state">
           {gettext('No transactions found.')}
         </div>
       )}
@@ -191,7 +191,7 @@ const TransactionsTable = ({
       <div ref={sentinelRef} />
 
       {loadingMore && (
-        <div className="text-center py-4 text-base-content/60" data-testid="transactions-loading-more">
+        <div className="text-center py-4 text-base-content/70" data-testid="transactions-loading-more">
           {gettext('Loading more transactions…')}
         </div>
       )}

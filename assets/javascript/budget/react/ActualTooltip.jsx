@@ -277,12 +277,12 @@ const ActualTooltip = ({
               </TableBody>
             </Table>
           ) : (
-            <p className="text-gray-500 py-4 text-center">
+            <p className="text-base-content/70 py-4 text-center">
               {gettext('No transactions found')}
             </p>
           )}
 
-          <div className="mt-3 pt-2 border-t text-sm text-gray-500">
+          <div className="mt-3 pt-2 border-t border-base-300 text-sm text-base-content/70">
             {transactions.length} {transactions.length === 1 ? gettext('transaction') : gettext('transactions')} | {gettext('Total')}: {formatCurrency(currentAmount)}
           </div>
         </div>

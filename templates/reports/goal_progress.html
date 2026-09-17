@@ -13,7 +13,7 @@
         {% translate "Back to Reports" %}
       </a>
       <h1 class="pg-title">{% translate "Goal Progress" %}</h1>
-      <p class="text-sm text-base-content/60">{% translate "How your savings goals are tracking toward their targets." %}</p>
+      <p class="text-sm text-base-content/70">{% translate "How your savings goals are tracking toward their targets." %}</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <a href="{% url 'budget:goals_list' request.team.slug %}" class="btn btn-outline btn-sm">
@@ -57,12 +57,12 @@
   <div class="card bg-base-100 shadow-lg mb-4">
     <div class="card-body p-4">
       <h2 class="card-title text-base">{% translate "Saved over time" %}</h2>
-      <p class="text-xs text-base-content/60 -mt-1">{% translate "Solid lines show actual savings; dashed lines project the pace needed to hit each target on time." %}</p>
+      <p class="text-xs text-base-content/70 -mt-1">{% translate "Solid lines show actual savings; dashed lines project the pace needed to hit each target on time." %}</p>
       <div class="w-full" style="height: 380px;">
         <canvas id="goal-progress-chart" class="w-full h-full"></canvas>
       </div>
       {% if num_goals > num_charted %}
-      <p class="text-xs text-base-content/60">
+      <p class="text-xs text-base-content/70">
         {% blocktranslate with shown=num_charted total=num_goals trimmed %}
           Showing the first {{ shown }} of {{ total }} goals — all goals appear in the table below.
         {% endblocktranslate %}
@@ -76,7 +76,7 @@
   <div class="card bg-base-100 shadow-lg">
     <div class="card-body p-4">
       <div class="overflow-x-auto">
-        <table class="table table-sm table-zebra w-full" data-testid="goal-progress-table">
+        <table class="table table-sm table-quiet w-full" data-testid="goal-progress-table">
           <thead>
             <tr>
               <th>{% translate "Goal" %}</th>
@@ -101,7 +101,7 @@
               <td>
                 <div class="flex items-center gap-2">
                   <progress class="progress progress-success flex-1" value="{{ row.goal.progress_percentage|floatformat:0 }}" max="100"></progress>
-                  <span class="text-xs text-base-content/60 tabular-nums w-10 text-right">{{ row.goal.progress_percentage|floatformat:0 }}%</span>
+                  <span class="text-xs text-base-content/70 tabular-nums w-10 text-right">{{ row.goal.progress_percentage|floatformat:0 }}%</span>
                 </div>
               </td>
               <td class="whitespace-nowrap">{% if row.goal.target_date %}{{ row.goal.target_date|date:"M j, Y" }}{% else %}—{% endif %}</td>
@@ -119,7 +119,7 @@
   <div class="card bg-base-100 shadow-lg">
     <div class="card-body items-center text-center py-10">
       <i class="fa fa-bullseye text-4xl text-base-content/30"></i>
-      <p class="text-base-content/60">{% translate "No savings goals yet." %}</p>
+      <p class="text-base-content/70">{% translate "No savings goals yet." %}</p>
       <a href="{% url 'budget:goals_list' request.team.slug %}" class="btn btn-primary btn-sm">{% translate "Create a goal" %}</a>
     </div>
   </div>

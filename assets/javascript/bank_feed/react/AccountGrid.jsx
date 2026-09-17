@@ -12,7 +12,7 @@ function InstitutionFilter({ options, selected, onSelect }) {
   if (options.length <= 1) return null
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-xs text-base-content/60 font-medium whitespace-nowrap">{gettext('Institution')}:</span>
+      <span className="text-xs text-base-content/70 font-medium whitespace-nowrap">{gettext('Institution')}:</span>
       <div role="group" className="flex flex-wrap gap-1">
         <button
           className={`btn btn-xs rounded-full ${selected === null ? 'btn-primary' : 'btn-ghost'}`}
@@ -44,7 +44,7 @@ function AccountSection({ title, icon, accounts, selectedAccount, handleAccountS
     <div>
       <div className="flex items-center gap-2 mb-2">
         <i className={`fa ${icon} text-base-content/40 text-xs`} aria-hidden="true"></i>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-base-content/60">{title}</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-base-content/70">{title}</h3>
         <span className="text-xs text-base-content/40">({accounts.length})</span>
         {reviewCount > 0 && (
           <span className="badge badge-warning badge-xs ml-auto">

@@ -11,7 +11,7 @@
   </div>
   {% if object_list %}
     <div class="overflow-x-auto">
-      <table class="table table-zebra w-full">
+      <table class="table table-quiet w-full">
         <thead>
           <tr>
             <th>{% translate "Name" %}</th>
@@ -33,7 +33,7 @@
       </table>
     </div>
   {% else %}
-    <p class="text-gray-500">{% translate "No payees yet." %} <a href="{% url 'accounts:payee_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <p class="text-base-content/70">{% translate "No payees yet." %} <a href="{% url 'accounts:payee_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
   {% endif %}
 </section>
 {% endblock %}

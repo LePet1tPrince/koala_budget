@@ -399,7 +399,7 @@ const LineTableMaterial = ({
         const tooltip = reconciled ? gettext('Reconciled') : gettext('Not yet reconciled');
         // Class names must be full literals, otherwise Tailwind's compiler
         // can't see them and strips them from the build.
-        const colorClasses = reconciled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400';
+        const colorClasses = reconciled ? 'bg-success/15 text-success' : 'bg-base-200 text-base-content/40';
         return (
           <Tooltip title={tooltip} arrow placement="top">
             <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${colorClasses} cursor-default`}>
@@ -507,7 +507,7 @@ const LineTableMaterial = ({
               setFilterEnd(e);
             }}
           />
-          <span className="text-sm text-gray-500 whitespace-nowrap">
+          <span className="text-sm text-base-content/70 whitespace-nowrap">
             {filteredLines.length} {gettext('lines')}
           </span>
 

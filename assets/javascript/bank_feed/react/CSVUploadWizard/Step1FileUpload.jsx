@@ -88,7 +88,7 @@ const Step1FileUpload = ({ onFileUpload, onCancel }) => {
           </div>
         ) : (
           <>
-            <i className="fa fa-cloud-upload text-5xl text-base-content/50 mb-4"></i>
+            <i className="fa fa-cloud-upload text-5xl text-base-content/70 mb-4"></i>
             <p className="text-lg mb-2">
               {gettext('Drag and drop your file here')}
             </p>
@@ -106,7 +106,7 @@ const Step1FileUpload = ({ onFileUpload, onCancel }) => {
                 data-testid="csv-file-input"
               />
             </label>
-            <p className="text-xs text-base-content/50 mt-4">
+            <p className="text-xs text-base-content/70 mt-4">
               {gettext('Supported formats: CSV, Excel (.xls, .xlsx)')}
             </p>
           </>

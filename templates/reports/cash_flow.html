@@ -28,7 +28,7 @@
       </a>
       <h1 class="pg-title">{% translate "Cash Flow" %}</h1>
       {% if start_date and end_date %}
-      <p class="text-sm text-base-content/60">
+      <p class="text-sm text-base-content/70">
         {% blocktranslate with start=start_date|date:"M Y" end=end_date|date:"M Y" trimmed %}
           {{ start }} – {{ end }}
         {% endblocktranslate %}
@@ -84,7 +84,7 @@
   <div class="card bg-base-100 shadow-lg">
     <div class="card-body p-4">
       <div id="cash-flow-scroll" class="overflow-auto">
-        <table class="table table-sm table-zebra w-full" data-testid="cash-flow-table">
+        <table class="table table-sm table-quiet w-full" data-testid="cash-flow-table">
           <thead>
             <tr>
               <th>{% translate "Month" %}</th>
@@ -105,7 +105,7 @@
             </tr>
             {% empty %}
             <tr>
-              <td colspan="4" class="text-center text-base-content/60 py-3">{% translate "No activity in this period" %}</td>
+              <td colspan="4" class="text-center text-base-content/70 py-3">{% translate "No activity in this period" %}</td>
             </tr>
             {% endfor %}
           </tbody>

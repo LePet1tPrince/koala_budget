@@ -116,7 +116,7 @@ pace/projection numbers, context-aware quick-assign.
           <div class="text-4xl font-bold" data-num="pct" data-format="pct">{{ item.pct|floatformat:0 }}%</div>
           <div class="text-sm mt-1">
             <span class="font-mono font-semibold text-success" data-num="saved">{{ item.saved|currency }}</span>
-            <span class="text-base-content/60">{% translate "of" %} {{ item.goal.target_amount|currency }}</span>
+            <span class="text-base-content/70">{% translate "of" %} {{ item.goal.target_amount|currency }}</span>
           </div>
           <div class="text-sm text-base-content/70 mt-2">
             {% translate "To go:" %} <span class="font-mono" data-num="remaining">{{ item.remaining|currency }}</span>
@@ -127,7 +127,7 @@ pace/projection numbers, context-aware quick-assign.
           {% if item.streak >= 2 %}
             <div class="badge badge-warning badge-sm gap-1 mt-2">🔥 {% blocktranslate trimmed with n=item.streak %}{{ n }}-month streak{% endblocktranslate %}</div>
           {% endif %}
-          <div class="text-xs text-base-content/60 mt-2 space-y-0.5">
+          <div class="text-xs text-base-content/70 mt-2 space-y-0.5">
             {% if item.funded %}
               <div class="text-success font-medium">{% translate "Target reached — nice work!" %}</div>
             {% else %}
@@ -164,7 +164,7 @@ pace/projection numbers, context-aware quick-assign.
                  class="input input-bordered input-sm join-item w-full font-mono" data-custom-input>
           <button type="button" class="btn btn-outline btn-sm join-item" data-assign-custom>{% translate "Add" %}</button>
         </div>
-        <button type="button" class="btn btn-ghost btn-xs w-full text-base-content/50"
+        <button type="button" class="btn btn-ghost btn-xs w-full text-base-content/70"
                 data-withdraw-toggle data-testid="withdraw-toggle">
           {% translate "Withdraw funds…" %}
         </button>
@@ -182,7 +182,7 @@ pace/projection numbers, context-aware quick-assign.
                   {% if item.saved <= 0 %}disabled{% endif %}>
             <span data-withdraw-all-label>{% translate "Withdraw all" %} ({{ item.saved|currency }})</span>
           </button>
-          <p class="text-xs text-base-content/50">
+          <p class="text-xs text-base-content/70">
             {% translate "Withdrawn money returns to Available. It's recorded against this month, so past months' history stays intact." %}
           </p>
         </div>
@@ -205,7 +205,7 @@ pace/projection numbers, context-aware quick-assign.
   <div class="card-body items-center text-center py-16">
     <div class="text-5xl mb-2">🎯</div>
     <h2 class="card-title">{% translate "No goals yet" %}</h2>
-    <p class="text-base-content/60">{% translate "Set a target, assign money each month, and watch the thermometer climb." %}</p>
+    <p class="text-base-content/70">{% translate "Set a target, assign money each month, and watch the thermometer climb." %}</p>
     <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-primary mt-4">+ {% translate "Create your first goal" %}</a>
   </div>
 </div>

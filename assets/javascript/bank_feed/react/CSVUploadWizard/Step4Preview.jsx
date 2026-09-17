@@ -174,7 +174,7 @@ const Step4Preview = ({
 
       {/* Transaction Preview Table */}
       <div className="overflow-x-auto max-h-64">
-        <table className="table table-xs table-zebra table-pin-rows">
+        <table className="table table-xs table-quiet table-pin-rows">
           <thead>
             <tr>
               <th className="w-12"></th>
@@ -217,7 +217,7 @@ const Step4Preview = ({
                     ) : tx.category ? (
                       <span className="badge badge-warning badge-xs">{tx.category}</span>
                     ) : (
-                      <span className="text-base-content/50">-</span>
+                      <span className="text-base-content/70">-</span>
                     )}
                   </td>
                   <td>

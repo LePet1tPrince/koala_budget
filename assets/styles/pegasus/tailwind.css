@@ -142,7 +142,7 @@
 /* tables */
 
 .pg-table {
-  @apply table table-zebra w-full;
+  @apply table w-full;
 }
 
 .pg-table-responsive {

@@ -344,12 +344,31 @@ error. The first cut of this phase shipped four of them and the comment bodies a
 **Pre-existing, not introduced here:** the budget page overflows its viewport by 22px at 420px wide. Measured
 identically before and after this phase.
 
-### Phase 3 — Tables and color violations
+### Phase 3 — Tables and color violations ✅ *shipped*
 
-- `assets/javascript/transactions/TransactionsTable.jsx` — full rewrite per §2.5; removes all 28 gray instances
-- `templates/budget/components/budget_table.html` — `.data-table`, `currency` filter on the last raw `text-gray-500`
-- Remaining 36 hardcoded-gray instances across authenticated templates → `text-base-content/{60,70}`
-- Drop `table-zebra` (7 sites) in favor of hairlines + hover
+- `assets/javascript/transactions/TransactionsTable.jsx` — done earlier, with the dark-mode fixes
+- All 34 remaining hardcoded grays across the authenticated app → theme tokens (21 files)
+- `table-zebra` → a new `.table-quiet` (hairlines + a hover tint), applied on the `<table>` so no `<tr>` needed
+  touching; 12 sites including the Pegasus `.pg-table`
+- `assets/styles/site-tailwind.css` — the Tailwind v3 compat shim defaulted **every** bare `border`/`border-t` to a
+  fixed gray. One line now points it at `--color-base-300`, making all of them theme-aware at once
+- **Contrast**: `text-base-content/{50,60}` → `/70` app-wide (48 files), plus `.side-section`
+
+**`.data-table` was not added, and the budget table was left on daisyUI's `table`.** It already uses theme tokens for
+its section and group rows, its only violation was one `text-gray-500`, and it carries a sticky tfoot and inline form
+inputs — converting it wholesale would have risked a working table for no visible gain.
+
+**The measured reason for the contrast sweep.** Sampling painted pixels on the koala surfaces:
+
+| Token | Light | Dark |
+|---|---|---|
+| `text-base-content/50` | 2.99:1 ❌ | 4.47:1 ❌ |
+| `text-base-content/60` | 3.98:1 ❌ | 5.84:1 ✅ |
+| `text-base-content/70` | **5.43:1 ✅** | **7.56:1 ✅** |
+
+`/60` is below the 4.5:1 AA floor for normal text in light mode, and the `text-gray-500` it replaced was 4.83:1 — so
+the first cut of this phase made light-mode contrast *worse* on ~20 elements. `/70` is the muted-text token from here
+on. `/40`–`/45` stays on icons and chevrons, which are decorative and sit beside a real label.
 
 ### Phase 4 — Retire Pegasus
 
