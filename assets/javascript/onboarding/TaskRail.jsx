@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import Coachmark from './Coachmark';
+import FinishCard from './FinishCard';
 import OpeningBalances from './OpeningBalances';
 
 /**
@@ -87,6 +88,7 @@ const TaskRail = ({ props }) => {
   const [open, setOpen] = useState(true);
   const [coachDismissed, setCoachDismissed] = useState(false);
   const [dialog, setDialog] = useState(null);
+  const [finish, setFinish] = useState(null);
 
   const post = useCallback(
     async (body) => {
@@ -96,7 +98,11 @@ const TaskRail = ({ props }) => {
         body: JSON.stringify(body),
       });
       if (!response.ok) return null;
-      return response.json();
+      const data = await response.json();
+      if (data.finished) {
+        setFinish(data.summary || {});
+      }
+      return data;
     },
     [taskUrl, csrf],
   );
@@ -131,9 +137,15 @@ const TaskRail = ({ props }) => {
     a suggested order, not a rail the user is locked into, and someone who opens
     the report while their budget is still half-written has plainly done the "see
     where the money went" step.
+
+    A task that also offers a dialog is NOT excluded here. The dialog is a shortcut
+    — opening balances make the net-worth figure meaningful — but the task itself
+    is "watch your net worth move", which is done by looking at it. Excluding them
+    left that task with no way to complete at all: not auto-detected, and never
+    reported on arrival.
   */
   const arrivedAt = useMemo(
-    () => tasks.find((t) => !t.auto && !t.dialog && t.state !== DONE && t.state !== LOCKED && path.startsWith(t.url)),
+    () => tasks.find((t) => !t.auto && t.state !== DONE && t.state !== LOCKED && path.startsWith(t.url)),
     [tasks, path],
   );
 
@@ -155,6 +167,12 @@ const TaskRail = ({ props }) => {
     setActive(false);
     await post({ action: 'dismiss' });
   }, [post]);
+
+  // The finish card outlives the rail: `active` goes false the moment the last
+  // task lands, and returning null here would swallow the celebration.
+  if (finish) {
+    return <FinishCard summary={finish} onClose={() => setFinish(null)} />;
+  }
 
   if (!active || tasks.length === 0) return null;
 

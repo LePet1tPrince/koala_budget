@@ -66,19 +66,17 @@ def team_home(request, team_slug):
     # state row is created here rather than by a signal on team creation, so the
     # signal stays cheap; teams that predate the feature were marked complete by
     # onboarding migration 0002 and never land here.
-    if settings.ONBOARDING_ENABLED:
-        onboarding = get_or_create_state(team)
-        if not onboarding.is_finished:
-            return HttpResponseRedirect(reverse("onboarding:home", args=[team.slug]))
+    onboarding = get_or_create_state(team) if settings.ONBOARDING_ENABLED else None
+    if onboarding and not onboarding.is_finished:
+        return HttpResponseRedirect(reverse("onboarding:home", args=[team.slug]))
 
     today = timezone.now().date()
     month = today.replace(day=1)
 
-    accounts_count = Account.objects.filter(team=team).count()
-    has_transactions = (
-        JournalEntry.objects.filter(team=team).exists() or BankTransaction.objects.filter(team=team).exists()
-    )
-    has_budget = Budget.objects.filter(team=team).exists()
+    # The old three-step checklist here was superseded by the walkthrough's task
+    # rail, which covers the same ground with real gates. What survives is a
+    # nudge for someone who skipped or dismissed the guide and still has gaps.
+    show_resume = settings.ONBOARDING_ENABLED and not onboarding.shows_tasks and not _is_set_up(team)
 
     report_service = ReportService(team)
     income_ytd = report_service.get_income_statement_data(month.replace(month=1, day=1), today)
@@ -116,11 +114,23 @@ def team_home(request, team_slug):
             "amount_to_reach_goals": amount_to_reach_goals,
             "goals": goals_qs[:4],
             "net_worth_chart_data": net_worth_chart_data,
-            "show_onboarding": not (accounts_count and has_transactions and has_budget),
-            "has_accounts": accounts_count > 0,
-            "has_transactions": has_transactions,
-            "has_budget": has_budget,
+            "show_resume": show_resume,
+            "resume_url": reverse("onboarding:api_task", args=[team.slug]),
         },
+    )
+
+
+def _is_set_up(team) -> bool:
+    """
+    Whether the team has the three things the walkthrough exists to produce.
+
+    Used only to decide whether to offer picking the guide back up -- a team that
+    has accounts, transactions and a budget has no use for it, however they got there.
+    """
+    return (
+        Account.objects.filter(team=team).exists()
+        and (JournalEntry.objects.filter(team=team).exists() or BankTransaction.objects.filter(team=team).exists())
+        and Budget.objects.filter(team=team).exists()
     )
 
 

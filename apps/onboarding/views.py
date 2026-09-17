@@ -24,6 +24,8 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
 from apps.accounts.models import ACCOUNT_TYPE_EQUITY, AccountGroup
+from apps.audit.models import AuditEvent
+from apps.audit.utils import log_event
 from apps.budget.models import Goal
 from apps.budget.services import NetWorthService
 from apps.teams.decorators import login_and_team_required
@@ -88,6 +90,7 @@ def onboarding_home(request, team_slug):
     if state.started_at is None:
         state.mark_seen()
         state.save(update_fields=["started_at", "updated_at"])
+        log_event(AuditEvent.ONBOARDING_STARTED, request=request)
 
     return render(
         request,
@@ -239,6 +242,15 @@ def api_answers(request, team_slug):
 
     requested = body.get("question_phase")
     if requested in active_phases():
+        # The phase the client is moving *to*, so the one it is leaving is the one
+        # just completed. This pair of events is what turns the funnel into
+        # "which question loses people" rather than a single completion rate.
+        if state.question_phase and state.question_phase != requested:
+            log_event(
+                AuditEvent.ONBOARDING_PHASE_COMPLETED,
+                request=request,
+                metadata={"phase": state.question_phase, "next": requested},
+            )
         state.question_phase = requested
 
     state.save()
@@ -307,6 +319,17 @@ def api_complete(request, team_slug):
         state.complete()
         state.save()
 
+    log_event(
+        AuditEvent.ONBOARDING_COMPLETED,
+        request=request,
+        metadata={
+            "accounts": len(template["accounts"]),
+            # Which answers produced the chart, so a question that turns out to
+            # drive nothing can be spotted and cut.
+            "answers": state.answers,
+        },
+    )
+
     return JsonResponse({"redirect": reverse("web_team:home", args=[team_slug])})
 
 
@@ -341,9 +364,19 @@ def api_task(request, team_slug):
     state = get_or_create_state(request.team)
     body = _json_body(request)
 
+    if body.get("action") == "resume":
+        state.phase = OnboardingState.PHASE_TASKS
+        state.save()
+        return JsonResponse({"active": True, "tasks": task_state(request.team, state.tasks_done, team_slug=team_slug)})
+
     if body.get("action") == "dismiss":
         state.finish_tasks()
         state.save()
+        log_event(
+            AuditEvent.ONBOARDING_FINISHED,
+            request=request,
+            metadata={"reason": "dismissed", "tasks_done": state.tasks_done},
+        )
         return JsonResponse({"active": False, "tasks": task_state(request.team, state.tasks_done, team_slug)})
 
     slug = body.get("slug")
@@ -353,14 +386,46 @@ def api_task(request, team_slug):
     if task.auto_detected:
         return JsonResponse({"error": "That task is detected from your data."}, status=400)
 
+    already_done = task.slug in state.tasks_done
     state.mark_task(task.slug)
 
     tasks = task_state(request.team, state.tasks_done, team_slug=team_slug)
-    if all(t["state"] == DONE for t in tasks):
+    finished = all(t["state"] == DONE for t in tasks)
+    if finished:
         state.finish_tasks()
     state.save()
 
-    return JsonResponse({"tasks": tasks, "active": state.shows_tasks})
+    if not already_done:
+        log_event(AuditEvent.ONBOARDING_TASK_COMPLETED, request=request, metadata={"task": task.slug})
+    if finished:
+        log_event(
+            AuditEvent.ONBOARDING_FINISHED,
+            request=request,
+            metadata={"reason": "all_tasks_done", "tasks_done": state.tasks_done},
+        )
+
+    return JsonResponse(
+        {
+            "tasks": tasks,
+            "active": state.shows_tasks,
+            "finished": finished,
+            # Only computed when the walkthrough actually ends, so the ordinary
+            # task POST stays a cheap write.
+            "summary": _finish_summary(request.team) if finished else None,
+        }
+    )
+
+
+def _finish_summary(team) -> dict:
+    """What the user built, for the finish card. Their own numbers, not a slogan."""
+    from apps.accounts.models import Account
+    from apps.bank_feed.models import BankTransaction
+
+    return {
+        "accounts": Account.objects.filter(team=team, is_system=False).count(),
+        "transactions": BankTransaction.objects.filter(team=team).count(),
+        "net_worth": str(_net_worth(team)),
+    }
 
 
 @login_and_team_required
@@ -456,10 +521,14 @@ def api_skip(request, team_slug):
     if state.is_finished:
         return JsonResponse({"redirect": reverse("web_team:home", args=[team_slug])})
 
+    phase_when_skipped = state.question_phase or state.phase
+
     with transaction.atomic():
         apply_template(team=request.team, template=PERSONAL_BUDGET_TEMPLATE)
         state.skip()
         state.save()
+
+    log_event(AuditEvent.ONBOARDING_SKIPPED, request=request, metadata={"phase": phase_when_skipped})
 
     return _redirect_or_json(request, reverse("web_team:home", args=[team_slug]))
 

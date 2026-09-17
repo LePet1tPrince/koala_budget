@@ -811,7 +811,45 @@ Verified in a browser in both themes, then against the ledger: entering $2,500 c
 $1,200 savings and $800 TFSA on a team sitting at −$42 produced three entries, each
 balancing to the cent, and a net worth of exactly $4,458.
 
+### The finish card, instrumentation and the resume nudge (step 7)
+
+**The funnel from §8 exists.** Six `AuditEvent` types (audit migration `0005`) record
+`ONBOARDING_STARTED` (first sight of the takeover, once),
+`ONBOARDING_PHASE_COMPLETED` (`{phase, next}` — the phase being *left*),
+`ONBOARDING_COMPLETED` (`{accounts, answers}`), `ONBOARDING_SKIPPED` (`{phase}` where
+they bailed), `ONBOARDING_TASK_COMPLETED` (`{task}`, once per task) and
+`ONBOARDING_FINISHED` (`{reason: all_tasks_done | dismissed, tasks_done}`).
+
+The per-phase pair is the point: a completion rate says people drop out, while these say
+*which question* loses them. The completed event carries the answers too, so a question
+that turns out to drive nothing in the chart of accounts can be spotted and cut — which
+is exactly the §11 open decision about trimming the question count.
+
+Verified end to end rather than only in tests: a clean run recorded `started` →
+`phase_completed` (income→household) → `phase_completed` (household→goal) →
+`completed {accounts: 28}` with all nine answers attached. An abandoned run showed as a
+start with phase events and no completion — the drop-off signal working as intended.
+
+**The finish card** fires when the last task lands, over whatever page the user is on,
+with the shared `fireConfetti` the Goals page already uses. It shows their own numbers —
+accounts built, transactions imported, net worth — rather than a slogan, since that is
+the whole argument for having done this. The summary is computed only when the walkthrough
+actually ends, so the ordinary task POST stays a cheap write.
+
+**The old three-step checklist on the dashboard is retired.** It duplicated the task rail
+with none of its gates. What replaces it is a narrower nudge: a "Finish setting up" card
+shown only to a team that skipped or dismissed the guide *and* still lacks accounts,
+transactions or a budget. `POST api/task/ {action: "resume"}` puts the rail back, keeping
+whatever tasks were already done.
+
+A bug this surfaced: the `net_worth` task was **uncompletable**. It is not auto-detected,
+and step 5's arrival-completion excluded tasks carrying a dialog — so nothing could ever
+mark it done and the walkthrough could never finish. The exclusion is gone: the dialog is
+a shortcut that makes the figure meaningful, but the task is "watch your net worth move",
+which is done by looking at it. Also fixed: the finish card asked `fireConfetti` for an
+`origin` of `'burst'`, which is not one of the module's two named origins — anything else
+is read as an `{x, y}` point, so it would have produced `NaN` positions.
+
 ### Not yet built
 
-Steps 7–8 of §10: the finish card and the E2E suite. The visual spec is §6, written
-against the restyled design system.
+Step 8 of §10: the E2E suite.

@@ -431,3 +431,16 @@
 .opening-row {
   @apply flex items-center justify-between gap-3 rounded-field px-2 py-1.5 hover:bg-base-200/60;
 }
+
+/* The finish card's stat row (onboarding step 7). */
+.finish-stats {
+  @apply mt-7 grid grid-cols-3 gap-3 rounded-box border border-base-300 bg-base-200/50 p-4 text-center;
+}
+
+.finish-stat {
+  @apply text-[1.5rem] font-semibold tracking-tight;
+}
+
+.finish-stat-label {
+  @apply mt-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
+}

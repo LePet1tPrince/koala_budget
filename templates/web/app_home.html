@@ -51,41 +51,24 @@
     {% endif %}
   </section>
 
-  {% if show_onboarding %}
-    {# Onboarding checklist for new teams; disappears once all steps are done #}
-    <section class="app-card mt-6" data-testid="onboarding-checklist">
-      <h2 class="text-2xl font-semibold mb-1">{% translate "Get set up" %}</h2>
-      <p class="text-sm text-base-content/70 mb-4">{% translate "Three steps and your budget is up and running." %}</p>
-      <ul class="space-y-3">
-        <li class="flex items-center gap-3">
-          {% if has_accounts %}
-            <i class="fa fa-check-circle text-success"></i>
-            <span class="text-base-content/70 line-through">{% translate "Add your accounts" %}</span>
-          {% else %}
-            <i class="fa fa-circle-o text-base-content/40"></i>
-            <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="link">{% translate "Add your accounts" %}</a>
-            <span class="text-sm text-base-content/70">{% translate "— or connect a bank from the Inbox" %}</span>
-          {% endif %}
-        </li>
-        <li class="flex items-center gap-3">
-          {% if has_transactions %}
-            <i class="fa fa-check-circle text-success"></i>
-            <span class="text-base-content/70 line-through">{% translate "Import or add transactions" %}</span>
-          {% else %}
-            <i class="fa fa-circle-o text-base-content/40"></i>
-            <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" class="link">{% translate "Import or add transactions" %}</a>
-          {% endif %}
-        </li>
-        <li class="flex items-center gap-3">
-          {% if has_budget %}
-            <i class="fa fa-check-circle text-success"></i>
-            <span class="text-base-content/70 line-through">{% translate "Set your monthly budget" %}</span>
-          {% else %}
-            <i class="fa fa-circle-o text-base-content/40"></i>
-            <a href="{% url 'budget:budget_home' request.team.slug %}" class="link">{% translate "Set your monthly budget" %}</a>
-          {% endif %}
-        </li>
-      </ul>
+  {% if show_resume %}
+    {% comment %}
+ The three-step checklist that used to live here was superseded by the
+      walkthrough's task rail. This is only the nudge for someone who skipped or
+      dismissed the guide and still has gaps in their setup.
+    {% endcomment %}
+    <section class="app-card mt-6" data-testid="onboarding-resume">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight">{% translate "Finish setting up" %}</h2>
+          <p class="mt-1 text-sm text-base-content/70">
+            {% translate "Import some transactions, set a budget, and your reports will fill in." %}
+          </p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" data-resume-onboarding data-url="{{ resume_url }}">
+          {% translate "Pick it back up" %}
+        </button>
+      </div>
     </section>
   {% endif %}
 
@@ -134,6 +117,7 @@
 {% endblock %}
 
 {% block page_js %}
+  {% if show_resume %}{% vite_asset 'assets/javascript/onboarding/resume.js' %}{% endif %}
 {% if net_worth_chart_data %}
 {{ net_worth_chart_data|json_script:'home-net-worth-data' }}
 {% vite_asset 'assets/javascript/dashboard/home-net-worth-chart.js' %}
