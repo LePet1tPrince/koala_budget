@@ -1,13 +1,13 @@
 <template>
   <section class="app-card">
-    <h1 class="pg-subtitle">All Employees</h1>
+    <h1 class="text-xl mb-1">All Employees</h1>
     <div class="table-responsive">
-      <table class="table pg-table">
+      <table class="table table table-quiet w-full">
         <thead>
         <tr>
           <th>Name</th>
           <th>Department</th>
-          <th class="pg-text-right">Salary</th>
+          <th class="text-right">Salary</th>
           <th></th>
         </tr>
         </thead>
@@ -22,8 +22,8 @@
         </tbody>
       </table>
     </div>
-    <button class="pg-button-primary" v-on:click="addEmployee" >
-      <span class="pg-icon">
+    <button class="btn btn-primary" v-on:click="addEmployee" >
+      <span class="w-6 h-6 inline-flex justify-center items-center">
         <i class="fa fa-plus"></i>
       </span>
       <span>Add Employee</span>
