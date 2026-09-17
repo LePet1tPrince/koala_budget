@@ -1,4 +1,5 @@
 import threading
+from decimal import Decimal, InvalidOperation
 
 _thread_locals = threading.local()
 
@@ -46,14 +47,33 @@ def snapshot_journal_entry(entry):
     }
 
 
+def _amount_2dp(value):
+    """Format an amount to 2dp, whatever Python type it currently holds.
+
+    This runs from a post_save signal, so it sees the in-memory instance --
+    and Django does not coerce a field's value on assignment. Anything that
+    sets an amount from a string (deserialized JSON, a form value that skips
+    to_python, a test factory) leaves a str on the instance, and formatting
+    that with `:.2f` raises ValueError *while saving the line*. The audit
+    trail must never be the reason a save fails, so coerce first and fall
+    back to a plain string rather than raising.
+    """
+    if value is None:
+        return None
+    try:
+        return f"{Decimal(value):.2f}"
+    except (InvalidOperation, TypeError, ValueError):
+        return str(value)
+
+
 def snapshot_journal_line(line):
     """Frozen snapshot of JournalLine fields (resolves FKs to display names)."""
     return {
         "account": {"id": line.account_id, "name": line.account.name} if line.account_id else None,
         # Always format to 2dp so Decimal('0.00') and Decimal('0') compare equal and don't
         # produce spurious diffs when lines are re-saved for budget re-linking.
-        "dr_amount": f"{line.dr_amount:.2f}",
-        "cr_amount": f"{line.cr_amount:.2f}",
+        "dr_amount": _amount_2dp(line.dr_amount),
+        "cr_amount": _amount_2dp(line.cr_amount),
         "is_reconciled": line.is_reconciled,
         "is_cleared": line.is_cleared,
     }
