@@ -48,24 +48,4 @@ PERSONAL_BUDGET_TEMPLATE = {
         "Credit Card Company",
         "Investment Provider",
     ],
-    "sample_transactions": [
-        {
-            "account": 2000,
-            "amount": -50.00,
-            "description": "Grocery Store",
-            "merchant_name": "Whole Foods",
-        },
-        {
-            "account": 1000,
-            "amount": 1000.00,
-            "description": "Salary Pay",
-            "merchant_name": "Employer",
-        },
-        {
-            "account": 1000,
-            "amount": -20.00,
-            "description": "Cell Phone",
-            "merchant_name": "Telco",
-        },
-    ],
 }

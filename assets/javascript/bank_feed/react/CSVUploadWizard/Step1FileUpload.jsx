@@ -8,8 +8,11 @@ import React, { useCallback, useState } from 'react';
  * Props:
  * - onFileUpload: Callback when file is selected
  * - onCancel: Callback when user cancels
+ * - sampleCsvUrl: Optional URL of a downloadable sample statement. Offered so a
+ *   user who doesn't have an export to hand can still walk the whole import
+ *   flow, rather than hitting a dead end on the first step.
  */
-const Step1FileUpload = ({ onFileUpload, onCancel }) => {
+const Step1FileUpload = ({ onFileUpload, onCancel, sampleCsvUrl }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -112,6 +115,21 @@ const Step1FileUpload = ({ onFileUpload, onCancel }) => {
           </>
         )}
       </div>
+
+      {sampleCsvUrl && !loading && (
+        <p className="text-center text-sm text-base-content/70">
+          {gettext("Don't have a statement handy?")}{' '}
+          <a
+            href={sampleCsvUrl}
+            download
+            className="link link-primary"
+            data-testid="sample-csv-link"
+          >
+            {gettext('Download a sample file')}
+          </a>{' '}
+          {gettext('and upload it to try this out.')}
+        </p>
+      )}
 
       <div className="modal-action">
         <button

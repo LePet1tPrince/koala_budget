@@ -24,6 +24,14 @@ export function getUploadApiHelpers(teamSlug) {
 
   return {
     /**
+     * A sample bank statement, for users who want to try the import before they
+     * have a statement of their own. Downloading it creates nothing -- the file
+     * goes through this same wizard, so the rows the user ends up with are ones
+     * they chose to import.
+     */
+    sampleCsvUrl: `/a/${teamSlug}/bankfeed/api/feed/sample_csv/`,
+
+    /**
      * Parse an uploaded file and return headers + sample rows
      */
     uploadParse: async (file) => {

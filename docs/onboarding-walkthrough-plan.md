@@ -15,6 +15,12 @@ in a net-worth moment once there is real data to anchor it.
 - All 8 questions kept.
 - Opening balances and the net-worth reveal are **gated behind real categorized
   transactions** — neither appears until the ledger can support them.
+- A **downloadable sample statement** is offered at the import step, so a user with no
+  file to hand still walks the real flow. It is a download, not a seed: they import it
+  themselves, through the ordinary wizard, into books they can clear.
+
+**Built so far** (branch `claude/affectionate-ptolemy-r9egme`): steps 1 and the sample
+statement from §10 — see §12.
 
 ---
 
@@ -124,6 +130,11 @@ reason, until `BankTransaction` exists. Two escapes so the gate is never a dead 
   returns the user to the dashboard with a "Pick up where you left off" card.
 - *"Add one manually"* → the existing manual-create form, which satisfies the gate with a
   single transaction and lets a curious user see the whole loop in 60 seconds.
+- *"Download a sample file"* → `GET bankfeed/api/feed/sample_csv/` hands back a realistic
+  CAD chequing statement, which the user then uploads through the same wizard. This is the
+  primary escape: it exercises every step of the real flow rather than skipping past it,
+  and it avoids the fabricated-history problem of §2.1 because the user imports it
+  deliberately, into their own books, and can delete it.
 
 **Task 5 is gated on `JournalEntry`, not on `BankTransaction`.** Uploading a CSV produces
 uncategorized bank transactions and moves nothing — net worth only changes once Task 2
@@ -438,7 +449,74 @@ Phases 1–2 are backend-only and carry the risk; 3–7 are UI on a settled cont
    page so users can correct a starting balance later.
 3. **When Plaid rejoins the first-run path** — deliberately out of scope now. Revisit when
    the Task 1 conversion number from §8 exists, or when Plaid reliability improves.
-4. **Sample CSV** — offering a downloadable example CSV at Task 1 would let a user with no
-   file still complete the loop, without the fake-data problem of §2.1 (they would import
-   it knowingly, into their own books, and could delete it). Cheap; worth considering as a
-   third escape.
+4. **Whether the sample statement needs a one-click undo.** It is built (§12) and is
+   opt-in, so there is no silent fake history — but a user who imports it and then wants
+   their books clean currently has to delete the rows by hand. A "remove the sample data"
+   action would be cheap if that turns out to bite.
+
+---
+
+## 12. Built so far
+
+Implementation step 1 of §10, plus the sample statement from open decision 4.
+
+### Seeded fake transactions removed
+
+`apply_template` (`apps/teams/services/template_engine.py`) creates structure only —
+account groups, accounts, payees. The 18-month × 3-row `BankTransaction` loop and the
+`sample_transactions` key in `PERSONAL_BUDGET_TEMPLATE` are gone, along with the now-unused
+`month_start` argument and `account_map`.
+
+Found while removing it: **every one of the three seeded rows had an inverted sign.**
+`BankTransaction.amount` follows the Plaid convention (positive = money out), but the seed
+recorded a salary deposit as `+1000.00` (an outflow) and a grocery purchase as `-50.00`
+(an inflow). Any new team's opening numbers were not merely fictional, they were backwards.
+Deleting the seed resolves it; the detail is recorded here because it is the reason to
+distrust any figure a pre-change team saw before its first real import.
+
+`purge_sample_transactions` (`apps/teams/management/commands/`) cleans up teams created
+before this change. Dry run by default, `--delete` to apply, `--team <slug>` to scope. It
+only removes rows that are unmistakably seed data: `source=system`, **not** categorized,
+and matching a seeded description — so a row the user has since categorized, or any row of
+their own, is left alone. A management command rather than a data migration, because
+deleting user-visible financial records should be deliberate and dry-runnable.
+
+Tests: `apps/teams/tests/test_bootstrap.py` — structure is created, **no** `BankTransaction`
+or `JournalEntry` is, the template no longer declares `sample_transactions`, and
+`apply_template` stays idempotent.
+
+### Sample bank statement
+
+`apps/bank_feed/services/sample_csv.py::build_sample_csv()` renders a fictional Canadian
+chequing account, served by `GET /a/{slug}/bankfeed/api/feed/sample_csv/` as a file
+download. Offered from step 1 of the upload wizard ("Don't have a statement handy?"),
+so it is useful outside onboarding too.
+
+Two design points, both load-bearing:
+
+- **Dual `Funds In` / `Funds Out` columns, not a single `Amount`.** Under the Plaid
+  convention a single-column file would need a *negative* number for a paycheque, which
+  looks wrong to anyone who opens it. The dual form reads naturally, is auto-detected by
+  the column-mapping keyword list, and is converted correctly by the dual-column branch of
+  `preview_transactions`. This is the same convention the old seed got backwards.
+- **Dates generated relative to today** — three complete months plus the current month to
+  date. A file with hardcoded dates would describe ancient history a year on, and would
+  land outside the budget month the walkthrough then asks the user to set. Deterministic
+  (fixed variation factors, no randomness), so the same day always yields the same file.
+
+Roughly 70 transactions: semi-monthly payroll, rent, utilities, phone, transit, fuel,
+groceries, subscriptions, dining. Net positive by about $1,700/month, so net worth
+visibly climbs — the payoff the walkthrough is built around. No `Category` column, so the
+rows land uncategorized and the categorize step still has its job.
+
+Tests: `apps/bank_feed/tests/test_sample_csv.py` — the file is pushed through the real
+parse/preview/create pipeline rather than asserted on as text. Covers the date window,
+no future-dated rows, determinism, short months (Feb), header auto-mapping, zero parse
+errors, inflows landing as negative amounts (a paycheque must not read as spending),
+rows arriving uncategorized, a positive net after import, and endpoint auth including a
+non-member refusal.
+
+### Not yet built
+
+Everything else in §10: the `apps/onboarding` app, the takeover UI, the task rail and
+gates, opening balances, and the E2E suite.
