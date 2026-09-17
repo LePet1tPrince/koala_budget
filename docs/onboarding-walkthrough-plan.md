@@ -105,7 +105,7 @@ signup ──> /a/{slug}/onboarding/
              ▼
    Phase A   │  About your money        3 questions   ~25s
              ▼
-   Phase B   │  About your household    5 questions   ~40s
+   Phase B   │  About your household    6 questions   ~40s
              ▼
    Phase C   │  Your chart of accounts  review + inline edit
              ▼   (writes the CoA — first irreversible step)
@@ -480,9 +480,11 @@ Phases 1–2 are backend-only and carry the risk; 3–7 are UI on a settled cont
 
 ## 11. Open decisions
 
-1. **Question count** — 8 required questions is the current draft, kept for v1. Cutting B6
-   and A3 gets to 6 and roughly 45 seconds. Worth an A/B test once the funnel events from
-   §8 exist, not before.
+1. **Question count** — 8 required plus one optional (A3) is the current draft, kept for
+   v1. The exact set lives in `apps/onboarding/questions.py`; this document does not
+   restate a count, because the two drifted apart once already. Cutting B6 gets to 7
+   required and roughly 45 seconds. Worth an A/B test once the funnel events from §8
+   exist, not before — and cheap to do, since the catalog is data (§12).
 2. **Where opening balances live long-term** — Task 5 is the first use, but it is a
    generally missing feature; it likely deserves a permanent home on the account detail
    page so users can correct a starting balance later.
@@ -569,8 +571,67 @@ auto-maps every column with no manual input — 69 rows, `%Y-%m-%d` detected wit
 dates match this format", dual-amount mode auto-selected, `Funds In` → Inflow and
 `Funds Out` → Outflow.
 
+### The `apps/onboarding` app (step 2)
+
+Backend only — no UI, nothing user-visible yet.
+
+`OnboardingState` (`models.py`) is one row per team (`unique_together = ["team"]`,
+`BaseTeamModel`): answers, `catalog_version`, phase, `tasks_done`, and
+started/completed/skipped timestamps. Team-scoped rather than user-scoped, so a second
+member joining an onboarded team is not asked to set the books up again.
+
+**The question set is data.** `questions.py` holds `QUESTION_CATALOG`; adding, cutting or
+reordering a question is an edit to that one list. Nothing else counts or names questions
+— the phases walked, the client payload, the server-side validation and the generated
+chart of accounts are all derived from it. Two rules keep that honest, both enforced by
+`validate_catalog()`:
+
+- **A rule lives on the option that triggers it**, never in a table keyed by question id,
+  so deleting a question takes its rules with it and cannot leave a dangling rule behind.
+- **A cross-question dependency is a `question_id:option_value` token** in
+  `Grant.requires`, checked against the catalog. The one such dependency today is a
+  partner's salary account, which only makes sense alongside employment income.
+
+Both halves were verified by actually doing it, not by assertion. Cutting the `extras`
+question: all 69 tests still pass, no code change anywhere. Cutting `income_sources`,
+which `household_shape` depends on: fails with the named error
+`household_shape:partner: requires unknown question 'income_sources'`, plus the two
+downstream tests that notice the Income group went empty.
+
+A test also caught a real gap while being written: `income_sources` was a required
+question a user with no matching circumstances could not honestly answer. Rather than
+relax the test, `Option.catch_all` now makes the escape explicit data, and
+`validate_catalog()` refuses a required question that lacks one — so a future added
+question cannot deadlock the flow.
+
+`services/builder.py::build_template(answers)` is a pure function (no database, no side
+effects), so the review step can preview the chart of accounts and apply it later with no
+risk the two disagree. It dedupes by name — a mortgage and a rental property both want
+Property Tax — pulls in any group an account needs, and ignores answers naming questions
+or options that no longer exist, because stored answers outlive the catalog that produced
+them.
+
+`services/gates.py::task_state(team)` computes what is open, closed or done, server-side,
+with the reason for each lock. The two gating facts are deliberately different: a
+**bank transaction** unlocks categorizing and budgeting, which need something to work on;
+a non-void **journal entry** unlocks the report and net-worth steps, because only
+categorizing moves a balance. `can_set_opening_balances()` is the same gate, and the
+endpoint will enforce it rather than merely hiding the UI. A voided entry does not count,
+matching how voids are treated everywhere else in the app.
+
+`apply_template` gained `sort_order` on groups and accounts, so the generated account
+numbers (1000s assets, 2000s liabilities, 4000s income, 5000s expenses) drive display
+order on the accounts board and in reports. Templates that omit it are unaffected.
+
+Tests: 69 across `test_catalog.py` (coherence, payload, and that no module outside the
+catalog hardcodes a question id), `test_builder.py` (grants, dependencies, dedupe,
+unknown-answer tolerance, determinism), `test_apply.py` (the generated template actually
+applies, is idempotent, merges on re-run, creates no transactions, and isolates teams),
+`test_gates.py` (the transaction/entry boundary, void handling, team isolation) and
+`test_models.py`.
+
 ### Not yet built
 
-Everything else in §10: the `apps/onboarding` app, the takeover UI, the task rail and
-gates, opening balances, and the E2E suite. Its visual spec is §6, now written against
-the restyled design system.
+Steps 3–8 of §10: the takeover UI, Phase C review, the Phase D task rail, opening
+balances, the finish card, and the E2E suite. The visual spec is §6, written against the
+restyled design system.

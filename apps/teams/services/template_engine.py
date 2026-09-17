@@ -9,6 +9,8 @@ def apply_template(team, template):
     Apply a bootstrap template to a team.
 
     Creates the team's *structure* only -- account groups, accounts and payees.
+    A template may carry `sort_order` on groups and accounts to fix their display
+    order; templates that omit it fall back to 0, leaving the alphabetical default.
     Deliberately creates no transactions: a new team starts with an empty ledger
     so the first numbers a user sees are their own.
 
@@ -28,6 +30,7 @@ def apply_template(team, template):
                 "account_type": g["type"],
                 "description": g.get("description", ""),
                 "is_system": g.get("is_system", False),
+                "sort_order": g.get("sort_order", 0),
             },
         )
         group_map[g["name"]] = group
@@ -43,6 +46,7 @@ def apply_template(team, template):
                 "has_feed": a.get("has_feed", False),
                 "account_group": group_map[a["group"]],
                 "is_system": a.get("is_system", False),
+                "sort_order": a.get("sort_order", 0),
             },
         )
 
