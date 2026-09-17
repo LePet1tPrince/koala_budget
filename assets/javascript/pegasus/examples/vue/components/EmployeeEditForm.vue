@@ -1,32 +1,30 @@
 <template>
   <section class="app-card">
     <form>
-      <h2 class="pg-subtitle">Employee Details</h2>
-      <div class="pg-input-group">
-        <label class="pg-label">Name</label>
-        <input class="pg-control" type="text" placeholder="Michael Scott" v-model="name">
-        <p class="pg-help">Your employee's name.</p>
+      <h2 class="text-xl mb-1">Employee Details</h2>
+      <div class="mb-3">
+        <label class="block font-bold">Name</label>
+        <input class="input w-full" type="text" placeholder="Michael Scott" v-model="name">
+        <p class="text-sm text-base-content/70">Your employee's name.</p>
       </div>
       <div class="mb-3">
-        <label class="pg-label">Department</label>
-        <div class="pg-select">
-          <select v-model="department">
-            <option v-for="option in departmentOptions" v-bind:value="option.id">
-              {{ option.name }}
-            </option>
-          </select>
-        </div>
-        <p class="pg-help">What department your employee belongs to.</p></div>
-      <div class="pg-input-group">
-        <label class="pg-label">Salary</label>
-        <input class="pg-control" type="number" min="0" placeholder="50000" v-model="salary">
-        <p class="pg-help">Your employee's annual salary.</p></div>
-      <div class="pg-inline-buttons">
-        <button class="pg-button-primary" v-on:click.prevent="saveEdit">
-          <span class="pg-icon"><i :class="getSaveIconClass"></i></span>
+        <label class="block font-bold">Department</label>
+        <select class="select w-full" v-model="department">
+          <option v-for="option in departmentOptions" v-bind:value="option.id">
+            {{ option.name }}
+          </option>
+        </select>
+        <p class="text-sm text-base-content/70">What department your employee belongs to.</p></div>
+      <div class="mb-3">
+        <label class="block font-bold">Salary</label>
+        <input class="input w-full" type="number" min="0" placeholder="50000" v-model="salary">
+        <p class="text-sm text-base-content/70">Your employee's annual salary.</p></div>
+      <div class="flex space-x-1">
+        <button class="btn btn-primary" v-on:click.prevent="saveEdit">
+          <span class="w-6 h-6 inline-flex justify-center items-center"><i :class="getSaveIconClass"></i></span>
           <span>{{ getSaveIconText }}</span>
         </button>
-        <button class="pg-button-light mx-2" v-on:click.prevent="$emit('cancel-edit')">
+        <button class="btn btn-ghost mx-2" v-on:click.prevent="$emit('cancel-edit')">
           <span>Cancel</span>
         </button>
       </div>

@@ -1,15 +1,15 @@
 <template>
   <section class="app-card">
-    <div class="pg-columns">
-        <div class="pg-column-one-third">
+    <div class="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0">
+        <div class="basis-1/3 grow-0 shrink-0">
             <img class="img-fluid" alt="Nothing Here" :src="staticFiles.undraw_empty"/>
         </div>
-        <div class="pg-column">
-            <h1 class="pg-title">No Employees Yet!</h1>
-            <h2 class="pg-subtitle">Create your first employee below to get started.</h2>
+        <div class="flex-1">
+            <h1 class="text-3xl font-bold mb-2">No Employees Yet!</h1>
+            <h2 class="text-xl mb-1">Create your first employee below to get started.</h2>
             <p>
-                <a class="pg-button-primary my-3" v-on:click="$emit('add-employee')">
-                    <span class="pg-icon"><i class="fa fa-plus"></i></span>
+                <a class="btn btn-primary my-3" v-on:click="$emit('add-employee')">
+                    <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-plus"></i></span>
                     <span>Create Employee</span>
                 </a>
             </p>

@@ -1,50 +1,29 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  Box,
-  Button,
-  Divider,
-  List,
-  ListItemButton,
-  ListItemText,
-  Popover,
-  Stack,
-  Typography,
-} from '@mui/material';
-import {
-  endOfMonth,
-  endOfYear,
-  format,
-  isValid,
-  parseISO,
-  subDays,
-  subMonths,
-  subYears,
-} from 'date-fns';
-import ClearIcon from '@mui/icons-material/Clear';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import React, { useEffect, useState } from 'react';
+import { endOfMonth, endOfYear, format, isValid, parseISO, startOfMonth, subMonths, subYears } from 'date-fns';
+
+import PickerPopover, {
+  CalendarIcon,
+  DayGrid,
+  PanelHeading,
+  PickerActions,
+  PresetList,
+} from '../common/PickerPopover';
 import { createRoot } from 'react-dom/client';
 
-// Helper to safely parse ISO string to Date object
 const safeParseISO = (dateString) => {
   if (!dateString) return null;
   const date = parseISO(dateString);
   return isValid(date) ? date : null;
 };
 
-// Helper to safely format Date object to 'yyyy-MM-dd' string
-const safeFormat = (date) => {
-  return date && isValid(date) ? format(date, 'yyyy-MM-dd') : '';
+const safeFormat = (date) => (date && isValid(date) ? format(date, 'yyyy-MM-dd') : '');
+
+const formatDisplayDate = (dateString) => {
+  const date = safeParseISO(dateString);
+  return date ? format(date, 'MMM d, yyyy') : '';
 };
 
-// Helper to format date for display (e.g., "Jan 1, 2024")
-const formatDisplayDate = (date) => {
-  if (!date || !isValid(date)) return '';
-  return format(date, 'MMM d, yyyy');
-};
-
-// Preset ranges - each returns the END date of that period
+// Each preset resolves to the END date of that period — a balance sheet is "as of" a day.
 const presetRanges = [
   { label: 'Today', value: 'today' },
   { label: 'End of last month', value: 'lastMonth' },
@@ -52,190 +31,100 @@ const presetRanges = [
   { label: 'End of last year', value: 'lastYear' },
 ];
 
-// Get the end date for a preset
 const getPresetEndDate = (preset) => {
   const now = new Date();
-
   switch (preset) {
     case 'today':
       return now;
     case 'lastMonth':
-      const lastMonth = subMonths(now, 1);
-      return endOfMonth(lastMonth);
+      return endOfMonth(subMonths(now, 1));
     case 'thisYear':
       return endOfYear(now);
     case 'lastYear':
-      const lastYear = subYears(now, 1);
-      return endOfYear(lastYear);
+      return endOfYear(subYears(now, 1));
     default:
       return now;
   }
 };
 
-// Component that integrates with URL parameters
 const BalanceSheetDatePickerWrapper = () => {
-  const [anchorEl, setAnchorEl] = useState(null);
   const [asOfDate, setAsOfDate] = useState('');
-  const [tempDate, setTempDate] = useState(null);
+  const [tempDate, setTempDate] = useState('');
   const [activePreset, setActivePreset] = useState('');
-  const isInitialMount = useRef(true);
+  const [gridMonth, setGridMonth] = useState(startOfMonth(new Date()));
 
-  // Get initial value from URL parameter or set default to today
+  // Seed from `?as_of_date`, defaulting to today.
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlAsOfDate = urlParams.get('as_of_date');
-
-    if (urlAsOfDate) {
-      setAsOfDate(urlAsOfDate);
-      setTempDate(safeParseISO(urlAsOfDate));
-    } else {
-      const today = format(new Date(), 'yyyy-MM-dd');
-      setAsOfDate(today);
-      setTempDate(new Date());
-    }
-
-    isInitialMount.current = false;
+    const urlAsOfDate = new URLSearchParams(window.location.search).get('as_of_date');
+    const initial = urlAsOfDate || format(new Date(), 'yyyy-MM-dd');
+    setAsOfDate(initial);
+    setTempDate(initial);
+    const d = safeParseISO(initial);
+    if (d) setGridMonth(startOfMonth(d));
   }, []);
 
-  const handleClick = (event) => {
-    setTempDate(safeParseISO(asOfDate));
-    setActivePreset('');
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
-
-  const handleApply = () => {
-    const newDate = safeFormat(tempDate);
+  const navigateTo = (newDate) => {
     if (newDate && newDate !== asOfDate) {
-      // Build URL with query parameter
       const url = new URL(window.location);
       url.searchParams.set('as_of_date', newDate);
       window.location.href = url.toString();
     }
-    handleClose();
-  };
-
-  const handlePresetClick = (preset) => {
-    setActivePreset(preset);
-    const endDate = getPresetEndDate(preset);
-    setTempDate(endDate);
-  };
-
-  const handleClear = (e) => {
-    e.stopPropagation();
-    // Reset to today
-    const today = new Date();
-    const todayStr = format(today, 'yyyy-MM-dd');
-    if (todayStr !== asOfDate) {
-      const url = new URL(window.location);
-      url.searchParams.set('as_of_date', todayStr);
-      window.location.href = url.toString();
-    }
-  };
-
-  const open = Boolean(anchorEl);
-  const id = open ? 'date-picker-popover' : undefined;
-
-  // Get display text for the button
-  const getDisplayText = () => {
-    const date = safeParseISO(asOfDate);
-    if (!date) return 'Select date';
-    return `As of ${formatDisplayDate(date)}`;
   };
 
   return (
-    <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box>
-        <Button
-          aria-describedby={id}
-          variant="outlined"
-          onClick={handleClick}
-          sx={{ textTransform: 'none', color: 'text.secondary', borderColor: 'grey.400' }}
-          endIcon={
-            asOfDate && (
-              // Not an IconButton: a <button> may not nest inside the outer Button
-              <Box
-                component="span"
-                onClick={handleClear}
-                sx={{ display: 'inline-flex', alignItems: 'center', mr: -1, ml: 0.5, cursor: 'pointer', borderRadius: '50%', '&:hover': { bgcolor: 'action.hover' } }}
-                role="button"
-                aria-label="Reset to today"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClear(e); }}
-              >
-                <ClearIcon fontSize="small" />
-              </Box>
-            )
-          }
-        >
-          {getDisplayText()}
-        </Button>
-        <Popover
-          id={id}
-          open={open}
-          anchorEl={anchorEl}
-          onClose={handleClose}
-          anchorOrigin={{
-            vertical: 'bottom',
-            horizontal: 'left',
-          }}
-          transformOrigin={{
-            vertical: 'top',
-            horizontal: 'left',
-          }}
-        >
-          <Box sx={{ display: 'flex', p: 2, width: 'auto' }}>
-            {/* Preset Ranges */}
-            <Stack spacing={1} sx={{ borderRight: 1, borderColor: 'divider', pr: 2, mr: 2, minWidth: 150 }}>
-              <Typography variant="overline" sx={{ pl: 2 }}>Presets</Typography>
-              <List dense disablePadding>
-                {presetRanges.map((range) => (
-                  <ListItemButton
-                    key={range.value}
-                    selected={activePreset === range.value}
-                    onClick={() => handlePresetClick(range.value)}
-                  >
-                    <ListItemText primary={range.label} />
-                  </ListItemButton>
-                ))}
-              </List>
-            </Stack>
+    <PickerPopover
+      label={asOfDate ? `As of ${formatDisplayDate(asOfDate)}` : 'Select date'}
+      icon={<CalendarIcon />}
+      testId="balance-sheet-date-trigger"
+      onClear={() => navigateTo(format(new Date(), 'yyyy-MM-dd'))}
+      panelClassName="w-max"
+    >
+      {({ close }) => (
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-5">
+          <PresetList
+            presets={presetRanges}
+            active={activePreset}
+            onSelect={(preset) => {
+              setActivePreset(preset);
+              const d = getPresetEndDate(preset);
+              setTempDate(safeFormat(d));
+              setGridMonth(startOfMonth(d));
+            }}
+          />
 
-            {/* Date Picker and Actions */}
-            <Stack spacing={2}>
-              <Typography variant="overline">Custom Date</Typography>
-              <DatePicker
-                label="As of date"
-                value={tempDate}
-                onChange={(newValue) => {
-                  setTempDate(newValue);
-                  setActivePreset('');
-                }}
-                slotProps={{ textField: { size: 'small' } }}
-              />
-              <Divider sx={{ my: 1 }} />
-              <Stack direction="row" spacing={1} justifyContent="flex-end">
-                <Button onClick={handleClose} size="small">
-                  Cancel
-                </Button>
-                <Button variant="contained" onClick={handleApply} size="small">
-                  Apply
-                </Button>
-              </Stack>
-            </Stack>
-          </Box>
-        </Popover>
-      </Box>
-    </LocalizationProvider>
+          <div className="flex flex-col gap-3">
+            <PanelHeading>Custom Date</PanelHeading>
+            <DayGrid
+              month={gridMonth}
+              onMonthChange={setGridMonth}
+              value={tempDate}
+              testId="balance-sheet-as-of"
+              onSelect={(iso) => {
+                setTempDate(iso);
+                setActivePreset('');
+              }}
+            />
+            <PickerActions
+              onCancel={() => {
+                setTempDate(asOfDate);
+                close();
+              }}
+              onApply={() => {
+                navigateTo(tempDate);
+                close();
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </PickerPopover>
   );
 };
 
-// Mount the React app
 const el = document.getElementById('balance-sheet-date-picker');
 
-if (el) {
+if (!el) {
+  console.warn('Balance sheet date picker mount point not found');
+} else {
   createRoot(el).render(<BalanceSheetDatePickerWrapper />);
 }
