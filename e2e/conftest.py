@@ -19,6 +19,7 @@ from django.contrib.auth import get_user_model
 os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 from playwright.sync_api import Page
 
+from apps.onboarding.models import OnboardingState
 from apps.teams.helpers import create_default_team_for_user
 
 User = get_user_model()
@@ -42,7 +43,26 @@ def user(transactional_db):
 
 @pytest.fixture
 def team(user):
-    """A team with the test user as admin."""
+    """
+    A team with the test user as admin, already past the guided walkthrough.
+
+    Without this, `team_home` redirects every test into the onboarding takeover:
+    a team with no `OnboardingState` is by definition un-onboarded. Marking it
+    complete matches the state of any team a test is actually about — tests for
+    the walkthrough itself use `unonboarded_team`.
+    """
+    team = create_default_team_for_user(user)
+
+    state = OnboardingState.objects.create(team=team)
+    state.complete()
+    state.finish_tasks()
+    state.save()
+    return team
+
+
+@pytest.fixture
+def unonboarded_team(user):
+    """A brand new team that has not seen the walkthrough — as a real signup is."""
     return create_default_team_for_user(user)
 
 
@@ -72,6 +92,21 @@ def authenticated_page(page: Page, live_server, user, team) -> Page:
 def team_page(authenticated_page: Page) -> Page:
     """Alias used by tests that operate in the context of a team workspace."""
     return authenticated_page
+
+
+@pytest.fixture
+def onboarding_page(page: Page, live_server, user, unonboarded_team) -> Page:
+    """
+    Logged in on a team that has never been onboarded.
+
+    Lands wherever `team_home` sends it, which for such a team is the takeover.
+    """
+    page.goto(f"{live_server.url}/accounts/login/")
+    page.locator("[name='login']").fill(user.email)
+    page.locator("[name='password']").fill("testpass123")
+    page.locator("[data-testid='login-btn']").click()
+    page.wait_for_url(f"**/a/{unonboarded_team.slug}/**", timeout=30_000, wait_until="domcontentloaded")
+    return page
 
 
 # ---------------------------------------------------------------------------

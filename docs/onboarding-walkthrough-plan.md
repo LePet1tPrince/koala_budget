@@ -850,6 +850,43 @@ which is done by looking at it. Also fixed: the finish card asked `fireConfetti`
 `origin` of `'burst'`, which is not one of the module's two named origins — anything else
 is read as an `{x, y}` point, so it would have produced `NaN` positions.
 
+### The E2E suite (step 8)
+
+17 Playwright tests in `e2e/tests/test_onboarding.py`, with page objects in
+`e2e/pages/onboarding.py` (the takeover, the task rail, and the dashboard nudge).
+All 45 E2E tests in the repo pass.
+
+**A regression this caught before it shipped.** `settings_e2e` inherits
+`ONBOARDING_ENABLED = True`, and the shared `team` fixture created a team with no
+`OnboardingState` — which is by definition un-onboarded. Every existing E2E test would
+have been redirected into the takeover instead of the page it was about, and the
+fixture's `wait_for_url` would not have caught it, because `/a/{slug}/onboarding/` still
+matches `**/a/{slug}/**`. The fixture now marks the team past the walkthrough, which is
+the state any test that is not *about* onboarding actually wants; `unonboarded_team` and
+`onboarding_page` are the opt-in for the ones that are.
+
+`OnboardingPage.answer_all()` walks whatever question is on screen rather than a fixed
+sequence, so adding or cutting a catalog entry does not break the suite — the same
+property §12's step 2 set up on the server, carried through to the tests.
+
+Two bugs in the tests themselves, both found by running them rather than by reading them:
+
+- The net-worth assertion read the revealed figure the instant it appeared and caught it
+  mid-count-up (`$65.70` on its way to `$2,458.00`). `revealed_net_worth()` now polls
+  until two consecutive reads agree.
+- A test asserted an onboarded team sees no resume nudge, but the fixture team is
+  onboarded *and empty* — exactly who the nudge is for. It now gives the team accounts,
+  a transaction and a budget first, and a second test covers the other half of the rule.
+
+Coverage: the redirect into the flow; welcome → questions; a required question disabling
+Continue; answers surviving a reload; the review reflecting the answers (rent but no
+mortgage, a vehicle but no car loan); a removed account staying out of the books; the
+generated chart matching the answers; skip still leaving a usable chart; the rail's gates
+before and after real data; the rail persisting across pages; opening balances moving net
+worth to a checked figure; the gate holding before anything is categorized; dismiss →
+resume; and the old checklist being gone.
+
 ### Not yet built
 
-Step 8 of §10: the E2E suite.
+Nothing — steps 1–8 of §10 are complete. What remains are the §11 open decisions, now
+answerable from the funnel events rather than by guessing.
