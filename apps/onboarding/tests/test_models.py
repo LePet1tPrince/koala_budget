@@ -47,17 +47,34 @@ class OnboardingStateTest(TestCase):
         state.start()
         self.assertEqual(state.started_at, first)
 
-    def test_complete_and_skip_both_finish(self):
-        completed = OnboardingState.objects.create(team=self.team)
-        completed.complete()
-        self.assertTrue(completed.is_finished)
-        self.assertEqual(completed.phase, OnboardingState.PHASE_DONE)
+    def test_completing_the_questionnaire_moves_on_to_the_tasks(self):
+        """
+        `is_finished` means "past the takeover", not "done with the walkthrough":
+        the guided tasks still lie ahead, and the rail keys off the phase.
+        """
+        state = OnboardingState.objects.create(team=self.team)
+        state.complete()
 
-        other = Team.objects.create(name="Skipper", slug="skipper")
-        skipped = OnboardingState.objects.create(team=other)
-        skipped.skip()
-        self.assertTrue(skipped.is_finished)
-        self.assertEqual(skipped.phase, OnboardingState.PHASE_DONE)
+        self.assertTrue(state.is_finished)
+        self.assertEqual(state.phase, OnboardingState.PHASE_TASKS)
+        self.assertTrue(state.shows_tasks)
+
+    def test_finishing_the_tasks_ends_the_walkthrough(self):
+        state = OnboardingState.objects.create(team=self.team)
+        state.complete()
+        state.finish_tasks()
+
+        self.assertEqual(state.phase, OnboardingState.PHASE_DONE)
+        self.assertFalse(state.shows_tasks)
+
+    def test_skipping_ends_it_outright(self):
+        """Someone who skipped the questionnaire is not shown a task rail either."""
+        state = OnboardingState.objects.create(team=self.team)
+        state.skip()
+
+        self.assertTrue(state.is_finished)
+        self.assertEqual(state.phase, OnboardingState.PHASE_DONE)
+        self.assertFalse(state.shows_tasks)
 
     def test_mark_task_is_idempotent(self):
         state = OnboardingState.objects.create(team=self.team)

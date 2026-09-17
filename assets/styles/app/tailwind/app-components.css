@@ -317,3 +317,104 @@
   @apply inline-flex items-center rounded-field border border-dashed border-base-300 px-2.5 py-1
          text-sm text-base-content/70 transition-colors hover:border-primary/50 hover:text-primary;
 }
+
+/*
+  Phase D: the guided task rail and its coach marks (onboarding plan §6.1).
+
+  Docked bottom-right rather than added as a third column: the shell is a sticky
+  248px sidebar beside a capped content column, and `shrink-0` is there precisely
+  because a wide element used to squeeze the nav. Below `lg` the sidebar is hidden
+  and a bottom dock already occupies the foot of the screen, so the rail sits above
+  it and spans the width.
+*/
+.task-rail {
+  @apply fixed bottom-4 right-4 z-30 w-[min(20rem,calc(100vw-2rem))] overflow-hidden
+         rounded-box border border-base-300 bg-base-100 shadow-lg;
+}
+
+@media (width < 64rem) {
+  .task-rail {
+    /* Clear of the mobile dock at the foot of the screen. */
+    @apply bottom-20 left-4 right-4 w-auto;
+  }
+}
+
+.task-rail-head {
+  @apply flex items-center gap-1 border-b border-base-300 px-3 py-2.5;
+}
+
+.rail-close {
+  @apply shrink-0 rounded-field px-1.5 py-1 text-xs text-base-content/45
+         transition-colors hover:bg-base-200 hover:text-base-content;
+}
+
+.task-rail-list {
+  @apply max-h-[min(20rem,50vh)] overflow-y-auto p-1.5;
+}
+
+.rail-row {
+  @apply flex items-start gap-2.5 rounded-field px-2 py-2;
+}
+
+.rail-row-link {
+  @apply transition-colors hover:bg-base-200;
+}
+
+.rail-row-link.is-current {
+  @apply bg-primary/10 text-primary;
+}
+
+.rail-marker {
+  @apply mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border border-base-300
+         text-[0.6875rem] font-medium text-base-content/70;
+}
+
+.rail-row-link.is-current .rail-marker {
+  @apply border-primary bg-primary text-primary-content;
+}
+
+.rail-marker.is-done {
+  @apply border-success bg-success text-success-content;
+}
+
+.rail-marker.is-locked {
+  @apply text-base-content/40;
+}
+
+/*
+  The coach mark and its ring are portaled to the body and fixed-positioned, so
+  they are measured against the viewport rather than a transformed ancestor.
+*/
+.coachmark-ring {
+  @apply pointer-events-none fixed z-40 rounded-field ring-2 ring-primary/70;
+  animation: coachmark-pulse 1.8s ease-out 2;
+}
+
+.coachmark {
+  @apply fixed z-40 w-[min(17rem,calc(100vw-1.5rem))] rounded-box border border-base-300
+         bg-base-100 p-3 shadow-lg;
+}
+
+.coachmark-dismiss {
+  @apply mt-2 text-xs font-medium text-primary hover:underline;
+}
+
+@keyframes coachmark-pulse {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.98);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coachmark-ring {
+    animation: none;
+  }
+}

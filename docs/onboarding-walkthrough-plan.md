@@ -721,7 +721,53 @@ and removing Pets left 27, and the database afterwards held exactly that — the
 applied, Pets gone, Travel untouched, the system account still present and still hidden
 from review.
 
+### The guided task rail (step 5)
+
+Phase D, over the real app. `OnboardingState.complete()` now moves to the `tasks` phase
+rather than straight to `done`: `completed_at` is what stops `team_home` redirecting into
+the takeover, but the walkthrough is not over, and the phase is what keeps the rail on
+screen. `finish_tasks()` ends it, when every task is done or the user dismisses it.
+
+The rail is docked bottom-right, not added as a third column — the shell is a sticky
+248px sidebar beside a capped content column, and `shrink-0` exists precisely because a
+wide element used to squeeze the nav. Below `lg` it spans the width and sits clear of the
+mobile dock.
+
+`onboarding_rail` (context processor) decides only *whether* the rail renders, on one
+query against `phase`. The rail then fetches its own state from `GET api/tasks/`, so the
+gate computation — several existence queries — never runs on a page that will not show
+one. The script loads in `app_base.html`'s body rather than `page_js`, because child
+templates define their own `page_js` and would override it on exactly the pages the rail
+is for.
+
+**A detected task cannot be claimed by the client.** `POST api/task/` refuses any task
+with `auto_detected=True`; accepting a claim would let the checklist say a user imported
+transactions when they never did. Only the "go and look at this" tasks are reportable, and
+those complete by the user arriving on the page — checked against *every* open task rather
+than just the current one, since the order is a suggestion and someone who opens the
+report with a half-written budget has plainly done that step.
+
+Coach marks are portaled to the body, fixed-positioned, and fail-safe: they poll briefly
+for their anchor and render nothing if it never appears. The rail's own copy carries the
+instruction, so a missing mark costs a nicety rather than the guidance — which matters,
+since the anchors point at controls in components free to change.
+
+Two fixes the browser run forced:
+
+- The import task's anchor pointed at the upload button, which only exists *after* an
+  account is selected — so the mark never appeared on the page the user actually lands on.
+  It now rings the account cards, the real first action. (`LineApp.jsx` gained a
+  `categorize-mode-btn` testid so the categorize anchor is real too.)
+- Coach marks were placed below their anchor, which on the bank feed covered the next
+  account card — hiding one of the things it was pointing at. They now prefer the side,
+  falling back to below and then above.
+
+Verified in a browser: a freshly onboarded team sees Import available with everything else
+locked and explained; the rail survives navigation; seeding a transaction and a categorized
+entry flips Import and Categorize to done and unlocks the rest; visiting the income
+statement marks "See where the money went" done, and it stays done across a reload.
+
 ### Not yet built
 
-Steps 5–8 of §10: the Phase D task rail, opening balances, the finish card, and the E2E
+Steps 6–8 of §10: opening balances (Task 5's first half), the finish card, and the E2E
 suite. The visual spec is §6, written against the restyled design system.

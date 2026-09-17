@@ -37,6 +37,7 @@ from .questions import (
     catalog_payload,
 )
 from .services.builder import build_template, unanswered_required
+from .services.gates import DONE, TASKS, task_state
 from .services.review import ReviewError, apply_edits, grouped_for_review, parse_edits
 
 
@@ -297,6 +298,59 @@ def api_complete(request, team_slug):
         state.save()
 
     return JsonResponse({"redirect": reverse("web_team:home", args=[team_slug])})
+
+
+@login_and_team_required
+def api_tasks(request, team_slug):
+    """
+    The guided tasks with their current state.
+
+    Computed fresh on every call rather than cached: what unlocks a task is the
+    user's own data changing, which happens on pages the rail is sitting over.
+    """
+    state = get_or_create_state(request.team)
+    return JsonResponse(
+        {
+            "tasks": task_state(request.team, state.tasks_done, team_slug=team_slug),
+            "active": state.shows_tasks,
+        }
+    )
+
+
+@require_POST
+@login_and_team_required
+def api_task(request, team_slug):
+    """
+    Record a guided task as done, or dismiss the rail entirely.
+
+    Only tasks the server does not detect for itself can be reported this way --
+    "see the report" is done by looking at it, which nothing in the data shows.
+    Accepting a claim for an auto-detected task would let a checklist say a user
+    imported transactions when they did not.
+    """
+    state = get_or_create_state(request.team)
+    body = _json_body(request)
+
+    if body.get("action") == "dismiss":
+        state.finish_tasks()
+        state.save()
+        return JsonResponse({"active": False, "tasks": task_state(request.team, state.tasks_done, team_slug)})
+
+    slug = body.get("slug")
+    task = next((t for t in TASKS if t.slug == slug), None)
+    if task is None:
+        return JsonResponse({"error": "Unknown task."}, status=400)
+    if task.auto_detected:
+        return JsonResponse({"error": "That task is detected from your data."}, status=400)
+
+    state.mark_task(task.slug)
+
+    tasks = task_state(request.team, state.tasks_done, team_slug=team_slug)
+    if all(t["state"] == DONE for t in tasks):
+        state.finish_tasks()
+    state.save()
+
+    return JsonResponse({"tasks": tasks, "active": state.shows_tasks})
 
 
 @require_POST

@@ -538,6 +538,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             <a
               href={`/a/${teamSlug}/bankfeed/categorize/`}
               className="btn btn-primary btn-sm gap-1"
+              data-testid="categorize-mode-btn"
             >
               ⚡ {gettext('Categorize Mode')}
             </a>
