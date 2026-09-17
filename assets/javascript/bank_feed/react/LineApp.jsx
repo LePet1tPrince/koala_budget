@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { Alert, Snackbar } from '@mui/material';
 
 import AccountGrid from './AccountGrid';
-import LineTableMaterial from './LineTableMaterial';
+import LineTable from './LineTable';
 import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
@@ -39,7 +39,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // Category suggestions: merchant/payee name -> {id, name} of last-used category
   const [categorySuggestions, setCategorySuggestions] = useState({});
 
-  // View mode state (synced from LineTableMaterial): 'active' | 'archived'
+  // View mode state (synced from LineTable): 'active' | 'archived'
   const [viewMode, setViewMode] = useState('active');
 
   // Snackbar state for batch operations
@@ -610,7 +610,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               <span className="loading loading-spinner loading-lg"></span>
             </div>
           )}
-          <LineTableMaterial
+          <LineTable
             lines={lines}
             selectedAccount={selectedAccount}
             allAccounts={allAccounts}
