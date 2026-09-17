@@ -418,3 +418,16 @@
     animation: none;
   }
 }
+
+/* Opening balances (onboarding step 6) — reuses the takeover's panel and backdrop. */
+.opening-scroll {
+  @apply max-h-[min(22rem,45vh)] overflow-y-auto pr-1;
+}
+
+.opening-heading {
+  @apply mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
+}
+
+.opening-row {
+  @apply flex items-center justify-between gap-3 rounded-field px-2 py-1.5 hover:bg-base-200/60;
+}

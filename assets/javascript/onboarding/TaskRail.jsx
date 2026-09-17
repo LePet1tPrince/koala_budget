@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import Coachmark from './Coachmark';
+import OpeningBalances from './OpeningBalances';
 
 /**
  * Phase D: the guided tasks, over the real app.
@@ -21,7 +22,7 @@ import Coachmark from './Coachmark';
 const LOCKED = 'locked';
 const DONE = 'done';
 
-const TaskRow = ({ task, index, current }) => {
+const TaskRow = ({ task, index, current, onOpenDialog }) => {
   const locked = task.state === LOCKED;
   const done = task.state === DONE;
 
@@ -48,6 +49,22 @@ const TaskRow = ({ task, index, current }) => {
     );
   }
 
+  if (task.dialog) {
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={() => onOpenDialog(task.dialog)}
+          className={`rail-row rail-row-link w-full text-left ${current ? 'is-current' : ''}`}
+          data-testid={`task-${task.slug}`}
+          data-state={task.state}
+        >
+          {body}
+        </button>
+      </li>
+    );
+  }
+
   return (
     <li>
       <a
@@ -63,12 +80,13 @@ const TaskRow = ({ task, index, current }) => {
 };
 
 const TaskRail = ({ props }) => {
-  const { tasksUrl, taskUrl, path, csrf } = props;
+  const { tasksUrl, taskUrl, openingBalancesUrl, path, csrf } = props;
 
   const [tasks, setTasks] = useState([]);
   const [active, setActive] = useState(true);
   const [open, setOpen] = useState(true);
   const [coachDismissed, setCoachDismissed] = useState(false);
+  const [dialog, setDialog] = useState(null);
 
   const post = useCallback(
     async (body) => {
@@ -115,7 +133,7 @@ const TaskRail = ({ props }) => {
     where the money went" step.
   */
   const arrivedAt = useMemo(
-    () => tasks.find((t) => !t.auto && t.state !== DONE && t.state !== LOCKED && path.startsWith(t.url)),
+    () => tasks.find((t) => !t.auto && !t.dialog && t.state !== DONE && t.state !== LOCKED && path.startsWith(t.url)),
     [tasks, path],
   );
 
@@ -173,11 +191,27 @@ const TaskRail = ({ props }) => {
         {open && (
           <ol className="task-rail-list">
             {tasks.map((task, i) => (
-              <TaskRow key={task.slug} task={task} index={i} current={task.slug === currentTask?.slug} />
+              <TaskRow
+                key={task.slug}
+                task={task}
+                index={i}
+                current={task.slug === currentTask?.slug}
+                onOpenDialog={setDialog}
+              />
             ))}
           </ol>
         )}
       </aside>
+
+      {dialog === 'opening_balances' && (
+        <OpeningBalances
+          url={openingBalancesUrl}
+          reportUrl={tasks.find((t) => t.dialog === 'opening_balances')?.url}
+          csrf={csrf}
+          onClose={() => setDialog(null)}
+          onSaved={load}
+        />
+      )}
 
       {open && onTargetPage && currentTask?.anchor && !coachDismissed && (
         <Coachmark

@@ -25,6 +25,7 @@ def onboarding_rail(request):
         "onboarding_rail": {
             "tasksUrl": reverse("onboarding:api_tasks", args=[team.slug]),
             "taskUrl": reverse("onboarding:api_task", args=[team.slug]),
+            "openingBalancesUrl": reverse("onboarding:api_opening_balances", args=[team.slug]),
             "path": request.path,
         }
     }

@@ -767,7 +767,51 @@ locked and explained; the rail survives navigation; seeding a transaction and a 
 entry flips Import and Categorize to done and unlocks the rest; visiting the income
 statement marks "See where the money went" done, and it stays done across a reload.
 
+### Opening balances and the net-worth reveal (step 6)
+
+The §2.2 gap, closed. Net worth is `sum(dr - cr)` over asset and liability lines, so a
+ledger holding only an imported window reports the *change* over that window rather than
+what the user has. `services/opening.py::create_opening_balances()` writes one balanced
+entry per account — asset debited, liability credited, each against the system equity
+account that already exists for reconciliation — so `sum(dr - cr)` moves by exactly what
+the user said.
+
+Task 5 opens a dialog rather than navigating (`Task.dialog`, so it stays data). Asking
+inside the rail beats sending the user to a report and hoping they find a prompt there.
+
+**The gate is enforced, not hidden.** `POST api/opening-balances/` refuses a team with no
+non-void `JournalEntry`, and the `GET` reports the gate rather than the accounts. Anchoring
+a net worth before any categorized activity gives the user nothing to sanity-check it
+against — which is the whole reason the step was deferred to here.
+
+Refused with a user-facing message, nothing written: a non-numeric amount, a negative one
+(a debt is entered as what is owed, so a minus sign is nearly always a misunderstanding),
+an income or expense account, and an account belonging to another team. Those last two are
+refused rather than silently dropped — dropping them would leave the user believing they
+had set a balance. A blank or zero is not an error: that is how an account is skipped.
+Re-submitting skips accounts that already have an opening balance, since the step can be
+revisited and a second entry would silently double the figure.
+
+**The reveal happens in the dialog**, not on the report page: the before/after pair is
+already in hand there, so the number the user has been squinting at counts up to the one
+they recognise, with a link onward to the trend. A bug caught in the browser: the figure
+rendered as "CA$4,458" because `Intl` with `style: 'currency'` writes CAD that way, which
+looked foreign next to every other "$" on the page; it now matches the `currency` template
+filter exactly.
+
+Also fixed: `existing_opening_balances()` counted the equity offset account, which carries
+a line on every one of these entries, so it reported as "already has an opening balance" —
+meaningless for an account nobody is asked about.
+
+**Deviation from §6.2:** the chart-draw animation on the net-worth report page is not
+built. The count-up reveal lives in the dialog instead, which needed no changes to the
+reports templates and puts the moment where the user already is.
+
+Verified in a browser in both themes, then against the ledger: entering $2,500 chequing,
+$1,200 savings and $800 TFSA on a team sitting at −$42 produced three entries, each
+balancing to the cent, and a net worth of exactly $4,458.
+
 ### Not yet built
 
-Steps 6–8 of §10: opening balances (Task 5's first half), the finish card, and the E2E
-suite. The visual spec is §6, written against the restyled design system.
+Steps 7–8 of §10: the finish card and the E2E suite. The visual spec is §6, written
+against the restyled design system.

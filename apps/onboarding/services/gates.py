@@ -50,6 +50,10 @@ class Task:
     # A CSS selector for the control the coach mark points at on that page.
     # Optional, and purely additive: if it is not on the page, nothing is drawn.
     anchor: str = ""
+    # When set, the rail opens this dialog instead of navigating. Opening balances
+    # are a step of their own rather than a page, and asking for them in place beats
+    # sending the user to a report and hoping they find the prompt.
+    dialog: str = ""
 
 
 TASKS: tuple[Task, ...] = (
@@ -96,7 +100,8 @@ TASKS: tuple[Task, ...] = (
         NEEDS_ENTRIES,
         auto_detected=False,
         url_name="reports:net_worth_trend",
-        blurb=_("What you own minus what you owe, month by month."),
+        blurb=_("Add what you already have, then see the whole picture."),
+        dialog="opening_balances",
     ),
 )
 
@@ -178,6 +183,7 @@ def task_state(team, tasks_done: list[str] | None = None, team_slug: str | None 
                 "url": reverse(task.url_name, args=[team_slug]) if team_slug else "",
                 "anchor": task.anchor,
                 "auto": task.auto_detected,
+                "dialog": task.dialog,
             }
         )
     return states
