@@ -11,6 +11,7 @@ import TeamDetails from "./TeamDetails";
 import {TeamList, UserInvitations} from "./TeamList";
 import LoadingScreen from "../utilities/Loading";
 import LoadError from "../utilities/LoadError";
+import Icon from '../common/Icon';
 
 
 const NoTeams = function(props) {
@@ -47,7 +48,7 @@ const NoTeamsHero = function (props) {
           <p>
             <Link to="/new">
               <button className="btn btn-primary">
-                <span className="w-6 h-6 inline-flex justify-center items-center"><i className="fa fa-plus"></i></span>
+                <span className="w-6 h-6 inline-flex justify-center items-center"><Icon name="plus" className="inline-block shrink-0 w-4 h-4" /></span>
                 <span>{gettext("Create Team")}</span>
               </button>
             </Link>

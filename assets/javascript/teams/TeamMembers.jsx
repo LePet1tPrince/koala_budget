@@ -34,7 +34,7 @@ export const TeamMemberList = function (props) {
     <section className="app-card">
       <h3 className="text-xl mb-1">{gettext("Team Members")}</h3>
       <div className='table-responsive'>
-        <table className="table table table-quiet w-full">
+        <table className="table table-quiet w-full">
           <thead>
           <tr>
             <th>{gettext("Member")}</th>

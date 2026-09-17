@@ -1,5 +1,6 @@
 {% load i18n %}
 {% load team_tags %}
+{% load icons %}
 {% comment %}
   Shared by the desktop sidebar (web/components/app_nav.html) and the mobile
   dropdown (web/components/top_nav_app.html). Plain anchors, not daisyUI `menu`
@@ -12,12 +13,12 @@
 {% if request.team %}
   <a href="{% url 'web_team:home' request.team.slug %}"
      class="side-link {% if active_tab == 'dashboard' %}side-link-active{% endif %}">
-    <i class="fa fa-home"></i>
+    {% icon "home" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Home" %}
   </a>
   <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}"
      class="side-link {% if active_tab == 'bank-feed' %}side-link-active{% endif %}">
-    <i class="fa fa-inbox"></i>
+    {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Inbox" %}
     {% if inbox_count %}
       <span class="ml-auto badge badge-sm badge-soft badge-warning" data-testid="inbox-count">{{ inbox_count }}</span>
@@ -25,22 +26,22 @@
   </a>
   <a href="{% url 'journal:transactions_home' request.team.slug %}"
      class="side-link {% if active_tab == 'transactions' %}side-link-active{% endif %}">
-    <i class="fa fa-list"></i>
+    {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Transactions" %}
   </a>
   <a href="{% url 'budget:budget_home' request.team.slug %}"
      class="side-link {% if active_tab == 'budget' %}side-link-active{% endif %}" data-testid="nav-budget">
-    <i class="fa fa-wallet"></i>
+    {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Budget" %}
   </a>
   <a href="{% url 'budget:goals_list' request.team.slug %}"
      class="side-link side-link-sub {% if active_tab == 'goals' %}side-link-active{% endif %}" data-testid="nav-goals">
-    <i class="fa fa-bullseye"></i>
+    {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Goals" %}
   </a>
   <a href="{% url 'reports:reports_home' request.team.slug %}"
      class="side-link {% if active_tab == 'reports' %}side-link-active{% endif %}">
-    <i class="fa fa-chart-bar"></i>
+    {% icon "chart-bar" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Reports" %}
   </a>
 
@@ -48,23 +49,23 @@
     <div class="side-section">{% translate "Manage" %}</div>
     <a href="{% url 'accounts:accounts_home' request.team.slug %}"
        class="side-link {% if active_tab == 'accounts' %}side-link-active{% endif %}">
-      <i class="fa fa-university"></i>
+      {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
       {% translate "Accounts" %}
     </a>
     <a href="{% url 'audit:audit_log' request.team.slug %}"
        class="side-link {% if active_tab == 'audit-log' %}side-link-active{% endif %}">
-      <i class="fa fa-history"></i>
+      {% icon "history" class="inline-block shrink-0 w-4 h-4" %}
       {% translate "Audit log" %}
     </a>
     <a href="{% url 'single_team:manage_team' request.team.slug %}"
        class="side-link {% if active_tab == 'manage-team' %}side-link-active{% endif %}">
-      <i class="fa fa-users"></i>
+      {% icon "users" class="inline-block shrink-0 w-4 h-4" %}
       {% translate "Team" %}
     </a>
     {% if request.user|is_admin_of:request.team %}
       <a href="{% url 'subscriptions_team:subscription_details' request.team.slug %}"
          class="side-link {% if active_tab == 'subscription' %}side-link-active{% endif %}">
-        <i class="fa fa-repeat"></i>
+        {% icon "repeat" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Subscription" %}
       </a>
     {% endif %}
@@ -75,12 +76,12 @@
   <div class="side-section">{% translate "Admin" %}</div>
   <a href="{% url 'dashboard:dashboard' %}"
      class="side-link {% if active_tab == 'project-dashboard' %}side-link-active{% endif %}">
-    <i class="fa fa-bar-chart-o"></i>
+    {% icon "bar-chart-o" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Project Dashboard" %}
   </a>
   <a href="{% url 'support:hijack_user' %}"
      class="side-link {% if active_tab == 'support' %}side-link-active{% endif %}">
-    <i class="fa fa-user-secret"></i>
+    {% icon "user-secret" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Impersonate a User" %}
   </a>
 {% endif %}

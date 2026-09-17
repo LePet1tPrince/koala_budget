@@ -1,6 +1,7 @@
 /* globals gettext */
 
 import React, { useMemo, useState } from 'react';
+import Icon from '../../../common/Icon';
 
 /**
  * Step4Preview - Preview transactions before import
@@ -144,7 +145,7 @@ const Step4Preview = ({
       {/* Duplicate Warning */}
       {duplicateCount > 0 && (
         <div className="alert alert-warning">
-          <i className="fa fa-exclamation-triangle"></i>
+          <Icon name="exclamation-triangle" className="inline-block shrink-0 w-4 h-4" />
           <div>
             <span>
               {duplicateCount} {gettext('potential duplicate(s) detected')}
@@ -165,7 +166,7 @@ const Step4Preview = ({
       {/* Error Summary */}
       {errorCount > 0 && (
         <div className="alert alert-error">
-          <i className="fa fa-times-circle"></i>
+          <Icon name="times-circle" className="inline-block shrink-0 w-4 h-4" />
           <span>
             {errorCount} {gettext('row(s) have errors and will be skipped')}
           </span>
@@ -244,7 +245,7 @@ const Step4Preview = ({
 
       {/* Import Summary */}
       <div className="text-sm text-base-content/70">
-        <i className="fa fa-info-circle mr-2"></i>
+        <Icon name="info-circle" className="inline-block shrink-0 w-4 h-4 mr-2" />
         {importCount}{' '}
         {gettext('transactions will be imported')}
         {autoCategorizedCount > 0 && (
@@ -283,7 +284,7 @@ const Step4Preview = ({
             </>
           ) : (
             <>
-              <i className="fa fa-upload mr-2"></i>
+              <Icon name="upload" className="inline-block shrink-0 w-4 h-4 mr-2" />
               {gettext('Import Transactions')}
             </>
           )}

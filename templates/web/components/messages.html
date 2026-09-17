@@ -1,8 +1,9 @@
+{% load icons %}
 {% if messages %}
   {% for message in messages %}
     <div class="notification flex w-full justify-between alert {% if message.tags %}alert-{{ message.level_tag }}{% endif %} shadow-md rounded-none! {{ message.extra_tags }} mb-1" >
       <div>{{ message }}</div>
-      <button class="delete"><i class="fa fa-times"></i></button>
+      <button class="delete">{% icon "times" class="inline-block shrink-0 w-4 h-4" %}</button>
     </div>
   {% endfor %}
 {% endif %}

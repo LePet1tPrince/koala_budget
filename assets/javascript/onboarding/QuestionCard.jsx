@@ -1,6 +1,7 @@
 /* globals gettext */
 
 import React from 'react';
+import Icon from '../common/Icon';
 
 /**
  * One question, rendered from its catalog entry.
@@ -23,7 +24,7 @@ const OptionButton = ({ option, selected, onClick }) => (
     className={`onboarding-option ${selected ? 'onboarding-option-selected' : ''}`}
   >
     <span className="onboarding-option-mark" aria-hidden="true">
-      {selected && <i className="fa fa-check"></i>}
+      {selected && <Icon name="check" className="inline-block shrink-0 w-4 h-4" />}
     </span>
     <span className="min-w-0">
       <span className="block">{option.label}</span>

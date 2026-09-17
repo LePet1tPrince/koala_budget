@@ -1,21 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Autocomplete,
-  Box,
-  InputAdornment,
-  Tabs,
-  Tab,
-} from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import Combobox from '../../common/Combobox';
+import DateField from '../../common/DateField';
+import Modal from '../../common/Modal';
 import { buildCategoryOptions } from '../../common/categoryOptions';
+import { formatDateForInput } from '../utils';
 import TransactionHistory from './TransactionHistory';
 
 /* globals gettext */
@@ -48,7 +36,7 @@ const EditTransactionModal = ({
   const isCreateMode = mode === 'create';
 
   // Form state
-  const [date, setDate] = useState(null);
+  const [date, setDate] = useState('');
   const [category, setCategory] = useState(null);
   const [inflow, setInflow] = useState('');
   const [outflow, setOutflow] = useState('');
@@ -77,7 +65,7 @@ const EditTransactionModal = ({
 
     if (isCreateMode) {
       // Create mode - set defaults
-      setDate(new Date());
+      setDate(formatDateForInput(new Date()));
       setCategory(null);
       setInflow('');
       setOutflow('');
@@ -87,10 +75,7 @@ const EditTransactionModal = ({
       setCategorySuggested(false);
     } else if (transaction) {
       // Edit mode - populate from transaction
-      const transactionDate = transaction.postedDate instanceof Date
-        ? transaction.postedDate
-        : transaction.postedDate ? new Date(transaction.postedDate) : null;
-      setDate(transactionDate);
+      setDate(formatDateForInput(transaction.postedDate));
 
       let categoryOption = transaction.category
         ? categoryOptions.find(opt => opt.id === transaction.category.id)
@@ -224,155 +209,163 @@ const EditTransactionModal = ({
   // The History tab is only meaningful for an existing, categorized transaction.
   const showHistoryTab = !isCreateMode && Boolean(journalEntryId);
 
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth data-testid="edit-transaction-modal">
-      <DialogTitle>{title}</DialogTitle>
-      {showHistoryTab && (
-        <Tabs
-          value={activeTab}
-          onChange={(_event, newValue) => setActiveTab(newValue)}
-          sx={{ px: 3, borderBottom: 1, borderColor: 'divider' }}
-        >
-          <Tab label={gettext('Details')} data-testid="tab-details" />
-          <Tab label={gettext('History')} data-testid="tab-history" />
-        </Tabs>
-      )}
-      <DialogContent>
-        {activeTab === 1 && showHistoryTab ? (
-          <TransactionHistory teamSlug={teamSlug} journalEntryId={journalEntryId} />
-        ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-          {/* Date */}
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <DatePicker
-              label={gettext('Date')}
-              value={date}
-              onChange={(newValue) => setDate(newValue)}
-              disabled={!canEditDate}
-              format="yyyy-MM-dd"
-              slotProps={{
-                textField: {
-                  fullWidth: true,
-                  size: 'small',
-                  error: !!errors.date,
-                  helperText: errors.date || (!canEditDate && !isCreateMode ? gettext('Date cannot be edited for this transaction type') : ''),
-                },
-              }}
-            />
-          </LocalizationProvider>
+  const onHistoryTab = activeTab === 1 && showHistoryTab;
 
-          {/* Category */}
-          <Autocomplete
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="sm"
+      testId="edit-transaction-modal"
+      title={title}
+      actions={
+        <>
+          <button type="button" className="btn btn-sm" onClick={onClose} disabled={saving} data-testid="modal-cancel-btn">
+            {onHistoryTab ? gettext('Close') : gettext('Cancel')}
+          </button>
+          {!onHistoryTab && (
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+              data-testid="modal-save-btn"
+            >
+              {saveButtonText}
+            </button>
+          )}
+        </>
+      }
+    >
+      {showHistoryTab && (
+        <div role="tablist" className="tabs tabs-border mb-4">
+          <button
+            type="button"
+            role="tab"
+            className={`tab ${activeTab === 0 ? 'tab-active' : ''}`}
+            aria-selected={activeTab === 0}
+            onClick={() => setActiveTab(0)}
+            data-testid="tab-details"
+          >
+            {gettext('Details')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className={`tab ${activeTab === 1 ? 'tab-active' : ''}`}
+            aria-selected={activeTab === 1}
+            onClick={() => setActiveTab(1)}
+            data-testid="tab-history"
+          >
+            {gettext('History')}
+          </button>
+        </div>
+      )}
+
+      {onHistoryTab ? (
+        <TransactionHistory teamSlug={teamSlug} journalEntryId={journalEntryId} />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <DateField
+            label={gettext('Date')}
+            value={date}
+            onChange={setDate}
+            testId="transaction-date"
+            className={!canEditDate ? 'pointer-events-none opacity-60' : ''}
+          />
+          {(errors.date || (!canEditDate && !isCreateMode)) && (
+            <p className={`-mt-3 text-xs ${errors.date ? 'text-error' : 'text-base-content/70'}`}>
+              {errors.date || gettext('Date cannot be edited for this transaction type')}
+            </p>
+          )}
+
+          <Combobox
+            label={gettext('Category (optional)')}
             value={category}
-            onChange={(_event, newValue) => {
+            onChange={(newValue) => {
               setCategory(newValue);
               setCategorySuggested(false);
             }}
             options={categoryOptions}
-            groupBy={(option) => option.groupLabel}
-            getOptionLabel={(option) => option.label}
-            isOptionEqualToValue={(option, value) => option.id === value.id}
+            getGroup={(option) => option.groupLabel}
             disabled={!canEditCategory}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={gettext('Category (optional)')}
-                size="small"
-                error={!!errors.category}
-                helperText={
-                  errors.category
-                  || (categorySuggested ? gettext('Suggested from how this payee was last categorized') : '')
-                  || (!canEditCategory && !isCreateMode ? gettext('Category cannot be edited for this transaction') : '')
-                }
-              />
-            )}
+            error={errors.category}
+            helperText={
+              (categorySuggested && gettext('Suggested from how this payee was last categorized'))
+              || (!canEditCategory && !isCreateMode && gettext('Category cannot be edited for this transaction'))
+              || ''
+            }
+            testId="transaction-category"
           />
 
-          {/* Inflow and Outflow */}
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label={gettext('Inflow')}
-              type="number"
-              value={inflow}
-              onChange={handleInflowChange}
-              disabled={!canEditAmounts}
-              fullWidth
-              size="small"
-              inputProps={{ step: '0.01', min: '0' }}
-              InputProps={{
-                startAdornment: <InputAdornment position="start">$</InputAdornment>,
-              }}
-              error={!!errors.amount}
-              helperText={!canEditAmounts && !isCreateMode ? (transaction?.is_reconciled ? gettext('Amount locked — transaction is reconciled') : gettext('Amount cannot be edited')) : ''}
-            />
-            <TextField
-              label={gettext('Outflow')}
-              type="number"
-              value={outflow}
-              onChange={handleOutflowChange}
-              disabled={!canEditAmounts}
-              fullWidth
-              size="small"
-              inputProps={{ step: '0.01', min: '0' }}
-              InputProps={{
-                startAdornment: <InputAdornment position="start">$</InputAdornment>,
-              }}
-              error={!!errors.amount}
-            />
-          </Box>
-          {errors.amount && (
-            <Box sx={{ color: 'error.main', fontSize: '0.75rem', mt: -1 }}>
-              {errors.amount}
-            </Box>
-          )}
+          <div className="flex gap-4">
+            <label className="form-control w-full">
+              <span className="label-text mb-1 block text-sm text-base-content/70">{gettext('Inflow')}</span>
+              <label className={`input input-bordered flex w-full items-center gap-1 ${errors.amount ? 'input-error' : ''}`}>
+                <span className="text-base-content/70">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full"
+                  value={inflow}
+                  onChange={handleInflowChange}
+                  disabled={!canEditAmounts}
+                  data-testid="transaction-inflow"
+                />
+              </label>
+              {!canEditAmounts && !isCreateMode && (
+                <span className="mt-1 block text-xs text-base-content/70">
+                  {transaction?.is_reconciled
+                    ? gettext('Amount locked — transaction is reconciled')
+                    : gettext('Amount cannot be edited')}
+                </span>
+              )}
+            </label>
 
-          {/* Payee (free text with autocomplete from existing payees) */}
-          <Autocomplete
-            freeSolo
+            <label className="form-control w-full">
+              <span className="label-text mb-1 block text-sm text-base-content/70">{gettext('Outflow')}</span>
+              <label className={`input input-bordered flex w-full items-center gap-1 ${errors.amount ? 'input-error' : ''}`}>
+                <span className="text-base-content/70">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full"
+                  value={outflow}
+                  onChange={handleOutflowChange}
+                  disabled={!canEditAmounts}
+                  data-testid="transaction-outflow"
+                />
+              </label>
+            </label>
+          </div>
+          {errors.amount && <p className="-mt-2 text-xs text-error">{errors.amount}</p>}
+
+          <Combobox
+            freeText
+            label={gettext('Payee')}
+            value={payee}
+            onChange={setPayee}
             options={payeeOptions}
-            inputValue={payee}
-            onInputChange={(_event, newValue) => setPayee(newValue || '')}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={gettext('Payee')}
-                size="small"
-                fullWidth
-              />
-            )}
+            testId="transaction-payee"
           />
 
-          {/* Description */}
-          <TextField
-            label={gettext('Description')}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            fullWidth
-            size="small"
-            multiline
-            rows={2}
-          />
+          <label className="form-control w-full">
+            <span className="label-text mb-1 block text-sm text-base-content/70">{gettext('Description')}</span>
+            <textarea
+              className="textarea textarea-bordered w-full"
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              data-testid="transaction-description"
+            />
+          </label>
 
-          {/* Submit error */}
-          {errors.submit && (
-            <Box sx={{ color: 'error.main', fontSize: '0.875rem' }}>
-              {errors.submit}
-            </Box>
-          )}
-        </Box>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={saving} data-testid="modal-cancel-btn">
-          {activeTab === 1 && showHistoryTab ? gettext('Close') : gettext('Cancel')}
-        </Button>
-        {!(activeTab === 1 && showHistoryTab) && (
-          <Button onClick={handleSave} variant="contained" disabled={saving} data-testid="modal-save-btn">
-            {saveButtonText}
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
+          {errors.submit && <p className="text-sm text-error">{errors.submit}</p>}
+        </div>
+      )}
+    </Modal>
   );
 };
 

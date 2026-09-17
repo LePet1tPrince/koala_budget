@@ -1,3 +1,4 @@
+{% load icons %}
 {% if active_plan_intervals|length > 1 %}
   <div class="flex justify-center my-3">
     <div class="btn-group">
@@ -39,7 +40,7 @@
         <ul class="upgrade-features">
            {% for feature in product.metadata.features %}
            <li>
-             <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-check"></i></span>
+             <span class="w-6 h-6 inline-flex justify-center items-center">{% icon "check" class="inline-block shrink-0 w-4 h-4" %}</span>
              <span class="upgrade-feature">{{ feature }}</span>
            </li>
            {% endfor %}

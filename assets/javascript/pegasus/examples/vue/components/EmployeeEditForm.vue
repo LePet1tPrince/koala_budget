@@ -21,7 +21,7 @@
         <p class="text-sm text-base-content/70">Your employee's annual salary.</p></div>
       <div class="flex space-x-1">
         <button class="btn btn-primary" v-on:click.prevent="saveEdit">
-          <span class="w-6 h-6 inline-flex justify-center items-center"><i :class="getSaveIconClass"></i></span>
+          <span class="w-6 h-6 inline-flex justify-center items-center"><Icon :name="saveIconName" /></span>
           <span>{{ getSaveIconText }}</span>
         </button>
         <button class="btn btn-ghost mx-2" v-on:click.prevent="$emit('cancel-edit')">
@@ -33,9 +33,12 @@
 </template>
 
 <script>
+import Icon from '../../../../common/Icon.vue';
 export default {
   name: 'EmployeeEditForm',
-  components: {},
+  components: {
+    Icon
+  },
   data() {
     if (this.employee) {
       return {
@@ -60,8 +63,8 @@ export default {
     departmentOptions: Array,
   },
   computed: {
-    getSaveIconClass: function () {
-      return `fa ${this.employee === null  ? 'fa-plus' : 'fa-check'}`;
+    saveIconName: function () {
+      return this.employee === null ? 'plus' : 'check';
     },
     getSaveIconText: function () {
       return `${this.employee === null  ? 'Add' : 'Save'} Employee`;

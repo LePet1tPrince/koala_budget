@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load django_vite %}
 {% load currency_tags %}
+{% load icons %}
 {% block app %}
 
   <h1 class="text-2xl font-semibold" data-testid="dashboard-greeting">{{ greeting }}</h1>
@@ -59,29 +60,29 @@
       <ul class="space-y-3">
         <li class="flex items-center gap-3">
           {% if has_accounts %}
-            <i class="fa fa-check-circle text-success"></i>
+            {% icon "check-circle" class="inline-block shrink-0 w-4 h-4 text-success" %}
             <span class="text-base-content/70 line-through">{% translate "Add your accounts" %}</span>
           {% else %}
-            <i class="fa fa-circle-o text-base-content/40"></i>
+            {% icon "circle-o" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
             <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="link">{% translate "Add your accounts" %}</a>
             <span class="text-sm text-base-content/70">{% translate "— or connect a bank from the Inbox" %}</span>
           {% endif %}
         </li>
         <li class="flex items-center gap-3">
           {% if has_transactions %}
-            <i class="fa fa-check-circle text-success"></i>
+            {% icon "check-circle" class="inline-block shrink-0 w-4 h-4 text-success" %}
             <span class="text-base-content/70 line-through">{% translate "Import or add transactions" %}</span>
           {% else %}
-            <i class="fa fa-circle-o text-base-content/40"></i>
+            {% icon "circle-o" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
             <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" class="link">{% translate "Import or add transactions" %}</a>
           {% endif %}
         </li>
         <li class="flex items-center gap-3">
           {% if has_budget %}
-            <i class="fa fa-check-circle text-success"></i>
+            {% icon "check-circle" class="inline-block shrink-0 w-4 h-4 text-success" %}
             <span class="text-base-content/70 line-through">{% translate "Set your monthly budget" %}</span>
           {% else %}
-            <i class="fa fa-circle-o text-base-content/40"></i>
+            {% icon "circle-o" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
             <a href="{% url 'budget:budget_home' request.team.slug %}" class="link">{% translate "Set your monthly budget" %}</a>
           {% endif %}
         </li>
@@ -91,7 +92,7 @@
 
   {% if inbox_count %}
     <div class="alert mt-6" data-testid="review-banner">
-      <i class="fa fa-inbox"></i>
+      {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
       <span>
         {% blocktranslate trimmed count counter=inbox_count %}
           {{ counter }} transaction to review

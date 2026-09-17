@@ -4,20 +4,21 @@
 {% load django_vite %}
 {% load static %}
 {% load currency_tags %}
+{% load icons %}
 
 {% block app %}
 <section class="app-card">
   <!-- Header: back button on the left, date picker + export on the right -->
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <a href="{{ back_url }}" class="btn btn-outline btn-sm">
-      <i class="fa fa-arrow-left mr-2"></i>
+      {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
       {{ back_label }}
     </a>
     <div class="flex flex-wrap items-center gap-2">
       <div id="date-range-picker"></div>
       {% if account %}
       <a href="{% url 'reports:export_account_activity' request.team.slug account.pk %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm">
-        <i class="fa fa-download mr-2"></i>
+        {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Export CSV" %}
       </a>
       {% endif %}

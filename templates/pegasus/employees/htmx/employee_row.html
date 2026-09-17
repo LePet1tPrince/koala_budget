@@ -1,14 +1,15 @@
+{% load icons %}
 <div class="tr" hx-target="this" hx-swap="outerHTML">
   <div class="td">{{ employee.name }}</div>
   <div class="td">{{ employee.get_department_display }}</div>
   <div class="td text-right">${{ employee.salary }}</div>
   <div class="td flex space-x-1 justify-end" style="display: flex;">
     <div class="btn btn-outline" hx-get="{% url 'pegasus_employees:htmx_edit_employee' employee.id %}">
-      <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-edit"></i></span>
+      <span class="w-6 h-6 inline-flex justify-center items-center">{% icon "edit" class="inline-block shrink-0 w-4 h-4" %}</span>
       <span class="hidden md:inline-block">Edit</span>
     </div>
     <button class="btn btn-outline btn-error" type="submit" hx-delete="{% url 'pegasus_employees:htmx_delete_employee' employee.id %}">
-      <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-times"></i></span>
+      <span class="w-6 h-6 inline-flex justify-center items-center">{% icon "times" class="inline-block shrink-0 w-4 h-4" %}</span>
       <span class="hidden md:inline-block">Delete</span>
     </button>
   </div>

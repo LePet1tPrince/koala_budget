@@ -1,12 +1,13 @@
 {% extends "pegasus/employees/django_object_lifecycle_base.html" %}
 {% load static %}
 {% load i18n %}
+{% load icons %}
 {% block django_app %}
   <div class="app-card">
     {% if employees %}
       {% include 'pegasus/employees/components/employee_table.html' %}
       <a class="btn btn-primary" href="{% url 'pegasus_employees:django_new_employee' %}">
-        <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-plus"></i></span>
+        <span class="w-6 h-6 inline-flex justify-center items-center">{% icon "plus" class="inline-block shrink-0 w-4 h-4" %}</span>
         <span>{% translate "Add Employee" %}</span>
       </a>
     {% else %}
@@ -20,7 +21,7 @@
           <div class="my-3">
             <a href="{% url 'pegasus_employees:django_new_employee' %}">
               <button class="btn btn-primary">
-                <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-plus"></i></span><span>{% translate "Create Employee" %}</span>
+                <span class="w-6 h-6 inline-flex justify-center items-center">{% icon "plus" class="inline-block shrink-0 w-4 h-4" %}</span><span>{% translate "Create Employee" %}</span>
               </button>
             </a>
           </div>

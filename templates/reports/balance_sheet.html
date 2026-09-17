@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load django_vite %}
 {% load currency_tags %}
+{% load icons %}
 
 {% block page_head %}
 <style>
@@ -47,7 +48,7 @@
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
       <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
-        <i class="fa fa-arrow-left mr-2"></i>
+        {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
       <h1 class="text-3xl font-bold mb-2">{% translate "Balance Sheet" %}</h1>
@@ -62,7 +63,7 @@
     <div class="flex flex-wrap items-center gap-2">
       <div id="balance-sheet-date-picker"></div>
       <a href="{% url 'reports:export_balance_sheet' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
-        <i class="fa fa-download mr-2"></i>
+        {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Export CSV" %}
       </a>
     </div>
@@ -72,12 +73,12 @@
   <!-- Summary Section -->
   <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="balance-sheet-summary">
     <div class="stat py-3">
-      <div class="stat-figure text-info hidden sm:block"><i class="fa fa-coins fa-lg"></i></div>
+      <div class="stat-figure text-info hidden sm:block">{% icon "coins" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Total Assets" %}</div>
       <div class="stat-value text-2xl text-info">{{ report_data.total_assets|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure text-warning hidden sm:block"><i class="fa fa-credit-card fa-lg"></i></div>
+      <div class="stat-figure text-warning hidden sm:block">{% icon "credit-card" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Total Liabilities" %}</div>
       <div class="stat-value text-2xl text-warning">{{ report_data.total_liabilities|currency }}</div>
       {% if debt_ratio is not None %}
@@ -89,7 +90,7 @@
       {% endif %}
     </div>
     <div class="stat py-3">
-      <div class="stat-figure {% if report_data.net_worth < 0 %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
+      <div class="stat-figure {% if report_data.net_worth < 0 %}text-error{% endif %} hidden sm:block">{% icon "scale-balanced" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Net Worth" %}</div>
       <div class="stat-value text-2xl {% if report_data.net_worth < 0 %}text-error{% endif %}">{{ report_data.net_worth|currency }}</div>
       <div class="stat-desc">{% translate "Assets − Liabilities" %}</div>
@@ -115,7 +116,7 @@
             <tbody data-testid="assets-table">
               <tr class="cursor-pointer select-none row-assets font-bold" @click="sec.assets = !sec.assets">
                 <td class="whitespace-nowrap">
-                  <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.assets ? '' : '-rotate-90'"></i>
+                  <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="sec.assets ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                   <span class="text-info ml-1">{% translate "Assets" %}</span>
                 </td>
                 <td class="text-right tabular-nums whitespace-nowrap text-info">{{ report_data.total_assets|currency }}</td>
@@ -123,7 +124,7 @@
               {% for group_data in report_data.asset_groups %}
               <tr x-show="sec.assets" class="cursor-pointer select-none row-group font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
                 <td class="pl-6 whitespace-nowrap">
-                  <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
+                  <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                   <span class="ml-1">{{ group_data.group.name }}</span>
                 </td>
                 <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.subtotal|currency }}</td>
@@ -145,7 +146,7 @@
             <tbody data-testid="liabilities-table">
               <tr class="cursor-pointer select-none row-liabilities font-bold" @click="sec.liabilities = !sec.liabilities">
                 <td class="whitespace-nowrap">
-                  <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.liabilities ? '' : '-rotate-90'"></i>
+                  <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="sec.liabilities ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                   <span class="text-warning ml-1">{% translate "Liabilities" %}</span>
                 </td>
                 <td class="text-right tabular-nums whitespace-nowrap text-warning">{{ report_data.total_liabilities|currency }}</td>
@@ -153,7 +154,7 @@
               {% for group_data in report_data.liability_groups %}
               <tr x-show="sec.liabilities" class="cursor-pointer select-none row-group font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
                 <td class="pl-6 whitespace-nowrap">
-                  <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
+                  <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                   <span class="ml-1">{{ group_data.group.name }}</span>
                 </td>
                 <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.subtotal|currency }}</td>
@@ -176,7 +177,7 @@
             <tbody data-testid="equity-table">
               <tr class="cursor-pointer select-none row-equity font-bold" @click="sec.equity = !sec.equity">
                 <td class="whitespace-nowrap">
-                  <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.equity ? '' : '-rotate-90'"></i>
+                  <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="sec.equity ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                   <span class="text-secondary ml-1">{% translate "Equity" %}</span>
                 </td>
                 <td class="text-right tabular-nums whitespace-nowrap text-secondary">{{ report_data.total_equity|currency }}</td>
@@ -184,7 +185,7 @@
               {% for group_data in report_data.equity_groups %}
               <tr x-show="sec.equity" class="cursor-pointer select-none row-group font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
                 <td class="pl-6 whitespace-nowrap">
-                  <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
+                  <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                   <span class="ml-1">{{ group_data.group.name }}</span>
                 </td>
                 <td class="text-right tabular-nums whitespace-nowrap">{{ group_data.subtotal|currency }}</td>

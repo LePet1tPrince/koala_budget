@@ -2,6 +2,7 @@ import React, {useState} from "react";
 import {Link, useNavigate} from "react-router-dom";
 import ValidationErrors from "../../../utilities/ValidationErrors";
 import {DepartmentEnum} from "api-client";
+import Icon from '../../../common/Icon';
 
 
 
@@ -78,7 +79,7 @@ const EditAddEmployeeWidget = function(props) {
         <button className={editMode ? 'btn btn-outline' : 'btn btn-primary'}
                 onClick={() => saveEmployee()}>
             <span className="w-6 h-6 inline-flex justify-center items-center">
-              <i className={`fa ${editMode ? 'fa-check' : 'fa-plus'}`}></i>
+              <Icon name={editMode ? 'check' : 'plus'} />
             </span>
           <span>{editMode ? 'Save Employee' : 'Add Employee'}</span>
         </button>

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import Icon from '../../../common/Icon';
 
 const ACCOUNT_TYPE_LABELS = {
   asset: gettext('Assets'),
@@ -234,7 +235,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
               ✕
             </span>
           )}
-          <i className={`fa fa-chevron-${open ? 'up' : 'down'} text-xs text-base-content/70`}></i>
+          <Icon name={open ? 'chevron-up' : 'chevron-down'} className="inline-block w-3.5 h-3.5 shrink-0 text-base-content/70" />
         </div>
       </button>
 
@@ -304,7 +305,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
                       <span className="truncate">{account.name}</span>
                       {account.institution_name && (
                         <span className="badge badge-ghost badge-sm whitespace-nowrap shrink-0" title={gettext('Held at')}>
-                          <i className="fa fa-university text-[0.65rem] mr-1"></i>
+                          <Icon name="university" className="inline-block shrink-0 w-2.5 h-2.5 mr-1" />
                           {account.institution_name}
                         </span>
                       )}
@@ -323,7 +324,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
               onMouseDown={handleCreateNew}
               onMouseEnter={() => setHighlightedIndex(createIndex)}
             >
-              <i className="fa fa-plus text-xs"></i>
+              <Icon name="plus" className="inline-block shrink-0 w-3 h-3" />
               {gettext('Create new account')}
             </div>
           </div>

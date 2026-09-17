@@ -1,6 +1,7 @@
 /* globals gettext */
 
 import React, { useState } from 'react';
+import Icon from '../../common/Icon';
 
 /**
  * PlaidAccountMapper - Modal component for mapping Plaid accounts to ledger accounts
@@ -97,7 +98,7 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, plaidClie
 
         {error && (
           <div className="alert alert-error mb-4">
-            <i className="fa fa-exclamation-circle"></i>
+            <Icon name="exclamation-circle" className="inline-block shrink-0 w-4 h-4" />
             <span>{error}</span>
           </div>
         )}

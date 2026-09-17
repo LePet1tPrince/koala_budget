@@ -1,6 +1,7 @@
 /* globals gettext */
 
 import React, { useMemo, useState } from 'react';
+import Icon from '../../../common/Icon';
 
 /**
  * Short, specific badge label for a row's error. The server tags each error with
@@ -157,7 +158,7 @@ const Step5Preview = ({
           reads as such instead of a generic error count. */}
       {errorCount > 0 && (
         <div className="alert alert-error" data-testid="preview-error-summary">
-          <i className="fa fa-times-circle"></i>
+          <Icon name="times-circle" className="inline-block shrink-0 w-4 h-4" />
           <div>
             <div>
               {errorCount} {gettext('row(s) have errors and will be skipped')}
@@ -268,7 +269,7 @@ const Step5Preview = ({
 
       {/* Import Summary */}
       <div className="text-sm text-base-content/70">
-        <i className="fa fa-info-circle mr-2"></i>
+        <Icon name="info-circle" className="inline-block shrink-0 w-4 h-4 mr-2" />
         {importCount}{' '}
         {gettext('transactions will be imported')}
         {autoCategorizedCount > 0 && (
@@ -320,7 +321,7 @@ const Step5Preview = ({
             </>
           ) : (
             <>
-              <i className="fa fa-upload mr-2"></i>
+              <Icon name="upload" className="inline-block shrink-0 w-4 h-4 mr-2" />
               {gettext('Import Transactions')}
             </>
           )}

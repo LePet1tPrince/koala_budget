@@ -1,6 +1,7 @@
 /* globals gettext */
 
 import React, { useState, useMemo } from 'react';
+import Icon from '../../../common/Icon';
 
 const ACCOUNT_TYPE_LABELS = {
   asset: gettext('Asset'),
@@ -55,7 +56,7 @@ const CreateAccountModal = ({ allAccountGroups, onSave, onCancel }) => {
 
         {error && (
           <div className="alert alert-error mb-4">
-            <i className="fa fa-exclamation-circle"></i>
+            <Icon name="exclamation-circle" className="inline-block shrink-0 w-4 h-4" />
             <span>{error}</span>
           </div>
         )}

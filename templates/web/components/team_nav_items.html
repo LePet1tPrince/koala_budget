@@ -1,10 +1,11 @@
 {% load i18n %}
 {% load team_tags %}
+{% load icons %}
 {% if team %}
 {% if request.user|is_member_of:team %}
 <li>
   <a href="{% url 'single_team:manage_team' team.slug %}">
-    <i class="fa fa-gear"></i>
+    {% icon "gear" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Team Settings" %}
   </a>
 </li>
@@ -15,7 +16,7 @@
 </li>
 {% for name, url in other_teams.items %}
 <li>
-  <a href="{{ url }}"><i class="fa fa-arrow-right"></i>{{ name }}</a>
+  <a href="{{ url }}">{% icon "arrow-right" class="inline-block shrink-0 w-4 h-4" %}{{ name }}</a>
 </li>
 {% endfor %}
 {% endif %}
@@ -26,12 +27,12 @@
 </li>
 <li>
   <a href="{% url 'teams:manage_teams' %}new">
-    <i class="fa fa-plus"></i>
+    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Add Team" %}
   </a>
   {% if user_pending_invitations %}
   <a href="{% url 'teams:manage_teams' %}">
-    <i class="fa fa-envelope"></i>
+    {% icon "envelope" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Pending Invitations" %}
   </a>
   {% endif %}

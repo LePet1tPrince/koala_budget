@@ -410,24 +410,182 @@ converted like everything else and the deletion is left as its own piece of work
 — a `TemplateSyntaxError` that took out every allauth page. Exactly one file in the repo had a nested quote inside a
 class attribute, and the test suite caught it. Match on `\bpg-[a-z-]+\b` and leave the surrounding attribute alone.
 
-### Phase 5 — Migrate Bank Feed + Transactions off MUI
+### Phase 5 — Migrate the Bank Feed off MUI ✅ *shipped (5a + 5b)*
 
-Largest item, do last, one screen at a time. Removes `@mui/material`, `@mui/icons-material`, and `@material-table/core`
-from the bundle and makes the two most-used screens match the rest of the product. TanStack Table (headless) is the
-natural replacement — pagination is already server-side. **Fix the dark-mode `useMemo` bug (§1.3) in Phase 1 as a
-one-liner** rather than waiting for this phase.
+The heading above was wrong on two counts. **Transactions never needed migrating** — `TransactionsTable.jsx` was
+already a plain `<table>`; it wanted theme tokens, which Phase 3 gave it, and the shared table classes, which it got
+as a one-line follow-up. And **no headless table library was needed**: what `@material-table/core` was actually
+providing here was sorting, client-side pagination and a selection column over an array already in memory. That is
+~120 lines, so TanStack Table was not added — a dependency is not a good trade for a `useMemo` and a slice.
 
-### Phase 6 — One icon set
+Shipped in two steps, at the reviewer's request, so the picker could be checked before the table moved.
 
-Consolidate on inline SVG (Lucide-style, ~24 icons), drop the Font Awesome CDN from `templates/web/base.html:43-44` and
-`@mui/icons-material` with Phase 5. Removes a third-party render-blocking request and a privacy hop.
+**5a — the date and month pickers.** `@mui/x-date-pickers` drove four separate pickers with four different looks.
+They now share one shell, `assets/javascript/common/PickerPopover.jsx`, which owns the trigger button, the popover,
+the outside-click and Escape handling, and a viewport clamp; `DateRangePicker`, `MonthRangePicker`,
+`BalanceSheetDatePicker` and `BudgetMonthPicker` are thin bodies over it. Prop contracts are unchanged, so no consumer
+moved. `DatePicker.jsx` had no consumers at all and was deleted.
+
+Three things are worth recording:
+
+- **A native `<input type="date">` cannot be styled.** The first pass used one and the reviewer rightly called the
+  result clunky — the "clunky" part was Chrome's own calendar dropdown, which no CSS in this repo can reach. The panel
+  now draws its own `DayGrid`.
+- **Clamping beats flipping.** `right-0` moves an overflowing panel's problem from one viewport edge to the other at
+  390px. The panel measures itself in `useLayoutEffect` and translates by the exact overflow instead.
+- **The header's month and year are menus**, not just labels, so September 2026 → March 2026 is one click rather than
+  six presses of a chevron. The menus' Escape handler is registered in the **capture** phase; on the bubble phase the
+  popover's own handler closes the whole panel first.
+
+**5b — the bank feed table.** `LineTableMaterial.jsx` (MUI + `@material-table/core`) is replaced by
+`LineTable.jsx` + `LineTableParts.jsx` (daisyUI: `Dropdown`, `MenuRow`, `Toast`, `TablePager`, `SortArrow`,
+`ReconciledLock`). The constraint was that the hand-built filters — Quick Filters, Archived, Reconciled, the counts
+on each — keep behaving exactly as before, so the approach was contract-first:
+
+1. Write e2e tests for the filter matrix (`e2e/tests/test_bank_feed.py`, plus a `feed_transaction` factory that builds
+   a feed row as the projection it really is: category = the line whose account is *not* the bank account, reconciled
+   = the bank-account line's flag).
+2. Prove them green against the **old** MUI table.
+3. Rewrite, and require the same tests to pass untouched.
+
+That ordering matters: it validates the rewrite against observed behaviour rather than against a re-reading of the
+source. The filter/count/selection block was then carried over line for line.
+
+One latent packaging bug surfaced on removal: `@mui/x-date-pickers` was resolving *transitively* through
+`@material-table/core`, while the two feed modals import it directly. It is now a declared dependency.
+
+**Measured, `develop` → this branch (clean `vite build`, both trees):**
+
+| | develop | now | |
+|---|---|---|---|
+| total JS, raw | 2,875,926 | 1,520,303 | **−47%** |
+| total JS, gzip | 819,216 | 476,838 | **−42%** |
+| `bank-feed-bundle.js`, raw | 1,782,501 | 416,806 | **−77%** |
+| `bank-feed-bundle.js`, gzip | 458,620 | 112,026 | **−76%** |
+
+`@mui/material` is **not** gone yet — seven components still use it, none of them a table:
+`EditTransactionModal`, `BulkEditModal`, `BatchActionBar`, `TransferSuggestions`, `TransactionHistory`, `LineApp`,
+and `budget/react/ActualTooltip`. Two of them (the batch bar and the transfer suggestions) carry the reconciled-leg
+guards and have **no** e2e coverage, so the same contract-first order applies before they move.
+
+### Phase 6 — One icon set ✅ *shipped*
+
+The estimate of "~24 icons" was low: the real inventory was **71 distinct Font Awesome icons across 185 `<i>` tags in
+61 files**, plus nine `@mui/icons-material` imports in `BatchActionBar.jsx`. The first count missed a third of them
+because the scan matched `class="` and not `className=` — JSX carries a lot of these.
+
+Geometry is vendored from `lucide-static` into `assets/icons/lucide.json` (inner SVG markup only; the wrapper `<svg>`
+and its stroke attributes belong to the renderers, so no icon can drift from the others).
+`assets/icons/aliases.json` maps the old Font Awesome names onto Lucide ones, which is why call sites still read
+`{% icon "home" %}` rather than `{% icon "house" %}`. Both files are regenerated by `assets/icons/build_icons.py` and
+read by **three** renderers, so templates, React and the Vue demos cannot diverge:
+
+| Renderer | Used by |
+|---|---|
+| `{% icon "name" class="…" %}` (`apps/web/templatetags/icons.py`) | Django templates |
+| `<Icon name="name" className="…" />` (`assets/javascript/common/Icon.jsx`) | React |
+| `<Icon name="name" class-name="…" />` (`assets/javascript/common/Icon.vue`) | the Pegasus Vue demo |
+
+An unknown name raises `TemplateSyntaxError` under `DEBUG` and renders nothing in production — obvious in review,
+never a 500 in front of a user. `apps/web/tests/test_icons.py` treats the catalog as data: it fails on a dangling
+alias, on any name used in the source that does not resolve, and on any `fa fa-` class left in a template or
+component.
+
+Two traps in the conversion:
+
+- **A codemod's regex silently skips the interesting cases.** The class pattern excluded `{` and `}` so that it would
+  not corrupt a Django tag — which also means every dynamic call site (an Alpine `:class`, a JSX ternary, a
+  `{% if %}` inside a class) never reached the replace function. It reported "0 skipped", and that number meant
+  nothing. All 14 had to be found and converted by hand. An Alpine binding in particular cannot live on an
+  `{% icon %}` tag, so the six collapsible report chevrons moved their `:class` onto a wrapping `<span>` — rotating
+  the span rotates the SVG inside it.
+- **Font icons were sized by `font-size`; SVGs are not.** `text-5xl` or `fa-lg` on an `<i>` was doing real work, and
+  on an `<svg>` it is inert — the icon silently falls back to the default `w-4 h-4`. Every such class had to move to
+  an explicit width/height (20 `fa-lg` stat figures → `w-5 h-5`, the CSV drop zone's `text-5xl` → `w-12 h-12`, and so
+  on). Colour classes like `text-base-content/70` still apply, via `stroke="currentColor"`.
+
+Cost of the swap: **+14.3 kB raw / +4.0 kB gzip** of JS, almost all of it the one shared `lucide` chunk. In exchange,
+`templates/web/base.html` no longer makes two render-blocking requests to `cdnjs.cloudflare.com` for a stylesheet, a
+v4 shim and their webfonts — a third-party dependency on every page load, and an IP-address hop for every visitor.
+(The size of that CDN payload could not be measured from this environment; outbound requests to cdnjs are blocked.)
+
+### Phase 7 — The last of MUI ✅ *shipped*
+
+Phase 5 left seven components on `@mui/material` (eight, counting the shared
+`useMuiTheme` hook they leaned on). None was a table, so there was nothing to swap a library
+for — they were three modals, a floating action bar, a popover, a timeline and a tooltip. The
+work was to build the handful of daisyUI primitives they all needed and then delete the
+dependency.
+
+**Coverage first, again.** `BatchActionBar` and `TransferSuggestions` enforce guards that are not
+cosmetic — Reconcile is withheld from an uncategorized selection, and Archive, Reconcile and
+Duplicate are all withheld once a selected row is reconciled, mirroring the server's refusal to
+archive a reconciled transfer leg. Neither had a single e2e test. So nine were written and proved
+green against the MUI implementations *before* any rewrite, and required to pass untouched after.
+They address the bar by the **accessible name** of each button rather than a testid, since the
+markup changes and the labels a user reads must not.
+
+Two of those tests corrected me rather than the code. Archive turned out to be withheld from a
+wholly-reconciled selection (`showArchiveButton` wants *some* row that is neither archived nor
+reconciled), which I had written down wrong; and a `has_text` needle that prefix-matches another
+fixture's description silently scopes to the wrong card, so `TRANSFER-OUT` matched
+`TRANSFER-OUT-PLAIN` and the assertion passed against the wrong element.
+
+**New shared primitives**, all in `assets/javascript/common/`:
+
+| | replaces | notes |
+|---|---|---|
+| `Modal.jsx` | `Dialog` + `DialogTitle`/`Content`/`Actions` | a real `<dialog>`, so the browser supplies the top layer, focus trap and backdrop |
+| `Combobox.jsx` | `Autocomplete` | both flavours: object options with group headings, and `freeSolo` free text with suggestions |
+| `DateField.jsx` | `DatePicker` + `LocalizationProvider` + `AdapterDateFns` | wraps the same `DayGrid` the range pickers use, so every date surface is now one component |
+| `Spinner.jsx` | `CircularProgress` | |
+| `Toast.jsx` | `Snackbar` + `Alert` | moved out of `LineTableParts` (Phase 5b) so it has one home; gained an `action` slot for the budget page's Undo |
+| `popoverPosition.js` | MUI's popper | one placement strategy for every popover: portal, fixed, clamp, flip |
+
+**Three bugs the `<dialog>` element caused, worth knowing before using one:**
+
+1. **Escape closes a `<dialog>` as a keydown *default action*, not by propagation.** The combobox
+   list and the date panel both dismiss on Escape, and `stopPropagation()` was not enough — the
+   modal closed out from under them. It needs `preventDefault()`. This bit both `Combobox` and the
+   shared `PickerPopover`.
+2. **A `<dialog>` paints in the top layer, so a panel portaled to `document.body` disappears
+   *behind* the modal it belongs to.** Portals therefore target `closest('dialog') ?? document.body`.
+3. **daisyUI's `.modal-box` has `overflow-y: auto`,** so an absolutely-placed panel inside it is
+   clipped. Measured at a 620px-tall viewport, the payee list rendered *below the fold* and the
+   date panel was clippable as soon as its field sat low in a form. Fixing it piecemeal would have
+   left two positioning strategies, so `PickerPopover` moved onto the same portal-and-fix approach
+   as `Combobox`: `popoverPosition.js` now places every panel, clamping horizontally (as
+   `PickerPopover` already did) and **flipping above the trigger** when there is no room below.
+   `align` became dead and was removed.
+
+`ActualTooltip` also carried the dark-mode bug §1.3 describes — a MUI theme memoised with empty
+deps, reading `prefers-color-scheme`. Going to daisyUI tokens removes the question: the theme lives
+in CSS, so there is nothing to recompute on a theme flip.
+
+With the last importer gone, `@mui/material`, `@mui/x-date-pickers`, `@emotion/react` and
+`@emotion/styled` (MUI's peers, imported by nothing else) all came out of `package.json`, and
+`useMuiTheme.js` was deleted. **No `@mui` import remains anywhere in the source.**
+
+**Measured, `develop` → this branch (clean `vite build` of both trees):**
+
+| | develop | now | |
+|---|---|---|---|
+| total JS, raw | 2,806,015 | 1,059,271 | **−62%** |
+| total JS, gzip | 803,430 | 334,512 | **−58%** |
+| `bank-feed-bundle.js`, raw | 1,712,608 | 161,072 | **−91%** |
+| `bank-feed-bundle.js`, gzip | 442,843 | 34,668 | **−92%** |
+
+The bank feed was the app's heaviest screen by a wide margin and is now smaller than the marketing
+site bundle.
 
 ---
 
 ## 4. Verification
 
 - E2E `data-testid` attributes are preserved throughout — no phase should touch a selector. Run `make test-e2e` after
-  Phases 2, 3, and 5.
+  Phases 2, 3, 5, 6, and 7. Where a phase rewrites a component wholesale, as 5b did, write the e2e coverage **first** and
+  prove it green against the component being replaced; a test written after the fact only asserts what the new code
+  happens to do.
 - Check every phase in **both** themes. Today's hardcoded grays mean dark mode is already broken on several screens;
   the restyle should not ship new instances.
 - Contrast: all token pairs above target WCAG AA for body text. Re-verify `--color-accent` on `--color-base-100` if the
@@ -445,7 +603,11 @@ Consolidate on inline SVG (Lucide-style, ~24 icons), drop the Font Awesome CDN f
 3. **Top navbar removal** assumes nothing else needs to live there. Confirm before Phase 2 — it currently holds only the
    wordmark and theme selector.
 4. ~~**Phase 4 vs. Phase 5 ordering.**~~ Settled: Phase 4 shipped first, and was indeed low-risk — the only breakage
-   was self-inflicted by the sweep script, not by any substitution. Phase 5 is now the only large item left.
+   was self-inflicted by the sweep script, not by any substitution.
+6. ~~**The last of `@mui/material`.**~~ Settled in Phase 7: the contract tests were written first, the eight
+   remaining importers were converted onto shared daisyUI primitives, and the dependency (plus `@mui/x-date-pickers`
+   and the two `@emotion` peers) is gone. The count in the Phase 5 note said seven — it missed `common/useMuiTheme.js`,
+   the hook the others leaned on.
 5. **The Pegasus demo apps.** Phase 4 restyled them rather than deleting them (see above). Whether to keep an
    Examples Gallery and an Employee/Player CRUD demo in a budgeting product at all is a product call, not a styling
    one — but they are unlinked from the nav already, so nobody reaches them by accident.

@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load django_vite %}
 {% load currency_tags %}
+{% load icons %}
 
 {% block page_head %}
 <style>
@@ -23,7 +24,7 @@
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
       <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
-        <i class="fa fa-arrow-left mr-2"></i>
+        {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
       <h1 class="text-3xl font-bold mb-2">{% translate "Cash Flow" %}</h1>
@@ -43,22 +44,22 @@
   <!-- Summary Section -->
   <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="cash-flow-summary">
     <div class="stat py-3">
-      <div class="stat-figure text-success hidden sm:block"><i class="fa fa-arrow-up fa-lg"></i></div>
+      <div class="stat-figure text-success hidden sm:block">{% icon "arrow-up" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Money In" %}</div>
       <div class="stat-value text-2xl text-success">{{ stats.total_income|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure text-error hidden sm:block"><i class="fa fa-arrow-down fa-lg"></i></div>
+      <div class="stat-figure text-error hidden sm:block">{% icon "arrow-down" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Money Out" %}</div>
       <div class="stat-value text-2xl text-error">{{ stats.total_expenses|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure {% if stats.net < 0 %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
+      <div class="stat-figure {% if stats.net < 0 %}text-error{% endif %} hidden sm:block">{% icon "scale-balanced" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Net Cash Flow" %}</div>
       <div class="stat-value text-2xl {% if stats.net < 0 %}text-error{% endif %}">{% if stats.net >= 0 %}+{% endif %}{{ stats.net|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure text-info hidden sm:block"><i class="fa fa-calendar fa-lg"></i></div>
+      <div class="stat-figure text-info hidden sm:block">{% icon "calendar" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Average per Month" %}</div>
       <div class="stat-value text-2xl {% if stats.avg_net < 0 %}text-error{% endif %}">{% if stats.avg_net >= 0 %}+{% endif %}{{ stats.avg_net|currency }}</div>
       <div class="stat-desc">

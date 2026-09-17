@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Icon from '../../../common/Icon';
 
 const DATE_FORMAT_OPTIONS = [
   { value: '%d/%m/%Y', label: 'DD/MM/YYYY', example: '28/02/2025' },
@@ -383,7 +384,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
       )}
       {!dateChecking && dateCheck && dateCheck.invalid_count > 0 && (
         <div className="text-xs text-warning" data-testid="date-format-warning">
-          <i className="fa fa-exclamation-triangle mr-1"></i>
+          <Icon name="exclamation-triangle" className="inline-block shrink-0 w-4 h-4 mr-1" />
           {dateCheck.invalid_count} {gettext('of')} {dateCheck.total_rows}{' '}
           {gettext("row(s) don't match this format")}
           {dateCheck.suggested_format && (
@@ -396,7 +397,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
       )}
       {!dateChecking && dateCheck && dateCheck.invalid_count === 0 && dateCheck.total_rows > 0 && (
         <div className="text-xs text-success" data-testid="date-format-ok">
-          <i className="fa fa-check mr-1"></i>
+          <Icon name="check" className="inline-block shrink-0 w-4 h-4 mr-1" />
           {gettext('All')} {dateCheck.total_rows} {gettext('dates match this format')}
         </div>
       )}
@@ -411,7 +412,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
     createPortal(
       <div className="toast toast-top toast-end z-[1100]" data-testid="date-format-toast">
         <div className="alert alert-warning shadow-lg max-w-sm">
-          <i className="fa fa-exclamation-triangle"></i>
+          <Icon name="exclamation-triangle" className="inline-block shrink-0 w-4 h-4" />
           <div className="text-sm">
             <div className="font-semibold">
               {dateToast.invalid_count} {gettext('of')} {dateToast.total_rows}{' '}
@@ -440,7 +441,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
             onClick={() => setDateToast(null)}
             aria-label={gettext('Dismiss')}
           >
-            <i className="fa fa-times"></i>
+            <Icon name="times" className="inline-block shrink-0 w-4 h-4" />
           </button>
         </div>
       </div>,

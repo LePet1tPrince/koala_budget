@@ -1,5 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load static %}
+{% load icons %}
 {% block app %}
 <section class="app-card">
   <h3 class="text-xl mb-1">The Example Teams App</h3>
@@ -16,7 +17,7 @@
   {% for player in object_list %}
     {% if forloop.first %}
     <div class='table-responsive'>
-      <table class="table table table-quiet w-full">
+      <table class="table table-quiet w-full">
         <thead>
         <tr>
           <th>Name</th>
@@ -43,7 +44,7 @@
   {% endfor %}
   <div class="mt-2">
     <a class="btn btn-outline" href="{% url 'teams_example:player_create' request.team.slug %}">
-      <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-plus"></i></span>
+      <span class="w-6 h-6 inline-flex justify-center items-center">{% icon "plus" class="inline-block shrink-0 w-4 h-4" %}</span>
       <span>Add Player</span>
     </a>
   </div>
