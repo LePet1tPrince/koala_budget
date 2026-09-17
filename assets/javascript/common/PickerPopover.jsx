@@ -209,33 +209,174 @@ const Chevron = ({ dir }) => (
   </svg>
 );
 
+/** A round hover target for the prev/next steppers. */
+const StepButton = ({ onClick, label, dir }) => (
+  <button
+    type="button"
+    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
+    onClick={onClick}
+    aria-label={label}
+  >
+    <Chevron dir={dir} />
+  </button>
+);
+
+/** Downward caret marking a header label as openable. */
+const Caret = () => (
+  <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+    <path d="M5.22 7.22a.75.75 0 0 1 1.06 0L10 10.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.28a.75.75 0 0 1 0-1.06Z" />
+  </svg>
+);
+
+/**
+ * A menu that drops out of a calendar header label.
+ *
+ * It lives inside the picker panel, so `PickerPopover`'s outside-press handler
+ * treats it as inside and leaves the panel alone. The backdrop deliberately does
+ * not stop propagation: a press outside the panel then closes this menu *and*
+ * the panel, while a press elsewhere inside the panel closes only this menu.
+ */
+const HeaderMenu = ({ open, onClose, label, children, width = 'w-[15rem]' }) => {
+  // Escape should dismiss this menu, not the whole picker. A capture-phase
+  // listener runs before `PickerPopover`'s bubble-phase one, so stopping
+  // propagation here keeps the panel open.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <>
+      <div className="fixed inset-0 z-10" onPointerDown={onClose} aria-hidden="true" />
+      <div
+        role="listbox"
+        aria-label={label}
+        className={`absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 rounded-xl border border-base-300 bg-base-100 p-2 shadow-lg ${width}`}
+      >
+        {children}
+      </div>
+    </>
+  );
+};
+
+/** A calendar header label that opens a menu. */
+const HeaderLabel = ({ open, onToggle, children, testId }) => (
+  <button
+    type="button"
+    className={`flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-semibold transition-colors hover:bg-base-200 ${
+      open ? 'bg-base-200' : ''
+    }`}
+    aria-haspopup="listbox"
+    aria-expanded={open}
+    onClick={onToggle}
+    data-testid={testId}
+  >
+    {children}
+    <Caret />
+  </button>
+);
+
+/** Cell shared by the month and year menus. */
+const MenuCell = ({ selected, onClick, children }) => (
+  <button
+    type="button"
+    role="option"
+    aria-selected={selected}
+    className={`rounded-lg px-2 py-2 text-sm transition-colors ${
+      selected ? 'bg-primary font-semibold text-primary-content' : 'hover:bg-base-200'
+    }`}
+    onClick={onClick}
+  >
+    {children}
+  </button>
+);
+
+/** Twelve years at a time, paged so any year is a few clicks away. */
+const YearMenu = ({ year, onSelect, onClose }) => {
+  const [pageStart, setPageStart] = useState(Math.floor(year / 12) * 12);
+  const years = Array.from({ length: 12 }, (_, i) => pageStart + i);
+  return (
+    <>
+      <div className="mb-1 flex items-center justify-between">
+        <StepButton dir="left" label="Earlier years" onClick={() => setPageStart((y) => y - 12)} />
+        <span className="text-xs font-semibold tabular-nums">
+          {years[0]} – {years[11]}
+        </span>
+        <StepButton dir="right" label="Later years" onClick={() => setPageStart((y) => y + 12)} />
+      </div>
+      <div className="grid grid-cols-3 gap-1">
+        {years.map((y) => (
+          <MenuCell
+            key={y}
+            selected={y === year}
+            onClick={() => {
+              onSelect(y);
+              onClose();
+            }}
+          >
+            {y}
+          </MenuCell>
+        ))}
+      </div>
+    </>
+  );
+};
+
+/** The twelve months of the displayed year. */
+const MonthMenu = ({ monthIndex, onSelect, onClose }) => (
+  <div className="grid grid-cols-3 gap-1">
+    {MONTH_LABELS.map((label, idx) => (
+      <MenuCell
+        key={label}
+        selected={idx === monthIndex}
+        onClick={() => {
+          onSelect(idx);
+          onClose();
+        }}
+      >
+        {label}
+      </MenuCell>
+    ))}
+  </div>
+);
+
 /**
  * A year header with prev/next arrows over a 12-month grid. Used wherever a month
  * is selected: `<input type="month">` is not supported in Firefox, so a grid is
  * the portable option — and it is one click rather than MUI's year→month drill-down.
  */
 export const MonthGrid = ({ year, onYearChange, selectedYear, selectedMonth, onSelect }) => {
+  const [yearMenu, setYearMenu] = useState(false);
+  const closeYearMenu = useCallback(() => setYearMenu(false), []);
   const now = new Date();
   return (
     <div className="w-[17rem]">
       <div className="mb-2 flex items-center justify-between">
-        <button
-          type="button"
-          className="grid h-8 w-8 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
-          onClick={() => onYearChange(year - 1)}
-          aria-label="Previous year"
-        >
-          <Chevron dir="left" />
-        </button>
-        <span className="text-sm font-semibold tabular-nums">{year}</span>
-        <button
-          type="button"
-          className="grid h-8 w-8 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
-          onClick={() => onYearChange(year + 1)}
-          aria-label="Next year"
-        >
-          <Chevron dir="right" />
-        </button>
+        <StepButton dir="left" label="Previous year" onClick={() => onYearChange(year - 1)} />
+
+        {/* Same jump-to affordance as the day calendar's year label. */}
+        <div className="relative">
+          <HeaderLabel
+            open={yearMenu}
+            onToggle={() => setYearMenu((v) => !v)}
+            testId="cal-year-label"
+          >
+            <span className="tabular-nums">{year}</span>
+          </HeaderLabel>
+          <HeaderMenu open={yearMenu} onClose={closeYearMenu} label="Select year">
+            <YearMenu year={year} onSelect={onYearChange} onClose={closeYearMenu} />
+          </HeaderMenu>
+        </div>
+
+        <StepButton dir="right" label="Next year" onClick={() => onYearChange(year + 1)} />
       </div>
       <div className="grid grid-cols-4 gap-1.5">
         {MONTH_LABELS.map((label, idx) => {
@@ -293,6 +434,8 @@ const fromISO = (value) => {
  * @param {string} rangeEnd
  */
 export const DayGrid = ({ month, onMonthChange, value, rangeStart, rangeEnd, onSelect, testId }) => {
+  const [menu, setMenu] = useState(null); // 'month' | 'year' | null
+  const closeMenu = useCallback(() => setMenu(null), []);
   const selected = fromISO(value);
   const start = fromISO(rangeStart);
   const end = fromISO(rangeEnd);
@@ -306,23 +449,48 @@ export const DayGrid = ({ month, onMonthChange, value, rangeStart, rangeEnd, onS
   return (
     <div className="w-[17.5rem]" data-testid={testId}>
       <div className="mb-2 flex items-center justify-between">
-        <button
-          type="button"
-          className="grid h-8 w-8 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
-          onClick={() => onMonthChange(subMonths(month, 1))}
-          aria-label="Previous month"
-        >
-          <Chevron dir="left" />
-        </button>
-        <span className="text-sm font-semibold">{format(month, 'MMMM yyyy')}</span>
-        <button
-          type="button"
-          className="grid h-8 w-8 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
-          onClick={() => onMonthChange(addMonths(month, 1))}
-          aria-label="Next month"
-        >
-          <Chevron dir="right" />
-        </button>
+        <StepButton dir="left" label="Previous month" onClick={() => onMonthChange(subMonths(month, 1))} />
+
+        {/* Month and year are each their own jump target, so moving a year back
+            is one click rather than twelve presses of the arrow. Each menu is
+            positioned by its own label's wrapper so it drops from what was clicked. */}
+        <div className="flex items-center gap-1">
+          <div className="relative">
+            <HeaderLabel
+              open={menu === 'month'}
+              onToggle={() => setMenu((m) => (m === 'month' ? null : 'month'))}
+              testId="cal-month-label"
+            >
+              {format(month, 'MMMM')}
+            </HeaderLabel>
+            <HeaderMenu open={menu === 'month'} onClose={closeMenu} label="Select month">
+              <MonthMenu
+                monthIndex={month.getMonth()}
+                onSelect={(idx) => onMonthChange(new Date(month.getFullYear(), idx, 1))}
+                onClose={closeMenu}
+              />
+            </HeaderMenu>
+          </div>
+
+          <div className="relative">
+            <HeaderLabel
+              open={menu === 'year'}
+              onToggle={() => setMenu((m) => (m === 'year' ? null : 'year'))}
+              testId="cal-year-label"
+            >
+              <span className="tabular-nums">{format(month, 'yyyy')}</span>
+            </HeaderLabel>
+            <HeaderMenu open={menu === 'year'} onClose={closeMenu} label="Select year">
+              <YearMenu
+                year={month.getFullYear()}
+                onSelect={(y) => onMonthChange(new Date(y, month.getMonth(), 1))}
+                onClose={closeMenu}
+              />
+            </HeaderMenu>
+          </div>
+        </div>
+
+        <StepButton dir="right" label="Next month" onClick={() => onMonthChange(addMonths(month, 1))} />
       </div>
 
       <div className="grid grid-cols-7 gap-y-1">
