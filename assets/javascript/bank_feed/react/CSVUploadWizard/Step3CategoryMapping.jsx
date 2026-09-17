@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import AccountComboBox from './AccountComboBox';
 import CreateAccountModal from './CreateAccountModal';
 import { formatCurrency } from '../../../utilities/currency';
+import Icon from '../../../common/Icon';
 
 /**
  * Build the initial mapping from each category's deterministic suggestion.
@@ -87,7 +88,7 @@ const Step3CategoryMapping = ({ unmappedCategories, initialMappings = {}, allAcc
       {/* Responsive multi-column grid of mapping cards */}
       {unmappedCategories.length === 0 ? (
         <div className="py-8 text-center text-base-content/70">
-          <i className="fa fa-check-circle text-2xl mb-2 block text-success"></i>
+          <Icon name="check-circle" className="inline-block shrink-0 w-6 h-6 mb-2 block text-success" />
           {gettext('No categories to map — all transactions are already categorized.')}
         </div>
       ) : null}
@@ -137,7 +138,7 @@ const Step3CategoryMapping = ({ unmappedCategories, initialMappings = {}, allAcc
                 />
                 {isSuggested && (
                   <div className="text-xs text-info mt-1 flex items-center gap-1">
-                    <i className="fa fa-lightbulb-o"></i>
+                    <Icon name="lightbulb-o" className="inline-block shrink-0 w-4 h-4" />
                     {gettext('Suggested — please verify')}
                   </div>
                 )}
@@ -149,7 +150,7 @@ const Step3CategoryMapping = ({ unmappedCategories, initialMappings = {}, allAcc
 
       {unmappedCategories.length > 0 && (
         <div className="text-sm text-base-content/70">
-          <i className="fa fa-info-circle mr-2"></i>
+          <Icon name="info-circle" className="inline-block shrink-0 w-4 h-4 mr-2" />
           {Object.keys(mappings).length} {gettext('of')} {unmappedCategories.length} {gettext('categories mapped')}
         </div>
       )}

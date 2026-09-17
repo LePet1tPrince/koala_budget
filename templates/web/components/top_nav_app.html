@@ -1,5 +1,6 @@
 {% extends 'web/components/top_nav.html' %}
 {% load i18n %}
+{% load icons %}
 {% comment %}
   Mobile-only on app pages (app_base.html hides this above `lg`, where the
   sidebar takes over). The parent renders this block inside a daisyUI
@@ -23,7 +24,7 @@
       {% include 'web/components/app_nav_menu_items.html' %}
       <a href="{% url 'chat:chat_home' %}"
          class="side-link mt-2 border border-base-300 bg-base-200/60 {% if active_tab == 'ai-chat' %}side-link-active{% endif %}">
-        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        {% icon "wand-magic-sparkles" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Ask Koala" %}
       </a>
     </div>
@@ -36,18 +37,18 @@
     <li class="menu-title"><span>{% translate "Account" %}</span></li>
     <li>
       <a href="{% url 'users:user_profile' %}" {% if active_tab == 'profile' %}class="menu-active"{% endif %}>
-        <i class="fa fa-user h-4 w-4"></i>{% translate "Profile" %}
+        {% icon "user" class="inline-block shrink-0 h-4 w-4" %}{% translate "Profile" %}
       </a>
     </li>
     {% if user.has_usable_password %}
       <li>
         <a href="{% url 'account_change_password' %}">
-          <i class="fa fa-unlock-alt h-4 w-4"></i>{% translate "Change Password" %}
+          {% icon "unlock-alt" class="inline-block shrink-0 h-4 w-4" %}{% translate "Change Password" %}
         </a>
       </li>
     {% endif %}
     <li>
-      <a href="{% url 'account_logout' %}"><i class="fa fa-sign-out h-4 w-4"></i>{% translate "Sign out" %}</a>
+      <a href="{% url 'account_logout' %}">{% icon "sign-out" class="inline-block shrink-0 h-4 w-4" %}{% translate "Sign out" %}</a>
     </li>
   {% endif %}
 {% endblock %}

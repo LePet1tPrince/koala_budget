@@ -6,6 +6,7 @@ import { Dropdown, MenuRow, ReconciledLock, SortArrow, TablePager, Toast } from 
 import { usePlaidLinkFlow } from './PlaidLinkButton';
 import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc, formatDateForInput } from '../utils';
+import Icon from '../../common/Icon';
 
 /* globals gettext */
 
@@ -307,7 +308,7 @@ const LineTable = ({
   if (!selectedAccount) {
     return (
       <div className="alert alert-info">
-        <i className="fa fa-info-circle"></i>
+        <Icon name="info-circle" className="inline-block shrink-0 w-4 h-4" />
         <span>{gettext('Please select an account to view lines')}</span>
       </div>
     );

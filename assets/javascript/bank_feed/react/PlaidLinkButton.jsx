@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 import PlaidAccountMapper from './PlaidAccountMapper';
 import { usePlaidLink } from 'react-plaid-link';
+import Icon from '../../common/Icon';
 
 /**
  * usePlaidLinkFlow - headless Plaid Link integration
@@ -118,7 +119,7 @@ export const usePlaidLinkFlow = ({ teamSlug, allAccounts, onSuccess, plaidClient
     <>
       {error && (
         <div className="alert alert-error mt-4">
-          <i className="fa fa-exclamation-circle"></i>
+          <Icon name="exclamation-circle" className="inline-block shrink-0 w-4 h-4" />
           <span>{error}</span>
         </div>
       )}
@@ -169,7 +170,7 @@ const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
           </>
         ) : (
           <>
-            <i className="fa fa-plus mr-2"></i>
+            <Icon name="plus" className="inline-block shrink-0 w-4 h-4 mr-2" />
             {gettext('Link Bank Account')}
           </>
         )}

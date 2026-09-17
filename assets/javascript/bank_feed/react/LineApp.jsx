@@ -11,6 +11,7 @@ import BatchActionBar from './BatchActionBar';
 import TransferSuggestions from './TransferSuggestions';
 import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
 import { formatCurrency } from '../../utilities/currency';
+import Icon from '../../common/Icon';
 
 /**
  * LineApp - Main application component for managing lines
@@ -519,7 +520,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             aria-expanded={isAccountPickerOpen}
             data-testid="account-picker-toggle"
           >
-            <i className={`fa fa-chevron-${isAccountPickerOpen ? 'down' : 'right'} text-xs text-base-content/70 shrink-0`}></i>
+            <Icon name={isAccountPickerOpen ? 'chevron-down' : 'chevron-right'} className="inline-block w-3.5 h-3.5 shrink-0 text-base-content/70" />
             <h2 className="text-xl mb-1">{gettext('Select Account')}</h2>
             {!isAccountPickerOpen && selectedAccount && (
               <span className="text-sm font-normal text-base-content/70 truncate">
@@ -546,7 +547,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         {isAccountPickerOpen && (
           accounts.length === 0 ? (
             <div className="alert alert-warning">
-              <i className="fa fa-exclamation-triangle"></i>
+              <Icon name="exclamation-triangle" className="inline-block shrink-0 w-4 h-4" />
               <span>
                 {gettext('No accounts with bank feeds found. Please link a bank account to get started.')}
               </span>
@@ -601,7 +602,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           </div>
           {error && (
             <div className="alert alert-error mb-4">
-              <i className="fa fa-exclamation-circle"></i>
+              <Icon name="exclamation-circle" className="inline-block shrink-0 w-4 h-4" />
               <span>{error}</span>
             </div>
           )}

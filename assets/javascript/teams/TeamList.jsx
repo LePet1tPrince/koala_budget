@@ -1,6 +1,7 @@
 import React from "react";
 import {Link} from "react-router-dom";
 import {acceptInviteUrl} from "@/teams/urls";
+import Icon from '../common/Icon';
 
 
 export const TeamTableRow = function(props) {
@@ -11,7 +12,7 @@ export const TeamTableRow = function(props) {
       <td className="flex space-x-1 justify-end">
         <Link to={`/edit/${props.slug}`}>
           <button className="btn btn-outline mx-1">
-            <span className="w-6 h-6 inline-flex justify-center items-center"><i className="fa fa-gear" /></span>
+            <span className="w-6 h-6 inline-flex justify-center items-center"><Icon name="gear" className="inline-block shrink-0 w-4 h-4" /></span>
             <span className="hidden md:inline-block">{props.isAdmin ? gettext('Edit') : gettext('View Details')}</span>
           </button>
         </Link>
@@ -97,7 +98,7 @@ export const TeamList = function(props) {
         <Link to="/new">
           <button className="mt-2 btn btn-outline">
             <span className="w-6 h-6 inline-flex justify-center items-center">
-              <i className="fa fa-plus"></i>
+              <Icon name="plus" className="inline-block shrink-0 w-4 h-4" />
             </span>
             <span>{gettext("Add Team")}</span>
           </button>

@@ -9,6 +9,7 @@ import {
   Button,
 } from '@mui/material';
 import { formatCurrency } from '../../utilities/currency';
+import Icon from '../../common/Icon';
 
 /**
  * TransferSuggestions
@@ -106,7 +107,7 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
         <span className="text-xs text-base-content/70">{leg.account?.name}</span>
         {leg.is_reconciled && (
           <span className="badge badge-info badge-sm" title={gettext('Reconciled')}>
-            <i className="fa fa-lock mr-1"></i>
+            <Icon name="lock" className="inline-block shrink-0 w-4 h-4 mr-1" />
             {gettext('Reconciled')}
           </span>
         )}
@@ -142,7 +143,7 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
         data-testid="transfer-review-button"
         aria-label={gettext('Review possible duplicate transfers')}
       >
-        <i className="fa fa-exchange mr-2"></i>
+        <Icon name="exchange" className="inline-block shrink-0 w-4 h-4 mr-2" />
         {gettext('Review transfers')}
         <span className="badge badge-warning badge-sm ml-2">{count}</span>
       </button>
@@ -161,7 +162,7 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
 
           {count === 0 ? (
             <div className="text-center text-base-content/70 py-8">
-              <i className="fa fa-check-circle text-success text-2xl mb-2"></i>
+              <Icon name="check-circle" className="inline-block shrink-0 w-6 h-6 text-success mb-2" />
               <p>{gettext('All transfers reviewed.')}</p>
             </div>
           ) : (
@@ -179,14 +180,14 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
                     <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-center">
                       {renderLeg(pair.outflow, 'out')}
                       <div className="text-center text-base-content/40">
-                        <i className="fa fa-arrow-right"></i>
+                        <Icon name="arrow-right" className="inline-block shrink-0 w-4 h-4" />
                       </div>
                       {renderLeg(pair.inflow, 'in')}
                     </div>
 
                     {(outReconciled || inReconciled) && (
                       <p className="text-xs text-info mt-2">
-                        <i className="fa fa-lock mr-1"></i>
+                        <Icon name="lock" className="inline-block shrink-0 w-4 h-4 mr-1" />
                         {gettext(
                           'A reconciled leg cannot be archived — unreconcile it first if it really is a duplicate.',
                         )}

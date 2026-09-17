@@ -1,6 +1,7 @@
 /* globals gettext */
 
 import React, { useState } from 'react';
+import Icon from '../../../common/Icon';
 
 /**
  * Step4DuplicateReview - Let the user decide which potential duplicates to include
@@ -49,7 +50,7 @@ const Step4DuplicateReview = ({
   return (
     <div className="space-y-4">
       <div className="alert alert-warning">
-        <i className="fa fa-exclamation-triangle"></i>
+        <Icon name="exclamation-triangle" className="inline-block shrink-0 w-4 h-4" />
         <div>
           <p className="font-semibold">
             {duplicates.length} {gettext('potential duplicate(s) found')}
@@ -119,7 +120,7 @@ const Step4DuplicateReview = ({
       </div>
 
       <p className="text-sm text-base-content/70">
-        <i className="fa fa-info-circle mr-1"></i>
+        <Icon name="info-circle" className="inline-block shrink-0 w-4 h-4 mr-1" />
         {includedCount} {gettext('of')} {duplicates.length}{' '}
         {gettext('potential duplicate(s) will be imported')}
       </p>
@@ -133,7 +134,7 @@ const Step4DuplicateReview = ({
         </button>
         <button className="btn btn-primary" onClick={onContinue}>
           {gettext('Continue')}
-          <i className="fa fa-arrow-right ml-2"></i>
+          <Icon name="arrow-right" className="inline-block shrink-0 w-4 h-4 ml-2" />
         </button>
       </div>
     </div>

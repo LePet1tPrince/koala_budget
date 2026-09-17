@@ -24,7 +24,7 @@
     </div>
     <button class="btn btn-primary" v-on:click="addEmployee" >
       <span class="w-6 h-6 inline-flex justify-center items-center">
-        <i class="fa fa-plus"></i>
+        <Icon name="plus" class-name="inline-block shrink-0 w-4 h-4" />
       </span>
       <span>Add Employee</span>
     </button>
@@ -32,12 +32,14 @@
 </template>
 
 <script>
+import Icon from '../../../../common/Icon.vue';
 import EmployeeTableRow from './EmployeeTableRow.vue'
 
 export default {
   name: 'EmployeeList',
   components: {
-    EmployeeTableRow
+    EmployeeTableRow,
+    Icon
   },
   props: {
     employees: Array,

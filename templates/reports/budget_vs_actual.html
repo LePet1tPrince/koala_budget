@@ -1,6 +1,7 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
 {% load currency_tags %}
+{% load icons %}
 
 {% block page_head %}
 <style>
@@ -37,7 +38,7 @@
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
       <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
-        <i class="fa fa-arrow-left mr-2"></i>
+        {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
       <h1 class="text-3xl font-bold mb-2">{% translate "Budget vs Actual" %}</h1>
@@ -46,15 +47,15 @@
     <div class="flex flex-wrap items-center gap-2">
       <div class="join">
         <a href="?month={{ prev_month|date:'Y-m' }}" class="btn btn-outline btn-sm join-item" data-testid="bva-prev-month" aria-label="{% translate 'Previous month' %}">
-          <i class="fa fa-chevron-left"></i>
+          {% icon "chevron-left" class="inline-block shrink-0 w-4 h-4" %}
         </a>
         <a href="?" class="btn btn-outline btn-sm join-item">{% translate "This Month" %}</a>
         <a href="?month={{ next_month|date:'Y-m' }}" class="btn btn-outline btn-sm join-item" data-testid="bva-next-month" aria-label="{% translate 'Next month' %}">
-          <i class="fa fa-chevron-right"></i>
+          {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4" %}
         </a>
       </div>
       <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
-        <i class="fa fa-pen-to-square mr-2"></i>
+        {% icon "pen-to-square" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Edit Budget" %}
       </a>
     </div>
@@ -63,12 +64,12 @@
   <!-- Summary Section -->
   <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="bva-summary">
     <div class="stat py-3">
-      <div class="stat-figure text-info hidden sm:block"><i class="fa fa-bullseye fa-lg"></i></div>
+      <div class="stat-figure text-info hidden sm:block">{% icon "bullseye" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Budgeted" %}</div>
       <div class="stat-value text-2xl text-info">{{ expense_totals.budget|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure text-error hidden sm:block"><i class="fa fa-arrow-down fa-lg"></i></div>
+      <div class="stat-figure text-error hidden sm:block">{% icon "arrow-down" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Spent" %}</div>
       <div class="stat-value text-2xl text-error">{{ expense_totals.actual|currency }}</div>
       {% if expense_totals.over_count %}
@@ -82,7 +83,7 @@
       {% endif %}
     </div>
     <div class="stat py-3">
-      <div class="stat-figure {% if expense_totals.remaining < 0 %}text-error{% endif %} hidden sm:block"><i class="fa fa-piggy-bank fa-lg"></i></div>
+      <div class="stat-figure {% if expense_totals.remaining < 0 %}text-error{% endif %} hidden sm:block">{% icon "piggy-bank" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Left to Spend" %}</div>
       <div class="stat-value text-2xl {% if expense_totals.remaining < 0 %}text-error{% endif %}">{{ expense_totals.remaining|currency }}</div>
     </div>
@@ -118,7 +119,7 @@
               <td class="pl-6 whitespace-nowrap">
                 {{ row.account.name }}
                 {% if row.over %}
-                <span class="badge badge-error badge-sm ml-1 align-middle"><i class="fa fa-triangle-exclamation mr-1"></i>{% translate "Over" %}</span>
+                <span class="badge badge-error badge-sm ml-1 align-middle">{% icon "triangle-exclamation" class="inline-block shrink-0 w-4 h-4 mr-1" %}{% translate "Over" %}</span>
                 {% elif row.unbudgeted %}
                 <span class="badge badge-ghost badge-sm ml-1 align-middle">{% translate "No budget" %}</span>
                 {% endif %}

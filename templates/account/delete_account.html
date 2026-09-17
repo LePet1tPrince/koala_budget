@@ -1,5 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
+{% load icons %}
 {% block app %}
 <section class="app-card max-w-xl">
   <h2 class="text-xl mb-1 text-red-600 dark:text-red-400">{% translate "Delete Account" %}</h2>
@@ -34,7 +35,7 @@
            placeholder="{{ user.email }}">
     <div class="mt-4 flex gap-3">
       <button type="submit" class="btn btn-outline btn-error">
-        <i class="fa fa-trash mr-1"></i> {% translate "Permanently Delete Account" %}
+        {% icon "trash" class="inline-block shrink-0 w-4 h-4 mr-1" %} {% translate "Permanently Delete Account" %}
       </button>
       <a href="{% url 'users:user_profile' %}" class="btn btn-outline">
         {% translate "Cancel" %}

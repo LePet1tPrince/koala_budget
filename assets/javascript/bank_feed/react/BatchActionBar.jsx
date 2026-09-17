@@ -14,17 +14,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import {
-  Close as CloseIcon,
-  Edit as EditIcon,
-  Archive as ArchiveIcon,
-  Unarchive as UnarchiveIcon,
-  ContentCopy as ContentCopyIcon,
-  FileDownload as FileDownloadIcon,
-  CheckCircle as CheckCircleIcon,
-  RemoveCircle as RemoveCircleIcon,
-  DeleteForever as DeleteForeverIcon,
-} from '@mui/icons-material';
+import Icon from '../../common/Icon';
 import BulkEditModal from './BulkEditModal';
 import { formatDateForInput } from '../utils';
 
@@ -254,7 +244,7 @@ const BatchActionBar = ({
           {!isArchivedView && (
             <Button
               size="small"
-              startIcon={<EditIcon />}
+              startIcon={<Icon name="edit" className="w-5 h-5 shrink-0" />}
               onClick={() => setBulkEditOpen(true)}
             >
               {gettext('Bulk Edit')}
@@ -264,7 +254,7 @@ const BatchActionBar = ({
           {showArchive && !isArchivedView && (
             <Button
               size="small"
-              startIcon={<ArchiveIcon />}
+              startIcon={<Icon name="archive" className="w-5 h-5 shrink-0" />}
               onClick={onArchive}
             >
               {gettext('Archive')}
@@ -274,7 +264,7 @@ const BatchActionBar = ({
           {showUnarchive && (
             <Button
               size="small"
-              startIcon={<UnarchiveIcon />}
+              startIcon={<Icon name="unarchive" className="w-5 h-5 shrink-0" />}
               onClick={onUnarchive}
             >
               {gettext('Unarchive')}
@@ -285,7 +275,7 @@ const BatchActionBar = ({
             <Button
               size="small"
               color="error"
-              startIcon={<DeleteForeverIcon />}
+              startIcon={<Icon name="trash" className="w-5 h-5 shrink-0" />}
               onClick={() => setDeleteDialogOpen(true)}
             >
               {gettext('Delete')}
@@ -297,7 +287,7 @@ const BatchActionBar = ({
               <span>
                 <Button
                   size="small"
-                  startIcon={<CheckCircleIcon />}
+                  startIcon={<Icon name="check-circle" className="w-5 h-5 shrink-0" />}
                   onClick={() => {
                     setReconciliationDate(maxSelectedDate);
                     setReconcileDialogOpen(true);
@@ -313,7 +303,7 @@ const BatchActionBar = ({
           {allReconciled && (
             <Button
               size="small"
-              startIcon={<RemoveCircleIcon />}
+              startIcon={<Icon name="minus-circle" className="w-5 h-5 shrink-0" />}
               onClick={() => setUnreconcileDialogOpen(true)}
             >
               {gettext('Unreconcile')}
@@ -323,7 +313,7 @@ const BatchActionBar = ({
           {!isArchivedView && !anyReconciled && (
             <Button
               size="small"
-              startIcon={<ContentCopyIcon />}
+              startIcon={<Icon name="copy" className="w-5 h-5 shrink-0" />}
               onClick={onDuplicate}
             >
               {gettext('Duplicate')}
@@ -332,14 +322,14 @@ const BatchActionBar = ({
 
           <Button
             size="small"
-            startIcon={<FileDownloadIcon />}
+            startIcon={<Icon name="download" className="w-5 h-5 shrink-0" />}
             onClick={handleExport}
           >
             {gettext('Export')}
           </Button>
 
           <IconButton size="small" onClick={onClearSelection}>
-            <CloseIcon />
+            <Icon name="x" className="w-5 h-5 shrink-0" />
           </IconButton>
         </Paper>
       </Slide>
@@ -474,7 +464,7 @@ const BatchActionBar = ({
         fullWidth
       >
         <DialogTitle sx={{ color: 'error.main', display: 'flex', alignItems: 'center', gap: 1 }}>
-          <DeleteForeverIcon />
+          <Icon name="trash" className="w-5 h-5 shrink-0" />
           {gettext('Permanently Delete Transactions')}
         </DialogTitle>
         <DialogContent>
@@ -499,7 +489,7 @@ const BatchActionBar = ({
             }}
             variant="contained"
             color="error"
-            startIcon={<DeleteForeverIcon />}
+            startIcon={<Icon name="trash" className="w-5 h-5 shrink-0" />}
           >
             {gettext('Delete Forever')}
           </Button>

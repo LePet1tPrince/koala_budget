@@ -9,7 +9,7 @@
             <h2 class="text-xl mb-1">Create your first employee below to get started.</h2>
             <p>
                 <a class="btn btn-primary my-3" v-on:click="$emit('add-employee')">
-                    <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-plus"></i></span>
+                    <span class="w-6 h-6 inline-flex justify-center items-center"><Icon name="plus" class-name="inline-block shrink-0 w-4 h-4" /></span>
                     <span>Create Employee</span>
                 </a>
             </p>
@@ -19,8 +19,12 @@
 </template>
 
 <script>
+import Icon from '../../../../common/Icon.vue';
 export default {
   name: 'NoData',
+  components: {
+    Icon
+  },
   props: {
     static_files: Object
   },

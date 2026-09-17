@@ -12,6 +12,7 @@ import EditAddEmployeeWidget from "./EditAddEmployeeWidget";
 import EmployeeTableRow from "./EmployeeTableRow";
 import LoadError from "../../../utilities/LoadError";
 import LoadingScreen from "../../../utilities/Loading";
+import Icon from '../../../common/Icon';
 
 const EmptyEmployeeList = function(props) {
   return (
@@ -26,7 +27,7 @@ const EmptyEmployeeList = function(props) {
           <div className="my-3">
             <Link to="new">
               <button className="btn btn-primary">
-                <span className="w-6 h-6 inline-flex justify-center items-center"><i className="fa fa-plus"></i></span>
+                <span className="w-6 h-6 inline-flex justify-center items-center"><Icon name="plus" className="inline-block shrink-0 w-4 h-4" /></span>
                 <span>Create Employee</span>
               </button>
             </Link>
@@ -67,7 +68,7 @@ const EmployeeList = function(props) {
       <Link to="new">
         <button className="btn btn-primary">
           <span className="w-6 h-6 inline-flex justify-center items-center">
-            <i className="fa fa-plus"></i>
+            <Icon name="plus" className="inline-block shrink-0 w-4 h-4" />
           </span>
           <span>Add Employee</span>
         </button>
