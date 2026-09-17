@@ -15,7 +15,12 @@ PERSONAL_BUDGET_TEMPLATE = {
         {"name": "Variable Expenses", "type": "expense", "description": "Flexible spending"},
         {"name": "Other Expenses", "type": "expense", "description": "Miscellaneous expenses"},
         # Equity (system-managed, hidden from Goals UI)
-        {"name": "Equity Adjustments", "type": "goal", "description": "System equity accounts for reconciliation and opening balances", "is_system": True},
+        {
+            "name": "Equity Adjustments",
+            "type": "goal",
+            "description": "System equity accounts for reconciliation and opening balances",
+            "is_system": True,
+        },
     ],
     "accounts": [
         # Assets (1000s)
@@ -47,25 +52,5 @@ PERSONAL_BUDGET_TEMPLATE = {
         "Utility Company",
         "Credit Card Company",
         "Investment Provider",
-    ],
-    "sample_transactions": [
-        {
-            "account": 2000,
-            "amount": -50.00,
-            "description": "Grocery Store",
-            "merchant_name": "Whole Foods",
-        },
-        {
-            "account": 1000,
-            "amount": 1000.00,
-            "description": "Salary Pay",
-            "merchant_name": "Employer",
-        },
-        {
-            "account": 1000,
-            "amount": -20.00,
-            "description": "Cell Phone",
-            "merchant_name": "Telco",
-        },
     ],
 }

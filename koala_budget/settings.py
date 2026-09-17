@@ -105,6 +105,7 @@ PROJECT_APPS = [
     "apps.reports.apps.ReportsConfig",
     "apps.plaid.apps.PlaidConfig",
     "apps.bank_feed.apps.BankFeedConfig",
+    "apps.onboarding.apps.OnboardingConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -662,6 +663,13 @@ LOGGING = {
 
 # Populate team account with default data
 BOOTSTRAP_TEAM_ON_CREATE = True
+
+# When on, the guided walkthrough builds each new team's chart of accounts from
+# the questionnaire, so team bootstrap must NOT pre-create the stock one -- a team
+# that already had 16 accounts before answering anything would make the questions
+# cosmetic. Turning this off restores the old behaviour: bootstrap applies the
+# stock template and nobody is sent through the walkthrough.
+ONBOARDING_ENABLED = True
 STRICT_TEAM_CONTEXT = True
 
 # settings.py
