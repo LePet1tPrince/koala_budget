@@ -428,19 +428,32 @@ class TransactionRowSerializer(serializers.Serializer):
     def get_payee_name(self, entry):
         return entry.payee.name if entry.payee else None
 
+    def _debit_and_credit_lines(self, entry):
+        """
+        Split the entry's two lines into (debit_line, credit_line).
+
+        Comparing the lines against each other (rather than testing each
+        line's dr_amount/cr_amount against zero in isolation) still finds
+        the right line for a normal entry, and also handles a $0.00 entry
+        (e.g. a zero-amount bank transaction) where both lines have
+        dr_amount == cr_amount == 0 and neither would otherwise look like
+        it carries a debit or a credit.
+        """
+        lines = self._get_lines(entry)
+        if len(lines) != 2:
+            return None, None
+        first, second = lines
+        return (first, second) if first.dr_amount >= second.dr_amount else (second, first)
+
     def get_debit_account(self, entry):
         """Return the account name of the line that carries the debit."""
-        for line in self._get_lines(entry):
-            if line.dr_amount > 0:
-                return line.account.name
-        return None
+        debit_line, _ = self._debit_and_credit_lines(entry)
+        return debit_line.account.name if debit_line else None
 
     def get_credit_account(self, entry):
         """Return the account name of the line that carries the credit."""
-        for line in self._get_lines(entry):
-            if line.cr_amount > 0:
-                return line.account.name
-        return None
+        _, credit_line = self._debit_and_credit_lines(entry)
+        return credit_line.account.name if credit_line else None
 
     def get_amount(self, entry):
         """Return total debits (== total credits for a balanced entry)."""
