@@ -121,7 +121,7 @@ const PickerPopover = ({
           id={panelId}
           ref={panelRef}
           role="dialog"
-          className={`absolute z-50 mt-1 max-w-[calc(100vw-1rem)] overflow-x-auto rounded-box border border-base-300 bg-base-100 p-4 shadow-lg ${
+          className={`absolute z-50 mt-2 max-w-[calc(100vw-1rem)] overflow-x-auto rounded-2xl border border-base-300 bg-base-100 p-5 shadow-xl ${
             align === 'right' ? 'right-0' : 'left-0'
           } ${panelClassName}`}
           style={offset ? { transform: `translateX(${offset}px)` } : undefined}
@@ -133,18 +133,32 @@ const PickerPopover = ({
   );
 };
 
+/** Small caps heading used above each column of the panel. */
+export const PanelHeading = ({ children }) => (
+  <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-base-content/60">
+    {children}
+  </p>
+);
+
 /**
  * The presets column shared by the range pickers.
+ *
+ * Hand-rolled rather than daisyUI's `menu`, whose `menu-sm` padding is too tight
+ * to read as a row and whose `active` state is a full-contrast slab.
  */
 export const PresetList = ({ presets, active, onSelect, title = 'Presets' }) => (
-  <div className="min-w-[9.5rem] border-r border-base-300 pr-3">
-    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-base-content/70">{title}</p>
-    <ul className="menu menu-sm w-full p-0">
+  <div className="min-w-[10.5rem] border-r border-base-300 pr-5">
+    <PanelHeading>{title}</PanelHeading>
+    <ul className="flex flex-col gap-0.5">
       {presets.map((p) => (
         <li key={p.value}>
           <button
             type="button"
-            className={active === p.value ? 'active' : ''}
+            className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+              active === p.value
+                ? 'bg-primary/10 font-medium text-primary'
+                : 'hover:bg-base-200'
+            }`}
             onClick={() => onSelect(p.value)}
           >
             {p.label}
@@ -159,14 +173,25 @@ export const PresetList = ({ presets, active, onSelect, title = 'Presets' }) => 
  * The Cancel/Apply pair shared by the range pickers.
  */
 export const PickerActions = ({ onCancel, onApply, applyLabel = 'Apply' }) => (
-  <div className="mt-1 flex justify-end gap-2 border-t border-base-300 pt-3">
-    <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
+  <div className="mt-2 flex justify-end gap-2 border-t border-base-300 pt-4">
+    <button type="button" className="btn btn-ghost btn-sm rounded-lg" onClick={onCancel}>
       Cancel
     </button>
-    <button type="button" className="btn btn-primary btn-sm" onClick={onApply}>
+    <button type="button" className="btn btn-primary btn-sm rounded-lg px-5" onClick={onApply}>
       {applyLabel}
     </button>
   </div>
+);
+
+/** Chevron for the year stepper — an inline SVG keeps the icon set to one. */
+const Chevron = ({ dir }) => (
+  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d={dir === 'left' ? 'M12.5 4.5 7 10l5.5 5.5' : 'M7.5 4.5 13 10l-5.5 5.5'}
+    />
+  </svg>
 );
 
 /**
@@ -174,44 +199,53 @@ export const PickerActions = ({ onCancel, onApply, applyLabel = 'Apply' }) => (
  * is selected: `<input type="month">` is not supported in Firefox, so a grid is
  * the portable option — and it is one click rather than MUI's year→month drill-down.
  */
-export const MonthGrid = ({ year, onYearChange, selectedYear, selectedMonth, onSelect }) => (
-  <div className="w-[15rem]">
-    <div className="mb-2 flex items-center justify-between">
-      <button
-        type="button"
-        className="btn btn-ghost btn-xs"
-        onClick={() => onYearChange(year - 1)}
-        aria-label="Previous year"
-      >
-        ‹
-      </button>
-      <span className="text-sm font-semibold">{year}</span>
-      <button
-        type="button"
-        className="btn btn-ghost btn-xs"
-        onClick={() => onYearChange(year + 1)}
-        aria-label="Next year"
-      >
-        ›
-      </button>
+export const MonthGrid = ({ year, onYearChange, selectedYear, selectedMonth, onSelect }) => {
+  const now = new Date();
+  return (
+    <div className="w-[17rem]">
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          type="button"
+          className="grid h-8 w-8 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
+          onClick={() => onYearChange(year - 1)}
+          aria-label="Previous year"
+        >
+          <Chevron dir="left" />
+        </button>
+        <span className="text-sm font-semibold tabular-nums">{year}</span>
+        <button
+          type="button"
+          className="grid h-8 w-8 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
+          onClick={() => onYearChange(year + 1)}
+          aria-label="Next year"
+        >
+          <Chevron dir="right" />
+        </button>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {MONTH_LABELS.map((label, idx) => {
+          const isSelected = idx === selectedMonth && year === selectedYear;
+          // Ring the current month so "now" is findable without being selected.
+          const isCurrent = idx === now.getMonth() && year === now.getFullYear();
+          return (
+            <button
+              key={label}
+              type="button"
+              className={`rounded-lg px-2 py-2.5 text-sm transition-colors ${
+                isSelected
+                  ? 'bg-primary font-semibold text-primary-content'
+                  : `hover:bg-base-200 ${isCurrent ? 'ring-1 ring-inset ring-primary/40' : ''}`
+              }`}
+              onClick={() => onSelect(year, idx)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
-    <div className="grid grid-cols-4 gap-1">
-      {MONTH_LABELS.map((label, idx) => {
-        const isSelected = idx === selectedMonth && year === selectedYear;
-        return (
-          <button
-            key={label}
-            type="button"
-            className={`btn btn-xs ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => onSelect(year, idx)}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  </div>
-);
+  );
+};
 
 export const MONTH_LABELS = [
   'Jan', 'Feb', 'Mar', 'Apr',
@@ -225,11 +259,11 @@ export const MONTH_LABELS = [
  * the theme's `color-scheme` makes the browser's calendar icon follow dark mode.
  */
 export const DateField = ({ label, value, onChange, min, max, testId }) => (
-  <label className="form-control w-full">
-    <span className="mb-1 block text-xs font-medium text-base-content/70">{label}</span>
+  <label className="block w-full">
+    <span className="mb-1.5 block px-1 text-xs font-medium text-base-content/70">{label}</span>
     <input
       type="date"
-      className="input input-bordered input-sm w-full"
+      className="input input-bordered w-full rounded-lg font-medium tabular-nums focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
       value={value || ''}
       min={min || undefined}
       max={max || undefined}

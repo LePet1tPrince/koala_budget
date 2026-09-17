@@ -4,6 +4,7 @@ import { endOfMonth, endOfYear, format, isValid, parseISO, subMonths, subYears }
 import PickerPopover, {
   CalendarIcon,
   DateField,
+  PanelHeading,
   PickerActions,
   PresetList,
 } from '../common/PickerPopover';
@@ -76,7 +77,7 @@ const BalanceSheetDatePickerWrapper = () => {
       panelClassName="w-max"
     >
       {({ close }) => (
-        <div className="flex gap-3">
+        <div className="flex gap-5">
           <PresetList
             presets={presetRanges}
             active={activePreset}
@@ -86,10 +87,8 @@ const BalanceSheetDatePickerWrapper = () => {
             }}
           />
 
-          <div className="flex w-52 flex-col gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-base-content/70">
-              Custom Date
-            </p>
+          <div className="flex w-56 flex-col gap-3">
+            <PanelHeading>Custom Date</PanelHeading>
             <DateField
               label="As of date"
               value={tempDate}

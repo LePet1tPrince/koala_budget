@@ -15,6 +15,7 @@ import {
 import PickerPopover, {
   CalendarIcon,
   DateField,
+  PanelHeading,
   PickerActions,
   PresetList,
 } from './PickerPopover';
@@ -108,13 +109,11 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
       panelClassName="w-max"
     >
       {({ close }) => (
-        <div className="flex gap-3">
+        <div className="flex gap-5">
           <PresetList presets={presetRanges} active={activeRange} onSelect={handlePresetClick} />
 
-          <div className="flex w-52 flex-col gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-base-content/70">
-              Custom Range
-            </p>
+          <div className="flex w-56 flex-col gap-3">
+            <PanelHeading>Custom Range</PanelHeading>
             <DateField
               label="Start date"
               value={tempStart}

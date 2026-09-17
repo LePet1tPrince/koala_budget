@@ -105,12 +105,14 @@ const MonthRangePicker = ({ startMonth, endMonth, onApply, preset }) => {
   const editedValue = editing === 'start' ? tempStart : tempEnd;
   const editedDate = safeParseMonth(editedValue);
 
-  // Jump the grid to the year of whichever side is being edited, but only when the
-  // side changes — otherwise this would fight the year arrows.
+  // Jump the grid to the year of whichever side is being edited. Keyed on the side
+  // and its value, not on every render, so the year arrows are not fought: moving
+  // the arrows does not change the edited value, and picking a month sets a value
+  // whose year the grid is already showing.
   useEffect(() => {
     if (editedDate) setGridYear(editedDate.getFullYear());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing]);
+  }, [editing, editedValue]);
 
   const getDisplayText = () => {
     if (!startMonth && !endMonth) return 'Select month range';
@@ -130,28 +132,31 @@ const MonthRangePicker = ({ startMonth, endMonth, onApply, preset }) => {
       panelClassName="w-max"
     >
       {({ close }) => (
-        <div className="flex gap-3">
+        <div className="flex gap-5">
           <PresetList presets={presetRanges} active={activeRange} onSelect={handlePresetClick} />
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {/* Which end of the range the grid below is setting. */}
-            <div role="tablist" className="tabs tabs-box tabs-xs">
-              <button
-                type="button"
-                role="tab"
-                className={`tab ${editing === 'start' ? 'tab-active' : ''}`}
-                onClick={() => setEditing('start')}
-              >
-                Start: {formatDisplayMonth(tempStart) || '—'}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                className={`tab ${editing === 'end' ? 'tab-active' : ''}`}
-                onClick={() => setEditing('end')}
-              >
-                End: {formatDisplayMonth(tempEnd) || '—'}
-              </button>
+            <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-base-200 p-1">
+              {[['start', 'Start', tempStart], ['end', 'End', tempEnd]].map(([side, label, value]) => (
+                <button
+                  key={side}
+                  type="button"
+                  role="tab"
+                  aria-selected={editing === side}
+                  className={`rounded-lg px-3 py-1.5 text-center transition-colors ${
+                    editing === side ? 'bg-base-100 shadow-sm' : 'hover:bg-base-100/60'
+                  }`}
+                  onClick={() => setEditing(side)}
+                >
+                  <span className="block text-[0.65rem] uppercase tracking-[0.08em] text-base-content/60">
+                    {label}
+                  </span>
+                  <span className="block text-sm font-semibold tabular-nums">
+                    {formatDisplayMonth(value) || '—'}
+                  </span>
+                </button>
+              ))}
             </div>
 
             <MonthGrid
