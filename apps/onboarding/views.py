@@ -37,6 +37,7 @@ from .questions import (
     catalog_payload,
 )
 from .services.builder import build_template, unanswered_required
+from .services.review import ReviewError, apply_edits, grouped_for_review, parse_edits
 
 
 def get_or_create_state(team) -> OnboardingState:
@@ -92,6 +93,7 @@ def onboarding_home(request, team_slug):
                 "homeUrl": reverse("web_team:home", args=[team_slug]),
                 "urls": {
                     "answers": reverse("onboarding:api_answers", args=[team_slug]),
+                    "previewCoa": reverse("onboarding:api_preview_coa", args=[team_slug]),
                     "complete": reverse("onboarding:api_complete", args=[team_slug]),
                     "skip": reverse("onboarding:api_skip", args=[team_slug]),
                 },
@@ -239,9 +241,32 @@ def api_answers(request, team_slug):
 
 @require_POST
 @login_and_team_required
+def api_preview_coa(request, team_slug):
+    """
+    The chart of accounts these answers would produce, without writing anything.
+
+    Built from the same `build_template` the apply step uses, so what the user
+    reviews and what they get cannot drift apart.
+    """
+    state = get_or_create_state(request.team)
+
+    body = _json_body(request)
+    answers = {**state.answers, **_clean_answers(body.get("answers", {}))}
+
+    template = build_template(answers)
+    try:
+        template = apply_edits(template, parse_edits(body.get("edits")))
+    except ReviewError as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
+    return JsonResponse({"sections": grouped_for_review(template)})
+
+
+@require_POST
+@login_and_team_required
 def api_complete(request, team_slug):
     """
-    Build the chart of accounts from the answers and finish.
+    Build the chart of accounts, apply the user's edits to it, and finish.
 
     Refuses while a required question is unanswered -- the client hides Continue
     in that case, but the rule lives here, not in the UI.
@@ -260,8 +285,13 @@ def api_complete(request, team_slug):
             status=400,
         )
 
+    try:
+        template = apply_edits(build_template(state.answers), parse_edits(body.get("edits")))
+    except ReviewError as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
     with transaction.atomic():
-        apply_template(team=request.team, template=build_template(state.answers))
+        apply_template(team=request.team, template=template)
         _create_first_goal(request.team, state.answers)
         state.complete()
         state.save()

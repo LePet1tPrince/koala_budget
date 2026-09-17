@@ -28,6 +28,7 @@ const post = async (url, body) => {
 
 export const getOnboardingApi = (urls) => ({
   saveAnswers: (answers, questionPhase) => post(urls.answers, { answers, question_phase: questionPhase }),
-  complete: (answers) => post(urls.complete, { answers }),
+  previewCoa: (answers, edits) => post(urls.previewCoa, { answers, edits }),
+  complete: (answers, edits) => post(urls.complete, { answers, edits }),
   skip: () => post(urls.skip),
 });

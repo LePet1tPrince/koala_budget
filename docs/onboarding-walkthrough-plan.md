@@ -679,11 +679,49 @@ via the dependency, `Vehicle` without a `Car Loan`, no `Mortgage`, and none of t
 template's unasked-for accounts. The named goal reached the dashboard's "To reach all
 goals" card, its backing account in a real `Goals` group rather than the system equity one.
 
+### Chart-of-accounts review (step 4)
+
+Phase C now sits between the last question and completion: the generated chart, grouped
+by type, each account a chip the user can rename in place or drop, with an "Add" per
+group.
+
+**The client posts edits, not a chart of accounts.** This is the security-relevant choice.
+A wholesale list would let a client invent an account inside the system equity group, flip
+`is_system`, or attach an account to a group no answer created. Instead the payload is a
+diff — `{removed, renamed, added}` — and the server rebuilds the chart from the *stored
+answers* and applies the diff to its own set, so none of that is expressible. Both
+`api/preview-coa/` and the apply path rebuild from the same `build_template`, so what the
+user reviews and what they get cannot drift.
+
+Refused outright, each with a user-facing message and nothing written: removing the system
+reconciliation account (opening balances and reconciliation post against it), adding to a
+group outside the generated chart, a blank or over-long name, and a name that collides
+within its account *type* — the same uniqueness rule `AccountForm` and the accounts board
+use, checked case-insensitively.
+
+Every edit round-trips through the server: changing a chip re-posts the diff and redraws
+from the response, so the list on screen is always the server's answer rather than an
+optimistic guess. A rejected edit leaves the previous list up with the reason above it.
+Edits reset whenever review is re-entered, because they are keyed by generated account
+name and changing an answer can remove the account a rename referred to.
+
+**Deviation from §5.2:** there is no separate `api/apply-coa/`. `api/complete/` takes the
+same optional `edits` payload and remains the one endpoint that finishes the flow —
+applying the chart, creating the first goal and marking the state complete. A second
+endpoint that did the apply half would have been a name for something `complete` already
+does.
+
+A bug the tests caught: `parse_edits` iterated a bare string character by character, so
+`{"removed": "Rent"}` read as a request to remove accounts named "R", "e", "n", "t". The
+container types are now checked before iterating.
+
+Verified in a browser in both themes: 28 accounts generated for a mortgage-holding
+household with kids, a car loan and a line of credit; renaming Groceries → Food & Drink
+and removing Pets left 27, and the database afterwards held exactly that — the rename
+applied, Pets gone, Travel untouched, the system account still present and still hidden
+from review.
+
 ### Not yet built
 
-Steps 4–8 of §10: Phase C review, the Phase D task rail, opening balances, the finish
-card, and the E2E suite. The visual spec is §6, written against the restyled design system.
-
-Step 3 ends the questionnaire by applying the generated chart of accounts directly; step 4
-inserts the review-and-edit screen in front of that, replacing `api/complete/`'s build step
-with `api/preview-coa/` plus `api/apply-coa/`.
+Steps 5–8 of §10: the Phase D task rail, opening balances, the finish card, and the E2E
+suite. The visual spec is §6, written against the restyled design system.

@@ -37,6 +37,7 @@ class OnboardingViewTestCase(TestCase):
         self.answers_url = reverse("onboarding:api_answers", args=[self.team.slug])
         self.complete_url = reverse("onboarding:api_complete", args=[self.team.slug])
         self.skip_url = reverse("onboarding:api_skip", args=[self.team.slug])
+        self.preview_url = reverse("onboarding:api_preview_coa", args=[self.team.slug])
 
     def post_json(self, url, payload=None):
         return self.client.post(
@@ -265,3 +266,119 @@ class TeamHomeRedirectTest(OnboardingViewTestCase):
     def test_disabling_onboarding_leaves_the_dashboard_alone(self):
         response = self.client.get(reverse("web_team:home", args=[self.team.slug]))
         self.assertEqual(response.status_code, 200)
+
+
+VALID_ANSWERS = {
+    "income_sources": ["employment"],
+    "household_shape": "solo",
+    "housing": "rent",
+    "kids": "no",
+    "transport": ["transit"],
+    "debts": ["none"],
+    "savings": ["tfsa"],
+    "extras": ["none"],
+}
+
+
+class PreviewCoaTest(OnboardingViewTestCase):
+    def test_returns_sections_without_writing_anything(self):
+        response = self.post_json(self.preview_url, {"answers": VALID_ANSWERS})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["sections"])
+        self.assertFalse(Account.objects.filter(team=self.team).exists())
+        self.assertFalse(OnboardingState.objects.get(team=self.team).is_finished)
+
+    def test_reflects_the_answers(self):
+        response = self.post_json(self.preview_url, {"answers": VALID_ANSWERS})
+
+        shown = {n for s in response.json()["sections"] for g in s["groups"] for n in g["accounts"]}
+        self.assertIn("Rent", shown)
+        self.assertNotIn("Mortgage", shown)
+
+    def test_applies_edits_to_the_preview(self):
+        response = self.post_json(
+            self.preview_url,
+            {"answers": VALID_ANSWERS, "edits": {"removed": ["Rent"], "renamed": {"Groceries": "Food"}}},
+        )
+
+        shown = {n for s in response.json()["sections"] for g in s["groups"] for n in g["accounts"]}
+        self.assertNotIn("Rent", shown)
+        self.assertIn("Food", shown)
+
+    def test_an_invalid_edit_is_refused(self):
+        response = self.post_json(
+            self.preview_url, {"answers": VALID_ANSWERS, "edits": {"renamed": {"Groceries": "Dining Out"}}}
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(response.json()["error"])
+
+    def test_non_member_is_refused(self):
+        outsider = CustomUser.objects.create_user(username="nosy", password="pass")
+        self.client.force_login(outsider)
+
+        self.assertNotEqual(self.post_json(self.preview_url, {"answers": VALID_ANSWERS}).status_code, 200)
+
+
+class CompleteWithEditsTest(OnboardingViewTestCase):
+    def test_edits_are_applied_to_what_gets_created(self):
+        self.post_json(
+            self.complete_url,
+            {
+                "answers": VALID_ANSWERS,
+                "edits": {
+                    "removed": ["Tenant Insurance"],
+                    "renamed": {"Groceries": "Food & Drink"},
+                    "added": [{"group": "Variable Expenses", "name": "Concerts"}],
+                },
+            },
+        )
+
+        names = set(Account.objects.filter(team=self.team).values_list("name", flat=True))
+        self.assertNotIn("Tenant Insurance", names)
+        self.assertNotIn("Groceries", names)
+        self.assertIn("Food & Drink", names)
+        self.assertIn("Concerts", names)
+
+    def test_an_invalid_edit_creates_nothing(self):
+        """All-or-nothing: a refused edit must not leave a half-built chart."""
+        response = self.post_json(
+            self.complete_url,
+            {"answers": VALID_ANSWERS, "edits": {"added": [{"group": "Nowhere", "name": "Mystery"}]}},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Account.objects.filter(team=self.team).exists())
+        self.assertFalse(OnboardingState.objects.get(team=self.team).is_finished)
+
+    def test_the_system_account_survives_a_removal_attempt(self):
+        response = self.post_json(
+            self.complete_url,
+            {"answers": VALID_ANSWERS, "edits": {"removed": ["Reconciliation Adjustments"]}},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Account.objects.filter(team=self.team).exists())
+
+    def test_an_account_cannot_be_smuggled_into_the_system_group(self):
+        """
+        The edit shape is why this is not expressible: additions name a group from
+        the generated chart, and `is_system` is never client-supplied.
+        """
+        self.post_json(
+            self.complete_url,
+            {
+                "answers": VALID_ANSWERS,
+                "edits": {"added": [{"group": "Equity Adjustments", "name": "Sneaky"}]},
+            },
+        )
+
+        sneaky = Account.objects.filter(team=self.team, name="Sneaky").first()
+        if sneaky is not None:
+            self.assertFalse(sneaky.is_system)
+
+    def test_malformed_edits_fall_back_to_the_unedited_chart(self):
+        self.post_json(self.complete_url, {"answers": VALID_ANSWERS, "edits": "not an object"})
+
+        self.assertTrue(Account.objects.filter(team=self.team, name="Rent").exists())

@@ -258,3 +258,62 @@
     transition-duration: 120ms;
   }
 }
+
+/*
+  Phase C: the chart-of-accounts review.
+
+  A chart of accounts runs to 20-40 entries, more than fits a takeover panel at a
+  readable size, so the list scrolls inside the panel rather than growing it past
+  the viewport. `min-h` matches `.onboarding-question` so the panel does not
+  resize as the flow moves from the last question into review.
+*/
+.coa-scroll {
+  @apply max-h-[min(24rem,45vh)] min-h-[14rem] space-y-5 overflow-y-auto pr-1;
+
+  /*
+    Scroll shadows, so it is obvious the list continues past the fold. The classic
+    background-attachment trick: the two `local` gradients scroll with the content
+    and cover the shadows at the very top and bottom, so each shadow appears only
+    when there is actually more to see in that direction. The shadow colour is
+    mixed from `base-content` rather than a fixed black, which would vanish
+    against the dark theme's panel.
+  */
+  background:
+    linear-gradient(var(--color-base-100) 30%, transparent) top / 100% 1.5rem no-repeat local,
+    linear-gradient(transparent, var(--color-base-100) 70%) bottom / 100% 1.5rem no-repeat local,
+    radial-gradient(
+        farthest-side at 50% 0,
+        color-mix(in oklch, var(--color-base-content) 14%, transparent),
+        transparent
+      )
+      top / 100% 0.5rem no-repeat scroll,
+    radial-gradient(
+        farthest-side at 50% 100%,
+        color-mix(in oklch, var(--color-base-content) 14%, transparent),
+        transparent
+      )
+      bottom / 100% 0.5rem no-repeat scroll;
+}
+
+.coa-section + .coa-section {
+  @apply border-t border-base-300 pt-4;
+}
+
+.coa-chip {
+  @apply inline-flex items-center rounded-field border border-base-300 bg-base-200/60 text-sm
+         transition-colors hover:border-base-content/20;
+}
+
+.coa-chip-name {
+  @apply cursor-text py-1 pl-2.5 pr-1 text-left;
+}
+
+.coa-chip-remove {
+  @apply rounded-r-field px-2 py-1 text-xs text-base-content/45
+         transition-colors hover:bg-error/10 hover:text-error;
+}
+
+.coa-add {
+  @apply inline-flex items-center rounded-field border border-dashed border-base-300 px-2.5 py-1
+         text-sm text-base-content/70 transition-colors hover:border-primary/50 hover:text-primary;
+}
