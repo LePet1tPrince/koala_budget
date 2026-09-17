@@ -83,4 +83,4 @@ def test_transactions_search_filters_rows(requires_vite, authenticated_page: Pag
 
     # After search, only the matching row should remain
     transactions.search("Coffee")
-    assert transactions.get_row_count() == 1
+    transactions.expect_row_count(1)
