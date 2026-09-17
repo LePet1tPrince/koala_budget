@@ -128,7 +128,7 @@ export const InvitationList = function(props) {
         <br/>
         <h3 className='text-xl mb-1'>{gettext("Pending Invitations")}</h3>
         <div className='table-responsive'>
-          <table className="table table table-quiet w-full">
+          <table className="table table-quiet w-full">
             <thead>
             <tr>
               <th>{gettext("Email")}</th>

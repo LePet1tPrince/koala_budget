@@ -36,7 +36,7 @@ export const UserInvitations = function ({invitations, apiUrls, showTitle = true
   return (
     <>
       <div className='table-responsive'>
-        <table className="table table table-quiet w-full">
+        <table className="table table-quiet w-full">
           <thead>
           <tr>
             <th>{gettext("Team Name")}</th>
@@ -77,7 +77,7 @@ export const TeamList = function(props) {
       <section className="app-card">
         <h3 className="text-xl mb-1">{gettext("My Teams")}</h3>
         <div className='table-responsive'>
-          <table className="table table table-quiet w-full">
+          <table className="table table-quiet w-full">
             <thead>
             <tr>
               <th>{gettext("Name")}</th>

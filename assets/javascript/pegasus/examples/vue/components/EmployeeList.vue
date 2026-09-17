@@ -2,7 +2,7 @@
   <section class="app-card">
     <h1 class="text-xl mb-1">All Employees</h1>
     <div class="table-responsive">
-      <table class="table table table-quiet w-full">
+      <table class="table table-quiet w-full">
         <thead>
         <tr>
           <th>Name</th>

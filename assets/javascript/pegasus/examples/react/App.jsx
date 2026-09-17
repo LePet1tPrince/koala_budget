@@ -43,7 +43,7 @@ const EmployeeList = function(props) {
       NOW THIS IS THE SECTION
       <h3 className="text-xl mb-1">All Employees</h3>
       <div className='table-responsive'>
-        <table className="table table table-quiet w-full">
+        <table className="table table-quiet w-full">
           <thead>
           <tr>
             <th className="text-left">Name</th>
