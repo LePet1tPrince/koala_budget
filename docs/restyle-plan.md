@@ -370,12 +370,45 @@ inputs — converting it wholesale would have risked a working table for no visi
 the first cut of this phase made light-mode contrast *worse* on ~20 elements. `/70` is the muted-text token from here
 on. `/40`–`/45` stays on icons and chevrons, which are decorative and sit beside a real label.
 
-### Phase 4 — Retire Pegasus
+### Phase 4 — Retire Pegasus ✅ *shipped*
 
-457 occurrences across 101 files, but mechanically substitutable — `pg-button-primary` → `btn btn-primary`,
-`pg-title`/`pg-subtitle` → the §2.2 scale, `pg-card` → `.app-card`. Delete
-`assets/styles/pegasus/tailwind.css`, `templates/pegasus/`, `templates/teams_example/`. Scriptable with review, one class
-at a time, highest-count first.
+620 substitutions across 123 files; `assets/styles/pegasus/tailwind.css` deleted. **No `pg-` class remains in the
+source or in any rendered DOM.** The estimate above was 457/101 — it counted templates only and missed the React
+components and the two Python files that carry classes in widget attrs.
+
+Most of the layer was alias-thin (`pg-button-primary` → `btn btn-primary`, `pg-subtitle` → `text-xl mb-1`,
+`pg-card-body` → `card-body pt-0`), but it was also hiding the last theme-blind colors in the app:
+
+| Was | Now | Why |
+|---|---|---|
+| `pg-link` = `text-blue-500 hover:text-blue-800` | `link link-primary` | hardcoded hue, off-brand |
+| `pg-button-danger` = `text-red-500 border-red-500 hover:bg-red-500 hover:text-white` | `btn btn-outline btn-error` | hardcoded, and `hover:text-white` is wrong on a light surface |
+| `pg-bg-danger` / `pg-bg-success` = `bg-red-100` / `bg-green-100` | `bg-error/10` / `bg-success/10` | pale tints stayed pale on the dark canvas |
+| `pg-breadcrumb-active` = `#7a7a7a`, separator `gray` | daisyUI `breadcrumbs` + `text-base-content/70` | literal colors |
+| `pg-card` = `card shadow-xl` | `card bg-base-100 border border-base-300` | contradicted `--depth: 0` |
+| `pg-button-sm`, `pg-card-image` | `btn-sm`, dropped | **never defined** — the three "small" buttons on the Groups/Payees/Institutions lists have always rendered full-size |
+
+Two could not be swapped in place. `pg-select` styled its *child*, so `select w-full` moved onto the `<select>`
+itself (a widget attr on the Django form, a `className` in the React widget). The Alpine demo built its class by
+concatenating a suffix (`'pg-bg-' + styleValue`), which breaks once the targets carry an opacity modifier — it is now
+an object expression, with both utilities safelisted since Tailwind cannot see inside an Alpine attribute.
+
+The chat layer in `chat-components.css` is **our** CSS that merely inherited the vendor prefix, so it kept its rules
+and lost the prefix: `pg-chat-*` → `chat-*`, `pg-message-*` → `chat-message-*`, `pg-avatar` → `chat-avatar` (plain
+`avatar` collides with daisyUI's). With the layer gone the `--primary`/`--danger`/`--success` aliases went too — four
+rules now name the theme tokens directly — and `.table-quiet` dropped the `.pg-table` twin Phase 3 left on it.
+
+**The demo apps were *not* deleted, contrary to the plan above.** `templates/pegasus/` and `templates/teams_example/`
+are still routed, and the apps behind them are entangled with real code: `apps/ai/tools/employees.py` imports the demo
+`Employee` model, and a Celery beat entry in `settings.py` points at `pegasus.apps.examples.tasks`. Removing them also
+means a migration dropping two tables. That is an app-removal change, not a restyle — so the demo templates were
+converted like everything else and the deletion is left as its own piece of work.
+
+**A caution for anyone scripting a sweep like this.** The first pass also normalized whitespace inside every
+`class="…"` it touched. `class="([^"]*)"` terminates at the *first* inner quote, so on
+`class="{% if "danger" in attrs.tags %}…"` it matched `{% if ` and stripped the trailing space, producing `{% if"danger"`
+— a `TemplateSyntaxError` that took out every allauth page. Exactly one file in the repo had a nested quote inside a
+class attribute, and the test suite caught it. Match on `\bpg-[a-z-]+\b` and leave the surrounding attribute alone.
 
 ### Phase 5 — Migrate Bank Feed + Transactions off MUI
 
@@ -411,5 +444,8 @@ Consolidate on inline SVG (Lucide-style, ~24 icons), drop the Font Awesome CDN f
    one-line change if it feels heavy in review.
 3. **Top navbar removal** assumes nothing else needs to live there. Confirm before Phase 2 — it currently holds only the
    wordmark and theme selector.
-4. **Phase 4 vs. Phase 5 ordering.** Pegasus removal is larger in file count but far lower in risk than the MUI
-   migration. They can run in parallel if two people are working.
+4. ~~**Phase 4 vs. Phase 5 ordering.**~~ Settled: Phase 4 shipped first, and was indeed low-risk — the only breakage
+   was self-inflicted by the sweep script, not by any substitution. Phase 5 is now the only large item left.
+5. **The Pegasus demo apps.** Phase 4 restyled them rather than deleting them (see above). Whether to keep an
+   Examples Gallery and an Employee/Player CRUD demo in a budgeting product at all is a product call, not a styling
+   one — but they are unlinked from the nav already, so nobody reaches them by accident.
