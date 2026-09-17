@@ -42,6 +42,7 @@ export default defineConfig({
         'budget-grid-app': path.resolve(__dirname, './assets/javascript/budget/budget-grid-app.jsx'),
         'goals-app': path.resolve(__dirname, './assets/javascript/budget/goals-app.js'),
         'accounts-board-app': path.resolve(__dirname, './assets/javascript/accounts/accounts-board-app.jsx'),
+        'onboarding-app': path.resolve(__dirname, './assets/javascript/onboarding/onboarding-app.jsx'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
         'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
         'home-net-worth-chart': path.resolve(__dirname, './assets/javascript/dashboard/home-net-worth-chart.js'),

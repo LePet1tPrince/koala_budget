@@ -262,6 +262,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
           <Step1FileUpload
             onFileUpload={handleFileUpload}
             onCancel={onCancel}
+            sampleCsvUrl={uploadApi.sampleCsvUrl}
           />
         )}
 

@@ -1,5 +1,3 @@
-from datetime import date
-
 from allauth.account.signals import user_signed_up
 from django.conf import settings
 from django.db.models.signals import post_save
@@ -40,10 +38,12 @@ def bootstrap_team_on_create(sender, instance, created, **kwargs):
     if not getattr(settings, "BOOTSTRAP_TEAM_ON_CREATE", True):
         return
 
-    month_start = date.today().replace(day=1)
+    if getattr(settings, "ONBOARDING_ENABLED", False):
+        # The walkthrough builds the chart of accounts from the user's answers.
+        # Pre-creating the stock one here would hand them a mortgage and a line of
+        # credit before they were asked whether they have either, and would make
+        # the questionnaire decorative. Onboarding applies a template either way:
+        # the generated one on completion, this stock one if the user skips.
+        return
 
-    apply_template(
-        team=instance,
-        template=PERSONAL_BUDGET_TEMPLATE,
-        month_start=month_start,
-    )
+    apply_template(team=instance, template=PERSONAL_BUDGET_TEMPLATE)

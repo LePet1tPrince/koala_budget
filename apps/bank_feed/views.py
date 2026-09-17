@@ -7,9 +7,11 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Count, F, Max
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -48,6 +50,7 @@ from .serializers import (
     bank_transaction_to_feed_row,
 )
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
+from .services.sample_csv import build_sample_csv
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_mirror import linked_legs, sync_transfer, would_orphan_primary
 
@@ -728,6 +731,25 @@ class BankFeedViewSet(
         row = bank_transaction_to_feed_row(bank_tx)
         response_serializer = BankFeedRowSerializer(row)
         return Response(response_serializer.data)
+
+    @extend_schema(
+        operation_id="bank_feed_sample_csv",
+        tags=["bank-feed"],
+        responses={(200, "text/csv"): OpenApiTypes.STR},
+    )
+    @action(detail=False, methods=["get"], url_path="sample_csv")
+    def sample_csv(self, request, team_slug=None):
+        """
+        Download a sample bank statement CSV.
+
+        For users who want to try the import before they have a statement of
+        their own. Nothing is created here -- the file is downloaded and then
+        uploaded through the ordinary wizard, so the rows that land in the team's
+        books are ones the user knowingly imported.
+        """
+        response = HttpResponse(build_sample_csv(), content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="koala-sample-statement.csv"'
+        return response
 
     @extend_schema(
         operation_id="bank_feed_upload_parse",
