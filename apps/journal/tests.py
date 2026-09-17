@@ -917,6 +917,59 @@ class TransactionSearchFilterAPITest(TestCase):
         self.assertEqual(descriptions, {"Entry 0", "Entry 1", "Entry 2"})
 
 
+class TransactionZeroAmountAPITest(TestCase):
+    """
+    A $0.00 entry has dr_amount == cr_amount == 0 on both of its lines, so
+    the debit/credit account can't be picked out by testing each line's
+    amount against zero in isolation -- the Transactions list must still
+    report both accounts by comparing the two lines against each other.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.asset_group = AccountGroup.objects.create(
+            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.bank_account = Account.objects.create(
+            team=cls.team, name="Checking", account_group=cls.asset_group
+        )
+        cls.expense_account = Account.objects.create(
+            team=cls.team, name="Miscellaneous", account_group=cls.expense_group
+        )
+
+        with current_team(cls.team):
+            cls.entry = JournalEntry.objects.create(
+                team=cls.team, entry_date=date(2025, 1, 1), description="Zero-dollar memo transaction"
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.entry, account=cls.bank_account, dr_amount=Decimal("0")
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.entry, account=cls.expense_account, cr_amount=Decimal("0")
+            )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_zero_amount_entry_still_reports_both_accounts(self):
+        """Both accounts should be named even though neither line's amount is > 0."""
+        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/")
+
+        self.assertEqual(response.data["count"], 1)
+        row = response.data["results"][0]
+        self.assertEqual(row["debit_account"], "Checking")
+        self.assertEqual(row["credit_account"], "Miscellaneous")
+        self.assertEqual(row["amount"], "0.00")
+
+
 class JournalPermissionsTest(TestCase):
     """Tests for journal permissions."""
 
