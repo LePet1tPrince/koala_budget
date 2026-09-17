@@ -630,8 +630,60 @@ applies, is idempotent, merges on re-run, creates no transactions, and isolates 
 `test_gates.py` (the transaction/entry boundary, void handling, team isolation) and
 `test_models.py`.
 
+### The takeover UI (step 3)
+
+The questionnaire, end to end: welcome → 9 questions, one per screen → the chart of
+accounts is built and the user lands on the dashboard. Skip and resume both work.
+
+`/a/{slug}/onboarding/` is a full-screen takeover on its own URL rather than a modal over
+the dashboard — the questions read faster without the app behind them, and a real URL is
+what makes the flow resumable by navigating back to it. Site nav and footer are suppressed
+on it, so nothing shows through the backdrop that the user can't act on.
+
+`team_home` redirects an unfinished team into it. Endpoints: `api/answers/` (merges rather
+than replaces, so posting one phase at a time never drops an earlier one),
+`api/complete/` (builds and applies the chart of accounts, creates the first goal) and
+`api/skip/` (applies the stock template — skipping must not leave a team with no accounts
+to work in).
+
+**The bootstrap conflict, resolved.** `bootstrap_team_on_create` was still applying the
+stock 16-account template to every new team, which would have handed the user a mortgage
+and a line of credit before they were asked whether they had either, and made the
+questionnaire decorative. A new `ONBOARDING_ENABLED` setting gates it: when on, bootstrap
+creates nothing and onboarding owns the chart of accounts; when off, the old behaviour
+returns and nobody is sent through the flow. Onboarding applies a template on both exits,
+so neither path leaves a team empty. Migration `0002` marks pre-existing teams complete so
+a deploy does not throw them all into the walkthrough.
+
+`OnboardingShell.jsx` never names a question — it switches on *kind* and *phase*, both of
+which are data, so editing the catalog needs no frontend change. Answers save in the
+background between screens; a failed save is swallowed rather than blocking, because every
+answer is posted again with the final submit, so the worst case is a resume losing a few
+answers rather than the flow stalling.
+
+Two bugs the work surfaced:
+
+- `catalog_payload()` was not carrying `catch_all`, so the client's mutual-exclusion logic
+  ("none of these" clearing the other picks, and vice versa) was reading `undefined`. The
+  step-2 test asserting the payload's shape had locked in the wrong shape; both are fixed.
+- The view called `state.start()` on GET, which advanced past `welcome` and meant the
+  welcome screen never rendered. `mark_seen()` now records the first sight of the flow for
+  the funnel, and `start()` — which moves the phase — happens when the user actually
+  begins.
+
+Verified in a browser on both themes: the dashboard bounces an un-onboarded team into the
+takeover, Continue stays disabled until a required question is answered, and a full
+run-through as a renting household with a paid-off car, a student loan, kids, a TFSA and
+an RRSP produced exactly those accounts and no others — `Salary Income — Partner` present
+via the dependency, `Vehicle` without a `Car Loan`, no `Mortgage`, and none of the stock
+template's unasked-for accounts. The named goal reached the dashboard's "To reach all
+goals" card, its backing account in a real `Goals` group rather than the system equity one.
+
 ### Not yet built
 
-Steps 3–8 of §10: the takeover UI, Phase C review, the Phase D task rail, opening
-balances, the finish card, and the E2E suite. The visual spec is §6, written against the
-restyled design system.
+Steps 4–8 of §10: Phase C review, the Phase D task rail, opening balances, the finish
+card, and the E2E suite. The visual spec is §6, written against the restyled design system.
+
+Step 3 ends the questionnaire by applying the generated chart of accounts directly; step 4
+inserts the review-and-edit screen in front of that, replacing `api/complete/`'s build step
+with `api/preview-coa/` plus `api/apply-coa/`.

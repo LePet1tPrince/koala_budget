@@ -103,3 +103,158 @@
 .table-quiet tbody tr:hover > * {
   @apply bg-base-200/60;
 }
+
+/*
+  Guided onboarding takeover (onboarding plan §6).
+
+  Only `opacity` and `transform` are animated -- no layout-triggering properties --
+  so the flow holds 60fps on a mid-range phone. Every transition here is reduced to
+  a short fade by the `prefers-reduced-motion` block at the foot of this section.
+
+  The panel is the one place in the app allowed a shadow: `--depth: 0` means borders
+  separate surfaces, but this is a true overlay floating above the app rather than
+  sitting on the canvas.
+*/
+.onboarding-backdrop {
+  @apply fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4;
+  background-color: color-mix(in oklch, var(--color-base-300) 70%, transparent);
+  opacity: 0;
+  transition: opacity 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.onboarding-backdrop.is-open {
+  opacity: 1;
+  backdrop-filter: blur(4px);
+}
+
+.onboarding-panel {
+  @apply relative w-full max-w-2xl shadow-lg;
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  transition:
+    opacity 420ms cubic-bezier(0.16, 1, 0.3, 1) 120ms,
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1) 120ms;
+}
+
+.onboarding-backdrop.is-open .onboarding-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* One question per screen. A min-height keeps the panel from resizing under the
+   user as questions with different option counts come and go. */
+.onboarding-question {
+  @apply min-h-[19rem];
+}
+
+.onboarding-step {
+  @apply transition-[opacity,transform];
+}
+
+.onboarding-step.is-entering-forward {
+  animation: onboarding-in-forward 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.onboarding-step.is-entering-back {
+  animation: onboarding-in-back 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.onboarding-step.is-leaving-forward {
+  opacity: 0;
+  transform: translateX(-16px);
+  transition-duration: 260ms;
+}
+
+.onboarding-step.is-leaving-back {
+  opacity: 0;
+  transform: translateX(16px);
+  transition-duration: 260ms;
+}
+
+@keyframes onboarding-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes onboarding-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+/*
+  Selected state reuses the sidebar's active idiom (a brand tint, not a filled
+  slab) so a user who has learned the nav already knows what "selected" looks like.
+*/
+.onboarding-option {
+  @apply flex w-full items-start gap-3 rounded-field border border-base-300 px-4 py-3 text-left
+         transition-[background-color,border-color,color,transform] duration-150
+         hover:border-primary/40 hover:bg-base-200;
+}
+
+.onboarding-option-selected {
+  @apply border-primary bg-primary/10 font-medium text-primary hover:bg-primary/10;
+  animation: onboarding-pick 180ms ease-out;
+}
+
+.onboarding-option-mark {
+  @apply mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border border-base-300 text-[0.625rem];
+}
+
+.onboarding-option-selected .onboarding-option-mark {
+  @apply border-primary bg-primary text-primary-content;
+}
+
+@keyframes onboarding-pick {
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+.onboarding-progress {
+  @apply mb-6 flex items-center gap-2;
+}
+
+.onboarding-dot {
+  @apply h-1.5 w-8 rounded-selector bg-base-300 transition-colors duration-300;
+}
+
+.onboarding-dot.is-filled {
+  @apply bg-primary;
+}
+
+.onboarding-actions {
+  @apply mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 pt-4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-backdrop,
+  .onboarding-panel {
+    transition-duration: 120ms;
+    transition-delay: 0ms;
+  }
+
+  .onboarding-panel {
+    transform: none;
+  }
+
+  .onboarding-backdrop.is-open .onboarding-panel {
+    transform: none;
+  }
+
+  .onboarding-step,
+  .onboarding-step.is-entering-forward,
+  .onboarding-step.is-entering-back,
+  .onboarding-option-selected {
+    animation: none;
+  }
+
+  .onboarding-step.is-leaving-forward,
+  .onboarding-step.is-leaving-back {
+    transform: none;
+    transition-duration: 120ms;
+  }
+}

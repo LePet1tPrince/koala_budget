@@ -15,6 +15,7 @@ from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal
 from apps.budget.services import NetWorthService
 from apps.journal.models import JournalEntry
+from apps.onboarding.views import get_or_create_state
 from apps.reports.services import ReportService
 from apps.teams.decorators import login_and_team_required
 from apps.teams.helpers import get_open_invitations_for_user
@@ -60,6 +61,16 @@ def home(request):
 def team_home(request, team_slug):
     assert request.team.slug == team_slug
     team = request.team
+
+    # A team that has not been through the guided walkthrough is sent to it. The
+    # state row is created here rather than by a signal on team creation, so the
+    # signal stays cheap; teams that predate the feature were marked complete by
+    # onboarding migration 0002 and never land here.
+    if settings.ONBOARDING_ENABLED:
+        onboarding = get_or_create_state(team)
+        if not onboarding.is_finished:
+            return HttpResponseRedirect(reverse("onboarding:home", args=[team.slug]))
+
     today = timezone.now().date()
     month = today.replace(day=1)
 

@@ -70,9 +70,19 @@ class OnboardingState(BaseTeamModel):
         """Finished either way -- completed or deliberately skipped."""
         return bool(self.completed_at or self.skipped_at)
 
-    def start(self):
+    def mark_seen(self):
+        """
+        Record that the takeover was opened, without advancing past the welcome.
+
+        Separate from `start()` so the funnel measures from the first sight of the
+        flow, while the phase only moves when the user actually begins.
+        """
         if self.started_at is None:
             self.started_at = timezone.now()
+
+    def start(self):
+        """The user has begun answering; move off the welcome screen."""
+        self.mark_seen()
         self.phase = self.PHASE_QUESTIONS
         phases = active_phases()
         self.question_phase = phases[0] if phases else ""

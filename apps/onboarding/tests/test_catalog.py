@@ -108,7 +108,7 @@ class CatalogPayloadTest(SimpleTestCase):
         for entry in catalog_payload():
             for option in entry["options"]:
                 with self.subTest(question=entry["id"], option=option["value"]):
-                    self.assertEqual(set(option), {"value", "label", "help_text"})
+                    self.assertEqual(set(option), {"value", "label", "help_text", "catch_all"})
 
     def test_payload_is_json_serializable(self):
         """Lazy translation proxies must be resolved, or json.dumps blows up."""

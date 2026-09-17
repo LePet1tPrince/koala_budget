@@ -7,6 +7,7 @@ from django.urls import reverse
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.onboarding.models import OnboardingState
 from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_MEMBER
@@ -23,6 +24,12 @@ class TeamHomeDashboardTest(TestCase):
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_MEMBER})
         cls.other_user = CustomUser.objects.create_user(username="outsider@example.com", password="testpass123")
         cls.url = reverse("web_team:home", kwargs={"team_slug": cls.team.slug})
+
+        # A team that reaches the dashboard has been through the guided walkthrough
+        # -- without this, the onboarding redirect intercepts every request here.
+        onboarding = OnboardingState.objects.create(team=cls.team)
+        onboarding.complete()
+        onboarding.save()
 
     def setUp(self):
         self.client.login(username="testuser@example.com", password="testpass123")

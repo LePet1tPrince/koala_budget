@@ -1,0 +1,51 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% load django_vite %}
+
+{% comment %}
+  The walkthrough is a full-screen takeover on its own URL, not a modal over the
+  dashboard: the questionnaire reads faster without the app behind it, and a real
+  URL is what makes the flow resumable by navigating back to it.
+{% endcomment %}
+
+{% block body_class %}bg-base-200{% endblock %}
+
+{% comment %}
+  No nav and no footer: this is a takeover, and the site chrome would otherwise
+  show through the blurred backdrop with nothing the user can usefully do with it.
+{% endcomment %}
+{% block top_nav %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block body %}
+  {{ onboarding_props|json_script:'onboarding-props' }}
+
+  <div id="onboarding-app"></div>
+
+  <noscript>
+    <div class="mx-auto mt-16 max-w-xl">
+      <div class="app-card">
+        <h1 class="text-xl font-semibold tracking-tight">{% translate "Welcome to Koala Budget" %}</h1>
+        <p class="mt-2 text-base-content/70">
+          {% blocktranslate trimmed %}
+            The guided setup needs JavaScript. You can skip it and start with a standard
+            chart of accounts instead.
+          {% endblocktranslate %}
+        </p>
+        <form method="post" action="{% url 'onboarding:api_skip' request.team.slug %}" class="mt-5">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary">{% translate "Skip setup" %}</button>
+        </form>
+      </div>
+    </div>
+  </noscript>
+{% endblock %}
+
+{% block page_js %}
+  {% comment %}
+ vite_react_refresh must come first: without the plugin's preamble the React
+     entry throws "can't detect preamble" in dev and the page renders nothing.
+  {% endcomment %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/onboarding/onboarding-app.jsx' %}
+{% endblock %}

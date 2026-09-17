@@ -15,7 +15,12 @@ PERSONAL_BUDGET_TEMPLATE = {
         {"name": "Variable Expenses", "type": "expense", "description": "Flexible spending"},
         {"name": "Other Expenses", "type": "expense", "description": "Miscellaneous expenses"},
         # Equity (system-managed, hidden from Goals UI)
-        {"name": "Equity Adjustments", "type": "goal", "description": "System equity accounts for reconciliation and opening balances", "is_system": True},
+        {
+            "name": "Equity Adjustments",
+            "type": "goal",
+            "description": "System equity accounts for reconciliation and opening balances",
+            "is_system": True,
+        },
     ],
     "accounts": [
         # Assets (1000s)

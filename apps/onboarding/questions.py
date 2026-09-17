@@ -468,7 +468,17 @@ def catalog_payload() -> list[dict]:
             "help_text": str(q.help_text),
             "kind": q.kind,
             "required": q.required,
-            "options": [{"value": o.value, "label": str(o.label), "help_text": str(o.help_text)} for o in q.options],
+            # `catch_all` is carried because the client needs it: picking "none of
+            # these" has to clear the other selections, and vice versa.
+            "options": [
+                {
+                    "value": o.value,
+                    "label": str(o.label),
+                    "help_text": str(o.help_text),
+                    "catch_all": o.catch_all,
+                }
+                for o in q.options
+            ],
         }
         for q in QUESTION_CATALOG
     ]
