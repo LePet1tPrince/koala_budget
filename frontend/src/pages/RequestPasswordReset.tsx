@@ -35,7 +35,7 @@ export default function RequestPasswordReset() {
   if (response.content?.status === 200) {
     return (
       <AuthLayout title="Reset Password">
-        <p className={"pg-text-centered"}>Password reset sent.</p>
+        <p className={"text-center"}>Password reset sent.</p>
       </AuthLayout>
     )
   }

@@ -3,34 +3,34 @@
 {% load i18n %}
 {% block app %}
 <section class="app-card">
-  <h1 class="pg-title">Subscription Demo</h1>
-  <h1 class="pg-subtitle">Basic examples to get you going with feature-gating based on subscriptions.</h1>
+  <h1 class="text-3xl font-bold mb-2">Subscription Demo</h1>
+  <h1 class="text-xl mb-1">Basic examples to get you going with feature-gating based on subscriptions.</h1>
   <p>Tip: the source of this page can be found at <code>templates/subscriptions/demo.html</code></p>
 </section>
 <section class="app-card">
-  <h1 class="pg-subtitle">Changing Content Based on a Subscription</h1>
+  <h1 class="text-xl mb-1">Changing Content Based on a Subscription</h1>
   <p>The text and color below will change based on whether you have an active subscription.</p>
   {% if subscription %}
-    <div class="my-2 pg-text-centered pg-text-success">
+    <div class="my-2 text-center text-success">
       <p>You're subscribed to {{ subscription.display_name }}! Hooray!</p>
     </div>
   {% else %}
-    <div class="my-2 pg-text-centered pg-text-info">
+    <div class="my-2 text-center text-info">
       <p>It doesn't look like you're subscribed. <a href="{{ subscription_urls.subscription_details }}"><strong>Upgrade Here!</strong></a></p>
     </div>
   {% endif %}
 </section>
 <section class="app-card">
-  <h1 class="pg-subtitle">Viewing Subscription Details</h1>
-  <p class="pg-content">
+  <h1 class="text-xl mb-1">Viewing Subscription Details</h1>
+  <p class="prose max-w-none lg:prose-lg">
     If you're subscribed to a plan, go to
     <a href="{{ subscription_urls.subscription_details }}">the subscription details page</a>
     to see an example of showing information about the subscription.
   </p>
 </section>
 <section class="app-card">
-  <h1 class="pg-subtitle">Restricting Access to a Page</h1>
-  <div class="pg-content">
+  <h1 class="text-xl mb-1">Restricting Access to a Page</h1>
+  <div class="prose max-w-none lg:prose-lg">
     <p>
       <a href="{{ subscription_urls.subscription_gated_page }}">This page</a> is only available if you are subscribed to a plan.
     </p>
@@ -41,8 +41,8 @@
   </div>
 </section>
 <section class="app-card">
-  <h1 class="pg-subtitle">{% translate "Metered Billing" %}</h1>
-  <p class="pg-content">
+  <h1 class="text-xl mb-1">{% translate "Metered Billing" %}</h1>
+  <p class="prose max-w-none lg:prose-lg">
     {% if subscription.is_metered %}
       {% with subscription_urls.metered_billing_demo as metered_billing_demo_url %}
       {% blocktranslate trimmed %}

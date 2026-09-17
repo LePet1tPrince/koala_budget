@@ -1,10 +1,10 @@
 {% load i18n %}
 <section class="app-card">
-  <h2 class="pg-subtitle">{% translate "API Keys" %}</h2>
+  <h2 class="text-xl mb-1">{% translate "API Keys" %}</h2>
   {% for key in api_keys %}
     {% if forloop.first %}
     <div class='table-responsive'>
-      <table class="table pg-table">
+      <table class="table table table-quiet w-full">
         <thead>
         <tr>
           <th>{% translate "Prefix" %}</th>
@@ -21,8 +21,8 @@
               <form method="post" action="{% url 'users:revoke_api_key' %}">
                 {% csrf_token %}
                 <input type="hidden" name="key_id" value="{{ key.id }}">
-                <div class="pg-inline-buttons">
-                  <input type="submit" class="pg-button-danger" value="{% translate "Revoke" %}" />
+                <div class="flex space-x-1">
+                  <input type="submit" class="btn btn-outline btn-error" value="{% translate "Revoke" %}" />
                 </div>
               </form>
             </td>
@@ -38,7 +38,7 @@
   <form method="post" action="{% url 'users:create_api_key' %}">
     {% csrf_token %}
     <div class="mt-2">
-      <input type="submit" class="pg-button-secondary" value="{% translate "New API Key" %}" />
+      <input type="submit" class="btn btn-outline" value="{% translate "New API Key" %}" />
     </div>
   </form>
 </section>

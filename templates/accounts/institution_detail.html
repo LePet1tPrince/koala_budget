@@ -3,12 +3,12 @@
 {% block app %}
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
-    <h3 class="pg-subtitle">{{ institution.name }}</h3>
+    <h3 class="text-xl mb-1">{{ institution.name }}</h3>
     <div class="flex gap-2">
-      <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="pg-button-primary">
+      <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="btn btn-primary">
         {% translate "Edit" %}
       </a>
-      <a href="{% url 'accounts:institution_delete' request.team.slug institution.pk %}" class="pg-button-danger">
+      <a href="{% url 'accounts:institution_delete' request.team.slug institution.pk %}" class="btn btn-outline btn-error">
         {% translate "Delete" %}
       </a>
     </div>

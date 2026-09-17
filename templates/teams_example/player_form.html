@@ -2,22 +2,22 @@
 {% load static %}
 {% load form_tags %}
 {% block app %}
-<nav aria-label="breadcrumbs">
-  <ol class="pg-breadcrumbs">
+<nav class="breadcrumbs text-sm" aria-label="breadcrumbs">
+  <ol>
     <li><a href="{% url 'teams_example:player_list' request.team.slug %}">Players</a></li>
     {% if player %}
     <li><a href="{{ player.get_absolute_url }}">{{ player.name }}</a></li>
-    <li class="pg-breadcrumb-active" aria-current="page">Edit</li>
+    <li class="text-base-content/70" aria-current="page">Edit</li>
     {% else %}
-    <li class="pg-breadcrumb-active" aria-current="page">New</li>
+    <li class="text-base-content/70" aria-current="page">New</li>
     {% endif %}
   </ol>
 </nav>
 <section class="app-card">
-  <h3 class="pg-subtitle">{% if player %}Edit {{ player.name }}{% else %}New Player{% endif %}</h3>
+  <h3 class="text-xl mb-1">{% if player %}Edit {{ player.name }}{% else %}New Player{% endif %}</h3>
   <form method="post">{% csrf_token %}
       {% render_form_fields form %}
-      <input type="submit" class="pg-button-primary" value="Save">
+      <input type="submit" class="btn btn-primary" value="Save">
 
   </form>
 </section>

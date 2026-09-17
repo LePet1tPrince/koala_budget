@@ -27,9 +27,9 @@
         <i class="fa fa-arrow-left mr-2"></i>
         {% translate "Back to Reports" %}
       </a>
-      <h1 class="pg-title">{% translate "Net Worth Trend" %}</h1>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Net Worth Trend" %}</h1>
       {% if start_date and end_date %}
-      <p class="text-sm text-base-content/60">
+      <p class="text-sm text-base-content/70">
         {% blocktranslate with start=start_date|date:"M Y" end=end_date|date:"M Y" trimmed %}
           {{ start }} – {{ end }}
         {% endblocktranslate %}
@@ -133,7 +133,7 @@
   <div class="card bg-base-100 shadow-lg">
     <div class="card-body p-4">
       <div id="net-worth-scroll" class="overflow-auto">
-        <table class="table table-sm table-zebra w-full" data-testid="net-worth-table">
+        <table class="table table-sm table-quiet w-full" data-testid="net-worth-table">
           <thead>
             <tr>
               <th>{% translate "Month" %}</th>

@@ -20,9 +20,10 @@ import {
 } from '@mui/icons-material';
 import { Alert, Badge, Box, Button, ButtonGroup, Checkbox, Chip, CircularProgress, Divider, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, Toolbar, Tooltip, Typography } from '@mui/material';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 
 import DateRangePicker from '../../common/DateRangePicker';
+import useMuiTheme from '../../common/useMuiTheme';
 import EditTransactionModal from './EditTransactionModal';
 import MaterialTable from '@material-table/core';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
@@ -137,18 +138,7 @@ const LineTableMaterial = ({
     }
   }, [quickFilters]);
 
-  // Create MUI theme that adapts to existing theme
-  const theme = useMemo(() => {
-    // Detect if dark mode is active by checking document classes or CSS variables
-    const isDarkMode = document.documentElement.classList.contains('dark') ||
-                       window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-    return createTheme({
-      palette: {
-        mode: isDarkMode ? 'dark' : 'light',
-      },
-    });
-  }, []);
+  const theme = useMuiTheme();
 
   // Show snackbar helper
   const showSnackbar = (message, severity = 'info') => {
@@ -409,7 +399,7 @@ const LineTableMaterial = ({
         const tooltip = reconciled ? gettext('Reconciled') : gettext('Not yet reconciled');
         // Class names must be full literals, otherwise Tailwind's compiler
         // can't see them and strips them from the build.
-        const colorClasses = reconciled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400';
+        const colorClasses = reconciled ? 'bg-success/15 text-success' : 'bg-base-200 text-base-content/40';
         return (
           <Tooltip title={tooltip} arrow placement="top">
             <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${colorClasses} cursor-default`}>
@@ -517,7 +507,7 @@ const LineTableMaterial = ({
               setFilterEnd(e);
             }}
           />
-          <span className="text-sm text-gray-500 whitespace-nowrap">
+          <span className="text-sm text-base-content/70 whitespace-nowrap">
             {filteredLines.length} {gettext('lines')}
           </span>
 

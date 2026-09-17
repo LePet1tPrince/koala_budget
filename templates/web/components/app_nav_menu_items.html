@@ -1,107 +1,86 @@
 {% load i18n %}
+{% load team_tags %}
+{% comment %}
+  Shared by the desktop sidebar (web/components/app_nav.html) and the mobile
+  dropdown (web/components/top_nav_app.html). Plain anchors, not daisyUI `menu`
+  items, so both can use it without wrapping it in a <ul>.
+
+  Account-level actions (Profile, Change Password, Sign out) deliberately live
+  in the user menu at the bottom of the sidebar rather than here — they are not
+  product navigation and were taking prime space above the fold.
+{% endcomment %}
 {% if request.team %}
-<li>
-  <a href="{% url 'web_team:home' request.team.slug %}" {% if active_tab == 'dashboard' %}class="menu-active"{% endif %}>
-    <i class="fa fa-home h-4 w-4"></i>
+  <a href="{% url 'web_team:home' request.team.slug %}"
+     class="side-link {% if active_tab == 'dashboard' %}side-link-active{% endif %}">
+    <i class="fa fa-home"></i>
     {% translate "Home" %}
   </a>
-</li>
-<li>
-  <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" {% if active_tab == 'bank-feed' %}class="menu-active"{% endif %}>
-    <i class="fa fa-inbox h-4 w-4"></i>
+  <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}"
+     class="side-link {% if active_tab == 'bank-feed' %}side-link-active{% endif %}">
+    <i class="fa fa-inbox"></i>
     {% translate "Inbox" %}
-    {% if inbox_count %}<span class="badge badge-sm badge-primary" data-testid="inbox-count">{{ inbox_count }}</span>{% endif %}
+    {% if inbox_count %}
+      <span class="ml-auto badge badge-sm badge-soft badge-warning" data-testid="inbox-count">{{ inbox_count }}</span>
+    {% endif %}
   </a>
-</li>
-<li>
-  <a href="{% url 'journal:transactions_home' request.team.slug %}" {% if active_tab == 'transactions' %}class="menu-active"{% endif %}>
-    <i class="fa fa-list h-4 w-4"></i>
+  <a href="{% url 'journal:transactions_home' request.team.slug %}"
+     class="side-link {% if active_tab == 'transactions' %}side-link-active{% endif %}">
+    <i class="fa fa-list"></i>
     {% translate "Transactions" %}
   </a>
-</li>
-<li>
-  <a href="{% url 'budget:budget_home' request.team.slug %}" {% if active_tab == 'budget' %}class="menu-active"{% endif %} data-testid="nav-budget">
-    <i class="fa fa-wallet h-4 w-4"></i>
+  <a href="{% url 'budget:budget_home' request.team.slug %}"
+     class="side-link {% if active_tab == 'budget' %}side-link-active{% endif %}" data-testid="nav-budget">
+    <i class="fa fa-wallet"></i>
     {% translate "Budget" %}
   </a>
-  <ul>
-    <li>
-      <a href="{% url 'budget:goals_list' request.team.slug %}" {% if active_tab == 'goals' %}class="menu-active"{% endif %} data-testid="nav-goals">
-        <i class="fa fa-bullseye h-4 w-4"></i>
-        {% translate "Goals" %}
-      </a>
-    </li>
-  </ul>
-</li>
-<li>
-  <a href="{% url 'reports:reports_home' request.team.slug %}" {% if active_tab == 'reports' %}class="menu-active"{% endif %}>
-    <i class="fa fa-chart-bar h-4 w-4"></i>
+  <a href="{% url 'budget:goals_list' request.team.slug %}"
+     class="side-link side-link-sub {% if active_tab == 'goals' %}side-link-active{% endif %}" data-testid="nav-goals">
+    <i class="fa fa-bullseye"></i>
+    {% translate "Goals" %}
+  </a>
+  <a href="{% url 'reports:reports_home' request.team.slug %}"
+     class="side-link {% if active_tab == 'reports' %}side-link-active{% endif %}">
+    <i class="fa fa-chart-bar"></i>
     {% translate "Reports" %}
   </a>
-</li>
+
+  {% if not user.is_anonymous %}
+    <div class="side-section">{% translate "Manage" %}</div>
+    <a href="{% url 'accounts:accounts_home' request.team.slug %}"
+       class="side-link {% if active_tab == 'accounts' %}side-link-active{% endif %}">
+      <i class="fa fa-university"></i>
+      {% translate "Accounts" %}
+    </a>
+    <a href="{% url 'audit:audit_log' request.team.slug %}"
+       class="side-link {% if active_tab == 'audit-log' %}side-link-active{% endif %}">
+      <i class="fa fa-history"></i>
+      {% translate "Audit log" %}
+    </a>
+    <a href="{% url 'single_team:manage_team' request.team.slug %}"
+       class="side-link {% if active_tab == 'manage-team' %}side-link-active{% endif %}">
+      <i class="fa fa-users"></i>
+      {% translate "Team" %}
+    </a>
+    {% if request.user|is_admin_of:request.team %}
+      <a href="{% url 'subscriptions_team:subscription_details' request.team.slug %}"
+         class="side-link {% if active_tab == 'subscription' %}side-link-active{% endif %}">
+        <i class="fa fa-repeat"></i>
+        {% translate "Subscription" %}
+      </a>
+    {% endif %}
+  {% endif %}
 {% endif %}
-<li>
-  <a href="{% url 'chat:chat_home' %}" {% if active_tab == 'ai-chat' %}class="menu-active"{% endif %}>
-    <i class="fa-solid fa-robot h-4 w-4"></i>
-    {% translate "AI Chat" %}
-  </a>
-</li>
-{% if not user.is_anonymous %}
-<li class="menu-title">
-  <span>{% translate "Settings" %}</span>
-</li>
-{% if request.team %}
-<li>
-  <a href="{% url 'accounts:accounts_home' request.team.slug %}" {% if active_tab == 'accounts' %}class="menu-active"{% endif %}>
-    <i class="fa fa-university h-4 w-4"></i>
-    {% translate "Accounts" %}
-  </a>
-</li>
-<li>
-  <a href="{% url 'audit:audit_log' request.team.slug %}" {% if active_tab == 'audit-log' %}class="menu-active"{% endif %}>
-    <i class="fa fa-history h-4 w-4"></i>
-    {% translate "Audit Log" %}
-  </a>
-</li>
-{% endif %}
-{% include "web/components/team_nav.html" %}
-<li>
-  <a href="{% url 'users:user_profile' %}" {% if active_tab == 'profile' %}class="menu-active"{% endif %}>
-    <i class="fa fa-user h-4 w-4"></i>
-    {% translate "Profile" %}
-  </a>
-</li>
-{% if user.has_usable_password %}
-<li>
-  <a href="{% url 'account_change_password' %}" {% if 'accounts/password/change' in request.path %}class="menu-active"{% endif %}>
-    <i class="fa fa-unlock-alt h-4 w-4"></i>
-    {% translate "Change Password" %}
-  </a>
-</li>
-{% endif %}
-<li>
-  <a href="{% url 'account_logout' %}" {% if 'accounts/logout' in request.path %}class="menu-active"{% endif %}>
-    <i class="fa fa-sign-out h-4 w-4"></i>
-    {% translate "Sign out" %}
-  </a>
-</li>
-{% endif %}
+
 {% if user.is_superuser %}
-<li class="menu-title">
-  <span>{% translate "Admin" %}</span>
-</li>
-<ul class="menu-list">
-  <li>
-    <a href="{% url 'dashboard:dashboard' %}" {% if active_tab == 'project-dashboard' %}class="menu-active"{% endif %}>
-      <i class="fa fa-bar-chart-o h-4 w-4"></i>
-      {% translate "Project Dashboard" %}
-    </a>
-  </li>
-  <li>
-    <a href="{% url 'support:hijack_user' %}" {% if active_tab == 'support' %}class="menu-active"{% endif %}>
-      <i class="fa fa-user-secret h-4 w-4"></i>
-      {% translate "Impersonate a User" %}
-    </a>
-  </li>
-</ul>
+  <div class="side-section">{% translate "Admin" %}</div>
+  <a href="{% url 'dashboard:dashboard' %}"
+     class="side-link {% if active_tab == 'project-dashboard' %}side-link-active{% endif %}">
+    <i class="fa fa-bar-chart-o"></i>
+    {% translate "Project Dashboard" %}
+  </a>
+  <a href="{% url 'support:hijack_user' %}"
+     class="side-link {% if active_tab == 'support' %}side-link-active{% endif %}">
+    <i class="fa fa-user-secret"></i>
+    {% translate "Impersonate a User" %}
+  </a>
 {% endif %}

@@ -547,8 +547,8 @@ GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", default="")
 # these daisyui themes are used to set the dark and light themes for the site
 # they must be valid themes included in your tailwind.config.js file.
 # more here: https://daisyui.com/docs/themes/
-LIGHT_THEME = "light"
-DARK_THEME = "dark"
+LIGHT_THEME = "koala"
+DARK_THEME = "koala-dark"
 
 # Stripe config
 # modeled to be the same as https://github.com/dj-stripe/dj-stripe

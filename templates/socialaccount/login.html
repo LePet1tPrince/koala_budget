@@ -3,7 +3,7 @@
 
 {% block content %}
 {% if process == "connect" %}
-<h1 class="pg-title">{% blocktranslate trimmed with provider.name as provider %}Connect {{ provider }}{% endblocktranslate %}</h1>
+<h1 class="text-3xl font-bold mb-2">{% blocktranslate trimmed with provider.name as provider %}Connect {{ provider }}{% endblocktranslate %}</h1>
 
 <p>{% blocktranslate trimmed with provider.name as provider %}You are about to connect a new third party account from {{ provider }}.{% endblocktranslate %}</p>
 {% else %}
@@ -14,6 +14,6 @@
 
 <form method="post" class="mt-2">
   {% csrf_token %}
-  <button class="pg-button-primary" type="submit">{% translate "Continue" %}</button>
+  <button class="btn btn-primary" type="submit">{% translate "Continue" %}</button>
 </form>
 {% endblock %}

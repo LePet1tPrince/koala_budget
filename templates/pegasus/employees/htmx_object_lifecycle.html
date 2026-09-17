@@ -23,23 +23,23 @@
   </style>
 {% endblock page_head %}
 {% block app %}
-  <nav aria-label="breadcrumbs">
-    <ol class="pg-breadcrumbs">
-      <li class=""><a href="{% url 'pegasus_employees:object_lifecycle_home' %}">Employee Lifecycle App</a></li>
-      <li class="pg-breadcrumb-active" aria-current="page">HTMX</li>
+  <nav class="breadcrumbs text-sm" aria-label="breadcrumbs">
+    <ol>
+      <li><a href="{% url 'pegasus_employees:object_lifecycle_home' %}">Employee Lifecycle App</a></li>
+      <li class="text-base-content/70" aria-current="page">HTMX</li>
     </ol>
   </nav>
   <section class="app-card">
-    <div class="pg-columns">
-      <div class="pg-column-one-quarter pg-text-centered">
+    <div class="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0">
+      <div class="basis-1/4 grow-0 shrink-0 text-center">
         <img class="img-fluid" alt="HTMX" src="{% static 'images/pegasus/htmx-icon.png' %}" style="max-height: 160px;"/>
       </div>
-      <div class="pg-column">
-        <h1 class="pg-title">HTMX Object Lifecycle Demo</h1>
-        <h2 class="pg-subtitle">
+      <div class="flex-1">
+        <h1 class="text-3xl font-bold mb-2">HTMX Object Lifecycle Demo</h1>
+        <h2 class="text-xl mb-1">
           An interactive data model and UI example.
         </h2>
-        <div class="pg-content">
+        <div class="prose max-w-none lg:prose-lg">
           <p>
             This is an interactive data model and UI example built with <a href="https://htmx.org/" target="_blank">htmx</a>.
             This demo is built with native Django templates and forms and uses no native JavaScript!
@@ -49,11 +49,11 @@
     </div>
   </section>
   <div class="app-card">
-    <div class="table pg-table">
+    <div class="table table table-quiet w-full">
       <div class="tr">
-        <div class="th pg-text-left">Name</div>
-        <div class="th pg-text-left">Department</div>
-        <div class="th pg-text-right">Salary</div>
+        <div class="th text-left">Name</div>
+        <div class="th text-left">Department</div>
+        <div class="th text-right">Salary</div>
         <div class="th"></div>
       </div>
       {% for employee in employees %}

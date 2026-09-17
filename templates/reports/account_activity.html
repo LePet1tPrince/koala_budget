@@ -26,8 +26,8 @@
 
   <div class="mb-4">
     {% if account %}
-    <h1 class="pg-title">{{ account.name }}</h1>
-    <p class="text-sm text-base-content/60">
+    <h1 class="text-3xl font-bold mb-2">{{ account.name }}</h1>
+    <p class="text-sm text-base-content/70">
       {{ account.account_group.name }} · {{ account.account_group.get_account_type_display }}
       {% if start_date and end_date %}
       · {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" trimmed %}
@@ -36,7 +36,7 @@
       {% endif %}
     </p>
     {% else %}
-    <h1 class="pg-title">{% translate "Account Activity" %}</h1>
+    <h1 class="text-3xl font-bold mb-2">{% translate "Account Activity" %}</h1>
     {% endif %}
   </div>
 

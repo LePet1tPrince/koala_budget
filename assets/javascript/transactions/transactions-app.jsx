@@ -95,7 +95,7 @@ const TransactionsApp = () => {
 
   if (initialLoading) {
     return (
-      <div className="text-center py-12 text-gray-500">
+      <div className="text-center py-12 text-base-content/70">
         Loading transactions...
       </div>
     );

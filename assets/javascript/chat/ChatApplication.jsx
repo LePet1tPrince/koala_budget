@@ -14,7 +14,7 @@ const ChatMessages = function(props) {
     thinkingElement = <ChatMessage key="thinking-message" {...thinkingMessage} />
   }
   return (
-    <div id="message-list" className="pg-chat-pane">
+    <div id="message-list" className="chat-pane">
       {
         props.messages.map((message, index) => {
           return <ChatMessage key={message.id} index={index} {...message} />;
@@ -35,15 +35,15 @@ const ChatMessage = function(props) {
 
 const HumanMessage = function(props) {
   return (
-    <div className="pg-chat-message-user">
-      <div className="pg-chat-icon">
+    <div className="chat-message-user">
+      <div className="chat-icon">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5"
              stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round"
                 d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/>
         </svg>
       </div>
-      <div className="pg-message-contents">
+      <div className="chat-message-contents">
         {props.content}
       </div>
     </div>
@@ -52,8 +52,8 @@ const HumanMessage = function(props) {
 
 const AIMessage = function(props) {
   return (
-    <div className="pg-chat-message-system">
-      <div className="pg-chat-icon">
+    <div className="chat-message-system">
+      <div className="chat-icon">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
              strokeLinecap="round" strokeLinejoin="round">
           <path
@@ -65,7 +65,7 @@ const AIMessage = function(props) {
           <path d="M15 7l1 -4"></path>
         </svg>
       </div>
-      <div className="pg-message-contents">
+      <div className="chat-message-contents">
         {props.content}
       </div>
     </div>
@@ -79,13 +79,13 @@ const InputBar = function(props) {
     }
   }
   return (
-    <div className="pg-chat-input-bar">
-      <input name="message" type="text" placeholder="Type your message..." aria-label="Message" className="pg-control" value={props.message}
+    <div className="chat-input-bar">
+      <input name="message" type="text" placeholder="Type your message..." aria-label="Message" className="input w-full" value={props.message}
              onChange={(event) => props.setMessage(event.target.value)}
              onKeyPress={handleKeyPress}>
 
       </input>
-      <button type="submit" className="pg-button-primary mx-2" onClick={() => props.sendMessage(props.message)}>Send</button>
+      <button type="submit" className="btn btn-primary mx-2" onClick={() => props.sendMessage(props.message)}>Send</button>
     </div>
   );
 }
@@ -103,7 +103,7 @@ function getErrorMessage() {
   return {
     id: `error-message-${Date.now()}`,
     message_type: "AI",
-    content: <p className="pg-text-danger">
+    content: <p className="text-error">
       Sorry, something went wrong while generating a response. Please try again.
       If you are a site administrator seeing this for the first time, check that the AI backend
       API key settings are configured correctly and restart all running processes.

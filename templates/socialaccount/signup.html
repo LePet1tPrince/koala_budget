@@ -6,7 +6,7 @@
 {% block page_title %}{% translate "Sign Up" %}{% endblock %}
 
 {% block content %}
-    <h1 class="pg-title">{% translate "Sign Up" %}</h1>
+    <h1 class="text-3xl font-bold mb-2">{% translate "Sign Up" %}</h1>
 
 <p>{% blocktranslate trimmed with provider_name=account.get_provider.name site_name=site.name %}You are about to use your {{provider_name}} account to login to
 {{site_name}}. As a final step, please complete the following form:{% endblocktranslate %}</p>
@@ -18,6 +18,6 @@
   {% if redirect_field_value %}
   <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}" />
   {% endif %}
-  <button class="pg-button-primary" type="submit">{% translate "Sign Up" %} &raquo;</button>
+  <button class="btn btn-primary" type="submit">{% translate "Sign Up" %} &raquo;</button>
 </form>
 {% endblock %}

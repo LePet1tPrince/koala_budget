@@ -2,7 +2,7 @@
 {% load static %}
 {% block app %}
 <section class="app-card">
-  <h3 class="pg-subtitle">The Example Teams App</h3>
+  <h3 class="text-xl mb-1">The Example Teams App</h3>
   <p>
     This is a create-read-update-delete (CRUD) example of objects&mdash;Players&mdash;that belong to a team.
     It use Django's <a href="https://docs.djangoproject.com/en/stable/topics/class-based-views/generic-display/">built-in class-based views</a>
@@ -12,11 +12,11 @@
   </p>
 </section>
 <section class="app-card">
-  <h3 class="pg-subtitle">All Players</h3>
+  <h3 class="text-xl mb-1">All Players</h3>
   {% for player in object_list %}
     {% if forloop.first %}
     <div class='table-responsive'>
-      <table class="table pg-table">
+      <table class="table table table-quiet w-full">
         <thead>
         <tr>
           <th>Name</th>
@@ -42,8 +42,8 @@
     </div>
   {% endfor %}
   <div class="mt-2">
-    <a class="pg-button-secondary" href="{% url 'teams_example:player_create' request.team.slug %}">
-      <span class="pg-icon"><i class="fa fa-plus"></i></span>
+    <a class="btn btn-outline" href="{% url 'teams_example:player_create' request.team.slug %}">
+      <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-plus"></i></span>
       <span>Add Player</span>
     </a>
   </div>

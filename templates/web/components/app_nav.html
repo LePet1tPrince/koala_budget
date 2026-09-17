@@ -1,20 +1,89 @@
-<div class="flex flex-col">
-  <div class="dropdown py-2 pl-6">
-    <div tabindex="0">
-      <svg xmlns="http://www.w3.org/2000/svg" class="inline h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="24" height="24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h16M4 10h8M4 16h16"/>
-      </svg>
-      {% if team %}
-      {{ team.name }}
-      {% else %}
-      {{ request.user.get_display_name }}
-      {% endif %}
+{% load i18n %}
+{% comment %}
+  Desktop sidebar (restyle plan Phase 2). Three stacked surfaces on the canvas:
+  team switcher, nav panel, user menu. The user menu holds the account-level
+  actions and the theme toggle that used to sit in the top navbar, which app
+  pages no longer render above `lg`.
+{% endcomment %}
+<div class="flex h-full w-full flex-col gap-3">
+
+  {# Team switcher #}
+  <div class="dropdown w-full">
+    <div tabindex="0" role="button" class="side-tile" data-testid="team-switcher">
+      <span class="side-avatar">
+        {% if request.team %}{{ request.team.name|slice:":1"|upper }}{% else %}{{ request.user.get_display_name|slice:":1"|upper }}{% endif %}
+      </span>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-sm font-medium leading-tight">
+          {% if request.team %}{{ request.team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+        </span>
+        <span class="block truncate text-xs leading-tight text-base-content/70">{% translate "Workspace" %}</span>
+      </span>
+      <i class="fa fa-chevron-down text-[10px] text-base-content/40"></i>
     </div>
-    <ul tabindex="0" class="dropdown-content z-1 menu menu-compact p-2 shadow-2xs bg-base-100 rounded-box w-64">
+    <ul tabindex="0" class="dropdown-content menu z-20 mt-1 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
       {% include "web/components/team_nav_items.html" %}
     </ul>
   </div>
-  <ul class="menu p-2 rounded-box">
-    {% include 'web/components/app_nav_menu_items.html' %}
-  </ul>
+
+  {# Primary navigation #}
+  <nav class="app-surface flex min-h-0 flex-1 flex-col overflow-y-auto p-2" aria-label="{% translate 'Main' %}">
+    <div class="flex flex-col gap-0.5">
+      {% include 'web/components/app_nav_menu_items.html' %}
+    </div>
+    <div class="mt-4">
+      <a href="{% url 'chat:chat_home' %}"
+         class="side-link border border-base-300 bg-base-200/60 {% if active_tab == 'ai-chat' %}side-link-active{% endif %}">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        {% translate "Ask Koala" %}
+      </a>
+    </div>
+  </nav>
+
+  {# User menu: account actions + theme, out of the nav list #}
+  {% if not user.is_anonymous %}
+    <div class="dropdown dropdown-top w-full">
+      <div tabindex="0" role="button" class="side-tile" data-testid="user-menu">
+        <span class="side-avatar bg-base-300 text-base-content">
+          {{ request.user.get_display_name|slice:":1"|upper }}
+        </span>
+        <span class="min-w-0 flex-1 truncate text-sm">{{ request.user.get_display_name }}</span>
+        <i class="fa fa-ellipsis text-xs text-base-content/40"></i>
+      </div>
+      <ul tabindex="0" class="dropdown-content menu z-20 mb-1 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+        <li>
+          <a href="{% url 'users:user_profile' %}" {% if active_tab == 'profile' %}class="menu-active"{% endif %}>
+            <i class="fa fa-user h-4 w-4"></i>{% translate "Profile" %}
+          </a>
+        </li>
+        {% if user.has_usable_password %}
+          <li>
+            <a href="{% url 'account_change_password' %}" {% if 'accounts/password/change' in request.path %}class="menu-active"{% endif %}>
+              <i class="fa fa-unlock-alt h-4 w-4"></i>{% translate "Change Password" %}
+            </a>
+          </li>
+        {% endif %}
+        <li class="menu-title pt-2"><span>{% translate "Theme" %}</span></li>
+        <li>
+          <button onclick="localStorage.setItem('theme', '{{ light_theme|default:'koala' }}'); syncDarkMode();">
+            <i class="fa fa-sun-o h-4 w-4"></i>{% translate "Light" %}
+          </button>
+        </li>
+        <li>
+          <button onclick="localStorage.setItem('theme', '{{ dark_theme|default:'koala-dark' }}'); syncDarkMode();">
+            <i class="fa fa-moon-o h-4 w-4"></i>{% translate "Dark" %}
+          </button>
+        </li>
+        <li>
+          <button onclick="localStorage.setItem('theme', 'system'); syncDarkMode();">
+            <i class="fa fa-desktop h-4 w-4"></i>{% translate "System" %}
+          </button>
+        </li>
+        <li class="menu-title pt-2"><hr class="border-base-300"/></li>
+        <li>
+          <a href="{% url 'account_logout' %}"><i class="fa fa-sign-out h-4 w-4"></i>{% translate "Sign out" %}</a>
+        </li>
+      </ul>
+    </div>
+  {% endif %}
 </div>

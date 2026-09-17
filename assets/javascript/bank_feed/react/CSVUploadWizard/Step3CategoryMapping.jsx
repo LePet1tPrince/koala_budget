@@ -86,7 +86,7 @@ const Step3CategoryMapping = ({ unmappedCategories, initialMappings = {}, allAcc
 
       {/* Responsive multi-column grid of mapping cards */}
       {unmappedCategories.length === 0 ? (
-        <div className="py-8 text-center text-base-content/50">
+        <div className="py-8 text-center text-base-content/70">
           <i className="fa fa-check-circle text-2xl mb-2 block text-success"></i>
           {gettext('No categories to map — all transactions are already categorized.')}
         </div>
@@ -106,7 +106,7 @@ const Step3CategoryMapping = ({ unmappedCategories, initialMappings = {}, allAcc
                   <span className="truncate" title={cat.name}>{cat.name}</span>
                 </div>
                 {cat.count != null && (
-                  <div className="text-xs text-base-content/50 mt-1">
+                  <div className="text-xs text-base-content/70 mt-1">
                     {cat.count} {cat.count === 1 ? gettext('transaction') : gettext('transactions')}
                   </div>
                 )}
@@ -115,13 +115,13 @@ const Step3CategoryMapping = ({ unmappedCategories, initialMappings = {}, allAcc
               {/* Inflow / outflow totals for this category */}
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex flex-col">
-                  <span className="text-xs uppercase tracking-wide text-base-content/50">{gettext('In')}</span>
+                  <span className="text-xs uppercase tracking-wide text-base-content/70">{gettext('In')}</span>
                   <span className={inflow > 0 ? 'text-success font-medium' : 'text-base-content/40'}>
                     {formatCurrency(inflow)}
                   </span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs uppercase tracking-wide text-base-content/50">{gettext('Out')}</span>
+                  <span className="text-xs uppercase tracking-wide text-base-content/70">{gettext('Out')}</span>
                   <span className={outflow > 0 ? 'text-error font-medium' : 'text-base-content/40'}>
                     {formatCurrency(outflow)}
                   </span>

@@ -50,9 +50,9 @@
         <i class="fa fa-arrow-left mr-2"></i>
         {% translate "Back to Reports" %}
       </a>
-      <h1 class="pg-title">{% translate "Balance Sheet" %}</h1>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Balance Sheet" %}</h1>
       {% if as_of_date %}
-      <p class="text-sm text-base-content/60">
+      <p class="text-sm text-base-content/70">
         {% blocktranslate with date=as_of_date|date:"M j, Y" trimmed %}
           As of {{ date }}
         {% endblocktranslate %}
@@ -136,7 +136,7 @@
               {% endfor %}
               {% empty %}
               <tr x-show="sec.assets">
-                <td colspan="2" class="text-center text-base-content/60 py-3">{% translate "No asset accounts with balances" %}</td>
+                <td colspan="2" class="text-center text-base-content/70 py-3">{% translate "No asset accounts with balances" %}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -166,7 +166,7 @@
               {% endfor %}
               {% empty %}
               <tr x-show="sec.liabilities">
-                <td colspan="2" class="text-center text-base-content/60 py-3">{% translate "No liability accounts with balances" %}</td>
+                <td colspan="2" class="text-center text-base-content/70 py-3">{% translate "No liability accounts with balances" %}</td>
               </tr>
               {% endfor %}
             </tbody>

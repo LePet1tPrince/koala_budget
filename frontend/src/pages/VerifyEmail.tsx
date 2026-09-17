@@ -47,7 +47,7 @@ export default function VerifyEmail() {
       <div className="space-y-6">
         <p className="text-gray-600">
           Please confirm that{' '}
-          <a href={'mailto:' + verification.data.email} className="pg-link">
+          <a href={'mailto:' + verification.data.email} className="link link-primary">
             {verification.data.email}
           </a>
           {' '}is an email address for user{' '}
@@ -70,7 +70,7 @@ export default function VerifyEmail() {
     body = (
       <p className="text-gray-600">
         Unable to confirm email{' '}
-        <a href={'mailto:' + verification.data.email} className="pg-link">
+        <a href={'mailto:' + verification.data.email} className="link link-primary">
           {verification.data.email}
         </a>
         {' '}because it is already confirmed.

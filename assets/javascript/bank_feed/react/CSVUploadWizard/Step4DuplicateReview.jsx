@@ -73,7 +73,7 @@ const Step4DuplicateReview = ({
       </div>
 
       <div className="overflow-x-auto max-h-80">
-        <table className="table table-xs table-zebra table-pin-rows">
+        <table className="table table-xs table-quiet table-pin-rows">
           <thead>
             <tr>
               <th className="w-12">{gettext('Include')}</th>
@@ -108,7 +108,7 @@ const Step4DuplicateReview = ({
                     ) : tx.category ? (
                       <span className="badge badge-warning badge-xs">{tx.category}</span>
                     ) : (
-                      <span className="text-base-content/50">-</span>
+                      <span className="text-base-content/70">-</span>
                     )}
                   </td>
                 </tr>

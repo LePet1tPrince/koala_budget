@@ -6,7 +6,7 @@
   <div class="flex justify-between items-center mb-4">
     <div>
       <h1 class="text-2xl font-semibold">{% translate "Audit Log" %}</h1>
-      <p class="text-sm text-base-content/60 mt-1">{% translate "Logins, imports, syncs, and bulk operations for this team." %}</p>
+      <p class="text-sm text-base-content/70 mt-1">{% translate "Logins, imports, syncs, and bulk operations for this team." %}</p>
     </div>
   </div>
 
@@ -33,7 +33,7 @@
         </tr>
       </thead>
       <tbody id="audit-log-tbody">
-        <tr><td colspan="4" class="text-center py-8 text-base-content/50" id="audit-loading">{% translate "Loading…" %}</td></tr>
+        <tr><td colspan="4" class="text-center py-8 text-base-content/70" id="audit-loading">{% translate "Loading…" %}</td></tr>
       </tbody>
     </table>
   </div>
@@ -41,7 +41,7 @@
   {# Pagination #}
   <div class="flex justify-between items-center mt-4" id="audit-pagination" style="display:none!important">
     <button id="audit-prev" class="btn btn-sm btn-ghost" disabled>{% translate "← Previous" %}</button>
-    <span id="audit-page-info" class="text-sm text-base-content/60"></span>
+    <span id="audit-page-info" class="text-sm text-base-content/70"></span>
     <button id="audit-next" class="btn btn-sm btn-ghost" disabled>{% translate "Next →" %}</button>
   </div>
 </section>
@@ -80,7 +80,7 @@
 
   function renderRows(events) {
     if (!events.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-base-content/50">{% translate "No events found." %}</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-base-content/70">{% translate "No events found." %}</td></tr>';
       return;
     }
     tbody.innerHTML = events.map((ev) => `
@@ -94,7 +94,7 @@
   }
 
   function load(url) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-base-content/50" id="audit-loading">{% translate "Loading…" %}</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-base-content/70" id="audit-loading">{% translate "Loading…" %}</td></tr>';
     fetch(url, { credentials: "include", headers: { Accept: "application/json" } })
       .then((r) => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((data) => {

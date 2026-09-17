@@ -3,12 +3,12 @@
 {% load form_tags %}
 {% block app %}
 <section class="app-card">
-  <h3 class="pg-subtitle">{% if accountgroup %}{% translate "Edit" %} {{ accountgroup.name }}{% else %}{% translate "New Account Group" %}{% endif %}</h3>
+  <h3 class="text-xl mb-1">{% if accountgroup %}{% translate "Edit" %} {{ accountgroup.name }}{% else %}{% translate "New Account Group" %}{% endif %}</h3>
   <form method="post">{% csrf_token %}
       {% render_form_fields form %}
       <div class="flex gap-2">
-        <input type="submit" class="pg-button-primary" value="{% translate 'Save' %}">
-        <a href="{% url 'accounts:accountgroup_list' request.team.slug %}" class="pg-button-secondary">{% translate "Cancel" %}</a>
+        <input type="submit" class="btn btn-primary" value="{% translate 'Save' %}">
+        <a href="{% url 'accounts:accountgroup_list' request.team.slug %}" class="btn btn-outline">{% translate "Cancel" %}</a>
       </div>
   </form>
 </section>

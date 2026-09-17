@@ -16,17 +16,17 @@ import LoadingScreen from "../../../utilities/Loading";
 const EmptyEmployeeList = function(props) {
   return (
     <section className="app-card">
-      <div className="pg-columns">
-        <div className="pg-column-one-third">
+      <div className="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0">
+        <div className="basis-1/3 grow-0 shrink-0">
           <img className="img-fluid" alt="Nothing Here" src={props.emptyImage}/>
         </div>
-        <div className="pg-column">
-          <h1 className="pg-title">No Employees Yet!</h1>
-          <h2 className="pg-subtitle">Create your first employee below to get started.</h2>
+        <div className="flex-1">
+          <h1 className="text-3xl font-bold mb-2">No Employees Yet!</h1>
+          <h2 className="text-xl mb-1">Create your first employee below to get started.</h2>
           <div className="my-3">
             <Link to="new">
-              <button className="pg-button-primary">
-                <span className="pg-icon"><i className="fa fa-plus"></i></span>
+              <button className="btn btn-primary">
+                <span className="w-6 h-6 inline-flex justify-center items-center"><i className="fa fa-plus"></i></span>
                 <span>Create Employee</span>
               </button>
             </Link>
@@ -41,14 +41,14 @@ const EmployeeList = function(props) {
   return (
     <section className="app-card">
       NOW THIS IS THE SECTION
-      <h3 className="pg-subtitle">All Employees</h3>
+      <h3 className="text-xl mb-1">All Employees</h3>
       <div className='table-responsive'>
-        <table className="table pg-table">
+        <table className="table table table-quiet w-full">
           <thead>
           <tr>
-            <th className="pg-text-left">Name</th>
-            <th className="pg-text-left">Department</th>
-            <th className="pg-text-right">Salary</th>
+            <th className="text-left">Name</th>
+            <th className="text-left">Department</th>
+            <th className="text-right">Salary</th>
             <th></th>
           </tr>
           </thead>
@@ -65,8 +65,8 @@ const EmployeeList = function(props) {
         </table>
       </div>
       <Link to="new">
-        <button className="pg-button-primary">
-          <span className="pg-icon">
+        <button className="btn btn-primary">
+          <span className="w-6 h-6 inline-flex justify-center items-center">
             <i className="fa fa-plus"></i>
           </span>
           <span>Add Employee</span>

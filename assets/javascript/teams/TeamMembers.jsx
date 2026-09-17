@@ -32,9 +32,9 @@ const TeamMemberTableRow = function(props) {
 export const TeamMemberList = function (props) {
   return (
     <section className="app-card">
-      <h3 className="pg-subtitle">{gettext("Team Members")}</h3>
+      <h3 className="text-xl mb-1">{gettext("Team Members")}</h3>
       <div className='table-responsive'>
-        <table className="table pg-table">
+        <table className="table table table-quiet w-full">
           <thead>
           <tr>
             <th>{gettext("Member")}</th>

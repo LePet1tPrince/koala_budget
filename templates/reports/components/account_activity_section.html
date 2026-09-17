@@ -32,7 +32,7 @@
 <div class="card bg-base-100 shadow-lg">
   <div class="card-body p-4">
     <div class="overflow-x-auto">
-      <table class="table table-sm table-zebra w-full">
+      <table class="table table-sm table-quiet w-full">
         <thead>
           <tr>
             <th>{% translate "Date" %}</th>
@@ -50,7 +50,7 @@
           {% if report_data.is_balance_account %}
           <tr data-testid="starting-balance-row">
             <td class="whitespace-nowrap">{{ start_date|date:"M j, Y" }}</td>
-            <td colspan="3" class="italic text-base-content/60">{% translate "Starting Balance" %}</td>
+            <td colspan="3" class="italic text-base-content/70">{% translate "Starting Balance" %}</td>
             <td></td>
             <td class="text-right tabular-nums {% if report_data.starting_balance < 0 %}text-error{% endif %}">{{ report_data.starting_balance|currency }}</td>
             <td></td>
@@ -74,11 +74,11 @@
             {% if report_data.is_balance_account %}
             <td class="text-right tabular-nums {% if transaction.balance < 0 %}text-error{% endif %}">{{ transaction.balance|currency }}</td>
             {% endif %}
-            <td class="text-base-content/60 whitespace-nowrap">{{ transaction.source }}</td>
+            <td class="text-base-content/70 whitespace-nowrap">{{ transaction.source }}</td>
           </tr>
           {% empty %}
           <tr>
-            <td colspan="{% if report_data.is_balance_account %}7{% else %}6{% endif %}" class="text-center text-base-content/60 py-4">{% translate "No transactions for this account in the selected period" %}</td>
+            <td colspan="{% if report_data.is_balance_account %}7{% else %}6{% endif %}" class="text-center text-base-content/70 py-4">{% translate "No transactions for this account in the selected period" %}</td>
           </tr>
           {% endfor %}
         </tbody>
