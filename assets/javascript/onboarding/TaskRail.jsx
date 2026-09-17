@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+import Icon from '../common/Icon';
 import Coachmark from './Coachmark';
 import FinishCard from './FinishCard';
 import OpeningBalances from './OpeningBalances';
@@ -30,7 +31,13 @@ const TaskRow = ({ task, index, current, onOpenDialog }) => {
   const body = (
     <>
       <span className={`rail-marker ${done ? 'is-done' : ''} ${locked ? 'is-locked' : ''}`} aria-hidden="true">
-        {done ? <i className="fa fa-check"></i> : locked ? <i className="fa fa-lock"></i> : index + 1}
+        {done ? (
+          <Icon name="check" className="w-3 h-3" />
+        ) : locked ? (
+          <Icon name="lock" className="w-3 h-3" />
+        ) : (
+          index + 1
+        )}
       </span>
       <span className="min-w-0">
         <span className={`block text-sm ${done ? 'line-through opacity-60' : ''}`}>{task.label}</span>
@@ -189,7 +196,7 @@ const TaskRail = ({ props }) => {
             aria-expanded={open}
             data-testid="task-rail-toggle"
           >
-            <i className={`fa fa-chevron-${open ? 'down' : 'up'} text-xs text-base-content/45`}></i>
+            <Icon name={open ? 'chevron-down' : 'chevron-up'} className="w-3 h-3 text-base-content/45" />
             <span className="truncate text-sm font-medium">{gettext('Get set up')}</span>
             <span className="ml-auto shrink-0 text-xs text-base-content/70">
               {doneCount}/{tasks.length}
@@ -202,7 +209,7 @@ const TaskRail = ({ props }) => {
             aria-label={gettext('Dismiss setup guide')}
             data-testid="task-rail-dismiss"
           >
-            <i className="fa fa-times"></i>
+            <Icon name="times" className="w-3.5 h-3.5" />
           </button>
         </div>
 

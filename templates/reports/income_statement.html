@@ -3,6 +3,7 @@
 {% load django_vite %}
 {% load static %}
 {% load currency_tags %}
+{% load icons %}
 
 {% block page_head %}
 <style>
@@ -66,7 +67,7 @@
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
       <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
-        <i class="fa fa-arrow-left mr-2"></i>
+        {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
       <h1 class="text-3xl font-bold mb-2">{% translate "Income Statement" %}</h1>
@@ -85,7 +86,7 @@
         <div class="dropdown dropdown-end join-item">
           <div tabindex="0" role="button" class="btn btn-sm {% if period %}btn-active{% endif %}" data-testid="period-dropdown">
             {% if period == "quarter" %}{% translate "By Quarter" %}{% elif period == "year" %}{% translate "By Year" %}{% else %}{% translate "By Month" %}{% endif %}
-            <i class="fa fa-caret-down ml-1"></i>
+            {% icon "caret-down" class="inline-block shrink-0 w-4 h-4 ml-1" %}
           </div>
           <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-50 w-40 p-2 shadow">
             <li><a href="?{{ period_view_qs.monthly }}" class="{% if period == 'month' %}menu-active{% endif %}">{% translate "By Month" %}</a></li>
@@ -95,7 +96,7 @@
         </div>
       </div>
       <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
-        <i class="fa fa-download mr-2"></i>
+        {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Export CSV" %}
       </a>
     </div>
@@ -105,17 +106,17 @@
   <!-- Summary Section -->
   <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="income-statement-summary">
     <div class="stat py-3">
-      <div class="stat-figure text-success hidden sm:block"><i class="fa fa-arrow-up fa-lg"></i></div>
+      <div class="stat-figure text-success hidden sm:block">{% icon "arrow-up" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Total Income" %}</div>
       <div class="stat-value text-2xl text-success">{{ report_data.total_income|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure text-error hidden sm:block"><i class="fa fa-arrow-down fa-lg"></i></div>
+      <div class="stat-figure text-error hidden sm:block">{% icon "arrow-down" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Total Expenses" %}</div>
       <div class="stat-value text-2xl text-error">{{ report_data.total_expenses|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure {% if report_data.net_profit < 0 %}text-error{% endif %} hidden sm:block"><i class="fa fa-scale-balanced fa-lg"></i></div>
+      <div class="stat-figure {% if report_data.net_profit < 0 %}text-error{% endif %} hidden sm:block">{% icon "scale-balanced" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Net Profit" %}</div>
       <div class="stat-value text-2xl {% if report_data.net_profit < 0 %}text-error{% endif %}">
         {{ report_data.net_profit|currency }}
@@ -138,14 +139,14 @@
     <!-- Statement / Income Flow tabs -->
     <div role="tablist" class="tabs tabs-box w-fit mb-4">
       <a role="tab" class="tab" :class="tab === 'statement' ? 'tab-active' : ''" @click.prevent="tab = 'statement'" data-testid="tab-statement">
-        <i class="fa fa-table-list mr-2"></i>{% translate "Statement" %}
+        {% icon "table-list" class="inline-block shrink-0 w-4 h-4 mr-2" %}{% translate "Statement" %}
       </a>
       <a role="tab" class="tab" :class="tab === 'flow' ? 'tab-active' : ''" @click.prevent="tab = 'flow'" data-testid="tab-flow">
-        <i class="fa fa-diagram-project mr-2"></i>{% translate "Income Flow" %}
+        {% icon "diagram-project" class="inline-block shrink-0 w-4 h-4 mr-2" %}{% translate "Income Flow" %}
       </a>
       {% if trend_chart_data %}
       <a role="tab" class="tab" :class="tab === 'trends' ? 'tab-active' : ''" @click.prevent="tab = 'trends'" data-testid="tab-trends">
-        <i class="fa fa-chart-column mr-2"></i>{% translate "Spending Trends" %}
+        {% icon "chart-column" class="inline-block shrink-0 w-4 h-4 mr-2" %}{% translate "Spending Trends" %}
       </a>
       {% endif %}
     </div>
@@ -175,7 +176,7 @@
               <tbody data-testid="income-table">
                 <tr class="cursor-pointer select-none row-income font-bold" @click="sec.income = !sec.income">
                   <td class="whitespace-nowrap">
-                    <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.income ? '' : '-rotate-90'"></i>
+                    <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="sec.income ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                     <span class="text-success ml-1">{% translate "Income" %}</span>
                   </td>
                   {% if period %}{% for amount in report_data.total_income_per_period %}
@@ -186,7 +187,7 @@
                 {% for group_data in report_data.income_groups %}
                 <tr x-show="sec.income" class="cursor-pointer select-none row-group font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
                   <td class="pl-6 whitespace-nowrap">
-                    <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
+                    <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                     <span class="ml-1">{{ group_data.group.name }}</span>
                   </td>
                   {% if period %}{% for amount in group_data.per_period %}
@@ -214,7 +215,7 @@
               <tbody data-testid="expenses-table">
                 <tr class="cursor-pointer select-none row-expenses font-bold" @click="sec.expenses = !sec.expenses">
                   <td class="whitespace-nowrap">
-                    <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="sec.expenses ? '' : '-rotate-90'"></i>
+                    <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="sec.expenses ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                     <span class="text-error ml-1">{% translate "Expenses" %}</span>
                   </td>
                   {% if period %}{% for amount in report_data.total_expenses_per_period %}
@@ -225,7 +226,7 @@
                 {% for group_data in report_data.expense_groups %}
                 <tr x-show="sec.expenses" class="cursor-pointer select-none row-group font-semibold" @click="grp.g{{ group_data.group.pk }} = !grp.g{{ group_data.group.pk }}">
                   <td class="pl-6 whitespace-nowrap">
-                    <i class="fa fa-chevron-down w-3 text-xs opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'"></i>
+                    <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="grp.g{{ group_data.group.pk }} ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                     <span class="ml-1">{{ group_data.group.name }}</span>
                   </td>
                   {% if period %}{% for amount in group_data.per_period %}

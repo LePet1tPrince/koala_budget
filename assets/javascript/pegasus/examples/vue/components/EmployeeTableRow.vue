@@ -2,24 +2,28 @@
   <tr>
     <td>{{ employee.name }}</td>
     <td>{{ employee.department }}</td>
-    <td class="pg-text-right">{{ formattedSalary }}</td>
-    <td class="pg-inline-buttons pg-justify-content-end">
-      <a class="pg-button-secondary" v-on:click="editEmployee">
-        <span class="pg-icon"><i class="fa fa-edit" /></span>
-        <span class="pg-hidden-mobile-inline">Edit</span>
+    <td class="text-right">{{ formattedSalary }}</td>
+    <td class="flex space-x-1 justify-end">
+      <a class="btn btn-outline" v-on:click="editEmployee">
+        <span class="w-6 h-6 inline-flex justify-center items-center"><Icon name="edit" class-name="inline-block shrink-0 w-4 h-4" /></span>
+        <span class="hidden md:inline-block">Edit</span>
       </a>
-      <a class="pg-button-danger" v-on:click="deleteEmployee">
-        <span class="pg-icon"><i class="fa fa-times" /></span>
-        <span class="pg-hidden-mobile-inline">Delete</span>
+      <a class="btn btn-outline btn-error" v-on:click="deleteEmployee">
+        <span class="w-6 h-6 inline-flex justify-center items-center"><Icon name="times" class-name="inline-block shrink-0 w-4 h-4" /></span>
+        <span class="hidden md:inline-block">Delete</span>
       </a>
     </td>
   </tr>
 </template>
 
 <script>
+import Icon from '../../../../common/Icon.vue';
 
 export default {
   name: 'EmployeeTableRow',
+  components: {
+    Icon
+  },
   props: {
     employee: Object,
     client: Object,

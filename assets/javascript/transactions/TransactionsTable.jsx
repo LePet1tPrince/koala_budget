@@ -114,65 +114,49 @@ const TransactionsTable = ({
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-base-300" data-testid="transactions-table">
-          <thead className="bg-base-200">
+      <div className="app-surface overflow-x-auto">
+        <table className="table table-sm table-quiet w-full" data-testid="transactions-table">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
-                {gettext('Date')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
-                {gettext('Payee')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
-                {gettext('Description')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
-                {gettext('Debit Account')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
-                {gettext('Credit Account')}
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-base-content/70 uppercase tracking-wider">
-                {gettext('Amount')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
-                {gettext('Source')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-base-content/70 uppercase tracking-wider">
-                {gettext('Status')}
-              </th>
+              <th>{gettext('Date')}</th>
+              <th>{gettext('Payee')}</th>
+              <th>{gettext('Description')}</th>
+              <th>{gettext('Debit Account')}</th>
+              <th>{gettext('Credit Account')}</th>
+              <th className="text-right">{gettext('Amount')}</th>
+              <th>{gettext('Source')}</th>
+              <th>{gettext('Status')}</th>
             </tr>
           </thead>
-          <tbody className="bg-base-100 divide-y divide-base-300">
+          <tbody>
             {transactions.map((tx) => {
               const source = SOURCE_STYLES[tx.source] || { label: tx.source, className: FALLBACK_BADGE };
               const statusStyle = STATUS_STYLES[tx.status] || { label: tx.status, className: FALLBACK_BADGE };
 
               return (
                 <tr key={tx.id} data-testid="transaction-row">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content">
+                  <td className="whitespace-nowrap">
                     {formatDate(tx.date)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content">
+                  <td className="whitespace-nowrap">
                     {tx.payee_name || <span className="text-base-content/40 italic">{gettext('—')}</span>}
                   </td>
-                  <td className="px-6 py-4 text-sm text-base-content max-w-xs truncate">
+                  <td className="max-w-xs truncate">
                     {tx.description}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content">
+                  <td className="whitespace-nowrap">
                     {tx.debit_account || '—'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content">
+                  <td className="whitespace-nowrap">
                     {tx.credit_account || '—'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-base-content text-right money">
+                  <td className="money whitespace-nowrap text-right">
                     {formatCurrency(tx.amount)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <td className="whitespace-nowrap">
                     <Badge className={source.className}>{source.label}</Badge>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <td className="whitespace-nowrap">
                     <Badge className={statusStyle.className}>{statusStyle.label}</Badge>
                   </td>
                 </tr>

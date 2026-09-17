@@ -2,10 +2,11 @@
 
 import AccountCard from "./AccountCard"
 import { useState, useMemo } from "react"
+import Icon from '../../common/Icon';
 
 const TYPE_SECTIONS = [
-  { type: 'asset', icon: 'fa-university', getLabel: () => gettext('Bank Accounts') },
-  { type: 'liability', icon: 'fa-credit-card', getLabel: () => gettext('Credit Cards') },
+  { type: 'asset', icon: 'university', getLabel: () => gettext('Bank Accounts') },
+  { type: 'liability', icon: 'credit-card', getLabel: () => gettext('Credit Cards') },
 ]
 
 function InstitutionFilter({ options, selected, onSelect }) {
@@ -43,7 +44,7 @@ function AccountSection({ title, icon, accounts, selectedAccount, handleAccountS
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <i className={`fa ${icon} text-base-content/40 text-xs`} aria-hidden="true"></i>
+        <Icon name={icon} className="inline-block w-3.5 h-3.5 shrink-0 text-base-content/40" />
         <h3 className="text-xs font-semibold uppercase tracking-wide text-base-content/70">{title}</h3>
         <span className="text-xs text-base-content/40">({accounts.length})</span>
         {reviewCount > 0 && (
@@ -91,7 +92,7 @@ function AccountGrid({ accounts, selectedAccount, handleAccountSelect }) {
     const knownTypes = new Set(TYPE_SECTIONS.map((s) => s.type))
     const otherAccounts = filteredAccounts.filter((a) => !knownTypes.has(a.account_type))
     if (otherAccounts.length > 0) {
-      grouped.push({ key: 'other', title: gettext('Other'), icon: 'fa-folder', accounts: otherAccounts })
+      grouped.push({ key: 'other', title: gettext('Other'), icon: 'folder', accounts: otherAccounts })
     }
 
     return grouped

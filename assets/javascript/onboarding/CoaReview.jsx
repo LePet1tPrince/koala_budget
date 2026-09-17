@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 
+import Icon from '../common/Icon';
+
 /**
  * Phase C: review the generated chart of accounts.
  *
@@ -69,7 +71,7 @@ const AccountChip = ({ name, onRename, onRemove }) => {
         aria-label={gettext('Remove {name}').replace('{name}', name)}
         data-testid={`coa-remove-${name}`}
       >
-        <i className="fa fa-times" aria-hidden="true"></i>
+        <Icon name="times" className="w-3 h-3" />
       </button>
     </span>
   );
@@ -89,7 +91,7 @@ const AddAccount = ({ onAdd }) => {
   if (!open) {
     return (
       <button type="button" className="coa-add" onClick={() => setOpen(true)}>
-        <i className="fa fa-plus mr-1" aria-hidden="true"></i>
+        <Icon name="plus" className="w-3 h-3 mr-1" />
         {gettext('Add')}
       </button>
     );

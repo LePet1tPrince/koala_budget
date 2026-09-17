@@ -1,6 +1,7 @@
 {% extends "web/app/app_base.html" %}
 {% load static %}
 {% load django_vite %}
+{% load icons %}
 {% block app %}
 <section class="app-card">
   {% include 'account/components/profile_form.html' %}
@@ -41,7 +42,7 @@
     function uploadImage(file) {
       // update UI
       let uploadlabel = document.getElementById("profile-upload-label")
-      uploadlabel.innerHTML = '<span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-refresh"></i></span><span>Uploading...</span>';
+      uploadlabel.innerHTML = '<span class="w-6 h-6 inline-flex justify-center items-center">{% icon "refresh" class="inline-block shrink-0 w-4 h-4" %}</span><span>Uploading...</span>';
       uploadlabel.classList.add('is-active');
       // upload to server
       let formData = new FormData();
@@ -52,7 +53,7 @@
           if (response.ok) {
             response.text().then(function (text) {
               // update UI
-              uploadlabel.innerHTML = '<span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-check"></i></span><span>' + text + '</span>';
+              uploadlabel.innerHTML = '<span class="w-6 h-6 inline-flex justify-center items-center">{% icon "check" class="inline-block shrink-0 w-4 h-4" %}</span><span>' + text + '</span>';
               uploadlabel.classList.remove('is-active');
               uploadlabel.classList.add('text-success');
             });
@@ -60,7 +61,7 @@
             response.json().then(function (errorResponse) {
               console.error(errorResponse);
               const errorText = errorResponse.errors;
-              uploadlabel.innerHTML = '<span title="' + errorText + '" ><span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-times"></i></span><span>Upload failed!</span></span>';
+              uploadlabel.innerHTML = '<span title="' + errorText + '" ><span class="w-6 h-6 inline-flex justify-center items-center">{% icon "times" class="inline-block shrink-0 w-4 h-4" %}</span><span>Upload failed!</span></span>';
               uploadlabel.classList.add('text-error');
             });
           }

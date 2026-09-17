@@ -1,20 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import {
-  Autocomplete,
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  TextField,
-  Typography,
-} from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import React, { useEffect, useMemo, useState } from 'react';
+import Combobox from '../../common/Combobox';
+import DateField from '../../common/DateField';
+import Modal from '../../common/Modal';
 import { buildCategoryOptions } from '../../common/categoryOptions';
-import { formatDateForInput } from '../utils';
 
 /* globals gettext */
 
@@ -41,7 +29,7 @@ const BulkEditModal = ({
   onSave,
   hasReconciledRows = false,
 }) => {
-  const [date, setDate] = useState(null);
+  const [date, setDate] = useState('');
   const [category, setCategory] = useState(null);
   const [account, setAccount] = useState(null);
   const [payee, setPayee] = useState('');
@@ -63,16 +51,18 @@ const BulkEditModal = ({
     }));
   }, [bankFeedAccounts]);
 
-  // Reset form when dialog opens
-  const handleEnter = () => {
-    setDate(null);
+  // Reset the form each time the dialog opens. MUI ran this from the enter
+  // transition; a native <dialog> has no such hook, so it keys off `open`.
+  useEffect(() => {
+    if (!open) return;
+    setDate('');
     setCategory(null);
     setAccount(null);
     setPayee('');
     setDescription('');
     setError(null);
     setSaving(false);
-  };
+  }, [open]);
 
   // Check if anything has been filled in
   const hasChanges = date || category || account || payee.trim() || description.trim();
@@ -88,10 +78,9 @@ const BulkEditModal = ({
       if (account) updates.account_id = account.id;
       if (payee.trim()) updates.payee = payee.trim();
       if (description.trim()) updates.description = description.trim();
-      if (date) {
-        // Format date as YYYY-MM-DD (timezone-safe)
-        updates.date = formatDateForInput(date);
-      }
+      // `DateField` already speaks ISO yyyy-MM-dd, which is what the API takes,
+      // so there is no Date to normalize here any more.
+      if (date) updates.date = date;
       await onSave(updates);
       onClose();
     } catch (err) {
@@ -105,125 +94,83 @@ const BulkEditModal = ({
   if (!open) return null;
 
   return (
-    <Dialog
+    <Modal
       open={open}
       onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      TransitionProps={{ onEnter: handleEnter }}
+      size="sm"
+      testId="bulk-edit-modal"
+      title={`${gettext('Bulk Edit')} (${selectedCount} ${gettext('selected')})`}
+      actions={
+        <>
+          <button type="button" className="btn btn-sm" onClick={onClose} disabled={saving}>
+            {gettext('Cancel')}
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={handleSave}
+            disabled={saving || !hasChanges}
+            data-testid="bulk-edit-apply"
+          >
+            {saving ? gettext('Saving...') : gettext('Apply')}
+          </button>
+        </>
+      }
     >
-      <DialogTitle>{gettext('Bulk Edit')} ({selectedCount} {gettext('selected')})</DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {gettext('Only fields you fill in will be updated. Leave fields blank to keep existing values.')}
-        </Typography>
+      <p className="mb-4 text-sm text-base-content/70">
+        {gettext('Only fields you fill in will be updated. Leave fields blank to keep existing values.')}
+      </p>
 
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-          {/* Date */}
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <DatePicker
-              label={gettext('Date')}
-              value={date}
-              onChange={(newValue) => setDate(newValue)}
-              format="yyyy-MM-dd"
-              slotProps={{
-                textField: {
-                  fullWidth: true,
-                  size: 'small',
-                  placeholder: gettext('Leave blank to keep existing'),
-                },
-                field: { clearable: true },
-              }}
-            />
-          </LocalizationProvider>
+      <div className="flex flex-col gap-4">
+        <DateField label={gettext('Date')} value={date} onChange={setDate} allowClear testId="bulk-edit-date" />
 
-          {/* Category */}
-          <Autocomplete
-            value={category}
-            onChange={(_event, newValue) => setCategory(newValue)}
-            options={categoryOptions}
-            groupBy={(option) => option.groupLabel}
-            getOptionLabel={(option) => option.label}
-            isOptionEqualToValue={(option, value) => option.id === value?.id}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={gettext('Category')}
-                size="small"
-                placeholder={gettext('Leave blank to keep existing')}
-              />
-            )}
+        <Combobox
+          label={gettext('Category')}
+          value={category}
+          onChange={setCategory}
+          options={categoryOptions}
+          getGroup={(option) => option.groupLabel}
+          placeholder={gettext('Leave blank to keep existing')}
+          testId="bulk-edit-category"
+        />
+
+        {/* Move to Account — hidden for reconciled transactions */}
+        {!hasReconciledRows && (
+          <Combobox
+            label={gettext('Move to Account')}
+            value={account}
+            onChange={setAccount}
+            options={accountOptions}
+            placeholder={gettext('Leave blank to keep existing')}
+            testId="bulk-edit-account"
           />
+        )}
 
-          {/* Move to Account — hidden for reconciled transactions */}
-          {!hasReconciledRows && (
-            <Autocomplete
-              value={account}
-              onChange={(_event, newValue) => setAccount(newValue)}
-              options={accountOptions}
-              getOptionLabel={(option) => option.label}
-              isOptionEqualToValue={(option, value) => option.id === value?.id}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={gettext('Move to Account')}
-                  size="small"
-                  placeholder={gettext('Leave blank to keep existing')}
-                />
-              )}
-            />
-          )}
+        <Combobox
+          freeText
+          label={gettext('Payee')}
+          value={payee}
+          onChange={setPayee}
+          options={allPayees.map((pay) => pay.name)}
+          placeholder={gettext('Leave blank to keep existing')}
+          testId="bulk-edit-payee"
+        />
 
-          {/* Payee (free text with autocomplete from existing payees) */}
-          <Autocomplete
-            freeSolo
-            options={allPayees.map((p) => p.name)}
-            inputValue={payee}
-            onInputChange={(_event, newValue) => setPayee(newValue || '')}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={gettext('Payee')}
-                size="small"
-                fullWidth
-                placeholder={gettext('Leave blank to keep existing')}
-              />
-            )}
-          />
-
-          {/* Description */}
-          <TextField
-            label={gettext('Description')}
+        <label className="form-control w-full">
+          <span className="label-text mb-1 block text-sm text-base-content/70">{gettext('Description')}</span>
+          <textarea
+            className="textarea textarea-bordered w-full"
+            rows={2}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            fullWidth
-            size="small"
-            multiline
-            rows={2}
             placeholder={gettext('Leave blank to keep existing')}
+            data-testid="bulk-edit-description"
           />
+        </label>
 
-          {/* Error */}
-          {error && (
-            <Box sx={{ color: 'error.main', fontSize: '0.875rem' }}>
-              {error}
-            </Box>
-          )}
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={saving}>
-          {gettext('Cancel')}
-        </Button>
-        <Button
-          onClick={handleSave}
-          variant="contained"
-          disabled={saving || !hasChanges}
-        >
-          {saving ? gettext('Saving...') : gettext('Apply')}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        {error && <p className="text-sm text-error">{error}</p>}
+      </div>
+    </Modal>
   );
 };
 

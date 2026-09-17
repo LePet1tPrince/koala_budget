@@ -18,6 +18,7 @@ from apps.accounts.models import (
     AccountGroup,
     Payee,
 )
+from apps.bank_feed.models import BankTransaction
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams import roles
 from apps.teams.models import Membership, Team
@@ -114,3 +115,58 @@ class JournalLineFactory(factory.django.DjangoModelFactory):
     account = factory.SubFactory(AccountFactory, team=factory.SelfAttribute("..team"))
     dr_amount = Decimal("0.00")
     cr_amount = Decimal("0.00")
+
+
+class BankTransactionFactory(factory.django.DjangoModelFactory):
+    """A row in the bank feed.
+
+    The feed table is a projection (`bank_transaction_to_feed_row`): the row's
+    category and reconciled flag are read off the linked `JournalEntry`'s lines,
+    not off the transaction. `feed_transaction` below builds the combinations the
+    filters care about; use it rather than wiring entries up by hand.
+    """
+
+    class Meta:
+        model = BankTransaction
+
+    team = factory.SubFactory(TeamFactory)
+    account = factory.SubFactory(AssetAccountFactory, team=factory.SelfAttribute("..team"))
+    amount = Decimal("25.00")  # positive = outflow, per the Plaid convention
+    posted_date = factory.Faker("date_this_year")
+    description = factory.Sequence(lambda n: f"Feed transaction {n}")
+    merchant_name = factory.Sequence(lambda n: f"Merchant {n}")
+    source = "csv"
+
+
+def feed_transaction(team, account, *, category=None, reconciled=False, archived=False, **kwargs):
+    """Create one bank feed row in a given state.
+
+    - no `category` -> uncategorized (no journal entry at all)
+    - `category` -> categorized, with the bank-account line carrying `reconciled`
+    """
+    entry = None
+    if category is not None:
+        entry = JournalEntryFactory(team=team, entry_date=kwargs.get("posted_date") or "2026-01-15")
+        # The bank-account line is the one the feed reads reconciliation from; the
+        # other line is what the feed reports as the row's category.
+        JournalLineFactory(
+            team=team,
+            journal_entry=entry,
+            account=account,
+            cr_amount=Decimal("25.00"),
+            is_reconciled=reconciled,
+        )
+        JournalLineFactory(
+            team=team,
+            journal_entry=entry,
+            account=category,
+            dr_amount=Decimal("25.00"),
+        )
+
+    return BankTransactionFactory(
+        team=team,
+        account=account,
+        journal_entry=entry,
+        is_archived=archived,
+        **kwargs,
+    )

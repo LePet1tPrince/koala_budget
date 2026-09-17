@@ -3,6 +3,7 @@ import React, {useState} from "react";
 import Cookies from "js-cookie";
 import {getResendInviteUrl} from "./urls";
 import ValidationErrors from "../utilities/ValidationErrors";
+import Icon from '../common/Icon';
 
 
 const InviteWidget = function(props) {
@@ -39,7 +40,7 @@ const InviteWidget = function(props) {
       </div>
       <a className="btn btn-outline mt-2" onClick={() => sendInvite()}>
         <span className="w-6 h-6 inline-flex justify-center items-center">
-          <i className="fa fa-envelope-o"></i>
+          <Icon name="envelope-o" className="inline-block shrink-0 w-4 h-4" />
         </span>
         <span>{gettext("Invite")}</span>
       </a>
@@ -128,7 +129,7 @@ export const InvitationList = function(props) {
         <br/>
         <h3 className='text-xl mb-1'>{gettext("Pending Invitations")}</h3>
         <div className='table-responsive'>
-          <table className="table table table-quiet w-full">
+          <table className="table table-quiet w-full">
             <thead>
             <tr>
               <th>{gettext("Email")}</th>

@@ -1,5 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load static %}
+{% load icons %}
 {% block app %}
 <nav class="breadcrumbs text-sm" aria-label="breadcrumbs">
   <ol>
@@ -17,11 +18,11 @@
   <p class="mt-2">You can edit this information by clicking the button below.</p>
   <div class="mt-2">
     <a href="{% url 'teams_example:player_update' request.team.slug player.pk %}" class="btn btn-outline">
-      <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-pencil"></i></span>
+      <span class="w-6 h-6 inline-flex justify-center items-center">{% icon "pencil" class="inline-block shrink-0 w-4 h-4" %}</span>
       <span>Edit</span>
     </a>
     <a href="{% url 'teams_example:player_delete' request.team.slug player.pk %}" class="btn btn-outline btn-error">
-      <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-times"></i></span>
+      <span class="w-6 h-6 inline-flex justify-center items-center">{% icon "times" class="inline-block shrink-0 w-4 h-4" %}</span>
       <span>Delete</span>
     </a>
   </div>

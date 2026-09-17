@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load django_vite %}
 {% load currency_tags %}
+{% load icons %}
 
 {% block app %}
 <section class="app-card">
@@ -9,7 +10,7 @@
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
       <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
-        <i class="fa fa-arrow-left mr-2"></i>
+        {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
       <h1 class="text-3xl font-bold mb-2">{% translate "Goal Progress" %}</h1>
@@ -17,7 +18,7 @@
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <a href="{% url 'budget:goals_list' request.team.slug %}" class="btn btn-outline btn-sm">
-        <i class="fa fa-bullseye mr-2"></i>
+        {% icon "bullseye" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Manage Goals" %}
       </a>
     </div>
@@ -27,17 +28,17 @@
   <!-- Summary Section -->
   <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="goal-progress-summary">
     <div class="stat py-3">
-      <div class="stat-figure text-success hidden sm:block"><i class="fa fa-piggy-bank fa-lg"></i></div>
+      <div class="stat-figure text-success hidden sm:block">{% icon "piggy-bank" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Total Saved" %}</div>
       <div class="stat-value text-2xl text-success">{{ totals.saved|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure text-info hidden sm:block"><i class="fa fa-bullseye fa-lg"></i></div>
+      <div class="stat-figure text-info hidden sm:block">{% icon "bullseye" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Total Target" %}</div>
       <div class="stat-value text-2xl text-info">{{ totals.target|currency }}</div>
     </div>
     <div class="stat py-3">
-      <div class="stat-figure text-secondary hidden sm:block"><i class="fa fa-percent fa-lg"></i></div>
+      <div class="stat-figure text-secondary hidden sm:block">{% icon "percent" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Overall Progress" %}</div>
       <div class="stat-value text-2xl text-secondary">
         {% if totals.pct is not None %}{{ totals.pct|floatformat:1 }}%{% else %}—{% endif %}
@@ -93,7 +94,7 @@
               <td class="whitespace-nowrap">
                 <a href="{{ row.goal.get_absolute_url }}" class="link link-hover link-primary">{{ row.goal.name }}</a>
                 {% if row.goal.is_complete %}
-                <span class="badge badge-success badge-sm ml-1 align-middle"><i class="fa fa-check mr-1"></i>{% translate "Complete" %}</span>
+                <span class="badge badge-success badge-sm ml-1 align-middle">{% icon "check" class="inline-block shrink-0 w-4 h-4 mr-1" %}{% translate "Complete" %}</span>
                 {% endif %}
               </td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ row.saved|currency }}</td>
@@ -118,7 +119,7 @@
   {% else %}
   <div class="card bg-base-100 shadow-lg">
     <div class="card-body items-center text-center py-10">
-      <i class="fa fa-bullseye text-4xl text-base-content/30"></i>
+      {% icon "bullseye" class="inline-block shrink-0 w-9 h-9 text-base-content/30" %}
       <p class="text-base-content/70">{% translate "No savings goals yet." %}</p>
       <a href="{% url 'budget:goals_list' request.team.slug %}" class="btn btn-primary btn-sm">{% translate "Create a goal" %}</a>
     </div>

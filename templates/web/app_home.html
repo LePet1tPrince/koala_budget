@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load django_vite %}
 {% load currency_tags %}
+{% load icons %}
 {% block app %}
 
   <h1 class="text-2xl font-semibold" data-testid="dashboard-greeting">{{ greeting }}</h1>
@@ -74,7 +75,7 @@
 
   {% if inbox_count %}
     <div class="alert mt-6" data-testid="review-banner">
-      <i class="fa fa-inbox"></i>
+      {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
       <span>
         {% blocktranslate trimmed count counter=inbox_count %}
           {{ counter }} transaction to review

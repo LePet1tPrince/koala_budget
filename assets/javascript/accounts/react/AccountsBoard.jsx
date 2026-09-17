@@ -19,6 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import Cookies from 'js-cookie';
 
 import { formatCurrency } from '../../utilities/currency';
+import Icon from '../../common/Icon';
 
 // ---------------------------------------------------------------------------
 // id helpers: dnd-kit ids are strings namespaced by kind
@@ -164,7 +165,7 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay }) {
             {account.institution && <span>{account.institution}</span>}
             {account.hasFeed && (
               <span className="tooltip tooltip-right" data-tip={gettext('Linked to a bank feed')}>
-                <i className="fa fa-link" aria-hidden="true"></i>
+                <Icon name="link" className="inline-block w-3.5 h-3.5 shrink-0" />
               </span>
             )}
           </div>

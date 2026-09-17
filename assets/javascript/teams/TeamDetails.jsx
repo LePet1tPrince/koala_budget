@@ -4,6 +4,7 @@ import {Link} from "react-router-dom";
 import {TeamMemberList} from "./TeamMembers";
 import {InvitationList} from "./Invitations";
 import ValidationErrors from "../utilities/ValidationErrors";
+import Icon from '../common/Icon';
 
 
 const TeamDetails = function(props) {
@@ -80,7 +81,7 @@ const TeamDetails = function(props) {
               <button className={creatingNewTeam ? 'btn btn-primary' : 'btn btn-outline'}
                       onClick={saveTeam}>
                               <span className="w-6 h-6 inline-flex justify-center items-center">
-                                  <i className={`fa ${creatingNewTeam ? 'fa-plus' : 'fa-check'}`}></i>
+                                  <Icon name={creatingNewTeam ? 'plus' : 'check'} />
                               </span>
                 <span>{getSaveButtonText()}</span>
               </button>

@@ -1,5 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
+{% load icons %}
 
 {% block app %}
 <section class="app-card">
@@ -13,7 +14,7 @@
           <div class="font-medium">{% translate "Income Statement" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Income and expenses over a time period — your profit or loss." %}</div>
         </div>
-        <i class="fa fa-chevron-right text-base-content/40"></i>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
       </a>
     </li>
     <li>
@@ -22,7 +23,7 @@
           <div class="font-medium">{% translate "Balance Sheet" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Assets, liabilities, and equity as of a specific date." %}</div>
         </div>
-        <i class="fa fa-chevron-right text-base-content/40"></i>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
       </a>
     </li>
     <li>
@@ -31,7 +32,7 @@
           <div class="font-medium">{% translate "Net Worth Trend" %}</div>
           <div class="text-sm text-base-content/70">{% translate "How your net worth changes month over month." %}</div>
         </div>
-        <i class="fa fa-chevron-right text-base-content/40"></i>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
       </a>
     </li>
     <li>
@@ -40,7 +41,7 @@
           <div class="font-medium">{% translate "Cash Flow" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Money in vs money out each month, and what you kept." %}</div>
         </div>
-        <i class="fa fa-chevron-right text-base-content/40"></i>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
       </a>
     </li>
     <li>
@@ -49,7 +50,7 @@
           <div class="font-medium">{% translate "Budget vs Actual" %}</div>
           <div class="text-sm text-base-content/70">{% translate "How this month's spending compares to your budget, category by category." %}</div>
         </div>
-        <i class="fa fa-chevron-right text-base-content/40"></i>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
       </a>
     </li>
     <li>
@@ -58,7 +59,7 @@
           <div class="font-medium">{% translate "Goal Progress" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Savings goals over time, with the pace needed to hit each target." %}</div>
         </div>
-        <i class="fa fa-chevron-right text-base-content/40"></i>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
       </a>
     </li>
   </ul>
@@ -69,7 +70,7 @@
       <div class="text-sm text-base-content/70">{% translate "Download all journal entries and lines as a CSV file." %}</div>
     </div>
     <a href="{% url 'reports:export_transactions' request.team.slug %}" class="btn btn-ghost btn-sm">
-      <i class="fa fa-download mr-2"></i>
+      {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
       {% translate "Download CSV" %}
     </a>
   </div>

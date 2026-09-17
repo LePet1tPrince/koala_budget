@@ -1,4 +1,5 @@
 {% load i18n %}
+{% load icons %}
 <section class="app-card">
   <h2 class="text-xl mb-1">{% translate "Data Management" %}</h2>
   <p class="text-base-content/70 mb-4">
@@ -6,10 +7,10 @@
   </p>
   <div class="flex flex-wrap gap-3">
     <a href="{% url 'users:download_data' %}" class="btn btn-outline">
-      <i class="fa fa-download mr-1"></i> {% translate "Download My Data" %}
+      {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-1" %} {% translate "Download My Data" %}
     </a>
     <a href="{% url 'users:delete_account' %}" class="btn btn-outline btn-error">
-      <i class="fa fa-trash mr-1"></i> {% translate "Delete Account" %}
+      {% icon "trash" class="inline-block shrink-0 w-4 h-4 mr-1" %} {% translate "Delete Account" %}
     </a>
   </div>
 </section>

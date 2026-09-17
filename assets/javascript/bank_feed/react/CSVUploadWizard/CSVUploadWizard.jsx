@@ -7,6 +7,7 @@ import Step2ColumnMapping from './Step2ColumnMapping';
 import Step3CategoryMapping from './Step3CategoryMapping';
 import Step4DuplicateReview from './Step4DuplicateReview';
 import Step5Preview from './Step5Preview';
+import Icon from '../../../common/Icon';
 
 // Number of transactions sent per upload_confirm request — smaller batches give the
 // progress bar more, and more frequent, steps to render for large imports.
@@ -252,7 +253,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
 
         {error && (
           <div className="alert alert-error mb-4">
-            <i className="fa fa-exclamation-circle"></i>
+            <Icon name="exclamation-circle" className="inline-block shrink-0 w-4 h-4" />
             <span>{error}</span>
           </div>
         )}

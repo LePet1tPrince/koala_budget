@@ -1,6 +1,7 @@
 /* globals gettext */
 
 import React, { useCallback, useState } from 'react';
+import Icon from '../../../common/Icon';
 
 /**
  * Step1FileUpload - File upload step with drag-drop support
@@ -91,7 +92,7 @@ const Step1FileUpload = ({ onFileUpload, onCancel, sampleCsvUrl }) => {
           </div>
         ) : (
           <>
-            <i className="fa fa-cloud-upload text-5xl text-base-content/70 mb-4"></i>
+            <Icon name="cloud-upload" className="inline-block shrink-0 w-12 h-12 text-base-content/70 mb-4" />
             <p className="text-lg mb-2">
               {gettext('Drag and drop your file here')}
             </p>
@@ -99,7 +100,7 @@ const Step1FileUpload = ({ onFileUpload, onCancel, sampleCsvUrl }) => {
               {gettext('or')}
             </p>
             <label className="btn btn-primary">
-              <i className="fa fa-folder-open mr-2"></i>
+              <Icon name="folder-open" className="inline-block shrink-0 w-4 h-4 mr-2" />
               {gettext('Browse Files')}
               <input
                 type="file"

@@ -3,6 +3,7 @@
 import React from 'react';
 import { formatCurrency } from '../../utilities/currency';
 import { formatDate } from '../utils';
+import Icon from '../../common/Icon';
 
 /**
  * AccountCard component - a compact, scannable row for the account picker.
@@ -40,7 +41,7 @@ const AccountCard = ({ account, isSelected, onClick }) => {
           }`}
           aria-hidden="true"
         >
-          <i className={`fa ${isLiability ? 'fa-credit-card' : 'fa-university'}`}></i>
+          <Icon name={isLiability ? 'credit-card' : 'university'} />
         </span>
         {uncategorizedCount > 0 && (
           <span
