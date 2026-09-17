@@ -1,5 +1,10 @@
 """Page Object Model for the Transactions page (React-rendered)."""
 
+import contextlib
+
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import expect
+
 from .base import BasePage
 
 
@@ -49,6 +54,21 @@ class TransactionsPage(BasePage):
     # ------------------------------------------------------------------
 
     def search(self, query: str):
+        """Type into the search box and wait for the filtered rows to land.
+
+        Search is server-side and debounced 300ms, so the rows on screen stay
+        stale until the refetch resolves -- waiting the debounce alone returns
+        just as the request is dispatched, and the caller then counts the old
+        rows. Wait for the in-flight indicator to clear instead.
+        """
         self.page.locator("[data-testid='transaction-search']").fill(query)
-        # React filters client-side so no explicit wait needed, but give a tick
-        self.page.wait_for_timeout(300)
+        indicator = self.page.locator("[data-testid='transactions-refetching']")
+        # The fetch can resolve before we look, so a missed "visible" is fine;
+        # the "hidden" wait below still confirms nothing is in flight.
+        with contextlib.suppress(PlaywrightTimeoutError):
+            indicator.wait_for(state="visible", timeout=2_000)
+        indicator.wait_for(state="hidden", timeout=15_000)
+
+    def expect_row_count(self, count: int, timeout: int = 15_000):
+        """Auto-retrying row-count assertion, so a late render can't fail it."""
+        expect(self.page.locator("[data-testid='transaction-row']")).to_have_count(count, timeout=timeout)
