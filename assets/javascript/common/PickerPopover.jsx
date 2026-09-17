@@ -1,4 +1,19 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  isValid,
+  isWithinInterval,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from 'date-fns';
 
 /** Keep this much clear of the viewport edge when clamping the panel. */
 const GUTTER = 8;
@@ -147,17 +162,17 @@ export const PanelHeading = ({ children }) => (
  * to read as a row and whose `active` state is a full-contrast slab.
  */
 export const PresetList = ({ presets, active, onSelect, title = 'Presets' }) => (
-  <div className="min-w-[10.5rem] border-r border-base-300 pr-5">
+  <div className="w-full border-b border-base-300 pb-3 sm:w-auto sm:min-w-[10.5rem] sm:border-b-0 sm:border-r sm:pb-0 sm:pr-5">
     <PanelHeading>{title}</PanelHeading>
-    <ul className="flex flex-col gap-0.5">
+    <ul className="flex flex-wrap gap-1.5 sm:flex-col sm:gap-0.5">
       {presets.map((p) => (
         <li key={p.value}>
           <button
             type="button"
-            className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+            className={`rounded-lg px-3 py-2 text-sm transition-colors sm:w-full sm:text-left ${
               active === p.value
                 ? 'bg-primary/10 font-medium text-primary'
-                : 'hover:bg-base-200'
+                : 'border border-base-300 hover:bg-base-200 sm:border-0'
             }`}
             onClick={() => onSelect(p.value)}
           >
@@ -253,24 +268,138 @@ export const MONTH_LABELS = [
   'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
+const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+/** 'yyyy-MM-dd' <-> Date, the format the pickers pass around. */
+const toISO = (date) => format(date, 'yyyy-MM-dd');
+const fromISO = (value) => {
+  if (!value) return null;
+  const d = parseISO(value);
+  return isValid(d) ? d : null;
+};
+
 /**
- * A labelled native date field. `<input type="date">` is supported everywhere and
- * brings the platform's own calendar, so it replaces MUI's `DatePicker` outright;
- * the theme's `color-scheme` makes the browser's calendar icon follow dark mode.
+ * A month of days, drawn by us.
+ *
+ * The first cut of this phase used `<input type="date">` and let the browser
+ * supply the calendar. That is not themeable: Chrome's popup brings its own
+ * squared corners, its own cramped cells and its own blue, none of which CSS can
+ * reach, and it cannot show a range at all. So the grid is ours, matching
+ * `MonthGrid` — cells are real hit targets, the selected range is tinted across
+ * the span, and today is ringed rather than filled.
+ *
+ * @param {string} value      Selected day, 'yyyy-MM-dd'.
+ * @param {string} rangeStart Range to tint across; omit for a single-date grid.
+ * @param {string} rangeEnd
  */
-export const DateField = ({ label, value, onChange, min, max, testId }) => (
-  <label className="block w-full">
-    <span className="mb-1.5 block px-1 text-xs font-medium text-base-content/70">{label}</span>
-    <input
-      type="date"
-      className="input input-bordered w-full rounded-lg font-medium tabular-nums focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
-      value={value || ''}
-      min={min || undefined}
-      max={max || undefined}
-      onChange={(e) => onChange(e.target.value)}
-      data-testid={testId}
-    />
-  </label>
+export const DayGrid = ({ month, onMonthChange, value, rangeStart, rangeEnd, onSelect, testId }) => {
+  const selected = fromISO(value);
+  const start = fromISO(rangeStart);
+  const end = fromISO(rangeEnd);
+  const today = new Date();
+
+  const days = eachDayOfInterval({
+    start: startOfWeek(startOfMonth(month)),
+    end: endOfWeek(endOfMonth(month)),
+  });
+
+  return (
+    <div className="w-[17.5rem]" data-testid={testId}>
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          type="button"
+          className="grid h-8 w-8 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
+          onClick={() => onMonthChange(subMonths(month, 1))}
+          aria-label="Previous month"
+        >
+          <Chevron dir="left" />
+        </button>
+        <span className="text-sm font-semibold">{format(month, 'MMMM yyyy')}</span>
+        <button
+          type="button"
+          className="grid h-8 w-8 place-items-center rounded-full text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
+          onClick={() => onMonthChange(addMonths(month, 1))}
+          aria-label="Next month"
+        >
+          <Chevron dir="right" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-y-1">
+        {DAY_LABELS.map((d) => (
+          <div key={d} className="pb-1 text-center text-[0.68rem] font-semibold text-base-content/50">
+            {d}
+          </div>
+        ))}
+
+        {days.map((day) => {
+          const outside = !isSameMonth(day, month);
+          const isSelected =
+            (selected && isSameDay(day, selected)) ||
+            (start && isSameDay(day, start)) ||
+            (end && isSameDay(day, end));
+          const inRange =
+            start && end && !isSelected && isWithinInterval(day, { start, end });
+          const isToday = isSameDay(day, today);
+
+          // The span tint is a full-width block so adjacent days join up. Only the
+          // ends of each week round off, so a run reads as one band rather than a
+          // row of butted squares; the selected days sit on top with their own shape.
+          const weekday = day.getDay();
+          let cls = 'relative mx-auto grid h-9 w-9 place-items-center text-sm transition-colors ';
+          if (isSelected) {
+            cls += 'rounded-lg bg-primary font-semibold text-primary-content';
+          } else if (inRange) {
+            cls += `bg-primary/10 text-base-content ${
+              weekday === 0 ? 'rounded-l-lg' : ''
+            } ${weekday === 6 ? 'rounded-r-lg' : ''}`;
+          } else {
+            cls += `rounded-lg hover:bg-base-200 ${outside ? 'text-base-content/30' : ''} ${
+              isToday ? 'ring-1 ring-inset ring-primary/40' : ''
+            }`;
+          }
+
+          return (
+            <button
+              key={toISO(day)}
+              type="button"
+              className={cls}
+              aria-current={isToday ? 'date' : undefined}
+              onClick={() => onSelect(toISO(day))}
+            >
+              {day.getDate()}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * The Start/End switch shared by the range pickers: a segmented control that also
+ * shows each side's current value, so the panel needs no separate readout.
+ */
+export const RangeTabs = ({ editing, onEditingChange, startLabel, endLabel }) => (
+  <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-base-200 p-1">
+    {[['start', 'Start', startLabel], ['end', 'End', endLabel]].map(([side, label, display]) => (
+      <button
+        key={side}
+        type="button"
+        role="tab"
+        aria-selected={editing === side}
+        className={`rounded-lg px-3 py-1.5 text-center transition-colors ${
+          editing === side ? 'bg-base-100 shadow-sm' : 'hover:bg-base-100/60'
+        }`}
+        onClick={() => onEditingChange(side)}
+      >
+        <span className="block text-[0.65rem] uppercase tracking-[0.08em] text-base-content/60">
+          {label}
+        </span>
+        <span className="block text-sm font-semibold tabular-nums">{display || '—'}</span>
+      </button>
+    ))}
+  </div>
 );
 
 /** Calendar glyph for the trigger buttons, so no icon font or MUI icon is needed. */

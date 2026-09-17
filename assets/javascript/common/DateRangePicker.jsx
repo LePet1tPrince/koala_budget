@@ -14,14 +14,12 @@ import {
 
 import PickerPopover, {
   CalendarIcon,
-  DateField,
-  PanelHeading,
+  DayGrid,
   PickerActions,
   PresetList,
+  RangeTabs,
 } from './PickerPopover';
 
-// 'yyyy-MM-dd' in, 'yyyy-MM-dd' out: the value format is also what `<input type="date">`
-// speaks, so nothing has to be parsed to drive the fields — only the presets need dates.
 const safeParseISO = (dateString) => {
   if (!dateString) return null;
   const date = parseISO(dateString);
@@ -29,6 +27,11 @@ const safeParseISO = (dateString) => {
 };
 
 const safeFormat = (date) => (date && isValid(date) ? format(date, 'yyyy-MM-dd') : '');
+
+const formatDisplay = (value) => {
+  const d = safeParseISO(value);
+  return d ? format(d, 'MMM d, yyyy') : '';
+};
 
 const presetRanges = [
   { label: 'Last 7 days', value: 'last7days' },
@@ -67,6 +70,8 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
   const [tempStart, setTempStart] = useState(startDate || '');
   const [tempEnd, setTempEnd] = useState(endDate || '');
   const [activeRange, setActiveRange] = useState(preset || '');
+  const [editing, setEditing] = useState('start');
+  const [gridMonth, setGridMonth] = useState(startOfMonth(new Date()));
 
   useEffect(() => {
     setTempStart(startDate || '');
@@ -86,18 +91,43 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
     }
   }, [preset, startDate, endDate, onApply]);
 
+  const editedValue = editing === 'start' ? tempStart : tempEnd;
+  const editedDate = safeParseISO(editedValue);
+
+  // Show the month of whichever side is being edited. Keyed on the side and its
+  // value so the month arrows are not fought: moving them does not change the
+  // edited value, and picking a day sets a value in the month already shown.
+  useEffect(() => {
+    if (editedDate) setGridMonth(startOfMonth(editedDate));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, editedValue]);
+
   const handlePresetClick = (value) => {
     setActiveRange(value);
     const { start, end } = getPresetRange(value);
     setTempStart(safeFormat(start));
     setTempEnd(safeFormat(end));
+    setEditing('start');
+  };
+
+  const handleDaySelect = (iso) => {
+    setActiveRange('');
+    if (editing === 'start') {
+      setTempStart(iso);
+      // Keep the range ordered, then move on to the end date.
+      if (tempEnd && iso > tempEnd) setTempEnd(iso);
+      setEditing('end');
+    } else {
+      setTempEnd(iso);
+      if (tempStart && iso < tempStart) setTempStart(iso);
+    }
   };
 
   const getDisplayText = () => {
     if (!startDate && !endDate) return 'Filter by Date';
-    if (startDate && endDate) return `${startDate} – ${endDate}`;
-    if (startDate) return `From ${startDate}`;
-    return `Until ${endDate}`;
+    if (startDate && endDate) return `${formatDisplay(startDate)} – ${formatDisplay(endDate)}`;
+    if (startDate) return `From ${formatDisplay(startDate)}`;
+    return `Until ${formatDisplay(endDate)}`;
   };
 
   return (
@@ -109,35 +139,31 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
       panelClassName="w-max"
     >
       {({ close }) => (
-        <div className="flex gap-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-5">
           <PresetList presets={presetRanges} active={activeRange} onSelect={handlePresetClick} />
 
-          <div className="flex w-56 flex-col gap-3">
-            <PanelHeading>Custom Range</PanelHeading>
-            <DateField
-              label="Start date"
-              value={tempStart}
-              max={tempEnd}
-              testId="date-range-start"
-              onChange={(v) => {
-                setTempStart(v);
-                setActiveRange('');
-              }}
+          <div className="flex flex-col gap-3">
+            <RangeTabs
+              editing={editing}
+              onEditingChange={setEditing}
+              startLabel={formatDisplay(tempStart)}
+              endLabel={formatDisplay(tempEnd)}
             />
-            <DateField
-              label="End date"
-              value={tempEnd}
-              min={tempStart}
-              testId="date-range-end"
-              onChange={(v) => {
-                setTempEnd(v);
-                setActiveRange('');
-              }}
+
+            <DayGrid
+              month={gridMonth}
+              onMonthChange={setGridMonth}
+              rangeStart={tempStart}
+              rangeEnd={tempEnd}
+              onSelect={handleDaySelect}
+              testId="date-range-grid"
             />
+
             <PickerActions
               onCancel={() => {
                 setTempStart(startDate || '');
                 setTempEnd(endDate || '');
+                setEditing('start');
                 close();
               }}
               onApply={() => {

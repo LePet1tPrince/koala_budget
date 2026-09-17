@@ -6,6 +6,7 @@ import PickerPopover, {
   MonthGrid,
   PickerActions,
   PresetList,
+  RangeTabs,
 } from './PickerPopover';
 
 // Values are 'yyyy-MM' strings throughout.
@@ -132,32 +133,17 @@ const MonthRangePicker = ({ startMonth, endMonth, onApply, preset }) => {
       panelClassName="w-max"
     >
       {({ close }) => (
-        <div className="flex gap-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-5">
           <PresetList presets={presetRanges} active={activeRange} onSelect={handlePresetClick} />
 
           <div className="flex flex-col gap-3">
             {/* Which end of the range the grid below is setting. */}
-            <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-base-200 p-1">
-              {[['start', 'Start', tempStart], ['end', 'End', tempEnd]].map(([side, label, value]) => (
-                <button
-                  key={side}
-                  type="button"
-                  role="tab"
-                  aria-selected={editing === side}
-                  className={`rounded-lg px-3 py-1.5 text-center transition-colors ${
-                    editing === side ? 'bg-base-100 shadow-sm' : 'hover:bg-base-100/60'
-                  }`}
-                  onClick={() => setEditing(side)}
-                >
-                  <span className="block text-[0.65rem] uppercase tracking-[0.08em] text-base-content/60">
-                    {label}
-                  </span>
-                  <span className="block text-sm font-semibold tabular-nums">
-                    {formatDisplayMonth(value) || '—'}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <RangeTabs
+              editing={editing}
+              onEditingChange={setEditing}
+              startLabel={formatDisplayMonth(tempStart)}
+              endLabel={formatDisplayMonth(tempEnd)}
+            />
 
             <MonthGrid
               year={gridYear}

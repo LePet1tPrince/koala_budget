@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { endOfMonth, endOfYear, format, isValid, parseISO, subMonths, subYears } from 'date-fns';
+import { endOfMonth, endOfYear, format, isValid, parseISO, startOfMonth, subMonths, subYears } from 'date-fns';
 
 import PickerPopover, {
   CalendarIcon,
-  DateField,
+  DayGrid,
   PanelHeading,
   PickerActions,
   PresetList,
@@ -51,6 +51,7 @@ const BalanceSheetDatePickerWrapper = () => {
   const [asOfDate, setAsOfDate] = useState('');
   const [tempDate, setTempDate] = useState('');
   const [activePreset, setActivePreset] = useState('');
+  const [gridMonth, setGridMonth] = useState(startOfMonth(new Date()));
 
   // Seed from `?as_of_date`, defaulting to today.
   useEffect(() => {
@@ -58,6 +59,8 @@ const BalanceSheetDatePickerWrapper = () => {
     const initial = urlAsOfDate || format(new Date(), 'yyyy-MM-dd');
     setAsOfDate(initial);
     setTempDate(initial);
+    const d = safeParseISO(initial);
+    if (d) setGridMonth(startOfMonth(d));
   }, []);
 
   const navigateTo = (newDate) => {
@@ -77,24 +80,27 @@ const BalanceSheetDatePickerWrapper = () => {
       panelClassName="w-max"
     >
       {({ close }) => (
-        <div className="flex gap-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-5">
           <PresetList
             presets={presetRanges}
             active={activePreset}
             onSelect={(preset) => {
               setActivePreset(preset);
-              setTempDate(safeFormat(getPresetEndDate(preset)));
+              const d = getPresetEndDate(preset);
+              setTempDate(safeFormat(d));
+              setGridMonth(startOfMonth(d));
             }}
           />
 
-          <div className="flex w-56 flex-col gap-3">
+          <div className="flex flex-col gap-3">
             <PanelHeading>Custom Date</PanelHeading>
-            <DateField
-              label="As of date"
+            <DayGrid
+              month={gridMonth}
+              onMonthChange={setGridMonth}
               value={tempDate}
               testId="balance-sheet-as-of"
-              onChange={(v) => {
-                setTempDate(v);
+              onSelect={(iso) => {
+                setTempDate(iso);
                 setActivePreset('');
               }}
             />
