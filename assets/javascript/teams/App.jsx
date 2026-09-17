@@ -24,10 +24,10 @@ const NoTeams = function(props) {
 const NoTeamsPendingInvitationsList = function (props) {
   return (
     <section className="app-card">
-      <h1 className="pg-title">{gettext("No Teams Yet!")}</h1>
-      <h2 className="pg-subtitle">{gettext("But you have some pending invitations.")}</h2>
+      <h1 className="text-3xl font-bold mb-2">{gettext("No Teams Yet!")}</h1>
+      <h2 className="text-xl mb-1">{gettext("But you have some pending invitations.")}</h2>
       <UserInvitations invitations={props.userInvitations} apiUrls={props.apiUrls} />
-      <Link to="/new" className="pg-text-muted pg-link mt-3">
+      <Link to="/new" className="text-base-content/70 link link-primary mt-3">
           {gettext("Or create a new team")}
       </Link>
     </section>
@@ -37,17 +37,17 @@ const NoTeamsPendingInvitationsList = function (props) {
 const NoTeamsHero = function (props) {
   return (
     <section className="app-card">
-      <div className="pg-columns">
-        <div className="pg-column-one-third">
+      <div className="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0">
+        <div className="basis-1/3 grow-0 shrink-0">
           <img className="img-fluid" alt="Nothing Here" src={STATIC_FILES.undraw_team}/>
         </div>
-        <div className="pg-column">
-          <h1 className="pg-title">{gettext("No Teams Yet!")}</h1>
-          <h2 className="pg-subtitle">{gettext("Create your first team below to get started.")}</h2>
+        <div className="flex-1">
+          <h1 className="text-3xl font-bold mb-2">{gettext("No Teams Yet!")}</h1>
+          <h2 className="text-xl mb-1">{gettext("Create your first team below to get started.")}</h2>
           <p>
             <Link to="/new">
-              <button className="pg-button-primary">
-                <span className="pg-icon"><i className="fa fa-plus"></i></span>
+              <button className="btn btn-primary">
+                <span className="w-6 h-6 inline-flex justify-center items-center"><i className="fa fa-plus"></i></span>
                 <span>{gettext("Create Team")}</span>
               </button>
             </Link>

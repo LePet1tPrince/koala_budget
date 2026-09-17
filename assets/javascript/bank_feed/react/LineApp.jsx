@@ -520,7 +520,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             data-testid="account-picker-toggle"
           >
             <i className={`fa fa-chevron-${isAccountPickerOpen ? 'down' : 'right'} text-xs text-base-content/70 shrink-0`}></i>
-            <h2 className="pg-subtitle">{gettext('Select Account')}</h2>
+            <h2 className="text-xl mb-1">{gettext('Select Account')}</h2>
             {!isAccountPickerOpen && selectedAccount && (
               <span className="text-sm font-normal text-base-content/70 truncate">
                 — {selectedAccount.name}
@@ -569,7 +569,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       {selectedAccount && (
         <section className="app-card">
           <div className="flex justify-between items-center mb-2">
-            <h2 className="pg-subtitle">
+            <h2 className="text-xl mb-1">
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
             {selectedPlaidItem && (

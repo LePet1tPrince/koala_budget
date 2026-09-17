@@ -12,16 +12,16 @@
     </div>
   </div>
 {% for interval in active_plan_intervals %}
-  <div class="help is-size-6 pg-text-centered"
+  <div class="help is-size-6 text-center"
        x-data="{interval: '{{interval.interval}}' }"
        x-show="interval === selectedInterval">
       {{interval.help_text}}
   </div>
 {% endfor %}
 {% endif %}
-<div class="pg-columns my-2" id="plan-selector">
+<div class="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0 my-2" id="plan-selector">
   {% for product in active_products %}
-    <div class="pg-column grow">
+    <div class="flex-1 grow">
       <div class="plan"
            x-data="{
               product: {{ product.to_json }}
@@ -39,7 +39,7 @@
         <ul class="upgrade-features">
            {% for feature in product.metadata.features %}
            <li>
-             <span class="pg-icon"><i class="fa fa-check"></i></span>
+             <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-check"></i></span>
              <span class="upgrade-feature">{{ feature }}</span>
            </li>
            {% endfor %}

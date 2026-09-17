@@ -46,46 +46,44 @@ const EditAddEmployeeWidget = function(props) {
 
   return (
     <section className="app-card">
-      <h3 className="pg-subtitle">Employee Details</h3>
-      <div className="pg-input-group">
-        <label className="pg-label">Name</label>
-        <input className="pg-control" type="text" placeholder="Michael Scott"
+      <h3 className="text-xl mb-1">Employee Details</h3>
+      <div className="mb-3">
+        <label className="block font-bold">Name</label>
+        <input className="input w-full" type="text" placeholder="Michael Scott"
                onChange={(event) => setName(event.target.value)} value={name}>
         </input>
-        <p className="pg-help">Your employee's name.</p>
+        <p className="text-sm text-base-content/70">Your employee's name.</p>
         <ValidationErrors errors={errors.name} />
       </div>
       <div className="mb-3">
-        <label className="pg-label">Department</label>
-        <div className="pg-select">
-          <select onChange={(event) => setDepartment(event.target.value)} value={department}>
+        <label className="block font-bold">Department</label>
+        <select className="select w-full" onChange={(event) => setDepartment(event.target.value)} value={department}>
             {Object.entries(DepartmentEnum).map(
               ([key, value], index) => <option key={value}
                                              value={value}>{key}</option>
             )}
-          </select>
-        </div>
-        <p className="pg-help">What department your employee belongs to.</p>
+        </select>
+        <p className="text-sm text-base-content/70">What department your employee belongs to.</p>
         <ValidationErrors errors={errors.department} />
       </div>
-      <div className="pg-input-group">
-        <label className="pg-label">Salary</label>
-        <input className="pg-control" type="number" min="0" placeholder="50000"
+      <div className="mb-3">
+        <label className="block font-bold">Salary</label>
+        <input className="input w-full" type="number" min="0" placeholder="50000"
                onChange={(event) => setSalary(event.target.value)} value={salary}>
         </input>
-        <p className="pg-help">Your employee's annual salary.</p>
+        <p className="text-sm text-base-content/70">Your employee's annual salary.</p>
         <ValidationErrors errors={errors.salary} />
       </div>
-      <div className="pg-inline-buttons">
-        <button className={editMode ? 'pg-button-secondary' : 'pg-button-primary'}
+      <div className="flex space-x-1">
+        <button className={editMode ? 'btn btn-outline' : 'btn btn-primary'}
                 onClick={() => saveEmployee()}>
-            <span className="pg-icon">
+            <span className="w-6 h-6 inline-flex justify-center items-center">
               <i className={`fa ${editMode ? 'fa-check' : 'fa-plus'}`}></i>
             </span>
           <span>{editMode ? 'Save Employee' : 'Add Employee'}</span>
         </button>
         <Link to={props.urlBase}>
-          <button className="pg-button-light mx-2">
+          <button className="btn btn-ghost mx-2">
             <span>Cancel</span>
           </button>
         </Link>

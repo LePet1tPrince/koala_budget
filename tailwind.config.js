@@ -6,8 +6,8 @@ module.exports = {
     'alert-info',
     'alert-error',
     'alert-warning',
-    'pg-bg-danger',
-    'pg-bg-success',
+    'bg-error/10',
+    'bg-success/10',
   ],
   theme: {
     extend: {

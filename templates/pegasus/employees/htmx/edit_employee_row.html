@@ -2,29 +2,27 @@
 <form class="tr" hx-post="{% if employee %}{% url 'pegasus_employees:htmx_edit_employee' employee.id %}{% else %}{% url 'pegasus_employees:htmx_new_employee' %}{% endif %}"
       hx-target="this" hx-swap="outerHTML">
   {% csrf_token %}
-  <div class="td pg-input-group">
+  <div class="td mb-3">
     {{ form.name }}
     {{ form.name.errors }}
   </div>
   <div class="td">
-    <div class="pg-select">
-      {{ form.department }}
-    </div>
+    {{ form.department }}
   </div>
-  <div class="td pg-input-group">
+  <div class="td mb-3">
     {{ form.salary }}
     {{ form.salary.errors }}
   </div>
   <div class="td" >
-    <div class="pg-inline-buttons pg-justify-content-end pg-align-items-center" style="display: flex;">
-    <button class="pg-button-primary" type="submit">
-      <span class="pg-icon"><i class="fa fa-save"></i></span>
+    <div class="flex space-x-1 justify-end items-center" style="display: flex;">
+    <button class="btn btn-primary" type="submit">
+      <span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-save"></i></span>
       <span>Save</span>
     </button>
     {% if employee %}
-      <button class="pg-button-secondary" hx-get="{% url 'pegasus_employees:htmx_get_employee' employee.id %}">Cancel</button>
+      <button class="btn btn-outline" hx-get="{% url 'pegasus_employees:htmx_get_employee' employee.id %}">Cancel</button>
     {% else %}
-      <button class="pg-button-secondary" hx-get="{% url 'pegasus_employees:htmx_empty' %}">Cancel</button>
+      <button class="btn btn-outline" hx-get="{% url 'pegasus_employees:htmx_empty' %}">Cancel</button>
     {% endif %}
     </div>
   </div>

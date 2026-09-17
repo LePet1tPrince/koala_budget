@@ -4,8 +4,8 @@
 <section class="app-card">
   {% include "accounts/components/manage_tabs.html" with manage_tab="institutions" %}
   <div class="flex justify-between items-center mb-4">
-    <h3 class="pg-subtitle">{% translate "Institutions" %}</h3>
-    <a href="{% url 'accounts:institution_create' request.team.slug %}" class="pg-button-primary">
+    <h3 class="text-xl mb-1">{% translate "Institutions" %}</h3>
+    <a href="{% url 'accounts:institution_create' request.team.slug %}" class="btn btn-primary">
       {% translate "New Institution" %}
     </a>
   </div>
@@ -25,7 +25,7 @@
               <td><a href="{{ institution.get_absolute_url }}" class="link">{{ institution.name }}</a></td>
               <td>{{ institution.accounts.count }}</td>
               <td>
-                <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="pg-button-secondary pg-button-sm">
+                <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="btn btn-outline btn-sm">
                   {% translate "Edit" %}
                 </a>
               </td>

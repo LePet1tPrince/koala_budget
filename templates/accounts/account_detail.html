@@ -5,12 +5,12 @@
 {% block app %}
 <section class="app-card">
   <div class="flex justify-between items-center mb-4">
-    <h3 class="pg-subtitle">{{ account.name }}</h3>
+    <h3 class="text-xl mb-1">{{ account.name }}</h3>
     <div class="flex gap-2">
-      <a href="{% url 'accounts:account_update' request.team.slug account.pk %}" class="pg-button-primary">
+      <a href="{% url 'accounts:account_update' request.team.slug account.pk %}" class="btn btn-primary">
         {% translate "Edit" %}
       </a>
-      <a href="{% url 'accounts:account_delete' request.team.slug account.pk %}" class="pg-button-danger">
+      <a href="{% url 'accounts:account_delete' request.team.slug account.pk %}" class="btn btn-outline btn-error">
         {% translate "Delete" %}
       </a>
     </div>
@@ -50,7 +50,7 @@
 <section class="app-card">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
-      <h3 class="pg-subtitle">{% translate "Activity" %}</h3>
+      <h3 class="text-xl mb-1">{% translate "Activity" %}</h3>
       {% if start_date and end_date %}
       <p class="text-sm text-base-content/70">
         {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" trimmed %}

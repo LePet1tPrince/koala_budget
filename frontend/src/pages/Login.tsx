@@ -58,7 +58,7 @@ export default function LoginPage() {
                  onChange={(e) => changePassword(e.target.value)}
                  value={password}
                  name={'password'}/>
-          <p className={"text-right pg-text-muted"}>
+          <p className={"text-right text-base-content/70"}>
             <Link className='text-sm muted-link' to='/account/password/reset'>Forgot your password?</Link>
           </p>
           <FormErrors param='password' errors={response.content?.errors} />
@@ -77,7 +77,7 @@ export default function LoginPage() {
         </>
         : null}
       {config.data.account.login_by_code_enabled
-        ? <p className={"pg-text-centered pg-text-muted"}>
+        ? <p className={"text-center text-base-content/70"}>
           <Link className='text-sm muted-link' to='/account/login/code'>Mail me a sign-in code</Link>
         </p>
         : null}

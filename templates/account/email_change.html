@@ -6,7 +6,7 @@
   {% trans "Email Address" %}
 {% endblock head_title %}
 {% block content %}
-  <h2 class="pg-subtitle">{% translate "Email Address" %}</h2>
+  <h2 class="text-xl mb-1">{% translate "Email Address" %}</h2>
   {% if not emailaddresses %}
     {% include "account/snippets/warn_no_email.html" %}
   {% endif %}
@@ -31,7 +31,7 @@
           {% endif %}
         </label>
         <input id="new_email" type="email" value="{{ new_emailaddress.email }}" disabled class="input input-ghost w-full" />
-        <small class="pg-text-muted">{% blocktranslate %}Your email address is still pending verification.{% endblocktranslate %}</small>
+        <small class="text-base-content/70">{% blocktranslate %}Your email address is still pending verification.{% endblocktranslate %}</small>
         <div class="flex gap-2 mt-2">
           <button form="pending-email" type="submit" name="action_send" class="btn btn-secondary btn-sm">
             {% trans 'Re-send Verification' %}

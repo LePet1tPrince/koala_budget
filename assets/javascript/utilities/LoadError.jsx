@@ -3,8 +3,8 @@ import React from "react";
 const LoadError = function() {
   return (
     <section className="app-card">
-      <h2 className="pg-subtitle">Sorry, there was an error loading your data.</h2>
-      <div className="pg-content">
+      <h2 className="text-xl mb-1">Sorry, there was an error loading your data.</h2>
+      <div className="prose max-w-none lg:prose-lg">
         <p>
           Check your internet connection and try reloading the page.
         </p>

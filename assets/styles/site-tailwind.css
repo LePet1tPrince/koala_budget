@@ -20,7 +20,6 @@
 @import './app/tailwind/chat-components.css';
 @import './app/tailwind/chat-components.utilities.css';
 @import './app/tailwind/subscription-components.css';
-@import './pegasus/tailwind.css';
 
 @config "../../tailwind.config.js";
 
@@ -53,11 +52,6 @@
   }
 }
 
-/* set pegasus css variables to DaisyUI default colors: https://daisyui.com/docs/colors/ */
-
 :root {
   font-family: var(--font-sans);
-  --primary: var(--color-primary);
-  --danger: var(--color-error);
-  --success: var(--color-success);
 }

@@ -3,7 +3,7 @@
 {% load static %}
 {% load form_tags %}
 {% block body %}
-  <div class="flex justify-center my-8 ">
+  <div class="flex justify-center my-8">
     <div class="w-96 px-4 py-4">
       <div>
         <h2 class="mt-6 text-center text-2xl font-bold text-base-content">
@@ -20,7 +20,7 @@
         </form>
         {% include 'account/components/social/social_buttons.html' %}
         {% if LOGIN_BY_CODE_ENABLED %}
-        <p class="pg-text-centered pg-text-muted">
+        <p class="text-center text-base-content/70">
           <a class="text-sm muted-link" href="{{ request_login_code_url }}">
             {% translate "Mail me a sign-in code" %}
           </a>

@@ -30,15 +30,15 @@ const InviteWidget = function(props) {
 
   return (
     <div>
-      <h3 className="pg-subtitle">{gettext("Invite Team Members")}</h3>
-      <div className="pg-input-group">
-        <input className="pg-control" type="email" placeholder="michael@dundermifflin.com"
+      <h3 className="text-xl mb-1">{gettext("Invite Team Members")}</h3>
+      <div className="mb-3">
+        <input className="input w-full" type="email" placeholder="michael@dundermifflin.com"
                onChange={(event)=>setEmail(event.target.value)} value={email}>
         </input>
         <ValidationErrors errors={errors} />
       </div>
-      <a className="pg-button-secondary mt-2" onClick={() => sendInvite()}>
-        <span className="pg-icon">
+      <a className="btn btn-outline mt-2" onClick={() => sendInvite()}>
+        <span className="w-6 h-6 inline-flex justify-center items-center">
           <i className="fa fa-envelope-o"></i>
         </span>
         <span>{gettext("Invite")}</span>
@@ -49,11 +49,11 @@ const InviteWidget = function(props) {
 
 const InvitationTableRow = function(props) {
   const controls = props.canManageInvitations ? (
-    <div className="pg-inline-buttons pg-justify-content-end">
-      <a className="pg-button-secondary" onClick={() => props.resendInvitation(props.index)}>
+    <div className="flex space-x-1 justify-end">
+      <a className="btn btn-outline" onClick={() => props.resendInvitation(props.index)}>
         <span>{ props.sent ? gettext("Sent!") : gettext("Resend Invitation") }</span>
       </a>
-      <a className="pg-button-secondary mx-2" onClick={() => props.delete(props.index)}>
+      <a className="btn btn-outline mx-2" onClick={() => props.delete(props.index)}>
         <span>{gettext("Cancel Invitation")}</span>
       </a>
     </div>
@@ -126,9 +126,9 @@ export const InvitationList = function(props) {
     return (
       <div>
         <br/>
-        <h3 className='pg-subtitle'>{gettext("Pending Invitations")}</h3>
+        <h3 className='text-xl mb-1'>{gettext("Pending Invitations")}</h3>
         <div className='table-responsive'>
-          <table className="table pg-table">
+          <table className="table table table-quiet w-full">
             <thead>
             <tr>
               <th>{gettext("Email")}</th>

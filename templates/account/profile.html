@@ -41,7 +41,7 @@
     function uploadImage(file) {
       // update UI
       let uploadlabel = document.getElementById("profile-upload-label")
-      uploadlabel.innerHTML = '<span class="pg-icon"><i class="fa fa-refresh"></i></span><span>Uploading...</span>';
+      uploadlabel.innerHTML = '<span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-refresh"></i></span><span>Uploading...</span>';
       uploadlabel.classList.add('is-active');
       // upload to server
       let formData = new FormData();
@@ -52,16 +52,16 @@
           if (response.ok) {
             response.text().then(function (text) {
               // update UI
-              uploadlabel.innerHTML = '<span class="pg-icon"><i class="fa fa-check"></i></span><span>' + text + '</span>';
+              uploadlabel.innerHTML = '<span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-check"></i></span><span>' + text + '</span>';
               uploadlabel.classList.remove('is-active');
-              uploadlabel.classList.add('pg-text-success');
+              uploadlabel.classList.add('text-success');
             });
           } else {
             response.json().then(function (errorResponse) {
               console.error(errorResponse);
               const errorText = errorResponse.errors;
-              uploadlabel.innerHTML = '<span title="' + errorText + '" ><span class="pg-icon"><i class="fa fa-times"></i></span><span>Upload failed!</span></span>';
-              uploadlabel.classList.add('pg-text-danger');
+              uploadlabel.innerHTML = '<span title="' + errorText + '" ><span class="w-6 h-6 inline-flex justify-center items-center"><i class="fa fa-times"></i></span><span>Upload failed!</span></span>';
+              uploadlabel.classList.add('text-error');
             });
           }
         }

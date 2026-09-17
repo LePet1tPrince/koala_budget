@@ -8,7 +8,7 @@
 {% endif %}
 {% endblock %}
 {% block body %}
-  <div class="flex justify-center my-8 ">
+  <div class="flex justify-center my-8">
     <div class="w-96 px-4 py-4">
       <div>
         <h2 class="mt-6 text-center text-2xl font-bold text-base-content">
@@ -41,7 +41,7 @@
         {% include 'account/components/social/social_buttons.html' %}
         <div class="text-sm mt-4">
           {% translate "Already have account?" %}
-          <a href="{% url 'account_login' %}" class="font-medium pg-link">
+          <a href="{% url 'account_login' %}" class="font-medium link link-primary">
             {% translate "Go to sign in." %}
           </a>
         </div>

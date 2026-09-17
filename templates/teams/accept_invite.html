@@ -4,14 +4,14 @@
 {% block body %}
 <section class="mt-7 section">
   <div class= "container">
-    <div class="pg-columns pg-align-items-center">
-      <div class="pg-column-one-third">
+    <div class="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0 items-center">
+      <div class="basis-1/3 grow-0 shrink-0">
         <img class="img-fluid" src="{% static 'images/undraw/undraw_lighthouse.svg' %}" alt="{% translate "Welcome!" %}">
       </div>
-      <div class="pg-column">
+      <div class="flex-1">
         {% if not invitation.is_accepted %}
-          <h1 class="pg-title">{% translate "Accept Invitation?" %}</h1>
-          <h2 class="pg-subtitle">
+          <h1 class="text-3xl font-bold mb-2">{% translate "Accept Invitation?" %}</h1>
+          <h2 class="text-xl mb-1">
             {% blocktranslate trimmed with team_name=invitation.team.name by=invitation.invited_by.get_display_name %}
             You've been invited to join {{ team_name }} by {{ by }}.
             {% endblocktranslate %}
@@ -19,12 +19,12 @@
           {% if request.user.is_authenticated %}
             {% if user_owns_email and not email_verified %}
               <div>
-                <p class="my-2 pg-text-danger">
+                <p class="my-2 text-error">
                   {% blocktranslate trimmed %}
                   You must verify the email address before you can accept the invitation.
                 {% endblocktranslate %}
                 </p>
-                <a class="pg-button-primary" href="{% url "account_email" %}">
+                <a class="btn btn-primary" href="{% url "account_email" %}">
                   {% blocktranslate trimmed with email=invitation.email %}
                     Verify {{ email }}
                   {% endblocktranslate %}
@@ -34,7 +34,7 @@
               <form method="post">
                 {% csrf_token %}
                 {% if user_owns_email %}
-                  <input type="submit" class="pg-button-primary" value="{% translate 'Accept Invitation' %}"/>
+                  <input type="submit" class="btn btn-primary" value="{% translate 'Accept Invitation' %}"/>
                 {% else %}
                   <p >
                     {% blocktranslate trimmed with invite_email=invitation.email user_email=request.user.email  %}
@@ -43,16 +43,16 @@
                     {% endblocktranslate %}
                   </p>
                   <p class="buttons my-3">
-                    <a class="pg-button-primary" href="{% url 'account_email' %}">
+                    <a class="btn btn-primary" href="{% url 'account_email' %}">
                       {% blocktranslate trimmed with email=invitation.email %}
                         Add '{{ email }}' to your account
                       {% endblocktranslate %}
                     </a>
-                    <a class="pg-button-secondary" href="{% url 'account_logout' %}?invitation_id={{ invitation.id }}">
+                    <a class="btn btn-outline" href="{% url 'account_logout' %}?invitation_id={{ invitation.id }}">
                       {% translate "Sign out" %}
                     </a>
                   </p>
-                  <p class="pg-text-muted">
+                  <p class="text-base-content/70">
                     {% translate "The email address must be verified before accepting the invitation." %}
                   </p>
                 {% endif %}
@@ -60,7 +60,7 @@
             {% endif %}
             {% if user_team_count == 0 %}
             <div class="mt-3">
-              <a class="pg-text-muted pg-link" href="{% url 'teams:manage_teams' %}new">
+              <a class="text-base-content/70 link link-primary" href="{% url 'teams:manage_teams' %}new">
                 {% translate "Ignore and create a new team instead." %}
               </a>
             </div>
@@ -68,18 +68,18 @@
           {% else %}
             <p class="buttons">
               {% if account_exists %}
-                <a class="pg-button-primary" href="{% url 'account_login' %}?next={% url 'teams:accept_invitation' invitation.id %}">
+                <a class="btn btn-primary" href="{% url 'account_login' %}?next={% url 'teams:accept_invitation' invitation.id %}">
                   {% translate "Log in to Accept" %}
                 </a>
               {% else %}
-                <a class="pg-button-primary" href="{% url 'teams:signup_after_invite' invitation.id %}">
+                <a class="btn btn-primary" href="{% url 'teams:signup_after_invite' invitation.id %}">
                   {% translate "Create Account to Accept" %}
                 </a>
               {% endif %}
             </p>
           {% endif %}
         {% else %}
-          <p class="pg-subtitle">
+          <p class="text-xl mb-1">
             {% translate "Sorry, it looks like that invitation has already been accepted or expired." %}
           </p>
           <p>

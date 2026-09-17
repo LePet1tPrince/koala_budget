@@ -2,7 +2,7 @@
 {% load i18n %}
 {% block app %}
 <section class="app-card max-w-xl">
-  <h2 class="pg-subtitle text-red-600 dark:text-red-400">{% translate "Delete Account" %}</h2>
+  <h2 class="text-xl mb-1 text-red-600 dark:text-red-400">{% translate "Delete Account" %}</h2>
 
   <div class="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
     <p class="text-red-800 dark:text-red-300 font-medium">
@@ -30,13 +30,13 @@
       {% blocktranslate with email=user.email %}Type <strong>{{ email }}</strong> to confirm deletion:{% endblocktranslate %}
     </label>
     <input type="text" name="confirmation" id="confirmation" required autocomplete="off"
-           class="pg-control w-full max-w-md"
+           class="input w-full w-full max-w-md"
            placeholder="{{ user.email }}">
     <div class="mt-4 flex gap-3">
-      <button type="submit" class="pg-button-danger">
+      <button type="submit" class="btn btn-outline btn-error">
         <i class="fa fa-trash mr-1"></i> {% translate "Permanently Delete Account" %}
       </button>
-      <a href="{% url 'users:user_profile' %}" class="pg-button-secondary">
+      <a href="{% url 'users:user_profile' %}" class="btn btn-outline">
         {% translate "Cancel" %}
       </a>
     </div>

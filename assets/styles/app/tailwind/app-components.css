@@ -100,9 +100,6 @@
   tint read the same at a glance and keep the surface calm. Applied on the
   <table>, so a whole table opts in without touching any <tr>.
 */
-.table-quiet tbody tr:hover > *,
-/* `.pg-table` used table-zebra too; this selector goes away with the Pegasus
-   layer in Phase 4. */
-.pg-table tbody tr:hover > * {
+.table-quiet tbody tr:hover > * {
   @apply bg-base-200/60;
 }
