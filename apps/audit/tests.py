@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, Account, AccountGroup, Payee
 from apps.audit.models import AuditEvent, AuditLog
-from apps.audit.utils import set_current_user
+from apps.audit.utils import set_current_user, snapshot_journal_line
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.context import current_team
 from apps.teams.models import Team
@@ -182,3 +182,59 @@ class JournalEntryAuditEndpointTests(TestCase):
         actions = [row["action"] for row in response.data]
         self.assertIn(AuditLog.ACTION_CREATE, actions)
         self.assertIn(AuditLog.ACTION_UPDATE, actions)
+
+
+class SnapshotAmountCoercionTests(TestCase):
+    """`snapshot_journal_line` runs from a post_save signal, so a bad value there
+    breaks the save itself. Django does not coerce a field on assignment, so an
+    amount set from a string stays a `str` on the in-memory instance."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Coercion Team", slug="coercion-team")
+        cls.user = CustomUser.objects.create_user(username="coercion", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        cls.asset_group = AccountGroup.objects.create(
+            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+
+    def test_snapshot_formats_string_amounts(self):
+        """A str amount formats to 2dp instead of raising ValueError."""
+        line = JournalLine(account=self.bank_account, dr_amount="1500.5", cr_amount="0")
+        snapshot = snapshot_journal_line(line)
+        self.assertEqual(snapshot["dr_amount"], "1500.50")
+        self.assertEqual(snapshot["cr_amount"], "0.00")
+
+    def test_snapshot_still_formats_decimal_amounts(self):
+        line = JournalLine(account=self.bank_account, dr_amount=Decimal("12"), cr_amount=Decimal("0.5"))
+        snapshot = snapshot_journal_line(line)
+        self.assertEqual(snapshot["dr_amount"], "12.00")
+        self.assertEqual(snapshot["cr_amount"], "0.50")
+
+    def test_snapshot_survives_an_unparseable_amount(self):
+        """The audit trail must never be the reason a save fails."""
+        line = JournalLine(account=self.bank_account, dr_amount="not a number", cr_amount=None)
+        snapshot = snapshot_journal_line(line)
+        self.assertEqual(snapshot["dr_amount"], "not a number")
+        self.assertIsNone(snapshot["cr_amount"])
+
+    def test_saving_a_line_with_string_amounts_does_not_raise(self):
+        """The regression: the post_save audit signal used to raise mid-save."""
+        with current_team(self.team):
+            entry = JournalEntry.objects.create(
+                team=self.team, entry_date=date.today(), description="String amounts", status="posted"
+            )
+            JournalLine.objects.create(
+                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount="1500.00", cr_amount="0.00"
+            )
+            JournalLine.objects.create(
+                team=self.team, journal_entry=entry, account=self.groceries, dr_amount="0.00", cr_amount="1500.00"
+            )
+
+        self.assertEqual(entry.lines.count(), 2)
+        self.assertTrue(AuditLog.objects.filter(journal_entry_id=entry.pk).exists())
