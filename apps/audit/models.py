@@ -34,6 +34,12 @@ class AuditEvent(models.Model):
     TEAM_MEMBER_REMOVED = "team_member_removed"
     GOAL_FUNDS_ASSIGNED = "goal_funds_assigned"
     GOAL_FUNDS_WITHDRAWN = "goal_funds_withdrawn"
+    ONBOARDING_STARTED = "onboarding_started"
+    ONBOARDING_PHASE_COMPLETED = "onboarding_phase_completed"
+    ONBOARDING_COMPLETED = "onboarding_completed"
+    ONBOARDING_SKIPPED = "onboarding_skipped"
+    ONBOARDING_TASK_COMPLETED = "onboarding_task_completed"
+    ONBOARDING_FINISHED = "onboarding_finished"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -59,6 +65,12 @@ class AuditEvent(models.Model):
         (TEAM_MEMBER_REMOVED, "Team Member Removed"),
         (GOAL_FUNDS_ASSIGNED, "Goal Funds Assigned"),
         (GOAL_FUNDS_WITHDRAWN, "Goal Funds Withdrawn"),
+        (ONBOARDING_STARTED, "Onboarding Started"),
+        (ONBOARDING_PHASE_COMPLETED, "Onboarding Phase Completed"),
+        (ONBOARDING_COMPLETED, "Onboarding Questionnaire Completed"),
+        (ONBOARDING_SKIPPED, "Onboarding Skipped"),
+        (ONBOARDING_TASK_COMPLETED, "Onboarding Task Completed"),
+        (ONBOARDING_FINISHED, "Onboarding Finished"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)

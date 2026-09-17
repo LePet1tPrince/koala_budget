@@ -43,14 +43,66 @@ class Task:
     # True when completion is observable in the data; False when the task is
     # "go and look at this", which only the client can report.
     auto_detected: bool
+    # Where the task is done. The rail links here, and a task that is not
+    # auto-detected is marked done once the user reaches this page.
+    url_name: str
+    blurb: str = ""
+    # A CSS selector for the control the coach mark points at on that page.
+    # Optional, and purely additive: if it is not on the page, nothing is drawn.
+    anchor: str = ""
+    # When set, the rail opens this dialog instead of navigating. Opening balances
+    # are a step of their own rather than a page, and asking for them in place beats
+    # sending the user to a report and hoping they find the prompt.
+    dialog: str = ""
 
 
 TASKS: tuple[Task, ...] = (
-    Task("import", _("Import your transactions"), NEEDS_NOTHING, auto_detected=True),
-    Task("categorize", _("Categorize them"), NEEDS_TRANSACTIONS, auto_detected=True),
-    Task("budget", _("Set a budget"), NEEDS_TRANSACTIONS, auto_detected=True),
-    Task("report", _("See where the money went"), NEEDS_ENTRIES, auto_detected=False),
-    Task("net_worth", _("Watch your net worth move"), NEEDS_ENTRIES, auto_detected=False),
+    Task(
+        "import",
+        _("Import your transactions"),
+        NEEDS_NOTHING,
+        auto_detected=True,
+        url_name="bank_feed:bank_feed_home",
+        blurb=_("Pick an account, then Upload CSV. No statement handy? Grab the sample file."),
+        # The account cards, not the upload button: the upload control only exists
+        # once an account is selected, so anchoring there would point at nothing on
+        # the page the user actually lands on.
+        anchor='[data-testid^="account-card-"]',
+    ),
+    Task(
+        "categorize",
+        _("Categorize them"),
+        NEEDS_TRANSACTIONS,
+        auto_detected=True,
+        url_name="bank_feed:bank_feed_home",
+        blurb=_("Tell Koala what each transaction was for. Nothing moves until you do."),
+        anchor='[data-testid="categorize-mode-btn"]',
+    ),
+    Task(
+        "budget",
+        _("Set a budget"),
+        NEEDS_TRANSACTIONS,
+        auto_detected=True,
+        url_name="budget:budget_home",
+        blurb=_("Give each category a monthly number. Start rough — you can tune it later."),
+    ),
+    Task(
+        "report",
+        _("See where the money went"),
+        NEEDS_ENTRIES,
+        auto_detected=False,
+        url_name="reports:income_statement",
+        blurb=_("Your income and spending, side by side."),
+    ),
+    Task(
+        "net_worth",
+        _("Watch your net worth move"),
+        NEEDS_ENTRIES,
+        auto_detected=False,
+        url_name="reports:net_worth_trend",
+        blurb=_("Add what you already have, then see the whole picture."),
+        dialog="opening_balances",
+    ),
 )
 
 
@@ -100,10 +152,15 @@ def _is_done(task: Task, facts: TeamFacts, tasks_done: list[str]) -> bool:
     }.get(task.slug, False)
 
 
-def task_state(team, tasks_done: list[str] | None = None) -> list[dict]:
+def task_state(team, tasks_done: list[str] | None = None, team_slug: str | None = None) -> list[dict]:
     """
     Every guided task with its state, in order, plus the reason for any lock.
+
+    `team_slug` resolves each task's target URL. It is optional so the gate logic
+    stays testable without a URL conf.
     """
+    from django.urls import reverse
+
     facts = team_facts(team)
     done = list(tasks_done or [])
 
@@ -120,8 +177,13 @@ def task_state(team, tasks_done: list[str] | None = None) -> list[dict]:
             {
                 "slug": task.slug,
                 "label": str(task.label),
+                "blurb": str(task.blurb),
                 "state": state,
                 "reason": str(GATE_REASONS[task.needs]) if state == LOCKED else "",
+                "url": reverse(task.url_name, args=[team_slug]) if team_slug else "",
+                "anchor": task.anchor,
+                "auto": task.auto_detected,
+                "dialog": task.dialog,
             }
         )
     return states

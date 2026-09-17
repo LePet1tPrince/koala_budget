@@ -679,11 +679,214 @@ via the dependency, `Vehicle` without a `Car Loan`, no `Mortgage`, and none of t
 template's unasked-for accounts. The named goal reached the dashboard's "To reach all
 goals" card, its backing account in a real `Goals` group rather than the system equity one.
 
+### Chart-of-accounts review (step 4)
+
+Phase C now sits between the last question and completion: the generated chart, grouped
+by type, each account a chip the user can rename in place or drop, with an "Add" per
+group.
+
+**The client posts edits, not a chart of accounts.** This is the security-relevant choice.
+A wholesale list would let a client invent an account inside the system equity group, flip
+`is_system`, or attach an account to a group no answer created. Instead the payload is a
+diff — `{removed, renamed, added}` — and the server rebuilds the chart from the *stored
+answers* and applies the diff to its own set, so none of that is expressible. Both
+`api/preview-coa/` and the apply path rebuild from the same `build_template`, so what the
+user reviews and what they get cannot drift.
+
+Refused outright, each with a user-facing message and nothing written: removing the system
+reconciliation account (opening balances and reconciliation post against it), adding to a
+group outside the generated chart, a blank or over-long name, and a name that collides
+within its account *type* — the same uniqueness rule `AccountForm` and the accounts board
+use, checked case-insensitively.
+
+Every edit round-trips through the server: changing a chip re-posts the diff and redraws
+from the response, so the list on screen is always the server's answer rather than an
+optimistic guess. A rejected edit leaves the previous list up with the reason above it.
+Edits reset whenever review is re-entered, because they are keyed by generated account
+name and changing an answer can remove the account a rename referred to.
+
+**Deviation from §5.2:** there is no separate `api/apply-coa/`. `api/complete/` takes the
+same optional `edits` payload and remains the one endpoint that finishes the flow —
+applying the chart, creating the first goal and marking the state complete. A second
+endpoint that did the apply half would have been a name for something `complete` already
+does.
+
+A bug the tests caught: `parse_edits` iterated a bare string character by character, so
+`{"removed": "Rent"}` read as a request to remove accounts named "R", "e", "n", "t". The
+container types are now checked before iterating.
+
+Verified in a browser in both themes: 28 accounts generated for a mortgage-holding
+household with kids, a car loan and a line of credit; renaming Groceries → Food & Drink
+and removing Pets left 27, and the database afterwards held exactly that — the rename
+applied, Pets gone, Travel untouched, the system account still present and still hidden
+from review.
+
+### The guided task rail (step 5)
+
+Phase D, over the real app. `OnboardingState.complete()` now moves to the `tasks` phase
+rather than straight to `done`: `completed_at` is what stops `team_home` redirecting into
+the takeover, but the walkthrough is not over, and the phase is what keeps the rail on
+screen. `finish_tasks()` ends it, when every task is done or the user dismisses it.
+
+The rail is docked bottom-right, not added as a third column — the shell is a sticky
+248px sidebar beside a capped content column, and `shrink-0` exists precisely because a
+wide element used to squeeze the nav. Below `lg` it spans the width and sits clear of the
+mobile dock.
+
+`onboarding_rail` (context processor) decides only *whether* the rail renders, on one
+query against `phase`. The rail then fetches its own state from `GET api/tasks/`, so the
+gate computation — several existence queries — never runs on a page that will not show
+one. The script loads in `app_base.html`'s body rather than `page_js`, because child
+templates define their own `page_js` and would override it on exactly the pages the rail
+is for.
+
+**A detected task cannot be claimed by the client.** `POST api/task/` refuses any task
+with `auto_detected=True`; accepting a claim would let the checklist say a user imported
+transactions when they never did. Only the "go and look at this" tasks are reportable, and
+those complete by the user arriving on the page — checked against *every* open task rather
+than just the current one, since the order is a suggestion and someone who opens the
+report with a half-written budget has plainly done that step.
+
+Coach marks are portaled to the body, fixed-positioned, and fail-safe: they poll briefly
+for their anchor and render nothing if it never appears. The rail's own copy carries the
+instruction, so a missing mark costs a nicety rather than the guidance — which matters,
+since the anchors point at controls in components free to change.
+
+Two fixes the browser run forced:
+
+- The import task's anchor pointed at the upload button, which only exists *after* an
+  account is selected — so the mark never appeared on the page the user actually lands on.
+  It now rings the account cards, the real first action. (`LineApp.jsx` gained a
+  `categorize-mode-btn` testid so the categorize anchor is real too.)
+- Coach marks were placed below their anchor, which on the bank feed covered the next
+  account card — hiding one of the things it was pointing at. They now prefer the side,
+  falling back to below and then above.
+
+Verified in a browser: a freshly onboarded team sees Import available with everything else
+locked and explained; the rail survives navigation; seeding a transaction and a categorized
+entry flips Import and Categorize to done and unlocks the rest; visiting the income
+statement marks "See where the money went" done, and it stays done across a reload.
+
+### Opening balances and the net-worth reveal (step 6)
+
+The §2.2 gap, closed. Net worth is `sum(dr - cr)` over asset and liability lines, so a
+ledger holding only an imported window reports the *change* over that window rather than
+what the user has. `services/opening.py::create_opening_balances()` writes one balanced
+entry per account — asset debited, liability credited, each against the system equity
+account that already exists for reconciliation — so `sum(dr - cr)` moves by exactly what
+the user said.
+
+Task 5 opens a dialog rather than navigating (`Task.dialog`, so it stays data). Asking
+inside the rail beats sending the user to a report and hoping they find a prompt there.
+
+**The gate is enforced, not hidden.** `POST api/opening-balances/` refuses a team with no
+non-void `JournalEntry`, and the `GET` reports the gate rather than the accounts. Anchoring
+a net worth before any categorized activity gives the user nothing to sanity-check it
+against — which is the whole reason the step was deferred to here.
+
+Refused with a user-facing message, nothing written: a non-numeric amount, a negative one
+(a debt is entered as what is owed, so a minus sign is nearly always a misunderstanding),
+an income or expense account, and an account belonging to another team. Those last two are
+refused rather than silently dropped — dropping them would leave the user believing they
+had set a balance. A blank or zero is not an error: that is how an account is skipped.
+Re-submitting skips accounts that already have an opening balance, since the step can be
+revisited and a second entry would silently double the figure.
+
+**The reveal happens in the dialog**, not on the report page: the before/after pair is
+already in hand there, so the number the user has been squinting at counts up to the one
+they recognise, with a link onward to the trend. A bug caught in the browser: the figure
+rendered as "CA$4,458" because `Intl` with `style: 'currency'` writes CAD that way, which
+looked foreign next to every other "$" on the page; it now matches the `currency` template
+filter exactly.
+
+Also fixed: `existing_opening_balances()` counted the equity offset account, which carries
+a line on every one of these entries, so it reported as "already has an opening balance" —
+meaningless for an account nobody is asked about.
+
+**Deviation from §6.2:** the chart-draw animation on the net-worth report page is not
+built. The count-up reveal lives in the dialog instead, which needed no changes to the
+reports templates and puts the moment where the user already is.
+
+Verified in a browser in both themes, then against the ledger: entering $2,500 chequing,
+$1,200 savings and $800 TFSA on a team sitting at −$42 produced three entries, each
+balancing to the cent, and a net worth of exactly $4,458.
+
+### The finish card, instrumentation and the resume nudge (step 7)
+
+**The funnel from §8 exists.** Six `AuditEvent` types (audit migration `0005`) record
+`ONBOARDING_STARTED` (first sight of the takeover, once),
+`ONBOARDING_PHASE_COMPLETED` (`{phase, next}` — the phase being *left*),
+`ONBOARDING_COMPLETED` (`{accounts, answers}`), `ONBOARDING_SKIPPED` (`{phase}` where
+they bailed), `ONBOARDING_TASK_COMPLETED` (`{task}`, once per task) and
+`ONBOARDING_FINISHED` (`{reason: all_tasks_done | dismissed, tasks_done}`).
+
+The per-phase pair is the point: a completion rate says people drop out, while these say
+*which question* loses them. The completed event carries the answers too, so a question
+that turns out to drive nothing in the chart of accounts can be spotted and cut — which
+is exactly the §11 open decision about trimming the question count.
+
+Verified end to end rather than only in tests: a clean run recorded `started` →
+`phase_completed` (income→household) → `phase_completed` (household→goal) →
+`completed {accounts: 28}` with all nine answers attached. An abandoned run showed as a
+start with phase events and no completion — the drop-off signal working as intended.
+
+**The finish card** fires when the last task lands, over whatever page the user is on,
+with the shared `fireConfetti` the Goals page already uses. It shows their own numbers —
+accounts built, transactions imported, net worth — rather than a slogan, since that is
+the whole argument for having done this. The summary is computed only when the walkthrough
+actually ends, so the ordinary task POST stays a cheap write.
+
+**The old three-step checklist on the dashboard is retired.** It duplicated the task rail
+with none of its gates. What replaces it is a narrower nudge: a "Finish setting up" card
+shown only to a team that skipped or dismissed the guide *and* still lacks accounts,
+transactions or a budget. `POST api/task/ {action: "resume"}` puts the rail back, keeping
+whatever tasks were already done.
+
+A bug this surfaced: the `net_worth` task was **uncompletable**. It is not auto-detected,
+and step 5's arrival-completion excluded tasks carrying a dialog — so nothing could ever
+mark it done and the walkthrough could never finish. The exclusion is gone: the dialog is
+a shortcut that makes the figure meaningful, but the task is "watch your net worth move",
+which is done by looking at it. Also fixed: the finish card asked `fireConfetti` for an
+`origin` of `'burst'`, which is not one of the module's two named origins — anything else
+is read as an `{x, y}` point, so it would have produced `NaN` positions.
+
+### The E2E suite (step 8)
+
+17 Playwright tests in `e2e/tests/test_onboarding.py`, with page objects in
+`e2e/pages/onboarding.py` (the takeover, the task rail, and the dashboard nudge).
+All 45 E2E tests in the repo pass.
+
+**A regression this caught before it shipped.** `settings_e2e` inherits
+`ONBOARDING_ENABLED = True`, and the shared `team` fixture created a team with no
+`OnboardingState` — which is by definition un-onboarded. Every existing E2E test would
+have been redirected into the takeover instead of the page it was about, and the
+fixture's `wait_for_url` would not have caught it, because `/a/{slug}/onboarding/` still
+matches `**/a/{slug}/**`. The fixture now marks the team past the walkthrough, which is
+the state any test that is not *about* onboarding actually wants; `unonboarded_team` and
+`onboarding_page` are the opt-in for the ones that are.
+
+`OnboardingPage.answer_all()` walks whatever question is on screen rather than a fixed
+sequence, so adding or cutting a catalog entry does not break the suite — the same
+property §12's step 2 set up on the server, carried through to the tests.
+
+Two bugs in the tests themselves, both found by running them rather than by reading them:
+
+- The net-worth assertion read the revealed figure the instant it appeared and caught it
+  mid-count-up (`$65.70` on its way to `$2,458.00`). `revealed_net_worth()` now polls
+  until two consecutive reads agree.
+- A test asserted an onboarded team sees no resume nudge, but the fixture team is
+  onboarded *and empty* — exactly who the nudge is for. It now gives the team accounts,
+  a transaction and a budget first, and a second test covers the other half of the rule.
+
+Coverage: the redirect into the flow; welcome → questions; a required question disabling
+Continue; answers surviving a reload; the review reflecting the answers (rent but no
+mortgage, a vehicle but no car loan); a removed account staying out of the books; the
+generated chart matching the answers; skip still leaving a usable chart; the rail's gates
+before and after real data; the rail persisting across pages; opening balances moving net
+worth to a checked figure; the gate holding before anything is categorized; dismiss →
+resume; and the old checklist being gone.
+
 ### Not yet built
 
-Steps 4–8 of §10: Phase C review, the Phase D task rail, opening balances, the finish
-card, and the E2E suite. The visual spec is §6, written against the restyled design system.
-
-Step 3 ends the questionnaire by applying the generated chart of accounts directly; step 4
-inserts the review-and-edit screen in front of that, replacing `api/complete/`'s build step
-with `api/preview-coa/` plus `api/apply-coa/`.
+Nothing — steps 1–8 of §10 are complete. What remains are the §11 open decisions, now
+answerable from the funnel events rather than by guessing.

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import CoaReview from './CoaReview';
 import GoalCard from './GoalCard';
 import QuestionCard from './QuestionCard';
 
@@ -18,6 +19,8 @@ import QuestionCard from './QuestionCard';
  */
 
 const STEP_MS = 260;
+
+const NO_EDITS = { removed: [], renamed: {}, added: [] };
 
 const isAnswered = (question, value) => {
   if (question.options.length > 0) {
@@ -38,8 +41,21 @@ const OnboardingShell = ({ props }) => {
   const [error, setError] = useState(null);
   const [mounted, setMounted] = useState(false);
 
+  // Phase C: the generated chart of accounts, and the user's edits to it as a
+  // diff the server can apply to its own generated set.
+  const [reviewing, setReviewing] = useState(() => state.phase === 'review');
+  const [sections, setSections] = useState([]);
+  const [edits, setEdits] = useState(NO_EDITS);
+  const [previewing, setPreviewing] = useState(false);
+
   // Resuming mid-flow: pick up at the first question of the phase the server
   // last recorded, rather than restarting the questionnaire.
+  useEffect(() => {
+    if (state.phase === 'review') loadPreview(NO_EDITS);
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!state.question_phase) return;
     const resumeAt = questions.findIndex((q) => q.phase === state.question_phase);
@@ -99,17 +115,53 @@ const OnboardingShell = ({ props }) => {
     [index, questions, savePhase],
   );
 
+  const loadPreview = useCallback(
+    async (nextEdits) => {
+      setPreviewing(true);
+      setError(null);
+      try {
+        const result = await api.previewCoa(answers, nextEdits);
+        setSections(result.sections);
+      } catch (e) {
+        // A rejected edit (a duplicate name, say) leaves the previous list on
+        // screen with the reason above it, rather than blanking the review.
+        setError(e.message);
+      } finally {
+        setPreviewing(false);
+      }
+    },
+    [api, answers],
+  );
+
+  const openReview = useCallback(() => {
+    // Edits reset on every entry to review. They are keyed by the generated
+    // account's name, and going back to change an answer can remove the very
+    // account a rename referred to -- carrying them forward would silently apply
+    // a rename to nothing, or to a different account that happens to share a name.
+    setReviewing(true);
+    setEdits(NO_EDITS);
+    loadPreview(NO_EDITS);
+  }, [loadPreview]);
+
+  const changeEdits = useCallback(
+    (next) => {
+      setEdits(next);
+      loadPreview(next);
+    },
+    [loadPreview],
+  );
+
   const finish = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const { redirect } = await api.complete(answers);
+      const { redirect } = await api.complete(answers, edits);
       window.location.href = redirect || homeUrl;
     } catch (e) {
       setError(e.message);
       setBusy(false);
     }
-  }, [api, answers, homeUrl]);
+  }, [api, answers, edits, homeUrl]);
 
   const skip = useCallback(async () => {
     setBusy(true);
@@ -128,13 +180,20 @@ const OnboardingShell = ({ props }) => {
     const onKey = (e) => {
       if (e.key !== 'Enter' || busy || !started) return;
       if (e.target.tagName === 'INPUT' && e.target.type === 'date') return;
+      if (reviewing) {
+        // Enter is how a user commits a rename; it must not also submit the flow.
+        if (e.target.tagName === 'INPUT') return;
+        e.preventDefault();
+        finish();
+        return;
+      }
       if (!canContinue) return;
       e.preventDefault();
-      isLast ? finish() : step(1);
+      isLast ? openReview() : step(1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [busy, started, canContinue, isLast, finish, step]);
+  }, [busy, started, canContinue, isLast, reviewing, finish, openReview, step]);
 
   const greeting = firstName
     ? gettext('Welcome, {name}').replace('{name}', firstName)
@@ -183,44 +242,64 @@ const OnboardingShell = ({ props }) => {
               {phases.map((phase, i) => (
                 <span
                   key={phase.key}
-                  className={`onboarding-dot ${i <= phaseIndex ? 'is-filled' : ''}`}
+                  className={`onboarding-dot ${reviewing || i <= phaseIndex ? 'is-filled' : ''}`}
                   title={phase.label}
                 />
               ))}
+              <span
+                className={`onboarding-dot ${reviewing ? 'is-filled' : ''}`}
+                title={gettext('Your accounts')}
+              />
             </div>
 
-            <div
-              key={question.id}
-              className={`onboarding-step ${leaving ? `is-leaving-${direction}` : `is-entering-${direction}`}`}
-            >
-              {question.kind === 'goal' ? (
-                <GoalCard question={question} value={answers[question.id]} onChange={setAnswer} />
-              ) : (
-                <QuestionCard question={question} value={answers[question.id]} onChange={setAnswer} />
-              )}
-            </div>
-
-            {error && (
-              <div className="alert alert-error mt-4" data-testid="onboarding-error">
-                <span>{error}</span>
+            {reviewing ? (
+              <div className="onboarding-step is-entering-forward">
+                <CoaReview
+                  sections={sections}
+                  edits={edits}
+                  onEditsChange={changeEdits}
+                  loading={previewing && sections.length === 0}
+                  error={error}
+                />
               </div>
+            ) : (
+              <>
+                <div
+                  key={question.id}
+                  className={`onboarding-step ${leaving ? `is-leaving-${direction}` : `is-entering-${direction}`}`}
+                >
+                  {question.kind === 'goal' ? (
+                    <GoalCard question={question} value={answers[question.id]} onChange={setAnswer} />
+                  ) : (
+                    <QuestionCard question={question} value={answers[question.id]} onChange={setAnswer} />
+                  )}
+                </div>
+
+                {error && (
+                  <div className="alert alert-error mt-4" data-testid="onboarding-error">
+                    <span>{error}</span>
+                  </div>
+                )}
+              </>
             )}
 
             <div className="onboarding-actions">
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={() => step(-1)}
-                disabled={index === 0 || busy}
+                onClick={() => (reviewing ? setReviewing(false) : step(-1))}
+                disabled={(!reviewing && index === 0) || busy}
                 data-testid="onboarding-back"
               >
                 {gettext('Back')}
               </button>
 
               <span className="text-sm text-base-content/70">
-                {gettext('{current} of {total}')
-                  .replace('{current}', index + 1)
-                  .replace('{total}', questions.length)}
+                {reviewing
+                  ? gettext('Last step')
+                  : gettext('{current} of {total}')
+                      .replace('{current}', index + 1)
+                      .replace('{total}', questions.length)}
               </span>
 
               <div className="flex items-center gap-2">
@@ -236,12 +315,19 @@ const OnboardingShell = ({ props }) => {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => (isLast ? finish() : step(1))}
-                  disabled={!canContinue || busy}
+                  onClick={() => {
+                    if (reviewing) return finish();
+                    return isLast ? openReview() : step(1);
+                  }}
+                  disabled={(!reviewing && !canContinue) || busy}
                   data-testid="onboarding-continue"
                 >
                   {busy && <span className="loading loading-spinner loading-xs"></span>}
-                  {isLast ? gettext('Create my accounts') : gettext('Continue')}
+                  {reviewing
+                    ? gettext('Create my accounts')
+                    : isLast
+                      ? gettext('Review my accounts')
+                      : gettext('Continue')}
                 </button>
               </div>
             </div>

@@ -258,3 +258,189 @@
     transition-duration: 120ms;
   }
 }
+
+/*
+  Phase C: the chart-of-accounts review.
+
+  A chart of accounts runs to 20-40 entries, more than fits a takeover panel at a
+  readable size, so the list scrolls inside the panel rather than growing it past
+  the viewport. `min-h` matches `.onboarding-question` so the panel does not
+  resize as the flow moves from the last question into review.
+*/
+.coa-scroll {
+  @apply max-h-[min(24rem,45vh)] min-h-[14rem] space-y-5 overflow-y-auto pr-1;
+
+  /*
+    Scroll shadows, so it is obvious the list continues past the fold. The classic
+    background-attachment trick: the two `local` gradients scroll with the content
+    and cover the shadows at the very top and bottom, so each shadow appears only
+    when there is actually more to see in that direction. The shadow colour is
+    mixed from `base-content` rather than a fixed black, which would vanish
+    against the dark theme's panel.
+  */
+  background:
+    linear-gradient(var(--color-base-100) 30%, transparent) top / 100% 1.5rem no-repeat local,
+    linear-gradient(transparent, var(--color-base-100) 70%) bottom / 100% 1.5rem no-repeat local,
+    radial-gradient(
+        farthest-side at 50% 0,
+        color-mix(in oklch, var(--color-base-content) 14%, transparent),
+        transparent
+      )
+      top / 100% 0.5rem no-repeat scroll,
+    radial-gradient(
+        farthest-side at 50% 100%,
+        color-mix(in oklch, var(--color-base-content) 14%, transparent),
+        transparent
+      )
+      bottom / 100% 0.5rem no-repeat scroll;
+}
+
+.coa-section + .coa-section {
+  @apply border-t border-base-300 pt-4;
+}
+
+.coa-chip {
+  @apply inline-flex items-center rounded-field border border-base-300 bg-base-200/60 text-sm
+         transition-colors hover:border-base-content/20;
+}
+
+.coa-chip-name {
+  @apply cursor-text py-1 pl-2.5 pr-1 text-left;
+}
+
+.coa-chip-remove {
+  @apply rounded-r-field px-2 py-1 text-xs text-base-content/45
+         transition-colors hover:bg-error/10 hover:text-error;
+}
+
+.coa-add {
+  @apply inline-flex items-center rounded-field border border-dashed border-base-300 px-2.5 py-1
+         text-sm text-base-content/70 transition-colors hover:border-primary/50 hover:text-primary;
+}
+
+/*
+  Phase D: the guided task rail and its coach marks (onboarding plan §6.1).
+
+  Docked bottom-right rather than added as a third column: the shell is a sticky
+  248px sidebar beside a capped content column, and `shrink-0` is there precisely
+  because a wide element used to squeeze the nav. Below `lg` the sidebar is hidden
+  and a bottom dock already occupies the foot of the screen, so the rail sits above
+  it and spans the width.
+*/
+.task-rail {
+  @apply fixed bottom-4 right-4 z-30 w-[min(20rem,calc(100vw-2rem))] overflow-hidden
+         rounded-box border border-base-300 bg-base-100 shadow-lg;
+}
+
+@media (width < 64rem) {
+  .task-rail {
+    /* Clear of the mobile dock at the foot of the screen. */
+    @apply bottom-20 left-4 right-4 w-auto;
+  }
+}
+
+.task-rail-head {
+  @apply flex items-center gap-1 border-b border-base-300 px-3 py-2.5;
+}
+
+.rail-close {
+  @apply shrink-0 rounded-field px-1.5 py-1 text-xs text-base-content/45
+         transition-colors hover:bg-base-200 hover:text-base-content;
+}
+
+.task-rail-list {
+  @apply max-h-[min(20rem,50vh)] overflow-y-auto p-1.5;
+}
+
+.rail-row {
+  @apply flex items-start gap-2.5 rounded-field px-2 py-2;
+}
+
+.rail-row-link {
+  @apply transition-colors hover:bg-base-200;
+}
+
+.rail-row-link.is-current {
+  @apply bg-primary/10 text-primary;
+}
+
+.rail-marker {
+  @apply mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border border-base-300
+         text-[0.6875rem] font-medium text-base-content/70;
+}
+
+.rail-row-link.is-current .rail-marker {
+  @apply border-primary bg-primary text-primary-content;
+}
+
+.rail-marker.is-done {
+  @apply border-success bg-success text-success-content;
+}
+
+.rail-marker.is-locked {
+  @apply text-base-content/40;
+}
+
+/*
+  The coach mark and its ring are portaled to the body and fixed-positioned, so
+  they are measured against the viewport rather than a transformed ancestor.
+*/
+.coachmark-ring {
+  @apply pointer-events-none fixed z-40 rounded-field ring-2 ring-primary/70;
+  animation: coachmark-pulse 1.8s ease-out 2;
+}
+
+.coachmark {
+  @apply fixed z-40 w-[min(17rem,calc(100vw-1.5rem))] rounded-box border border-base-300
+         bg-base-100 p-3 shadow-lg;
+}
+
+.coachmark-dismiss {
+  @apply mt-2 text-xs font-medium text-primary hover:underline;
+}
+
+@keyframes coachmark-pulse {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.98);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coachmark-ring {
+    animation: none;
+  }
+}
+
+/* Opening balances (onboarding step 6) — reuses the takeover's panel and backdrop. */
+.opening-scroll {
+  @apply max-h-[min(22rem,45vh)] overflow-y-auto pr-1;
+}
+
+.opening-heading {
+  @apply mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
+}
+
+.opening-row {
+  @apply flex items-center justify-between gap-3 rounded-field px-2 py-1.5 hover:bg-base-200/60;
+}
+
+/* The finish card's stat row (onboarding step 7). */
+.finish-stats {
+  @apply mt-7 grid grid-cols-3 gap-3 rounded-box border border-base-300 bg-base-200/50 p-4 text-center;
+}
+
+.finish-stat {
+  @apply text-[1.5rem] font-semibold tracking-tight;
+}
+
+.finish-stat-label {
+  @apply mt-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
+}

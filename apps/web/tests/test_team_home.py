@@ -78,10 +78,16 @@ class TeamHomeDashboardTest(TestCase):
         # goal1 needs 750 more; goal2 is fully funded (0 remaining, clamped at 0)
         self.assertEqual(response.context["amount_to_reach_goals"], Decimal("750.00"))
 
-    def test_onboarding_shown_for_empty_team(self):
+    def test_no_resume_card_while_the_task_rail_is_up(self):
+        """
+        The three-step checklist that used to live here was superseded by the
+        walkthrough's task rail. Showing both would be two prompts for the same
+        thing on one screen.
+        """
         response = self.client.get(self.url)
-        self.assertTrue(response.context["show_onboarding"])
-        self.assertContains(response, "Get set up")
+
+        self.assertFalse(response.context["show_resume"])
+        self.assertNotContains(response, "onboarding-checklist")
 
     def test_inbox_count_in_context(self):
         with current_team(self.team):
@@ -112,5 +118,12 @@ class TeamHomeDashboardTest(TestCase):
                 description="Coffee",
             )
             Budget.objects.create(team=self.team, category=account, month="2026-01-01", budget_amount=Decimal("100.00"))
+
+        # A team that skipped the guide but has since set itself up has no use for
+        # an offer to pick it back up.
+        onboarding = OnboardingState.objects.get(team=self.team)
+        onboarding.skip()
+        onboarding.save()
+
         response = self.client.get(self.url)
-        self.assertFalse(response.context["show_onboarding"])
+        self.assertFalse(response.context["show_resume"])

@@ -43,6 +43,8 @@ export default defineConfig({
         'goals-app': path.resolve(__dirname, './assets/javascript/budget/goals-app.js'),
         'accounts-board-app': path.resolve(__dirname, './assets/javascript/accounts/accounts-board-app.jsx'),
         'onboarding-app': path.resolve(__dirname, './assets/javascript/onboarding/onboarding-app.jsx'),
+        'task-rail-app': path.resolve(__dirname, './assets/javascript/onboarding/task-rail-app.jsx'),
+        'onboarding-resume': path.resolve(__dirname, './assets/javascript/onboarding/resume.js'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
         'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
         'home-net-worth-chart': path.resolve(__dirname, './assets/javascript/dashboard/home-net-worth-chart.js'),

@@ -1,5 +1,6 @@
 {% extends "web/base.html" %}
 {% load i18n %}
+{% load django_vite %}
 {% load icons %}
 {# App pages sit on the canvas (base-200) so .app-card surfaces read as raised. #}
 {% block body_class %}bg-base-200{% endblock %}
@@ -15,6 +16,22 @@
 {% block body %}
   {% block notifications %}
   {% endblock %}
+
+  {% comment %}
+ The guided task rail, while a team is working through the walkthrough's task
+     phase. The context processor only sets this once the questionnaire is done,
+     so it costs one query and no markup on every other page.
+  {% endcomment %}
+  {% comment %}
+ The script loads here rather than in `page_js`: child templates define their
+     own `page_js` and would override it, on exactly the pages the rail is for.
+  {% endcomment %}
+  {% if onboarding_rail %}
+    {{ onboarding_rail|json_script:'task-rail-props' }}
+    <div id="task-rail-app"></div>
+    {% vite_react_refresh %}
+    {% vite_asset 'assets/javascript/onboarding/task-rail-app.jsx' %}
+  {% endif %}
   <div class="flex min-h-screen">
     {% comment %}
  shrink-0 matters: without it the flex row lets a wide table squeeze the

@@ -67,8 +67,18 @@ class OnboardingState(BaseTeamModel):
 
     @property
     def is_finished(self) -> bool:
-        """Finished either way -- completed or deliberately skipped."""
+        """
+        Past the takeover, either way -- completed or deliberately skipped.
+
+        Not the same as "done with the walkthrough": a team that has finished the
+        questionnaire still has the guided tasks ahead of it. See `shows_tasks`.
+        """
         return bool(self.completed_at or self.skipped_at)
+
+    @property
+    def shows_tasks(self) -> bool:
+        """Whether the guided task rail belongs on screen for this team."""
+        return self.phase == self.PHASE_TASKS
 
     def mark_seen(self):
         """
@@ -88,7 +98,19 @@ class OnboardingState(BaseTeamModel):
         self.question_phase = phases[0] if phases else ""
 
     def complete(self):
+        """
+        The questionnaire is answered and the books are built.
+
+        `completed_at` is what stops `team_home` redirecting back into the
+        takeover, but the walkthrough is not over: the phase moves to `tasks`,
+        which is what keeps the guided task rail on screen while the user works
+        through importing, categorizing and budgeting.
+        """
         self.completed_at = timezone.now()
+        self.phase = self.PHASE_TASKS
+
+    def finish_tasks(self):
+        """Every guided task is done, or the user dismissed the rail."""
         self.phase = self.PHASE_DONE
 
     def skip(self):
