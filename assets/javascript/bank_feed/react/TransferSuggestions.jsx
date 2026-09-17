@@ -1,13 +1,7 @@
 /* globals gettext */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-} from '@mui/material';
+import Modal from '../../common/Modal';
 import { formatCurrency } from '../../utilities/currency';
 import Icon from '../../common/Icon';
 
@@ -148,12 +142,18 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
         <span className="badge badge-warning badge-sm ml-2">{count}</span>
       </button>
 
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {gettext('Possible duplicate transfers')}
-          {count > 0 ? ` (${count})` : ''}
-        </DialogTitle>
-        <DialogContent dividers>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        size="lg"
+        title={`${gettext('Possible duplicate transfers')}${count > 0 ? ` (${count})` : ''}`}
+        actions={
+          <button type="button" className="btn btn-sm" onClick={() => setOpen(false)}>
+            {gettext('Close')}
+          </button>
+        }
+      >
+        <div>
           <p className="text-xs text-base-content/70 mb-4">
             {gettext(
               'These look like two sides of the same transfer between your accounts. Archive the duplicate to avoid double-counting, then categorize the one you keep as a transfer.',
@@ -224,11 +224,8 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
               })}
             </div>
           )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>{gettext('Close')}</Button>
-        </DialogActions>
-      </Dialog>
+        </div>
+      </Modal>
     </>
   );
 };

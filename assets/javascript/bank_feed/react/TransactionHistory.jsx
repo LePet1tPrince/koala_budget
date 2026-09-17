@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, CircularProgress, Typography } from '@mui/material';
+import Spinner from '../../common/Spinner';
 
 /* globals gettext */
 
@@ -98,52 +98,48 @@ const TransactionHistory = ({ teamSlug, journalEntryId }) => {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-        <CircularProgress size={28} />
-      </Box>
+      <div className="flex justify-center py-8">
+        <Spinner />
+      </div>
     );
   }
 
   if (error) {
-    return <Box sx={{ color: 'error.main', py: 2 }}>{error}</Box>;
+    return <div className="py-4 text-error">{error}</div>;
   }
 
   if (!logs || logs.length === 0) {
     return (
-      <Box sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>
-        {gettext('No changes recorded yet')}
-      </Box>
+      <div className="py-8 text-center text-base-content/70">{gettext('No changes recorded yet')}</div>
     );
   }
 
   const groups = groupLogs(logs);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }} data-testid="transaction-history">
+    <div className="mt-1 flex flex-col gap-4" data-testid="transaction-history">
       {groups.map((group) => {
         const summary = describeGroup(group);
         return (
-          <Box key={group.key} sx={{ borderLeft: '2px solid', borderColor: 'divider', pl: 2, pb: 1 }}>
-            <Typography variant="caption" color="text.secondary">
+          <div key={group.key} className="border-l-2 border-base-300 pb-2 pl-4">
+            <div className="text-xs text-base-content/70">
               {new Date(group.timestamp).toLocaleString()} · {group.user_display}
-            </Typography>
+            </div>
             {Array.isArray(summary) ? (
-              <Box component="ul" sx={{ m: 0, pl: 2 }}>
+              <ul className="m-0 list-disc pl-4 text-sm">
                 {summary.map((c, i) => (
                   <li key={i}>
-                    <Typography variant="body2" component="span">
-                      <strong>{c.field}:</strong> {c.before} → {c.after}
-                    </Typography>
+                    <strong>{c.field}:</strong> {c.before} → {c.after}
                   </li>
                 ))}
-              </Box>
+              </ul>
             ) : (
-              <Typography variant="body2">{summary}</Typography>
+              <p className="text-sm">{summary}</p>
             )}
-          </Box>
+          </div>
         );
       })}
-    </Box>
+    </div>
   );
 };
 

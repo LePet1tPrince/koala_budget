@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   addMonths,
   eachDayOfInterval,
@@ -15,8 +16,7 @@ import {
   subMonths,
 } from 'date-fns';
 
-/** Keep this much clear of the viewport edge when clamping the panel. */
-const GUTTER = 8;
+import { portalTarget, useAnchoredPosition } from './popoverPosition';
 
 /**
  * The shell every date/month picker in the app is built from (restyle plan Phase 5).
@@ -34,7 +34,6 @@ const GUTTER = 8;
  * @param {node}     icon         Optional leading icon.
  * @param {function} onClear      When set, a ✕ appears on the trigger. Clearing
  *                                does not open the panel.
- * @param {string}   align        Panel edge to align to the trigger: 'left' | 'right'.
  * @param {string}   testId       data-testid for the trigger button.
  * @param {function} children     Render prop; receives `{ close }`.
  */
@@ -42,38 +41,20 @@ const PickerPopover = ({
   label,
   icon = null,
   onClear = null,
-  align = 'left',
+  onOpen = null,
   testId,
   buttonClassName = 'btn btn-outline btn-sm font-normal',
   panelClassName = '',
   children,
 }) => {
   const [open, setOpen] = useState(false);
-  const [offset, setOffset] = useState(0);
   const rootRef = useRef(null);
   const panelRef = useRef(null);
   const panelId = useId();
 
   const close = useCallback(() => setOpen(false), []);
 
-  // These triggers sit at the right end of a page header, so a panel anchored to
-  // the trigger runs off the viewport — the month grid was being cut in half at
-  // desktop width, and flipping it to `right-0` only moved the overflow to the
-  // left edge on a phone. So measure on open and clamp into the viewport, which
-  // handles both edges and needs no positioning library.
-  useLayoutEffect(() => {
-    if (!open) {
-      setOffset(0);
-      return;
-    }
-    const panel = panelRef.current;
-    if (!panel) return;
-    const rect = panel.getBoundingClientRect();
-    const overflowRight = rect.right - (window.innerWidth - GUTTER);
-    let dx = overflowRight > 0 ? -overflowRight : 0;
-    if (rect.left + dx < GUTTER) dx = GUTTER - rect.left;
-    setOffset(dx);
-  }, [open]);
+  const { style: panelStyle } = useAnchoredPosition(open, rootRef, panelRef);
 
   // Close on an outside press or Escape. `pointerdown` rather than `click` so a
   // press that starts outside dismisses immediately, matching native menus.
@@ -83,7 +64,12 @@ const PickerPopover = ({
       if (rootRef.current && !rootRef.current.contains(e.target)) close();
     };
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') close();
+      if (e.key !== 'Escape') return;
+      // `DateField` puts this panel inside a native <dialog>, which closes on
+      // Escape as a default action of the keydown rather than by propagation.
+      // Without preventDefault the modal would close along with the panel.
+      e.preventDefault();
+      close();
     };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -107,7 +93,14 @@ const PickerPopover = ({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => {
+            // `onOpen` lets a caller load the panel's contents lazily — the budget
+            // page's transaction list is fetched the first time it is shown.
+            if (!v) onOpen?.();
+            return !v;
+          });
+        }}
         data-testid={testId}
       >
         {icon}
@@ -131,19 +124,24 @@ const PickerPopover = ({
         )}
       </button>
 
-      {open && (
-        <div
-          id={panelId}
-          ref={panelRef}
-          role="dialog"
-          className={`absolute z-50 mt-2 max-w-[calc(100vw-1rem)] overflow-x-auto rounded-2xl border border-base-300 bg-base-100 p-5 shadow-xl ${
-            align === 'right' ? 'right-0' : 'left-0'
-          } ${panelClassName}`}
-          style={offset ? { transform: `translateX(${offset}px)` } : undefined}
-        >
-          {children({ close })}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            id={panelId}
+            ref={panelRef}
+            role="dialog"
+            className={`fixed z-[1200] max-w-[calc(100vw-1rem)] overflow-auto rounded-2xl border border-base-300 bg-base-100 p-5 shadow-xl ${panelClassName}`}
+            style={
+              panelStyle
+                ? { top: panelStyle.top, left: panelStyle.left, maxHeight: panelStyle.maxHeight }
+                : // Measured on first paint, so stay invisible until placed.
+                  { top: 0, left: 0, visibility: 'hidden' }
+            }
+          >
+            {children({ close })}
+          </div>,
+          portalTarget(rootRef.current)
+        )}
     </div>
   );
 };
@@ -239,11 +237,13 @@ const Caret = () => (
 const HeaderMenu = ({ open, onClose, label, children, width = 'w-[15rem]' }) => {
   // Escape should dismiss this menu, not the whole picker. A capture-phase
   // listener runs before `PickerPopover`'s bubble-phase one, so stopping
-  // propagation here keeps the panel open.
+  // propagation here keeps the panel open; preventDefault additionally stops a
+  // surrounding <dialog> from closing, which it does as a keydown default action.
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         e.stopPropagation();
         onClose();
       }

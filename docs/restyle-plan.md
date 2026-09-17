@@ -509,12 +509,81 @@ Cost of the swap: **+14.3 kB raw / +4.0 kB gzip** of JS, almost all of it the on
 v4 shim and their webfonts — a third-party dependency on every page load, and an IP-address hop for every visitor.
 (The size of that CDN payload could not be measured from this environment; outbound requests to cdnjs are blocked.)
 
+### Phase 7 — The last of MUI ✅ *shipped*
+
+Phase 5 left seven components on `@mui/material` (eight, counting the shared
+`useMuiTheme` hook they leaned on). None was a table, so there was nothing to swap a library
+for — they were three modals, a floating action bar, a popover, a timeline and a tooltip. The
+work was to build the handful of daisyUI primitives they all needed and then delete the
+dependency.
+
+**Coverage first, again.** `BatchActionBar` and `TransferSuggestions` enforce guards that are not
+cosmetic — Reconcile is withheld from an uncategorized selection, and Archive, Reconcile and
+Duplicate are all withheld once a selected row is reconciled, mirroring the server's refusal to
+archive a reconciled transfer leg. Neither had a single e2e test. So nine were written and proved
+green against the MUI implementations *before* any rewrite, and required to pass untouched after.
+They address the bar by the **accessible name** of each button rather than a testid, since the
+markup changes and the labels a user reads must not.
+
+Two of those tests corrected me rather than the code. Archive turned out to be withheld from a
+wholly-reconciled selection (`showArchiveButton` wants *some* row that is neither archived nor
+reconciled), which I had written down wrong; and a `has_text` needle that prefix-matches another
+fixture's description silently scopes to the wrong card, so `TRANSFER-OUT` matched
+`TRANSFER-OUT-PLAIN` and the assertion passed against the wrong element.
+
+**New shared primitives**, all in `assets/javascript/common/`:
+
+| | replaces | notes |
+|---|---|---|
+| `Modal.jsx` | `Dialog` + `DialogTitle`/`Content`/`Actions` | a real `<dialog>`, so the browser supplies the top layer, focus trap and backdrop |
+| `Combobox.jsx` | `Autocomplete` | both flavours: object options with group headings, and `freeSolo` free text with suggestions |
+| `DateField.jsx` | `DatePicker` + `LocalizationProvider` + `AdapterDateFns` | wraps the same `DayGrid` the range pickers use, so every date surface is now one component |
+| `Spinner.jsx` | `CircularProgress` | |
+| `Toast.jsx` | `Snackbar` + `Alert` | moved out of `LineTableParts` (Phase 5b) so it has one home; gained an `action` slot for the budget page's Undo |
+| `popoverPosition.js` | MUI's popper | one placement strategy for every popover: portal, fixed, clamp, flip |
+
+**Three bugs the `<dialog>` element caused, worth knowing before using one:**
+
+1. **Escape closes a `<dialog>` as a keydown *default action*, not by propagation.** The combobox
+   list and the date panel both dismiss on Escape, and `stopPropagation()` was not enough — the
+   modal closed out from under them. It needs `preventDefault()`. This bit both `Combobox` and the
+   shared `PickerPopover`.
+2. **A `<dialog>` paints in the top layer, so a panel portaled to `document.body` disappears
+   *behind* the modal it belongs to.** Portals therefore target `closest('dialog') ?? document.body`.
+3. **daisyUI's `.modal-box` has `overflow-y: auto`,** so an absolutely-placed panel inside it is
+   clipped. Measured at a 620px-tall viewport, the payee list rendered *below the fold* and the
+   date panel was clippable as soon as its field sat low in a form. Fixing it piecemeal would have
+   left two positioning strategies, so `PickerPopover` moved onto the same portal-and-fix approach
+   as `Combobox`: `popoverPosition.js` now places every panel, clamping horizontally (as
+   `PickerPopover` already did) and **flipping above the trigger** when there is no room below.
+   `align` became dead and was removed.
+
+`ActualTooltip` also carried the dark-mode bug §1.3 describes — a MUI theme memoised with empty
+deps, reading `prefers-color-scheme`. Going to daisyUI tokens removes the question: the theme lives
+in CSS, so there is nothing to recompute on a theme flip.
+
+With the last importer gone, `@mui/material`, `@mui/x-date-pickers`, `@emotion/react` and
+`@emotion/styled` (MUI's peers, imported by nothing else) all came out of `package.json`, and
+`useMuiTheme.js` was deleted. **No `@mui` import remains anywhere in the source.**
+
+**Measured, `develop` → this branch (clean `vite build` of both trees):**
+
+| | develop | now | |
+|---|---|---|---|
+| total JS, raw | 2,806,015 | 1,059,271 | **−62%** |
+| total JS, gzip | 803,430 | 334,512 | **−58%** |
+| `bank-feed-bundle.js`, raw | 1,712,608 | 161,072 | **−91%** |
+| `bank-feed-bundle.js`, gzip | 442,843 | 34,668 | **−92%** |
+
+The bank feed was the app's heaviest screen by a wide margin and is now smaller than the marketing
+site bundle.
+
 ---
 
 ## 4. Verification
 
 - E2E `data-testid` attributes are preserved throughout — no phase should touch a selector. Run `make test-e2e` after
-  Phases 2, 3, 5, and 6. Where a phase rewrites a component wholesale, as 5b did, write the e2e coverage **first** and
+  Phases 2, 3, 5, 6, and 7. Where a phase rewrites a component wholesale, as 5b did, write the e2e coverage **first** and
   prove it green against the component being replaced; a test written after the fact only asserts what the new code
   happens to do.
 - Check every phase in **both** themes. Today's hardcoded grays mean dark mode is already broken on several screens;
@@ -535,11 +604,10 @@ v4 shim and their webfonts — a third-party dependency on every page load, and 
    wordmark and theme selector.
 4. ~~**Phase 4 vs. Phase 5 ordering.**~~ Settled: Phase 4 shipped first, and was indeed low-risk — the only breakage
    was self-inflicted by the sweep script, not by any substitution.
-6. **The last of `@mui/material`.** Phases 5a/5b took the pickers and the table off it; seven components still use it
-   (listed under Phase 5). None is a table, so there is no library to replace — they are modals, a tooltip, a floating
-   action bar and a timeline. The blocker is coverage, not design: `BatchActionBar` and `TransferSuggestions` enforce
-   the reconciled-leg guards and have no e2e tests, so they need the contract-first treatment 5b used before anyone
-   touches them.
+6. ~~**The last of `@mui/material`.**~~ Settled in Phase 7: the contract tests were written first, the eight
+   remaining importers were converted onto shared daisyUI primitives, and the dependency (plus `@mui/x-date-pickers`
+   and the two `@emotion` peers) is gone. The count in the Phase 5 note said seven — it missed `common/useMuiTheme.js`,
+   the hook the others leaned on.
 5. **The Pegasus demo apps.** Phase 4 restyled them rather than deleting them (see above). Whether to keep an
    Examples Gallery and an Employee/Player CRUD demo in a budgeting product at all is a product call, not a styling
    one — but they are unlinked from the nav already, so nobody reaches them by accident.

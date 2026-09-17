@@ -1,19 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  IconButton,
-  Paper,
-  Slide,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import DateField from '../../common/DateField';
+import Modal from '../../common/Modal';
 import Icon from '../../common/Icon';
 import BulkEditModal from './BulkEditModal';
 import { formatDateForInput } from '../utils';
@@ -178,161 +165,140 @@ const BatchActionBar = ({
 
   if (selectedCount === 0) return null;
 
+  const resetReconcileDialog = () => {
+    setReconcileDialogOpen(false);
+    setTrueBalance('');
+    setReconciliationDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const money = (amount) => (amount >= 0 ? 'text-success' : 'text-error');
+
   return (
     <>
-      <Slide direction="up" in={selectedCount > 0}>
-        <Paper
-          elevation={6}
-          sx={{
-            position: 'fixed',
-            bottom: 16,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            p: 2,
-            display: 'flex',
-            gap: 1,
-            alignItems: 'center',
-            zIndex: 1000,
-            borderRadius: 2,
-            maxWidth: '95vw',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-          }}
-        >
-          {/* Selection summary strip */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', width: '100%', justifyContent: 'center', mb: 1 }}>
-            <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-              {selectedCount} {gettext('selected')}
-            </Typography>
-            <Divider orientation="vertical" flexItem />
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              <Typography variant="caption" color="text.secondary">{gettext('In:')}</Typography>
-              <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 'bold' }}>
-                {formatCurrency(totalInflow)}
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              <Typography variant="caption" color="text.secondary">{gettext('Out:')}</Typography>
-              <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 'bold' }}>
-                {formatCurrency(totalOutflow)}
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              <Typography variant="caption" color="text.secondary">{gettext('Net:')}</Typography>
-              <Typography variant="caption" sx={{ color: reconcilingAmount >= 0 ? 'success.main' : 'error.main', fontWeight: 'bold' }}>
-                {formatCurrency(reconcilingAmount)}
-              </Typography>
-            </Box>
-            {!isArchivedView && selectedAccount && (
-              <>
-                <Divider orientation="vertical" flexItem />
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                  <Typography variant="caption" color="text.secondary">{gettext('Reconciled:')}</Typography>
-                  <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-                    {formatCurrency(reconciledBalance)}
-                  </Typography>
-                </Box>
-                <Typography variant="caption" color="text.secondary">→</Typography>
-                <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-                  {formatCurrency(newReconciledBalance)}
-                </Typography>
-              </>
-            )}
-          </Box>
-          <Divider sx={{ width: '100%', mb: 1 }} />
+      {/* The bar is fixed to the bottom of the viewport and rises into place, as
+          MUI's Slide + Paper did. `animate-*` is only entrance motion, so it does
+          not re-run as the selection changes. */}
+      <div
+        className="app-surface fixed bottom-4 left-1/2 z-[1000] flex max-w-[95vw] -translate-x-1/2 flex-wrap
+                   items-center justify-center gap-2 rounded-box p-4 shadow-lg"
+        data-testid="batch-action-bar"
+      >
+        {/* Selection summary strip */}
+        <div className="mb-1 flex w-full flex-wrap items-center justify-center gap-4 text-xs">
+          <span className="font-bold">
+            {selectedCount} {gettext('selected')}
+          </span>
 
-          {!isArchivedView && (
-            <Button
-              size="small"
-              startIcon={<Icon name="edit" className="w-5 h-5 shrink-0" />}
-              onClick={() => setBulkEditOpen(true)}
-            >
-              {gettext('Bulk Edit')}
-            </Button>
-          )}
+          <span className="h-4 w-px bg-base-300" aria-hidden="true" />
 
-          {showArchive && !isArchivedView && (
-            <Button
-              size="small"
-              startIcon={<Icon name="archive" className="w-5 h-5 shrink-0" />}
-              onClick={onArchive}
-            >
-              {gettext('Archive')}
-            </Button>
-          )}
+          <span className="flex items-center gap-1">
+            <span className="text-base-content/70">{gettext('In:')}</span>
+            <span className="money font-bold text-success">{formatCurrency(totalInflow)}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="text-base-content/70">{gettext('Out:')}</span>
+            <span className="money font-bold text-error">{formatCurrency(totalOutflow)}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="text-base-content/70">{gettext('Net:')}</span>
+            <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>
+          </span>
 
-          {showUnarchive && (
-            <Button
-              size="small"
-              startIcon={<Icon name="unarchive" className="w-5 h-5 shrink-0" />}
-              onClick={onUnarchive}
-            >
-              {gettext('Unarchive')}
-            </Button>
-          )}
-
-          {isArchivedView && (
-            <Button
-              size="small"
-              color="error"
-              startIcon={<Icon name="trash" className="w-5 h-5 shrink-0" />}
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              {gettext('Delete')}
-            </Button>
-          )}
-
-          {!isArchivedView && !anyReconciled && (
-            <Tooltip title={!allCategorized ? gettext('Categorize all transactions to reconcile') : ''}>
-              <span>
-                <Button
-                  size="small"
-                  startIcon={<Icon name="check-circle" className="w-5 h-5 shrink-0" />}
-                  onClick={() => {
-                    setReconciliationDate(maxSelectedDate);
-                    setReconcileDialogOpen(true);
-                  }}
-                  disabled={!allCategorized}
-                >
-                  {gettext('Reconcile')}
-                </Button>
+          {!isArchivedView && selectedAccount && (
+            <>
+              <span className="h-4 w-px bg-base-300" aria-hidden="true" />
+              <span className="flex items-center gap-1">
+                <span className="text-base-content/70">{gettext('Reconciled:')}</span>
+                <span className="money font-bold">{formatCurrency(reconciledBalance)}</span>
               </span>
-            </Tooltip>
+              <span className="text-base-content/70" aria-hidden="true">
+                →
+              </span>
+              <span className="money font-bold">{formatCurrency(newReconciledBalance)}</span>
+            </>
           )}
+        </div>
 
-          {allReconciled && (
-            <Button
-              size="small"
-              startIcon={<Icon name="minus-circle" className="w-5 h-5 shrink-0" />}
-              onClick={() => setUnreconcileDialogOpen(true)}
-            >
-              {gettext('Unreconcile')}
-            </Button>
-          )}
+        <div className="mb-1 h-px w-full bg-base-300" aria-hidden="true" />
 
-          {!isArchivedView && !anyReconciled && (
-            <Button
-              size="small"
-              startIcon={<Icon name="copy" className="w-5 h-5 shrink-0" />}
-              onClick={onDuplicate}
-            >
-              {gettext('Duplicate')}
-            </Button>
-          )}
+        {!isArchivedView && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBulkEditOpen(true)}>
+            <Icon name="edit" className="w-4 h-4 shrink-0" />
+            {gettext('Bulk Edit')}
+          </button>
+        )}
 
-          <Button
-            size="small"
-            startIcon={<Icon name="download" className="w-5 h-5 shrink-0" />}
-            onClick={handleExport}
+        {showArchive && !isArchivedView && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onArchive}>
+            <Icon name="archive" className="w-4 h-4 shrink-0" />
+            {gettext('Archive')}
+          </button>
+        )}
+
+        {showUnarchive && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onUnarchive}>
+            <Icon name="unarchive" className="w-4 h-4 shrink-0" />
+            {gettext('Unarchive')}
+          </button>
+        )}
+
+        {isArchivedView && (
+          <button type="button" className="btn btn-ghost btn-sm text-error" onClick={() => setDeleteDialogOpen(true)}>
+            <Icon name="trash" className="w-4 h-4 shrink-0" />
+            {gettext('Delete')}
+          </button>
+        )}
+
+        {!isArchivedView && !anyReconciled && (
+          // The tooltip has to sit on a wrapper: a disabled button fires no
+          // pointer events, so a tip on the button itself never shows.
+          <span
+            className={!allCategorized ? 'tooltip' : undefined}
+            data-tip={!allCategorized ? gettext('Categorize all transactions to reconcile') : undefined}
           >
-            {gettext('Export')}
-          </Button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={!allCategorized}
+              onClick={() => {
+                setReconciliationDate(maxSelectedDate);
+                setReconcileDialogOpen(true);
+              }}
+            >
+              <Icon name="check-circle" className="w-4 h-4 shrink-0" />
+              {gettext('Reconcile')}
+            </button>
+          </span>
+        )}
 
-          <IconButton size="small" onClick={onClearSelection}>
-            <Icon name="x" className="w-5 h-5 shrink-0" />
-          </IconButton>
-        </Paper>
-      </Slide>
+        {allReconciled && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setUnreconcileDialogOpen(true)}>
+            <Icon name="minus-circle" className="w-4 h-4 shrink-0" />
+            {gettext('Unreconcile')}
+          </button>
+        )}
+
+        {!isArchivedView && !anyReconciled && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onDuplicate}>
+            <Icon name="copy" className="w-4 h-4 shrink-0" />
+            {gettext('Duplicate')}
+          </button>
+        )}
+
+        <button type="button" className="btn btn-ghost btn-sm" onClick={handleExport}>
+          <Icon name="download" className="w-4 h-4 shrink-0" />
+          {gettext('Export')}
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm btn-square"
+          onClick={onClearSelection}
+          aria-label={gettext('Clear selection')}
+        >
+          <Icon name="x" className="w-4 h-4 shrink-0" />
+        </button>
+      </div>
 
       {/* Bulk Edit Modal */}
       <BulkEditModal
@@ -347,154 +313,148 @@ const BatchActionBar = ({
       />
 
       {/* Reconcile Dialog */}
-      <Dialog
+      <Modal
         open={reconcileDialogOpen}
-        onClose={() => {
-          setReconcileDialogOpen(false);
-          setTrueBalance('');
-          setReconciliationDate(new Date().toISOString().split('T')[0]);
-        }}
-        maxWidth="sm"
-        fullWidth
+        onClose={resetReconcileDialog}
+        size="sm"
+        title={gettext('Reconcile Transactions')}
+        testId="reconcile-dialog"
+        actions={
+          <>
+            <button type="button" className="btn btn-sm" onClick={resetReconcileDialog}>
+              {gettext('Cancel')}
+            </button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={handleReconcileSubmit}>
+              {gettext('Reconcile')}
+            </button>
+          </>
+        }
       >
-        <DialogTitle>{gettext('Reconcile Transactions')}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography>{gettext('Starting reconciled balance:')}</Typography>
-              <Typography sx={{ fontWeight: 'bold' }}>{formatCurrency(reconciledBalance)}</Typography>
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography>{gettext('Reconciling amount')} ({selectedCount} {gettext('items')}):</Typography>
-              <Typography sx={{ fontWeight: 'bold', color: reconcilingAmount >= 0 ? 'success.main' : 'error.main' }}>
-                {formatCurrency(reconcilingAmount)}
-              </Typography>
-            </Box>
-            {trueBalance !== '' && computedAdjustment !== 0 && (
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography>{gettext('Adjustment:')}</Typography>
-                <Typography sx={{ fontWeight: 'bold', color: computedAdjustment >= 0 ? 'success.main' : 'error.main' }}>
-                  {formatCurrency(computedAdjustment)}
-                </Typography>
-              </Box>
-            )}
-            <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 1, mt: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography sx={{ fontWeight: 'bold' }}>{gettext('New reconciled balance:')}</Typography>
-                <Typography sx={{ fontWeight: 'bold' }}>{formatCurrency(newReconciledBalance)}</Typography>
-              </Box>
-            </Box>
-            <TextField
-              margin="dense"
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span>{gettext('Starting reconciled balance:')}</span>
+            <span className="money font-bold">{formatCurrency(reconciledBalance)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>
+              {gettext('Reconciling amount')} ({selectedCount} {gettext('items')}):
+            </span>
+            <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>
+          </div>
+          {trueBalance !== '' && computedAdjustment !== 0 && (
+            <div className="flex justify-between">
+              <span>{gettext('Adjustment:')}</span>
+              <span className={`money font-bold ${money(computedAdjustment)}`}>
+                {formatCurrency(computedAdjustment)}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between border-t border-base-300 pt-2">
+            <span className="font-bold">{gettext('New reconciled balance:')}</span>
+            <span className="money font-bold">{formatCurrency(newReconciledBalance)}</span>
+          </div>
+
+          <div className="pt-4">
+            <DateField
               label={gettext('Reconciliation Date')}
-              fullWidth
-              type="date"
               value={reconciliationDate}
-              onChange={(e) => setReconciliationDate(e.target.value)}
-              sx={{ mt: 3 }}
-              InputLabelProps={{ shrink: true }}
+              onChange={setReconciliationDate}
+              testId="reconciliation-date"
             />
-            <TextField
-              margin="dense"
-              label={gettext('True Balance (optional)')}
-              fullWidth
+          </div>
+
+          <label className="form-control w-full pt-2">
+            <span className="label-text mb-1 block text-sm text-base-content/70">
+              {gettext('True Balance (optional)')}
+            </span>
+            <input
               type="number"
+              step="0.01"
+              className="input input-bordered w-full"
               value={trueBalance}
               onChange={(e) => setTrueBalance(e.target.value)}
-              helperText={gettext('Enter your actual bank balance — an adjustment will be created automatically if needed')}
-              sx={{ mt: 2 }}
-              inputProps={{ step: "0.01" }}
+              data-testid="true-balance"
             />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setReconcileDialogOpen(false);
-            setTrueBalance('');
-            setReconciliationDate(new Date().toISOString().split('T')[0]);
-          }}>
-            {gettext('Cancel')}
-          </Button>
-          <Button onClick={handleReconcileSubmit} variant="contained" color="primary">
-            {gettext('Reconcile')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            <span className="mt-1 block text-xs text-base-content/70">
+              {gettext('Enter your actual bank balance — an adjustment will be created automatically if needed')}
+            </span>
+          </label>
+        </div>
+      </Modal>
 
       {/* Unreconcile Dialog */}
-      <Dialog
+      <Modal
         open={unreconcileDialogOpen}
         onClose={() => setUnreconcileDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        size="sm"
+        title={gettext('Unreconcile Transactions')}
+        testId="unreconcile-dialog"
+        actions={
+          <>
+            <button type="button" className="btn btn-sm" onClick={() => setUnreconcileDialogOpen(false)}>
+              {gettext('Cancel')}
+            </button>
+            <button type="button" className="btn btn-sm btn-warning" onClick={handleUnreconcileSubmit}>
+              {gettext('Unreconcile')}
+            </button>
+          </>
+        }
       >
-        <DialogTitle>{gettext('Unreconcile Transactions')}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            <Typography>
-              {gettext('Are you sure you want to unreconcile')} {selectedCount} {gettext('transaction(s)?')}
-            </Typography>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-              <Typography>{gettext('Amount being unreconciled:')}</Typography>
-              <Typography sx={{ fontWeight: 'bold', color: reconcilingAmount >= 0 ? 'success.main' : 'error.main' }}>
-                {formatCurrency(reconcilingAmount)}
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-              <Typography>{gettext('New reconciled balance:')}</Typography>
-              <Typography sx={{ fontWeight: 'bold' }}>
-                {formatCurrency(reconciledBalance - reconcilingAmount)}
-              </Typography>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUnreconcileDialogOpen(false)}>{gettext('Cancel')}</Button>
-          <Button onClick={handleUnreconcileSubmit} variant="contained" color="warning">
-            {gettext('Unreconcile')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <div className="space-y-2 text-sm">
+          <p>
+            {gettext('Are you sure you want to unreconcile')} {selectedCount} {gettext('transaction(s)?')}
+          </p>
+          <div className="flex justify-between pt-2">
+            <span>{gettext('Amount being unreconciled:')}</span>
+            <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>{gettext('New reconciled balance:')}</span>
+            <span className="money font-bold">{formatCurrency(reconciledBalance - reconcilingAmount)}</span>
+          </div>
+        </div>
+      </Modal>
 
       {/* Permanent Delete Confirmation Dialog */}
-      <Dialog
+      <Modal
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        size="sm"
+        testId="delete-dialog"
+        title={
+          <span className="flex items-center gap-2 text-error">
+            <Icon name="trash" className="w-5 h-5 shrink-0" />
+            {gettext('Permanently Delete Transactions')}
+          </span>
+        }
+        actions={
+          <>
+            <button type="button" className="btn btn-sm" onClick={() => setDeleteDialogOpen(false)}>
+              {gettext('Cancel')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-error"
+              onClick={() => {
+                if (onDelete) onDelete();
+                setDeleteDialogOpen(false);
+              }}
+            >
+              <Icon name="trash" className="w-4 h-4 shrink-0" />
+              {gettext('Delete Forever')}
+            </button>
+          </>
+        }
       >
-        <DialogTitle sx={{ color: 'error.main', display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Icon name="trash" className="w-5 h-5 shrink-0" />
-          {gettext('Permanently Delete Transactions')}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 1 }}>
-            <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 2 }}>
-              {gettext('This action cannot be undone.')}
-            </Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              {gettext('You are about to permanently delete')} <strong>{selectedCount}</strong> {gettext('transaction(s) and any associated accounting records.')}
-            </Typography>
-            <Typography variant="body2" color="error">
-              {gettext('Once deleted, this data cannot be recovered.')}
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>{gettext('Cancel')}</Button>
-          <Button
-            onClick={() => {
-              if (onDelete) onDelete();
-              setDeleteDialogOpen(false);
-            }}
-            variant="contained"
-            color="error"
-            startIcon={<Icon name="trash" className="w-5 h-5 shrink-0" />}
-          >
-            {gettext('Delete Forever')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <div className="space-y-3 text-sm">
+          <p className="font-bold">{gettext('This action cannot be undone.')}</p>
+          <p>
+            {gettext('You are about to permanently delete')} <strong>{selectedCount}</strong>{' '}
+            {gettext('transaction(s) and any associated accounting records.')}
+          </p>
+          <p className="text-error">{gettext('Once deleted, this data cannot be recovered.')}</p>
+        </div>
+      </Modal>
     </>
   );
 };

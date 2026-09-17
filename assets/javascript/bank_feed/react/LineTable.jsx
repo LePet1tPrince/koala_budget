@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import DateRangePicker from '../../common/DateRangePicker';
 import EditTransactionModal from './EditTransactionModal';
-import { Dropdown, MenuRow, ReconciledLock, SortArrow, TablePager, Toast } from './LineTableParts';
+import { Toast } from '../../common/Toast';
+import { Dropdown, MenuRow, ReconciledLock, SortArrow, TablePager } from './LineTableParts';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
 import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc, formatDateForInput } from '../utils';
@@ -590,6 +591,7 @@ const LineTable = ({
       />
 
       <Toast
+        testId="feed-toast"
         open={snackbar.open}
         message={snackbar.message}
         severity={snackbar.severity}

@@ -1,7 +1,7 @@
 /* globals gettext */
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { Alert, Snackbar } from '@mui/material';
+import { Toast } from '../../common/Toast';
 
 import AccountGrid from './AccountGrid';
 import LineTable from './LineTable';
@@ -681,17 +681,16 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         selectedAccount={selectedAccount}
       />
 
-      {/* Snackbar for batch operations */}
-      <Snackbar
+      {/* Batch operation result. The 6s hold is carried over from the Snackbar
+          this replaces — long enough to read a failure message. */}
+      <Toast
         open={snackbar.open}
-        autoHideDuration={6000}
+        message={snackbar.message}
+        severity={snackbar.severity}
         onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+        autoHideMs={6000}
+        testId="batch-toast"
+      />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef } from 'react';
 
 /* globals gettext */
 
@@ -77,28 +77,6 @@ export const MenuRow = ({ onClick, checked, label, count, countClass = '', disab
     {count !== undefined && <span className={`badge badge-sm ${countClass}`}>{count}</span>}
   </button>
 );
-
-/** Transient message strip, replacing MUI's Snackbar + Alert. */
-export const Toast = ({ open, message, severity = 'info', onClose, autoHideMs = 4000 }) => {
-  useEffect(() => {
-    if (!open) return undefined;
-    const t = setTimeout(onClose, autoHideMs);
-    return () => clearTimeout(t);
-  }, [open, onClose, autoHideMs]);
-
-  if (!open) return null;
-  const cls = { success: 'alert-success', error: 'alert-error', warning: 'alert-warning', info: 'alert-info' }[severity];
-  return (
-    <div className="toast toast-end z-50" data-testid="feed-toast">
-      <div className={`alert ${cls}`}>
-        <span>{message}</span>
-        <button type="button" className="btn btn-ghost btn-xs" onClick={onClose} aria-label={gettext('Dismiss')}>
-          ✕
-        </button>
-      </div>
-    </div>
-  );
-};
 
 /**
  * Pager for the table.
