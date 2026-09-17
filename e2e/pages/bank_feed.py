@@ -60,7 +60,7 @@ class BankFeedPage(BasePage):
         self.page.locator("[data-testid='modal-cancel-btn']").click()
 
     def click_filter(self, mode: str):
-        """Click a filter toggle. mode is one of: to_review, reconciled, uncategorized, archived.
+        """Click a filter toggle. mode is one of: to-review, reconciled, uncategorized, archived.
 
         "archived" is a standalone toggle button; the others live inside the
         "Quick Filters" dropdown menu and require opening it first.
@@ -72,3 +72,41 @@ class BankFeedPage(BasePage):
             self.page.locator(f"[data-testid='filter-{mode}']").click()
             self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(300)
+
+    # ------------------------------------------------------------------
+    # Table rows
+    #
+    # MaterialTable renders a plain <table>; these read it positionally rather
+    # than by testid so the same assertions hold once the table is rewritten.
+    # ------------------------------------------------------------------
+
+    def wait_for_table(self):
+        self.page.wait_for_selector("table tbody tr", timeout=10_000)
+
+    def row_descriptions(self) -> list[str]:
+        """Visible rows' description text, which the tests use as row identity."""
+        self.page.wait_for_timeout(300)  # let the client-side filter settle
+        rows = self.page.locator("table tbody tr")
+        out = []
+        for i in range(rows.count()):
+            text = rows.nth(i).inner_text()
+            if text.strip():
+                out.append(text)
+        return out
+
+    def visible_row_count(self) -> int:
+        return len(self.row_descriptions())
+
+    def has_row_matching(self, needle: str) -> bool:
+        return any(needle in text for text in self.row_descriptions())
+
+    def open_quick_filters(self):
+        self.page.locator("[data-testid='quick-filters-btn']").click()
+        self.page.wait_for_selector("[data-testid='filter-to-review']", timeout=5_000)
+
+    def close_quick_filters(self):
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(200)
+
+    def quick_filters_disabled(self) -> bool:
+        return self.page.locator("[data-testid='quick-filters-btn']").is_disabled()
