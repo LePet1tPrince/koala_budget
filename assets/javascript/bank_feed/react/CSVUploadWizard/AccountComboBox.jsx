@@ -218,10 +218,10 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
         className="btn btn-sm btn-outline w-full justify-between font-normal text-left"
         onClick={() => setOpen((o) => !o)}
       >
-        <span className={`truncate ${selectedAccount ? '' : 'text-base-content/50'}`}>
+        <span className={`truncate ${selectedAccount ? '' : 'text-base-content/70'}`}>
           {selectedAccount ? selectedAccount.name : gettext('-- Leave uncategorized --')}
           {selectedAccount && selectedAccount.institution_name && (
-            <span className="text-base-content/50 font-normal"> · {selectedAccount.institution_name}</span>
+            <span className="text-base-content/70 font-normal"> · {selectedAccount.institution_name}</span>
           )}
         </span>
         <div className="flex items-center gap-1">
@@ -234,7 +234,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
               ✕
             </span>
           )}
-          <i className={`fa fa-chevron-${open ? 'up' : 'down'} text-xs text-base-content/50`}></i>
+          <i className={`fa fa-chevron-${open ? 'up' : 'down'} text-xs text-base-content/70`}></i>
         </div>
       </button>
 
@@ -272,7 +272,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
             {/* Leave uncategorized option */}
             <div
               ref={highlightedIndex === 0 ? highlightedRef : null}
-              className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm text-base-content/60 italic ${!value ? 'bg-primary/10 font-medium' : ''} ${highlightedIndex === 0 ? 'bg-base-300' : ''}`}
+              className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm text-base-content/70 italic ${!value ? 'bg-primary/10 font-medium' : ''} ${highlightedIndex === 0 ? 'bg-base-300' : ''}`}
               onMouseDown={() => handleSelect(null)}
               onMouseEnter={() => setHighlightedIndex(0)}
             >
@@ -280,14 +280,14 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
             </div>
 
             {!hasResults && (
-              <div className="px-3 py-3 text-sm text-base-content/50 text-center">
+              <div className="px-3 py-3 text-sm text-base-content/70 text-center">
                 {gettext('No accounts found')}
               </div>
             )}
 
             {orderedTypes.map((type) => (
               <div key={type}>
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-base-content/50 bg-base-200/50 sticky top-0">
+                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-base-content/70 bg-base-200/50 sticky top-0">
                   {ACCOUNT_TYPE_LABELS[type] || type}
                 </div>
                 {groupedAccounts[type].map((account) => {

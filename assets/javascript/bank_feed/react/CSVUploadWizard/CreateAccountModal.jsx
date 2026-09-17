@@ -101,7 +101,7 @@ const CreateAccountModal = ({ allAccountGroups, onSave, onCancel }) => {
                 <span className="label-text font-medium">{gettext('Account Group')}</span>
               </label>
               {filteredGroups.length === 0 ? (
-                <p className="text-sm text-base-content/60">
+                <p className="text-sm text-base-content/70">
                   {gettext('No groups available for this type.')}
                 </p>
               ) : (

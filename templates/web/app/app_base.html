@@ -1,24 +1,36 @@
 {% extends "web/base.html" %}
 {% load i18n %}
+{# App pages sit on the canvas (base-200) so .app-card surfaces read as raised. #}
+{% block body_class %}bg-base-200{% endblock %}
 {% block top_nav %}
-  {% include 'web/components/top_nav_app.html' %}
+  {% comment %}
+ Mobile only: above `lg` the sidebar carries all navigation, so the top bar
+     (which held nothing but the wordmark and a theme selector) is not rendered.
+  {% endcomment %}
+  <div class="lg:hidden">
+    {% include 'web/components/top_nav_app.html' %}
+  </div>
 {% endblock %}
 {% block body %}
   {% block notifications %}
   {% endblock %}
-  <section class="section pb-24 lg:pb-4">
-    <div class="container flex flex-row">
-      <div class="w-64 hidden lg:flex">
-        {% block sidebar-nav %}
-          {% include "web/components/app_nav.html" %}
-        {% endblock %}
-      </div>
-      <div class="w-full">
+  <div class="flex min-h-screen">
+    {% comment %}
+ shrink-0 matters: without it the flex row lets a wide table squeeze the
+       sidebar, so the nav visibly changed width from page to page.
+    {% endcomment %}
+    <aside class="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col p-3 lg:flex">
+      {% block sidebar-nav %}
+        {% include "web/components/app_nav.html" %}
+      {% endblock %}
+    </aside>
+    <main class="min-w-0 flex-1 px-4 pb-24 pt-5 lg:px-7 lg:pb-8 lg:pt-6">
+      <div class="mx-auto w-full max-w-[1180px]">
         {% block app %}
         {% endblock %}
       </div>
-    </div>
-  </section>
+    </main>
+  </div>
   {% if request.team %}
     {# Bottom tab bar for the main destinations on mobile; the sidebar covers desktop #}
     <div class="dock lg:hidden z-20" data-testid="mobile-dock">

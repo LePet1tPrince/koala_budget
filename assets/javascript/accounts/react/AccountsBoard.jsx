@@ -121,7 +121,7 @@ function InlineCreateForm({ placeholder, onSubmit, onCancel, extraAction }) {
         {error ? (
           <span className="text-xs text-error">{error}</span>
         ) : (
-          <span className="text-xs text-base-content/50">{gettext('Enter to add · Esc to close')}</span>
+          <span className="text-xs text-base-content/70">{gettext('Enter to add · Esc to close')}</span>
         )}
         {extraAction}
       </div>
@@ -160,7 +160,7 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay }) {
           {account.name}
         </a>
         {(account.institution || account.hasFeed) && (
-          <div className="text-xs text-base-content/60 truncate flex items-center gap-1.5">
+          <div className="text-xs text-base-content/70 truncate flex items-center gap-1.5">
             {account.institution && <span>{account.institution}</span>}
             {account.hasFeed && (
               <span className="tooltip tooltip-right" data-tip={gettext('Linked to a bank feed')}>
@@ -260,7 +260,7 @@ function GroupCard({ group, accountType, urls, onCreateAccount, isDropTarget, dr
             onSubmit={(name) => onCreateAccount(group.id, name)}
             onCancel={() => setAdding(false)}
             extraAction={
-              <a href={createPageUrl} className="text-xs link link-hover text-base-content/50">
+              <a href={createPageUrl} className="text-xs link link-hover text-base-content/70">
                 {gettext('More options…')}
               </a>
             }
@@ -294,7 +294,7 @@ function TypeSection({ section, urls, onCreateAccount, onCreateGroup, dropTarget
       data-testid="account-type-section"
       data-account-type={section.key}
     >
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-base-content/60 mb-2">{section.label}</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-base-content/70 mb-2">{section.label}</h2>
       <SortableContext items={section.groups.map((g) => groupDndId(g.id))} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-3">
           {section.groups.map((group) => (
@@ -323,7 +323,7 @@ function TypeSection({ section, urls, onCreateAccount, onCreateGroup, dropTarget
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-base-300 px-2 py-2.5 text-sm text-base-content/50 transition-colors hover:border-primary hover:text-primary hover:bg-primary/5"
+            className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-base-300 px-2 py-2.5 text-sm text-base-content/70 transition-colors hover:border-primary hover:text-primary hover:bg-primary/5"
             data-testid="add-group-btn"
             title={gettext('Add a group to this section')}
           >

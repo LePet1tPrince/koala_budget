@@ -29,6 +29,8 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ClearIcon from '@mui/icons-material/Clear';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { ThemeProvider } from '@mui/material/styles';
+import useMuiTheme from './useMuiTheme';
 
 // Helper to safely parse ISO string to Date object
 const safeParseISO = (dateString) => {
@@ -63,6 +65,8 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
   const [tempEndDate, setTempEndDate] = useState(safeParseISO(endDate));
   const [activeRange, setActiveRange] = useState(preset || '');
   const buttonRef = useRef(null);
+  // Without this the picker renders in MUI's light palette even in dark mode.
+  const theme = useMuiTheme();
 
   // Update temp dates when props change
   useEffect(() => {
@@ -199,28 +203,29 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
   };
 
   return (
-    <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box>
-        <Button
-          ref={buttonRef}
-          aria-describedby={id}
-          variant="outlined"
-          onClick={handleClick}
-          sx={{ textTransform: 'none', color: 'text.secondary', borderColor: 'grey.400' }}
-          startIcon={<CalendarMonthIcon fontSize="small" />}
-          endIcon={
-            (startDate || endDate) && (
-              <Box
-                component="span"
-                onClick={handleClearAll}
-                sx={{ display: 'inline-flex', alignItems: 'center', mr: -1, ml: 0.5, cursor: 'pointer', borderRadius: '50%', '&:hover': { bgcolor: 'action.hover' } }}
-                role="button"
-                aria-label="Clear date range"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClearAll(e); }}
-              >
-                <ClearIcon fontSize="small" />
-              </Box>
+    <ThemeProvider theme={theme}>
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <Box>
+          <Button
+            ref={buttonRef}
+            aria-describedby={id}
+            variant="outlined"
+            onClick={handleClick}
+            sx={{ textTransform: 'none', color: 'text.secondary', borderColor: 'divider' }}
+            startIcon={<CalendarMonthIcon fontSize="small" />}
+            endIcon={
+              (startDate || endDate) && (
+                <Box
+                  component="span"
+                  onClick={handleClearAll}
+                  sx={{ display: 'inline-flex', alignItems: 'center', mr: -1, ml: 0.5, cursor: 'pointer', borderRadius: '50%', '&:hover': { bgcolor: 'action.hover' } }}
+                  role="button"
+                  aria-label="Clear date range"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClearAll(e); }}
+                >
+                  <ClearIcon fontSize="small" />
+                </Box>
             )
           }
         >
@@ -295,7 +300,8 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
           </Box>
         </Popover>
       </Box>
-    </LocalizationProvider>
+      </LocalizationProvider>
+    </ThemeProvider>
   );
 };
 

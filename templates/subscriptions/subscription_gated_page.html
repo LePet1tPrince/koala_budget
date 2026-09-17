@@ -2,13 +2,13 @@
 {% load static %}
 {% block app %}
   <section class="app-card">
-    <div class="pg-columns pg-columns-reversed">
-      <div class="pg-column">
+    <div class="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0 lg:flex-row-reverse">
+      <div class="flex-1">
         <img class="img-fluid" src="{% static 'images/undraw/undraw_joyride.svg' %}" alt="Yay!">
       </div>
-      <div class="pg-column">
-        <h1 class="pg-title">Yay! You have access!</h1>
-        <h2 class="pg-subtitle">
+      <div class="flex-1">
+        <h1 class="text-3xl font-bold mb-2">Yay! You have access!</h1>
+        <h2 class="text-xl mb-1">
           If you're seeing this page then you're subscribed to a plan.
           Thanks for being a customer!
         </h2>

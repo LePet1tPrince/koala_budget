@@ -2,11 +2,11 @@
 {% load form_tags %}
 {% block django_app %}
   <div class="app-card">
-    <h2 class="pg-subtitle">Employee Details</h2>
+    <h2 class="text-xl mb-1">Employee Details</h2>
     <form method="post">
       {% csrf_token %}
       {% render_form_fields form %}
-      <input type="submit" value="Save Employee" class="pg-button-secondary">
+      <input type="submit" value="Save Employee" class="btn btn-outline">
     </form>
   </div>
 {% endblock %}

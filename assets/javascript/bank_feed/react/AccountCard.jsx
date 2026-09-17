@@ -54,14 +54,14 @@ const AccountCard = ({ account, isSelected, onClick }) => {
 
       <div className="min-w-0 flex-1">
         <p className="font-medium text-sm truncate">{account.name}</p>
-        <p className="text-xs text-base-content/60 truncate">
+        <p className="text-xs text-base-content/70 truncate">
           {account.institution_name || account.account_group_name}
         </p>
       </div>
 
       <div className="flex flex-col items-end shrink-0 w-24">
         {account.latest_transaction_date && (
-          <p className="text-[10px] text-base-content/50 tabular-nums truncate">
+          <p className="text-[10px] text-base-content/70 tabular-nums truncate">
             {formatDate(account.latest_transaction_date)}
           </p>
         )}

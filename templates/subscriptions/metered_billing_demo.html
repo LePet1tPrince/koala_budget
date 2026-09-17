@@ -4,8 +4,8 @@
 {% load form_tags %}
 {% block app %}
   <section class="app-card">
-    <h1 class="pg-title">{% translate "Metered Billing Demo" %}</h1>
-    <h2 class="pg-subtitle">{{ subscription }}</h2>
+    <h1 class="text-3xl font-bold mb-2">{% translate "Metered Billing Demo" %}</h1>
+    <h2 class="text-xl mb-1">{{ subscription }}</h2>
     <p>
       {% blocktranslate trimmed %}
         Use the form below to add usage data for your metered subscription.
@@ -16,7 +16,7 @@
       {% csrf_token %}
       {% render_form_fields form %}
       <div class="mt-2">
-        <input type="submit" class="pg-button-primary" value="{% translate 'Add Usage' %}">
+        <input type="submit" class="btn btn-primary" value="{% translate 'Add Usage' %}">
       </div>
     </form>
   </section>

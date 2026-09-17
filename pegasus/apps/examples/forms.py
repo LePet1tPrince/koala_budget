@@ -33,14 +33,14 @@ class ExampleForm(forms.Form):
         help_text="This is an optional input centered text.",
         required=False,
         widget=forms.TextInput(
-            attrs={"class": "pg-text-centered"},
+            attrs={"class": "text-center"},
         ),
     )
     centered_text = forms.CharField(
         help_text="This is an optional text area with centered text.",
         required=False,
         widget=forms.Textarea(
-            attrs={"class": "pg-text-centered"},
+            attrs={"class": "text-center"},
         ),
     )
 

@@ -3,7 +3,7 @@
   display: flex;
 }
 
-.upgrade-features li .pg-icon {
+.upgrade-features li .w-6 h-6 inline-flex justify-center items-center {
   margin-right: 0.5rem;
 }
 
@@ -43,7 +43,7 @@
 }
 
 #plan-selector .plan.is-selected {
-  border: 3px solid var(--primary);
+  border: 3px solid var(--color-primary);
 }
 
 #plan-selector .plan .plan-summary {

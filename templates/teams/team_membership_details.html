@@ -4,34 +4,34 @@
 {% load form_tags %}
 {% block app %}
 <section class="app-card">
-  <div class="pg-columns">
-    <div id="profile-picture" class="pg-column-one-quarter">
+  <div class="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0">
+    <div id="profile-picture" class="basis-1/4 grow-0 shrink-0">
       <div>
         <img class="avatar" src="{{ membership.user.avatar_url }}">
-        <div class="pg-text-centered">{{ membership.user.get_display_name }}</div>
+        <div class="text-center">{{ membership.user.get_display_name }}</div>
       </div>
     </div>
-    <div class="pg-column">
+    <div class="flex-1">
       <div>
-        <div class="pg-label">{% translate "Email" %}</div>
-        <div class="pg-text-muted">{{ membership.user.email }}</div>
+        <div class="block font-bold">{% translate "Email" %}</div>
+        <div class="text-base-content/70">{{ membership.user.email }}</div>
       </div>
       <div class="mt-2">
-        <div class="pg-label">{% translate "Date Joined" %}</div>
-        <div class="pg-text-muted">{{ membership.created_at }}</div>
+        <div class="block font-bold">{% translate "Date Joined" %}</div>
+        <div class="text-base-content/70">{{ membership.created_at }}</div>
       </div>
       <form class="mt-2" method="post">
         {% csrf_token %}
         {% render_form_fields membership_form %}
         {% if not editing_self %}
           <div class="mt-2">
-            <input type="submit" class="pg-button-secondary" value="{% translate 'Update Role' %}">
+            <input type="submit" class="btn btn-outline" value="{% translate 'Update Role' %}">
           </div>
         {% else %}
-          <p class="pg-help">{% translate "You are not allowed to modify your own role." %}</p>
+          <p class="text-sm text-base-content/70">{% translate "You are not allowed to modify your own role." %}</p>
         {% endif %}
         <hr class="my-2">
-        <label for="remove-member-modal" class="pg-button-danger modal-button">
+        <label for="remove-member-modal" class="btn btn-outline btn-error modal-button">
           {% if editing_self %}
             {% translate 'Leave Team' %}
           {% else %}

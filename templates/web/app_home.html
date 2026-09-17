@@ -9,27 +9,27 @@
   {# Headline metrics #}
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4" data-testid="dashboard-metrics">
     <section class="app-card" data-testid="metric-net-worth">
-      <div class="text-sm text-base-content/60">{% translate "Net worth" %}</div>
+      <div class="text-sm text-base-content/70">{% translate "Net worth" %}</div>
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth_card.net_worth < 0 %}text-error{% endif %}">
         {{ net_worth_card.net_worth|currency }}
       </div>
     </section>
     <section class="app-card" data-testid="metric-income-ytd">
-      <div class="text-sm text-base-content/60">{% translate "Income − expenses (YTD)" %}</div>
+      <div class="text-sm text-base-content/70">{% translate "Income − expenses (YTD)" %}</div>
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if income_ytd.net_profit < 0 %}text-error{% else %}text-success{% endif %}">
         {{ income_ytd.net_profit|currency }}
       </div>
       <a href="{% url 'reports:income_statement' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View profit & loss" %}</a>
     </section>
     <section class="app-card" data-testid="metric-budget-available">
-      <div class="text-sm text-base-content/60">{% translate "Total budget available" %}</div>
+      <div class="text-sm text-base-content/70">{% translate "Total budget available" %}</div>
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth_card.spend < 0 %}text-error{% endif %}">
         {{ net_worth_card.spend|currency }}
       </div>
       <a href="{% url 'budget:budget_home' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View budget" %}</a>
     </section>
     <section class="app-card" data-testid="metric-goals-remaining">
-      <div class="text-sm text-base-content/60">{% translate "To reach all goals" %}</div>
+      <div class="text-sm text-base-content/70">{% translate "To reach all goals" %}</div>
       <div class="text-2xl font-semibold tracking-tight mt-1">
         {{ amount_to_reach_goals|currency }}
       </div>
@@ -47,7 +47,7 @@
         <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
       </div>
     {% else %}
-      <p class="text-base-content/60">{% translate "Add accounts and transactions to see your net worth trend." %}</p>
+      <p class="text-base-content/70">{% translate "Add accounts and transactions to see your net worth trend." %}</p>
     {% endif %}
   </section>
 
@@ -55,22 +55,22 @@
     {# Onboarding checklist for new teams; disappears once all steps are done #}
     <section class="app-card mt-6" data-testid="onboarding-checklist">
       <h2 class="text-2xl font-semibold mb-1">{% translate "Get set up" %}</h2>
-      <p class="text-sm text-base-content/60 mb-4">{% translate "Three steps and your budget is up and running." %}</p>
+      <p class="text-sm text-base-content/70 mb-4">{% translate "Three steps and your budget is up and running." %}</p>
       <ul class="space-y-3">
         <li class="flex items-center gap-3">
           {% if has_accounts %}
             <i class="fa fa-check-circle text-success"></i>
-            <span class="text-base-content/60 line-through">{% translate "Add your accounts" %}</span>
+            <span class="text-base-content/70 line-through">{% translate "Add your accounts" %}</span>
           {% else %}
             <i class="fa fa-circle-o text-base-content/40"></i>
             <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="link">{% translate "Add your accounts" %}</a>
-            <span class="text-sm text-base-content/60">{% translate "— or connect a bank from the Inbox" %}</span>
+            <span class="text-sm text-base-content/70">{% translate "— or connect a bank from the Inbox" %}</span>
           {% endif %}
         </li>
         <li class="flex items-center gap-3">
           {% if has_transactions %}
             <i class="fa fa-check-circle text-success"></i>
-            <span class="text-base-content/60 line-through">{% translate "Import or add transactions" %}</span>
+            <span class="text-base-content/70 line-through">{% translate "Import or add transactions" %}</span>
           {% else %}
             <i class="fa fa-circle-o text-base-content/40"></i>
             <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" class="link">{% translate "Import or add transactions" %}</a>
@@ -79,7 +79,7 @@
         <li class="flex items-center gap-3">
           {% if has_budget %}
             <i class="fa fa-check-circle text-success"></i>
-            <span class="text-base-content/60 line-through">{% translate "Set your monthly budget" %}</span>
+            <span class="text-base-content/70 line-through">{% translate "Set your monthly budget" %}</span>
           {% else %}
             <i class="fa fa-circle-o text-base-content/40"></i>
             <a href="{% url 'budget:budget_home' request.team.slug %}" class="link">{% translate "Set your monthly budget" %}</a>
@@ -117,14 +117,14 @@
           <li>
             <div class="flex justify-between text-sm mb-1">
               <a href="{{ goal.get_absolute_url }}" class="link link-hover font-medium">{{ goal.name }}</a>
-              <span class="text-base-content/60">{{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}</span>
+              <span class="text-base-content/70">{{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}</span>
             </div>
             <progress class="progress progress-accent w-full" value="{{ goal.progress_percentage }}" max="100"></progress>
           </li>
         {% endfor %}
       </ul>
     {% else %}
-      <p class="text-base-content/60">
+      <p class="text-base-content/70">
         {% translate "Nothing you're saving for yet." %}
         <a href="{% url 'budget:goal_create' request.team.slug %}" class="link">{% translate "Create a goal" %}</a>
       </p>

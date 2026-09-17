@@ -1,13 +1,13 @@
 module.exports = {
-  darkMode: ["class", '[data-theme="dark"]'],
+  darkMode: ["class", '[data-theme="koala-dark"]'],
   content: [],
   safelist: [
     'alert-success',
     'alert-info',
     'alert-error',
     'alert-warning',
-    'pg-bg-danger',
-    'pg-bg-success',
+    'bg-error/10',
+    'bg-success/10',
   ],
   theme: {
     extend: {

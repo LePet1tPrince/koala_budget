@@ -24,7 +24,7 @@ export default function ProviderCallback() {
     <>
       <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Third-Party Login Failure</h1>
       <p>Sorry, something went wrong.</p>
-      <Link className="pg-link" to={url}>Back to Login</Link>
+      <Link className="link link-primary" to={url}>Back to Login</Link>
     </>
   )
 }

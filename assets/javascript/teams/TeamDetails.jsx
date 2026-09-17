@@ -26,12 +26,12 @@ const TeamDetails = function(props) {
   const renderIdField = function() {
     if (!creatingNewTeam) {
       return (
-        <div className="pg-input-group">
-          <label className="pg-label">{gettext("Team ID")}</label>
-          <input className="pg-control" type="text" placeholder="dunder-mifflin"
+        <div className="mb-3">
+          <label className="block font-bold">{gettext("Team ID")}</label>
+          <input className="input w-full" type="text" placeholder="dunder-mifflin"
                  onChange={(event) => setSlug(event.target.value)} value={slug} disabled={!canEditTeam}>
           </input>
-          <p className="pg-help form-text">{gettext("A unique ID for your team. No spaces are allowed!")}</p>
+          <p className="text-sm text-base-content/70 form-text">{gettext("A unique ID for your team. No spaces are allowed!")}</p>
           <ValidationErrors errors={props.errors?.slug} />
         </div>
       );
@@ -42,7 +42,7 @@ const TeamDetails = function(props) {
     if (useRouter) {
       return (
         <Link to={props.returnUrl}>
-          <button className="pg-button-light mx-2">
+          <button className="btn btn-ghost mx-2">
             <span>{gettext("Cancel")}</span>
           </button>
         </Link>
@@ -64,22 +64,22 @@ const TeamDetails = function(props) {
     return (
       <section className="app-card">
         <form>
-          <h3 className="pg-subtitle">{gettext("Team Details")}</h3>
-          <div className="pg-input-group">
-            <label className="pg-label">{gettext("Team Name")}</label>
-            <input className="pg-control" type="text" placeholder="Dunder Mifflin"
+          <h3 className="text-xl mb-1">{gettext("Team Details")}</h3>
+          <div className="mb-3">
+            <label className="block font-bold">{gettext("Team Name")}</label>
+            <input className="input w-full" type="text" placeholder="Dunder Mifflin"
                    onChange={(event) => setName(event.target.value)} value={name}
                    disabled={!canEditTeam}>
             </input>
-            <p className="pg-help form-text">{gettext("Your team name.")}</p>
+            <p className="text-sm text-base-content/70 form-text">{gettext("Your team name.")}</p>
             <ValidationErrors errors={props.errors?.name} />
           </div>
           {renderIdField()}
           {canEditTeam ? (
-            <div className="pg-inline-buttons">
-              <button className={creatingNewTeam ? 'pg-button-primary' : 'pg-button-secondary'}
+            <div className="flex space-x-1">
+              <button className={creatingNewTeam ? 'btn btn-primary' : 'btn btn-outline'}
                       onClick={saveTeam}>
-                              <span className="pg-icon">
+                              <span className="w-6 h-6 inline-flex justify-center items-center">
                                   <i className={`fa ${creatingNewTeam ? 'fa-plus' : 'fa-check'}`}></i>
                               </span>
                 <span>{getSaveButtonText()}</span>
@@ -150,8 +150,8 @@ const TeamDetails = function(props) {
     } else {
       return <>
         <section className="app-card">
-          <h3 className="pg-subtitle">{gettext("Danger Zone")}</h3>
-            <label htmlFor="delete-modal" className="pg-button-danger modal-button">{gettext("Delete Team")}</label>
+          <h3 className="text-xl mb-1">{gettext("Danger Zone")}</h3>
+            <label htmlFor="delete-modal" className="btn btn-outline btn-error modal-button">{gettext("Delete Team")}</label>
         </section>
         {renderDeleteModal()}
       </>

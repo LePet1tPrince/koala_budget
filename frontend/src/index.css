@@ -1,7 +1,11 @@
 @import "tailwindcss";
 
 @plugin "@tailwindcss/typography";
-@plugin "daisyui";
+
+/* Shared with the Django app so both halves render in one palette.
+   Registers daisyUI with the koala / koala-dark themes. */
+@import 'assets/styles/theme.css';
+@import '@fontsource-variable/inter';
 
 /* optionally include other styles from base.css or site-tailwind.css here
    currently only the ones that are needed for the existing pages are included.
@@ -16,7 +20,7 @@
 
 :root {
   /* some vite font defaults */
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Inter Variable', Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

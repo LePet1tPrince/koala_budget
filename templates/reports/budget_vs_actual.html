@@ -40,8 +40,8 @@
         <i class="fa fa-arrow-left mr-2"></i>
         {% translate "Back to Reports" %}
       </a>
-      <h1 class="pg-title">{% translate "Budget vs Actual" %}</h1>
-      <p class="text-sm text-base-content/60">{{ month|date:"F Y" }}</p>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Budget vs Actual" %}</h1>
+      <p class="text-sm text-base-content/70">{{ month|date:"F Y" }}</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <div class="join">
@@ -128,7 +128,7 @@
                   <div class="bva-meter flex-1 {% if row.over or row.unbudgeted %}bva-over{% endif %}">
                     <div style="width: {{ row.pct_capped|floatformat:0 }}%;"></div>
                   </div>
-                  <span class="text-xs text-base-content/60 tabular-nums w-12 text-right">
+                  <span class="text-xs text-base-content/70 tabular-nums w-12 text-right">
                     {% if row.pct is not None %}{{ row.pct|floatformat:0 }}%{% else %}—{% endif %}
                   </span>
                 </div>
@@ -143,7 +143,7 @@
         </table>
       </div>
       {% else %}
-      <p class="text-base-content/60 py-2">
+      <p class="text-base-content/70 py-2">
         {% translate "No budget or spending for this month yet." %}
         <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="link link-primary">{% translate "Set up your budget" %}</a>
       </p>
@@ -184,7 +184,7 @@
                   <div class="bva-meter bva-income flex-1">
                     <div style="width: {{ row.pct_capped|floatformat:0 }}%;"></div>
                   </div>
-                  <span class="text-xs text-base-content/60 tabular-nums w-12 text-right">
+                  <span class="text-xs text-base-content/70 tabular-nums w-12 text-right">
                     {% if row.pct is not None %}{{ row.pct|floatformat:0 }}%{% else %}—{% endif %}
                   </span>
                 </div>

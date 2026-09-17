@@ -9,7 +9,7 @@
   <form action="{{ subscription_urls.create_checkout_session }}" method="POST" id="checkout-form">
     {% csrf_token %}
     <input type="hidden" name="priceId" x-model="selectedProduct.active_prices[selectedInterval].id" value="" id="price-input"/>
-    <button type="submit" class="pg-button-primary" id="subscribe-button">Upgrade</button>
+    <button type="submit" class="btn btn-primary" id="subscribe-button">Upgrade</button>
   </form>
 </section>
 {% endblock %}

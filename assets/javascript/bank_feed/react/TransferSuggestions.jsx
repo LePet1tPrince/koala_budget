@@ -103,7 +103,7 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
   const renderLeg = (leg, direction) => (
     <div className="rounded-lg border border-base-300 bg-base-100 p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-base-content/60">{leg.account?.name}</span>
+        <span className="text-xs text-base-content/70">{leg.account?.name}</span>
         {leg.is_reconciled && (
           <span className="badge badge-info badge-sm" title={gettext('Reconciled')}>
             <i className="fa fa-lock mr-1"></i>
@@ -116,18 +116,18 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
           ? `- ${formatCurrency(leg.outflow)}`
           : `+ ${formatCurrency(leg.inflow)}`}
       </div>
-      <div className="text-xs text-base-content/60">
+      <div className="text-xs text-base-content/70">
         {leg.posted_date}
         {leg.journal_entry_id ? ` · ${gettext('categorized')}` : ''}
       </div>
       {leg.payee && (
         <div className="text-xs text-base-content/80 mt-1">
-          <span className="text-base-content/50">{gettext('Payee:')}</span> {leg.payee}
+          <span className="text-base-content/70">{gettext('Payee:')}</span> {leg.payee}
         </div>
       )}
       {leg.description && (
         <div className="text-xs text-base-content/80 truncate" title={leg.description}>
-          <span className="text-base-content/50">{gettext('Memo:')}</span> {leg.description}
+          <span className="text-base-content/70">{gettext('Memo:')}</span> {leg.description}
         </div>
       )}
     </div>
@@ -153,14 +153,14 @@ const TransferSuggestions = ({ batchApi, onResolved, showSnackbar }) => {
           {count > 0 ? ` (${count})` : ''}
         </DialogTitle>
         <DialogContent dividers>
-          <p className="text-xs text-base-content/60 mb-4">
+          <p className="text-xs text-base-content/70 mb-4">
             {gettext(
               'These look like two sides of the same transfer between your accounts. Archive the duplicate to avoid double-counting, then categorize the one you keep as a transfer.',
             )}
           </p>
 
           {count === 0 ? (
-            <div className="text-center text-base-content/60 py-8">
+            <div className="text-center text-base-content/70 py-8">
               <i className="fa fa-check-circle text-success text-2xl mb-2"></i>
               <p>{gettext('All transfers reviewed.')}</p>
             </div>

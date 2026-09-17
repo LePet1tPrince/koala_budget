@@ -3,7 +3,7 @@
 {% load form_tags %}
 {% block app %}
 <section class="app-card">
-  <h3 class="pg-subtitle">{% translate "New Account" %}</h3>
+  <h3 class="text-xl mb-1">{% translate "New Account" %}</h3>
 
   <form method="post" data-testid="account-form"
         x-data="{
@@ -63,7 +63,7 @@
           {{ group.name }}
         </button>
         {% empty %}
-        <p class="text-gray-500 text-sm">
+        <p class="text-base-content/70 text-sm">
           {% translate "No account groups of this type." %}
           <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="link">{% translate "Create one" %}</a>.
         </p>
@@ -91,12 +91,12 @@
     </div>
 
     <div class="flex gap-2 mt-6">
-      <input type="submit" class="pg-button-primary" value="{% translate 'Save' %}" data-testid="save-btn">
+      <input type="submit" class="btn btn-primary" value="{% translate 'Save' %}" data-testid="save-btn">
       <button type="submit" name="next_action" value="save_and_create_another"
-              class="pg-button-secondary" data-testid="save-and-create-another-btn">
+              class="btn btn-outline" data-testid="save-and-create-another-btn">
         {% translate "Save and create another" %}
       </button>
-      <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="pg-button-secondary" data-testid="cancel-btn">{% translate "Cancel" %}</a>
+      <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="btn btn-outline" data-testid="cancel-btn">{% translate "Cancel" %}</a>
     </div>
   </form>
 </section>

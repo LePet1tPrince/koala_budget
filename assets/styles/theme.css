@@ -1,0 +1,106 @@
+/*
+  Koala Budget theme.
+  ===================
+
+  Shared by the Django app (assets/styles/site-tailwind.css) and the standalone
+  auth SPA (frontend/src/index.css) so both render in the same palette. Both
+  entrypoints import this file *instead of* declaring `@plugin "daisyui"`
+  themselves — the plugin is registered here, once, with our themes.
+
+  Design rules the token values encode (see docs/restyle-plan.md §2):
+
+  - The canvas recedes and surfaces advance: `base-200` is the page, `base-100`
+    is a card, `base-300` is a hairline. Cards are separated by a border, not a
+    shadow, which is why `--depth` is 0.
+  - One brand hue (eucalyptus `primary`) and one accent (ochre `accent`).
+    Nothing else in the UI is allowed to introduce a hue.
+  - `success` / `error` are reserved for the direction and health of money —
+    money in, negative balances, over-budget — never for decoration.
+
+  `success` deliberately shares the brand's hue family: green reads as both
+  "Koala" and "money in", and the two are kept apart by context and weight
+  rather than by hue (chrome uses `primary`, figures use `success`).
+
+  Anything defined here must also work as a dark value below. If you add a
+  token, add both.
+*/
+
+@plugin "daisyui" {
+  themes: koala --default, koala-dark --prefersdark;
+}
+
+@plugin "daisyui/theme" {
+  name: "koala";
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: oklch(99.2% 0.004 106);    /* card / raised surface — warm white */
+  --color-base-200: oklch(97%   0.008 106);    /* page canvas — warm paper */
+  --color-base-300: oklch(92.5% 0.011 106);    /* hairlines, dividers */
+  --color-base-content: oklch(27%  0.017 150); /* warm near-black ink */
+
+  --color-primary: oklch(51% 0.105 157);       /* eucalyptus — brand */
+  --color-primary-content: oklch(98% 0.012 157);
+  --color-secondary: oklch(50% 0.085 233);     /* dusty blue — links, info series */
+  --color-secondary-content: oklch(98% 0.01 233);
+  --color-accent: oklch(70% 0.125 66);         /* ochre — attention, goals */
+  --color-accent-content: oklch(24% 0.04 66);
+  --color-neutral: oklch(31% 0.018 150);
+  --color-neutral-content: oklch(97% 0.008 106);
+
+  --color-info: oklch(50% 0.085 233);
+  --color-info-content: oklch(98% 0.01 233);
+  --color-success: oklch(52% 0.12 157);
+  --color-success-content: oklch(98% 0.012 157);
+  --color-warning: oklch(70% 0.125 66);
+  --color-warning-content: oklch(24% 0.04 66);
+  --color-error: oklch(54% 0.17 25);
+  --color-error-content: oklch(98% 0.01 25);
+
+  --radius-selector: 9999px;   /* badges, pills, progress */
+  --radius-field: 0.5rem;      /* inputs, buttons, nav items */
+  --radius-box: 0.875rem;      /* cards, panels */
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;                  /* flat — borders separate surfaces, not shadows */
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "koala-dark";
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: oklch(25%   0.016 150);
+  --color-base-200: oklch(21%   0.015 150);
+  --color-base-300: oklch(32%   0.018 150);
+  --color-base-content: oklch(93% 0.012 106);
+
+  --color-primary: oklch(72% 0.13 157);
+  --color-primary-content: oklch(19% 0.03 157);
+  --color-secondary: oklch(70% 0.10 233);
+  --color-secondary-content: oklch(18% 0.03 233);
+  --color-accent: oklch(78% 0.13 66);
+  --color-accent-content: oklch(22% 0.04 66);
+  --color-neutral: oklch(32% 0.018 150);
+  --color-neutral-content: oklch(93% 0.012 106);
+
+  --color-info: oklch(70% 0.10 233);
+  --color-info-content: oklch(18% 0.03 233);
+  --color-success: oklch(72% 0.13 157);
+  --color-success-content: oklch(19% 0.03 157);
+  --color-warning: oklch(78% 0.13 66);
+  --color-warning-content: oklch(22% 0.04 66);
+  --color-error: oklch(68% 0.16 25);
+  --color-error-content: oklch(18% 0.03 25);
+
+  --radius-selector: 9999px;
+  --radius-field: 0.5rem;
+  --radius-box: 0.875rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}

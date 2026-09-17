@@ -4,14 +4,14 @@
 <section class="app-card">
   {% include "accounts/components/manage_tabs.html" with manage_tab="institutions" %}
   <div class="flex justify-between items-center mb-4">
-    <h3 class="pg-subtitle">{% translate "Institutions" %}</h3>
-    <a href="{% url 'accounts:institution_create' request.team.slug %}" class="pg-button-primary">
+    <h3 class="text-xl mb-1">{% translate "Institutions" %}</h3>
+    <a href="{% url 'accounts:institution_create' request.team.slug %}" class="btn btn-primary">
       {% translate "New Institution" %}
     </a>
   </div>
   {% if object_list %}
     <div class="overflow-x-auto">
-      <table class="table table-zebra w-full">
+      <table class="table table-quiet w-full">
         <thead>
           <tr>
             <th>{% translate "Name" %}</th>
@@ -25,7 +25,7 @@
               <td><a href="{{ institution.get_absolute_url }}" class="link">{{ institution.name }}</a></td>
               <td>{{ institution.accounts.count }}</td>
               <td>
-                <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="pg-button-secondary pg-button-sm">
+                <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="btn btn-outline btn-sm">
                   {% translate "Edit" %}
                 </a>
               </td>
@@ -35,7 +35,7 @@
       </table>
     </div>
   {% else %}
-    <p class="text-gray-500">{% translate "No institutions yet." %} <a href="{% url 'accounts:institution_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <p class="text-base-content/70">{% translate "No institutions yet." %} <a href="{% url 'accounts:institution_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
   {% endif %}
 </section>
 {% endblock %}

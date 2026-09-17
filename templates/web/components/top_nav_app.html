@@ -1,23 +1,53 @@
 {% extends 'web/components/top_nav.html' %}
 {% load i18n %}
+{% comment %}
+  Mobile-only on app pages (app_base.html hides this above `lg`, where the
+  sidebar takes over). The parent renders this block inside a daisyUI
+  `menu` <ul>, so the shared nav anchors go in a plain <li><div> wrapper:
+  `menu` styles `li > a`, and these are `li > div > a`, so they keep their
+  own .side-link styling.
+{% endcomment %}
 {% block mobile_nav %}
-<li class="menu-title">
-  <span>{% translate "Site" %}</span>
-</li>
-{{ block.super }}
-<li>
-  <details>
-    <summary>
-      {% if team %}
-      {{ team.name }}
-      {% else %}
-      {{ request.user.get_display_name }}
-      {% endif %}
-    </summary>
-    <ul>
-      {% include "web/components/team_nav_items.html" %}
-    </ul>
-  </details>
-</li>
-{% include 'web/components/app_nav_menu_items.html' %}
+  <li>
+    <details>
+      <summary>
+        {% if team %}{{ team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+      </summary>
+      <ul>
+        {% include "web/components/team_nav_items.html" %}
+      </ul>
+    </details>
+  </li>
+  <li>
+    <div class="flex flex-col gap-0.5">
+      {% include 'web/components/app_nav_menu_items.html' %}
+      <a href="{% url 'chat:chat_home' %}"
+         class="side-link mt-2 border border-base-300 bg-base-200/60 {% if active_tab == 'ai-chat' %}side-link-active{% endif %}">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        {% translate "Ask Koala" %}
+      </a>
+    </div>
+  </li>
+  {% if not user.is_anonymous %}
+    {% comment %}
+ The desktop user menu lives in the sidebar, which is hidden here, so the
+       account actions have to be repeated for mobile.
+    {% endcomment %}
+    <li class="menu-title"><span>{% translate "Account" %}</span></li>
+    <li>
+      <a href="{% url 'users:user_profile' %}" {% if active_tab == 'profile' %}class="menu-active"{% endif %}>
+        <i class="fa fa-user h-4 w-4"></i>{% translate "Profile" %}
+      </a>
+    </li>
+    {% if user.has_usable_password %}
+      <li>
+        <a href="{% url 'account_change_password' %}">
+          <i class="fa fa-unlock-alt h-4 w-4"></i>{% translate "Change Password" %}
+        </a>
+      </li>
+    {% endif %}
+    <li>
+      <a href="{% url 'account_logout' %}"><i class="fa fa-sign-out h-4 w-4"></i>{% translate "Sign out" %}</a>
+    </li>
+  {% endif %}
 {% endblock %}

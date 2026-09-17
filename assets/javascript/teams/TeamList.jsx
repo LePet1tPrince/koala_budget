@@ -8,11 +8,11 @@ export const TeamTableRow = function(props) {
     <tr>
       <td>{props.name}</td>
       <td><a className={'link'} href={props.dashboardUrl}>{gettext("View Dashboard")}</a></td>
-      <td className="pg-inline-buttons pg-justify-content-end">
+      <td className="flex space-x-1 justify-end">
         <Link to={`/edit/${props.slug}`}>
-          <button className="pg-button-secondary mx-1">
-            <span className="pg-icon"><i className="fa fa-gear" /></span>
-            <span className="pg-hidden-mobile-inline">{props.isAdmin ? gettext('Edit') : gettext('View Details')}</span>
+          <button className="btn btn-outline mx-1">
+            <span className="w-6 h-6 inline-flex justify-center items-center"><i className="fa fa-gear" /></span>
+            <span className="hidden md:inline-block">{props.isAdmin ? gettext('Edit') : gettext('View Details')}</span>
           </button>
         </Link>
       </td>
@@ -36,7 +36,7 @@ export const UserInvitations = function ({invitations, apiUrls, showTitle = true
   return (
     <>
       <div className='table-responsive'>
-        <table className="table pg-table">
+        <table className="table table table-quiet w-full">
           <thead>
           <tr>
             <th>{gettext("Team Name")}</th>
@@ -48,13 +48,13 @@ export const UserInvitations = function ({invitations, apiUrls, showTitle = true
             return (
               <tr key={invitation.id}>
                 <td>{invitation.teamName}</td>
-                <td className={"pg-inline-buttons pg-justify-content-end"}>
+                <td className={"flex space-x-1 justify-end"}>
                   {invitation.verified ?
-                    <a className="pg-button-secondary" onClick={() => viewInvitation(invitation.id)}>
+                    <a className="btn btn-outline" onClick={() => viewInvitation(invitation.id)}>
                       <span>{gettext("View Invitation")}</span>
                     </a>
                     :
-                    <a className="pg-button-secondary" onClick={() => navigateToManageEmails()}>
+                    <a className="btn btn-outline" onClick={() => navigateToManageEmails()}>
                       <span>{interpolate("Verify \"%s\" to accept", [invitation.email])}</span>
                     </a>
                   }
@@ -75,9 +75,9 @@ export const TeamList = function(props) {
   return (
     <>
       <section className="app-card">
-        <h3 className="pg-subtitle">{gettext("My Teams")}</h3>
+        <h3 className="text-xl mb-1">{gettext("My Teams")}</h3>
         <div className='table-responsive'>
-          <table className="table pg-table">
+          <table className="table table table-quiet w-full">
             <thead>
             <tr>
               <th>{gettext("Name")}</th>
@@ -95,8 +95,8 @@ export const TeamList = function(props) {
           </table>
         </div>
         <Link to="/new">
-          <button className="mt-2 pg-button-secondary">
-            <span className="pg-icon">
+          <button className="mt-2 btn btn-outline">
+            <span className="w-6 h-6 inline-flex justify-center items-center">
               <i className="fa fa-plus"></i>
             </span>
             <span>{gettext("Add Team")}</span>
@@ -104,7 +104,7 @@ export const TeamList = function(props) {
         </Link>
       </section>
       <section className="app-card">
-        <h3 className="pg-subtitle">{gettext("Pending Invitations")}</h3>
+        <h3 className="text-xl mb-1">{gettext("Pending Invitations")}</h3>
         <UserInvitations invitations={props.userInvitations} apiUrls={props.apiUrls} />
       </section>
     </>

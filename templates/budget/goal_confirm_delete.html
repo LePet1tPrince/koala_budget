@@ -9,7 +9,7 @@
       <div class="card-body">
         <h2 class="card-title text-warning">{% translate "Archive Goal" %}</h2>
         <p>{% blocktranslate with name=goal.name %}Are you sure you want to archive "{{ name }}"?{% endblocktranslate %}</p>
-        <p class="text-sm text-gray-500">{% translate "The goal will be hidden but your allocation history will be preserved." %}</p>
+        <p class="text-sm text-base-content/70">{% translate "The goal will be hidden but your allocation history will be preserved." %}</p>
 
         <div class="card-actions justify-end mt-4">
           <a href="{% url 'budget:goal_detail' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-ghost">

@@ -4,9 +4,102 @@
 
 .help {
   /* forms */
-  @apply text-xs text-gray-700 dark:text-gray-300;
+  @apply text-xs text-base-content/70;
 }
 
+/*
+  The standard content container: a raised surface on the app canvas.
+
+  Cards read as cards because they sit a step above `base-200` and carry a
+  hairline, NOT because of a shadow — see docs/restyle-plan.md §2. Adding a
+  shadow back here would undo that.
+*/
 .app-card {
-  @apply lg:shadow-md p-4 mb-2 mt-2 lg:mt-0 lg:p-8;
+  @apply bg-base-100 border border-base-300 rounded-box p-5 lg:p-6;
+}
+
+/* Same surface, no padding — for cards that own their own internal layout
+   (a table that needs to bleed to the card's edges, a toolbar + body split). */
+.app-surface {
+  @apply bg-base-100 border border-base-300 rounded-box;
+}
+
+/*
+  Tabular numerals for money. Digits get a uniform advance width so amounts
+  line up down a column, without the typewriter texture of `font-mono`.
+  Use this on any element whose text is a currency figure.
+*/
+.money {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+  Sidebar navigation (restyle plan Phase 2).
+
+  These are plain anchors rather than daisyUI's `menu`, so the same markup can
+  be shared by the desktop sidebar and the mobile dropdown without `menu`'s
+  required <ul>/<li> structure.
+*/
+.side-link {
+  @apply relative flex items-center gap-3 rounded-field px-3 py-2 text-sm text-base-content/75
+         transition-colors hover:bg-base-300/45 hover:text-base-content;
+}
+
+.side-link > i {
+  @apply w-4 shrink-0 text-center text-base-content/45 transition-colors;
+}
+
+.side-link:hover > i {
+  @apply text-base-content/70;
+}
+
+/*
+  The active state is a soft brand tint plus a left rail. daisyUI's stock
+  `menu-active` paints a full neutral slab, which against the canvas was the
+  highest-contrast element on the screen.
+*/
+.side-link-active {
+  @apply bg-primary/10 font-medium text-primary hover:bg-primary/10 hover:text-primary;
+}
+
+.side-link-active > i {
+  @apply text-primary;
+}
+
+.side-link-active::before {
+  content: '';
+  @apply absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary;
+}
+
+/* Nested items (e.g. Goals under Budget) indent past the parent's icon. */
+.side-link-sub {
+  @apply pl-9;
+}
+
+.side-section {
+  @apply mt-5 mb-1 px-3 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
+}
+
+/* Team switcher and user row: the two surfaces bracketing the nav panel. */
+.side-tile {
+  @apply flex w-full items-center gap-2.5 rounded-box border border-base-300 bg-base-100 px-3 py-2.5
+         text-left transition-colors hover:bg-base-200;
+}
+
+.side-avatar {
+  @apply grid shrink-0 place-items-center rounded-field bg-primary text-primary-content text-xs font-semibold;
+  width: 2rem;
+  height: 2rem;
+}
+
+/*
+  Quiet table rows (restyle plan Phase 3).
+
+  Replaces daisyUI's `table-zebra`. Banding every other row draws the eye to an
+  arbitrary rhythm rather than to the data; hairline separators plus a hover
+  tint read the same at a glance and keep the surface calm. Applied on the
+  <table>, so a whole table opts in without touching any <tr>.
+*/
+.table-quiet tbody tr:hover > * {
+  @apply bg-base-200/60;
 }

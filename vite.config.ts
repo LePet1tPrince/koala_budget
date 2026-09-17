@@ -24,6 +24,7 @@ export default defineConfig({
       input: {
         'site-base-css': path.resolve(__dirname, './assets/styles/site-base.css'),
         'site-tailwind-css': path.resolve(__dirname, './assets/styles/site-tailwind.css'),
+        'fonts-css': path.resolve(__dirname, './assets/styles/fonts.css'),
         'site': path.resolve(__dirname, './assets/javascript/site.js'),
         'app': path.resolve(__dirname, './assets/javascript/app.js'),
         'teams': path.resolve(__dirname, './assets/javascript/teams/teams.jsx'),
