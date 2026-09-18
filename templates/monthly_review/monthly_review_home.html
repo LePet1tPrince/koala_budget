@@ -5,10 +5,20 @@
 {% block app %}
   {% if empty_state %}
     <section class="app-card" data-testid="monthly-review-empty-state">
-      <h1 class="text-2xl font-semibold mb-1">{% translate "Monthly Review" %}</h1>
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-1">
+        <h1 class="text-2xl font-semibold">{% translate "Monthly Review" %}</h1>
+        <div class="join">
+          <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm join-item" data-testid="empty-state-prev-month">
+            &lsaquo; {% translate "Previous month" %}
+          </a>
+          <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm join-item" data-testid="empty-state-next-month">
+            {% translate "Next month" %} &rsaquo;
+          </a>
+        </div>
+      </div>
       <p class="text-sm text-base-content/70 mb-4">
-        {% blocktranslate trimmed %}
-          There's no ledger activity yet for this month, so there's nothing to review.
+        {% blocktranslate trimmed with month=month|date:"F Y" %}
+          There's no ledger activity yet for {{ month }}, so there's nothing to review.
         {% endblocktranslate %}
       </p>
       <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm">

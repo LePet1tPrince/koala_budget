@@ -32,7 +32,7 @@ from apps.teams.decorators import login_and_team_required
 
 from .exports import export_monthly_review_csv
 from .models import MonthlyReviewState
-from .services.budget import _prev_month
+from .services.budget import _next_month, _prev_month
 from .services.review import build_review
 
 
@@ -124,6 +124,8 @@ def monthly_review_home(request, team_slug):
         "active_tab": "monthly-review",
         "page_title": _("Monthly Review"),
         "month": month,
+        "prev_month": _prev_month(month),
+        "next_month": _next_month(month),
         "empty_state": not _team_has_activity_by(request.team, month),
     }
 

@@ -71,6 +71,12 @@ def _prev_month(month):
     return month.replace(month=month.month - 1)
 
 
+def _next_month(month):
+    if month.month == 12:
+        return month.replace(year=month.year + 1, month=1)
+    return month.replace(month=month.month + 1)
+
+
 def _month_bounds(month):
     start = month.replace(day=1)
     end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)

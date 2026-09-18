@@ -77,6 +77,31 @@ class MonthlyReviewHomeTests(MonthlyReviewViewTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "nothing to review")
 
+    def test_empty_state_offers_prev_next_month_navigation(self):
+        response = self.client.get(self.home_url, {"month": "2020-01"})
+        self.assertContains(response, "?month=2019-12-01")
+        self.assertContains(response, "?month=2020-02-01")
+
+    def test_any_month_on_or_after_first_activity_shows_full_dashboard(self):
+        # August 2026 has the seeded entry; a later month with no activity of
+        # its own still renders the full page (zeroed figures), not the
+        # "nothing to review" empty state -- the team's ledger has started.
+        response = self.client.get(self.home_url, {"month": "2026-10"})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "nothing to review")
+        self.assertContains(response, "monthly-review-props")
+
+    def test_can_navigate_back_to_an_earlier_reviewed_month(self):
+        first_response = self.client.get(self.home_url, {"month": "2026-08"})
+        self.assertContains(first_response, "2026-08-01")
+
+        later_response = self.client.get(self.home_url, {"month": "2026-09"})
+        self.assertContains(later_response, "2026-09-01")
+
+        # Each month keeps its own state row.
+        self.assertTrue(MonthlyReviewState.objects.filter(team=self.team, month=date(2026, 8, 1)).exists())
+        self.assertTrue(MonthlyReviewState.objects.filter(team=self.team, month=date(2026, 9, 1)).exists())
+
     def test_non_member_gets_404(self):
         outsider = CustomUser.objects.create_user(username="outsider", password="pass")
         self.client.force_login(outsider)

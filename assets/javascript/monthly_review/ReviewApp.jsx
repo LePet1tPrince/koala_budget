@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
+import BudgetMonthPicker from '../budget/react/BudgetMonthPicker';
 import BaselineBar from './BaselineBar';
 import Dashboard from './Dashboard';
 import StepBiggest from './steps/StepBiggest';
@@ -113,7 +114,10 @@ const ReviewApp = ({ props }) => {
         </button>
       </div>
 
-      <h1 className="text-2xl font-semibold mb-4">{title}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <BudgetMonthPicker initialMonth={review.month} triggerClassName="btn btn-ghost btn-sm" />
+      </div>
 
       {showBaselineBar && (
         <div className="mb-4">

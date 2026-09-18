@@ -1,5 +1,6 @@
 import React from 'react';
 
+import BudgetMonthPicker from '../budget/react/BudgetMonthPicker';
 import BaselineBar from './BaselineBar';
 import { createFlowChart } from './charts/flowChart';
 import { createNetWorthStackChart } from './charts/networthStackChart';
@@ -20,7 +21,7 @@ const Dashboard = ({ review, baselines, baselineOrder, baseline, currentBaseline
     <div className="max-w-6xl mx-auto py-6 space-y-6" data-testid="monthly-review-dashboard">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{review.month_label}</h1>
+          <BudgetMonthPicker initialMonth={review.month} triggerClassName="btn btn-ghost btn-sm px-0 text-2xl font-semibold" />
           {review.is_current_month && (
             <div className="badge badge-warning badge-sm mt-1">This month isn&apos;t over yet</div>
           )}
