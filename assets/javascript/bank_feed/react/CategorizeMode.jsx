@@ -181,6 +181,57 @@ function matchScore(account, query) {
   return null;
 }
 
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Whether `needle` appears in `haystack` as a whole token — not as part of a
+// longer word — so an account named "BC" doesn't match inside "ABC" and a
+// memo of "ATM WD" doesn't match an account named "AT".
+function containsWholeToken(haystack, needle) {
+  if (!needle) return false;
+  const re = new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(needle.toLowerCase())}(?:$|[^a-z0-9])`, 'i');
+  return re.test(` ${haystack} `);
+}
+
+/**
+ * Find the account whose name is most clearly named in a transaction's
+ * memo/payee text — e.g. a transfer memo that literally says "WS Joint
+ * Checking" or just "BBC" should suggest that account. `excludeAccountId`
+ * keeps the transaction's own (feed) account from ever being suggested,
+ * since categorizing a transaction to the account it's already in would
+ * make it a transfer to itself.
+ */
+function findAccountNamedInText(text, accounts, excludeAccountId) {
+  if (!text) return null;
+  const candidates = accounts.filter(a => a.name && a.id !== excludeAccountId);
+
+  // Prefer the longest full account name that appears verbatim in the text.
+  let fullMatch = null;
+  for (const account of candidates) {
+    const name = account.name.trim();
+    if (containsWholeToken(text, name) && (!fullMatch || name.length > fullMatch.name.trim().length)) {
+      fullMatch = account;
+    }
+  }
+  if (fullMatch) return fullMatch;
+
+  // Otherwise, the longest single word (3+ chars, to skip noise like "of")
+  // from any account name that appears as a whole word in the text.
+  let wordMatch = null;
+  let wordMatchLength = 0;
+  for (const account of candidates) {
+    for (const word of account.name.split(/\s+/)) {
+      if (word.length < 3) continue;
+      if (word.length > wordMatchLength && containsWholeToken(text, word)) {
+        wordMatch = account;
+        wordMatchLength = word.length;
+      }
+    }
+  }
+  return wordMatch;
+}
+
 function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect, onCreateNew }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTopFilter, setActiveTopFilter] = useState(null); // TOP_LEVEL_FILTERS key
@@ -196,13 +247,27 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
 
   const suggestedAccountId = useMemo(() => {
     if (!currentTransaction) return null;
+    // The account this transaction is already sitting in — never suggest it
+    // as the category, or categorizing would make it a transfer to itself.
+    const feedAccountId = currentTransaction.account?.id ?? null;
+
+    // Rule: an account name (or a whole word from one) named verbatim in the
+    // memo/payee is the strongest signal — it's often literally naming the
+    // other side of a transfer — so it wins over the merchant-history guess.
+    const memoText = [currentTransaction.description, currentTransaction.merchant_name]
+      .filter(Boolean).join(' ');
+    const namedAccount = findAccountNamedInText(memoText, allAccounts, feedAccountId);
+    if (namedAccount) return namedAccount.id;
+
+    // Fallback: most recently used category for this exact merchant.
     const merchant = (currentTransaction.merchant_name || '').toLowerCase();
     if (!merchant) return null;
     const suggestion = categorySuggestions.find(s =>
       s.merchant_name?.toLowerCase() === merchant
     );
-    return suggestion?.category_id || null;
-  }, [currentTransaction, categorySuggestions]);
+    if (!suggestion?.category_id || suggestion.category_id === feedAccountId) return null;
+    return suggestion.category_id;
+  }, [currentTransaction, categorySuggestions, allAccounts]);
 
   const suggestedAccount = useMemo(() => {
     if (!suggestedAccountId) return null;
