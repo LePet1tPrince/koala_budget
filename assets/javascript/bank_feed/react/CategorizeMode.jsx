@@ -182,7 +182,7 @@ function suggestionNote({ count, match_type }) {
   return `${n} like this one ${verb} categorized as this`;
 }
 
-function SuggestedCategories({ suggestions, accountsById, loading, onSelect }) {
+function SuggestedCategories({ suggestions, accountsById, loading, activeKey, onSelect }) {
   if (loading) {
     return (
       <div className="mb-3 flex items-center gap-2 text-xs text-base-content/70">
@@ -203,7 +203,11 @@ function SuggestedCategories({ suggestions, accountsById, loading, onSelect }) {
           <button
             key={s.category_id}
             onClick={() => onSelect(accountsById[s.category_id])}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-success bg-success/10 hover:bg-success/20 transition-all hover:shadow-md active:scale-[0.98]"
+            data-nav-key={`s:${s.category_id}`}
+            data-active={activeKey === `s:${s.category_id}` ? 'true' : undefined}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-success bg-success/10 hover:bg-success/20 transition-all hover:shadow-md active:scale-[0.98] ${
+              activeKey === `s:${s.category_id}` ? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100 bg-success/20' : ''
+            }`}
             data-testid="category-suggestion"
           >
             <div className="flex-1 text-left min-w-0">
@@ -230,7 +234,9 @@ function AccountHierarchy({
   const [activeTopFilter, setActiveTopFilter] = useState(null); // TOP_LEVEL_FILTERS key
   const [filterGroupId, setFilterGroupId] = useState(null);
   const [filterInstitution, setFilterInstitution] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(-1); // keyboard highlight; -1 = nothing
   const searchRef = useRef(null);
+  const panelRef = useRef(null);
 
   const activeTopGroup = useMemo(
     () => TOP_LEVEL_FILTERS.find(f => f.key === activeTopFilter) || null,
@@ -300,12 +306,71 @@ function AccountHierarchy({
       .map(([name, accounts]) => ({ name, accounts: accounts.sort((a, b) => a.name.localeCompare(b.name)) }));
   }, [filteredAccounts]);
 
+  // Everything the arrow keys walk, in the order it is drawn: the suggestions
+  // first, then the account list. A suggested account also appears further down
+  // in its own group, so rows are keyed by where they are, not by account id.
+  const navRows = useMemo(() => {
+    const rows = usableSuggestions.map(s => ({ key: `s:${s.category_id}`, account: accountsById[s.category_id] }));
+    groupedAccounts.forEach(group => {
+      group.accounts.forEach(account => rows.push({ key: `a:${account.id}`, account }));
+    });
+    return rows;
+  }, [usableSuggestions, accountsById, groupedAccounts]);
+
+  // Typing narrows the list under a highlight that was pointing at a row which
+  // may no longer exist, so the index is clamped where it is read rather than
+  // chased with an effect.
+  const activeIdx = navRows.length === 0 ? -1 : Math.min(activeIndex, navRows.length - 1);
+  const activeKey = activeIdx >= 0 ? navRows[activeIdx].key : null;
+
   const clearFilters = () => {
     setActiveTopFilter(null);
     setFilterGroupId(null);
     setFilterInstitution(null);
     setSearchQuery('');
+    setActiveIndex(-1);
   };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (navRows.length === 0) return;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setActiveIndex(
+        activeIdx < 0
+          ? (step === 1 ? 0 : navRows.length - 1)
+          : (activeIdx + step + navRows.length) % navRows.length
+      );
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0) onSelect(navRows[activeIdx].account);
+      return;
+    }
+    if (e.key === 'Escape' && searchQuery) {
+      // Escape backs out of the search rather than out of categorize mode — the
+      // window handler that exits is stopped here, and only while there is a
+      // search to clear.
+      e.preventDefault();
+      e.stopPropagation();
+      setSearchQuery('');
+      setActiveIndex(-1);
+    }
+  };
+
+  // Keep the highlighted row on screen as it walks past the fold.
+  useEffect(() => {
+    if (!activeKey) return;
+    panelRef.current
+      ?.querySelector(`[data-nav-key="${activeKey}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeKey]);
+
+  // A filter change rebuilds the list under the highlight, so it starts over.
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [activeTopFilter, filterGroupId, filterInstitution]);
 
   useEffect(() => { searchRef.current?.focus(); }, []);
 
@@ -314,29 +379,50 @@ function AccountHierarchy({
     setFilterGroupId(null);
     setFilterInstitution(null);
     setSearchQuery('');
+    setActiveIndex(-1);
     searchRef.current?.focus();
   }, [currentTransaction?.id]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" ref={panelRef}>
       {/* Search bar */}
-      <div className="relative mb-3">
+      <div className="relative mb-1">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40">🔍</span>
         <input
           ref={searchRef}
           type="text"
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          onChange={e => {
+            // Typing points the highlight at the best match, so Enter takes it
+            // without a trip through the arrow keys; an empty box highlights
+            // nothing, so a stray Enter categorizes nothing.
+            setSearchQuery(e.target.value);
+            setActiveIndex(e.target.value ? 0 : -1);
+          }}
+          onKeyDown={handleSearchKeyDown}
           placeholder="Search accounts..."
           className="input input-bordered input-sm w-full pl-9 pr-8"
         />
         {searchQuery && (
           <button
-            onClick={() => { setSearchQuery(''); searchRef.current?.focus(); }}
+            onClick={() => { setSearchQuery(''); setActiveIndex(-1); searchRef.current?.focus(); }}
             className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs btn-circle"
           >
             ✕
           </button>
+        )}
+      </div>
+      <div className="h-5 mb-2 text-xs text-base-content/70 flex items-center gap-1.5">
+        {searchQuery && (
+          <>
+            <kbd className="kbd kbd-xs">↑</kbd>
+            <kbd className="kbd kbd-xs">↓</kbd>
+            <span>to move</span>
+            <kbd className="kbd kbd-xs">↵</kbd>
+            <span>to choose</span>
+            <kbd className="kbd kbd-xs">esc</kbd>
+            <span>to clear</span>
+          </>
         )}
       </div>
 
@@ -408,6 +494,7 @@ function AccountHierarchy({
         suggestions={usableSuggestions}
         accountsById={accountsById}
         loading={suggestionsLoading && usableSuggestions.length === 0}
+        activeKey={activeKey}
         onSelect={onSelect}
       />
 
@@ -429,11 +516,13 @@ function AccountHierarchy({
                 <button
                   key={account.id}
                   onClick={() => onSelect(account)}
+                  data-nav-key={`a:${account.id}`}
+                  data-active={activeKey === `a:${account.id}` ? 'true' : undefined}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-all hover:shadow-md active:scale-[0.98] ${
                     suggestedAccountIds.has(account.id)
                       ? 'border-success bg-success/10 hover:bg-success/20'
                       : 'border-base-300 hover:border-primary hover:bg-primary/5'
-                  }`}
+                  } ${activeKey === `a:${account.id}` ? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100 border-primary bg-primary/10' : ''}`}
                 >
                   <div className="flex-1 text-left min-w-0">
                     <div className="font-medium truncate">{account.name}</div>
