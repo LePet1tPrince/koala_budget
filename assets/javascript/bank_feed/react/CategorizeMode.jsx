@@ -4,6 +4,24 @@ import { createConfetti } from '../../common/confetti';
 
 const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
 
+// How many cards ahead of the current one to look up suggestions for.
+const SUGGESTION_PREFETCH = 8;
+
+// A feed row's id is its BankTransaction id, which is what the suggestion
+// endpoint keys on.
+function transactionId(tx) {
+  return tx?.imported_transaction_id ?? tx?.id ?? null;
+}
+
+// A rough "same merchant" key, used only to decide which cached suggestions a
+// fresh categorization invalidates. The real matching happens on the server.
+function lookalikeKey(tx) {
+  return (tx?.payee || tx?.merchant_name || tx?.description || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 const TOP_LEVEL_FILTERS = [
   { key: 'income_expense', label: 'Income / Expense', icon: '💸', types: ['income', 'expense'] },
   { key: 'transfer', label: 'Transfer', icon: '🔄', types: ['asset', 'liability'] },
@@ -156,7 +174,58 @@ function fuzzyMatch(text, query) {
   return true;
 }
 
-function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect }) {
+function suggestionNote({ count, match_type }) {
+  const n = `${count} transaction${count === 1 ? '' : 's'}`;
+  const verb = count === 1 ? 'was' : 'were';
+  if (match_type === 'payee') return `${n} with this payee ${verb} categorized as this`;
+  if (match_type === 'description') return `${n} with this description ${verb} categorized as this`;
+  return `${n} like this one ${verb} categorized as this`;
+}
+
+function SuggestedCategories({ suggestions, accountsById, loading, onSelect }) {
+  if (loading) {
+    return (
+      <div className="mb-3 flex items-center gap-2 text-xs text-base-content/70">
+        <span className="loading loading-spinner loading-xs" />
+        Looking for similar transactions...
+      </div>
+    );
+  }
+  if (suggestions.length === 0) return null;
+
+  return (
+    <div className="mb-3" data-testid="category-suggestions">
+      <p className="text-xs font-semibold text-success mb-1.5">
+        ✨ Suggested from similar transactions
+      </p>
+      <div className="space-y-1">
+        {suggestions.map(s => (
+          <button
+            key={s.category_id}
+            onClick={() => onSelect(accountsById[s.category_id])}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-success bg-success/10 hover:bg-success/20 transition-all hover:shadow-md active:scale-[0.98]"
+            data-testid="category-suggestion"
+          >
+            <div className="flex-1 text-left min-w-0">
+              <div className="font-bold truncate">{s.category_name}</div>
+              <div className="text-xs text-base-content/70 truncate">{suggestionNote(s)}</div>
+            </div>
+            <span className="badge badge-success badge-sm shrink-0">{s.count}×</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AccountHierarchy({
+  allAccounts,
+  allAccountGroups,
+  suggestions,
+  suggestionsLoading,
+  currentTransaction,
+  onSelect,
+}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTopFilter, setActiveTopFilter] = useState(null); // TOP_LEVEL_FILTERS key
   const [filterGroupId, setFilterGroupId] = useState(null);
@@ -169,20 +238,23 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
   );
   const activeTypes = activeTopGroup?.types || null;
 
-  const suggestedAccountId = useMemo(() => {
-    if (!currentTransaction) return null;
-    const merchant = (currentTransaction.merchant_name || '').toLowerCase();
-    if (!merchant) return null;
-    const suggestion = categorySuggestions.find(s =>
-      s.merchant_name?.toLowerCase() === merchant
-    );
-    return suggestion?.category_id || null;
-  }, [currentTransaction, categorySuggestions]);
+  const accountsById = useMemo(() => {
+    const byId = {};
+    allAccounts.forEach(a => { byId[a.id] = a; });
+    return byId;
+  }, [allAccounts]);
 
-  const suggestedAccount = useMemo(() => {
-    if (!suggestedAccountId) return null;
-    return allAccounts.find(a => a.id === suggestedAccountId) || null;
-  }, [suggestedAccountId, allAccounts]);
+  // A suggestion whose account is gone (archived, deleted) can't be picked, so
+  // it isn't offered.
+  const usableSuggestions = useMemo(
+    () => (suggestions || []).filter(s => accountsById[s.category_id]),
+    [suggestions, accountsById]
+  );
+
+  const suggestedAccountIds = useMemo(
+    () => new Set(usableSuggestions.map(s => s.category_id)),
+    [usableSuggestions]
+  );
 
   // Second-level filters: only shown when a top-level filter is active
   const relevantGroups = useMemo(() => {
@@ -331,19 +403,13 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
         )}
       </div>
 
-      {/* Suggested account — always at top */}
-      {suggestedAccount && (
-        <div className="mb-3 animate-pulse-subtle">
-          <p className="text-xs font-semibold text-success mb-1.5">✨ Suggested</p>
-          <button
-            onClick={() => onSelect(suggestedAccount)}
-            className="btn btn-outline btn-success w-full justify-start gap-2 text-left"
-          >
-            <span className="font-bold">{suggestedAccount.name}</span>
-            <span className="text-xs opacity-60 ml-auto">{suggestedAccount.account_group_name}</span>
-          </button>
-        </div>
-      )}
+      {/* Categories used on similar transactions — always at top */}
+      <SuggestedCategories
+        suggestions={usableSuggestions}
+        accountsById={accountsById}
+        loading={suggestionsLoading && usableSuggestions.length === 0}
+        onSelect={onSelect}
+      />
 
       {/* Account list grouped by account group */}
       <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
@@ -364,7 +430,7 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
                   key={account.id}
                   onClick={() => onSelect(account)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-all hover:shadow-md active:scale-[0.98] ${
-                    account.id === suggestedAccountId
+                    suggestedAccountIds.has(account.id)
                       ? 'border-success bg-success/10 hover:bg-success/20'
                       : 'border-base-300 hover:border-primary hover:bg-primary/5'
                   }`}
@@ -381,7 +447,7 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
                       )}
                     </div>
                   </div>
-                  {account.id === suggestedAccountId && (
+                  {suggestedAccountIds.has(account.id) && (
                     <span className="badge badge-success badge-sm shrink-0">Suggested</span>
                   )}
                 </button>
@@ -426,7 +492,6 @@ export default function CategorizeMode({
   teamSlug,
   allAccounts,
   allAccountGroups,
-  categorySuggestions: initialSuggestions,
   backUrl,
 }) {
   const [transactions, setTransactions] = useState([]);
@@ -439,7 +504,8 @@ export default function CategorizeMode({
   const [undoStack, setUndoStack] = useState([]);
   const [isSkipping, setIsSkipping] = useState(false);
   const [skippedCount, setSkippedCount] = useState(0);
-  const [categorySuggestions, setCategorySuggestions] = useState(initialSuggestions || []);
+  const [suggestionsByTransaction, setSuggestionsByTransaction] = useState({});
+  const suggestionsInFlight = useRef(new Set());
   const headers = getApiHeaders();
 
   const fetchUncategorized = useCallback(async () => {
@@ -463,19 +529,48 @@ export default function CategorizeMode({
     }
   }, [teamSlug]);
 
-  const fetchSuggestions = useCallback(async () => {
+  // Ask the server which categories were used on transactions similar to these.
+  // An id that comes back with nothing is cached as an empty list, so a
+  // transaction with no lookalikes is asked about once rather than every render.
+  const fetchSuggestions = useCallback(async (ids) => {
+    const grouped = {};
+    ids.forEach(id => { grouped[id] = []; });
     try {
-      const resp = await fetch(`/a/${teamSlug}/bankfeed/api/feed/category_suggestions/`, {
-        credentials: 'include',
-        headers,
-      });
-      if (resp.ok) setCategorySuggestions(await resp.json());
-    } catch (err) { /* ignore */ }
+      const resp = await fetch(
+        `/a/${teamSlug}/bankfeed/api/feed/similar_categories/?ids=${ids.join(',')}`,
+        { credentials: 'include', headers }
+      );
+      if (resp.ok) {
+        (await resp.json()).forEach(row => {
+          if (grouped[row.transaction_id]) grouped[row.transaction_id].push(row);
+          else grouped[row.transaction_id] = [row];
+        });
+      }
+    } catch (err) {
+      // Suggestions are a shortcut, not the feature — a failed lookup leaves the
+      // full category list, and the empty cache entries keep it from retrying in
+      // a loop.
+      console.error('Failed to load category suggestions:', err);
+    } finally {
+      setSuggestionsByTransaction(prev => ({ ...prev, ...grouped }));
+      ids.forEach(id => suggestionsInFlight.current.delete(id));
+    }
   }, [teamSlug]);
+
+  // Only the cards about to be seen are looked up, so a queue of a thousand
+  // transactions still costs one small request at a time.
+  useEffect(() => {
+    const wanted = transactions
+      .slice(0, SUGGESTION_PREFETCH)
+      .map(transactionId)
+      .filter(id => id != null && !(id in suggestionsByTransaction) && !suggestionsInFlight.current.has(id));
+    if (wanted.length === 0) return;
+    wanted.forEach(id => suggestionsInFlight.current.add(id));
+    fetchSuggestions(wanted);
+  }, [transactions, suggestionsByTransaction, fetchSuggestions]);
 
   useEffect(() => {
     fetchUncategorized();
-    if (!initialSuggestions?.length) fetchSuggestions();
   }, []);
 
   const categorizeTransaction = useCallback(async (account) => {
@@ -497,8 +592,23 @@ export default function CategorizeMode({
 
       setUndoStack(prev => [...prev, { transaction: tx, account }]);
 
+      // The decision just made is evidence about every queued transaction that
+      // looks like it, so those cached suggestions are now out of date and are
+      // dropped for the prefetch to pick up again.
+      const key = lookalikeKey(tx);
+      const staleIds = key
+        ? transactions.slice(1).filter(other => lookalikeKey(other) === key).map(transactionId)
+        : [];
+
       setTimeout(() => {
         setTransactions(prev => prev.slice(1));
+        if (staleIds.length > 0) {
+          setSuggestionsByTransaction(cached => {
+            const next = { ...cached };
+            staleIds.forEach(id => delete next[id]);
+            return next;
+          });
+        }
         setCategorized(newCategorized);
         setStreak(newStreak);
         setIsExiting(false);
@@ -538,6 +648,10 @@ export default function CategorizeMode({
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [backUrl, undoStack]);
+
+  const currentId = transactionId(transactions[0]);
+  const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
+  const suggestionsLoading = currentId != null && !(currentId in suggestionsByTransaction);
 
   if (loading) {
     return (
@@ -648,7 +762,8 @@ export default function CategorizeMode({
           <AccountHierarchy
             allAccounts={allAccounts}
             allAccountGroups={allAccountGroups}
-            categorySuggestions={categorySuggestions}
+            suggestions={currentSuggestions}
+            suggestionsLoading={suggestionsLoading}
             currentTransaction={transactions[0]}
             onSelect={categorizeTransaction}
           />
