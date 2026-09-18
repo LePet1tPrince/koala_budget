@@ -128,3 +128,8 @@ Koala Budget uses **DaisyUI 5** semantic color tokens on top of Tailwind CSS 4. 
 | 2026-06-12 | Accounts home = grouped account list with balances (balance-sheet order) + tab row to Groups/Payees/Institutions; Reports home = link list | Hub pages with N cards × 2 buttons replaced by single-CTA lists |
 | 2026-06-12 | Mobile: bottom dock (DaisyUI `dock`) with Home/Inbox/Transactions/Budget/Reports on `< lg` screens | Sidebar is desktop-only; dock beats the hamburger for daily phone tasks |
 | 2026-06-12 | `inbox_count` exposed globally via `apps.bank_feed.context_processors.inbox_count` (uncategorized, unarchived bank transactions for `request.team`) | Powers nav badge + dashboard banner without per-view wiring |
+| 2026-09-18 | Transactions table: column filters and sorting run server-side, never on the loaded rows | The table pages in on scroll, so a client-side filter would offer the first page's payees and quietly hide the rest of the ledger |
+| 2026-09-18 | A column's value list comes from a `facets/` endpoint that drops that column's own filter but honours every other one | The counts then describe what ticking a value would show, and a ticked value can still be un-ticked |
+| 2026-09-18 | Column menu stages its selection and commits on Apply, rather than filtering on each tick | Each commit is a round trip to the whole ledger; ticking six payees shouldn't cost six of them |
+| 2026-09-18 | Chevron is always visible (muted), not revealed on row hover | It is the only affordance for the filter menu; hiding it until hover makes the feature undiscoverable |
+| 2026-09-18 | Sort labels are per column ("Newest first", "Largest first") rather than "Ascending"/"Descending" | "Ascending" describes a date or an amount poorly |

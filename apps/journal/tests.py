@@ -1006,3 +1006,217 @@ class JournalPermissionsTest(TestCase):
             response = self.client.get(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class TransactionColumnFilterAPITest(TestCase):
+    """
+    Test per-column value filters, sorting and the facets endpoint.
+
+    The table filters and sorts server-side against the whole ledger, so these
+    cover the two things the client can't do for itself: a column's list of
+    distinct values, and an ordering that survives pagination.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.asset_group = AccountGroup.objects.create(
+            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.checking = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.savings = Account.objects.create(team=cls.team, name="Savings", account_group=cls.asset_group)
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.coffee = Account.objects.create(team=cls.team, name="Coffee", account_group=cls.expense_group)
+
+        cls.amazon = Payee.objects.create(team=cls.team, name="Amazon")
+        cls.costco = Payee.objects.create(team=cls.team, name="Costco")
+
+        def entry(day, payee, debit, credit, amount, description, **kwargs):
+            je = JournalEntry.objects.create(
+                team=cls.team,
+                entry_date=date(2025, 3, day),
+                payee=payee,
+                description=description,
+                **kwargs,
+            )
+            JournalLine.objects.create(team=cls.team, journal_entry=je, account=debit, dr_amount=Decimal(amount))
+            JournalLine.objects.create(team=cls.team, journal_entry=je, account=credit, cr_amount=Decimal(amount))
+            return je
+
+        with current_team(cls.team):
+            cls.a = entry(1, cls.amazon, cls.groceries, cls.checking, "25.00", "Weekly shop")
+            cls.b = entry(2, cls.costco, cls.groceries, cls.checking, "10.00", "Milk")
+            cls.c = entry(3, cls.amazon, cls.coffee, cls.savings, "5.00", "Beans")
+            # No payee, and a non-default status, so the "(none)" facet value
+            # and the choice-label columns both have something to report.
+            cls.d = entry(4, None, cls.coffee, cls.checking, "5.00", "Espresso", status=JournalEntry.STATUS_POSTED)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def url(self, path=""):
+        return f"/a/{self.team.slug}/journal/api/transactions/{path}"
+
+    def ids(self, response):
+        return [row["id"] for row in response.data["results"]]
+
+    # ------------------------------------------------------------------
+    # Column filters
+    # ------------------------------------------------------------------
+
+    def test_filter_by_single_column_value(self):
+        response = self.client.get(self.url(), {"f_payee": "Amazon"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(set(self.ids(response)), {self.a.pk, self.c.pk})
+
+    def test_filter_accepts_multiple_values_as_or(self):
+        response = self.client.get(self.url(), {"f_debit_account": ["Coffee", "Groceries"]})
+
+        self.assertEqual(set(self.ids(response)), {self.a.pk, self.b.pk, self.c.pk, self.d.pk})
+
+    def test_filters_on_different_columns_combine_as_and(self):
+        response = self.client.get(self.url(), {"f_payee": "Amazon", "f_debit_account": "Coffee"})
+
+        self.assertEqual(self.ids(response), [self.c.pk])
+
+    def test_empty_value_selects_rows_with_no_payee(self):
+        response = self.client.get(self.url(), {"f_payee": ""})
+
+        self.assertEqual(self.ids(response), [self.d.pk])
+
+    def test_filter_by_amount(self):
+        response = self.client.get(self.url(), {"f_amount": "5.00"})
+
+        self.assertEqual(set(self.ids(response)), {self.c.pk, self.d.pk})
+
+    def test_filter_by_date(self):
+        response = self.client.get(self.url(), {"f_date": ["2025-03-01", "2025-03-02"]})
+
+        self.assertEqual(set(self.ids(response)), {self.a.pk, self.b.pk})
+
+    def test_filter_by_status_uses_stored_code(self):
+        response = self.client.get(self.url(), {"f_status": JournalEntry.STATUS_POSTED})
+
+        self.assertEqual(self.ids(response), [self.d.pk])
+
+    def test_unparseable_filter_value_is_ignored_rather_than_blanking_the_table(self):
+        """A stale bookmark shouldn't 400 or silently show an empty ledger."""
+        response = self.client.get(self.url(), {"f_date": "not-a-date"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 4)
+
+    def test_column_filter_combines_with_search(self):
+        response = self.client.get(self.url(), {"search": "Espresso", "f_payee": ""})
+
+        self.assertEqual(self.ids(response), [self.d.pk])
+
+    # ------------------------------------------------------------------
+    # Sorting
+    # ------------------------------------------------------------------
+
+    def test_sort_by_amount_ascending(self):
+        response = self.client.get(self.url(), {"sort": "amount", "dir": "asc"})
+
+        amounts = [row["amount"] for row in response.data["results"]]
+        self.assertEqual(amounts, sorted(amounts, key=Decimal))
+        self.assertEqual(Decimal(amounts[0]), Decimal("5.00"))
+
+    def test_sort_by_amount_descending(self):
+        response = self.client.get(self.url(), {"sort": "amount", "dir": "desc"})
+
+        self.assertEqual(self.ids(response)[0], self.a.pk)
+
+    def test_sort_by_payee_puts_missing_payees_first(self):
+        response = self.client.get(self.url(), {"sort": "payee", "dir": "asc"})
+
+        self.assertEqual(self.ids(response)[0], self.d.pk)
+
+    def test_sort_by_credit_account(self):
+        response = self.client.get(self.url(), {"sort": "credit_account", "dir": "desc"})
+
+        self.assertEqual(self.ids(response)[0], self.c.pk)
+
+    def test_unknown_sort_column_falls_back_to_newest_first(self):
+        response = self.client.get(self.url(), {"sort": "nonsense"})
+
+        self.assertEqual(self.ids(response), [self.d.pk, self.c.pk, self.b.pk, self.a.pk])
+
+    # ------------------------------------------------------------------
+    # Facets
+    # ------------------------------------------------------------------
+
+    def test_facets_list_distinct_values_with_counts(self):
+        response = self.client.get(self.url("facets/"), {"column": "debit_account"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["values"],
+            [
+                {"value": "Coffee", "label": "Coffee", "count": 2},
+                {"value": "Groceries", "label": "Groceries", "count": 2},
+            ],
+        )
+        self.assertFalse(response.data["truncated"])
+
+    def test_facets_label_choice_columns(self):
+        response = self.client.get(self.url("facets/"), {"column": "status"})
+
+        labels = {row["value"]: row["label"] for row in response.data["values"]}
+        self.assertEqual(labels[JournalEntry.STATUS_POSTED], "Posted")
+        self.assertEqual(labels[JournalEntry.STATUS_DRAFT], "Draft")
+
+    def test_facets_report_the_no_value_bucket(self):
+        response = self.client.get(self.url("facets/"), {"column": "payee"})
+
+        values = {row["value"]: row["count"] for row in response.data["values"]}
+        self.assertEqual(values[""], 1)
+        self.assertEqual(values["Amazon"], 2)
+
+    def test_facets_ignore_the_columns_own_filter(self):
+        """Otherwise the only value on offer would be the one already ticked."""
+        response = self.client.get(self.url("facets/"), {"column": "payee", "f_payee": "Amazon"})
+
+        self.assertEqual({row["value"] for row in response.data["values"]}, {"", "Amazon", "Costco"})
+
+    def test_facets_respect_other_columns_filters(self):
+        response = self.client.get(self.url("facets/"), {"column": "payee", "f_debit_account": "Coffee"})
+
+        self.assertEqual(
+            {row["value"]: row["count"] for row in response.data["values"]},
+            {"": 1, "Amazon": 1},
+        )
+
+    def test_facets_respect_search_and_date_range(self):
+        response = self.client.get(
+            self.url("facets/"),
+            {"column": "debit_account", "start_date": "2025-03-03", "end_date": "2025-03-04"},
+        )
+
+        self.assertEqual(response.data["values"], [{"value": "Coffee", "label": "Coffee", "count": 2}])
+
+    def test_facets_can_be_searched(self):
+        response = self.client.get(self.url("facets/"), {"column": "payee", "q": "cost"})
+
+        self.assertEqual([row["value"] for row in response.data["values"]], ["Costco"])
+
+    def test_facets_reject_an_unknown_column(self):
+        response = self.client.get(self.url("facets/"), {"column": "nonsense"})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_facets_require_team_membership(self):
+        outsider = CustomUser.objects.create_user(username="outsider", password="testpass123")
+        self.client.force_authenticate(user=outsider)
+
+        response = self.client.get(self.url("facets/"), {"column": "payee"})
+
+        self.assertIn(response.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))

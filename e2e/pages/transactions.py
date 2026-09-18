@@ -72,3 +72,52 @@ class TransactionsPage(BasePage):
     def expect_row_count(self, count: int, timeout: int = 15_000):
         """Auto-retrying row-count assertion, so a late render can't fail it."""
         expect(self.page.locator("[data-testid='transaction-row']")).to_have_count(count, timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Column menus (filter + sort)
+    # ------------------------------------------------------------------
+
+    def open_column_menu(self, column: str):
+        """Open one column's chevron menu and wait for its values to load."""
+        self.page.locator(f"[data-testid='column-menu-btn-{column}']").click()
+        self.page.wait_for_selector(f"[data-testid='column-menu-{column}']")
+        # The values come from the API, so the list starts empty.
+        self.page.wait_for_selector(f"[data-testid='column-menu-{column}'] input[type='checkbox']", timeout=15_000)
+
+    def column_filter_values(self, column: str) -> list[str]:
+        """The value labels currently offered in an open column menu."""
+        menu = self.page.locator(f"[data-testid='column-menu-{column}']")
+        return [text.strip() for text in menu.locator("[data-testid='column-value-label']").all_inner_texts()]
+
+    def tick_column_value(self, column: str, label: str):
+        menu = self.page.locator(f"[data-testid='column-menu-{column}']")
+        menu.locator("label:has(input[type='checkbox'])", has_text=label).first.click()
+
+    def apply_column_filter(self, column: str):
+        """Commit an open column menu's selection and wait for the refetch."""
+        self.page.locator(f"[data-testid='column-apply-{column}']").click()
+        self._wait_for_refetch()
+
+    def clear_all_column_filters(self):
+        self.page.locator("[data-testid='clear-column-filters']").click()
+        self._wait_for_refetch()
+
+    def has_active_filter(self, column: str) -> bool:
+        return self.page.locator(f"[data-testid='active-filter-{column}']").is_visible()
+
+    def sort_by(self, column: str):
+        """Click a column header, cycling it ascending -> descending -> unsorted."""
+        self.page.locator(f"[data-testid='column-sort-{column}']").click()
+        self._wait_for_refetch()
+
+    def column_text(self, index: int) -> list[str]:
+        """Every row's cell in the 1-based column `index`, top to bottom."""
+        cells = self.page.locator(f"[data-testid='transaction-row'] td:nth-child({index})")
+        return [text.strip() for text in cells.all_inner_texts()]
+
+    def _wait_for_refetch(self):
+        """Wait out the in-flight request, the way `search` does."""
+        indicator = self.page.locator("[data-testid='transactions-refetching']")
+        with contextlib.suppress(PlaywrightTimeoutError):
+            indicator.wait_for(state="visible", timeout=2_000)
+        indicator.wait_for(state="hidden", timeout=15_000)

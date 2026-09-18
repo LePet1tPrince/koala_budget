@@ -8,8 +8,11 @@ then run `make test-e2e ARGS="e2e/tests/test_transactions.py"`.
 Alternatively, build the frontend once with `make npm-build` and set
 DJANGO_VITE_DEV_MODE=False in settings_e2e.py to use the built assets.
 
-Covers: page load, empty state, search filter, row count with seeded data.
+Covers: page load, empty state, search filter, row count with seeded data,
+per-column value filters and column sorting.
 """
+
+from datetime import date
 
 import pytest
 from playwright.sync_api import Page
@@ -19,6 +22,7 @@ from e2e.factories import (
     AccountGroupFactory,
     JournalEntryFactory,
     JournalLineFactory,
+    PayeeFactory,
 )
 from e2e.pages.transactions import TransactionsPage
 
@@ -84,3 +88,117 @@ def test_transactions_search_filters_rows(requires_vite, authenticated_page: Pag
     # After search, only the matching row should remain
     transactions.search("Coffee")
     transactions.expect_row_count(1)
+
+
+# ----------------------------------------------------------------------
+# Column filters and sorting
+# ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def ledger(team):
+    """
+    Three entries whose payee, account and amount all differ.
+
+    Enough that filtering on any one column leaves a different set behind, so
+    a test can't pass by accident on a table that filters nothing.
+    """
+    group = AccountGroupFactory(team=team)
+    bank = AccountFactory(team=team, account_group=group, name="Checking")
+    groceries = AccountFactory(team=team, account_group=group, name="Groceries")
+    coffee = AccountFactory(team=team, account_group=group, name="Coffee")
+
+    amazon = PayeeFactory(team=team, name="Amazon")
+    costco = PayeeFactory(team=team, name="Costco")
+
+    def entry(day, payee, debit, amount, description):
+        je = JournalEntryFactory(
+            team=team,
+            entry_date=date(2025, 3, day),
+            payee=payee,
+            description=description,
+            status="posted",
+        )
+        JournalLineFactory(team=team, journal_entry=je, account=debit, dr_amount=amount)
+        JournalLineFactory(team=team, journal_entry=je, account=bank, cr_amount=amount)
+        return je
+
+    entry(1, amazon, groceries, "25.00", "Weekly shop")
+    entry(2, costco, groceries, "10.00", "Milk")
+    entry(3, amazon, coffee, "5.00", "Beans")
+    return team
+
+
+@pytest.mark.django_db(transaction=True)
+def test_column_menu_lists_the_columns_distinct_values(requires_vite, authenticated_page: Page, live_server, ledger):
+    """The chevron menu offers the column's unique values, with a row count each."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+
+    transactions.open_column_menu("payee")
+
+    assert transactions.column_filter_values("payee") == ["Amazon", "Costco"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_column_filter_narrows_the_table(requires_vite, authenticated_page: Page, live_server, ledger):
+    """Ticking a value and applying leaves only the rows carrying it."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+    transactions.expect_row_count(3)
+
+    transactions.open_column_menu("payee")
+    transactions.tick_column_value("payee", "Amazon")
+    transactions.apply_column_filter("payee")
+
+    transactions.expect_row_count(2)
+    assert set(transactions.column_text(2)) == {"Amazon"}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_column_filters_on_two_columns_combine(requires_vite, authenticated_page: Page, live_server, ledger):
+    """Filters on different columns narrow together rather than replacing each other."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+
+    transactions.open_column_menu("payee")
+    transactions.tick_column_value("payee", "Amazon")
+    transactions.apply_column_filter("payee")
+
+    transactions.open_column_menu("debit_account")
+    transactions.tick_column_value("debit_account", "Coffee")
+    transactions.apply_column_filter("debit_account")
+
+    transactions.expect_row_count(1)
+    assert transactions.column_text(3) == ["Beans"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_clear_all_restores_every_row(requires_vite, authenticated_page: Page, live_server, ledger):
+    """The chip bar's Clear all drops every column filter in one go."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+
+    transactions.open_column_menu("payee")
+    transactions.tick_column_value("payee", "Costco")
+    transactions.apply_column_filter("payee")
+    transactions.expect_row_count(1)
+    assert transactions.has_active_filter("payee")
+
+    transactions.clear_all_column_filters()
+
+    transactions.expect_row_count(3)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_column_header_sorts_ascending_then_descending(requires_vite, authenticated_page: Page, live_server, ledger):
+    """Clicking a header sorts by it; clicking again reverses."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+    transactions.expect_row_count(3)
+
+    transactions.sort_by("amount")
+    assert transactions.column_text(6) == ["$5.00", "$10.00", "$25.00"]
+
+    transactions.sort_by("amount")
+    assert transactions.column_text(6) == ["$25.00", "$10.00", "$5.00"]
