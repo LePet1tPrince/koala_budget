@@ -1109,7 +1109,14 @@ export default function CategorizeMode({
       <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6 max-w-7xl mx-auto w-full">
         {/* Left: Card stack */}
         <div className="lg:w-2/5 flex flex-col items-center">
-          <div className="relative w-full max-w-md" style={{ minHeight: '220px' }}>
+          {/* Cards behind the top one are pushed down by `offset * 8px` (see
+              TransactionCard), so the stack's real bottom edge sits below a
+              flat 220px — pad the container for the deepest card's offset
+              or its shadow pokes out past this box. */}
+          <div
+            className="relative w-full max-w-md"
+            style={{ minHeight: `${220 + (Math.min(transactions.length, 5) - 1) * 8}px` }}
+          >
             {transactions.slice(0, 5).map((tx, i) => (
               <TransactionCard
                 key={tx.id}
