@@ -19,8 +19,9 @@ from apps.accounts.serializers import SimpleAccountSerializer
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.teams.decorators import login_and_team_required
+from apps.web.templatetags.currency_tags import currency
 
-from .forms import BudgetAmountForm, GoalForm
+from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Budget, Goal, GoalAllocation
 from .services import BudgetService, GoalService, NetWorthService
 
@@ -50,11 +51,141 @@ def _month_from_request(request):
     return date.today().replace(day=1)
 
 
+def _zero_totals():
+    return {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}
+
+
+def _budget_figures(team, month):
+    """Every number the budget page shows for `month`, computed in one place.
+
+    The month view renders these; the auto-save endpoint recomputes them and
+    returns just the values (see `_budget_cells`), so saving an amount updates
+    the page in place instead of reloading it.
+    """
+    service = BudgetService(team)
+    categories = list(_budget_categories(team))
+
+    # Rows are created lazily on first save; a category without one shows zero.
+    existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=team, month=month)}
+    actuals_map = service.get_actuals_by_category(month)
+    available_map = service.get_available_by_category(month, categories)
+
+    # Income section first, then expenses; groups within a section keep the
+    # category ordering (board sort order, then group/account name).
+    sections = {
+        "income": {"key": "income", "label": _("Income"), "groups": [], "totals": _zero_totals()},
+        "expense": {"key": "expense", "label": _("Expenses"), "groups": [], "totals": _zero_totals()},
+    }
+
+    for category in categories:
+        budget = existing_budgets.get(category.pk)
+        budgeted = budget.budget_amount if budget else Decimal("0")
+        actual = actuals_map.get(category.pk, Decimal("0"))
+        available = available_map.get(category.pk, Decimal("0"))
+
+        section = sections["income" if category.account_group.account_type == "income" else "expense"]
+        group_name = category.account_group.name
+        if not section["groups"] or section["groups"][-1]["name"] != group_name:
+            section["groups"].append({"name": group_name, "rows": [], "subtotals": _zero_totals()})
+        group = section["groups"][-1]
+
+        # The input has no visible label — the category is its row header.
+        form = BudgetAmountForm(instance=budget)
+        form.fields["budget_amount"].widget.attrs["aria-label"] = _("%(category)s budget") % {"category": category.name}
+
+        group["rows"].append(
+            {
+                "category": category,
+                "form": form,
+                "budgeted": budgeted,
+                "actual": actual,
+                "available": available,
+            }
+        )
+
+        for field, amount in (("budgeted", budgeted), ("actual", actual), ("available", available)):
+            group["subtotals"][field] += amount
+            section["totals"][field] += amount
+
+    section_list = [sections["income"], sections["expense"]]
+
+    # Grand totals across both sections (sidebar summary)
+    grand_totals = {
+        field: sections["income"]["totals"][field] + sections["expense"]["totals"][field]
+        for field in ("budgeted", "actual", "available")
+    }
+
+    prev_month = month - relativedelta(months=1)
+    prev_available_map = service.get_available_by_category(prev_month, categories)
+    leftover_last_month = sum(prev_available_map.values(), Decimal("0"))
+
+    return {
+        "categories": categories,
+        "sections": section_list,
+        "has_categories": bool(categories),
+        "grand_totals": grand_totals,
+        "sidebar_summary": {
+            "leftover_last_month": leftover_last_month,
+            "assigned_this_month": grand_totals["budgeted"],
+            "activity_this_month": grand_totals["actual"],
+            "available": grand_totals["available"],
+        },
+        "net_worth_card": NetWorthService(team).get_net_worth_card_data(month, categories),
+    }
+
+
+def _tone(amount):
+    """Sign class hint for a money cell; mirrors the templates' text-error/text-success."""
+    if amount < 0:
+        return "neg"
+    if amount > 0:
+        return "pos"
+    return ""
+
+
+def _budget_cells(figures):
+    """Flatten `_budget_figures` into `{cell key: {value, tone}}` for the auto-save
+    response. Keys match the `data-budget-cell` attributes in the templates.
+
+    Actuals are left out: a budget amount never moves them.
+    """
+    cells = {}
+
+    def put(key, amount, toned=False):
+        cells[key] = {"value": currency(amount), "tone": _tone(amount) if toned else ""}
+
+    for section in figures["sections"]:
+        for index, group in enumerate(section["groups"]):
+            for row in group["rows"]:
+                pk = row["category"].pk
+                put(f"row:{pk}:available", row["available"], toned=True)
+                # Not rendered — the Auto-Assign confirm dialog reads it off the row checkbox.
+                cells[f"row:{pk}:budgeted"] = {"value": f"{row['budgeted']:.2f}", "tone": ""}
+            put(f"group:{section['key']}:{index}:budgeted", group["subtotals"]["budgeted"])
+            put(f"group:{section['key']}:{index}:available", group["subtotals"]["available"], toned=True)
+        put(f"section:{section['key']}:budgeted", section["totals"]["budgeted"])
+        put(f"section:{section['key']}:available", section["totals"]["available"])
+
+    summary = figures["sidebar_summary"]
+    put("sidebar:assigned", summary["assigned_this_month"])
+    put("sidebar:available", summary["available"], toned=True)
+
+    card = figures["net_worth_card"]
+    put("networth:net_worth", card["net_worth"])
+    put("networth:spend", card["spend"])
+    put("networth:save", card["save"])
+    put("networth:available", card["available"], toned=True)
+
+    return cells
+
+
 @login_and_team_required
 def budget_month_view(request, team_slug):
     month = _month_from_request(request)
 
     if request.method == "POST":
+        # The <noscript> fallback: a full form post per row. With JS the page
+        # saves through `budget_save_amount` instead and never navigates.
         # Budget rows are created lazily on first save (a GET must not write).
         # The form posts budget_id when a row already exists, category_id otherwise.
         budget_id = request.POST.get("budget_id")
@@ -83,79 +214,7 @@ def budget_month_view(request, team_slug):
             return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
         messages.error(request, _("Could not save budget amount: %(errors)s") % {"errors": form.errors.as_text()})
 
-    service = BudgetService(request.team)
-
-    categories = list(_budget_categories(request.team))
-
-    # Fetch existing budgets for this month; categories without one are shown
-    # with a zero amount and a row is only created when the user saves a value
-    existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
-
-    # Bulk fetch actuals and available amounts
-    actuals_map = service.get_actuals_by_category(month)
-    available_map = service.get_available_by_category(month, categories)
-
-    def zero_totals():
-        return {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}
-
-    # Income section first, then expenses; groups within a section keep the
-    # category ordering (alphabetical by group, then name)
-    sections = {
-        "income": {"key": "income", "label": _("Income"), "groups": [], "totals": zero_totals()},
-        "expense": {"key": "expense", "label": _("Expenses"), "groups": [], "totals": zero_totals()},
-    }
-
-    for category in categories:
-        budget = existing_budgets.get(category.pk)
-        budgeted = budget.budget_amount if budget else Decimal("0")
-        actual = actuals_map.get(category.pk, Decimal("0"))
-        available = available_map.get(category.pk, Decimal("0"))
-
-        section = sections["income" if category.account_group.account_type == "income" else "expense"]
-        group_name = category.account_group.name
-        if not section["groups"] or section["groups"][-1]["name"] != group_name:
-            section["groups"].append({"name": group_name, "rows": [], "subtotals": zero_totals()})
-        group = section["groups"][-1]
-
-        group["rows"].append(
-            {
-                "category": category,
-                "form": BudgetAmountForm(instance=budget),
-                "budgeted": budgeted,
-                "actual": actual,
-                "available": available,
-            }
-        )
-
-        for field, amount in (("budgeted", budgeted), ("actual", actual), ("available", available)):
-            group["subtotals"][field] += amount
-            section["totals"][field] += amount
-
-    section_list = [sections["income"], sections["expense"]]
-
-    # Grand totals across both sections (sidebar summary)
-    grand_totals = {
-        field: sections["income"]["totals"][field] + sections["expense"]["totals"][field]
-        for field in ("budgeted", "actual", "available")
-    }
-    has_categories = bool(categories)
-
-    # Get previous month available totals for sidebar summary
-    prev_month = month - relativedelta(months=1)
-    prev_available_map = service.get_available_by_category(prev_month, categories)
-    leftover_last_month = sum(prev_available_map.values())
-
-    # Sidebar summary data
-    sidebar_summary = {
-        "leftover_last_month": leftover_last_month,
-        "assigned_this_month": grand_totals["budgeted"],
-        "activity_this_month": grand_totals["actual"],
-        "available": grand_totals["available"],
-    }
-
-    # Get net worth card data
-    net_worth_service = NetWorthService(request.team)
-    net_worth_card = net_worth_service.get_net_worth_card_data(month, categories)
+    figures = _budget_figures(request.team, month)
 
     # Get all accounts for React recategorize dropdown
     all_accounts = (
@@ -180,17 +239,75 @@ def budget_month_view(request, team_slug):
             "page_title": f"Budget | {request.team}",
             "month": month,
             "end_date": month + relativedelta(months=1, days=-1),
-            "sections": section_list,
-            "has_categories": has_categories,
-            "grand_totals": grand_totals,
-            "net_worth_card": net_worth_card,
-            "sidebar_summary": sidebar_summary,
+            "sections": figures["sections"],
+            "has_categories": figures["has_categories"],
+            "grand_totals": figures["grand_totals"],
+            "net_worth_card": figures["net_worth_card"],
+            "sidebar_summary": figures["sidebar_summary"],
             "prev_month": month - relativedelta(months=1),
             "next_month": month + relativedelta(months=1),
             "all_accounts": all_accounts_data,
             "api_urls": api_urls,
             "team_slug": team_slug,
+            "save_amount_url": f"/a/{team_slug}/budget/save-amount/",
         },
+    )
+
+
+@login_and_team_required
+@require_POST
+def budget_save_amount(request, team_slug):
+    """Save one budget amount and return every figure the page shows for that month.
+
+    The budget table posts here on blur/Enter so the row, its subtotals, the
+    section totals, the sidebar summary and the net-worth card all update in
+    place — the old full-page redirect reset the scroll position and focus on
+    every save, which made typing down a column unusable.
+
+    Body: {"category_id": int, "month": "YYYY-MM-DD", "amount": "123.45"}
+    """
+    try:
+        payload = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+        return JsonResponse({"error": _("Invalid request body.")}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": _("Invalid request body.")}, status=400)
+
+    try:
+        category_id = int(payload.get("category_id"))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": _("Unknown budget category.")}, status=400)
+    category = _budget_categories(request.team).filter(pk=category_id).first()
+    if category is None:
+        return JsonResponse({"error": _("Unknown budget category.")}, status=400)
+
+    month = parse_date(str(payload.get("month") or ""))
+    if month is None:
+        return JsonResponse({"error": _("Invalid month.")}, status=400)
+    month = month.replace(day=1)
+
+    amount = parse_budget_amount(payload.get("amount"))
+    if amount is None:
+        return JsonResponse({"error": _("Enter a number, for example 250 or 1,250.50.")}, status=400)
+
+    with transaction.atomic():
+        budget, created = Budget.objects.select_for_update().get_or_create(
+            team=request.team,
+            category=category,
+            month=month,
+            defaults={"budget_amount": amount},
+        )
+        if not created and budget.budget_amount != amount:
+            budget.budget_amount = amount
+            budget.save(update_fields=["budget_amount"])
+
+    return JsonResponse(
+        {
+            "saved": True,
+            "category_id": category.pk,
+            "amount": f"{amount:.2f}",
+            "cells": _budget_cells(_budget_figures(request.team, month)),
+        }
     )
 
 
@@ -300,8 +417,7 @@ def budget_autofill_view(request, team_slug):
 
 GRID_MAX_MONTHS = 24
 GRID_DEFAULT_MONTHS = 12
-# budget_amount is max_digits=15 / decimal_places=2, so 13 integer digits
-GRID_MAX_AMOUNT = Decimal("9999999999999.99")
+GRID_MAX_AMOUNT = MAX_BUDGET_AMOUNT
 
 
 def _budget_categories(team):

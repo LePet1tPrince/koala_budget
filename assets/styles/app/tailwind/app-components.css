@@ -444,3 +444,63 @@
 .finish-stat-label {
   @apply mt-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
 }
+
+/* ---------------------------------------------------------------------------
+   Budget table auto-save (assets/javascript/budget/budget-autosave.js)
+
+   A budget amount saves on blur/Enter without leaving the page, so the only
+   feedback is here: a fixed-width dot beside the input, and a brief tint on
+   every figure the save moved.
+   --------------------------------------------------------------------------- */
+
+.budget-status {
+  @apply inline-block w-2 h-2 shrink-0 rounded-full bg-transparent;
+  transition: background-color 150ms ease-out, opacity 150ms ease-out;
+}
+
+.budget-status.is-saving {
+  @apply bg-base-content/40;
+  animation: budget-status-pulse 900ms ease-in-out infinite;
+}
+
+.budget-status.is-saved {
+  @apply bg-success;
+}
+
+.budget-status.is-error {
+  @apply bg-error;
+}
+
+@keyframes budget-status-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* The tint has to be a box-shadow rather than a background: these are inline
+   <span>s inside table cells that already carry their own row tint. */
+.budget-cell-flash {
+  animation: budget-cell-flash 900ms ease-out;
+  border-radius: 0.25rem;
+}
+
+@keyframes budget-cell-flash {
+  0% {
+    box-shadow: 0 0 0 0.25rem color-mix(in oklch, var(--color-primary) 22%, transparent);
+    background-color: color-mix(in oklch, var(--color-primary) 22%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0.25rem transparent;
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-status.is-saving {
+    animation: none;
+    @apply opacity-100;
+  }
+
+  .budget-cell-flash {
+    animation: none;
+  }
+}

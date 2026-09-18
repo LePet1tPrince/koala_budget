@@ -3,6 +3,7 @@ Tests for budget app.
 Tests models, forms, services, views, and API endpoints.
 """
 
+import json
 from datetime import date
 from decimal import Decimal
 
@@ -13,7 +14,7 @@ from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Acco
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 
-from .forms import BudgetAmountForm
+from .forms import BudgetAmountForm, parse_budget_amount
 from .models import Budget, Goal, GoalAllocation
 from .services import BudgetService
 
@@ -455,6 +456,171 @@ class BudgetMonthViewTest(TestCase):
         budget.refresh_from_db()
         self.assertEqual(budget.budget_amount, Decimal("55.00"))
         self.assertEqual(Budget.objects.filter(team=self.team).count(), 1)
+
+
+class BudgetSaveAmountViewTest(TestCase):
+    """Tests for budget_save_amount — the in-place auto-save the budget table uses.
+
+    Its job is to save one amount and hand back every figure the page shows, so
+    the page never has to reload (which used to reset the scroll position).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Save Amount Team", slug="save-amount-team")
+        cls.other_team = Team.objects.create(name="Other Save Team", slug="other-save-team")
+        cls.user = CustomUser.objects.create_user(username="saveuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Save Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.groceries = Account.objects.create(team=cls.team, name="Save Groceries", account_group=cls.expense_group)
+        cls.income_group = AccountGroup.objects.create(
+            team=cls.team, name="Save Income", account_type=ACCOUNT_TYPE_INCOME
+        )
+        cls.salary = Account.objects.create(team=cls.team, name="Save Salary", account_group=cls.income_group)
+
+        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Save Assets", account_type="asset")
+        cls.checking = Account.objects.create(team=cls.team, name="Save Checking", account_group=cls.asset_group)
+
+        cls.other_group = AccountGroup.objects.create(
+            team=cls.other_team, name="Foreign Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.foreign_category = Account.objects.create(
+            team=cls.other_team, name="Foreign Rent", account_group=cls.other_group
+        )
+
+        cls.month = date(2025, 6, 1)
+
+    def setUp(self):
+        self.client.login(username="saveuser@example.com", password="testpass123")
+
+    def post(self, **payload):
+        return self.client.post(
+            f"/a/{self.team.slug}/budget/save-amount/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def test_creates_budget_row_lazily(self):
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="123.45")
+        self.assertEqual(response.status_code, 200)
+        budget = Budget.objects.get(team=self.team, category=self.groceries, month=self.month)
+        self.assertEqual(budget.budget_amount, Decimal("123.45"))
+
+    def test_updates_existing_budget_in_place(self):
+        budget = Budget.objects.create(
+            team=self.team, category=self.groceries, month=self.month, budget_amount=Decimal("10.00")
+        )
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="55")
+        self.assertEqual(response.status_code, 200)
+        budget.refresh_from_db()
+        self.assertEqual(budget.budget_amount, Decimal("55.00"))
+        self.assertEqual(Budget.objects.filter(team=self.team).count(), 1)
+
+    def test_does_not_redirect(self):
+        """The whole point: a save must not navigate, or the page scrolls back to the top."""
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="20")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+
+    def test_returns_recomputed_figures(self):
+        """The response carries every cell the page shows, so it can repaint in place."""
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="250")
+        cells = response.json()["cells"]
+        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["value"], "$250.00")
+        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["tone"], "pos")
+        self.assertEqual(cells["group:expense:0:budgeted"]["value"], "$250.00")
+        self.assertEqual(cells["section:expense:budgeted"]["value"], "$250.00")
+        self.assertEqual(cells["sidebar:assigned"]["value"], "$250.00")
+        self.assertIn("networth:available", cells)
+
+    def test_amount_is_normalized_in_the_response(self):
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="7")
+        self.assertEqual(response.json()["amount"], "7.00")
+
+    def test_accepts_a_pasted_spreadsheet_amount(self):
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="$1,234.56")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Budget.objects.get(team=self.team, category=self.groceries).budget_amount, Decimal("1234.56"))
+
+    def test_blank_amount_clears_the_row_to_zero(self):
+        Budget.objects.create(team=self.team, category=self.groceries, month=self.month, budget_amount=Decimal("99.00"))
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Budget.objects.get(team=self.team, category=self.groceries).budget_amount, Decimal("0.00"))
+
+    def test_rejects_a_non_numeric_amount(self):
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="abc")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Budget.objects.filter(team=self.team).exists())
+
+    def test_rejects_an_invalid_month(self):
+        response = self.post(category_id=self.groceries.pk, month="not-a-date", amount="10")
+        self.assertEqual(response.status_code, 400)
+
+    def test_rejects_a_non_category_account(self):
+        """Only income/expense accounts are budget categories."""
+        response = self.post(category_id=self.checking.pk, month="2025-06-01", amount="10")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Budget.objects.filter(team=self.team).exists())
+
+    def test_rejects_another_teams_category(self):
+        response = self.post(category_id=self.foreign_category.pk, month="2025-06-01", amount="10")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Budget.objects.exists())
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="10")
+        self.assertIn(response.status_code, (302, 403, 404))
+        self.assertFalse(Budget.objects.filter(team=self.team).exists())
+
+    def test_rejects_a_non_numeric_category_id(self):
+        response = self.post(category_id="abc", month="2025-06-01", amount="10")
+        self.assertEqual(response.status_code, 400)
+
+    def test_rejects_get(self):
+        response = self.client.get(f"/a/{self.team.slug}/budget/save-amount/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_month_is_normalized_to_the_first(self):
+        self.post(category_id=self.salary.pk, month="2025-06-17", amount="42")
+        self.assertTrue(Budget.objects.filter(team=self.team, category=self.salary, month=self.month).exists())
+
+
+class BudgetAmountParsingTest(TestCase):
+    """parse_budget_amount is shared by the auto-save endpoint and the form field,
+    so the <noscript> fallback accepts exactly what the JS path does."""
+
+    def test_accepts_plain_and_formatted_numbers(self):
+        for raw, expected in (
+            ("250", Decimal("250.00")),
+            (" 250.5 ", Decimal("250.50")),
+            ("$1,234.56", Decimal("1234.56")),
+            ("(45.50)", Decimal("-45.50")),
+            ("-12", Decimal("-12.00")),
+            ("", Decimal("0.00")),
+            (None, Decimal("0.00")),
+            ("1.005", Decimal("1.01")),
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(parse_budget_amount(raw), expected)
+
+    def test_rejects_junk_and_out_of_range(self):
+        for raw in ("abc", "1.2.3", "NaN", "Infinity", "99999999999999999"):
+            with self.subTest(raw=raw):
+                self.assertIsNone(parse_budget_amount(raw))
+
+    def test_form_accepts_a_formatted_amount(self):
+        """The no-JS Save button posts the raw text, so the field must parse it too."""
+        form = BudgetAmountForm({"budget_amount": "$1,234.56"})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["budget_amount"], Decimal("1234.56"))
 
 
 class BudgetAutofillViewTest(TestCase):

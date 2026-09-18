@@ -40,6 +40,7 @@ export default defineConfig({
         'budget-actual-app': path.resolve(__dirname, './assets/javascript/budget/budget-actual-app.jsx'),
         'budget-month-picker-app': path.resolve(__dirname, './assets/javascript/budget/budget-month-picker-app.jsx'),
         'budget-grid-app': path.resolve(__dirname, './assets/javascript/budget/budget-grid-app.jsx'),
+        'budget-autosave': path.resolve(__dirname, './assets/javascript/budget/budget-autosave.js'),
         'goals-app': path.resolve(__dirname, './assets/javascript/budget/goals-app.js'),
         'accounts-board-app': path.resolve(__dirname, './assets/javascript/accounts/accounts-board-app.jsx'),
         'onboarding-app': path.resolve(__dirname, './assets/javascript/onboarding/onboarding-app.jsx'),
