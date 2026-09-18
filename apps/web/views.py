@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.contrib import messages
+from django.db.models import Q
 from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
@@ -15,6 +16,8 @@ from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal
 from apps.budget.services import NetWorthService
 from apps.journal.models import JournalEntry
+from apps.monthly_review.models import MonthlyReviewState
+from apps.monthly_review.services.budget import _prev_month
 from apps.onboarding.views import get_or_create_state
 from apps.reports.services import ReportService
 from apps.teams.decorators import login_and_team_required
@@ -91,6 +94,18 @@ def team_home(request, team_slug):
         .values_list("entry_date", flat=True)
         .first()
     )
+    # A nudge to review last month, shown once there's a completed month worth
+    # reviewing and it hasn't been reviewed or dismissed yet.
+    last_reviewable_month = _prev_month(month)
+    show_monthly_review_nudge = (
+        settings.MONTHLY_REVIEW_ENABLED
+        and first_entry_date is not None
+        and last_reviewable_month >= first_entry_date.replace(day=1)
+        and not MonthlyReviewState.objects.filter(team=team, month=last_reviewable_month)
+        .filter(Q(completed_at__isnull=False) | Q(dismissed_at__isnull=False))
+        .exists()
+    )
+
     chart_start = first_entry_date.replace(day=1) if first_entry_date else month
     trend_data = report_service.get_net_worth_trend_data_by_date_range(chart_start, today)
     net_worth_chart_data = None
@@ -116,6 +131,12 @@ def team_home(request, team_slug):
             "net_worth_chart_data": net_worth_chart_data,
             "show_resume": show_resume,
             "resume_url": reverse("onboarding:api_task", args=[team.slug]),
+            "show_monthly_review_nudge": show_monthly_review_nudge,
+            "monthly_review_month": last_reviewable_month,
+            "monthly_review_url": (
+                reverse("monthly_review:home", args=[team.slug]) + f"?month={last_reviewable_month.isoformat()}"
+            ),
+            "monthly_review_dismiss_url": reverse("monthly_review:api_dismiss", args=[team.slug]),
         },
     )
 

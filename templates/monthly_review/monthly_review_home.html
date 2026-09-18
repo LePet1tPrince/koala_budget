@@ -1,0 +1,51 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+
+{% block app %}
+  {% if empty_state %}
+    <section class="app-card" data-testid="monthly-review-empty-state">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-1">
+        <h1 class="text-2xl font-semibold">{% translate "Monthly Review" %}</h1>
+        <div class="join">
+          <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm join-item" data-testid="empty-state-prev-month">
+            &lsaquo; {% translate "Previous month" %}
+          </a>
+          <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm join-item" data-testid="empty-state-next-month">
+            {% translate "Next month" %} &rsaquo;
+          </a>
+        </div>
+      </div>
+      <p class="text-sm text-base-content/70 mb-4">
+        {% blocktranslate trimmed with month=month|date:"F Y" %}
+          There's no ledger activity yet for {{ month }}, so there's nothing to review.
+        {% endblocktranslate %}
+      </p>
+      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm">
+        {% translate "Back to Reports" %}
+      </a>
+    </section>
+  {% else %}
+    {{ monthly_review_props|json_script:'monthly-review-props' }}
+
+    <div id="monthly-review-app">
+      <div class="skeleton h-96 w-full"></div>
+    </div>
+
+    <noscript>
+      <div class="app-card">
+        <p>{% translate "The guided monthly review needs JavaScript. Try the other reports instead." %}</p>
+        <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm mt-4">
+          {% translate "Back to Reports" %}
+        </a>
+      </div>
+    </noscript>
+  {% endif %}
+{% endblock %}
+
+{% block page_js %}
+  {% if not empty_state %}
+    {% vite_react_refresh %}
+    {% vite_asset 'assets/javascript/monthly_review/monthly-review-app.jsx' %}
+  {% endif %}
+{% endblock %}

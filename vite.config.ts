@@ -46,6 +46,8 @@ export default defineConfig({
         'onboarding-app': path.resolve(__dirname, './assets/javascript/onboarding/onboarding-app.jsx'),
         'task-rail-app': path.resolve(__dirname, './assets/javascript/onboarding/task-rail-app.jsx'),
         'onboarding-resume': path.resolve(__dirname, './assets/javascript/onboarding/resume.js'),
+        'monthly-review-app': path.resolve(__dirname, './assets/javascript/monthly_review/monthly-review-app.jsx'),
+        'monthly-review-resume': path.resolve(__dirname, './assets/javascript/monthly_review/resume.js'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
         'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
         'home-net-worth-chart': path.resolve(__dirname, './assets/javascript/dashboard/home-net-worth-chart.js'),

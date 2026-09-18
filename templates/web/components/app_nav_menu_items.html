@@ -44,6 +44,11 @@
     {% icon "chart-bar" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Reports" %}
   </a>
+  <a href="{% url 'monthly_review:home' request.team.slug %}"
+     class="side-link side-link-sub {% if active_tab == 'monthly-review' %}side-link-active{% endif %}" data-testid="nav-monthly-review">
+    {% icon "calendar" class="inline-block shrink-0 w-4 h-4" %}
+    {% translate "Monthly Review" %}
+  </a>
 
   {% if not user.is_anonymous %}
     <div class="side-section">{% translate "Manage" %}</div>

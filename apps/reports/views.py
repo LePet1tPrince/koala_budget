@@ -22,12 +22,22 @@ def reports_home(request, team_slug):
     """
     Reports home page with navigation to different reports.
     """
+    from apps.monthly_review.models import MonthlyReviewState
+    from apps.monthly_review.services.budget import _prev_month
+
+    last_reviewable_month = _prev_month(date.today().replace(day=1))
+    reviewed = MonthlyReviewState.objects.filter(
+        team=request.team, month=last_reviewable_month, completed_at__isnull=False
+    ).exists()
+
     return render(
         request,
         "reports/reports_home.html",
         {
             "active_tab": "reports",
             "page_title": _("Reports"),
+            "monthly_review_last_month": last_reviewable_month,
+            "monthly_review_reviewed": reviewed,
         },
     )
 
@@ -500,6 +510,7 @@ def budget_vs_actual(request, team_slug):
     """
     from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
     from apps.budget.models import Budget
+    from apps.monthly_review.services.budget import build_section
 
     month = date.today().replace(day=1)
     month_param = request.GET.get("month")
@@ -514,51 +525,6 @@ def budget_vs_actual(request, team_slug):
     budgets = Budget.objects.filter(team=request.team, month=month).select_related(
         "category", "category__account_group"
     )
-
-    def build_section(items, budget_rows, spending=True):
-        """Merge budgeted categories with actual activity into grouped meter rows."""
-        actual_by_account = {item["account"].pk: item["amount"] for item in items}
-        accounts = {item["account"].pk: item["account"] for item in items}
-        budget_by_account = {}
-        for budget in budget_rows:
-            budget_by_account[budget.category_id] = budget.budget_amount
-            accounts.setdefault(budget.category_id, budget.category)
-
-        groups = {}
-        totals = {"budget": Decimal("0"), "actual": Decimal("0"), "over_count": 0}
-        for account_id, account in accounts.items():
-            budget_amount = budget_by_account.get(account_id, Decimal("0"))
-            actual = actual_by_account.get(account_id, Decimal("0"))
-            if not budget_amount and not actual:
-                continue
-            over = spending and actual > budget_amount
-            pct = float(actual / budget_amount * 100) if budget_amount else None
-            row = {
-                "account": account,
-                "budget": budget_amount,
-                "actual": actual,
-                "remaining": budget_amount - actual,
-                "pct": pct,
-                "pct_capped": min(pct, 100) if pct is not None else (100 if actual else 0),
-                "over": over,
-                "unbudgeted": not budget_amount and bool(actual),
-            }
-            group = account.account_group
-            group_data = groups.setdefault(
-                group.pk, {"group": group, "rows": [], "budget": Decimal("0"), "actual": Decimal("0")}
-            )
-            group_data["rows"].append(row)
-            group_data["budget"] += budget_amount
-            group_data["actual"] += actual
-            totals["budget"] += budget_amount
-            totals["actual"] += actual
-            totals["over_count"] += 1 if over else 0
-
-        for group_data in groups.values():
-            group_data["rows"].sort(key=lambda r: (r["account"].sort_order, r["account"].name))
-        section_groups = sorted(groups.values(), key=lambda g: (g["group"].sort_order, g["group"].name))
-        totals["remaining"] = totals["budget"] - totals["actual"]
-        return section_groups, totals
 
     expense_budgets = [b for b in budgets if b.category.account_group.account_type == ACCOUNT_TYPE_EXPENSE]
     income_budgets = [b for b in budgets if b.category.account_group.account_type == ACCOUNT_TYPE_INCOME]

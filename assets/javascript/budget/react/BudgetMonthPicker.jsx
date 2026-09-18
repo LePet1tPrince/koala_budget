@@ -12,8 +12,9 @@ import PickerPopover, { MonthGrid } from '../../common/PickerPopover';
  *
  * @param {Object} props
  * @param {string} props.initialMonth - Current month as YYYY-MM-DD string
+ * @param {string} [props.triggerClassName] - Override for the month label button's classes
  */
-const BudgetMonthPicker = ({ initialMonth }) => {
+const BudgetMonthPicker = ({ initialMonth, triggerClassName = 'btn btn-ghost btn-sm text-lg font-bold' }) => {
   const currentMonth = parseMonth(initialMonth);
   const [pickerYear, setPickerYear] = useState(currentMonth.getFullYear());
 
@@ -36,7 +37,7 @@ const BudgetMonthPicker = ({ initialMonth }) => {
 
       <PickerPopover
         label={format(currentMonth, 'MMMM yyyy')}
-        buttonClassName="btn btn-ghost btn-sm text-lg font-bold"
+        buttonClassName={triggerClassName}
         testId="budget-month-trigger"
         panelClassName="w-max"
       >

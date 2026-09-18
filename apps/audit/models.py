@@ -40,6 +40,11 @@ class AuditEvent(models.Model):
     ONBOARDING_SKIPPED = "onboarding_skipped"
     ONBOARDING_TASK_COMPLETED = "onboarding_task_completed"
     ONBOARDING_FINISHED = "onboarding_finished"
+    MONTHLY_REVIEW_STARTED = "monthly_review_started"
+    MONTHLY_REVIEW_STEP_COMPLETED = "monthly_review_step_completed"
+    MONTHLY_REVIEW_COMPLETED = "monthly_review_completed"
+    MONTHLY_REVIEW_DISMISSED = "monthly_review_dismissed"
+    MONTHLY_REVIEW_BASELINE_CHANGED = "monthly_review_baseline_changed"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -71,6 +76,11 @@ class AuditEvent(models.Model):
         (ONBOARDING_SKIPPED, "Onboarding Skipped"),
         (ONBOARDING_TASK_COMPLETED, "Onboarding Task Completed"),
         (ONBOARDING_FINISHED, "Onboarding Finished"),
+        (MONTHLY_REVIEW_STARTED, "Monthly Review Started"),
+        (MONTHLY_REVIEW_STEP_COMPLETED, "Monthly Review Step Completed"),
+        (MONTHLY_REVIEW_COMPLETED, "Monthly Review Completed"),
+        (MONTHLY_REVIEW_DISMISSED, "Monthly Review Dismissed"),
+        (MONTHLY_REVIEW_BASELINE_CHANGED, "Monthly Review Baseline Changed"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)
