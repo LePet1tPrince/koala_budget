@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
 import { createConfetti } from '../../common/confetti';
+import { getUploadApiHelpers } from '../bank_feed';
+import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
 
 const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
 
@@ -156,7 +158,7 @@ function fuzzyMatch(text, query) {
   return true;
 }
 
-function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect }) {
+function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect, onCreateNew }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTopFilter, setActiveTopFilter] = useState(null); // TOP_LEVEL_FILTERS key
   const [filterGroupId, setFilterGroupId] = useState(null);
@@ -389,6 +391,15 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
             </div>
           </div>
         ))}
+
+        {/* Create a new account when nothing above is a good match */}
+        <button
+          onClick={onCreateNew}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 mt-1 rounded-lg border border-dashed border-base-300 text-base-content/70 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
+        >
+          <span className="text-lg leading-none">+</span>
+          <span className="font-medium">Create new account</span>
+        </button>
       </div>
     </div>
   );
@@ -440,7 +451,10 @@ export default function CategorizeMode({
   const [isSkipping, setIsSkipping] = useState(false);
   const [skippedCount, setSkippedCount] = useState(0);
   const [categorySuggestions, setCategorySuggestions] = useState(initialSuggestions || []);
+  const [localAccounts, setLocalAccounts] = useState(allAccounts);
+  const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
   const headers = getApiHeaders();
+  const uploadApi = useMemo(() => getUploadApiHelpers(teamSlug), [teamSlug]);
 
   const fetchUncategorized = useCallback(async () => {
     setLoading(true);
@@ -513,6 +527,14 @@ export default function CategorizeMode({
       setIsExiting(false);
     }
   }, [transactions, categorized, streak, teamSlug, headers]);
+
+  const handleCreateAccount = useCallback(async (name, accountGroupId) => {
+    const newAccount = await uploadApi.createAccount(name, accountGroupId);
+    setLocalAccounts(prev => [...prev, newAccount].sort((a, b) => a.name.localeCompare(b.name)));
+    setShowCreateAccountModal(false);
+    categorizeTransaction(newAccount);
+    return newAccount;
+  }, [uploadApi, categorizeTransaction]);
 
   const skipTransaction = useCallback(() => {
     const tx = transactions[0];
@@ -646,14 +668,23 @@ export default function CategorizeMode({
         <div className="lg:w-3/5 bg-base-100 rounded-2xl border border-base-300 shadow-lg p-5 flex flex-col min-h-[400px] lg:min-h-0 lg:max-h-[calc(100vh-140px)]">
           <h2 className="text-lg font-bold mb-3">Choose a Category</h2>
           <AccountHierarchy
-            allAccounts={allAccounts}
+            allAccounts={localAccounts}
             allAccountGroups={allAccountGroups}
             categorySuggestions={categorySuggestions}
             currentTransaction={transactions[0]}
             onSelect={categorizeTransaction}
+            onCreateNew={() => setShowCreateAccountModal(true)}
           />
         </div>
       </div>
+
+      {showCreateAccountModal && (
+        <CreateAccountModal
+          allAccountGroups={allAccountGroups}
+          onSave={handleCreateAccount}
+          onCancel={() => setShowCreateAccountModal(false)}
+        />
+      )}
 
       <style>{`
         .card-exit {
