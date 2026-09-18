@@ -1,0 +1,108 @@
+from datetime import date
+from decimal import Decimal
+
+from django.test import TestCase
+
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account, AccountGroup
+from apps.journal.models import JournalEntry, JournalLine
+from apps.monthly_review.services.review import build_review
+from apps.teams.models import Team
+
+TOP_LEVEL_KEYS = {
+    "month",
+    "month_label",
+    "prev_label",
+    "is_current_month",
+    "health",
+    "current",
+    "baselines",
+    "baseline_order",
+    "default_baseline",
+    "budget",
+    "biggest",
+    "cat_txns",
+    "net_worth",
+    "insights",
+    "notes",
+}
+
+CURRENT_KEYS = {"income", "spend", "net", "saved", "savings_rate", "transaction_count"}
+
+
+class BuildReviewTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Review Team", slug="review-team")
+        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Pay", account_type=ACCOUNT_TYPE_INCOME)
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Everyday", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.chequing = Account.objects.create(
+            team=cls.team, name="Chequing", account_group=cls.asset_group, has_feed=True
+        )
+        cls.salary = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+
+    def _entry(self, day, category, amount, *, dr_category=True, status=JournalEntry.STATUS_POSTED):
+        entry = JournalEntry.objects.create(team=self.team, entry_date=day, description="test", status=status)
+        if dr_category:
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=category, dr_amount=amount)
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.chequing, cr_amount=amount)
+        else:
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=category, cr_amount=amount)
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.chequing, dr_amount=amount)
+        return entry
+
+    def test_payload_top_level_keys(self):
+        review = build_review(self.team, date(2026, 8, 1))
+        self.assertEqual(set(review.keys()), TOP_LEVEL_KEYS)
+        self.assertEqual(set(review["current"].keys()), CURRENT_KEYS)
+
+    def test_month_before_first_activity_returns_empty_state(self):
+        self._entry(date(2026, 8, 10), self.salary, Decimal("1000"), dr_category=False)
+        review = build_review(self.team, date(2025, 1, 1))
+        self.assertEqual(review["baselines"], {})
+        self.assertIsNone(review["default_baseline"])
+        self.assertEqual(review["current"]["income"], Decimal("0"))
+        self.assertEqual(review["current"]["transaction_count"], 0)
+
+    def test_current_month_figures_tie_to_ledger(self):
+        self._entry(date(2026, 8, 10), self.salary, Decimal("1000"), dr_category=False)
+        self._entry(date(2026, 8, 12), self.groceries, Decimal("150"))
+        review = build_review(self.team, date(2026, 8, 1))
+        self.assertEqual(review["current"]["income"], Decimal("1000"))
+        self.assertEqual(review["current"]["spend"], Decimal("150"))
+        self.assertEqual(review["current"]["net"], Decimal("850"))
+
+    def test_voided_entries_excluded_from_current_figures(self):
+        self._entry(date(2026, 8, 10), self.salary, Decimal("1000"), dr_category=False)
+        self._entry(date(2026, 8, 12), self.groceries, Decimal("150"), status=JournalEntry.STATUS_VOID)
+        review = build_review(self.team, date(2026, 8, 1))
+        self.assertEqual(review["current"]["spend"], Decimal("0"))
+        group_names = [g["name"] for g in review["budget"]["groups"]]
+        self.assertNotIn("Everyday", group_names)  # the voided Groceries spend must not appear
+        self.assertNotIn(self.groceries.pk, review["cat_txns"])
+        self.assertEqual(review["biggest"], [])
+
+    def test_voided_entries_excluded_from_health_balances(self):
+        self._entry(date(2026, 8, 10), self.salary, Decimal("1000"), dr_category=False, status=JournalEntry.STATUS_VOID)
+        review = build_review(self.team, date(2026, 8, 1))
+        chequing_row = next(r for r in review["health"]["accounts"] if r["account"] == self.chequing)
+        self.assertEqual(chequing_row["balance"], Decimal("0"))
+
+    def test_cat_txns_reconcile_to_spent_figure(self):
+        self._entry(date(2026, 8, 1), self.groceries, Decimal("40"))
+        self._entry(date(2026, 8, 15), self.groceries, Decimal("60"))
+        review = build_review(self.team, date(2026, 8, 1))
+        groceries_group = next(g for g in review["budget"]["groups"] if g["name"] == "Everyday")
+        groceries_row = next(c for c in groceries_group["categories"] if c["name"] == "Groceries")
+        total_from_txns = sum(tx["amount"] for tx in review["cat_txns"][self.groceries.pk])
+        self.assertEqual(total_from_txns, groceries_row["spent"])
+        self.assertEqual(groceries_row["spent"], Decimal("100"))
+
+    def test_no_history_at_all_yields_no_baselines(self):
+        review = build_review(self.team, date(2026, 8, 1))
+        self.assertEqual(review["baselines"], {})
+        self.assertIsNone(review["default_baseline"])
+        self.assertEqual(review["baseline_order"], [])

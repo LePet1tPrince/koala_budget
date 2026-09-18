@@ -106,6 +106,7 @@ PROJECT_APPS = [
     "apps.plaid.apps.PlaidConfig",
     "apps.bank_feed.apps.BankFeedConfig",
     "apps.onboarding.apps.OnboardingConfig",
+    "apps.monthly_review.apps.MonthlyReviewConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -672,6 +673,13 @@ BOOTSTRAP_TEAM_ON_CREATE = True
 # stock template and nobody is sent through the walkthrough.
 ONBOARDING_ENABLED = True
 STRICT_TEAM_CONTEXT = True
+
+# Guided monthly review (see docs/monthly-review-plan.md). Tunables live next to
+# the logic that reads them, via getattr(settings, ...) -- these are the defaults.
+MONTHLY_REVIEW_ENABLED = True
+MONTHLY_REVIEW_STALE_DAYS = 14
+MONTHLY_REVIEW_BASELINE_MONTHS = (1, 3, 6, 12)
+MONTHLY_REVIEW_DRILL_LIMIT = 200
 
 # settings.py
 ICON_PICKER_PATH = "static/images/icons"

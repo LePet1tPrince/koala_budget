@@ -73,6 +73,35 @@
     </section>
   {% endif %}
 
+  {% if show_monthly_review_nudge %}
+    <section class="app-card mt-6" data-testid="monthly-review-nudge">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight">{% translate "Review last month?" %}</h2>
+          <p class="mt-1 text-sm text-base-content/70">
+            {% blocktranslate trimmed %}
+              A guided walkthrough of what changed and what to check before moving on.
+            {% endblocktranslate %}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            data-dismiss-monthly-review
+            data-url="{{ monthly_review_dismiss_url }}"
+            data-month="{{ monthly_review_month|date:'Y-m-d' }}"
+          >
+            {% translate "Dismiss" %}
+          </button>
+          <a href="{{ monthly_review_url }}" class="btn btn-primary btn-sm">
+            {% translate "Review it" %}
+          </a>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
   {% if inbox_count %}
     <div class="alert mt-6" data-testid="review-banner">
       {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
@@ -119,6 +148,7 @@
 
 {% block page_js %}
   {% if show_resume %}{% vite_asset 'assets/javascript/onboarding/resume.js' %}{% endif %}
+  {% if show_monthly_review_nudge %}{% vite_asset 'assets/javascript/monthly_review/resume.js' %}{% endif %}
 {% if net_worth_chart_data %}
 {{ net_worth_chart_data|json_script:'home-net-worth-data' }}
 {% vite_asset 'assets/javascript/dashboard/home-net-worth-chart.js' %}
