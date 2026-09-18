@@ -6,6 +6,10 @@ extend-exclude = [
     ".ruff_cache",
     "node_modules",
     "migrations",
+    # Standalone reference scripts kept as documentation, not application code:
+    # nothing imports or tests them, and holding a working personal script to
+    # the app's lint rules means rewriting it for no benefit.
+    "docs/reference",
 ]
 line-length = 120
 indent-width = 4
