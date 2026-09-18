@@ -3,6 +3,7 @@ import { getApiHeaders } from '../../api';
 import { createConfetti } from '../../common/confetti';
 import { getUploadApiHelpers } from '../bank_feed';
 import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
+import Modal from '../../common/Modal';
 
 const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
 
@@ -549,6 +550,105 @@ function StreakCounter({ streak }) {
   );
 }
 
+// Same feed (home) account and the same description — the two signals that
+// most reliably mean "this is the same recurring charge/deposit" without
+// being so loose it pulls in unrelated transactions.
+function findSimilarTransactions(transactions, reference) {
+  const accountId = reference.account?.id;
+  const description = (reference.description || '').trim().toLowerCase();
+  if (!accountId || !description) return [];
+  return transactions.filter(t =>
+    t.id !== reference.id &&
+    t.account?.id === accountId &&
+    (t.description || '').trim().toLowerCase() === description
+  );
+}
+
+function SimilarTransactionRow({ transaction, checked, onToggle, locked }) {
+  const isOutflow = parseFloat(transaction.outflow) > 0;
+  return (
+    <label
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors ${
+        locked ? 'border-success bg-success/5' : 'border-base-300 hover:bg-base-200 cursor-pointer'
+      }`}
+    >
+      <input
+        type="checkbox"
+        className="checkbox checkbox-sm checkbox-success"
+        checked={checked}
+        disabled={locked}
+        onChange={onToggle}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="font-medium truncate">{transaction.merchant_name || transaction.description}</div>
+        <div className="text-xs text-base-content/70">{transaction.posted_date}</div>
+      </div>
+      <div className={`text-sm font-semibold shrink-0 ${isOutflow ? 'text-error' : 'text-success'}`}>
+        {isOutflow ? `-${formatCurrency(transaction.outflow)}` : `+${formatCurrency(transaction.inflow)}`}
+      </div>
+    </label>
+  );
+}
+
+function SimilarTransactionsModal({ pendingBatch, onConfirm, onSkip, onCancel }) {
+  const [checkedIds, setCheckedIds] = useState(new Set());
+
+  useEffect(() => {
+    if (pendingBatch) setCheckedIds(new Set(pendingBatch.matches.map(m => m.id)));
+  }, [pendingBatch]);
+
+  const matches = pendingBatch?.matches || [];
+  const selectedMatches = matches.filter(m => checkedIds.has(m.id));
+  const totalCount = selectedMatches.length + (pendingBatch ? 1 : 0);
+
+  const toggle = (id) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <Modal
+      open={!!pendingBatch}
+      onClose={onCancel}
+      title="Categorize similar transactions?"
+      size="md"
+      testId="similar-transactions-modal"
+      actions={
+        <>
+          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-ghost" onClick={onSkip}>Just this one</button>
+          <button className="btn btn-primary" onClick={() => onConfirm(selectedMatches)}>
+            Categorize {totalCount}
+          </button>
+        </>
+      }
+    >
+      {pendingBatch && (
+        <>
+          <p className="text-sm text-base-content/70 mb-3">
+            These have the same account and description as the transaction you just categorized as{' '}
+            <span className="font-semibold text-base-content">{pendingBatch.account.name}</span>. Uncheck any you don't want.
+          </p>
+          <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+            <SimilarTransactionRow transaction={pendingBatch.tx} checked locked />
+            {matches.map(m => (
+              <SimilarTransactionRow
+                key={m.id}
+                transaction={m}
+                checked={checkedIds.has(m.id)}
+                onToggle={() => toggle(m.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 export default function CategorizeMode({
   teamSlug,
   allAccounts,
@@ -569,6 +669,7 @@ export default function CategorizeMode({
   const [categorySuggestions, setCategorySuggestions] = useState(initialSuggestions || []);
   const [localAccounts, setLocalAccounts] = useState(allAccounts);
   const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
+  const [pendingBatch, setPendingBatch] = useState(null); // { account, tx, matches } awaiting the similar-transactions modal
   const headers = getApiHeaders();
   const uploadApi = useMemo(() => getUploadApiHelpers(teamSlug), [teamSlug]);
 
@@ -608,41 +709,76 @@ export default function CategorizeMode({
     if (!initialSuggestions?.length) fetchSuggestions();
   }, []);
 
-  const categorizeTransaction = useCallback(async (account) => {
-    const tx = transactions[0];
-    if (!tx) return;
-
-    setIsExiting(true);
+  // Categorizes one or more transactions to `account` in a single batched
+  // request. `txList` always includes the top-of-stack transaction when
+  // it's part of the batch, which drives the card-exit animation.
+  const commitCategorize = useCallback(async (txList, account) => {
+    if (!txList.length) return;
+    const includesTop = txList.some(t => t.id === transactions[0]?.id);
+    if (includesTop) setIsExiting(true);
 
     try {
       await fetch(`/a/${teamSlug}/bankfeed/api/feed/categorize/`, {
         method: 'POST',
         credentials: 'include',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: [{ id: tx.imported_transaction_id || tx.id }], category_id: account.id }),
+        body: JSON.stringify({
+          rows: txList.map(t => ({ id: t.imported_transaction_id || t.id })),
+          category_id: account.id,
+        }),
       });
 
-      const newCategorized = categorized + 1;
+      const committedIds = new Set(txList.map(t => t.id));
+      const newCategorized = categorized + txList.length;
       const newStreak = streak + 1;
 
-      setUndoStack(prev => [...prev, { transaction: tx, account }]);
+      setUndoStack(prev => [...prev, { transactions: txList, account }]);
 
       setTimeout(() => {
-        setTransactions(prev => prev.slice(1));
+        setTransactions(prev => prev.filter(t => !committedIds.has(t.id)));
         setCategorized(newCategorized);
         setStreak(newStreak);
         setIsExiting(false);
 
-        if (newCategorized % 10 === 0 && newCategorized > 0) {
+        if (Math.floor(newCategorized / 10) > Math.floor(categorized / 10)) {
           setShowConfetti(true);
           setTimeout(() => setShowConfetti(false), 3000);
         }
-      }, 300);
+      }, includesTop ? 300 : 0);
     } catch (err) {
       console.error('Failed to categorize:', err);
       setIsExiting(false);
     }
   }, [transactions, categorized, streak, teamSlug, headers]);
+
+  // Categorizing the top transaction: if other uncategorized transactions
+  // share its home account and description, offer to categorize them the
+  // same way instead of committing immediately.
+  const categorizeTransaction = useCallback((account) => {
+    const tx = transactions[0];
+    if (!tx) return;
+
+    const matches = findSimilarTransactions(transactions.slice(1), tx);
+    if (matches.length > 0) {
+      setPendingBatch({ account, tx, matches });
+      return;
+    }
+    commitCategorize([tx], account);
+  }, [transactions, commitCategorize]);
+
+  const handleBatchConfirm = useCallback((selectedMatches) => {
+    if (!pendingBatch) return;
+    commitCategorize([pendingBatch.tx, ...selectedMatches], pendingBatch.account);
+    setPendingBatch(null);
+  }, [pendingBatch, commitCategorize]);
+
+  const handleBatchSkip = useCallback(() => {
+    if (!pendingBatch) return;
+    commitCategorize([pendingBatch.tx], pendingBatch.account);
+    setPendingBatch(null);
+  }, [pendingBatch, commitCategorize]);
+
+  const handleBatchCancel = useCallback(() => setPendingBatch(null), []);
 
   const handleCreateAccount = useCallback(async (name, accountGroupId) => {
     const newAccount = await uploadApi.createAccount(name, accountGroupId);
@@ -666,6 +802,9 @@ export default function CategorizeMode({
 
   useEffect(() => {
     const handler = (e) => {
+      // The similar-transactions modal handles its own Escape (via the
+      // dialog's `cancel` event) — don't also navigate away or skip under it.
+      if (pendingBatch) return;
       if (e.key === 'Escape') window.location.href = backUrl;
       if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
@@ -675,7 +814,7 @@ export default function CategorizeMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backUrl, undoStack]);
+  }, [backUrl, undoStack, pendingBatch]);
 
   if (loading) {
     return (
@@ -801,6 +940,13 @@ export default function CategorizeMode({
           onCancel={() => setShowCreateAccountModal(false)}
         />
       )}
+
+      <SimilarTransactionsModal
+        pendingBatch={pendingBatch}
+        onConfirm={handleBatchConfirm}
+        onSkip={handleBatchSkip}
+        onCancel={handleBatchCancel}
+      />
 
       <style>{`
         .card-exit {
