@@ -245,34 +245,42 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
   );
   const activeTypes = activeTopGroup?.types || null;
 
-  const suggestedAccountId = useMemo(() => {
-    if (!currentTransaction) return null;
+  // Two independent signals can each suggest an account: one named verbatim
+  // in the memo/payee, and one from merchant categorization history. Both
+  // are collected (deduped, own-account excluded) and rendered the same way
+  // in one "Suggested" list, so the same account is never shown twice and
+  // two different guesses don't get two different visual treatments.
+  const suggestedAccounts = useMemo(() => {
+    if (!currentTransaction) return [];
     // The account this transaction is already sitting in — never suggest it
     // as the category, or categorizing would make it a transfer to itself.
     const feedAccountId = currentTransaction.account?.id ?? null;
+    const suggestions = [];
+    const seenIds = new Set();
+    const addSuggestion = (account) => {
+      if (!account || account.id === feedAccountId || seenIds.has(account.id)) return;
+      seenIds.add(account.id);
+      suggestions.push(account);
+    };
 
-    // Rule: an account name (or a whole word from one) named verbatim in the
+    // An account name (or a whole word from one) named verbatim in the
     // memo/payee is the strongest signal — it's often literally naming the
-    // other side of a transfer — so it wins over the merchant-history guess.
+    // other side of a transfer.
     const memoText = [currentTransaction.description, currentTransaction.merchant_name]
       .filter(Boolean).join(' ');
-    const namedAccount = findAccountNamedInText(memoText, allAccounts, feedAccountId);
-    if (namedAccount) return namedAccount.id;
+    addSuggestion(findAccountNamedInText(memoText, allAccounts, feedAccountId));
 
-    // Fallback: most recently used category for this exact merchant.
+    // Most recently used category for this exact merchant.
     const merchant = (currentTransaction.merchant_name || '').toLowerCase();
-    if (!merchant) return null;
-    const suggestion = categorySuggestions.find(s =>
-      s.merchant_name?.toLowerCase() === merchant
-    );
-    if (!suggestion?.category_id || suggestion.category_id === feedAccountId) return null;
-    return suggestion.category_id;
+    if (merchant) {
+      const suggestion = categorySuggestions.find(s => s.merchant_name?.toLowerCase() === merchant);
+      addSuggestion(allAccounts.find(a => a.id === suggestion?.category_id));
+    }
+
+    return suggestions;
   }, [currentTransaction, categorySuggestions, allAccounts]);
 
-  const suggestedAccount = useMemo(() => {
-    if (!suggestedAccountId) return null;
-    return allAccounts.find(a => a.id === suggestedAccountId) || null;
-  }, [suggestedAccountId, allAccounts]);
+  const suggestedAccountIds = useMemo(() => new Set(suggestedAccounts.map(a => a.id)), [suggestedAccounts]);
 
   // Second-level filters: only shown when a top-level filter is active
   const relevantGroups = useMemo(() => {
@@ -332,6 +340,15 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([name, accounts]) => ({ name, accounts: accounts.sort((a, b) => a.name.localeCompare(b.name)) }));
   }, [filteredAccounts]);
+
+  // Accounts already offered in the Suggested section above are dropped
+  // here so nothing appears twice; a group left with nothing to show is
+  // dropped too, rather than rendering an empty header.
+  const visibleGroupedAccounts = useMemo(() => {
+    return groupedAccounts
+      .map(group => ({ ...group, accounts: group.accounts.filter(a => !suggestedAccountIds.has(a.id)) }))
+      .filter(group => group.accounts.length > 0);
+  }, [groupedAccounts, suggestedAccountIds]);
 
   const clearFilters = () => {
     setActiveTopFilter(null);
@@ -436,29 +453,32 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
         )}
       </div>
 
-      {/* Suggested account — always at top */}
-      {suggestedAccount && (
-        <div className="mb-3 animate-pulse-subtle">
+      {/* Suggested accounts — always at top, each rendered once */}
+      {suggestedAccounts.length > 0 && (
+        <div className="mb-3 animate-pulse-subtle space-y-1.5">
           <p className="text-xs font-semibold text-success mb-1.5">✨ Suggested</p>
-          <button
-            onClick={() => onSelect(suggestedAccount)}
-            className="btn btn-outline btn-success w-full justify-start gap-2 text-left"
-          >
-            <span className="font-bold">{suggestedAccount.name}</span>
-            <span className="text-xs opacity-60 ml-auto">{suggestedAccount.account_group_name}</span>
-          </button>
+          {suggestedAccounts.map(account => (
+            <button
+              key={account.id}
+              onClick={() => onSelect(account)}
+              className="btn btn-outline btn-success w-full justify-start gap-2 text-left"
+            >
+              <span className="font-bold">{account.name}</span>
+              <span className="text-xs opacity-60 ml-auto">{account.account_group_name}</span>
+            </button>
+          ))}
         </div>
       )}
 
       {/* Account list grouped by account group */}
       <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
-        {groupedAccounts.length === 0 && (
+        {visibleGroupedAccounts.length === 0 && suggestedAccounts.length === 0 && (
           <div className="text-center py-8 text-base-content/40">
             <p className="text-lg mb-1">No matching accounts</p>
             <p className="text-sm">Try a different search or clear filters</p>
           </div>
         )}
-        {groupedAccounts.map(group => (
+        {visibleGroupedAccounts.map(group => (
           <div key={group.name} className="mb-3">
             <div className="text-xs font-semibold text-base-content/70 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-base-100 py-1 z-10">
               {group.name}
@@ -468,11 +488,7 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
                 <button
                   key={account.id}
                   onClick={() => onSelect(account)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-all hover:shadow-md active:scale-[0.98] ${
-                    account.id === suggestedAccountId
-                      ? 'border-success bg-success/10 hover:bg-success/20'
-                      : 'border-base-300 hover:border-primary hover:bg-primary/5'
-                  }`}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-base-300 transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md active:scale-[0.98]"
                 >
                   <div className="flex-1 text-left min-w-0">
                     <div className="font-medium truncate">{account.name}</div>
@@ -486,9 +502,6 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
                       )}
                     </div>
                   </div>
-                  {account.id === suggestedAccountId && (
-                    <span className="badge badge-success badge-sm shrink-0">Suggested</span>
-                  )}
                 </button>
               ))}
             </div>
