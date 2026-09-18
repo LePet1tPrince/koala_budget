@@ -140,22 +140,45 @@ const ACCOUNT_TYPE_LABELS = {
   goal: 'Goal',
 };
 
-function fuzzyMatch(text, query) {
-  if (!query) return true;
-  const t = text.toLowerCase();
-  const q = query.toLowerCase().trim();
-  if (t.includes(q)) return true;
-  const words = q.split(/\s+/);
-  if (words.every(w => t.includes(w))) return true;
-  // Character-sequence match (letters appear in order, not necessarily adjacent)
+function charSequenceMatch(text, query) {
+  // Letters of the query appear in order in text, not necessarily adjacent.
   let ti = 0;
-  for (let qi = 0; qi < q.length; qi++) {
-    if (q[qi] === ' ') continue;
-    while (ti < t.length && t[ti] !== q[qi]) ti++;
-    if (ti >= t.length) return false;
+  for (let qi = 0; qi < query.length; qi++) {
+    if (query[qi] === ' ') continue;
+    while (ti < text.length && text[ti] !== query[qi]) ti++;
+    if (ti >= text.length) return false;
     ti++;
   }
   return true;
+}
+
+/**
+ * Rank how well an account matches a search query, higher is better.
+ * `null` means no match at all (the account is excluded from results).
+ * Matches on the account's own name are weighted far above matches on its
+ * group/institution/type — otherwise, e.g., every income account's
+ * `account_type` literally contains "income", so searching "income" (or
+ * any string containing it) would rank an unrelated income account the
+ * same as an account actually named "Income".
+ */
+function matchScore(account, query) {
+  const q = query.toLowerCase().trim();
+  if (!q) return 0;
+
+  const name = (account.name || '').toLowerCase();
+  const secondary = [account.account_group_name, account.institution_name, ACCOUNT_TYPE_LABELS[account.account_type]]
+    .filter(Boolean).join(' ').toLowerCase();
+  const qWords = q.split(/\s+/).filter(Boolean);
+
+  if (name === q) return 100;
+  if (name.startsWith(q)) return 90;
+  if (name.split(/\s+/).includes(q)) return 85;
+  if (name.includes(q)) return 70;
+  if (qWords.length > 1 && qWords.every(w => name.includes(w))) return 60;
+  if (secondary.includes(q)) return 40;
+  if (qWords.length > 1 && qWords.every(w => secondary.includes(w))) return 30;
+  if (charSequenceMatch(name, q)) return 10;
+  return null;
 }
 
 function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect, onCreateNew }) {
@@ -204,23 +227,38 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
     return [...names].sort();
   }, [allAccounts, activeTypes]);
 
+  const trimmedSearch = searchQuery.trim();
+
   const filteredAccounts = useMemo(() => {
-    return allAccounts.filter(a => {
-      if (activeTypes && !activeTypes.includes(a.account_type)) return false;
-      if (filterGroupId && a.account_group !== filterGroupId) return false;
-      if (filterInstitution && a.institution_name !== filterInstitution) return false;
-      if (searchQuery) {
-        const searchable = [a.name, a.account_group_name, a.institution_name, a.account_type]
-          .filter(Boolean).join(' ');
-        if (!fuzzyMatch(searchable, searchQuery)) return false;
+    const results = [];
+    for (const a of allAccounts) {
+      if (activeTypes && !activeTypes.includes(a.account_type)) continue;
+      if (filterGroupId && a.account_group !== filterGroupId) continue;
+      if (filterInstitution && a.institution_name !== filterInstitution) continue;
+      if (trimmedSearch) {
+        const score = matchScore(a, trimmedSearch);
+        if (score === null) continue;
+        results.push({ account: a, score });
+      } else {
+        results.push({ account: a, score: 0 });
       }
-      return true;
-    });
-  }, [allAccounts, activeTypes, filterGroupId, filterInstitution, searchQuery]);
+    }
+    return results;
+  }, [allAccounts, activeTypes, filterGroupId, filterInstitution, trimmedSearch]);
 
   const groupedAccounts = useMemo(() => {
+    // While searching, relevance beats grouping — an exact-name match must
+    // land at the very top of the list rather than wherever its account
+    // group happens to sort alphabetically.
+    if (trimmedSearch) {
+      const sorted = [...filteredAccounts]
+        .sort((a, b) => b.score - a.score || a.account.name.localeCompare(b.account.name))
+        .map(r => r.account);
+      return sorted.length ? [{ name: 'Search results', accounts: sorted }] : [];
+    }
+
     const groups = {};
-    filteredAccounts.forEach(a => {
+    filteredAccounts.forEach(({ account: a }) => {
       const key = a.account_group_name || 'Other';
       if (!groups[key]) groups[key] = [];
       groups[key].push(a);
