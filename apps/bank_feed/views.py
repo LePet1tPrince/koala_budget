@@ -39,6 +39,7 @@ from .serializers import (
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
     FeedAccountSerializer,
+    SimilarCategorySuggestionSerializer,
     TransferDismissRequestSerializer,
     TransferResolveRequestSerializer,
     TransferSuggestionSerializer,
@@ -51,8 +52,13 @@ from .serializers import (
 )
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.sample_csv import build_sample_csv
+from .services.similar_transactions import suggest_categories
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_mirror import linked_legs, sync_transfer, would_orphan_primary
+
+# Upper bound on how many transactions one similar-category request may ask about.
+# The categorize view only ever needs the handful of cards it is about to show.
+MAX_SIMILAR_CATEGORY_IDS = 50
 
 
 def _annotate_feed_account_activity(accounts, team):
@@ -1092,6 +1098,67 @@ class BankFeedViewSet(
                 }
 
         serializer = CategorySuggestionSerializer(list(suggestions.values()), many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="bank_feed_similar_categories",
+        tags=["bank-feed"],
+        parameters=[
+            OpenApiParameter(
+                name="ids",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description=(
+                    f"Comma-separated bank transaction ids to suggest categories for "
+                    f"(at most {MAX_SIMILAR_CATEGORY_IDS} per request)"
+                ),
+            )
+        ],
+        responses={200: SimilarCategorySuggestionSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="similar_categories", pagination_class=None)
+    def similar_categories(self, request, team_slug=None):
+        """
+        Suggest categories for uncategorized transactions from how similar ones
+        were categorized before — matching on payee, on description, or on
+        descriptions that share most of their wording.
+
+        Returns a flat list ranked per transaction (strongest match first), each
+        item carrying the count behind it so the UI can show why it is suggested.
+        """
+        raw_ids = (request.query_params.get("ids") or "").split(",")
+        ids = []
+        for raw_id in raw_ids:
+            raw_id = raw_id.strip()
+            if not raw_id:
+                continue
+            if not raw_id.isdigit():
+                return Response(
+                    {"error": "ids must be a comma-separated list of transaction ids"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            ids.append(int(raw_id))
+
+        if not ids:
+            return Response([])
+        if len(ids) > MAX_SIMILAR_CATEGORY_IDS:
+            return Response(
+                {"error": f"At most {MAX_SIMILAR_CATEGORY_IDS} ids may be requested at once"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        transactions = BankTransaction.objects.filter(team=request.team, id__in=ids)
+        suggestions_by_transaction = suggest_categories(request.team, transactions)
+
+        # Preserve the order the client asked in, so it can pair responses up
+        # without re-sorting.
+        rows = []
+        for transaction_id in ids:
+            for suggestion in suggestions_by_transaction.get(transaction_id, ()):
+                rows.append({"transaction_id": transaction_id, **suggestion})
+
+        serializer = SimilarCategorySuggestionSerializer(rows, many=True)
         return Response(serializer.data)
 
     # Batch Operations
