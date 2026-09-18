@@ -147,6 +147,24 @@ make test-e2e-accounts  # Run specific test file
 - Invalid/unknown `return_type` values round-trip without error; list view ignores them
 - Pattern: pass `?return_type=<value>` in test URLs and assert the redirect or link targets include the param
 
+### Transactions — column filters and sorting (`TransactionColumnFilterAPITest`, `e2e/tests/test_transactions.py`)
+- The table pages in as you scroll, so **every** filter and sort has to run server-side. A test that only checks the
+  rows on screen would pass against a client-side filter that silently hides the rest of the ledger — assert against
+  `response.data["count"]`, or seed more rows than one page holds
+- Values on different columns AND together; several values on one column OR together
+- The empty string is a real filter value: it selects rows with nothing in that column (an entry with no payee)
+- An unparseable value (`?f_date=not-a-date`) is ignored rather than 400-ing or blanking the table, since a stale
+  bookmark shouldn't look like an empty ledger
+- `facets/` drops the queried column's *own* filter but honours every other one — without that, a column would only
+  ever offer the values already ticked and nothing could be un-ticked. Test both halves
+- Sorting has a `pk` tie-break; rows sharing a sort value must not shuffle between pages
+- Hierarchical columns (date, both account columns) take a **branch** as one value — `2025`, `2025-03`,
+  `t:income`, `g:12`, `a:34`. Test each depth separately and test that depths mix as OR; a token the parser doesn't
+  recognise must be ignored, so an account-name string silently matching nothing would look like a passing test
+- Facet trees roll counts up, so assert a branch's count against the sum of its leaves, not just its children's presence
+- E2E: `tick_column_value` matches the value label **exactly**, because every row also renders its count — a substring
+  match for "3" hits the year row whose count happens to be 3
+
 ### Audit trail (`apps/audit/tests.py`)
 - `JournalEntry`/`JournalLine` create, update, and delete each write an `AuditLog` row with the right `action`; a no-op save writes nothing
 - UPDATE diffs capture `{before, after}` per changed field only

@@ -5,6 +5,9 @@ import React, { useEffect, useRef } from 'react';
 import { formatCurrency } from '../utilities/currency';
 import { formatDate } from '../bank_feed/utils';
 import DateRangePicker from '../common/DateRangePicker';
+import Icon from '../common/Icon';
+import ColumnMenu from './ColumnMenu';
+import { FALLBACK_BADGE, SOURCE_STYLES, STATUS_STYLES, TRANSACTION_COLUMNS } from './columns';
 
 /**
  * Badge component for displaying status/source labels.
@@ -15,31 +18,115 @@ const Badge = ({ children, className }) => (
   </span>
 );
 
+/** Sort indicator on a column header: an arrow that flips for descending. */
+const SortArrow = ({ active, direction }) => (
+  <Icon
+    name="arrow-up"
+    className={`w-3 h-3 shrink-0 transition-transform ${active ? 'opacity-70' : 'opacity-0 group-hover:opacity-30'} ${
+      active && direction === 'desc' ? 'rotate-180' : ''
+    }`}
+  />
+);
+
 /**
- * Map source values to human-readable labels and badge colours.
+ * One column header: the label toggles sorting, the chevron opens the menu.
+ *
+ * Clicking the label cycles asc -> desc -> unsorted, so the default
+ * newest-first ordering is always one more click away rather than something
+ * you have to hunt for in the menu.
  */
-const SOURCE_STYLES = {
-  manual: { label: 'Manual', className: 'badge-ghost' },
-  import: { label: 'Import', className: 'badge-soft badge-info' },
-  bank_match: { label: 'Bank', className: 'badge-soft badge-accent' },
-  recurring: { label: 'Recurring', className: 'badge-soft badge-secondary' },
+const ColumnHeader = ({ column, sort, onSortChange, filterValues, onFilterChange, fetchFacets }) => {
+  const isSorted = sort && sort.key === column.key;
+
+  const cycleSort = () => {
+    if (!isSorted) onSortChange({ key: column.key, dir: 'asc' });
+    else if (sort.dir === 'asc') onSortChange({ key: column.key, dir: 'desc' });
+    else onSortChange(null);
+  };
+
+  return (
+    <th className={column.align === 'right' ? 'text-right' : undefined}>
+      <div className={`group flex items-center gap-1 ${column.align === 'right' ? 'justify-end' : ''}`}>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded hover:text-base-content"
+          onClick={cycleSort}
+          data-testid={`column-sort-${column.key}`}
+          aria-label={gettext('Sort by {column}').replace('{column}', column.label)}
+        >
+          <span className={isSorted ? 'text-primary' : undefined}>{column.label}</span>
+          <SortArrow active={isSorted} direction={isSorted ? sort.dir : null} />
+        </button>
+        {filterValues.length > 0 && (
+          <span className="badge badge-xs badge-primary tabular-nums" data-testid={`column-filter-count-${column.key}`}>
+            {filterValues.length}
+          </span>
+        )}
+        <ColumnMenu
+          column={column}
+          selected={filterValues}
+          sort={sort}
+          onSortChange={onSortChange}
+          onApply={(values) => onFilterChange(column.key, values)}
+          fetchFacets={fetchFacets}
+        />
+      </div>
+    </th>
+  );
 };
 
-const STATUS_STYLES = {
-  draft: { label: 'Draft', className: 'badge-soft badge-warning' },
-  posted: { label: 'Posted', className: 'badge-soft badge-success' },
-  void: { label: 'Void', className: 'badge-soft badge-error' },
-};
+/**
+ * The "Payee: Amazon, Costco ×" chips summarising what's currently filtered.
+ *
+ * Each entry carries its own label, set when it was ticked — a branch token
+ * like `g:12` or `2025-03` has no readable form the client could derive.
+ */
+const ActiveFilters = ({ columnFilters, onFilterChange, onClearAll }) => {
+  const active = TRANSACTION_COLUMNS.filter((column) => (columnFilters[column.key] || []).length > 0);
+  if (active.length === 0) return null;
 
-const FALLBACK_BADGE = 'badge-ghost';
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="active-column-filters">
+      {active.map((column) => {
+        const values = columnFilters[column.key];
+        const shown = values
+          .slice(0, 3)
+          .map((entry) => entry.label || gettext('(none)'))
+          .join(', ');
+        const extra = values.length - 3;
+        return (
+          <button
+            key={column.key}
+            type="button"
+            className="badge badge-soft badge-primary gap-1"
+            onClick={() => onFilterChange(column.key, [])}
+            data-testid={`active-filter-${column.key}`}
+            title={gettext('Clear this filter')}
+          >
+            <span className="font-medium">{column.label}:</span>
+            <span className="max-w-[16rem] truncate">
+              {shown}
+              {extra > 0 && gettext(' +{n} more').replace('{n}', extra)}
+            </span>
+            <Icon name="times" className="w-3 h-3 shrink-0" />
+          </button>
+        );
+      })}
+      <button type="button" className="btn btn-ghost btn-xs" onClick={onClearAll} data-testid="clear-column-filters">
+        {gettext('Clear all')}
+      </button>
+    </div>
+  );
+};
 
 /**
  * TransactionsTable - displays a flat list of journal entries as transaction rows.
  *
- * Search and date filtering are applied server-side (against the full ledger,
- * not just the rows currently loaded); this component only renders whatever
- * `transactions` it's given and asks for more rows via `onLoadMore` once the
- * sentinel at the bottom of the list scrolls into view.
+ * Search, date filtering, per-column value filters and sorting are all applied
+ * server-side (against the full ledger, not just the rows currently loaded);
+ * this component only renders whatever `transactions` it's given and asks for
+ * more rows via `onLoadMore` once the sentinel at the bottom of the list
+ * scrolls into view.
  *
  * Props:
  *   transactions  – array of transaction row objects for the current filters
@@ -47,6 +134,12 @@ const FALLBACK_BADGE = 'badge-ghost';
  *   onSearchChange – (value) => void
  *   startDate/endDate – current date range filter
  *   onDateApply   – (start, end) => void
+ *   columnFilters – { [columnKey]: [{value, label}] } of selected values per column
+ *   onColumnFilterChange – (columnKey, entries) => void
+ *   onClearColumnFilters – () => void
+ *   sort          – { key, dir } or null for the default newest-first order
+ *   onSortChange  – (sort | null) => void
+ *   fetchFacets   – (columnKey, query) => Promise<{values, hierarchical, truncated}>
  *   onLoadMore    – () => void, fetches the next page of the current filters
  *   hasMore       – whether another page is available
  *   loadingMore   – whether a "load more" request is in flight
@@ -60,6 +153,12 @@ const TransactionsTable = ({
   startDate,
   endDate,
   onDateApply,
+  columnFilters,
+  onColumnFilterChange,
+  onClearColumnFilters,
+  sort,
+  onSortChange,
+  fetchFacets,
   onLoadMore,
   hasMore,
   loadingMore,
@@ -102,6 +201,12 @@ const TransactionsTable = ({
         />
       </div>
 
+      <ActiveFilters
+        columnFilters={columnFilters}
+        onFilterChange={onColumnFilterChange}
+        onClearAll={onClearColumnFilters}
+      />
+
       {refetching && (
         <div className="text-sm text-base-content/70" data-testid="transactions-refetching">
           {gettext('Searching…')}
@@ -118,14 +223,17 @@ const TransactionsTable = ({
         <table className="table table-sm table-quiet w-full" data-testid="transactions-table">
           <thead>
             <tr>
-              <th>{gettext('Date')}</th>
-              <th>{gettext('Payee')}</th>
-              <th>{gettext('Description')}</th>
-              <th>{gettext('Debit Account')}</th>
-              <th>{gettext('Credit Account')}</th>
-              <th className="text-right">{gettext('Amount')}</th>
-              <th>{gettext('Source')}</th>
-              <th>{gettext('Status')}</th>
+              {TRANSACTION_COLUMNS.map((column) => (
+                <ColumnHeader
+                  key={column.key}
+                  column={column}
+                  sort={sort}
+                  onSortChange={onSortChange}
+                  filterValues={columnFilters[column.key] || []}
+                  onFilterChange={onColumnFilterChange}
+                  fetchFacets={fetchFacets}
+                />
+              ))}
             </tr>
           </thead>
           <tbody>

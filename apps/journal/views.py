@@ -3,7 +3,7 @@ Views for journal app.
 Provides both template views and REST API endpoints for journal entries and lines.
 """
 
-from django.db.models import CharField, Count, Q
+from django.db.models import CharField, Q
 from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_date
@@ -20,6 +20,13 @@ from apps.audit.serializers import AuditLogSerializer
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
+from .filters import (
+    COLUMNS,
+    annotations_for,
+    apply_column_filters,
+    apply_ordering,
+    facet_values,
+)
 from .models import JournalEntry, JournalLine
 from .serializers import JournalEntrySerializer, SimpleLineSerializer, TransactionRowSerializer
 
@@ -250,33 +257,62 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         return Response({"status": "success", "line_id": line.id})
 
 
+TRANSACTION_QUERY_PARAMS = [
+    OpenApiParameter(
+        name="search",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Case-insensitive search across payee, description, account name, and amount",
+        required=False,
+    ),
+    OpenApiParameter(
+        name="start_date",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Only include entries on or after this date (YYYY-MM-DD)",
+        required=False,
+    ),
+    OpenApiParameter(
+        name="end_date",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Only include entries on or before this date (YYYY-MM-DD)",
+        required=False,
+    ),
+    OpenApiParameter(
+        name="f_{column}",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description=(
+            "Per-column value filter, repeated once per selected value, e.g. `f_payee=Amazon&f_payee=Costco`. "
+            f"Columns: {', '.join(COLUMNS)}. An empty value selects rows with no value in that column. "
+            "Hierarchical columns take a branch as one value: `f_date=2025` (year), `f_date=2025-03` (month), "
+            "`f_debit_account=t:income` (type), `g:12` (group), `a:34` (account)."
+        ),
+        required=False,
+    ),
+    OpenApiParameter(
+        name="sort",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description=f"Column to sort by: {', '.join(COLUMNS)}. Defaults to newest first.",
+        required=False,
+    ),
+    OpenApiParameter(
+        name="dir",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Sort direction, `asc` (default) or `desc`. Ignored without `sort`.",
+        required=False,
+    ),
+]
+
+
 @extend_schema_view(
     list=extend_schema(
         operation_id="transactions_list",
         tags=["journal"],
-        parameters=[
-            OpenApiParameter(
-                name="search",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="Case-insensitive search across payee, description, account name, and amount",
-                required=False,
-            ),
-            OpenApiParameter(
-                name="start_date",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="Only include entries on or after this date (YYYY-MM-DD)",
-                required=False,
-            ),
-            OpenApiParameter(
-                name="end_date",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="Only include entries on or before this date (YYYY-MM-DD)",
-                required=False,
-            ),
-        ],
+        parameters=TRANSACTION_QUERY_PARAMS,
     ),
 )
 class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -284,9 +320,10 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     Read-only list of journal entries flattened into transaction rows.
     Only entries with exactly 2 lines are returned (simple debit/credit pairs).
 
-    Supports `search`, `start_date`, and `end_date` query params so that
-    filtering runs against the whole ledger, not just whatever page the
-    client has fetched so far.
+    Search, date range, per-column value filters and sorting all run as query
+    params so that they apply to the whole ledger, not just whatever page the
+    client has fetched so far.  `facets/` lists a column's distinct values so
+    the table's column menus can offer them.
     """
 
     class Pagination(PageNumberPagination):
@@ -296,15 +333,32 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     permission_classes = [TeamModelAccessPermissions]
     pagination_class = Pagination
 
-    def get_queryset(self):
-        queryset = (
+    def base_queryset(self, *, facet_column=None):
+        """
+        Team transactions, annotated for whichever columns this request reads.
+
+        The derived columns are correlated subqueries, so they are applied only
+        when something actually sorts, filters or faceting reads them -- an
+        unfiltered list pays for none of them.
+        """
+        return (
             JournalEntry.for_team.select_related("payee")
             .prefetch_related("lines__account")
-            .annotate(line_count=Count("lines"))
+            .annotate(**annotations_for(self.request.query_params, facet_column=facet_column))
             .filter(line_count=2)
         )
 
+    def filtered_queryset(self, *, exclude_column=None, facet_column=None):
+        """
+        Apply search, date range and column filters.
+
+        `exclude_column` leaves one column's own filter off, which is what a
+        facet list needs: it has to keep offering the values the user has not
+        ticked, or unticking one would be impossible.
+        """
+        queryset = self.base_queryset(facet_column=facet_column)
         params = self.request.query_params
+
         start_date = parse_date(params.get("start_date") or "")
         end_date = parse_date(params.get("end_date") or "")
         if start_date:
@@ -326,7 +380,74 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 Q(payee__name__icontains=search) | Q(description__icontains=search) | Q(id__in=matching_line_entries)
             )
 
-        return queryset.order_by("-entry_date", "-created_at")
+        return apply_column_filters(queryset, params, self.request.team, exclude=exclude_column)
+
+    def get_queryset(self):
+        return apply_ordering(self.filtered_queryset(), self.request.query_params)
+
+    @extend_schema(
+        operation_id="transactions_facets",
+        tags=["journal"],
+        parameters=[
+            *TRANSACTION_QUERY_PARAMS,
+            OpenApiParameter(
+                name="column",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description=f"Column whose distinct values to list: {', '.join(COLUMNS)}.",
+                required=True,
+            ),
+            OpenApiParameter(
+                name="q",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Narrow the returned values to those containing this text.",
+                required=False,
+            ),
+        ],
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "column": {"type": "string"},
+                    "hierarchical": {"type": "boolean"},
+                    "truncated": {"type": "boolean"},
+                    "values": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"type": "string"},
+                                "label": {"type": "string"},
+                                "count": {"type": "integer"},
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    )
+    @action(detail=False, methods=["get"], url_path="facets")
+    def facets(self, request, team_slug=None):
+        """
+        List the values one column offers, with the row count behind each.
+
+        The counts reflect the search, date range and *other* columns' filters
+        that are currently applied, so they say what ticking a value would
+        actually show.  A hierarchical column (dates, the two account columns)
+        nests them under `children`, and a branch is selectable in its own
+        right -- ticking a year means every date in it.
+        """
+        column = COLUMNS.get((request.query_params.get("column") or "").strip())
+        if column is None:
+            return Response(
+                {"error": f"Unknown column. Expected one of: {', '.join(COLUMNS)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = self.filtered_queryset(exclude_column=column.key, facet_column=column.key)
+        query = (request.query_params.get("q") or "").strip()
+        return Response(facet_values(queryset, column, request.team, query=query))
 
 
 @login_and_team_required
@@ -334,6 +455,7 @@ def transactions_home(request, team_slug):
     """Transactions list page - renders the React-powered transactions table."""
     api_urls = {
         "transactions_list": f"/a/{team_slug}/journal/api/transactions/",
+        "transactions_facets": f"/a/{team_slug}/journal/api/transactions/facets/",
     }
 
     return render(
