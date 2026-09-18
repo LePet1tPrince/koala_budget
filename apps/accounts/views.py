@@ -108,9 +108,7 @@ class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
             .order_by("sort_order", "name")
         )
         for account in accounts:
-            accounts_by_group.setdefault(account.account_group_id, []).append(
-                _account_payload(account, team_slug)
-            )
+            accounts_by_group.setdefault(account.account_group_id, []).append(_account_payload(account, team_slug))
 
         groups_by_type = {account_type: [] for account_type in ACCOUNT_TYPE_ORDER}
         for group in AccountGroup.objects.filter(team=team).order_by("sort_order", "name"):
@@ -459,8 +457,7 @@ def api_reorder_accounts(request, team_slug):
         return JsonResponse({"error": _("Unknown account group.")}, status=400)
 
     accounts = {
-        a.pk: a
-        for a in Account.objects.filter(team=request.team, pk__in=placements).select_related("account_group")
+        a.pk: a for a in Account.objects.filter(team=request.team, pk__in=placements).select_related("account_group")
     }
     if len(accounts) != len(placements):
         return JsonResponse({"error": _("Unknown account.")}, status=400)
@@ -507,8 +504,7 @@ def api_reorder_groups(request, team_slug):
 
     group_ids = payload["group_ids"]
     groups = {
-        g.pk: g
-        for g in AccountGroup.objects.filter(team=request.team, account_type=account_type, pk__in=group_ids)
+        g.pk: g for g in AccountGroup.objects.filter(team=request.team, account_type=account_type, pk__in=group_ids)
     }
     if len(groups) != len(group_ids) or len(set(group_ids)) != len(group_ids):
         return JsonResponse({"error": _("Unknown account group.")}, status=400)
@@ -551,9 +547,7 @@ def api_create_account(request, team_slug):
         )
 
     with transaction.atomic():
-        next_order = (
-            Account.objects.filter(team=request.team, account_group=group).aggregate(m=Max("sort_order"))["m"]
-        )
+        next_order = Account.objects.filter(team=request.team, account_group=group).aggregate(m=Max("sort_order"))["m"]
         account = Account.objects.create(
             team=request.team,
             name=name,
@@ -587,11 +581,9 @@ def api_create_group(request, team_slug):
         return JsonResponse({"error": _("A group named '%(name)s' already exists.") % {"name": name}}, status=400)
 
     with transaction.atomic():
-        next_order = (
-            AccountGroup.objects.filter(team=request.team, account_type=account_type).aggregate(
-                m=Max("sort_order")
-            )["m"]
-        )
+        next_order = AccountGroup.objects.filter(team=request.team, account_type=account_type).aggregate(
+            m=Max("sort_order")
+        )["m"]
         group = AccountGroup.objects.create(
             team=request.team,
             name=name,

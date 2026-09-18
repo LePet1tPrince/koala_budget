@@ -21,7 +21,11 @@ class FeedAccountSerializer(AccountSerializer):
     latest_reconciled_date = serializers.DateField(read_only=True, default=None)
 
     class Meta(AccountSerializer.Meta):
-        fields = AccountSerializer.Meta.fields + ["uncategorized_count", "latest_transaction_date", "latest_reconciled_date"]
+        fields = AccountSerializer.Meta.fields + [
+            "uncategorized_count",
+            "latest_transaction_date",
+            "latest_reconciled_date",
+        ]
 
 
 class BankTransactionSerializer(serializers.ModelSerializer):

@@ -24,15 +24,11 @@ class SuggestAccountForCategoryTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Suggest Team", slug="suggest-team")
-        cls.income_group = AccountGroup.objects.create(
-            team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME
-        )
+        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
         cls.expense_group = AccountGroup.objects.create(
             team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET
-        )
+        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
 
         cls.interest_income = Account.objects.create(
             team=cls.team, name="Interest Income", account_group=cls.income_group
@@ -40,12 +36,8 @@ class SuggestAccountForCategoryTest(TestCase):
         cls.interest_expense = Account.objects.create(
             team=cls.team, name="Interest Expense", account_group=cls.expense_group
         )
-        cls.groceries = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group
-        )
-        cls.restaurants = Account.objects.create(
-            team=cls.team, name="Restaurants", account_group=cls.expense_group
-        )
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.restaurants = Account.objects.create(team=cls.team, name="Restaurants", account_group=cls.expense_group)
 
     @property
     def accounts(self):
