@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aug 2026 review &mdash; 64 Amroth</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1117; --surface:#1a1d27; --surface2:#222536; --border:#2e3148;
+    --accent:#6c8fff; --accent2:#4cd9ac; --accent3:#ff8c6b; --accent4:#f5c242;
+    --accent5:#c08cff; --text:#e8eaf0; --muted:#8891aa;
+    --positive:#4cd9ac; --negative:#ff6b6b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);padding:24px;max-width:1500px;margin:0 auto}
+  h1{font-size:1.55rem;font-weight:700;margin-bottom:4px}
+  .subtitle{color:var(--muted);font-size:.83rem;margin-bottom:18px}
+
+  .tabs{display:flex;gap:8px;margin-bottom:22px;border-bottom:1px solid var(--border);padding-bottom:0}
+  .tabs button{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);
+    font-size:.92rem;font-weight:600;padding:10px 18px;cursor:pointer;font-family:inherit}
+  .tabs button:hover{color:var(--text)}
+  .tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .page{display:none} .page.active{display:block}
+
+  .banner{background:linear-gradient(90deg,rgba(108,143,255,.13),rgba(76,217,172,.06));
+    border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;
+    padding:13px 18px;margin-bottom:20px;font-size:.88rem;line-height:1.55}
+  .banner strong{color:var(--accent2)}
+
+  .grid{display:grid;gap:15px;margin-bottom:20px}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(560px,1fr))}
+  .g6{grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+  .card.hero{border-top:3px solid var(--accent)}
+  .card-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;font-weight:600}
+  .card-value{font-size:1.65rem;font-weight:700;line-height:1.15}
+  .card-value.sm{font-size:1.25rem}
+  .card-sub{font-size:.77rem;color:var(--muted);margin-top:8px;line-height:1.55}
+  .delta{font-weight:700}
+  .good{color:var(--positive)} .bad{color:var(--negative)} .neutral{color:var(--muted)}
+
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+  .chart-title{font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
+  .chart-wrap{position:relative;height:290px}
+  .chart-wrap.tall{height:340px}
+
+  .section-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;font-weight:700}
+  .section-head{font-size:1.02rem;font-weight:700;margin:28px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+
+  table{width:100%;border-collapse:collapse;font-size:.82rem}
+  th{text-align:right;padding:8px 10px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);
+     font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0;background:var(--surface);z-index:1}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover td{background:rgba(108,143,255,.05)}
+  tr.total-row td{font-weight:700;background:var(--surface2)}
+  .table-scroll{max-height:430px;overflow:auto}
+  .muted-cell{color:var(--muted)}
+  .tag{display:inline-block;font-size:.62rem;padding:2px 7px;border-radius:20px;font-weight:700;letter-spacing:.03em}
+  .tag-g{background:rgba(76,217,172,.15);color:var(--accent2)}
+  .tag-b{background:rgba(255,107,107,.15);color:var(--negative)}
+  .tag-n{background:rgba(136,145,170,.15);color:var(--muted)}
+
+  .winbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;background:var(--surface);
+    border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:18px}
+  .winbar .wlbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-right:4px}
+  .winbar button{background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-family:inherit;
+    font-size:.8rem;font-weight:600;padding:7px 15px;border-radius:8px;cursor:pointer}
+  .winbar button:hover{color:var(--text);border-color:var(--accent)}
+  .winbar button.active{background:rgba(108,143,255,.16);border-color:var(--accent);color:var(--accent)}
+  .winbar .wspan{font-size:.74rem;color:var(--muted);margin-left:auto;text-align:right}
+
+  .bar-track{height:8px;background:var(--surface2);border-radius:6px;overflow:hidden;margin-top:10px}
+  .bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:6px}
+
+  /* ---------- presentation walkthrough ---------- */
+  #pres{position:fixed;inset:0;background:var(--bg);z-index:60;display:flex;flex-direction:column}
+  .pres-top{display:flex;align-items:center;gap:16px;padding:14px 26px;border-bottom:1px solid var(--border);flex:0 0 auto}
+  .pres-title{font-size:.78rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  .pres-dots{display:flex;gap:5px;flex:1 1 auto;flex-wrap:wrap}
+  .pres-dots span{width:30px;height:4px;border-radius:3px;background:var(--surface2);cursor:pointer;transition:background .2s}
+  .pres-dots span:hover{background:var(--border)}
+  .pres-dots span.done{background:#3a3f5c}
+  .pres-dots span.on{background:var(--accent)}
+  .skip-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-family:inherit;
+    font-size:.78rem;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;white-space:nowrap}
+  .skip-btn:hover{color:var(--accent);border-color:var(--accent)}
+  .pres-stage{flex:1 1 auto;overflow-y:auto;padding:28px 26px 24px}
+  .slide{display:none;max-width:1200px;margin:0 auto}
+  .slide.on{display:block;animation:slideIn .32s ease both}
+  @keyframes slideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  .slide-kicker{font-size:.68rem;text-transform:uppercase;letter-spacing:.16em;color:var(--accent);font-weight:700;margin-bottom:9px}
+  .slide-h{font-size:1.85rem;font-weight:700;line-height:1.15;margin-bottom:11px}
+  .slide-lede{font-size:.93rem;color:var(--muted);line-height:1.65;margin-bottom:24px;max-width:900px}
+  .slide-lede strong{color:var(--text);font-weight:600}
+  .pres-nav{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:18px;
+    padding:13px 26px;border-top:1px solid var(--border)}
+  .nav-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:inherit;
+    font-size:.85rem;font-weight:600;padding:9px 22px;border-radius:9px;cursor:pointer}
+  .nav-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  .nav-btn:disabled{opacity:.35;cursor:default}
+  .nav-btn.primary{background:var(--accent);border-color:var(--accent);color:#0f1117}
+  .nav-btn.primary:hover{opacity:.9;color:#0f1117}
+  .nav-step{font-size:.78rem;color:var(--muted);min-width:64px;text-align:center}
+
+  .big-stat{font-size:2.5rem;font-weight:700;line-height:1.1}
+  .big-stat.sm{font-size:1.9rem}
+  .flag{border-radius:12px;padding:16px 18px;border:1px solid var(--border);background:var(--surface)}
+  .flag.red{border-left:3px solid var(--negative);background:rgba(255,107,107,.06)}
+  .flag.amber{border-left:3px solid var(--accent4);background:rgba(245,194,66,.06)}
+  .flag.green{border-left:3px solid var(--positive);background:rgba(76,217,172,.06)}
+  .flag-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:5px}
+  .flag-name{font-weight:700;font-size:.95rem}
+  .flag-amt{font-weight:700;font-size:1.05rem}
+  .flag-sub{font-size:.76rem;color:var(--muted);line-height:1.5}
+
+  tr.drill{cursor:pointer}
+  tr.drill:hover td{background:rgba(108,143,255,.09)}
+  tr.drill td:first-child::after{content:' ▸';color:var(--muted);font-size:.75rem}
+  tr.drill.open td:first-child::after{content:' ▾';color:var(--accent)}
+  tr.drill-body>td{padding:0;background:var(--bg)}
+  .drill-wrap{padding:10px 14px 14px 30px}
+  .drill-wrap table{font-size:.78rem}
+  .drill-wrap th{background:var(--bg);font-size:.64rem}
+  .drill-foot{font-size:.74rem;color:var(--muted);padding:8px 4px 0;border-top:1px solid var(--border);margin-top:4px}
+  .notes{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-top:18px}
+  .notes ul{list-style:none;display:grid;grid-template-columns:repeat(2,1fr);gap:7px 26px}
+  .notes li{font-size:.78rem;color:var(--muted);line-height:1.5}
+  .notes li strong{color:var(--text)}
+  @media(max-width:820px){.notes ul{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="pres" style="display:none">
+  <div class="pres-top">
+    <span class="pres-title" id="pres-month">Month in review</span>
+    <span class="pres-dots" id="pres-dots"></span>
+    <button class="skip-btn" id="pres-skip">Skip to dashboard &rarr;</button>
+  </div>
+
+  <div class="pres-stage" id="pres-stage">
+
+    <section class="slide" data-i="0">
+      <div class="slide-kicker">Month in review</div>
+      <div class="slide-h" id="s0-title">&mdash;</div>
+      <div class="slide-lede" id="s0-lede">&mdash;</div>
+      <div data-winbar></div>
+      <div class="grid g4" id="s0-cards"></div>
+    </section>
+
+    <section class="slide" data-i="1">
+      <div class="slide-kicker">Step 1 &middot; Money in</div>
+      <div class="slide-h">Where the money came from</div>
+      <div class="slide-lede" id="s1-lede">&mdash;</div>
+      <div data-winbar></div>
+      <div class="grid g2">
+        <div class="chart-card"><div class="chart-title" id="s1-chart-title">Revenue streams</div>
+          <div class="chart-wrap tall"><canvas id="c-streams"></canvas></div></div>
+        <div class="card"><div class="section-title">Every stream</div>
+          <div class="table-scroll"><table><thead><tr>
+            <th>Source</th><th id="s1-cur-h">This month</th><th id="s1-avg-h">Average</th><th>vs average</th>
+          </tr></thead><tbody id="s1-body"></tbody></table></div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-i="2">
+      <div class="slide-kicker">Step 2 &middot; Budget</div>
+      <div class="slide-h">What blew through the budget</div>
+      <div class="slide-lede" id="s2-lede">&mdash;</div>
+      <div id="s2-over"></div>
+    </section>
+
+    <section class="slide" data-i="3">
+      <div class="slide-kicker">Step 3 &middot; Budget</div>
+      <div class="slide-h">The biggest line items</div>
+      <div class="slide-lede" id="s3-lede">&mdash;</div>
+      <div class="card"><table><thead><tr>
+        <th>Date</th><th>Payee</th><th>Category</th><th>Account</th><th>Amount</th><th>Share of spend</th>
+      </tr></thead><tbody id="s3-body"></tbody></table></div>
+    </section>
+
+    <section class="slide" data-i="4">
+      <div class="slide-kicker">Step 4 &middot; Budget</div>
+      <div class="slide-h">The whole breakdown</div>
+      <div class="slide-lede" id="s4-lede">&mdash;</div>
+      <div data-winbar></div>
+      <div class="card"><table><thead><tr>
+        <th>Group / category</th><th>Assigned</th><th>Spent</th>
+        <th id="s4-prev-h">Last month</th><th id="s4-vs-h">vs average</th>
+        <th>Available</th><th>Items</th>
+      </tr></thead><tbody id="s4-body"></tbody></table></div>
+    </section>
+
+    <section class="slide" data-i="5">
+      <div class="slide-kicker">Step 5 &middot; Saving</div>
+      <div class="slide-h">What we put away</div>
+      <div class="slide-lede" id="s5-lede">&mdash;</div>
+      <div data-winbar></div>
+      <div class="grid g4" id="s5-cards"></div>
+      <div class="grid g2">
+        <div class="card"><div class="section-title">Where it went</div>
+          <table><thead id="s5-head"></thead><tbody id="s5-body"></tbody></table></div>
+        <div class="card"><div class="section-title">TFSA &mdash; earmarked for the buyout</div>
+          <div id="s5-tfsa"></div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-i="6">
+      <div class="slide-kicker">Step 6 &middot; The house</div>
+      <div class="slide-h">64 Amroth</div>
+      <div class="slide-lede" id="s6-lede">&mdash;</div>
+      <div data-winbar></div>
+      <div class="section-title">What moved in <span id="s6-month">this month</span></div>
+      <div class="grid g3" id="s6-cards"></div>
+      <div class="section-title">Where it stands</div>
+      <div class="grid g4" id="s6-cards2"></div>
+    </section>
+
+    <section class="slide" data-i="7">
+      <div class="slide-kicker">Step 7 &middot; Net worth</div>
+      <div class="slide-h">What it all adds up to</div>
+      <div class="slide-lede" id="s7-lede">&mdash;</div>
+      <div data-winbar></div>
+      <div class="grid g2">
+        <div class="chart-card"><div class="chart-title" id="s7-chart-title">Net worth</div>
+          <div class="chart-wrap tall"><canvas id="c-pres-nw"></canvas></div></div>
+        <div class="card"><div class="section-title">What it is made of</div>
+          <table><thead><tr><th>Type</th><th>Balance</th><th>Share</th>
+            <th id="s7-vs-h">Change</th></tr></thead>
+          <tbody id="s7-body"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="slide" data-i="8">
+      <div class="slide-kicker">That is the month</div>
+      <div class="slide-h" id="s8-title">&mdash;</div>
+      <div class="slide-lede" id="s8-lede">&mdash;</div>
+      <div data-winbar></div>
+      <div class="grid g4" id="s8-cards"></div>
+      <div style="text-align:center;margin-top:34px">
+        <button class="nav-btn primary" id="s8-open" style="font-size:.95rem;padding:13px 30px">
+          Open the full dashboard &rarr;</button>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="pres-nav">
+    <button class="nav-btn" id="pres-prev">&larr; Back</button>
+    <span class="nav-step" id="pres-step">1 / 9</span>
+    <button class="nav-btn primary" id="pres-next">Next &rarr;</button>
+  </div>
+</div>
+
+<div id="dashboard">
+
+<h1>&#128200; Bender Dashboard <span style="color:var(--muted);font-weight:400">v3</span></h1>
+<p class="subtitle">64 Amroth &amp; household finances &nbsp;&middot;&nbsp; Generated September 14, 2026</p>
+<button class="nav-btn primary" id="replay-link" style="margin-bottom:20px">&#9654;&nbsp; Review Aug 2026 &mdash; guided walkthrough</button>
+
+<nav class="tabs">
+  <button data-tab="money" class="active">&#128176;&nbsp; Personal Finances</button>
+  <button data-tab="house">&#127968;&nbsp; House &amp; Mortgage</button>
+</nav>
+
+<!-- ================= HOUSE ================= -->
+<section class="page" id="page-house">
+
+  <div class="banner" id="house-banner">&mdash;</div>
+
+  <div class="section-title">This month vs last month</div>
+  <div class="grid g4" id="house-hero"></div>
+
+  <div class="section-title">Cumulative progress</div>
+  <div class="grid g4" id="house-cum"></div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="section-title">Month-over-month detail</div>
+    <table><thead><tr>
+      <th>Metric</th><th id="mom-prev-h">Last month</th><th id="mom-cur-h">This month</th><th>Change</th>
+    </tr></thead><tbody id="mom-body"></tbody></table>
+  </div>
+
+  <div class="chart-card" style="margin-bottom:20px">
+    <div class="chart-title">Bender principal gained each month &mdash; scheduled, extra &amp; partnership transfer</div>
+    <div class="chart-wrap tall"><canvas id="c-principal"></canvas></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="chart-card"><div class="chart-title">Projected payoff date &mdash; where each month's balance says the mortgage ends</div>
+      <div class="chart-wrap"><canvas id="c-payoff"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Bender equity &mdash; actual vs. no-extra-payments baseline</div>
+      <div class="chart-wrap"><canvas id="c-equity"></canvas></div></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="chart-card"><div class="chart-title">Remaining amortization (months left)</div>
+      <div class="chart-wrap"><canvas id="c-amort"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Sub-account balances &mdash; Bender vs Martin</div>
+      <div class="chart-wrap"><canvas id="c-balances"></canvas></div></div>
+  </div>
+
+  <div class="section-head">Buyout snapshot &mdash; if the Benders bought out the Martins today</div>
+  <div class="grid g6" id="buyout-cards"></div>
+  <div class="grid g3">
+    <div class="card"><div class="card-label">Monthly outlay today</div>
+      <div class="card-value sm" id="b-net-now">&mdash;</div>
+      <div class="card-sub" id="b-net-now-sub">&mdash;</div></div>
+    <div class="card"><div class="card-label">Monthly outlay after buyout</div>
+      <div class="card-value sm" id="b-net-after">&mdash;</div>
+      <div class="card-sub" id="b-net-after-sub">&mdash;</div></div>
+    <div class="card"><div class="card-label">Cash saved toward closing (TFSAs)</div>
+      <div class="card-value sm" id="b-tfsa">&mdash;</div>
+      <div class="card-sub" id="b-tfsa-sub">&mdash;</div>
+      <div class="bar-track"><div class="bar-fill" id="b-tfsa-bar" style="width:0%"></div></div></div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <div class="section-title">Payment history (actual months, newest first)</div>
+    <div class="table-scroll"><table><thead><tr>
+      <th>Month</th><th>Bender balance</th><th>Equity</th><th>Interest</th>
+      <th>Scheduled principal</th><th>Extra</th><th>Transfer (half)</th>
+      <th>Total principal gained</th><th>Months left</th><th>TFSA</th>
+    </tr></thead><tbody id="hist-body"></tbody></table></div>
+  </div>
+
+  <div class="notes"><div class="section-title">How these numbers are built</div>
+    <ul id="house-notes"></ul></div>
+</section>
+
+<!-- ================= MONEY ================= -->
+<section class="page active" id="page-money">
+
+  <div class="winbar">
+    <span class="wlbl">Compare against</span>
+    <span id="win-buttons"></span>
+    <span class="wspan" id="win-span">&mdash;</span>
+  </div>
+
+  <div class="banner" id="money-banner">&mdash;</div>
+
+  <div class="section-title">The month at a glance</div>
+  <div class="grid g4" id="money-hero"></div>
+
+  <div class="section-title">Where it went &amp; what is left</div>
+  <div class="grid g4" id="money-second"></div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="section-title">Income sources &mdash; <span id="inc-month">this month</span></div>
+    <table><thead><tr>
+      <th>Source</th><th>This month</th><th id="inc-avg-h">Average</th><th>vs average</th>
+    </tr></thead><tbody id="inc-body"></tbody></table>
+  </div>
+
+  <div class="grid g2">
+    <div class="chart-card"><div class="chart-title" id="flow-title">Income, spending &amp; saving</div>
+      <div class="chart-wrap tall"><canvas id="c-flow"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title" id="nw-title">Net worth, by what it is made of</div>
+      <div class="chart-wrap tall"><canvas id="c-nw"></canvas></div></div>
+  </div>
+
+  <div class="section-head">Budget detail &mdash; <span id="budget-month">this month</span>
+    <span style="font-size:.74rem;font-weight:400;color:var(--muted)">&nbsp;&nbsp;click a category to see its transactions</span></div>
+  <div class="card">
+    <div class="table-scroll"><table><thead><tr>
+      <th>Group / category</th><th></th><th>Assigned</th><th>Spent</th><th>Available</th>
+      <th>Last month</th><th id="cat-avg-h">Average</th><th>vs avg</th><th>Same month last yr</th>
+    </tr></thead><tbody id="cat-body"></tbody></table></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:20px">
+    <div class="card"><div class="section-title">Largest single transactions this month</div>
+      <div class="table-scroll"><table><thead><tr>
+        <th>Date</th><th>Payee</th><th>Category</th><th>Amount</th>
+      </tr></thead><tbody id="big-body"></tbody></table></div></div>
+    <div class="card"><div class="section-title">Net worth by account</div>
+      <div class="table-scroll"><table><thead><tr>
+        <th>Account</th><th></th><th>Balance</th><th>Change vs last mo</th>
+      </tr></thead><tbody id="acct-body"></tbody></table></div></div>
+  </div>
+
+  <div class="notes"><div class="section-title">How these numbers are built</div>
+    <ul id="money-notes"></ul></div>
+</section>
+
+</div><!-- /#dashboard -->
+
+<script>
+const D = {"generated": "2026-09-14", "params": {"rate_pct": 3.94, "bender_payment": 2473.05, "bender_rent": 3000.0, "house_value": 1260000.0}, "house": {"cur_label": "Sep 2026", "prev_label": "Aug 2026", "months_elapsed": 14, "house_value": 1260000.0, "half_value": 630000.0, "equity": 195694.61, "equity_prev": 194073.87, "equity_delta": 1620.74, "equity_pct": 31.06, "equity_pct_prev": 30.81, "b_end": 434305.39, "b_end_prev": 435926.13, "all_in": 1064305.39, "all_in_prev": 1065926.13, "b_end_delta": -1620.74, "m_end": 521019.63, "total_end": 956425.02, "total_delta": -2795.93, "principal_total": 1620.74, "principal_total_prev": 2426.15, "principal_delta": -805.41, "base_prin": 1120.74, "base_prin_prev": 926.15, "total_end_prev": 959220.95, "extra": 500.0, "extra_prev": 1500.0, "transfer": 0.0, "interest_month": 1352.31, "interest_month_prev": 1546.9, "interest_month_delta": -194.59, "cum_extra": 23800.0, "cum_transfer": 931.88, "remaining": 263, "remaining_prev": 264, "shaved_mom": 0.48, "shaved_total": 25.2, "shaved_total_prev": 24.7, "payoff_earlier": 0, "payoff": "Aug 2048", "payoff_prev": "Aug 2048", "payoff_base": "Sep 2050", "interest_saved": 560.84, "interest_saved_prev": 484.17, "interest_saved_delta": 76.67, "tfsa": 22463.18, "tfsa_prev": 21963.18, "tfsa_label": "Sep 2026", "tfsa_prev_label": "Aug 2026", "tfsa_delta": 500.0, "tim": 13533.69, "vivian": 8929.49, "buyout": {"martin_share": 630000.0, "b_end": 434305.39, "total_financing": 1064305.39, "new_mortgage": 1008000.0, "cash_at_closing": 56305.39, "martin_payout": 108980.37, "new_payment": 5287.26, "net_after": 4907.26, "net_now": 3783.05, "net_change": 1124.21, "expenses": 1315.0, "tenant_rent": 1695.0, "buyout_rate_pct": 3.94, "amort_yrs": 25}, "series": [{"label": "Aug 2025", "key": "2025-08", "b_end": 471977.75, "m_end": 534096.35, "total_end": 1006074.1, "equity": 158022.25, "equity_pct": 25.08, "b_interest": 1569.55, "b_prin": 903.5, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 903.5, "cum_interest": 1569.55, "cum_extra": 0.0, "cum_transfer": 0.0, "base_bal": 471977.75, "base_equity": 158022.25, "base_cum_interest": 1569.55, "shaved": 0.0, "payoff_idx": 24607.54, "base_payoff_idx": 24607.54, "remaining": 301, "remaining_exact": 300.54, "base_remaining": 301, "base_remaining_exact": 300.54, "tfsa": 0.0}, {"label": "Sep 2025", "key": "2025-09", "b_end": 472071.25, "m_end": 532070.55, "total_end": 1004141.8, "equity": 157928.75, "equity_pct": 25.07, "b_interest": 1566.55, "b_prin": 906.5, "b_extra": 0.0, "b_transfer": -1000.0, "principal_total": -93.5, "cum_interest": 3136.1, "cum_extra": 0.0, "cum_transfer": -1000.0, "base_bal": 471071.25, "base_equity": 158928.75, "base_cum_interest": 3136.1, "shaved": -1.08, "payoff_idx": 24608.641, "base_payoff_idx": 24607.558, "remaining": 301, "remaining_exact": 300.641, "base_remaining": 300, "base_remaining_exact": 299.558, "tfsa": 0.0}, {"label": "Oct 2025", "key": "2025-10", "b_end": 471114.52, "m_end": 530981.06, "total_end": 1002095.58, "equity": 158885.48, "equity_pct": 25.22, "b_interest": 1516.32, "b_prin": 956.73, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 956.73, "cum_interest": 4652.42, "cum_extra": 0.0, "cum_transfer": -1000.0, "base_bal": 470111.31, "base_equity": 159888.69, "base_cum_interest": 4649.21, "shaved": 0.0, "payoff_idx": 24608.605, "base_payoff_idx": 24607.522, "remaining": 300, "remaining_exact": 299.605, "base_remaining": 299, "base_remaining_exact": 298.522, "tfsa": 0.0}, {"label": "Nov 2025", "key": "2025-11", "b_end": 456306.04, "m_end": 530058.62, "total_end": 986364.66, "equity": 173693.96, "equity_pct": 27.57, "b_interest": 1664.57, "b_prin": 808.48, "b_extra": 14000.0, "b_transfer": 0.0, "principal_total": 14808.48, "cum_interest": 6316.99, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 469299.28, "base_equity": 160700.72, "base_cum_interest": 6310.23, "shaved": 14.74, "payoff_idx": 24593.997, "base_payoff_idx": 24607.648, "remaining": 284, "remaining_exact": 283.997, "base_remaining": 298, "base_remaining_exact": 297.648, "tfsa": 56.0}, {"label": "Dec 2025", "key": "2025-12", "b_end": 455206.51, "m_end": 528855.6, "total_end": 984062.11, "equity": 174793.49, "equity_pct": 27.74, "b_interest": 1373.51, "b_prin": 1099.54, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 1099.54, "cum_interest": 7690.51, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 468238.86, "base_equity": 161761.14, "base_cum_interest": 7722.86, "shaved": 0.0, "payoff_idx": 24593.869, "base_payoff_idx": 24607.511, "remaining": 283, "remaining_exact": 282.869, "base_remaining": 297, "base_remaining_exact": 296.511, "tfsa": 10238.0}, {"label": "Jan 2026", "key": "2026-01", "b_end": 454244.34, "m_end": 527812.41, "total_end": 982056.75, "equity": 175755.66, "equity_pct": 27.9, "b_interest": 1510.88, "b_prin": 962.17, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 962.17, "cum_interest": 9201.39, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 467319.95, "base_equity": 162680.05, "base_cum_interest": 9277.0, "shaved": 0.0, "payoff_idx": 24593.886, "base_payoff_idx": 24607.529, "remaining": 282, "remaining_exact": 281.886, "base_remaining": 296, "base_remaining_exact": 295.529, "tfsa": 10375.87}, {"label": "Feb 2026", "key": "2026-02", "b_end": 453327.62, "m_end": 526822.26, "total_end": 980149.88, "equity": 176672.38, "equity_pct": 28.04, "b_interest": 1556.33, "b_prin": 916.72, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 916.72, "cum_interest": 10757.72, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 466448.03, "base_equity": 163551.97, "base_cum_interest": 10878.13, "shaved": 0.0, "payoff_idx": 24593.952, "base_payoff_idx": 24607.6, "remaining": 281, "remaining_exact": 280.952, "base_remaining": 295, "base_remaining_exact": 294.6, "tfsa": 10533.24}, {"label": "Mar 2026", "key": "2026-03", "b_end": 452213.61, "m_end": 525603.1, "total_end": 977816.71, "equity": 177786.39, "equity_pct": 28.22, "b_interest": 1359.04, "b_prin": 1114.01, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 1114.01, "cum_interest": 12116.76, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 465373.35, "base_equity": 164626.65, "base_cum_interest": 12276.5, "shaved": 0.0, "payoff_idx": 24593.821, "base_payoff_idx": 24607.459, "remaining": 280, "remaining_exact": 279.821, "base_remaining": 294, "base_remaining_exact": 293.459, "tfsa": 10662.27}, {"label": "Apr 2026", "key": "2026-04", "b_end": 447191.9, "m_end": 524491.46, "total_end": 971683.36, "equity": 182808.1, "equity_pct": 29.02, "b_interest": 1451.35, "b_prin": 1021.7, "b_extra": 4000.0, "b_transfer": 0.0, "principal_total": 5021.7, "cum_interest": 13568.1, "cum_extra": 18000.0, "cum_transfer": -1000.0, "base_bal": 464393.88, "base_equity": 165606.12, "base_cum_interest": 13770.08, "shaved": 4.01, "payoff_idx": 24589.773, "base_payoff_idx": 24607.422, "remaining": 275, "remaining_exact": 274.773, "base_remaining": 293, "base_remaining_exact": 292.422, "tfsa": 13808.55}, {"label": "May 2026", "key": "2026-05", "b_end": 441422.97, "m_end": 525309.02, "total_end": 967831.99, "equity": 188577.03, "equity_pct": 29.93, "b_interest": 1436.0, "b_prin": 1037.05, "b_extra": 2800.0, "b_transfer": 1931.88, "principal_total": 5768.93, "cum_interest": 15004.1, "cum_extra": 20800.0, "cum_transfer": 931.88, "base_bal": 463412.06, "base_equity": 166587.94, "base_cum_interest": 15261.31, "shaved": 4.67, "payoff_idx": 24585.076, "base_payoff_idx": 24607.387, "remaining": 270, "remaining_exact": 269.076, "base_remaining": 292, "base_remaining_exact": 291.387, "tfsa": 17595.07}, {"label": "Jun 2026", "key": "2026-06", "b_end": 439914.04, "m_end": 524256.48, "total_end": 965270.52, "equity": 190085.96, "equity_pct": 30.17, "b_interest": 1464.11, "b_prin": 1008.94, "b_extra": 500.0, "b_transfer": 0.0, "principal_total": 1508.94, "cum_interest": 16468.21, "cum_extra": 21300.0, "cum_transfer": 931.88, "base_bal": 462476.06, "base_equity": 167523.94, "base_cum_interest": 16798.36, "shaved": 0.49, "payoff_idx": 24584.603, "base_payoff_idx": 24607.403, "remaining": 268, "remaining_exact": 267.603, "base_remaining": 291, "base_remaining_exact": 290.403, "tfsa": 18475.18}, {"label": "Jul 2026", "key": "2026-07", "b_end": 438352.28, "m_end": 523143.36, "total_end": 962595.64, "equity": 191647.72, "equity_pct": 30.42, "b_interest": 1411.3, "b_prin": 1061.75, "b_extra": 500.0, "b_transfer": 0.0, "principal_total": 1561.75, "cum_interest": 17879.51, "cum_extra": 21800.0, "cum_transfer": 931.88, "base_bal": 461486.69, "base_equity": 168513.31, "base_cum_interest": 18282.04, "shaved": 0.48, "payoff_idx": 24584.086, "base_payoff_idx": 24607.367, "remaining": 267, "remaining_exact": 266.086, "base_remaining": 290, "base_remaining_exact": 289.367, "tfsa": 19625.18}, {"label": "Aug 2026", "key": "2026-08", "b_end": 435926.13, "m_end": 522194.82, "total_end": 959220.95, "equity": 194073.87, "equity_pct": 30.81, "b_interest": 1546.9, "b_prin": 926.15, "b_extra": 1500.0, "b_transfer": 0.0, "principal_total": 2426.15, "cum_interest": 19426.4, "cum_extra": 23300.0, "cum_transfer": 931.88, "base_bal": 460642.17, "base_equity": 169357.83, "base_cum_interest": 19910.57, "shaved": 1.45, "payoff_idx": 24582.744, "base_payoff_idx": 24607.485, "remaining": 264, "remaining_exact": 263.744, "base_remaining": 289, "base_remaining_exact": 288.485, "tfsa": 21963.18}, {"label": "Sep 2026", "key": "2026-09", "b_end": 434305.39, "m_end": 521019.63, "total_end": 956425.02, "equity": 195694.61, "equity_pct": 31.06, "b_interest": 1352.31, "b_prin": 1120.74, "b_extra": 500.0, "b_transfer": 0.0, "principal_total": 1620.74, "cum_interest": 20778.71, "cum_extra": 23800.0, "cum_transfer": 931.88, "base_bal": 459598.1, "base_equity": 170401.9, "base_cum_interest": 21339.55, "shaved": 0.48, "payoff_idx": 24582.19, "base_payoff_idx": 24607.398, "remaining": 263, "remaining_exact": 262.19, "base_remaining": 288, "base_remaining_exact": 287.398, "tfsa": 22463.18}], "history": [{"label": "Sep 2026", "key": "2026-09", "b_end": 434305.39, "m_end": 521019.63, "total_end": 956425.02, "equity": 195694.61, "equity_pct": 31.06, "b_interest": 1352.31, "b_prin": 1120.74, "b_extra": 500.0, "b_transfer": 0.0, "principal_total": 1620.74, "cum_interest": 20778.71, "cum_extra": 23800.0, "cum_transfer": 931.88, "base_bal": 459598.1, "base_equity": 170401.9, "base_cum_interest": 21339.55, "shaved": 0.48, "payoff_idx": 24582.19, "base_payoff_idx": 24607.398, "remaining": 263, "remaining_exact": 262.19, "base_remaining": 288, "base_remaining_exact": 287.398, "tfsa": 22463.18}, {"label": "Aug 2026", "key": "2026-08", "b_end": 435926.13, "m_end": 522194.82, "total_end": 959220.95, "equity": 194073.87, "equity_pct": 30.81, "b_interest": 1546.9, "b_prin": 926.15, "b_extra": 1500.0, "b_transfer": 0.0, "principal_total": 2426.15, "cum_interest": 19426.4, "cum_extra": 23300.0, "cum_transfer": 931.88, "base_bal": 460642.17, "base_equity": 169357.83, "base_cum_interest": 19910.57, "shaved": 1.45, "payoff_idx": 24582.744, "base_payoff_idx": 24607.485, "remaining": 264, "remaining_exact": 263.744, "base_remaining": 289, "base_remaining_exact": 288.485, "tfsa": 21963.18}, {"label": "Jul 2026", "key": "2026-07", "b_end": 438352.28, "m_end": 523143.36, "total_end": 962595.64, "equity": 191647.72, "equity_pct": 30.42, "b_interest": 1411.3, "b_prin": 1061.75, "b_extra": 500.0, "b_transfer": 0.0, "principal_total": 1561.75, "cum_interest": 17879.51, "cum_extra": 21800.0, "cum_transfer": 931.88, "base_bal": 461486.69, "base_equity": 168513.31, "base_cum_interest": 18282.04, "shaved": 0.48, "payoff_idx": 24584.086, "base_payoff_idx": 24607.367, "remaining": 267, "remaining_exact": 266.086, "base_remaining": 290, "base_remaining_exact": 289.367, "tfsa": 19625.18}, {"label": "Jun 2026", "key": "2026-06", "b_end": 439914.04, "m_end": 524256.48, "total_end": 965270.52, "equity": 190085.96, "equity_pct": 30.17, "b_interest": 1464.11, "b_prin": 1008.94, "b_extra": 500.0, "b_transfer": 0.0, "principal_total": 1508.94, "cum_interest": 16468.21, "cum_extra": 21300.0, "cum_transfer": 931.88, "base_bal": 462476.06, "base_equity": 167523.94, "base_cum_interest": 16798.36, "shaved": 0.49, "payoff_idx": 24584.603, "base_payoff_idx": 24607.403, "remaining": 268, "remaining_exact": 267.603, "base_remaining": 291, "base_remaining_exact": 290.403, "tfsa": 18475.18}, {"label": "May 2026", "key": "2026-05", "b_end": 441422.97, "m_end": 525309.02, "total_end": 967831.99, "equity": 188577.03, "equity_pct": 29.93, "b_interest": 1436.0, "b_prin": 1037.05, "b_extra": 2800.0, "b_transfer": 1931.88, "principal_total": 5768.93, "cum_interest": 15004.1, "cum_extra": 20800.0, "cum_transfer": 931.88, "base_bal": 463412.06, "base_equity": 166587.94, "base_cum_interest": 15261.31, "shaved": 4.67, "payoff_idx": 24585.076, "base_payoff_idx": 24607.387, "remaining": 270, "remaining_exact": 269.076, "base_remaining": 292, "base_remaining_exact": 291.387, "tfsa": 17595.07}, {"label": "Apr 2026", "key": "2026-04", "b_end": 447191.9, "m_end": 524491.46, "total_end": 971683.36, "equity": 182808.1, "equity_pct": 29.02, "b_interest": 1451.35, "b_prin": 1021.7, "b_extra": 4000.0, "b_transfer": 0.0, "principal_total": 5021.7, "cum_interest": 13568.1, "cum_extra": 18000.0, "cum_transfer": -1000.0, "base_bal": 464393.88, "base_equity": 165606.12, "base_cum_interest": 13770.08, "shaved": 4.01, "payoff_idx": 24589.773, "base_payoff_idx": 24607.422, "remaining": 275, "remaining_exact": 274.773, "base_remaining": 293, "base_remaining_exact": 292.422, "tfsa": 13808.55}, {"label": "Mar 2026", "key": "2026-03", "b_end": 452213.61, "m_end": 525603.1, "total_end": 977816.71, "equity": 177786.39, "equity_pct": 28.22, "b_interest": 1359.04, "b_prin": 1114.01, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 1114.01, "cum_interest": 12116.76, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 465373.35, "base_equity": 164626.65, "base_cum_interest": 12276.5, "shaved": 0.0, "payoff_idx": 24593.821, "base_payoff_idx": 24607.459, "remaining": 280, "remaining_exact": 279.821, "base_remaining": 294, "base_remaining_exact": 293.459, "tfsa": 10662.27}, {"label": "Feb 2026", "key": "2026-02", "b_end": 453327.62, "m_end": 526822.26, "total_end": 980149.88, "equity": 176672.38, "equity_pct": 28.04, "b_interest": 1556.33, "b_prin": 916.72, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 916.72, "cum_interest": 10757.72, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 466448.03, "base_equity": 163551.97, "base_cum_interest": 10878.13, "shaved": 0.0, "payoff_idx": 24593.952, "base_payoff_idx": 24607.6, "remaining": 281, "remaining_exact": 280.952, "base_remaining": 295, "base_remaining_exact": 294.6, "tfsa": 10533.24}, {"label": "Jan 2026", "key": "2026-01", "b_end": 454244.34, "m_end": 527812.41, "total_end": 982056.75, "equity": 175755.66, "equity_pct": 27.9, "b_interest": 1510.88, "b_prin": 962.17, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 962.17, "cum_interest": 9201.39, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 467319.95, "base_equity": 162680.05, "base_cum_interest": 9277.0, "shaved": 0.0, "payoff_idx": 24593.886, "base_payoff_idx": 24607.529, "remaining": 282, "remaining_exact": 281.886, "base_remaining": 296, "base_remaining_exact": 295.529, "tfsa": 10375.87}, {"label": "Dec 2025", "key": "2025-12", "b_end": 455206.51, "m_end": 528855.6, "total_end": 984062.11, "equity": 174793.49, "equity_pct": 27.74, "b_interest": 1373.51, "b_prin": 1099.54, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 1099.54, "cum_interest": 7690.51, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 468238.86, "base_equity": 161761.14, "base_cum_interest": 7722.86, "shaved": 0.0, "payoff_idx": 24593.869, "base_payoff_idx": 24607.511, "remaining": 283, "remaining_exact": 282.869, "base_remaining": 297, "base_remaining_exact": 296.511, "tfsa": 10238.0}, {"label": "Nov 2025", "key": "2025-11", "b_end": 456306.04, "m_end": 530058.62, "total_end": 986364.66, "equity": 173693.96, "equity_pct": 27.57, "b_interest": 1664.57, "b_prin": 808.48, "b_extra": 14000.0, "b_transfer": 0.0, "principal_total": 14808.48, "cum_interest": 6316.99, "cum_extra": 14000.0, "cum_transfer": -1000.0, "base_bal": 469299.28, "base_equity": 160700.72, "base_cum_interest": 6310.23, "shaved": 14.74, "payoff_idx": 24593.997, "base_payoff_idx": 24607.648, "remaining": 284, "remaining_exact": 283.997, "base_remaining": 298, "base_remaining_exact": 297.648, "tfsa": 56.0}, {"label": "Oct 2025", "key": "2025-10", "b_end": 471114.52, "m_end": 530981.06, "total_end": 1002095.58, "equity": 158885.48, "equity_pct": 25.22, "b_interest": 1516.32, "b_prin": 956.73, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 956.73, "cum_interest": 4652.42, "cum_extra": 0.0, "cum_transfer": -1000.0, "base_bal": 470111.31, "base_equity": 159888.69, "base_cum_interest": 4649.21, "shaved": 0.0, "payoff_idx": 24608.605, "base_payoff_idx": 24607.522, "remaining": 300, "remaining_exact": 299.605, "base_remaining": 299, "base_remaining_exact": 298.522, "tfsa": 0.0}, {"label": "Sep 2025", "key": "2025-09", "b_end": 472071.25, "m_end": 532070.55, "total_end": 1004141.8, "equity": 157928.75, "equity_pct": 25.07, "b_interest": 1566.55, "b_prin": 906.5, "b_extra": 0.0, "b_transfer": -1000.0, "principal_total": -93.5, "cum_interest": 3136.1, "cum_extra": 0.0, "cum_transfer": -1000.0, "base_bal": 471071.25, "base_equity": 158928.75, "base_cum_interest": 3136.1, "shaved": -1.08, "payoff_idx": 24608.641, "base_payoff_idx": 24607.558, "remaining": 301, "remaining_exact": 300.641, "base_remaining": 300, "base_remaining_exact": 299.558, "tfsa": 0.0}, {"label": "Aug 2025", "key": "2025-08", "b_end": 471977.75, "m_end": 534096.35, "total_end": 1006074.1, "equity": 158022.25, "equity_pct": 25.08, "b_interest": 1569.55, "b_prin": 903.5, "b_extra": 0.0, "b_transfer": 0.0, "principal_total": 903.5, "cum_interest": 1569.55, "cum_extra": 0.0, "cum_transfer": 0.0, "base_bal": 471977.75, "base_equity": 158022.25, "base_cum_interest": 1569.55, "shaved": 0.0, "payoff_idx": 24607.54, "base_payoff_idx": 24607.54, "remaining": 301, "remaining_exact": 300.54, "base_remaining": 301, "base_remaining_exact": 300.54, "tfsa": 0.0}]}, "fin": {"cur_label": "Aug 2026", "prev_label": "Jul 2026", "yr_ago_label": "Aug 2025", "window_order": ["3m", "12m", "5y"], "default_window": "12m", "windows": {"3m": {"headline": {"income": {"cur": 12317.98, "prev": 9825.07, "yr_ago": 8754.82, "avg": 11152.48, "median": 11314.4, "total": 33457.45}, "spend": {"cur": 6528.85, "prev": 8050.99, "yr_ago": 13068.06, "avg": 7133.0, "median": 6819.17, "total": 21399.01}, "housing": {"cur": 3759.81, "prev": 3759.81, "yr_ago": 4626.83, "avg": 3760.56, "median": 3759.81, "total": 11281.67}, "spend_ex_housing": {"cur": 2769.04, "prev": 4291.18, "yr_ago": 8441.23, "avg": 3372.45, "median": 3057.12, "total": 10117.34}, "saved": {"cur": 4903.59, "prev": 3052.51, "yr_ago": 1277.75, "avg": 3453.93, "median": 3052.51, "total": 10361.8}, "assigned": {"cur": 8637.91, "prev": 6978.5, "yr_ago": 9300.99, "avg": 8077.69, "median": 8616.65, "total": 24233.06}, "net": {"cur": 885.54, "prev": -1278.43, "yr_ago": -5590.99, "avg": 565.55, "median": 885.54, "total": 1696.64}, "savings_rate": {"cur": 39.81, "prev": 31.07, "yr_ago": 14.59, "avg": 30.71, "median": 31.07, "total": 92.14}}, "categories": [{"group": "Savings", "category": "House", "assigned": 3700.0, "spent": 3838.0, "available": -138.0, "prev": 1650.0, "yr_ago": -0.0, "avg": 2289.37, "vs_avg": 1548.63}, {"group": "Monthly", "category": "Amroth House", "assigned": 3759.81, "spent": 3759.81, "available": 0.0, "prev": 3759.81, "yr_ago": 4348.05, "avg": 3760.56, "vs_avg": -0.75}, {"group": "Savings", "category": "Retirement", "assigned": 965.59, "spent": 965.59, "available": 0.0, "prev": 1302.51, "yr_ago": 1227.75, "avg": 1077.9, "vs_avg": -112.31}, {"group": "Tax Deductible", "category": "God's Money", "assigned": 850.0, "spent": 678.0, "available": 967.23, "prev": 678.0, "yr_ago": 753.0, "avg": 849.77, "vs_avg": -171.77}, {"group": "Monthly", "category": "Groceries", "assigned": 500.0, "spent": 587.16, "available": 341.29, "prev": 605.61, "yr_ago": 590.02, "avg": 617.2, "vs_avg": -30.04}, {"group": "Cumulative", "category": "Miscellaneous", "assigned": 400.0, "spent": 353.52, "available": 110.3, "prev": 9.52, "yr_ago": -0.0, "avg": 124.19, "vs_avg": 229.33}, {"group": "Cumulative", "category": "Car", "assigned": 400.0, "spent": 325.58, "available": 267.41, "prev": 649.22, "yr_ago": 742.02, "avg": 463.72, "vs_avg": -138.14}, {"group": "Cumulative", "category": "Home Improvement", "assigned": 600.0, "spent": 147.79, "available": 2513.54, "prev": 455.51, "yr_ago": -0.0, "avg": 219.81, "vs_avg": -72.02}, {"group": "Cumulative", "category": "Progeny", "assigned": 200.0, "spent": 126.79, "available": 175.62, "prev": 188.39, "yr_ago": 120.71, "avg": 172.35, "vs_avg": -45.56}, {"group": "Tax Deductible", "category": "Medical", "assigned": 0.0, "spent": 105.0, "available": -105.0, "prev": 105.0, "yr_ago": 90.0, "avg": -93.85, "vs_avg": 198.85}, {"group": "Savings", "category": "RESP", "assigned": 100.0, "spent": 100.0, "available": 0.0, "prev": 100.0, "yr_ago": 50.0, "avg": 86.67, "vs_avg": 13.33}, {"group": "Monthly", "category": "Internet", "assigned": 89.27, "spent": 89.27, "available": 0.0, "prev": 89.27, "yr_ago": 56.5, "avg": 89.27, "vs_avg": 0.0}, {"group": "Cumulative", "category": "Gifts", "assigned": 250.0, "spent": 63.43, "available": 1769.29, "prev": 105.0, "yr_ago": -0.0, "avg": 56.14, "vs_avg": 7.29}, {"group": "Cumulative", "category": "Health & Pharmacy", "assigned": 100.0, "spent": 53.98, "available": 119.57, "prev": 96.45, "yr_ago": 112.79, "avg": 122.92, "vs_avg": -68.94}, {"group": "Monthly", "category": "Cellphone", "assigned": 60.0, "spent": 52.01, "available": 16.79, "prev": 45.2, "yr_ago": 378.56, "avg": 47.47, "vs_avg": 4.54}, {"group": "Monthly", "category": "Life Insurance", "assigned": 48.83, "spent": 48.83, "available": 0.0, "prev": 48.83, "yr_ago": 48.83, "avg": 48.83, "vs_avg": -0.0}, {"group": "Cumulative", "category": "Travel", "assigned": 1200.0, "spent": 35.61, "available": 1786.86, "prev": 786.5, "yr_ago": 50.25, "avg": 274.04, "vs_avg": -238.43}, {"group": "Cumulative", "category": "Books & Education", "assigned": 40.0, "spent": 33.67, "available": 159.17, "prev": 23.16, "yr_ago": -0.0, "avg": 42.76, "vs_avg": -9.09}, {"group": "Tax Deductible", "category": "Koala Budget", "assigned": 0.0, "spent": 28.0, "available": -3.37, "prev": 28.0, "yr_ago": -0.0, "avg": 28.0, "vs_avg": 0.0}, {"group": "Cumulative", "category": "Fees", "assigned": 0.0, "spent": 20.0, "available": 60.69, "prev": 20.0, "yr_ago": -0.0, "avg": 13.33, "vs_avg": 6.67}, {"group": "Cumulative", "category": "Public Transportation", "assigned": 50.0, "spent": 20.0, "available": 86.7, "prev": 43.3, "yr_ago": 20.0, "avg": 21.1, "vs_avg": -1.1}, {"group": "Cumulative", "category": "Eating Out", "assigned": 40.0, "spent": 0.4, "available": 298.84, "prev": 53.33, "yr_ago": 35.65, "avg": 4.17, "vs_avg": -3.77}, {"group": "Monthly", "category": "Daycare", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": 1331.0, "avg": 159.5, "vs_avg": -159.5}, {"group": "Cumulative", "category": "Clothes", "assigned": 80.0, "spent": -0.0, "available": 406.25, "prev": -0.0, "yr_ago": 41.56, "avg": 75.33, "vs_avg": -75.33}, {"group": "Cumulative", "category": "Fun, Dates & Hobbies", "assigned": 40.0, "spent": -0.0, "available": 231.97, "prev": 20.0, "yr_ago": -0.0, "avg": 7.23, "vs_avg": -7.23}, {"group": "Cumulative", "category": "Bike", "assigned": 100.0, "spent": -0.0, "available": 274.1, "prev": 3.03, "yr_ago": -0.0, "avg": 125.3, "vs_avg": -125.3}, {"group": "Cumulative", "category": "Vivian's Choice", "assigned": 60.0, "spent": -0.0, "available": 1441.11, "prev": 67.8, "yr_ago": 120.15, "avg": 79.79, "vs_avg": -79.79}, {"group": "Cumulative", "category": "Weddings", "assigned": 20.0, "spent": -0.0, "available": 20.0, "prev": 161.02, "yr_ago": 1579.56, "avg": 53.67, "vs_avg": -53.67}, {"group": "Tax Deductible", "category": "Vivian's Work", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": 9.04, "yr_ago": 621.53, "avg": -229.61, "vs_avg": 229.61}], "group_rows": [{"group": "Savings", "spent": 4903.59, "avg": 3453.94, "prev": 3052.51, "vs_avg": 1449.65}, {"group": "Monthly", "spent": 4537.08, "avg": 4722.83, "prev": 4548.72, "vs_avg": -185.75}, {"group": "Cumulative", "spent": 1180.77, "avg": 1855.85, "prev": 2682.23, "vs_avg": -675.08}, {"group": "Tax Deductible", "spent": 811.0, "avg": 554.31, "prev": 820.04, "vs_avg": 256.69}], "series": {"income": [11314.4, 9825.07, 12317.98], "spend": [6819.17, 8050.99, 6528.85], "saved": [2405.7, 3052.51, 4903.59], "net": [2089.53, -1278.43, 885.54], "housing": [3762.05, 3759.81, 3759.81], "spend_ex_housing": [3057.12, 4291.18, 2769.04]}, "labels": ["Jun 2026", "Jul 2026", "Aug 2026"], "keys": ["2026-06", "2026-07", "2026-08"], "id": "3m", "label": "Last 3 months", "short": "3-mo", "months": 3, "span": "Jun 2026 - Aug 2026", "clamped": false, "nw": {"series": [{"key": "2026-06", "label": "Jun 2026", "assets": 284499.0, "debt": 2445.0, "net": 282054.0}, {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}], "stack": [{"bucket": "House equity", "values": [189588.55, 190648.7, 193073.09]}, {"bucket": "Pensions", "values": [40405.21, 41707.72, 42673.31]}, {"bucket": "Investments & savings", "values": [29469.3, 30719.3, 33157.3]}, {"bucket": "Cash & chequing", "values": [22590.94, 21312.51, 22198.05]}], "now": {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}, "prev": {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, "start": {"key": "2026-06", "label": "Jun 2026", "assets": 284499.0, "debt": 2445.0, "net": 282054.0}}, "income_sources": [{"payee": "World Vision", "amount": 4007.18, "avg": 4675.04, "vs_avg": -667.86}, {"payee": "BBC Income", "amount": 3424.17, "avg": 1912.59, "vs_avg": 1511.58}, {"payee": "Viv EI", "amount": 1704.0, "avg": 1136.0, "vs_avg": 568.0}, {"payee": "CHURCH OF THE R PAY", "amount": 1361.36, "avg": 1592.71, "vs_avg": -231.35}, {"payee": "CCB", "amount": 821.28, "avg": 680.78, "vs_avg": 140.5}, {"payee": "Timmy's Pension", "amount": 673.84, "avg": 786.15, "vs_avg": -112.31}, {"payee": "Vivian Pension", "amount": 291.75, "avg": 291.75, "vs_avg": 0.0}, {"payee": "Interest", "amount": 18.04, "avg": 36.56, "vs_avg": -18.52}, {"payee": "Credit Card Rewards Redemption", "amount": 11.36, "avg": 22.57, "vs_avg": -11.21}, {"payee": "Promotion", "amount": 5.0, "avg": 1.67, "vs_avg": 3.33}]}, "12m": {"headline": {"income": {"cur": 12317.98, "prev": 9825.07, "yr_ago": 8754.82, "avg": 14716.13, "median": 11352.35, "total": 176593.51}, "spend": {"cur": 6528.85, "prev": 8050.99, "yr_ago": 13068.06, "avg": 9851.34, "median": 8077.09, "total": 118216.1}, "housing": {"cur": 3759.81, "prev": 3759.81, "yr_ago": 4626.83, "avg": 4984.28, "median": 3762.05, "total": 59811.32}, "spend_ex_housing": {"cur": 2769.04, "prev": 4291.18, "yr_ago": 8441.23, "avg": 4867.07, "median": 4289.96, "total": 58404.78}, "saved": {"cur": 4903.59, "prev": 3052.51, "yr_ago": 1277.75, "avg": 4595.69, "median": 1948.04, "total": 55148.24}, "assigned": {"cur": 8637.91, "prev": 6978.5, "yr_ago": 9300.99, "avg": 8141.91, "median": 7511.21, "total": 97702.92}, "net": {"cur": 885.54, "prev": -1278.43, "yr_ago": -5590.99, "avg": 269.1, "median": 1123.28, "total": 3229.17}, "savings_rate": {"cur": 39.81, "prev": 31.07, "yr_ago": 14.59, "avg": 38.79, "median": 19.4, "total": 465.47}}, "categories": [{"group": "Savings", "category": "House", "assigned": 3700.0, "spent": 3838.0, "available": -138.0, "prev": 1650.0, "yr_ago": -0.0, "avg": 2685.57, "vs_avg": 1152.43}, {"group": "Monthly", "category": "Amroth House", "assigned": 3759.81, "spent": 3759.81, "available": 0.0, "prev": 3759.81, "yr_ago": 4348.05, "avg": 4984.28, "vs_avg": -1224.47}, {"group": "Savings", "category": "Retirement", "assigned": 965.59, "spent": 965.59, "available": 0.0, "prev": 1302.51, "yr_ago": 1227.75, "avg": 1009.28, "vs_avg": -43.69}, {"group": "Tax Deductible", "category": "God's Money", "assigned": 850.0, "spent": 678.0, "available": 967.23, "prev": 678.0, "yr_ago": 753.0, "avg": 1432.44, "vs_avg": -754.44}, {"group": "Monthly", "category": "Groceries", "assigned": 500.0, "spent": 587.16, "available": 341.29, "prev": 605.61, "yr_ago": 590.02, "avg": 768.84, "vs_avg": -181.68}, {"group": "Cumulative", "category": "Miscellaneous", "assigned": 400.0, "spent": 353.52, "available": 110.3, "prev": 9.52, "yr_ago": -0.0, "avg": 31.05, "vs_avg": 322.47}, {"group": "Cumulative", "category": "Car", "assigned": 400.0, "spent": 325.58, "available": 267.41, "prev": 649.22, "yr_ago": 742.02, "avg": 424.45, "vs_avg": -98.87}, {"group": "Cumulative", "category": "Home Improvement", "assigned": 600.0, "spent": 147.79, "available": 2513.54, "prev": 455.51, "yr_ago": -0.0, "avg": 312.14, "vs_avg": -164.35}, {"group": "Cumulative", "category": "Progeny", "assigned": 200.0, "spent": 126.79, "available": 175.62, "prev": 188.39, "yr_ago": 120.71, "avg": 165.33, "vs_avg": -38.54}, {"group": "Tax Deductible", "category": "Medical", "assigned": 0.0, "spent": 105.0, "available": -105.0, "prev": 105.0, "yr_ago": 90.0, "avg": -27.23, "vs_avg": 132.23}, {"group": "Savings", "category": "RESP", "assigned": 100.0, "spent": 100.0, "available": 0.0, "prev": 100.0, "yr_ago": 50.0, "avg": 67.5, "vs_avg": 32.5}, {"group": "Monthly", "category": "Internet", "assigned": 89.27, "spent": 89.27, "available": 0.0, "prev": 89.27, "yr_ago": 56.5, "avg": 86.58, "vs_avg": 2.69}, {"group": "Cumulative", "category": "Gifts", "assigned": 250.0, "spent": 63.43, "available": 1769.29, "prev": 105.0, "yr_ago": -0.0, "avg": 175.59, "vs_avg": -112.16}, {"group": "Cumulative", "category": "Health & Pharmacy", "assigned": 100.0, "spent": 53.98, "available": 119.57, "prev": 96.45, "yr_ago": 112.79, "avg": 98.8, "vs_avg": -44.82}, {"group": "Monthly", "category": "Cellphone", "assigned": 60.0, "spent": 52.01, "available": 16.79, "prev": 45.2, "yr_ago": 378.56, "avg": 146.63, "vs_avg": -94.62}, {"group": "Monthly", "category": "Life Insurance", "assigned": 48.83, "spent": 48.83, "available": 0.0, "prev": 48.83, "yr_ago": 48.83, "avg": 48.83, "vs_avg": 0.0}, {"group": "Cumulative", "category": "Travel", "assigned": 1200.0, "spent": 35.61, "available": 1786.86, "prev": 786.5, "yr_ago": 50.25, "avg": 223.6, "vs_avg": -187.99}, {"group": "Cumulative", "category": "Books & Education", "assigned": 40.0, "spent": 33.67, "available": 159.17, "prev": 23.16, "yr_ago": -0.0, "avg": 37.21, "vs_avg": -3.54}, {"group": "Tax Deductible", "category": "Koala Budget", "assigned": 0.0, "spent": 28.0, "available": -3.37, "prev": 28.0, "yr_ago": -0.0, "avg": 92.95, "vs_avg": -64.95}, {"group": "Cumulative", "category": "Fees", "assigned": 0.0, "spent": 20.0, "available": 60.69, "prev": 20.0, "yr_ago": -0.0, "avg": 3.42, "vs_avg": 16.58}, {"group": "Cumulative", "category": "Public Transportation", "assigned": 50.0, "spent": 20.0, "available": 86.7, "prev": 43.3, "yr_ago": 20.0, "avg": 28.87, "vs_avg": -8.87}, {"group": "Cumulative", "category": "Eating Out", "assigned": 40.0, "spent": 0.4, "available": 298.84, "prev": 53.33, "yr_ago": 35.65, "avg": 30.65, "vs_avg": -30.25}, {"group": "Monthly", "category": "Daycare", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": 1331.0, "avg": 319.0, "vs_avg": -319.0}, {"group": "Cumulative", "category": "Clothes", "assigned": 80.0, "spent": -0.0, "available": 406.25, "prev": -0.0, "yr_ago": 41.56, "avg": 74.6, "vs_avg": -74.6}, {"group": "Cumulative", "category": "Fun, Dates & Hobbies", "assigned": 40.0, "spent": -0.0, "available": 231.97, "prev": 20.0, "yr_ago": -0.0, "avg": 31.0, "vs_avg": -31.0}, {"group": "Cumulative", "category": "Exercise", "assigned": 40.0, "spent": -0.0, "available": 259.24, "prev": -0.0, "yr_ago": -0.0, "avg": 30.22, "vs_avg": -30.22}, {"group": "Cumulative", "category": "Bike", "assigned": 100.0, "spent": -0.0, "available": 274.1, "prev": 3.03, "yr_ago": -0.0, "avg": 169.31, "vs_avg": -169.31}, {"group": "Cumulative", "category": "Tim's Choice", "assigned": 60.0, "spent": -0.0, "available": 781.73, "prev": -0.0, "yr_ago": -0.0, "avg": 43.75, "vs_avg": -43.75}, {"group": "Cumulative", "category": "Vivian's Choice", "assigned": 60.0, "spent": -0.0, "available": 1441.11, "prev": 67.8, "yr_ago": 120.15, "avg": 40.76, "vs_avg": -40.76}, {"group": "Cumulative", "category": "Weddings", "assigned": 20.0, "spent": -0.0, "available": 20.0, "prev": 161.02, "yr_ago": 1579.56, "avg": 95.29, "vs_avg": -95.29}, {"group": "Tax Deductible", "category": "Vivian's Work", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": 9.04, "yr_ago": 621.53, "avg": -34.79, "vs_avg": 34.79}, {"group": "Savings", "category": "Emergency Fund", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 833.33, "vs_avg": -833.33}, {"group": "Hidden Categories", "category": "Moving & Home Setup", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": 1361.65, "avg": 17.79, "vs_avg": -17.79}], "group_rows": [{"group": "Savings", "spent": 4903.59, "avg": 4595.68, "prev": 3052.51, "vs_avg": 307.91}, {"group": "Monthly", "spent": 4537.08, "avg": 6354.16, "prev": 4548.72, "vs_avg": -1817.08}, {"group": "Cumulative", "spent": 1180.77, "avg": 2016.04, "prev": 2682.23, "vs_avg": -835.27}, {"group": "Tax Deductible", "spent": 811.0, "avg": 1463.37, "prev": 820.04, "vs_avg": -652.37}, {"group": "Hidden Categories", "spent": 0.0, "avg": 17.79, "prev": 0.0, "vs_avg": -17.79}], "series": {"income": [11390.31, 10533.86, 44472.65, 12155.64, 8497.43, 9554.71, 20427.76, 10727.52, 15376.18, 11314.4, 9825.07, 12317.98], "spend": [5624.94, 8103.18, 22068.04, 16359.56, 8704.95, 7049.12, 5843.21, 12221.93, 10842.16, 6819.17, 8050.99, 6528.85], "saved": [965.75, 965.75, 1021.75, 11297.59, 1490.38, 1144.57, 1097.59, 18182.59, 8620.47, 2405.7, 3052.51, 4903.59], "net": [4799.62, 1464.93, 21382.86, -15501.51, -1697.9, 1361.02, 13486.96, -19677.0, -4086.45, 2089.53, -1278.43, 885.54], "housing": [3716.61, 3616.21, 17616.21, 3616.21, 4416.21, 4262.05, 3762.05, 3762.05, 3762.05, 3762.05, 3759.81, 3759.81], "spend_ex_housing": [1908.33, 4486.97, 4451.83, 12743.35, 4288.74, 2787.07, 2081.16, 8459.88, 7080.11, 3057.12, 4291.18, 2769.04]}, "labels": ["Sep 2025", "Oct 2025", "Nov 2025", "Dec 2025", "Jan 2026", "Feb 2026", "Mar 2026", "Apr 2026", "May 2026", "Jun 2026", "Jul 2026", "Aug 2026"], "keys": ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"], "id": "12m", "label": "Last 12 months", "short": "12-mo", "months": 12, "span": "Sep 2025 - Aug 2026", "clamped": false, "nw": {"series": [{"key": "2025-09", "label": "Sep 2025", "assets": 213252.04, "debt": 2645.89, "net": 210606.15}, {"key": "2025-10", "label": "Oct 2025", "assets": 218489.47, "debt": 4495.91, "net": 213993.56}, {"key": "2025-11", "label": "Nov 2025", "assets": 254039.47, "debt": 2832.82, "net": 251206.65}, {"key": "2025-12", "label": "Dec 2025", "assets": 251444.01, "debt": 395.8, "net": 251048.21}, {"key": "2026-01", "label": "Jan 2026", "assets": 256124.56, "debt": 4321.7, "net": 251802.86}, {"key": "2026-02", "label": "Feb 2026", "assets": 258135.21, "debt": 2824.71, "net": 255310.5}, {"key": "2026-03", "label": "Mar 2026", "assets": 272422.03, "debt": 1365.94, "net": 271056.09}, {"key": "2026-04", "label": "Apr 2026", "assets": 276978.23, "debt": 6415.57, "net": 270562.66}, {"key": "2026-05", "label": "May 2026", "assets": 281805.27, "debt": 4751.81, "net": 277053.46}, {"key": "2026-06", "label": "Jun 2026", "assets": 284499.0, "debt": 2445.0, "net": 282054.0}, {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}], "stack": [{"bucket": "House equity", "values": [157928.75, 158885.48, 173693.96, 174793.5, 175755.67, 176672.39, 177786.4, 182808.1, 188583.24, 189588.55, 190648.7, 193073.09]}, {"bucket": "Pensions", "values": [28584.79, 29500.54, 30416.29, 34274.75, 35577.26, 36542.85, 37508.44, 38474.03, 39439.62, 40405.21, 41707.72, 42673.31]}, {"bucket": "Investments & savings", "values": [324.11, 374.11, 480.11, 10865.18, 11053.05, 11317.36, 11496.39, 24692.67, 28529.19, 29469.3, 30719.3, 33157.3]}, {"bucket": "Cash & chequing", "values": [23768.5, 25233.43, 46616.29, 31114.78, 29416.88, 30777.9, 44264.86, 24587.86, 20501.41, 22590.94, 21312.51, 22198.05]}], "now": {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}, "prev": {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, "start": {"key": "2025-09", "label": "Sep 2025", "assets": 213252.04, "debt": 2645.89, "net": 210606.15}}, "income_sources": [{"payee": "World Vision", "amount": 4007.18, "avg": 4294.41, "vs_avg": -287.23}, {"payee": "BBC Income", "amount": 3424.17, "avg": 1885.6, "vs_avg": 1538.57}, {"payee": "Viv EI", "amount": 1704.0, "avg": 284.0, "vs_avg": 1420.0}, {"payee": "CHURCH OF THE R PAY", "amount": 1361.36, "avg": 2445.51, "vs_avg": -1084.15}, {"payee": "CCB", "amount": 821.28, "avg": 470.01, "vs_avg": 351.27}, {"payee": "Timmy's Pension", "amount": 673.84, "avg": 717.53, "vs_avg": -43.69}, {"payee": "Vivian Pension", "amount": 291.75, "avg": 291.75, "vs_avg": 0.0}, {"payee": "Interest", "amount": 18.04, "avg": 29.74, "vs_avg": -11.7}, {"payee": "Credit Card Rewards Redemption", "amount": 11.36, "avg": 64.52, "vs_avg": -53.16}, {"payee": "Promotion", "amount": 5.0, "avg": 0.42, "vs_avg": 4.58}]}, "5y": {"headline": {"income": {"cur": 12317.98, "prev": 9825.07, "yr_ago": 8754.82, "avg": 12224.34, "median": 10107.93, "total": 696787.41}, "spend": {"cur": 6528.85, "prev": 8050.99, "yr_ago": 13068.06, "avg": 7975.78, "median": 6819.17, "total": 454619.21}, "housing": {"cur": 3759.81, "prev": 3759.81, "yr_ago": 4626.83, "avg": 2376.23, "median": 1716.79, "total": 135445.1}, "spend_ex_housing": {"cur": 2769.04, "prev": 4291.18, "yr_ago": 8441.23, "avg": 5599.55, "median": 4486.97, "total": 319174.11}, "saved": {"cur": 4903.59, "prev": 3052.51, "yr_ago": 1277.75, "avg": 3736.83, "median": 918.31, "total": 212999.16}, "assigned": {"cur": 8637.91, "prev": 6978.5, "yr_ago": 9300.99, "avg": 7616.91, "median": 6850.58, "total": 434163.78}, "net": {"cur": 885.54, "prev": -1278.43, "yr_ago": -5590.99, "avg": 511.74, "median": 794.02, "total": 29169.04}, "savings_rate": {"cur": 39.81, "prev": 31.07, "yr_ago": 14.59, "avg": 15.93, "median": 8.07, "total": 908.11}}, "categories": [{"group": "Savings", "category": "House", "assigned": 3700.0, "spent": 3838.0, "available": -138.0, "prev": 1650.0, "yr_ago": -0.0, "avg": 2672.01, "vs_avg": 1165.99}, {"group": "Monthly", "category": "Amroth House", "assigned": 3759.81, "spent": 3759.81, "available": 0.0, "prev": 3759.81, "yr_ago": 4348.05, "avg": 1123.89, "vs_avg": 2635.92}, {"group": "Savings", "category": "Retirement", "assigned": 965.59, "spent": 965.59, "available": 0.0, "prev": 1302.51, "yr_ago": 1227.75, "avg": 706.84, "vs_avg": 258.75}, {"group": "Tax Deductible", "category": "God's Money", "assigned": 850.0, "spent": 678.0, "available": 967.23, "prev": 678.0, "yr_ago": 753.0, "avg": 836.45, "vs_avg": -158.45}, {"group": "Monthly", "category": "Groceries", "assigned": 500.0, "spent": 587.16, "available": 341.29, "prev": 605.61, "yr_ago": 590.02, "avg": 652.17, "vs_avg": -65.01}, {"group": "Cumulative", "category": "Miscellaneous", "assigned": 400.0, "spent": 353.52, "available": 110.3, "prev": 9.52, "yr_ago": -0.0, "avg": 14.02, "vs_avg": 339.5}, {"group": "Cumulative", "category": "Car", "assigned": 400.0, "spent": 325.58, "available": 267.41, "prev": 649.22, "yr_ago": 742.02, "avg": 389.69, "vs_avg": -64.11}, {"group": "Cumulative", "category": "Home Improvement", "assigned": 600.0, "spent": 147.79, "available": 2513.54, "prev": 455.51, "yr_ago": -0.0, "avg": 118.31, "vs_avg": 29.48}, {"group": "Cumulative", "category": "Progeny", "assigned": 200.0, "spent": 126.79, "available": 175.62, "prev": 188.39, "yr_ago": 120.71, "avg": 95.88, "vs_avg": 30.91}, {"group": "Tax Deductible", "category": "Medical", "assigned": 0.0, "spent": 105.0, "available": -105.0, "prev": 105.0, "yr_ago": 90.0, "avg": 123.32, "vs_avg": -18.32}, {"group": "Savings", "category": "RESP", "assigned": 100.0, "spent": 100.0, "available": 0.0, "prev": 100.0, "yr_ago": 50.0, "avg": 17.72, "vs_avg": 82.28}, {"group": "Monthly", "category": "Internet", "assigned": 89.27, "spent": 89.27, "available": 0.0, "prev": 89.27, "yr_ago": 56.5, "avg": 59.71, "vs_avg": 29.56}, {"group": "Cumulative", "category": "Gifts", "assigned": 250.0, "spent": 63.43, "available": 1769.29, "prev": 105.0, "yr_ago": -0.0, "avg": 148.35, "vs_avg": -84.92}, {"group": "Cumulative", "category": "Health & Pharmacy", "assigned": 100.0, "spent": 53.98, "available": 119.57, "prev": 96.45, "yr_ago": 112.79, "avg": 37.41, "vs_avg": 16.57}, {"group": "Monthly", "category": "Cellphone", "assigned": 60.0, "spent": 52.01, "available": 16.79, "prev": 45.2, "yr_ago": 378.56, "avg": 115.58, "vs_avg": -63.57}, {"group": "Monthly", "category": "Life Insurance", "assigned": 48.83, "spent": 48.83, "available": 0.0, "prev": 48.83, "yr_ago": 48.83, "avg": 13.71, "vs_avg": 35.12}, {"group": "Cumulative", "category": "Travel", "assigned": 1200.0, "spent": 35.61, "available": 1786.86, "prev": 786.5, "yr_ago": 50.25, "avg": 391.95, "vs_avg": -356.34}, {"group": "Cumulative", "category": "Books & Education", "assigned": 40.0, "spent": 33.67, "available": 159.17, "prev": 23.16, "yr_ago": -0.0, "avg": 72.77, "vs_avg": -39.1}, {"group": "Tax Deductible", "category": "Koala Budget", "assigned": 0.0, "spent": 28.0, "available": -3.37, "prev": 28.0, "yr_ago": -0.0, "avg": 19.57, "vs_avg": 8.43}, {"group": "Cumulative", "category": "Fees", "assigned": 0.0, "spent": 20.0, "available": 60.69, "prev": 20.0, "yr_ago": -0.0, "avg": 35.67, "vs_avg": -15.67}, {"group": "Cumulative", "category": "Public Transportation", "assigned": 50.0, "spent": 20.0, "available": 86.7, "prev": 43.3, "yr_ago": 20.0, "avg": 42.93, "vs_avg": -22.93}, {"group": "Cumulative", "category": "Eating Out", "assigned": 40.0, "spent": 0.4, "available": 298.84, "prev": 53.33, "yr_ago": 35.65, "avg": 59.13, "vs_avg": -58.73}, {"group": "Monthly", "category": "Daycare", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": 1331.0, "avg": 125.25, "vs_avg": -125.25}, {"group": "Cumulative", "category": "Clothes", "assigned": 80.0, "spent": -0.0, "available": 406.25, "prev": -0.0, "yr_ago": 41.56, "avg": 131.23, "vs_avg": -131.23}, {"group": "Cumulative", "category": "Fun, Dates & Hobbies", "assigned": 40.0, "spent": -0.0, "available": 231.97, "prev": 20.0, "yr_ago": -0.0, "avg": 68.75, "vs_avg": -68.75}, {"group": "Cumulative", "category": "Exercise", "assigned": 40.0, "spent": -0.0, "available": 259.24, "prev": -0.0, "yr_ago": -0.0, "avg": 56.35, "vs_avg": -56.35}, {"group": "Cumulative", "category": "Bike", "assigned": 100.0, "spent": -0.0, "available": 274.1, "prev": 3.03, "yr_ago": -0.0, "avg": 59.9, "vs_avg": -59.9}, {"group": "Cumulative", "category": "Special Splurge", "assigned": 300.0, "spent": -0.0, "available": 1200.0, "prev": -0.0, "yr_ago": -0.0, "avg": 60.99, "vs_avg": -60.99}, {"group": "Cumulative", "category": "Tim's Choice", "assigned": 60.0, "spent": -0.0, "available": 781.73, "prev": -0.0, "yr_ago": -0.0, "avg": 58.51, "vs_avg": -58.51}, {"group": "Cumulative", "category": "Vivian's Choice", "assigned": 60.0, "spent": -0.0, "available": 1441.11, "prev": 67.8, "yr_ago": 120.15, "avg": 47.31, "vs_avg": -47.31}, {"group": "Cumulative", "category": "Weddings", "assigned": 20.0, "spent": -0.0, "available": 20.0, "prev": 161.02, "yr_ago": 1579.56, "avg": 79.89, "vs_avg": -79.89}, {"group": "Tax Deductible", "category": "Timmy's Work", "assigned": -650.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 576.25, "vs_avg": -576.25}, {"group": "Tax Deductible", "category": "Vivian's Work", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": 9.04, "yr_ago": 621.53, "avg": 26.03, "vs_avg": -26.03}, {"group": "Savings", "category": "Emergency Fund", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 340.26, "vs_avg": -340.26}, {"group": "Savings", "category": "Investment Gain/Loss", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 121.25, "vs_avg": -121.25}, {"group": "Savings", "category": "Savings Expenses", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 1.05, "vs_avg": -1.05}, {"group": "Hidden Categories", "category": "Rent", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 1178.15, "vs_avg": -1178.15}, {"group": "Hidden Categories", "category": "Hydro", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": 278.78, "avg": 74.19, "vs_avg": -74.19}, {"group": "Hidden Categories", "category": "Moving & Home Setup", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": 1361.65, "avg": 52.61, "vs_avg": -52.61}, {"group": "Hidden Categories", "category": "Alcohol", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 6.05, "vs_avg": -6.05}, {"group": "Hidden Categories", "category": "Vivian COGS", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 6.73, "vs_avg": -6.73}, {"group": "Hidden Categories", "category": "Income Tax and HST", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": 387.45, "avg": 391.38, "vs_avg": -391.38}, {"group": "Hidden Categories", "category": "Moving Out Fund", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 71.76, "vs_avg": -71.76}, {"group": "Hidden Categories", "category": "Publishing", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 102.31, "vs_avg": -102.31}, {"group": "Hidden Categories", "category": "Tuition", "assigned": 0.0, "spent": -0.0, "available": 0.0, "prev": -0.0, "yr_ago": -0.0, "avg": 451.65, "vs_avg": -451.65}], "group_rows": [{"group": "Savings", "spent": 4903.59, "avg": 3859.13, "prev": 3052.51, "vs_avg": 1044.46}, {"group": "Monthly", "spent": 4537.08, "avg": 2090.31, "prev": 4548.72, "vs_avg": 2446.77}, {"group": "Cumulative", "spent": 1180.77, "avg": 1969.04, "prev": 2682.23, "vs_avg": -788.27}, {"group": "Tax Deductible", "spent": 811.0, "avg": 1581.62, "prev": 820.04, "vs_avg": -770.62}, {"group": "Hidden Categories", "spent": 0.0, "avg": 2334.83, "prev": 0.0, "vs_avg": -2334.83}], "series": {"income": [86528.39, 5267.22, 5159.39, 13638.85, 6478.56, 9281.11, 5699.99, 4646.83, 5791.29, 7314.73, 7397.18, 7158.09, 5988.54, 6072.63, 6319.76, 8901.04, 12436.97, 11534.42, 10178.55, 7385.97, 10298.28, 7479.55, 12465.88, 9745.08, 9546.67, 13032.93, 9501.21, 21137.53, 15451.55, 7912.18, 7950.62, 13839.81, 9936.02, 10692.45, 15531.79, 13439.63, 14409.21, 8709.12, 10107.93, 18536.51, 11070.99, 4062.28, 12016.8, 11385.55, 8754.82, 11390.31, 10533.86, 44472.65, 12155.64, 8497.43, 9554.71, 20427.76, 10727.52, 15376.18, 11314.4, 9825.07, 12317.98], "spend": [370.52, 4088.45, 4365.37, 3637.28, 10958.55, 4893.94, 6356.16, 5816.2, 6405.66, 3963.71, 6584.06, 6656.43, 5161.73, 4779.88, 6015.08, 8568.81, 11487.91, 7782.29, 7420.38, 8994.44, 9801.9, 7318.52, 7450.92, 5349.16, 9554.43, 6614.48, 14694.51, 6000.58, 16997.84, 5515.52, 6058.58, 8253.62, 10774.69, 4858.91, 16046.74, 16511.07, 9798.53, 5090.8, 4642.47, 5069.03, 7700.41, 7407.62, 2619.06, 4898.81, 13068.06, 5624.94, 8103.18, 22068.04, 16359.56, 8704.95, 7049.12, 5843.21, 12221.93, 10842.16, 6819.17, 8050.99, 6528.85], "saved": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 88655.83, 0.0, 909.25, 909.25, 1047.25, 7419.75, 2043.75, 2355.75, 7761.02, 2227.75, 2071.75, -12639.25, 2383.75, 5828.75, 5521.75, 915.75, -579.25, 1262.03, 17915.75, 5593.75, 915.75, -63058.44, 76193.17, 918.31, 1277.75, 965.75, 965.75, 1021.75, 11297.59, 1490.38, 1144.57, 1097.59, 18182.59, 8620.47, 2405.7, 3052.51, 4903.59], "net": [86157.87, 1178.77, 794.02, 10001.57, -4479.99, 4387.17, -656.17, -1169.37, -614.37, 3351.02, 813.12, 501.66, 826.81, 1292.75, 304.68, 332.23, 949.06, 3752.13, 2758.17, -1608.47, -88159.45, 161.03, 4105.71, 3486.67, -1055.01, -1001.3, -7237.05, 12781.2, -9307.31, 168.91, -179.71, 18225.44, -3222.42, 4.79, -6036.7, -3987.19, 5189.93, 2356.29, -12450.29, 7873.73, 2454.83, 59713.1, -66795.43, 5568.43, -5590.99, 4799.62, 1464.93, 21382.86, -15501.51, -1697.9, 1361.02, 13486.96, -19677.0, -4086.45, 2089.53, -1278.43, 885.54], "housing": [0.0, 1540.24, 1499.31, 1485.61, 1514.62, 1582.65, 1403.49, 1339.74, 3077.79, 82.85, 1731.99, 1717.49, 1714.47, 1714.68, 1720.72, 1776.64, 1712.86, 1849.72, 1711.22, 1713.02, 1716.79, 1789.7, 1696.17, 1704.94, 1821.69, 1707.47, 1710.77, 1711.57, 1709.78, 1834.43, 1715.28, 1714.69, 1718.76, 1816.67, 1694.62, 1713.77, 1829.88, 1707.62, 1716.55, 1718.76, 1715.89, 1955.74, 1723.72, -27.42, 4626.83, 3716.61, 3616.21, 17616.21, 3616.21, 4416.21, 4262.05, 3762.05, 3762.05, 3762.05, 3762.05, 3759.81, 3759.81], "spend_ex_housing": [370.52, 2548.21, 2866.06, 2151.67, 9443.93, 3311.29, 4952.67, 4476.46, 3327.87, 3880.86, 4852.07, 4938.94, 3447.26, 3065.2, 4294.36, 6792.17, 9775.05, 5932.57, 5709.16, 7281.42, 8085.11, 5528.82, 5754.75, 3644.22, 7732.74, 4907.01, 12983.74, 4289.01, 15288.06, 3681.09, 4343.3, 6538.93, 9055.93, 3042.24, 14352.12, 14797.3, 7968.65, 3383.18, 2925.92, 3350.27, 5984.52, 5451.88, 895.34, 4926.23, 8441.23, 1908.33, 4486.97, 4451.83, 12743.35, 4288.74, 2787.07, 2081.16, 8459.88, 7080.11, 3057.12, 4291.18, 2769.04]}, "labels": ["Dec 2021", "Jan 2022", "Feb 2022", "Mar 2022", "Apr 2022", "May 2022", "Jun 2022", "Jul 2022", "Aug 2022", "Sep 2022", "Oct 2022", "Nov 2022", "Dec 2022", "Jan 2023", "Feb 2023", "Mar 2023", "Apr 2023", "May 2023", "Jun 2023", "Jul 2023", "Aug 2023", "Sep 2023", "Oct 2023", "Nov 2023", "Dec 2023", "Jan 2024", "Feb 2024", "Mar 2024", "Apr 2024", "May 2024", "Jun 2024", "Jul 2024", "Aug 2024", "Sep 2024", "Oct 2024", "Nov 2024", "Dec 2024", "Jan 2025", "Feb 2025", "Mar 2025", "Apr 2025", "May 2025", "Jun 2025", "Jul 2025", "Aug 2025", "Sep 2025", "Oct 2025", "Nov 2025", "Dec 2025", "Jan 2026", "Feb 2026", "Mar 2026", "Apr 2026", "May 2026", "Jun 2026", "Jul 2026", "Aug 2026"], "keys": ["2021-12", "2022-01", "2022-02", "2022-03", "2022-04", "2022-05", "2022-06", "2022-07", "2022-08", "2022-09", "2022-10", "2022-11", "2022-12", "2023-01", "2023-02", "2023-03", "2023-04", "2023-05", "2023-06", "2023-07", "2023-08", "2023-09", "2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06", "2024-07", "2024-08", "2024-09", "2024-10", "2024-11", "2024-12", "2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"], "id": "5y", "label": "Last 5 years", "short": "5-yr", "months": 57, "span": "Dec 2021 - Aug 2026", "clamped": true, "nw": {"series": [{"key": "2021-12", "label": "Dec 2021", "assets": 90197.87, "debt": 4040.0, "net": 86157.87}, {"key": "2022-01", "label": "Jan 2022", "assets": 89120.86, "debt": 3262.48, "net": 85858.38}, {"key": "2022-02", "label": "Feb 2022", "assets": 82363.56, "debt": 436.66, "net": 81926.9}, {"key": "2022-03", "label": "Mar 2022", "assets": 94792.41, "debt": 3092.41, "net": 91700.0}, {"key": "2022-04", "label": "Apr 2022", "assets": 90927.07, "debt": 3707.06, "net": 87220.01}, {"key": "2022-05", "label": "May 2022", "assets": 90271.11, "debt": 2892.02, "net": 87379.09}, {"key": "2022-06", "label": "Jun 2022", "assets": 86081.82, "debt": 3215.75, "net": 82866.07}, {"key": "2022-07", "label": "Jul 2022", "assets": 86922.41, "debt": 5225.71, "net": 81696.7}, {"key": "2022-08", "label": "Aug 2022", "assets": 83290.16, "debt": 2207.83, "net": 81082.33}, {"key": "2022-09", "label": "Sep 2022", "assets": 89726.52, "debt": 2962.45, "net": 86764.07}, {"key": "2022-10", "label": "Oct 2022", "assets": 87298.42, "debt": 1342.7, "net": 85955.72}, {"key": "2022-11", "label": "Nov 2022", "assets": 98528.09, "debt": 5324.18, "net": 93203.91}, {"key": "2022-12", "label": "Dec 2022", "assets": 96815.75, "debt": 3586.57, "net": 93229.18}, {"key": "2023-01", "label": "Jan 2023", "assets": 99679.06, "debt": 1489.78, "net": 98189.28}, {"key": "2023-02", "label": "Feb 2023", "assets": 99356.52, "debt": 1869.22, "net": 97487.3}, {"key": "2023-03", "label": "Mar 2023", "assets": 99334.95, "debt": 1069.29, "net": 98265.66}, {"key": "2023-04", "label": "Apr 2023", "assets": 104917.14, "debt": 3774.42, "net": 101142.72}, {"key": "2023-05", "label": "May 2023", "assets": 105048.42, "debt": 2807.47, "net": 102240.95}, {"key": "2023-06", "label": "Jun 2023", "assets": 106795.77, "debt": 626.03, "net": 106169.74}, {"key": "2023-07", "label": "Jul 2023", "assets": 107295.44, "debt": 1540.37, "net": 105755.07}, {"key": "2023-08", "label": "Aug 2023", "assets": 119462.9, "debt": 437.84, "net": 119025.06}, {"key": "2023-09", "label": "Sep 2023", "assets": 113445.0, "debt": 420.32, "net": 113024.68}, {"key": "2023-10", "label": "Oct 2023", "assets": 120296.9, "debt": 1791.46, "net": 118505.44}, {"key": "2023-11", "label": "Nov 2023", "assets": 128408.58, "debt": 826.34, "net": 127582.24}, {"key": "2023-12", "label": "Dec 2023", "assets": 134459.26, "debt": 4161.99, "net": 130297.27}, {"key": "2024-01", "label": "Jan 2024", "assets": 135032.24, "debt": 3456.9, "net": 131575.34}, {"key": "2024-02", "label": "Feb 2024", "assets": 142846.4, "debt": 4033.33, "net": 138813.07}, {"key": "2024-03", "label": "Mar 2024", "assets": 156706.5, "debt": 1711.88, "net": 154994.62}, {"key": "2024-04", "label": "Apr 2024", "assets": 164354.95, "debt": 1100.41, "net": 163254.54}, {"key": "2024-05", "label": "May 2024", "assets": 168994.05, "debt": 878.34, "net": 168115.71}, {"key": "2024-06", "label": "Jun 2024", "assets": 171436.83, "debt": 2500.4, "net": 168936.43}, {"key": "2024-07", "label": "Jul 2024", "assets": 177924.05, "debt": 3578.82, "net": 174345.23}, {"key": "2024-08", "label": "Aug 2024", "assets": 188591.92, "debt": 3364.85, "net": 185227.07}, {"key": "2024-09", "label": "Sep 2024", "assets": 196985.51, "debt": 2834.61, "net": 194150.9}, {"key": "2024-10", "label": "Oct 2024", "assets": 203915.48, "debt": 10492.85, "net": 193422.63}, {"key": "2024-11", "label": "Nov 2024", "assets": 200485.6, "debt": 8670.51, "net": 191815.09}, {"key": "2024-12", "label": "Dec 2024", "assets": 201193.95, "debt": 5042.8, "net": 196151.15}, {"key": "2025-01", "label": "Jan 2025", "assets": 203055.71, "debt": 2900.24, "net": 200155.47}, {"key": "2025-02", "label": "Feb 2025", "assets": 209730.27, "debt": 2043.5, "net": 207686.77}, {"key": "2025-03", "label": "Mar 2025", "assets": 221988.28, "debt": 1666.87, "net": 220321.41}, {"key": "2025-04", "label": "Apr 2025", "assets": 228381.21, "debt": 3877.63, "net": 224503.58}, {"key": "2025-05", "label": "May 2025", "assets": 196332.85, "debt": 8113.61, "net": 188219.24}, {"key": "2025-06", "label": "Jun 2025", "assets": 204337.38, "debt": 2601.65, "net": 201735.73}, {"key": "2025-07", "label": "Jul 2025", "assets": 213073.45, "debt": 4803.54, "net": 208269.91}, {"key": "2025-08", "label": "Aug 2025", "assets": 213328.51, "debt": 8468.34, "net": 204860.17}, {"key": "2025-09", "label": "Sep 2025", "assets": 213252.04, "debt": 2645.89, "net": 210606.15}, {"key": "2025-10", "label": "Oct 2025", "assets": 218489.47, "debt": 4495.91, "net": 213993.56}, {"key": "2025-11", "label": "Nov 2025", "assets": 254039.47, "debt": 2832.82, "net": 251206.65}, {"key": "2025-12", "label": "Dec 2025", "assets": 251444.01, "debt": 395.8, "net": 251048.21}, {"key": "2026-01", "label": "Jan 2026", "assets": 256124.56, "debt": 4321.7, "net": 251802.86}, {"key": "2026-02", "label": "Feb 2026", "assets": 258135.21, "debt": 2824.71, "net": 255310.5}, {"key": "2026-03", "label": "Mar 2026", "assets": 272422.03, "debt": 1365.94, "net": 271056.09}, {"key": "2026-04", "label": "Apr 2026", "assets": 276978.23, "debt": 6415.57, "net": 270562.66}, {"key": "2026-05", "label": "May 2026", "assets": 281805.27, "debt": 4751.81, "net": 277053.46}, {"key": "2026-06", "label": "Jun 2026", "assets": 284499.0, "debt": 2445.0, "net": 282054.0}, {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}], "stack": [{"bucket": "House equity", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 157118.75, 157118.75, 158022.25, 157928.75, 158885.48, 173693.96, 174793.5, 175755.67, 176672.39, 177786.4, 182808.1, 188583.24, 189588.55, 190648.7, 193073.09]}, {"bucket": "Pensions", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5566.0, 6449.25, 7332.5, 8215.75, 9099.0, 10008.75, 10924.5, 12152.25, 13068.0, 13983.75, 14899.5, 15815.25, 17043.0, 17958.75, 18874.5, 19790.25, 19684.76, 20946.79, 21862.54, 22778.29, 23694.04, 24609.79, 25525.54, 26441.29, 27669.04, 28584.79, 29500.54, 30416.29, 34274.75, 35577.26, 36542.85, 37508.44, 38474.03, 39439.62, 40405.21, 41707.72, 42673.31]}, {"bucket": "Investments & savings", "values": [64805.22, 68326.96, 63601.46, 68372.99, 68372.99, 67622.9, 63766.05, 63766.05, 63766.05, 66096.77, 66975.3, 73721.83, 72920.29, 76587.64, 75580.98, 76027.11, 77955.11, 76034.0, 77337.62, 80383.42, 96121.51, 92612.18, 93103.98, 97810.86, 100697.65, 102127.27, 115686.3, 117858.9, 134510.38, 138286.89, 138371.57, 124639.18, 137515.69, 145518.98, 149911.66, 151375.56, 150627.18, 151013.18, 170079.02, 173924.18, 174735.77, 77822.58, 100.0, 150.0, 200.0, 324.11, 374.11, 480.11, 10865.18, 11053.05, 11317.36, 11496.39, 24692.67, 28529.19, 29469.3, 30719.3, 33157.3]}, {"bucket": "Cash & chequing", "values": [21352.65, 17531.42, 18325.44, 23327.01, 18847.02, 19756.19, 19100.02, 17930.65, 17316.28, 20667.3, 18980.42, 19482.08, 20308.89, 21601.64, 21906.32, 22238.55, 23187.61, 26206.95, 28832.12, 25371.65, 17337.55, 13963.25, 18068.96, 21555.63, 20500.62, 19439.32, 12202.27, 24983.47, 15676.16, 15845.07, 15665.36, 33890.8, 30668.38, 30673.17, 24636.47, 20649.28, 25839.21, 28195.5, 15745.21, 23618.94, 26073.77, 85786.87, 18991.44, 24559.87, 18968.88, 23768.5, 25233.43, 46616.29, 31114.78, 29416.88, 30777.9, 44264.86, 24587.86, 20501.41, 22590.94, 21312.51, 22198.05]}], "now": {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}, "prev": {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, "start": {"key": "2021-12", "label": "Dec 2021", "assets": 90197.87, "debt": 4040.0, "net": 86157.87}}, "income_sources": [{"payee": "World Vision", "amount": 4007.18, "avg": 2737.46, "vs_avg": 1269.72}, {"payee": "BBC Income", "amount": 3424.17, "avg": 2141.32, "vs_avg": 1282.85}, {"payee": "Viv EI", "amount": 1704.0, "avg": 406.42, "vs_avg": 1297.58}, {"payee": "CHURCH OF THE R PAY", "amount": 1361.36, "avg": 2188.6, "vs_avg": -827.24}, {"payee": "CCB", "amount": 821.28, "avg": 203.44, "vs_avg": 617.84}, {"payee": "Timmy's Pension", "amount": 673.84, "avg": 434.5, "vs_avg": 239.34}, {"payee": "Vivian Pension", "amount": 291.75, "avg": 137.56, "vs_avg": 154.19}, {"payee": "Interest", "amount": 18.04, "avg": 21.04, "vs_avg": -3.0}, {"payee": "Credit Card Rewards Redemption", "amount": 11.36, "avg": 43.28, "vs_avg": -31.92}, {"payee": "Promotion", "amount": 5.0, "avg": 0.09, "vs_avg": 4.91}]}}, "nw_accounts": [{"account": "Amroth Equity", "bucket": "House equity", "balance": 193073.09, "delta": 2424.39}, {"account": "Tim's Pension", "bucket": "Pensions", "balance": 28133.31, "delta": 673.84}, {"account": "Viv's Pension", "bucket": "Pensions", "balance": 14540.0, "delta": 291.75}, {"account": "Timmy's TFSA", "bucket": "Investments & savings", "balance": 13033.69, "delta": 782.0}, {"account": "WS Joint Checking account 2", "bucket": "Cash & chequing", "balance": 10879.8, "delta": -1391.82}, {"account": "Emergency Fund (V-TFSA)", "bucket": "Investments & savings", "balance": 10000.0, "delta": 0.0}, {"account": "Viv's TFSA", "bucket": "Investments & savings", "balance": 8929.49, "delta": 1556.0}, {"account": "Viv's Paycheck (TD)", "bucket": "Cash & chequing", "balance": 6774.49, "delta": -586.67}, {"account": "BBC Chequing", "bucket": "Cash & chequing", "balance": 4397.58, "delta": 3718.48}, {"account": "RESP", "bucket": "Investments & savings", "balance": 1194.12, "delta": 100.0}, {"account": "Everyday Checking (TG)", "bucket": "Cash & chequing", "balance": 815.95, "delta": -1127.83}, {"account": "Cash", "bucket": "Cash & chequing", "balance": 521.25, "delta": -22.0}, {"account": "CC Rewards (TG)", "bucket": "Cash & chequing", "balance": 18.62, "delta": 8.62}, {"account": "WS Credit Card", "bucket": "Credit cards", "balance": -0.4, "delta": -23.19}, {"account": "Credit Card (TG)", "bucket": "Credit cards", "balance": -105.0, "delta": 130.68}, {"account": "Viv's Credit Card (TG)", "bucket": "Credit cards", "balance": -388.96, "delta": 1288.08}, {"account": "BBC Visa", "bucket": "Credit cards", "balance": -715.28, "delta": -322.31}], "nw_buckets": [{"bucket": "House equity", "balance": 193073.09, "delta": 2424.39}, {"bucket": "Pensions", "balance": 42673.31, "delta": 965.59}, {"bucket": "Investments & savings", "balance": 33157.3, "delta": 2438.0}, {"bucket": "Cash & chequing", "balance": 23407.69, "delta": 598.78}, {"bucket": "Credit cards", "balance": -1209.64, "delta": 1073.26}], "txn": {"biggest": [{"date": "2026-08-04", "payee": "UL524 TFR-TO 6466454", "category": "Amroth House", "account": "Viv's Paycheck (TD)", "amount": 3759.81}, {"date": "2026-08-21", "payee": "Willful", "category": "Miscellaneous", "account": "WS Credit Card", "amount": 335.21}, {"date": "2026-08-16", "payee": "No Frills", "category": "Groceries", "account": "WS Credit Card", "amount": 202.53}, {"date": "2026-08-09", "payee": "Economical Insurance", "category": "Car", "account": "WS Credit Card", "amount": 188.32}, {"date": "2026-08-03", "payee": "Canada Helps", "category": "God's Money", "account": "WS Credit Card", "amount": 150.0}, {"date": "2026-08-22", "payee": "FreshCo", "category": "Groceries", "account": "WS Credit Card", "amount": 139.4}, {"date": "2026-08-20", "payee": "INTERAC e-Transfer To: Natalie M", "category": "Home Improvement", "account": "Everyday Checking (TG)", "amount": 125.0}, {"date": "2026-08-18", "payee": "YOGA MAMAS NORTH VANCOUV BC", "category": "Medical", "account": "Credit Card (TG)", "amount": 105.0}, {"date": "2026-08-25", "payee": "Well.ca", "category": "Progeny", "account": "WS Credit Card", "amount": 102.21}, {"date": "2026-08-04", "payee": "Canada Helps", "category": "God's Money", "account": "WS Credit Card", "amount": 100.0}, {"date": "2026-08-04", "payee": "Canada Helps", "category": "God's Money", "account": "WS Credit Card", "amount": 100.0}, {"date": "2026-08-16", "payee": "Oxio Ca", "category": "Internet", "account": "WS Credit Card", "amount": 89.27}], "txn_count": 106}}, "pres": {"cur_label": "Aug 2026", "prev_label": "Jul 2026", "prev_key": "2026-07", "cur_key": "2026-08", "window_order": ["1m", "3m", "12m", "5y"], "default_window": "1m", "baselines": {"1m": {"id": "1m", "label": "Last month", "short": "last month", "months": 1, "span": "Jul 2026", "against": "Jul 2026", "keys": ["2026-07"], "clamped": false, "nw": {"series": [{"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}], "stack": [{"bucket": "House equity", "values": [190648.7, 193073.09]}, {"bucket": "Pensions", "values": [41707.72, 42673.31]}, {"bucket": "Investments & savings", "values": [30719.3, 33157.3]}, {"bucket": "Cash & chequing", "values": [21312.51, 22198.05]}], "now": {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}, "prev": {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, "start": {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}}, "nw_span": "Jul 2026 - Aug 2026", "streams": [{"payee": "World Vision", "amount": 4007.18, "avg": 4007.18, "vs_avg": 0.0, "new": false}, {"payee": "BBC Income", "amount": 3424.17, "avg": 597.8, "vs_avg": 2826.37, "new": false}, {"payee": "Viv EI", "amount": 1704.0, "avg": 1704.0, "vs_avg": 0.0, "new": false}, {"payee": "CHURCH OF THE R PAY", "amount": 1361.36, "avg": 1361.36, "vs_avg": 0.0, "new": false}, {"payee": "CCB", "amount": 821.28, "avg": 821.28, "vs_avg": 0.0, "new": false}, {"payee": "Timmy's Pension", "amount": 673.84, "avg": 1010.76, "vs_avg": -336.92, "new": false}, {"payee": "Vivian Pension", "amount": 291.75, "avg": 291.75, "vs_avg": 0.0, "new": false}, {"payee": "Interest", "amount": 18.04, "avg": 17.62, "vs_avg": 0.42, "new": false}, {"payee": "Credit Card Rewards Redemption", "amount": 11.36, "avg": 13.32, "vs_avg": -1.96, "new": false}, {"payee": "Promotion", "amount": 5.0, "avg": 0.0, "vs_avg": 5.0, "new": true}], "saving_rows": [{"category": "House", "amount": 3838.0, "prev": 1650.0, "avg": 1650.0, "vs_avg": 2188.0}, {"category": "Retirement", "amount": 965.59, "prev": 1302.51, "avg": 1302.51, "vs_avg": -336.92}, {"category": "RESP", "amount": 100.0, "prev": 100.0, "avg": 100.0, "vs_avg": 0.0}], "cat_avg": {"Amroth House": 3759.81, "Internet": 89.27, "Cellphone": 45.2, "Groceries": 605.61, "Daycare": 0.0, "Life Insurance": 48.83, "Fees": 20.0, "Progeny": 188.39, "Books & Education": 23.16, "Miscellaneous": 9.52, "Car": 649.22, "Health & Pharmacy": 96.45, "Clothes": 0.0, "Eating Out": 53.33, "Fun, Dates & Hobbies": 20.0, "Gifts": 105.0, "Exercise": 0.0, "Home Improvement": 455.51, "Public Transportation": 43.3, "Bike": 3.03, "Special Splurge": 0.0, "Tim's Choice": 0.0, "Vivian's Choice": 67.8, "Weddings": 161.02, "Travel": 786.5, "Koala Budget": 28.0, "Timmy's Work": 0.0, "Vivian's Work": 9.04, "Medical": 105.0, "God's Money": 678.0, "RESP": 100.0, "Retirement": 1302.51, "Emergency Fund": 0.0, "House": 1650.0, "Investment Gain/Loss": 0.0, "Savings Expenses": 0.0, "Rent": 0.0, "Hydro": 0.0, "Moving & Home Setup": 0.0, "Alcohol": 0.0, "Vivian COGS": 0.0, "Income Tax and HST": 0.0, "Moving Out Fund": 0.0, "Publishing": 0.0, "Tuition": 0.0}, "avgs": {"income": 9825.07, "spend": 8050.99, "saved": 3052.51, "net": -1278.43, "housing": 3759.81, "spend_ex_housing": 4291.18, "savings_rate": 31.07}}, "3m": {"id": "3m", "label": "Last 3 months", "short": "3-month", "months": 3, "span": "May 2026 - Jul 2026", "against": "the 3-month average", "keys": ["2026-05", "2026-06", "2026-07"], "clamped": false, "nw": {"series": [{"key": "2026-05", "label": "May 2026", "assets": 281805.27, "debt": 4751.81, "net": 277053.46}, {"key": "2026-06", "label": "Jun 2026", "assets": 284499.0, "debt": 2445.0, "net": 282054.0}, {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}], "stack": [{"bucket": "House equity", "values": [188583.24, 189588.55, 190648.7, 193073.09]}, {"bucket": "Pensions", "values": [39439.62, 40405.21, 41707.72, 42673.31]}, {"bucket": "Investments & savings", "values": [28529.19, 29469.3, 30719.3, 33157.3]}, {"bucket": "Cash & chequing", "values": [20501.41, 22590.94, 21312.51, 22198.05]}], "now": {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}, "prev": {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, "start": {"key": "2026-05", "label": "May 2026", "assets": 281805.27, "debt": 4751.81, "net": 277053.46}}, "nw_span": "May 2026 - Aug 2026", "streams": [{"payee": "World Vision", "amount": 4007.18, "avg": 4675.05, "vs_avg": -667.87, "new": false}, {"payee": "BBC Income", "amount": 3424.17, "avg": 3157.06, "vs_avg": 267.11, "new": false}, {"payee": "Viv EI", "amount": 1704.0, "avg": 568.0, "vs_avg": 1136.0, "new": false}, {"payee": "CHURCH OF THE R PAY", "amount": 1361.36, "avg": 2057.98, "vs_avg": -696.62, "new": false}, {"payee": "CCB", "amount": 821.28, "avg": 540.27, "vs_avg": 281.01, "new": false}, {"payee": "Timmy's Pension", "amount": 673.84, "avg": 786.15, "vs_avg": -112.31, "new": false}, {"payee": "Vivian Pension", "amount": 291.75, "avg": 291.75, "vs_avg": 0.0, "new": false}, {"payee": "Interest", "amount": 18.04, "avg": 37.1, "vs_avg": -19.06, "new": false}, {"payee": "Credit Card Rewards Redemption", "amount": 11.36, "avg": 41.86, "vs_avg": -30.5, "new": false}, {"payee": "Promotion", "amount": 5.0, "avg": 0.0, "vs_avg": 5.0, "new": true}], "saving_rows": [{"category": "House", "amount": 3838.0, "prev": 1650.0, "avg": 3545.0, "vs_avg": 293.0}, {"category": "Retirement", "amount": 965.59, "prev": 1302.51, "avg": 1077.9, "vs_avg": -112.31}, {"category": "RESP", "amount": 100.0, "prev": 100.0, "avg": 70.0, "vs_avg": 30.0}], "cat_avg": {"Amroth House": 3761.3, "Internet": 89.27, "Cellphone": 45.2, "Groceries": 742.72, "Daycare": 319.0, "Life Insurance": 48.83, "Fees": 6.67, "Progeny": 357.16, "Books & Education": 37.97, "Miscellaneous": 6.35, "Car": 675.15, "Health & Pharmacy": 173.68, "Clothes": 98.63, "Eating Out": 10.55, "Fun, Dates & Hobbies": 34.19, "Gifts": 82.56, "Exercise": 0.0, "Home Improvement": -425.08, "Public Transportation": 38.87, "Bike": 674.58, "Special Splurge": 0.0, "Tim's Choice": 0.0, "Vivian's Choice": 79.79, "Weddings": 53.67, "Travel": 262.17, "Koala Budget": 40.69, "Timmy's Work": 0.0, "Vivian's Work": -130.41, "Medical": 35.0, "God's Money": 1452.26, "RESP": 70.0, "Retirement": 1077.9, "Emergency Fund": 0.0, "House": 3545.0, "Investment Gain/Loss": 0.0, "Savings Expenses": 0.0, "Rent": 0.0, "Hydro": 0.0, "Moving & Home Setup": 0.0, "Alcohol": 0.0, "Vivian COGS": 0.0, "Income Tax and HST": 0.0, "Moving Out Fund": 0.0, "Publishing": 0.0, "Tuition": 0.0}, "avgs": {"income": 12171.88, "spend": 8570.77, "saved": 4692.89, "net": -1091.78, "housing": 3761.3, "spend_ex_housing": 4809.47, "savings_rate": 36.13}}, "12m": {"id": "12m", "label": "Last 12 months", "short": "12-month", "months": 12, "span": "Aug 2025 - Jul 2026", "against": "the 12-month average", "keys": ["2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"], "clamped": false, "nw": {"series": [{"key": "2025-08", "label": "Aug 2025", "assets": 213328.51, "debt": 8468.34, "net": 204860.17}, {"key": "2025-09", "label": "Sep 2025", "assets": 213252.04, "debt": 2645.89, "net": 210606.15}, {"key": "2025-10", "label": "Oct 2025", "assets": 218489.47, "debt": 4495.91, "net": 213993.56}, {"key": "2025-11", "label": "Nov 2025", "assets": 254039.47, "debt": 2832.82, "net": 251206.65}, {"key": "2025-12", "label": "Dec 2025", "assets": 251444.01, "debt": 395.8, "net": 251048.21}, {"key": "2026-01", "label": "Jan 2026", "assets": 256124.56, "debt": 4321.7, "net": 251802.86}, {"key": "2026-02", "label": "Feb 2026", "assets": 258135.21, "debt": 2824.71, "net": 255310.5}, {"key": "2026-03", "label": "Mar 2026", "assets": 272422.03, "debt": 1365.94, "net": 271056.09}, {"key": "2026-04", "label": "Apr 2026", "assets": 276978.23, "debt": 6415.57, "net": 270562.66}, {"key": "2026-05", "label": "May 2026", "assets": 281805.27, "debt": 4751.81, "net": 277053.46}, {"key": "2026-06", "label": "Jun 2026", "assets": 284499.0, "debt": 2445.0, "net": 282054.0}, {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}], "stack": [{"bucket": "House equity", "values": [158022.25, 157928.75, 158885.48, 173693.96, 174793.5, 175755.67, 176672.39, 177786.4, 182808.1, 188583.24, 189588.55, 190648.7, 193073.09]}, {"bucket": "Pensions", "values": [27669.04, 28584.79, 29500.54, 30416.29, 34274.75, 35577.26, 36542.85, 37508.44, 38474.03, 39439.62, 40405.21, 41707.72, 42673.31]}, {"bucket": "Investments & savings", "values": [200.0, 324.11, 374.11, 480.11, 10865.18, 11053.05, 11317.36, 11496.39, 24692.67, 28529.19, 29469.3, 30719.3, 33157.3]}, {"bucket": "Cash & chequing", "values": [18968.88, 23768.5, 25233.43, 46616.29, 31114.78, 29416.88, 30777.9, 44264.86, 24587.86, 20501.41, 22590.94, 21312.51, 22198.05]}], "now": {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}, "prev": {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, "start": {"key": "2025-08", "label": "Aug 2025", "assets": 213328.51, "debt": 8468.34, "net": 204860.17}}, "nw_span": "Aug 2025 - Aug 2026", "streams": [{"payee": "World Vision", "amount": 4007.18, "avg": 4281.17, "vs_avg": -273.99, "new": false}, {"payee": "BBC Income", "amount": 3424.17, "avg": 1643.67, "vs_avg": 1780.5, "new": false}, {"payee": "Viv EI", "amount": 1704.0, "avg": 142.0, "vs_avg": 1562.0, "new": false}, {"payee": "CHURCH OF THE R PAY", "amount": 1361.36, "avg": 2553.38, "vs_avg": -1192.02, "new": false}, {"payee": "CCB", "amount": 821.28, "avg": 434.88, "vs_avg": 386.4, "new": false}, {"payee": "Timmy's Pension", "amount": 673.84, "avg": 739.38, "vs_avg": -65.54, "new": false}, {"payee": "Vivian Pension", "amount": 291.75, "avg": 291.75, "vs_avg": 0.0, "new": false}, {"payee": "Interest", "amount": 18.04, "avg": 30.06, "vs_avg": -12.02, "new": false}, {"payee": "Credit Card Rewards Redemption", "amount": 11.36, "avg": 68.89, "vs_avg": -57.53, "new": false}, {"payee": "Promotion", "amount": 5.0, "avg": 0.0, "vs_avg": 5.0, "new": true}], "saving_rows": [{"category": "House", "amount": 3838.0, "prev": 1650.0, "avg": 2365.74, "vs_avg": 1472.26}, {"category": "Retirement", "amount": 965.59, "prev": 1302.51, "avg": 1031.13, "vs_avg": -65.54}, {"category": "RESP", "amount": 100.0, "prev": 100.0, "avg": 63.33, "vs_avg": 36.67}, {"category": "Emergency Fund", "amount": -0.0, "prev": -0.0, "avg": 833.33, "vs_avg": -833.33}], "cat_avg": {"Amroth House": 5033.3, "Internet": 83.85, "Cellphone": 173.84, "Groceries": 769.08, "Daycare": 429.92, "Life Insurance": 48.83, "Fees": 1.75, "Progeny": 164.83, "Books & Education": 34.41, "Miscellaneous": 1.59, "Car": 459.16, "Health & Pharmacy": 103.7, "Clothes": 78.07, "Eating Out": 33.59, "Fun, Dates & Hobbies": 31.0, "Gifts": 170.3, "Exercise": 30.22, "Home Improvement": 299.83, "Public Transportation": 28.87, "Bike": 169.31, "Special Splurge": 0.0, "Tim's Choice": 43.75, "Vivian's Choice": 50.77, "Weddings": 226.91, "Travel": 224.82, "Koala Budget": 90.61, "Timmy's Work": 0.0, "Vivian's Work": 17.0, "Medical": -28.48, "God's Money": 1438.69, "RESP": 63.33, "Retirement": 1031.13, "Emergency Fund": 833.33, "House": 2365.74, "Investment Gain/Loss": 0.0, "Savings Expenses": 0.0, "Rent": 0.0, "Hydro": 23.23, "Moving & Home Setup": 131.26, "Alcohol": 0.0, "Vivian COGS": 0.0, "Income Tax and HST": 32.29, "Moving Out Fund": 0.0, "Publishing": 0.0, "Tuition": 0.0}, "avgs": {"income": 14419.2, "spend": 10396.28, "saved": 4293.53, "net": -270.61, "housing": 5056.53, "spend_ex_housing": 5339.75, "savings_rate": 36.69}}, "5y": {"id": "5y", "label": "Last 5 years", "short": "5-year", "months": 56, "span": "Dec 2021 - Jul 2026", "against": "the 5-year average", "keys": ["2021-12", "2022-01", "2022-02", "2022-03", "2022-04", "2022-05", "2022-06", "2022-07", "2022-08", "2022-09", "2022-10", "2022-11", "2022-12", "2023-01", "2023-02", "2023-03", "2023-04", "2023-05", "2023-06", "2023-07", "2023-08", "2023-09", "2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06", "2024-07", "2024-08", "2024-09", "2024-10", "2024-11", "2024-12", "2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"], "clamped": true, "nw": {"series": [{"key": "2021-12", "label": "Dec 2021", "assets": 90197.87, "debt": 4040.0, "net": 86157.87}, {"key": "2022-01", "label": "Jan 2022", "assets": 89120.86, "debt": 3262.48, "net": 85858.38}, {"key": "2022-02", "label": "Feb 2022", "assets": 82363.56, "debt": 436.66, "net": 81926.9}, {"key": "2022-03", "label": "Mar 2022", "assets": 94792.41, "debt": 3092.41, "net": 91700.0}, {"key": "2022-04", "label": "Apr 2022", "assets": 90927.07, "debt": 3707.06, "net": 87220.01}, {"key": "2022-05", "label": "May 2022", "assets": 90271.11, "debt": 2892.02, "net": 87379.09}, {"key": "2022-06", "label": "Jun 2022", "assets": 86081.82, "debt": 3215.75, "net": 82866.07}, {"key": "2022-07", "label": "Jul 2022", "assets": 86922.41, "debt": 5225.71, "net": 81696.7}, {"key": "2022-08", "label": "Aug 2022", "assets": 83290.16, "debt": 2207.83, "net": 81082.33}, {"key": "2022-09", "label": "Sep 2022", "assets": 89726.52, "debt": 2962.45, "net": 86764.07}, {"key": "2022-10", "label": "Oct 2022", "assets": 87298.42, "debt": 1342.7, "net": 85955.72}, {"key": "2022-11", "label": "Nov 2022", "assets": 98528.09, "debt": 5324.18, "net": 93203.91}, {"key": "2022-12", "label": "Dec 2022", "assets": 96815.75, "debt": 3586.57, "net": 93229.18}, {"key": "2023-01", "label": "Jan 2023", "assets": 99679.06, "debt": 1489.78, "net": 98189.28}, {"key": "2023-02", "label": "Feb 2023", "assets": 99356.52, "debt": 1869.22, "net": 97487.3}, {"key": "2023-03", "label": "Mar 2023", "assets": 99334.95, "debt": 1069.29, "net": 98265.66}, {"key": "2023-04", "label": "Apr 2023", "assets": 104917.14, "debt": 3774.42, "net": 101142.72}, {"key": "2023-05", "label": "May 2023", "assets": 105048.42, "debt": 2807.47, "net": 102240.95}, {"key": "2023-06", "label": "Jun 2023", "assets": 106795.77, "debt": 626.03, "net": 106169.74}, {"key": "2023-07", "label": "Jul 2023", "assets": 107295.44, "debt": 1540.37, "net": 105755.07}, {"key": "2023-08", "label": "Aug 2023", "assets": 119462.9, "debt": 437.84, "net": 119025.06}, {"key": "2023-09", "label": "Sep 2023", "assets": 113445.0, "debt": 420.32, "net": 113024.68}, {"key": "2023-10", "label": "Oct 2023", "assets": 120296.9, "debt": 1791.46, "net": 118505.44}, {"key": "2023-11", "label": "Nov 2023", "assets": 128408.58, "debt": 826.34, "net": 127582.24}, {"key": "2023-12", "label": "Dec 2023", "assets": 134459.26, "debt": 4161.99, "net": 130297.27}, {"key": "2024-01", "label": "Jan 2024", "assets": 135032.24, "debt": 3456.9, "net": 131575.34}, {"key": "2024-02", "label": "Feb 2024", "assets": 142846.4, "debt": 4033.33, "net": 138813.07}, {"key": "2024-03", "label": "Mar 2024", "assets": 156706.5, "debt": 1711.88, "net": 154994.62}, {"key": "2024-04", "label": "Apr 2024", "assets": 164354.95, "debt": 1100.41, "net": 163254.54}, {"key": "2024-05", "label": "May 2024", "assets": 168994.05, "debt": 878.34, "net": 168115.71}, {"key": "2024-06", "label": "Jun 2024", "assets": 171436.83, "debt": 2500.4, "net": 168936.43}, {"key": "2024-07", "label": "Jul 2024", "assets": 177924.05, "debt": 3578.82, "net": 174345.23}, {"key": "2024-08", "label": "Aug 2024", "assets": 188591.92, "debt": 3364.85, "net": 185227.07}, {"key": "2024-09", "label": "Sep 2024", "assets": 196985.51, "debt": 2834.61, "net": 194150.9}, {"key": "2024-10", "label": "Oct 2024", "assets": 203915.48, "debt": 10492.85, "net": 193422.63}, {"key": "2024-11", "label": "Nov 2024", "assets": 200485.6, "debt": 8670.51, "net": 191815.09}, {"key": "2024-12", "label": "Dec 2024", "assets": 201193.95, "debt": 5042.8, "net": 196151.15}, {"key": "2025-01", "label": "Jan 2025", "assets": 203055.71, "debt": 2900.24, "net": 200155.47}, {"key": "2025-02", "label": "Feb 2025", "assets": 209730.27, "debt": 2043.5, "net": 207686.77}, {"key": "2025-03", "label": "Mar 2025", "assets": 221988.28, "debt": 1666.87, "net": 220321.41}, {"key": "2025-04", "label": "Apr 2025", "assets": 228381.21, "debt": 3877.63, "net": 224503.58}, {"key": "2025-05", "label": "May 2025", "assets": 196332.85, "debt": 8113.61, "net": 188219.24}, {"key": "2025-06", "label": "Jun 2025", "assets": 204337.38, "debt": 2601.65, "net": 201735.73}, {"key": "2025-07", "label": "Jul 2025", "assets": 213073.45, "debt": 4803.54, "net": 208269.91}, {"key": "2025-08", "label": "Aug 2025", "assets": 213328.51, "debt": 8468.34, "net": 204860.17}, {"key": "2025-09", "label": "Sep 2025", "assets": 213252.04, "debt": 2645.89, "net": 210606.15}, {"key": "2025-10", "label": "Oct 2025", "assets": 218489.47, "debt": 4495.91, "net": 213993.56}, {"key": "2025-11", "label": "Nov 2025", "assets": 254039.47, "debt": 2832.82, "net": 251206.65}, {"key": "2025-12", "label": "Dec 2025", "assets": 251444.01, "debt": 395.8, "net": 251048.21}, {"key": "2026-01", "label": "Jan 2026", "assets": 256124.56, "debt": 4321.7, "net": 251802.86}, {"key": "2026-02", "label": "Feb 2026", "assets": 258135.21, "debt": 2824.71, "net": 255310.5}, {"key": "2026-03", "label": "Mar 2026", "assets": 272422.03, "debt": 1365.94, "net": 271056.09}, {"key": "2026-04", "label": "Apr 2026", "assets": 276978.23, "debt": 6415.57, "net": 270562.66}, {"key": "2026-05", "label": "May 2026", "assets": 281805.27, "debt": 4751.81, "net": 277053.46}, {"key": "2026-06", "label": "Jun 2026", "assets": 284499.0, "debt": 2445.0, "net": 282054.0}, {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}], "stack": [{"bucket": "House equity", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 157118.75, 157118.75, 158022.25, 157928.75, 158885.48, 173693.96, 174793.5, 175755.67, 176672.39, 177786.4, 182808.1, 188583.24, 189588.55, 190648.7, 193073.09]}, {"bucket": "Pensions", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5566.0, 6449.25, 7332.5, 8215.75, 9099.0, 10008.75, 10924.5, 12152.25, 13068.0, 13983.75, 14899.5, 15815.25, 17043.0, 17958.75, 18874.5, 19790.25, 19684.76, 20946.79, 21862.54, 22778.29, 23694.04, 24609.79, 25525.54, 26441.29, 27669.04, 28584.79, 29500.54, 30416.29, 34274.75, 35577.26, 36542.85, 37508.44, 38474.03, 39439.62, 40405.21, 41707.72, 42673.31]}, {"bucket": "Investments & savings", "values": [64805.22, 68326.96, 63601.46, 68372.99, 68372.99, 67622.9, 63766.05, 63766.05, 63766.05, 66096.77, 66975.3, 73721.83, 72920.29, 76587.64, 75580.98, 76027.11, 77955.11, 76034.0, 77337.62, 80383.42, 96121.51, 92612.18, 93103.98, 97810.86, 100697.65, 102127.27, 115686.3, 117858.9, 134510.38, 138286.89, 138371.57, 124639.18, 137515.69, 145518.98, 149911.66, 151375.56, 150627.18, 151013.18, 170079.02, 173924.18, 174735.77, 77822.58, 100.0, 150.0, 200.0, 324.11, 374.11, 480.11, 10865.18, 11053.05, 11317.36, 11496.39, 24692.67, 28529.19, 29469.3, 30719.3, 33157.3]}, {"bucket": "Cash & chequing", "values": [21352.65, 17531.42, 18325.44, 23327.01, 18847.02, 19756.19, 19100.02, 17930.65, 17316.28, 20667.3, 18980.42, 19482.08, 20308.89, 21601.64, 21906.32, 22238.55, 23187.61, 26206.95, 28832.12, 25371.65, 17337.55, 13963.25, 18068.96, 21555.63, 20500.62, 19439.32, 12202.27, 24983.47, 15676.16, 15845.07, 15665.36, 33890.8, 30668.38, 30673.17, 24636.47, 20649.28, 25839.21, 28195.5, 15745.21, 23618.94, 26073.77, 85786.87, 18991.44, 24559.87, 18968.88, 23768.5, 25233.43, 46616.29, 31114.78, 29416.88, 30777.9, 44264.86, 24587.86, 20501.41, 22590.94, 21312.51, 22198.05]}], "now": {"key": "2026-08", "label": "Aug 2026", "assets": 292311.39, "debt": 1209.64, "net": 291101.75}, "prev": {"key": "2026-07", "label": "Jul 2026", "assets": 286671.13, "debt": 2282.9, "net": 284388.23}, "start": {"key": "2021-12", "label": "Dec 2021", "assets": 90197.87, "debt": 4040.0, "net": 86157.87}}, "nw_span": "Dec 2021 - Aug 2026", "streams": [{"payee": "World Vision", "amount": 4007.18, "avg": 2714.79, "vs_avg": 1292.39, "new": false}, {"payee": "BBC Income", "amount": 3424.17, "avg": 2118.41, "vs_avg": 1305.76, "new": false}, {"payee": "Viv EI", "amount": 1704.0, "avg": 383.25, "vs_avg": 1320.75, "new": false}, {"payee": "CHURCH OF THE R PAY", "amount": 1361.36, "avg": 2203.37, "vs_avg": -842.01, "new": false}, {"payee": "CCB", "amount": 821.28, "avg": 192.41, "vs_avg": 628.87, "new": false}, {"payee": "Timmy's Pension", "amount": 673.84, "avg": 430.23, "vs_avg": 243.61, "new": false}, {"payee": "Vivian Pension", "amount": 291.75, "avg": 134.81, "vs_avg": 156.94, "new": false}, {"payee": "Interest", "amount": 18.04, "avg": 21.09, "vs_avg": -3.05, "new": false}, {"payee": "Credit Card Rewards Redemption", "amount": 11.36, "avg": 43.85, "vs_avg": -32.49, "new": false}, {"payee": "Promotion", "amount": 5.0, "avg": 0.0, "vs_avg": 5.0, "new": true}], "saving_rows": [{"category": "House", "amount": 3838.0, "prev": 1650.0, "avg": 2651.19, "vs_avg": 1186.81}, {"category": "Retirement", "amount": 965.59, "prev": 1302.51, "avg": 702.22, "vs_avg": 263.37}, {"category": "RESP", "amount": 100.0, "prev": 100.0, "avg": 16.25, "vs_avg": 83.75}, {"category": "Emergency Fund", "amount": -0.0, "prev": -0.0, "avg": 346.34, "vs_avg": -346.34}], "cat_avg": {"Amroth House": 1076.82, "Internet": 59.19, "Cellphone": 116.71, "Groceries": 653.33, "Daycare": 127.48, "Life Insurance": 13.08, "Fees": 35.95, "Progeny": 95.32, "Books & Education": 73.46, "Miscellaneous": 7.96, "Car": 390.84, "Health & Pharmacy": 37.11, "Clothes": 133.57, "Eating Out": 60.18, "Fun, Dates & Hobbies": 69.98, "Gifts": 149.86, "Exercise": 57.36, "Home Improvement": 117.78, "Public Transportation": 43.34, "Bike": 60.97, "Special Splurge": 62.08, "Tim's Choice": 59.56, "Vivian's Choice": 48.16, "Weddings": 81.32, "Travel": 398.31, "Koala Budget": 19.42, "Timmy's Work": 586.54, "Vivian's Work": 26.49, "Medical": 123.65, "God's Money": 839.28, "RESP": 16.25, "Retirement": 702.22, "Emergency Fund": 346.34, "House": 2651.19, "Investment Gain/Loss": 123.41, "Savings Expenses": 1.07, "Rent": 1199.19, "Hydro": 75.51, "Moving & Home Setup": 53.54, "Alcohol": 6.16, "Vivian COGS": 6.85, "Income Tax and HST": 398.37, "Moving Out Fund": 73.04, "Publishing": 104.14, "Tuition": 459.71}, "avgs": {"income": 12222.67, "spend": 8001.61, "saved": 3715.99, "net": 505.06, "housing": 2351.52, "spend_ex_housing": 5650.09, "savings_rate": 15.51}}}, "overspent": [{"group": "Savings", "category": "House", "spent": 3838.0, "assigned": 3700.0, "available": -138.0, "over": 138.0}, {"group": "Tax Deductible", "category": "Medical", "spent": 105.0, "assigned": 0.0, "available": -105.0, "over": 105.0}, {"group": "Tax Deductible", "category": "Koala Budget", "spent": 28.0, "assigned": 0.0, "available": -3.37, "over": 3.37}], "over_assigned": [{"group": "Monthly", "category": "Groceries", "spent": 587.16, "assigned": 500.0, "available": 341.29, "over": 87.16}, {"group": "Cumulative", "category": "Fees", "spent": 20.0, "assigned": 0.0, "available": 60.69, "over": 20.0}], "cat_txns": {"Miscellaneous": [{"date": "2026-08-21", "payee": "Willful", "memo": "Will software", "account": "WS Credit Card", "amount": 335.21}, {"date": "2026-08-31", "payee": "POURED COFFEE TORONTO ON", "memo": "dishwasher pods", "account": "Viv's Credit Card (TG)", "amount": 18.31}], "Fees": [{"date": "2026-08-24", "payee": "(no payee)", "memo": "", "account": "WS Credit Card", "amount": 20.0}, {"date": "2026-08-31", "payee": "MONTHLY ACCOUNT FEE", "memo": "", "account": "Viv's Paycheck (TD)", "amount": 11.95}, {"date": "2026-08-31", "payee": "ACCT BAL REBATE", "memo": "", "account": "Viv's Paycheck (TD)", "amount": -11.95}], "Eating Out": [{"date": "2026-08-31", "payee": "Thai Room", "memo": "", "account": "WS Credit Card", "amount": 0.4}], "Home Improvement": [{"date": "2026-08-20", "payee": "INTERAC e-Transfer To: Natalie M", "memo": "INTERAC e-Transfer To: Natalie Martin - Amazon repayment", "account": "Everyday Checking (TG)", "amount": 125.0}, {"date": "2026-08-31", "payee": "UW303 TFR-FR 6466454", "memo": "reimbursement for Hose from Amroth account", "account": "Viv's Paycheck (TD)", "amount": -64.36}, {"date": "2026-08-17", "payee": "TORONTO EAST HO", "memo": "", "account": "Viv's Paycheck (TD)", "amount": 64.36}, {"date": "2026-08-01", "payee": "Home Depot", "memo": "wood to fix shed", "account": "WS Credit Card", "amount": 22.79}], "Retirement": [{"date": "2026-08-28", "payee": "Transfer : Tim's Pension", "memo": "Pension transfer", "account": "Reconcile account", "amount": 336.92}, {"date": "2026-08-14", "payee": "Transfer : Tim's Pension", "memo": "Pension transfer", "account": "Reconcile account", "amount": 336.92}, {"date": "2026-08-30", "payee": "Transfer : Viv's Pension", "memo": "Pension Transfer", "account": "Reconcile account", "amount": 291.75}], "God's Money": [{"date": "2026-08-03", "payee": "Canada Helps", "memo": "", "account": "WS Credit Card", "amount": 150.0}, {"date": "2026-08-04", "payee": "Canada Helps", "memo": "", "account": "WS Credit Card", "amount": 100.0}, {"date": "2026-08-04", "payee": "Canada Helps", "memo": "", "account": "WS Credit Card", "amount": 100.0}, {"date": "2026-08-17", "payee": "World Vision", "memo": "", "account": "WS Joint Checking account 2", "amount": 88.0}, {"date": "2026-08-23", "payee": "CanadaHelps", "memo": "", "account": "WS Credit Card", "amount": 60.0}, {"date": "2026-08-23", "payee": "CanadaHelps", "memo": "", "account": "WS Credit Card", "amount": 50.0}, {"date": "2026-08-14", "payee": "CanadaHelps", "memo": "", "account": "WS Credit Card", "amount": 50.0}, {"date": "2026-08-04", "payee": "EFT Withdrawal to INTER-VARSITY", "memo": "EFT Withdrawal to INTER-VARSITY", "account": "Everyday Checking (TG)", "amount": 50.0}, {"date": "2026-08-30", "payee": "CanadaHelps", "memo": "", "account": "WS Credit Card", "amount": 30.0}], "Health & Pharmacy": [{"date": "2026-08-06", "payee": "Georgian Bay Whole Foods", "memo": "Viv's back cream", "account": "WS Credit Card", "amount": 37.52}, {"date": "2026-08-30", "payee": "Vm", "memo": "", "account": "WS Credit Card", "amount": 16.46}], "Gifts": [{"date": "2026-08-28", "payee": "STAPLES STORE #159 TORONTO ON", "memo": "Printing for Simplson Shower", "account": "Viv's Credit Card (TG)", "amount": 24.6}, {"date": "2026-08-28", "payee": "STAPLES STORE #159 TORONTO ON", "memo": "Printing for simpson shower", "account": "Viv's Credit Card (TG)", "amount": 23.65}, {"date": "2026-08-28", "payee": "STAPLES#159 TORONTO ON", "memo": "printing for simpson shower", "account": "Viv's Credit Card (TG)", "amount": 15.18}], "Groceries": [{"date": "2026-08-16", "payee": "No Frills", "memo": "", "account": "WS Credit Card", "amount": 202.53}, {"date": "2026-08-22", "payee": "FreshCo", "memo": "", "account": "WS Credit Card", "amount": 139.4}, {"date": "2026-08-14", "payee": "No Frills", "memo": "", "account": "WS Credit Card", "amount": 82.21}, {"date": "2026-08-09", "payee": "FreshCo", "memo": "", "account": "WS Credit Card", "amount": 51.31}, {"date": "2026-08-22", "payee": "Loblaws", "memo": "", "account": "WS Credit Card", "amount": 30.95}, {"date": "2026-08-09", "payee": "INTERAC e-Transfer To: Darcy Martin", "memo": "reimbursing Chris for Koinonia groceries", "account": "Everyday Checking (TG)", "amount": 30.0}, {"date": "2026-08-20", "payee": "(no payee)", "memo": "farmers market food", "account": "Cash", "amount": 22.0}, {"date": "2026-08-23", "payee": "Sobeys", "memo": "", "account": "WS Credit Card", "amount": 18.01}, {"date": "2026-08-28", "payee": "VM 7975 TORONTO ON", "memo": "VM 7975 TORONTO ON", "account": "Viv's Credit Card (TG)", "amount": 10.75}], "RESP": [{"date": "2026-08-26", "payee": "Transfer : RESP", "memo": "", "account": "WS Joint Checking account 2", "amount": 100.0}], "Progeny": [{"date": "2026-08-25", "payee": "Well.ca", "memo": "lunch box, Soren soap", "account": "WS Credit Card", "amount": 102.21}, {"date": "2026-08-26", "payee": "DOLLARAMA # 764 TORONTO ON", "memo": "DOLLARAMA # 764 TORONTO ON", "account": "Viv's Credit Card (TG)", "amount": 24.58}], "Koala Budget": [{"date": "2026-08-24", "payee": "BBC Income", "memo": "ANTHROPIC* CLAUDE SUB ANTHROPIC.COM, CA", "account": "BBC Visa", "amount": 28.0}], "Books & Education": [{"date": "2026-08-06", "payee": "Bearly Used Books", "memo": "", "account": "WS Credit Card", "amount": 17.75}, {"date": "2026-08-17", "payee": "VALUE VILLAGE # 2040 TORONTO ON", "memo": "VALUE VILLAGE # 2040 TORONTO ON", "account": "Viv's Credit Card (TG)", "amount": 10.89}, {"date": "2026-08-24", "payee": "VALUE VILLAGE # 2040 TORONTO ON", "memo": "VALUE VILLAGE # 2040 TORONTO ON", "account": "Viv's Credit Card (TG)", "amount": 5.03}], "House": [{"date": "2026-08-20", "payee": "Transfer : Viv's TFSA", "memo": "", "account": "WS Joint Checking account 2", "amount": 1000.0}, {"date": "2026-08-20", "payee": "Transfer : Amroth Equity", "memo": "", "account": "Viv's Paycheck (TD)", "amount": 1000.0}, {"date": "2026-08-20", "payee": "Transfer : Timmy's TFSA", "memo": "", "account": "WS Joint Checking account 2", "amount": 500.0}, {"date": "2026-08-04", "payee": "Transfer : Amroth Equity", "memo": "", "account": "Viv's Paycheck (TD)", "amount": 500.0}, {"date": "2026-08-03", "payee": "Transfer : Viv's TFSA", "memo": "", "account": "WS Joint Checking account 2", "amount": 500.0}, {"date": "2026-08-17", "payee": "Transfer : Timmy's TFSA", "memo": "", "account": "WS Joint Checking account 2", "amount": 256.0}, {"date": "2026-08-12", "payee": "Transfer : Viv's TFSA", "memo": "", "account": "WS Joint Checking account 2", "amount": 56.0}, {"date": "2026-08-12", "payee": "Transfer : Timmy's TFSA", "memo": "", "account": "WS Joint Checking account 2", "amount": 26.0}], "Medical": [{"date": "2026-08-18", "payee": "YOGA MAMAS NORTH VANCOUV BC", "memo": "YOGA MAMAS NORTH VANCOUV BC", "account": "Credit Card (TG)", "amount": 105.0}], "Internet": [{"date": "2026-08-16", "payee": "Oxio Ca", "memo": "", "account": "WS Credit Card", "amount": 89.27}], "Public Transportation": [{"date": "2026-08-15", "payee": "PRESTO AUTO/SG6LFB9STM TORONTO O", "memo": "PRESTO AUTO/SG6LFB9STM TORONTO ON", "account": "Viv's Credit Card (TG)", "amount": 20.0}], "Car": [{"date": "2026-08-09", "payee": "Economical Insurance", "memo": "", "account": "WS Credit Card", "amount": 188.32}, {"date": "2026-08-01", "payee": "Ultramar", "memo": "gas", "account": "WS Credit Card", "amount": 80.61}, {"date": "2026-08-10", "payee": "Esso", "memo": "", "account": "WS Credit Card", "amount": 56.65}], "Cellphone": [{"date": "2026-08-07", "payee": "Fido", "memo": "", "account": "WS Credit Card", "amount": 52.01}], "Life Insurance": [{"date": "2026-08-05", "payee": "EFT Withdrawal to EMP LIFE", "memo": "EFT Withdrawal to EMP LIFE", "account": "Everyday Checking (TG)", "amount": 48.83}], "Amroth House": [{"date": "2026-08-04", "payee": "UL524 TFR-TO 6466454", "memo": "", "account": "Viv's Paycheck (TD)", "amount": 3759.81}], "Travel": [{"date": "2026-08-01", "payee": "Subway", "memo": "meal", "account": "WS Credit Card", "amount": 28.91}, {"date": "2026-08-01", "payee": "Tim Hortons", "memo": "", "account": "WS Credit Card", "amount": 6.7}]}, "nw_by_key": {"2021-12": 86157.87, "2022-01": 85858.38, "2022-02": 81926.9, "2022-03": 91700.0, "2022-04": 87220.01, "2022-05": 87379.09, "2022-06": 82866.07, "2022-07": 81696.7, "2022-08": 81082.33, "2022-09": 86764.07, "2022-10": 85955.72, "2022-11": 93203.91, "2022-12": 93229.18, "2023-01": 98189.28, "2023-02": 97487.3, "2023-03": 98265.66, "2023-04": 101142.72, "2023-05": 102240.95, "2023-06": 106169.74, "2023-07": 105755.07, "2023-08": 119025.06, "2023-09": 113024.68, "2023-10": 118505.44, "2023-11": 127582.24, "2023-12": 130297.27, "2024-01": 131575.34, "2024-02": 138813.07, "2024-03": 154994.62, "2024-04": 163254.54, "2024-05": 168115.71, "2024-06": 168936.43, "2024-07": 174345.23, "2024-08": 185227.07, "2024-09": 194150.9, "2024-10": 193422.63, "2024-11": 191815.09, "2024-12": 196151.15, "2025-01": 200155.47, "2025-02": 207686.77, "2025-03": 220321.41, "2025-04": 224503.58, "2025-05": 188219.24, "2025-06": 201735.73, "2025-07": 208269.91, "2025-08": 204860.17, "2025-09": 210606.15, "2025-10": 213993.56, "2025-11": 251206.65, "2025-12": 251048.21, "2026-01": 251802.86, "2026-02": 255310.5, "2026-03": 271056.09, "2026-04": 270562.66, "2026-05": 277053.46, "2026-06": 282054.0, "2026-07": 284388.23, "2026-08": 291101.75}, "cur": {"income": 12317.98, "spend": 6528.85, "saved": 4903.59, "net": 885.54, "housing": 3759.81, "spend_ex_housing": 2769.04, "savings_rate": 39.81}}, "house_notes": ["<strong>Equity</strong> = the Bender half of the house value ($630,000) minus the Bender sub-account balance. It does not include any change in the house's market value.", "<strong>Amortization shaved this month</strong> compares where the balance would have landed on the scheduled payment alone (start balance + this month's interest - the payment) against where it actually landed. Both go through the same solve, so a month with no extra payment reads exactly zero and only extra principal moves the number.", "<strong>Baseline interest</strong> is charged at the same effective rate the tracker charged that month, not a flat rate/12. The tracker bills on an actual-day count, so the implied annual rate moves between roughly 3.6% and 4.2%; running the baseline on a flat rate would bank that wobble as fake saving.", "<strong>Months left</strong> is solved from the current balance at 3.94% annual on the Bender scheduled payment of $2,473/mo, assuming no further extra payments.", "<strong>Baseline</strong> re-runs the Bender sub-account from the first tracked month paying only the scheduled payment - no extras, no partnership transfers. The gap between the two lines is what the extra payments have bought.", "<strong>Partnership transfers</strong> are stored once at full value in the tracker; each party is credited exactly half, so the history table shows the half that lands on the Bender side.", "<strong>Buyout snapshot</strong> uses today's balances: total to finance = Bender balance + the Martins' 50% share of $630,000, capped at 80% LTV, with the remainder due as cash at closing.", "<strong>Cash saved toward buyout</strong> is Tim + Vivian's TFSA balances read straight from the YNAB register (T WS TFSA HISA, Timmy's TFSA, Timmy's TFSA Trade, Viv's TFSA). The emergency-fund TFSA is excluded - it is not buyout money.", "<strong>Mortgage data</strong> runs through Sep 2026 (14 actual payment months)."], "money_notes": ["<strong>Source:</strong> the YNAB Plan (budget) and Register (ledger) exports sitting in this folder, re-read every time the script runs.", "<strong>The month shown</strong> is Aug 2026 - the last complete calendar month. The current partial month is deliberately excluded so comparisons are like-for-like.", "<strong>Money in</strong> = every transaction categorised Inflow: Ready to Assign. Transfers between your own accounts are never counted as income.", "<strong>Money out</strong> = activity in the Monthly, Cumulative, Tax Deductible and Hidden category groups. Credit-card payment categories are excluded - they move money, they do not spend it.", "<strong>Saved &amp; invested</strong> = activity in the Savings group (RESP, Retirement, Emergency Fund, House), excluding Investment Gain/Loss and Savings Expenses.", "<strong>Housing</strong> is the Amroth House category - the single monthly transfer that covers the mortgage and the Benders' share of house expenses.", "<strong>The comparison window</strong> (3 months / 12 months / 5 years) is switched with the buttons at the top of this tab. Every average, median, total, the two charts and the vs-average column follow it. A window is clamped to where the data actually starts, so the 5-year view covers Dec 2021 - Aug 2026 rather than padding with empty months.", "<strong>The median</strong> is shown next to every average because a few months carry large one-offs that pull the average around.", "<strong>Same month last year</strong> and the account table's month-on-month change are fixed comparisons - they do not follow the window.", "<strong>Net worth</strong> is every YNAB account balance rolled forward through Aug 2026. It includes the tracked Amroth Equity account.", "<strong>The net worth chart</strong> stacks the balances by type, so the top of the stack is net worth itself. Credit-card balances are folded into Cash &amp; chequing (they are a claim on cash), which is why the stack totals net worth rather than gross assets - the account table below still lists cards separately."]};
+</script>
+
+<script>
+// ---------- helpers ----------
+function fm(n, dp) {
+  dp = dp || 0;
+  if (n === null || n === undefined || isNaN(n)) return '&mdash;';
+  var s = Math.abs(n).toLocaleString('en-CA', {minimumFractionDigits: dp, maximumFractionDigits: dp});
+  return (n < 0 ? '-$' : '$') + s;
+}
+function pc(n, dp) { dp = (dp === undefined) ? 1 : dp; return (n === null || isNaN(n)) ? '&mdash;' : n.toFixed(dp) + '%'; }
+function sg(n) { return n > 0 ? '+' : ''; }
+// goodIsUp=true  -> a positive delta is good (equity, income, savings)
+// goodIsUp=false -> a negative delta is good (debt, spending)
+function dcls(n, goodIsUp) {
+  if (Math.abs(n) < 0.005) return 'neutral';
+  var good = goodIsUp ? n > 0 : n < 0;
+  return good ? 'good' : 'bad';
+}
+function dspan(n, goodIsUp, dp) {
+  return '<span class="delta ' + dcls(n, goodIsUp) + '">' + sg(n) + fm(n, dp) + '</span>';
+}
+function dspanPct(n, goodIsUp, dp) {
+  return '<span class="delta ' + dcls(n, goodIsUp) + '">' + sg(n) + pc(n, dp) + '</span>';
+}
+var MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var DAYS_PER_MONTH = 365.25 / 12;
+// The shaved figure is a fraction of an amortization period; one period is one
+// monthly payment, so a period converts to the average calendar month.
+function days(n) {
+  if (n === null || n === undefined || isNaN(n)) return '&mdash;';
+  var d = Math.round(n * DAYS_PER_MONTH);
+  return d + ' day' + (Math.abs(d) === 1 ? '' : 's');
+}
+// fractional "months since year 0" -> "Mon YYYY"
+function monthIdxLabel(v) {
+  var w = Math.round(v);
+  return MONTH_NAMES[((w % 12) + 12) % 12] + ' ' + Math.floor(w / 12);
+}
+function mos(n) {
+  if (n === null || n === undefined) return '&mdash;';
+  var a = Math.abs(n), sign = n < 0 ? '-' : '';
+  if (a < 12) {
+    var v = Math.round(a * 10) / 10;
+    return sign + (v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)) + ' mo';
+  }
+  var w = Math.round(a), y = Math.floor(w / 12), m = w % 12;
+  return sign + y + ' yr' + (m ? ' ' + m + ' mo' : '');
+}
+function card(label, value, sub, color, hero) {
+  return '<div class="card' + (hero ? ' hero' : '') + '">'
+    + '<div class="card-label">' + label + '</div>'
+    + '<div class="card-value" style="color:' + (color || 'var(--text)') + '">' + value + '</div>'
+    + '<div class="card-sub">' + sub + '</div></div>';
+}
+function td(v, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</td>'; }
+function fill(id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html; }
+
+// ---------- tabs ----------
+document.querySelectorAll('.tabs button').forEach(function (b) {
+  b.addEventListener('click', function () {
+    document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.remove('active'); });
+    document.querySelectorAll('.page').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+    document.getElementById('page-' + b.dataset.tab).classList.add('active');
+    Object.values(CHARTS).forEach(function (c) { if (c) c.resize(); });
+  });
+});
+
+// ---------- chart defaults ----------
+var CHARTS = {};
+Chart.defaults.color = '#8891aa';
+Chart.defaults.borderColor = '#2e3148';
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+Chart.defaults.font.size = 11;
+var C = {accent: '#6c8fff', accent2: '#4cd9ac', accent3: '#ff8c6b', accent4: '#f5c242',
+         accent5: '#c08cff', muted: '#8891aa', neg: '#ff6b6b'};
+function moneyTick(v) {
+  var a = Math.abs(v), sign = v < 0 ? '-' : '';
+  return sign + '$' + (a >= 1000 ? (a / 1000).toFixed(a >= 10000 ? 0 : 1).replace('.0', '') + 'k' : a.toFixed(0));
+}
+var GRID = {grid: {color: 'rgba(46,49,72,.6)'}};
+</script>
+
+<script>
+// =========================== HOUSE PAGE ===========================
+var H = D.house, B = H.buyout;
+
+fill('house-banner',
+  '<strong>' + H.cur_label + '</strong> vs <strong>' + H.prev_label + '</strong> &nbsp;&middot;&nbsp; '
+  + 'One more month of payments moved Bender equity by ' + dspan(H.equity_delta, true)
+  + ' and the extra principal alone cut ' + '<span class="delta ' + dcls(H.shaved_mom, true) + '">'
+  + days(H.shaved_mom) + '</span> off the remaining term. '
+  + H.months_elapsed + ' months of real payments are on the books.');
+
+fill('house-hero',
+  card('Bender equity', fm(H.equity),
+       dspan(H.equity_delta, true) + ' vs ' + H.prev_label + '<br>'
+       + pc(H.equity_pct) + ' of the ' + fm(H.half_value) + ' Bender half (was ' + pc(H.equity_pct_prev) + ')',
+       'var(--accent2)', true)
++ card('Extra amortization shaved',
+       '<span class="' + dcls(H.shaved_mom, true) + '">' + days(H.shaved_mom) + '</span>',
+       'Bought by the extra principal alone &mdash; the scheduled payment is excluded<br>Term left: '
+       + mos(H.remaining) + ' &nbsp;(was ' + mos(H.remaining_prev) + ')',
+       'var(--accent4)', true)
++ card('Principal gained', fm(H.principal_total),
+       fm(H.base_prin) + ' scheduled &middot; ' + fm(H.extra) + ' extra'
+       + (H.transfer ? ' &middot; ' + fm(H.transfer) + ' transfer' : '')
+       + '<br>' + dspan(H.principal_delta, true) + ' vs ' + H.prev_label
+       + ' (' + fm(H.principal_total_prev) + ')',
+       'var(--accent)', true)
++ card('Cash saved toward buyout',
+       '<span class="' + dcls(H.tfsa_delta, true) + '">' + sg(H.tfsa_delta) + fm(H.tfsa_delta) + '</span>',
+       'Added in ' + H.tfsa_label + ' (vs ' + H.tfsa_prev_label + ')<br>'
+       + fm(H.tfsa) + ' saved in total &mdash; '
+       + pc(B.cash_at_closing > 0 ? H.tfsa / B.cash_at_closing * 100 : 0)
+       + ' of the ' + fm(B.cash_at_closing) + ' needed at closing',
+       'var(--accent5)', true));
+
+fill('house-cum',
+  card('Payoff date', H.payoff,
+       'Baseline with no extra payments: ' + H.payoff_base + '<br>'
+       + '<span class="' + dcls(H.shaved_total, true) + '">' + mos(H.shaved_total) + '</span> ahead of baseline'
+       + (H.shaved_total_prev !== null ? ' (was ' + mos(H.shaved_total_prev) + ' last month)' : ''),
+       'var(--accent2)')
++ card('Interest saved to date', fm(H.interest_saved),
+       dspan(H.interest_saved_delta, true) + ' added this month<br>'
+       + 'vs paying only the scheduled payment since day one', 'var(--accent2)')
++ card('Interest paid this month', fm(H.interest_month),
+       dspan(H.interest_month_delta, false) + ' vs ' + H.prev_label + '<br>'
+       + 'Bender share only, at ' + pc(D.params.rate_pct, 2) + ' annual', 'var(--accent3)')
++ card('Bender mortgage balance', fm(H.b_end),
+       dspan(H.b_end_delta, false) + ' vs ' + H.prev_label + '<br>'
+       + fm(H.all_in) + ' all-in to own the house outright '
+       + '(Bender mortgage + the Martins&rsquo; half at ' + fm(B.martin_share) + ')',
+       'var(--text)'));
+
+// ---- month-over-month table ----
+document.getElementById('mom-prev-h').textContent = H.prev_label;
+document.getElementById('mom-cur-h').textContent  = H.cur_label;
+function momRow(label, prev, cur, fmt, goodIsUp, deltaFmt) {
+  var delta = (typeof cur === 'number' && typeof prev === 'number') ? cur - prev : null;
+  var dHtml = '&mdash;';
+  if (delta !== null) {
+    dHtml = '<span class="delta ' + dcls(delta, goodIsUp) + '">' + sg(delta) + (deltaFmt || fmt)(delta) + '</span>';
+  }
+  return '<tr>' + td(label) + td(typeof prev === 'number' ? fmt(prev) : prev, 'muted-cell')
+       + td(typeof cur === 'number' ? fmt(cur) : cur) + td(dHtml) + '</tr>';
+}
+var f0 = function (v) { return fm(v, 0); };
+var f2 = function (v) { return fm(v, 2); };
+var fpc = function (v) { return pc(v, 2); };
+var fmo = function (v) { return mos(v); };
+var momHtml =
+    momRow('Bender equity', H.equity_prev, H.equity, f0, true)
+  + momRow('Equity as % of Bender half', H.equity_pct_prev, H.equity_pct, fpc, true)
+  + momRow('Bender mortgage balance', H.b_end_prev, H.b_end, f0, false)
+  + momRow('All-in to own outright (Bender + Martin half)', H.all_in_prev, H.all_in, f0, false)
+  + momRow('Interest paid (Bender share)', H.interest_month_prev, H.interest_month, f2, false)
+  + momRow('Scheduled principal', H.base_prin_prev, H.base_prin, f2, true)
+  + momRow('Extra principal payment', H.extra_prev, H.extra, f0, true)
+  + momRow('Total principal gained', H.principal_total_prev, H.principal_total, f2, true)
+  + momRow('Months of amortization left', H.remaining_prev, H.remaining, fmo, false)
+  + '<tr>' + td('Projected payoff') + td(H.payoff_prev, 'muted-cell') + td(H.payoff)
+      + td('<span class="delta ' + dcls(H.payoff_earlier, true) + '">' + mos(H.payoff_earlier) + ' earlier</span>') + '</tr>'
+  + momRow('Total time shaved vs baseline', H.shaved_total_prev, H.shaved_total, fmo, true)
+  + momRow('Interest saved to date', H.interest_saved_prev, H.interest_saved, f2, true)
+  + momRow('TFSA saved for buyout (' + H.tfsa_prev_label + ' &rarr; ' + H.tfsa_label + ')', H.tfsa_prev, H.tfsa, f0, true);
+fill('mom-body', momHtml);
+</script>
+
+<script>
+// ---- house charts ----
+var S = H.series, SL = S.map(function (r) { return r.label; });
+function ds(label, data, color, opts) {
+  return Object.assign({label: label, data: data, borderColor: color, backgroundColor: color,
+    borderWidth: 2, pointRadius: 0, tension: .25}, opts || {});
+}
+var lineOpts = {responsive: true, maintainAspectRatio: false,
+  interaction: {mode: 'index', intersect: false},
+  plugins: {legend: {labels: {boxWidth: 10, boxHeight: 10, usePointStyle: true}}},
+  scales: {x: GRID, y: Object.assign({ticks: {callback: moneyTick}}, GRID)}};
+
+// Payoff dates are plotted as "months since year 0" (~24,600), so Chart.js's
+// default tick stepping lands almost nothing inside the data's ~30-month span.
+// Bound the axis to the data and step in whole half-years.
+var PV = S.map(function (r) { return r.payoff_idx; })
+          .concat(S.map(function (r) { return r.base_payoff_idx; }))
+          .filter(function (v) { return v !== null && v !== undefined; });
+var pLo = Math.min.apply(null, PV), pHi = Math.max.apply(null, PV);
+var pSpan = pHi - pLo;
+var pStep = pSpan <= 30 ? 6 : (pSpan <= 72 ? 12 : 24);
+var pPad  = Math.max(1, pSpan * 0.08);
+var pMin  = Math.floor((pLo - pPad) / pStep) * pStep;
+var pMax  = Math.ceil((pHi + pPad) / pStep) * pStep;
+
+CHARTS.payoff = new Chart(document.getElementById('c-payoff'), {type: 'line', data: {labels: SL, datasets: [
+  ds('Projected payoff', S.map(function (r) { return r.payoff_idx; }), C.accent2,
+     {stepped: false, pointRadius: 2}),
+  ds('If no extras had ever been paid', S.map(function (r) { return r.base_payoff_idx; }), C.muted,
+     {borderDash: [5, 4]})
+]}, options: {responsive: true, maintainAspectRatio: false,
+  interaction: {mode: 'index', intersect: false},
+  plugins: {legend: {labels: {boxWidth: 10, boxHeight: 10, usePointStyle: true}},
+    tooltip: {callbacks: {label: function (c) {
+      return c.dataset.label + ': ' + monthIdxLabel(c.parsed.y);
+    }}}},
+  scales: {x: GRID,
+           y: Object.assign({min: pMin, max: pMax,
+                             ticks: {stepSize: pStep,
+                                     callback: function (v) { return monthIdxLabel(v); }}}, GRID)}}});
+
+CHARTS.equity = new Chart(document.getElementById('c-equity'), {type: 'line', data: {labels: SL, datasets: [
+  ds('Actual equity', S.map(function (r) { return r.equity; }), C.accent2,
+     {fill: true, backgroundColor: 'rgba(76,217,172,.10)'}),
+  ds('No-extras baseline', S.map(function (r) { return r.base_equity; }), C.muted, {borderDash: [5, 4]})
+]}, options: lineOpts});
+
+CHARTS.amort = new Chart(document.getElementById('c-amort'), {type: 'line', data: {labels: SL, datasets: [
+  ds('Months left (actual)', S.map(function (r) { return r.remaining; }), C.accent4),
+  ds('Months left (baseline)', S.map(function (r) { return r.base_remaining; }), C.muted, {borderDash: [5, 4]})
+]}, options: {responsive: true, maintainAspectRatio: false,
+  interaction: {mode: 'index', intersect: false},
+  plugins: {legend: {labels: {boxWidth: 10, boxHeight: 10, usePointStyle: true}},
+    tooltip: {callbacks: {label: function (c) { return c.dataset.label + ': ' + mos(c.parsed.y).replace('&nbsp;', ' '); }}}},
+  scales: {x: GRID, y: Object.assign({ticks: {callback: function (v) { return v + ' mo'; }}}, GRID)}}});
+
+CHARTS.principal = new Chart(document.getElementById('c-principal'), {type: 'bar', data: {labels: SL, datasets: [
+  {label: 'Scheduled principal (Bender)', data: S.map(function (r) { return r.b_prin; }), backgroundColor: C.accent},
+  {label: 'Extra payment (Bender)', data: S.map(function (r) { return r.b_extra; }), backgroundColor: C.accent2},
+  {label: 'Partnership transfer (Bender half)', data: S.map(function (r) { return r.b_transfer; }), backgroundColor: C.accent5}
+]}, options: {responsive: true, maintainAspectRatio: false,
+  interaction: {mode: 'index', intersect: false},
+  plugins: {legend: {labels: {boxWidth: 10, boxHeight: 10, usePointStyle: true}},
+    tooltip: {callbacks: {footer: function (items) {
+      return 'Total gained: ' + fm(items.reduce(function (a, i) { return a + i.parsed.y; }, 0), 2);
+    }}}},
+  scales: {x: Object.assign({stacked: true}, GRID),
+           y: Object.assign({stacked: true, ticks: {callback: moneyTick}}, GRID)}}});
+
+CHARTS.balances = new Chart(document.getElementById('c-balances'), {type: 'line', data: {labels: SL, datasets: [
+  ds('Bender', S.map(function (r) { return r.b_end; }), C.accent),
+  ds('Martin', S.map(function (r) { return r.m_end; }), C.accent3)
+]}, options: lineOpts});
+
+// ---- buyout cards ----
+function mini(label, value, color) {
+  return '<div class="card" style="padding:15px 16px"><div class="card-label">' + label + '</div>'
+    + '<div class="card-value" style="font-size:1.12rem;color:' + (color || 'var(--text)') + '">' + value + '</div></div>';
+}
+fill('buyout-cards',
+  mini('Martin 50% share', fm(B.martin_share))
++ mini('Bender balance', fm(B.b_end), 'var(--accent3)')
++ mini('Total to finance', fm(B.total_financing))
++ mini('New mortgage (80% LTV cap)', fm(B.new_mortgage), 'var(--accent)')
++ mini('Cash needed at closing', fm(B.cash_at_closing), 'var(--accent4)')
++ mini('Net payout to Martins', fm(B.martin_payout), 'var(--accent2)'));
+
+document.getElementById('b-net-now').innerHTML = fm(B.net_now) + '<span style="font-size:.8rem;color:var(--muted)">/mo</span>';
+fill('b-net-now-sub', fm(D.params.bender_payment) + ' mortgage + ' + fm(B.expenses / 2) + ' half of expenses'
+  + ' &minus; ' + fm(B.tenant_rent / 2) + ' half of tenant rent + ' + fm(D.params.bender_rent / 2) + ' net rent as tenants');
+document.getElementById('b-net-after').innerHTML = fm(B.net_after) + '<span style="font-size:.8rem;color:var(--muted)">/mo</span>';
+fill('b-net-after-sub', fm(B.new_payment) + ' new payment at ' + pc(B.buyout_rate_pct, 2) + ' over ' + B.amort_yrs + ' yrs'
+  + ' + ' + fm(B.expenses) + ' expenses &minus; ' + fm(B.tenant_rent) + ' tenant rent<br>'
+  + dspan(B.net_change, false) + '/mo vs today');
+document.getElementById('b-tfsa').innerHTML = fm(H.tfsa);
+fill('b-tfsa-sub', 'Tim ' + fm(H.tim) + ' &middot; Vivian ' + fm(H.vivian) + ' &nbsp;' + dspan(H.tfsa_delta, true)
+  + ' in ' + H.tfsa_label + '<br>' + pc(B.cash_at_closing > 0 ? H.tfsa / B.cash_at_closing * 100 : 0) + ' of ' + fm(B.cash_at_closing) + ' needed');
+document.getElementById('b-tfsa-bar').style.width =
+  Math.min(100, B.cash_at_closing > 0 ? H.tfsa / B.cash_at_closing * 100 : 0) + '%';
+
+// ---- history table ----
+fill('hist-body', H.history.map(function (r, i) {
+  return '<tr' + (i === 0 ? ' class="total-row"' : '') + '>' + td(r.label) + td(fm(r.b_end))
+    + td(fm(r.equity)) + td(fm(r.b_interest, 2), 'muted-cell') + td(fm(r.b_prin, 2))
+    + td(r.b_extra ? fm(r.b_extra) : '&mdash;', r.b_extra ? '' : 'muted-cell')
+    + td(r.b_transfer ? fm(r.b_transfer) : '&mdash;', r.b_transfer ? '' : 'muted-cell')
+    + td(fm(r.principal_total, 2)) + td(mos(r.remaining), 'muted-cell')
+    + td(r.tfsa !== null ? fm(r.tfsa) : '&mdash;', 'muted-cell') + '</tr>';
+}).join(''));
+
+fill('house-notes', D.house_notes.map(function (n) { return '<li>' + n + '</li>'; }).join(''));
+</script>
+
+<script>
+// =========================== MONEY PAGE ===========================
+var F = D.fin, TX = F.txn;
+var CURWIN = F.default_window;
+
+var GROUP_ORDER = ['Monthly', 'Cumulative', 'Tax Deductible', 'Savings', 'Hidden Categories'];
+function groupRank(g) { var i = GROUP_ORDER.indexOf(g); return i === -1 ? 99 : i; }
+function vsTag(v) {
+  return Math.abs(v) < 25 ? '<span class="tag tag-n">on pace</span>'
+       : (v > 0 ? '<span class="tag tag-b">+' + fm(v) + '</span>'
+                : '<span class="tag tag-g">' + fm(v) + '</span>');
+}
+var STACK_FILL = {
+  'House equity':          ['rgba(108,143,255,.55)', C.accent],
+  'Pensions':              ['rgba(192,140,255,.55)', C.accent5],
+  'Investments & savings': ['rgba(76,217,172,.55)',  C.accent2],
+  'Cash & chequing':       ['rgba(245,194,66,.55)',  C.accent4],
+  'Other':                 ['rgba(136,145,170,.50)', C.muted]
+};
+
+// ---- comparison-window picker ----
+fill('win-buttons', F.window_order.map(function (id) {
+  return '<button data-win="' + id + '"' + (id === CURWIN ? ' class="active"' : '') + '>'
+    + F.windows[id].label + '</button>';
+}).join(''));
+document.querySelectorAll('#win-buttons button').forEach(function (b) {
+  b.addEventListener('click', function () {
+    if (b.dataset.win === CURWIN) return;
+    CURWIN = b.dataset.win;
+    document.querySelectorAll('#win-buttons button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+    renderMoney();
+  });
+});
+
+function statCard(W, label, st, goodIsUp, color, hero, isPct) {
+  var f  = isPct ? function (v) { return pc(v, 1); } : function (v) { return fm(v, 0); };
+  var df = isPct ? function (v) { return v.toFixed(1) + ' pts'; } : function (v) { return fm(v, 0); };
+  var dAvg = st.cur - st.avg, dYr = st.cur - st.yr_ago;
+  var dSpan = '<span class="delta ' + dcls(dAvg, goodIsUp) + '">' + sg(dAvg) + df(dAvg) + '</span>';
+  var ySpan = '<span class="delta ' + dcls(dYr, goodIsUp) + '">' + sg(dYr) + df(dYr) + '</span>';
+  return card(label, f(st.cur),
+    dSpan + ' vs the ' + W.short + ' average of ' + f(st.avg) + ' (median ' + f(st.median) + ')<br>'
+    + ySpan + ' vs ' + F.yr_ago_label + ' (' + f(st.yr_ago) + ')',
+    color, hero);
+}
+
+function renderMoney() {
+  var W = F.windows[CURWIN], HL = W.headline, NW = W.nw;
+
+  document.getElementById('win-span').innerHTML =
+    W.span + ' &nbsp;&middot;&nbsp; ' + W.months + ' months'
+    + (W.clamped ? ' &nbsp;&middot;&nbsp; clamped to where the data starts' : '');
+
+  fill('money-banner',
+    '<strong>' + F.cur_label + '</strong> &nbsp;&middot;&nbsp; the last complete month, measured against '
+    + W.label.toLowerCase() + ' (' + W.span + '). '
+    + TX.txn_count + ' transactions recorded. Money in ' + fm(HL.income.cur)
+    + ', money out ' + fm(HL.spend.cur) + ', set aside ' + fm(HL.saved.cur) + '.');
+
+  fill('money-hero',
+    statCard(W, 'Money in', HL.income, true, 'var(--accent2)', true)
+  + statCard(W, 'Money out', HL.spend, false, 'var(--accent3)', true)
+  + statCard(W, 'Saved &amp; invested', HL.saved, true, 'var(--accent5)', true)
+  + card('Left over (in &minus; out &minus; saved)', fm(HL.net.cur),
+      '<span class="delta ' + dcls(HL.net.cur - HL.net.avg, true) + '">' + sg(HL.net.cur - HL.net.avg)
+        + fm(HL.net.cur - HL.net.avg) + '</span> vs the ' + W.short + ' average of ' + fm(HL.net.avg) + '<br>'
+      + W.label + ' total: <span class="' + (HL.net.total >= 0 ? 'good' : 'bad') + '">' + fm(HL.net.total) + '</span>',
+      HL.net.cur >= 0 ? 'var(--accent2)' : 'var(--negative)', true));
+
+  fill('money-second',
+    statCard(W, 'Savings rate', HL.savings_rate, true, 'var(--accent5)', false, true)
+  + statCard(W, 'Housing (Amroth)', HL.housing, false, 'var(--accent4)')
+  + statCard(W, 'Everything else', HL.spend_ex_housing, false, 'var(--accent3)')
+  + card('Net worth', fm(NW.now.net),
+      dspan(NW.now.net - NW.prev.net, true) + ' vs ' + F.prev_label + '<br>'
+      + dspan(NW.now.net - NW.start.net, true) + ' over ' + W.label.toLowerCase() + '<br>'
+      + 'Assets ' + fm(NW.now.assets) + ' &minus; debt ' + fm(NW.now.debt),
+      'var(--accent)'));
+
+  document.getElementById('inc-month').textContent = F.cur_label;
+  document.getElementById('inc-avg-h').textContent = W.short + ' average';
+  fill('inc-body', W.income_sources.map(function (s) {
+    return '<tr>' + td(s.payee) + td(fm(s.amount, 2)) + td(fm(s.avg, 2), 'muted-cell')
+      + td(dspan(s.vs_avg, true, 2)) + '</tr>';
+  }).join('')
+  + '<tr class="total-row">' + td('Total money in') + td(fm(HL.income.cur, 2))
+  + td(fm(HL.income.avg, 2), 'muted-cell')
+  + td(dspan(HL.income.cur - HL.income.avg, true, 2)) + '</tr>');
+
+  document.getElementById('flow-title').innerHTML = 'Income, spending &amp; saving &mdash; ' + W.label.toLowerCase();
+  document.getElementById('nw-title').innerHTML = 'Net worth &mdash; ' + W.label.toLowerCase() + ', by what it is made of';
+  var dense = W.labels.length > 18;
+  var xTicks = Object.assign({ticks: {autoSkip: true, maxTicksLimit: dense ? 12 : 18,
+                                      maxRotation: 60, minRotation: 0}}, GRID);
+
+  if (CHARTS.flow) CHARTS.flow.destroy();
+  CHARTS.flow = new Chart(document.getElementById('c-flow'), {data: {labels: W.labels, datasets: [
+    {type: 'bar', label: 'Money in', data: W.series.income, backgroundColor: 'rgba(76,217,172,.75)', order: 3},
+    {type: 'bar', label: 'Money out', data: W.series.spend, backgroundColor: 'rgba(255,140,107,.75)', order: 3},
+    {type: 'bar', label: 'Saved', data: W.series.saved, backgroundColor: 'rgba(192,140,255,.7)', order: 3},
+    {type: 'line', label: 'Left over', data: W.series.net, borderColor: C.accent4, backgroundColor: C.accent4,
+     borderWidth: 2, pointRadius: dense ? 0 : 3, tension: .25, order: 1}
+  ]}, options: {responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: {mode: 'index', intersect: false},
+    plugins: {legend: {labels: {boxWidth: 10, boxHeight: 10, usePointStyle: true}}},
+    scales: {x: xTicks, y: Object.assign({ticks: {callback: moneyTick}}, GRID)}}});
+
+  if (CHARTS.nw) CHARTS.nw.destroy();
+  CHARTS.nw = new Chart(document.getElementById('c-nw'), {type: 'line', data: {
+    labels: NW.series.map(function (r) { return r.label; }),
+    datasets: NW.stack.map(function (b, i) {
+      var col = STACK_FILL[b.bucket] || ['rgba(136,145,170,.5)', C.muted];
+      return {label: b.bucket, data: b.values, backgroundColor: col[0], borderColor: col[1],
+              borderWidth: 1, pointRadius: 0, tension: .25, fill: i === 0 ? 'origin' : '-1'};
+    })
+  }, options: {responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: {mode: 'index', intersect: false},
+    plugins: {legend: {labels: {boxWidth: 10, boxHeight: 10, usePointStyle: true}},
+      tooltip: {callbacks: {footer: function (items) {
+        return 'Net worth: ' + fm(items.reduce(function (a, i) { return a + i.parsed.y; }, 0));
+      }}}},
+    scales: {x: xTicks, y: Object.assign({stacked: true, beginAtZero: true,
+                                          ticks: {callback: moneyTick}}, GRID)}}});
+
+  document.getElementById('budget-month').textContent = F.cur_label;
+  document.getElementById('cat-avg-h').textContent = W.short + ' avg';
+  var ordered = W.group_rows.slice().sort(function (a, b) { return groupRank(a.group) - groupRank(b.group); });
+  fill('cat-body', ordered.map(function (g) {
+    var kids = W.categories.filter(function (c) { return c.group === g.group; });
+    if (!kids.length) return '';
+    var head = '<tr class="total-row">' + td(g.group)
+      + td('<span class="muted-cell">' + kids.length + ' categor' + (kids.length === 1 ? 'y' : 'ies') + '</span>')
+      + td('') + td(fm(g.spent)) + td('') + td(fm(g.prev), 'muted-cell')
+      + td(fm(g.avg), 'muted-cell') + td(vsTag(g.vs_avg)) + td('') + '</tr>';
+    return head + kids.map(function (c) {
+      var n = (D.pres.cat_txns[c.category] || []).length;
+      return '<tr' + (n ? ' class="drill" data-cat="' + c.category.replace(/"/g, '&quot;') + '"' : '') + '>'
+        + td('&nbsp;&nbsp;&nbsp;&nbsp;' + c.category) + td('')
+        + td(fm(c.assigned, 2), 'muted-cell') + td(fm(c.spent, 2))
+        + td(fm(c.available, 2), c.available < 0 ? 'bad' : 'muted-cell')
+        + td(fm(c.prev, 2), 'muted-cell') + td(fm(c.avg, 2), 'muted-cell')
+        + td(vsTag(c.vs_avg)) + td(fm(c.yr_ago, 2), 'muted-cell') + '</tr>';
+    }).join('');
+  }).join(''));
+}
+
+// ---- window-independent tables ----
+fill('big-body', TX.biggest.map(function (t) {
+  return '<tr>' + td(t.date, 'muted-cell') + td(t.payee)
+    + td('<span class="muted-cell">' + (t.category || '&mdash;') + '</span>')
+    + td(fm(t.amount, 2)) + '</tr>';
+}).join(''));
+
+var NWNOW = F.windows[F.default_window].nw;
+var acctHtml = F.nw_buckets.map(function (b) {
+  var kids = F.nw_accounts.filter(function (a) { return a.bucket === b.bucket; });
+  return '<tr class="total-row">' + td(b.bucket)
+    + td('<span class="muted-cell">' + kids.length + ' account' + (kids.length === 1 ? '' : 's') + '</span>')
+    + td(fm(b.balance)) + td(dspan(b.delta, b.bucket !== 'Credit cards')) + '</tr>'
+    + kids.map(function (a) {
+        return '<tr>' + td('&nbsp;&nbsp;&nbsp;&nbsp;' + a.account) + td('')
+          + td(fm(a.balance, 2), a.balance < 0 ? 'bad' : '')
+          + td(a.delta ? dspan(a.delta, a.bucket !== 'Credit cards', 2) : '<span class="muted-cell">&mdash;</span>') + '</tr>';
+      }).join('');
+}).join('');
+acctHtml += '<tr class="total-row">' + td('NET WORTH') + td('') + td(fm(NWNOW.now.net))
+  + td(dspan(NWNOW.now.net - NWNOW.prev.net, true)) + '</tr>';
+fill('acct-body', acctHtml);
+
+fill('money-notes', D.money_notes.map(function (n) { return '<li>' + n + '</li>'; }).join(''));
+
+renderMoney();
+</script>
+
+<script>
+// =========================== PRESENTATION ===========================
+var P = D.pres;
+var PWIN = P.default_window;
+var DASH = document.getElementById('dashboard');
+var PRES = document.getElementById('pres');
+var SLIDES = Array.prototype.slice.call(document.querySelectorAll('#pres .slide'));
+var NS = SLIDES.length;
+var IDX = 0;
+
+function esc(v) {
+  return String(v === null || v === undefined ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function PB() { return P.baselines[PWIN]; }
+function killChart(k) { if (CHARTS[k]) { CHARTS[k].destroy(); CHARTS[k] = null; } }
+
+// ---- the comparison-period toggle, repeated on every comparison slide ----
+function winbarHtml() {
+  var b = PB();
+  return '<div class="winbar"><span class="wlbl">Compare ' + P.cur_label + ' against</span>'
+    + P.window_order.map(function (id) {
+        return '<button data-pwin="' + id + '"' + (id === PWIN ? ' class="active"' : '') + '>'
+          + P.baselines[id].label + '</button>';
+      }).join('')
+    + '<span class="wspan">' + b.span
+    + (b.months > 1 ? ' &nbsp;&middot;&nbsp; ' + b.months + ' months' : '')
+    + (b.clamped ? ' &nbsp;&middot;&nbsp; clamped to where the data starts' : '') + '</span></div>';
+}
+function paintWinbars() {
+  var slide = SLIDES[IDX];
+  var bar = slide.querySelector('[data-winbar]');
+  if (bar) bar.innerHTML = winbarHtml();
+}
+PRES.addEventListener('click', function (e) {
+  var id = e.target.dataset ? e.target.dataset.pwin : null;
+  if (!id || id === PWIN) return;
+  PWIN = id;
+  buildSlide(IDX);
+});
+
+function buildSlide(i) {
+  if (BUILDERS[i]) BUILDERS[i]();
+  paintWinbars();
+  Object.values(CHARTS).forEach(function (c) { if (c) c.resize(); });
+}
+
+function showSlide(i) {
+  IDX = Math.max(0, Math.min(NS - 1, i));
+  SLIDES.forEach(function (s, j) { s.classList.toggle('on', j === IDX); });
+  buildSlide(IDX);
+  document.getElementById('pres-step').textContent = (IDX + 1) + ' / ' + NS;
+  document.getElementById('pres-prev').disabled = IDX === 0;
+  document.getElementById('pres-next').innerHTML = IDX === NS - 1 ? 'Finish &rarr;' : 'Next &rarr;';
+  fill('pres-dots', SLIDES.map(function (s, j) {
+    return '<span data-go="' + j + '" class="' + (j === IDX ? 'on' : (j < IDX ? 'done' : '')) + '"></span>';
+  }).join(''));
+  document.getElementById('pres-stage').scrollTop = 0;
+}
+
+function openDashboard() {
+  PRES.style.display = 'none';
+  DASH.hidden = false;
+  document.body.style.padding = '24px';
+  Object.values(CHARTS).forEach(function (c) { if (c) c.resize(); });
+}
+function openPresentation() {
+  DASH.hidden = true;
+  PRES.style.display = 'flex';
+  document.body.style.padding = '0';
+  showSlide(0);
+}
+
+document.getElementById('pres-next').addEventListener('click', function () {
+  if (IDX === NS - 1) openDashboard(); else showSlide(IDX + 1);
+});
+document.getElementById('pres-prev').addEventListener('click', function () { showSlide(IDX - 1); });
+document.getElementById('pres-skip').addEventListener('click', openDashboard);
+document.getElementById('s8-open').addEventListener('click', openDashboard);
+document.getElementById('pres-dots').addEventListener('click', function (e) {
+  if (e.target.dataset.go !== undefined) showSlide(+e.target.dataset.go);
+});
+document.getElementById('replay-link').addEventListener('click', function (e) {
+  e.preventDefault(); openPresentation();
+});
+document.addEventListener('keydown', function (e) {
+  if (PRES.style.display === 'none') return;
+  if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); if (IDX < NS - 1) showSlide(IDX + 1); else openDashboard(); }
+  if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); showSlide(IDX - 1); }
+  if (e.key === 'Escape') openDashboard();
+});
+
+// ---- category drill-down, shared by the walkthrough and the dashboard ----
+function drillHtml(cat) {
+  var rows = P.cat_txns[cat] || [];
+  if (!rows.length) {
+    return '<div class="drill-wrap"><div class="drill-foot">No transactions recorded in '
+      + P.cur_label + ' for this category.</div></div>';
+  }
+  var total = rows.reduce(function (a, r) { return a + r.amount; }, 0);
+  return '<div class="drill-wrap"><table><thead><tr>'
+    + '<th>Date</th><th>Payee</th><th>Memo</th><th>Account</th><th>Amount</th></tr></thead><tbody>'
+    + rows.map(function (r) {
+        return '<tr>' + td(r.date, 'muted-cell') + td(esc(r.payee))
+          + td('<span class="muted-cell">' + esc(r.memo) + '</span>')
+          + td('<span class="muted-cell">' + esc(r.account) + '</span>')
+          + td(fm(r.amount, 2), r.amount < 0 ? 'good' : '') + '</tr>';
+      }).join('')
+    + '</tbody></table><div class="drill-foot">' + rows.length + ' transaction'
+    + (rows.length === 1 ? '' : 's') + ' &middot; totals ' + fm(total, 2)
+    + (total < 0 ? ' (net refund)' : '') + '</div></div>';
+}
+
+function attachDrill(tbodyId) {
+  document.getElementById(tbodyId).addEventListener('click', function (e) {
+    var tr = e.target.closest ? e.target.closest('tr.drill') : null;
+    if (!tr || !tr.dataset.cat) return;
+    var next = tr.nextElementSibling;
+    if (next && next.classList.contains('drill-body')) {
+      next.parentNode.removeChild(next); tr.classList.remove('open'); return;
+    }
+    // build the cell and set innerHTML on IT - setting innerHTML on a <tr>
+    // parses in row context and mis-nests the inner table's <thead>
+    var row = document.createElement('tr');
+    row.className = 'drill-body';
+    var cell = document.createElement('td');
+    cell.colSpan = tr.children.length;
+    cell.innerHTML = drillHtml(tr.dataset.cat);
+    row.appendChild(cell);
+    tr.parentNode.insertBefore(row, tr.nextSibling);
+    tr.classList.add('open');
+  });
+}
+
+// ---- slide builders ----
+var CUR = P.cur;
+function vsLine(cur, avg, goodIsUp, isPct) {
+  var d = cur - avg, b = PB();
+  var f = isPct ? function (v) { return v.toFixed(1) + ' pts'; } : function (v) { return fm(v, 0); };
+  var shown = isPct ? avg.toFixed(1) + '%' : fm(avg, 0);
+  return '<span class="delta ' + dcls(d, goodIsUp) + '">' + sg(d) + f(d) + '</span>'
+    + ' vs ' + b.against + ' (' + shown + ')';
+}
+
+var BUILDERS = {};
+
+BUILDERS[0] = function () {
+  var A = PB().avgs;
+  document.getElementById('pres-month').textContent = P.cur_label + ' in review';
+  document.getElementById('s0-title').textContent = P.cur_label;
+  fill('s0-lede', 'A walk through the month, one step at a time. Pick what to measure it against below &mdash; '
+    + 'every baseline is the period <em>before</em> ' + P.cur_label + ', never including it. '
+    + 'Use <strong>Next</strong>, the arrow keys, or the bars up top to move around.');
+  fill('s0-cards',
+    card('Money in', fm(CUR.income), vsLine(CUR.income, A.income, true), 'var(--accent2)', true)
+  + card('Money out', fm(CUR.spend), vsLine(CUR.spend, A.spend, false), 'var(--accent3)', true)
+  + card('Saved &amp; invested', fm(CUR.saved), vsLine(CUR.saved, A.saved, true), 'var(--accent5)', true)
+  + card('Left over', fm(CUR.net), vsLine(CUR.net, A.net, true),
+         CUR.net >= 0 ? 'var(--accent2)' : 'var(--negative)', true));
+};
+
+BUILDERS[1] = function () {
+  var b = PB(), st = b.streams, top = st.slice(0, 10);
+  var avgIn = b.avgs.income, d = CUR.income - avgIn;
+  fill('s1-lede', '<strong>' + fm(CUR.income) + '</strong> came in across <strong>'
+    + st.filter(function (x) { return x.amount > 0; }).length + ' streams</strong>, '
+    + (d >= 0 ? 'up ' : 'down ') + fm(Math.abs(d)) + ' on ' + b.against + ' of ' + fm(avgIn)
+    + ' (' + b.span + '). The bars show this month against that baseline, stream by stream.');
+  document.getElementById('s1-chart-title').textContent = P.cur_label + ' vs ' + b.span;
+  document.getElementById('s1-cur-h').textContent = P.cur_label;
+  document.getElementById('s1-avg-h').textContent = b.months === 1 ? b.span : b.short + ' average';
+  fill('s1-body', st.map(function (x) {
+    return '<tr>' + td(esc(x.payee)) + td(fm(x.amount, 2)) + td(fm(x.avg, 2), 'muted-cell')
+      + td(x.new ? '<span class="tag tag-g">new</span>' : dspan(x.vs_avg, true, 2)) + '</tr>';
+  }).join('')
+  + '<tr class="total-row">' + td('Total money in') + td(fm(CUR.income, 2))
+  + td(fm(avgIn, 2), 'muted-cell') + td(dspan(d, true, 2)) + '</tr>');
+
+  killChart('streams');
+  CHARTS.streams = new Chart(document.getElementById('c-streams'), {type: 'bar', data: {
+    labels: top.map(function (x) { return x.payee; }), datasets: [
+    {label: P.cur_label, data: top.map(function (x) { return x.amount; }), backgroundColor: C.accent2},
+    {label: b.months === 1 ? b.span : b.short + ' average',
+     data: top.map(function (x) { return x.avg; }), backgroundColor: 'rgba(136,145,170,.55)'}
+  ]}, options: {indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: {legend: {labels: {boxWidth: 10, boxHeight: 10, usePointStyle: true}}},
+    scales: {x: Object.assign({ticks: {callback: moneyTick}}, GRID), y: GRID}}});
+};
+
+BUILDERS[2] = function () {
+  var over = P.overspent, soft = P.over_assigned;
+  fill('s2-lede', over.length
+    ? '<strong>' + over.length + ' categor' + (over.length === 1 ? 'y' : 'ies') + '</strong> finished '
+      + P.cur_label + ' with a negative balance &mdash; the assignment plus any carried-over cushion did not cover the spending. '
+      + (soft.length ? soft.length + ' more went past this month&rsquo;s assignment but had enough banked to absorb it.' : '')
+    : 'Nothing finished the month in the red. '
+      + (soft.length ? soft.length + ' categor' + (soft.length === 1 ? 'y' : 'ies') + ' spent more than assigned, but carried-over balance absorbed it.' : ''));
+
+  function flagCard(x, cls, label, word) {
+    return '<div class="flag ' + cls + '">'
+      + '<div class="flag-top"><span class="flag-name">' + esc(x.category) + '</span>'
+      + '<span class="flag-amt ' + (cls === 'red' ? 'bad' : '') + '">' + fm(x.over, 2)
+      + '<span style="font-size:.72rem;font-weight:600;color:var(--muted)"> ' + word + '</span></span></div>'
+      + '<div class="flag-sub">' + esc(x.group) + ' &middot; spent ' + fm(x.spent, 2)
+      + ' against ' + fm(x.assigned, 2) + ' assigned &middot; ' + label + ' ' + fm(x.available, 2) + '</div></div>';
+  }
+  var html = '';
+  if (over.length) {
+    html += '<div class="section-title" style="color:var(--negative)">Overspent &mdash; ended the month negative</div>'
+      + '<div class="grid g3">' + over.map(function (x) { return flagCard(x, 'red', 'available', 'short'); }).join('') + '</div>';
+  }
+  if (soft.length) {
+    html += '<div class="section-title" style="color:var(--accent4);margin-top:8px">Over the assignment &mdash; covered by carry-over</div>'
+      + '<div class="grid g3">' + soft.map(function (x) { return flagCard(x, 'amber', 'still available', 'over plan'); }).join('') + '</div>';
+  }
+  if (!over.length && !soft.length) {
+    html = '<div class="flag green"><div class="flag-name">Every category stayed inside its budget.</div></div>';
+  }
+  fill('s2-over', html);
+};
+
+BUILDERS[3] = function () {
+  var big = TX.biggest.slice(0, 10), sum = big.reduce(function (a, r) { return a + r.amount; }, 0);
+  fill('s3-lede', 'The ' + big.length + ' largest single transactions of ' + P.cur_label
+    + ' account for <strong>' + fm(sum) + '</strong> &mdash; '
+    + pc(CUR.spend ? sum / CUR.spend * 100 : 0) + ' of the month&rsquo;s ' + fm(CUR.spend) + ' of spending.');
+  fill('s3-body', big.map(function (t) {
+    return '<tr>' + td(t.date, 'muted-cell') + td(esc(t.payee))
+      + td('<span class="muted-cell">' + esc(t.category) + '</span>')
+      + td('<span class="muted-cell">' + esc(t.account) + '</span>')
+      + td(fm(t.amount, 2))
+      + td(pc(CUR.spend ? t.amount / CUR.spend * 100 : 0), 'muted-cell') + '</tr>';
+  }).join('')
+  + '<tr class="total-row">' + td('Top ' + big.length) + td('') + td('') + td('')
+  + td(fm(sum, 2)) + td(pc(CUR.spend ? sum / CUR.spend * 100 : 0)) + '</tr>');
+};
+
+BUILDERS[4] = function () {
+  var b = PB(), W = F.windows['3m'];
+  fill('s4-lede', 'Every category that moved in ' + P.cur_label + ', grouped the way the budget is. '
+    + '<strong>Click any row</strong> to unfold the individual transactions that add up to its "spent" figure &mdash; '
+    + 'they reconcile exactly.');
+  document.getElementById('s4-prev-h').textContent = P.prev_label;
+  document.getElementById('s4-vs-h').textContent = b.months === 1 ? 'vs ' + b.span : 'vs ' + b.short + ' avg';
+
+  // categories that actually moved this month, grouped
+  var cats = W.categories.filter(function (c) {
+    return Math.abs(c.spent) >= 0.005 || Math.abs(c.assigned) >= 0.005;
+  });
+  var groups = {};
+  cats.forEach(function (c) {
+    var g = groups[c.group] || (groups[c.group] = {group: c.group, spent: 0, prev: 0, avg: 0, kids: []});
+    g.spent += c.spent; g.prev += c.prev; g.avg += (b.cat_avg[c.category] || 0); g.kids.push(c);
+  });
+  var ordered = Object.keys(groups).sort(function (x, y) { return groupRank(x) - groupRank(y); });
+  fill('s4-body', ordered.map(function (gn) {
+    var g = groups[gn];
+    var head = '<tr class="total-row">' + td(g.group) + td('') + td(fm(g.spent))
+      + td(fm(g.prev), 'muted-cell') + td(vsTag(g.spent - g.avg)) + td('')
+      + td('<span class="muted-cell">' + g.kids.length + '</span>') + '</tr>';
+    return head + g.kids.map(function (c) {
+      var n = (P.cat_txns[c.category] || []).length;
+      var avg = b.cat_avg[c.category] || 0;
+      return '<tr' + (n ? ' class="drill" data-cat="' + esc(c.category) + '"' : '') + '>'
+        + td('&nbsp;&nbsp;&nbsp;&nbsp;' + esc(c.category))
+        + td(fm(c.assigned, 2), 'muted-cell') + td(fm(c.spent, 2))
+        + td(fm(c.prev, 2), 'muted-cell') + td(vsTag(c.spent - avg))
+        + td(fm(c.available, 2), c.available < 0 ? 'bad' : 'muted-cell')
+        + td(n ? n + '' : '<span class="muted-cell">&mdash;</span>') + '</tr>';
+    }).join('');
+  }).join(''));
+};
+
+BUILDERS[5] = function () {
+  var b = PB(), A = b.avgs;
+  fill('s5-lede', '<strong>' + fm(CUR.saved) + '</strong> went into savings and investments in ' + P.cur_label
+    + ' &mdash; a savings rate of <strong>' + CUR.savings_rate.toFixed(1) + '%</strong> of everything that came in. '
+    + b.against.charAt(0).toUpperCase() + b.against.slice(1) + ' was ' + fm(A.saved)
+    + ' at ' + A.savings_rate.toFixed(1) + '%.');
+  fill('s5-cards',
+    card('Saved &amp; invested', fm(CUR.saved), vsLine(CUR.saved, A.saved, true), 'var(--accent5)', true)
+  + card('Savings rate', CUR.savings_rate.toFixed(1) + '%',
+         vsLine(CUR.savings_rate, A.savings_rate, true, true), 'var(--accent5)', true)
+  + card('Housing', fm(CUR.housing), vsLine(CUR.housing, A.housing, false), 'var(--accent4)', true)
+  + card('Left over after everything', fm(CUR.net), vsLine(CUR.net, A.net, true),
+         CUR.net >= 0 ? 'var(--accent2)' : 'var(--negative)', true));
+  // when the baseline IS last month the two columns would be identical, so
+  // the baseline-level column only appears for multi-month baselines
+  var wide = b.months > 1;
+  fill('s5-head', '<tr><th>Destination</th><th>' + P.cur_label + '</th><th>' + P.prev_label + '</th>'
+    + (wide ? '<th>' + b.short + ' average</th>' : '')
+    + '<th>vs ' + (wide ? b.short + ' avg' : b.span) + '</th></tr>');
+  fill('s5-body', b.saving_rows.map(function (r) {
+    var n = (P.cat_txns[r.category] || []).length;
+    return '<tr' + (n ? ' class="drill" data-cat="' + esc(r.category) + '"' : '') + '>'
+      + td(esc(r.category)) + td(fm(r.amount, 2)) + td(fm(r.prev, 2), 'muted-cell')
+      + (wide ? td(fm(r.avg, 2), 'muted-cell') : '')
+      + td(dspan(r.vs_avg, true, 2)) + '</tr>';
+  }).join('')
+  + '<tr class="total-row">' + td('Total set aside') + td(fm(CUR.saved, 2))
+  + td(fm(P.baselines['1m'].avgs.saved, 2), 'muted-cell')
+  + (wide ? td(fm(A.saved, 2), 'muted-cell') : '')
+  + td(dspan(CUR.saved - A.saved, true, 2)) + '</tr>');
+
+  var B = D.house.buyout, tf = D.house;
+  var pctSaved = B.cash_at_closing > 0 ? tf.tfsa / B.cash_at_closing * 100 : 0;
+  fill('s5-tfsa',
+    '<div class="big-stat sm" style="color:var(--accent5)">' + fm(tf.tfsa) + '</div>'
+    + '<div class="card-sub">Tim ' + fm(tf.tim) + ' &middot; Vivian ' + fm(tf.vivian) + '<br>'
+    + dspan(tf.tfsa_delta, true) + ' added in ' + tf.tfsa_label + '<br>'
+    + pc(pctSaved) + ' of the ' + fm(B.cash_at_closing) + ' needed as cash at closing</div>'
+    + '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(100, pctSaved) + '%"></div></div>');
+};
+
+BUILDERS[6] = function () {
+  // review the mortgage month matching the month under review, not
+  // necessarily the newest row in the tracker
+  var b = PB(), ser = D.house.series, i = -1;
+  for (var k = 0; k < ser.length; k++) { if (ser[k].label === P.cur_label) i = k; }
+  if (i < 1) i = ser.length - 1;
+  var cur = ser[i], prv = ser[i - 1] || null;
+  function payoffOf(r) {
+    if (!r || r.remaining === null) return '&mdash;';
+    var y = +r.key.slice(0, 4), m = +r.key.slice(5), idx = y * 12 + (m - 1) + r.remaining;
+    return MONTH_NAMES[idx % 12] + ' ' + Math.floor(idx / 12);
+  }
+  // average the same per-month measures across the selected baseline months
+  var pr = [], sh = [], itr = [];
+  for (var j = 1; j <= i; j++) {
+    if (b.keys.indexOf(ser[j].key) === -1) continue;
+    pr.push(ser[j].principal_total);
+    if (ser[j].shaved !== null) sh.push(ser[j].shaved);
+    itr.push(ser[j].b_interest);
+  }
+  function mean(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : 0; }
+  var nB = pr.length;
+  var against = nB === 0 ? null : (nB === 1 ? prv.label : 'the ' + b.short + ' average');
+  function houseVs(cur_v, avg_v, goodIsUp, fmt) {
+    if (against === null) return 'No comparable mortgage months in this baseline.';
+    var d = cur_v - avg_v;
+    return '<span class="delta ' + dcls(d, goodIsUp) + '">' + sg(d) + (fmt || function (v) { return fm(v, 0); })(d)
+      + '</span> vs ' + against + ' (' + (fmt || function (v) { return fm(v, 0); })(avg_v) + ')';
+  }
+  var shaved  = cur.shaved;
+  var B = D.house.buyout, allIn = cur.b_end + B.martin_share;
+
+  document.getElementById('s6-month').textContent = cur.label;
+  fill('s6-lede', 'The mortgage side of ' + cur.label + '. A payment of <strong>'
+    + fm(cur.principal_total, 2) + '</strong> went against principal &mdash; '
+    + fm(cur.b_prin, 2) + ' scheduled'
+    + (cur.b_extra ? ' plus ' + fm(cur.b_extra) + ' extra' : '')
+    + (cur.b_transfer ? ' plus ' + fm(cur.b_transfer, 2) + ' from a partnership transfer' : '')
+    + ' &mdash; and interest took ' + fm(cur.b_interest, 2) + '. '
+    + (nB ? 'The baseline below averages the same measures over ' + nB + ' tracked mortgage month'
+        + (nB === 1 ? '' : 's') + '.' : ''));
+
+  fill('s6-cards',
+    card('Principal gained', fm(cur.principal_total), houseVs(cur.principal_total, mean(pr), true)
+      + '<br>' + fm(cur.b_prin, 2) + ' scheduled &middot; ' + fm(cur.b_extra) + ' extra'
+      + (cur.b_transfer ? ' &middot; ' + fm(cur.b_transfer, 2) + ' transfer' : ''), 'var(--accent)', true)
+  + card('Extra amortization shaved', '<span class="' + dcls(shaved, true) + '">' + days(shaved) + '</span>',
+      houseVs(shaved, mean(sh), true, function (v) { return days(v); })
+      + '<br>Extra principal only &middot; term left ' + mos(cur.remaining),
+      'var(--accent4)', true)
+  + card('Interest paid', fm(cur.b_interest, 2), houseVs(cur.b_interest, mean(itr), false, function (v) { return fm(v, 2); })
+      + '<br>Bender share at ' + pc(D.params.rate_pct, 2) + ' annual', 'var(--accent3)', true));
+
+  fill('s6-cards2',
+    card('Bender equity', fm(cur.equity),
+      pc(cur.equity_pct) + ' of the ' + fm(D.house.half_value) + ' Bender half<br>'
+      + 'It grows by exactly the principal gained, shown above', 'var(--accent2)')
+  + card('Bender mortgage balance', fm(cur.b_end),
+      (prv ? dspan(cur.b_end - prv.b_end, false) + ' on the month<br>' : '')
+      + fm(allIn) + ' all-in to own outright', 'var(--text)')
+  + card('Projected payoff', payoffOf(cur),
+      'On the scheduled payment with no further extras' + (prv ? '<br>Last month it read ' + payoffOf(prv) : ''), 'var(--accent2)')
+  + card('Interest saved to date', fm(cur.base_cum_interest - cur.cum_interest, 2),
+      'vs paying only the scheduled payment since day one', 'var(--accent2)'));
+};
+
+BUILDERS[7] = function () {
+  var b = PB(), NW = b.nw;
+  var now = NW.now;                       // the month under review
+  var startNet = NW.start.net;            // first month of the selected baseline
+  var overPeriod = now.net - startNet;
+  var startLabel = NW.series[0].label;
+
+  fill('s7-chart-title', 'Net worth &mdash; ' + b.nw_span);
+  document.getElementById('s7-vs-h').textContent = 'since ' + startLabel;
+  fill('s7-lede', 'Net worth finished ' + P.cur_label + ' at <strong>' + fm(now.net) + '</strong>, '
+    + dspan(overPeriod, true) + ' since ' + startLabel
+    + (b.months > 1 ? ' &mdash; the start of the ' + b.label.toLowerCase() + ' you are comparing against' : '')
+    + '. The bands are what it is made of; the top of the stack is the total.');
+
+  fill('s7-body', NW.stack.map(function (x) {
+    var v = x.values[x.values.length - 1], p = x.values[0];
+    return '<tr>' + td(x.bucket) + td(fm(v)) + td(pc(now.net ? v / now.net * 100 : 0), 'muted-cell')
+      + td(dspan(v - p, true)) + '</tr>';
+  }).join('')
+  + '<tr class="total-row">' + td('Net worth') + td(fm(now.net)) + td('100.0%')
+  + td(dspan(overPeriod, true)) + '</tr>');
+
+  killChart('presnw');
+  var few = NW.series.length <= 4;        // a 2-point area is unreadable; use bars
+  CHARTS.presnw = new Chart(document.getElementById('c-pres-nw'), {type: few ? 'bar' : 'line', data: {
+    labels: NW.series.map(function (r) { return r.label; }),
+    datasets: NW.stack.map(function (x, i) {
+      var col = STACK_FILL[x.bucket] || ['rgba(136,145,170,.5)', C.muted];
+      var d = {label: x.bucket, data: x.values, backgroundColor: col[0], borderColor: col[1], borderWidth: 1};
+      if (!few) { d.pointRadius = 0; d.tension = .25; d.fill = i === 0 ? 'origin' : '-1'; }
+      return d;
+    })
+  }, options: {responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: {mode: 'index', intersect: false},
+    plugins: {legend: {labels: {boxWidth: 10, boxHeight: 10, usePointStyle: true}},
+      tooltip: {callbacks: {footer: function (items) {
+        return 'Net worth: ' + fm(items.reduce(function (a, i) { return a + i.parsed.y; }, 0));
+      }}}},
+    scales: {x: Object.assign({stacked: true, ticks: {autoSkip: true, maxTicksLimit: 12, maxRotation: 60}}, GRID),
+             y: Object.assign({stacked: true, beginAtZero: true, ticks: {callback: moneyTick}}, GRID)}}});
+};
+
+BUILDERS[8] = function () {
+  var b = PB(), A = b.avgs, NW = F.windows['12m'].nw;
+  document.getElementById('s8-title').textContent = P.cur_label + ' in four numbers';
+  fill('s8-lede', 'That is the month, measured against ' + b.against + ' (' + b.span + '). '
+    + 'The full dashboard has the same data with its own trailing comparison windows, the mortgage tab, '
+    + 'and every table in full. The walkthrough button under the dashboard title brings you back here.');
+  fill('s8-cards',
+    card('Left over', fm(CUR.net), vsLine(CUR.net, A.net, true),
+         CUR.net >= 0 ? 'var(--accent2)' : 'var(--negative)', true)
+  + card('Saved &amp; invested', fm(CUR.saved), vsLine(CUR.saved, A.saved, true), 'var(--accent5)', true)
+  + card('Bender equity', fm(D.house.equity),
+         dspan(D.house.equity_delta, true) + ' in ' + D.house.cur_label, 'var(--accent2)', true)
+  + card('Net worth', fm(NW.now.net),
+         dspan(NW.now.net - NW.prev.net, true) + ' on the month', 'var(--accent)', true));
+};
+
+function label_from(key) {
+  return MONTH_NAMES[+key.slice(5) - 1] + ' ' + key.slice(0, 4);
+}
+
+// Drill-down listeners live on the <tbody> elements, which survive the
+// innerHTML swaps the builders do - so attach once, not inside a builder.
+attachDrill('cat-body');
+attachDrill('s4-body');
+attachDrill('s5-body');
+</script>
+</body>
+</html>
