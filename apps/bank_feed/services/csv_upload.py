@@ -441,9 +441,9 @@ def suggest_account_for_category(
 
         # Direction-aware tie breaker (deterministic, never lowers the score).
         account_type = account.account_group.account_type
-        if prefer_inflow is True and account_type in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_ASSET):
-            score += 0.05
-        elif prefer_inflow is False and account_type in (ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY):
+        if (prefer_inflow is True and account_type in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_ASSET)) or (
+            prefer_inflow is False and account_type in (ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY)
+        ):
             score += 0.05
 
         if score > best_score or (score == best_score and best is not None and account.id < best.id):
@@ -670,10 +670,7 @@ def preview_transactions(
         # Parse date
         if date_col is not None and date_col < len(row):
             raw_date = (row[date_col] or "").strip() or None
-            if date_format:
-                parsed_date = parse_date_strict(row[date_col], date_format)
-            else:
-                parsed_date = parse_date(row[date_col])
+            parsed_date = parse_date_strict(row[date_col], date_format) if date_format else parse_date(row[date_col])
             if not parsed_date:
                 error = f"Invalid date: {row[date_col]}"
                 error_field = "date"

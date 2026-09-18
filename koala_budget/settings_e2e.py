@@ -24,6 +24,21 @@ PLAID_ENV = "sandbox"
 # each perform a fresh login without hitting the default 10-req/5-min ceiling.
 AUTH_RATE_LIMIT_MAX_REQUESTS = 10000
 
+# Turn off allauth's own rate limiting for the same reason. Every E2E test logs
+# in through `authenticated_page`, and the whole suite comes from 127.0.0.1, so
+# allauth's default "login": "30/m/ip" counts the suite as one attacker: once a
+# run packs more than 30 logins into a rolling minute, the login POST is
+# answered with the rate-limit page instead of the redirect, the browser never
+# reaches /a/<slug>/, and the fixture's `wait_for_url` fails the test with a
+# navigation timeout. Which test that lands on depends on runner speed, so it
+# reads as a flake rather than the IP-scoped limit it is. The counters live in
+# the process-wide LocMemCache, so they accumulate across the whole session.
+#
+# The sentinel is `False`, not `{}`: allauth's `RATE_LIMITS` property merges
+# whatever dict it is given over its own defaults, so an empty dict turns
+# nothing off. Only `False` short-circuits it.
+ACCOUNT_RATE_LIMITS = False
+
 # Vite integration for E2E tests.
 # - Local dev: keep DJANGO_VITE_DEV_MODE unset (defaults to True) and
 #   run `make start-bg` so the Vite dev server is available.

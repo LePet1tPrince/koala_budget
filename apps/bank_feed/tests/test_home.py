@@ -93,7 +93,7 @@ class BankFeedHomeViewTest(TestCase):
         """Test that the initial page-load context includes latest_reconciled_date."""
         today = date.today()
 
-        entry = JournalEntry.objects.create(team=self.team, posted_date=today)
+        entry = JournalEntry.objects.create(team=self.team, entry_date=today)
         JournalLine.objects.create(
             team=self.team,
             journal_entry=entry,

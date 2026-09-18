@@ -65,7 +65,7 @@ class FeedAccountsEndpointTest(TestCase):
         today = date.today()
 
         # Create a journal entry with reconciled lines
-        entry = JournalEntry.objects.create(team=self.team, posted_date=today)
+        entry = JournalEntry.objects.create(team=self.team, entry_date=today)
         JournalLine.objects.create(
             team=self.team,
             journal_entry=entry,
@@ -81,7 +81,7 @@ class FeedAccountsEndpointTest(TestCase):
         )
 
         # Create a bank transaction linked to the entry
-        bank_tx = BankTransaction.objects.create(
+        BankTransaction.objects.create(
             team=self.team,
             account=self.bank_account,
             posted_date=today,
@@ -92,7 +92,7 @@ class FeedAccountsEndpointTest(TestCase):
         )
 
         with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/feed-accounts/")
+            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/feed_accounts/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data), 1)
@@ -104,7 +104,7 @@ class FeedAccountsEndpointTest(TestCase):
     def test_feed_accounts_no_reconciled_date_without_reconciliation(self):
         """Test that latest_reconciled_date is None when no transactions are reconciled."""
         # Create a journal entry without reconciliation
-        entry = JournalEntry.objects.create(team=self.team, posted_date=date.today())
+        entry = JournalEntry.objects.create(team=self.team, entry_date=date.today())
         JournalLine.objects.create(
             team=self.team,
             journal_entry=entry,
@@ -131,7 +131,7 @@ class FeedAccountsEndpointTest(TestCase):
         )
 
         with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/feed-accounts/")
+            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/feed_accounts/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data), 1)
@@ -146,7 +146,7 @@ class FeedAccountsEndpointTest(TestCase):
         yesterday = today - timedelta(days=1)
 
         # Create two journal entries with reconciled lines on different dates
-        entry1 = JournalEntry.objects.create(team=self.team, posted_date=yesterday)
+        entry1 = JournalEntry.objects.create(team=self.team, entry_date=yesterday)
         JournalLine.objects.create(
             team=self.team,
             journal_entry=entry1,
@@ -161,7 +161,7 @@ class FeedAccountsEndpointTest(TestCase):
             cr_amount=Decimal("50.00"),
         )
 
-        entry2 = JournalEntry.objects.create(team=self.team, posted_date=today)
+        entry2 = JournalEntry.objects.create(team=self.team, entry_date=today)
         JournalLine.objects.create(
             team=self.team,
             journal_entry=entry2,
@@ -197,7 +197,7 @@ class FeedAccountsEndpointTest(TestCase):
         )
 
         with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/feed-accounts/")
+            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/feed_accounts/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data), 1)
@@ -220,7 +220,7 @@ class FeedAccountsEndpointTest(TestCase):
         )
 
         with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/feed-accounts/")
+            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/feed_accounts/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data), 1)

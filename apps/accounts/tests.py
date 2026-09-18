@@ -298,9 +298,7 @@ class AccountsHomeViewTest(TestCase):
         url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
         response = self.client.get(url)
         sections = response.context["manage_props"]["types"]
-        self.assertEqual(
-            [s["key"] for s in sections], ["asset", "liability", "income", "expense", "goal"]
-        )
+        self.assertEqual([s["key"] for s in sections], ["asset", "liability", "income", "expense", "goal"])
         by_key = {s["key"]: s for s in sections}
         asset_accounts = by_key[ACCOUNT_TYPE_ASSET]["groups"][0]["accounts"]
         self.assertEqual([a["name"] for a in asset_accounts], ["Checking"])
@@ -758,9 +756,7 @@ class AccountsBoardApiTest(TestCase):
         cls.checking = Account.objects.create(
             team=cls.team, name="Checking", account_group=cls.bank_group, sort_order=0
         )
-        cls.savings = Account.objects.create(
-            team=cls.team, name="Savings", account_group=cls.bank_group, sort_order=1
-        )
+        cls.savings = Account.objects.create(team=cls.team, name="Savings", account_group=cls.bank_group, sort_order=1)
         cls.groceries = Account.objects.create(
             team=cls.team, name="Groceries", account_group=cls.expense_group, sort_order=0
         )

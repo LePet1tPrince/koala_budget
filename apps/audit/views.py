@@ -1,5 +1,4 @@
 from django.utils.translation import gettext_lazy as _
-
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
@@ -42,10 +41,7 @@ class AuditEventViewSet(ReadOnlyModelViewSet):
 def audit_log_view(request, team_slug):
     from django.shortcuts import render
 
-    event_type_choices = [
-        (value, label)
-        for value, label in AuditEvent.EVENT_TYPE_CHOICES
-    ]
+    event_type_choices = [(value, label) for value, label in AuditEvent.EVENT_TYPE_CHOICES]
     return render(
         request,
         "audit/audit_log.html",

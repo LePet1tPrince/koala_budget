@@ -39,12 +39,8 @@ class JournalEntryModelTest(TestCase):
         cls.expense_group = AccountGroup.objects.create(
             team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group
-        )
-        cls.expense_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group
-        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
         cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
 
     def test_create_journal_entry(self):
@@ -147,9 +143,7 @@ class JournalLineModelTest(TestCase):
         cls.asset_group = AccountGroup.objects.create(
             team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group
-        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
         cls.entry = JournalEntry.objects.create(team=cls.team, entry_date=date(2025, 12, 17), description="Test")
 
     def test_create_journal_line(self):
@@ -257,15 +251,9 @@ class SimpleLineAPITest(TestCase):
         cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
 
         # Create accounts
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking Account", account_group=cls.asset_group
-        )
-        cls.groceries_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group
-        )
-        cls.salary_account = Account.objects.create(
-            team=cls.team, name="Salary", account_group=cls.income_group
-        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking Account", account_group=cls.asset_group)
+        cls.groceries_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.salary_account = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
 
         # Create payee
         cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
@@ -513,12 +501,8 @@ class JournalEntryAPITest(TestCase):
         )
 
         # Create accounts
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group
-        )
-        cls.expense_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group
-        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
         cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
 
     def setUp(self):
@@ -765,12 +749,8 @@ class TransactionAPITest(TestCase):
         cls.expense_group = AccountGroup.objects.create(
             team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group
-        )
-        cls.expense_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group
-        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
 
         with current_team(cls.team):
             for i in range(150):
@@ -823,15 +803,9 @@ class TransactionSearchFilterAPITest(TestCase):
         cls.expense_group = AccountGroup.objects.create(
             team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group
-        )
-        cls.expense_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group
-        )
-        cls.coffee_account = Account.objects.create(
-            team=cls.team, name="Coffee Shops", account_group=cls.expense_group
-        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.coffee_account = Account.objects.create(team=cls.team, name="Coffee Shops", account_group=cls.expense_group)
         cls.old_payee = Payee.objects.create(team=cls.team, name="Very Old Payee Inc")
 
         with current_team(cls.team):
@@ -937,9 +911,7 @@ class TransactionZeroAmountAPITest(TestCase):
         cls.expense_group = AccountGroup.objects.create(
             team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group
-        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
         cls.expense_account = Account.objects.create(
             team=cls.team, name="Miscellaneous", account_group=cls.expense_group
         )
@@ -993,12 +965,8 @@ class JournalPermissionsTest(TestCase):
         )
 
         # Create accounts
-        cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group
-        )
-        cls.expense_account = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group
-        )
+        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
 
     def setUp(self):
         """Set up for each test."""
