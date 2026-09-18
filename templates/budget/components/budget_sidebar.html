@@ -15,7 +15,7 @@
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Assigned in" %} {{ month|date:"F" }}</span>
-          <span class="font-mono text-sm font-semibold">
+          <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:assigned">
             {{ sidebar_summary.assigned_this_month|currency }}
           </span>
         </div>
@@ -28,7 +28,8 @@
         <div class="divider my-0"></div>
         <div class="flex justify-between items-center">
           <span class="text-sm font-bold">{% translate "Available" %}</span>
-          <span class="font-mono text-sm font-bold {% if sidebar_summary.available < 0 %}text-error{% elif sidebar_summary.available > 0 %}text-success{% endif %}">
+          <span class="font-mono text-sm font-bold {% if sidebar_summary.available < 0 %}text-error{% elif sidebar_summary.available > 0 %}text-success{% endif %}"
+                data-budget-cell="sidebar:available">
             {{ sidebar_summary.available|currency }}
           </span>
         </div>

@@ -2,7 +2,7 @@
 {% load currency_tags %}
 
 <!-- Budget Table -->
-<div class="overflow-x-auto bg-base-100 rounded-lg shadow">
+<div class="overflow-x-auto bg-base-100 rounded-lg shadow" data-budget-save-url="{{ save_amount_url }}">
   <table class="table table-sm w-full" data-testid="budget-table">
     <thead>
       <tr>
@@ -56,7 +56,11 @@
             </td>
 
             <td class="text-right py-1">
-              <form method="post" class="inline-flex items-center" id="budget-form-{{ row.category.pk }}" data-budget-autosave>
+              <form method="post" class="inline-flex items-center justify-end gap-1.5" id="budget-form-{{ row.category.pk }}"
+                    data-budget-autosave
+                    data-category-id="{{ row.category.pk }}"
+                    data-category-name="{{ row.category.name }}"
+                    data-month="{{ month|date:'Y-m-d' }}">
                 {% csrf_token %}
                 {% if row.form.instance.pk %}
                 <input type="hidden" name="budget_id" value="{{ row.form.instance.pk }}">
@@ -65,6 +69,7 @@
                 <input type="hidden" name="budget_month" value="{{ month|date:'Y-m-d' }}">
                 {% endif %}
                 {{ row.form.budget_amount }}
+                <span class="budget-status" data-budget-status aria-hidden="true"></span>
               </form>
             </td>
 
@@ -79,7 +84,8 @@
             </td>
 
             <td class="text-right">
-              <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}">
+              <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}"
+                    data-budget-cell="row:{{ row.category.pk }}:available">
                 {{ row.available|currency }}
               </span>
             </td>
@@ -99,13 +105,14 @@
             <td></td>
             <td class="pl-8">{% translate "Subtotal" %} - {{ group.name }}</td>
             <td class="text-right">
-              <span class="font-mono">{{ group.subtotals.budgeted|currency }}</span>
+              <span class="font-mono" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
             </td>
             <td class="text-right">
               <span class="font-mono">{{ group.subtotals.actual|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono {% if group.subtotals.available < 0 %}text-error{% elif group.subtotals.available > 0 %}text-success{% endif %}">
+              <span class="font-mono {% if group.subtotals.available < 0 %}text-error{% elif group.subtotals.available > 0 %}text-success{% endif %}"
+                    data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:available">
                 {{ group.subtotals.available|currency }}
               </span>
             </td>
@@ -119,13 +126,13 @@
           <td></td>
           <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
           <td class="text-right">
-            <span class="font-mono">{{ section.totals.budgeted|currency }}</span>
+            <span class="font-mono" data-budget-cell="section:{{ section.key }}:budgeted">{{ section.totals.budgeted|currency }}</span>
           </td>
           <td class="text-right">
             <span class="font-mono">{{ section.totals.actual|currency }}</span>
           </td>
           <td class="text-right">
-            <span class="font-mono">{{ section.totals.available|currency }}</span>
+            <span class="font-mono" data-budget-cell="section:{{ section.key }}:available">{{ section.totals.available|currency }}</span>
           </td>
           <td></td>
         </tr>
@@ -140,6 +147,8 @@
   </table>
 </div>
 
+<p class="sr-only" role="status" aria-live="polite" data-budget-live></p>
+
 <!-- Info Box -->
 <div class="alert alert-info mt-6">
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
@@ -150,20 +159,17 @@
     <div class="text-sm">
       {% translate "Available = Budget (this month) - Actual (this month) + Available (previous month). Unspent budget rolls forward to future months." %}
     </div>
+    <div class="text-sm mt-1">
+      {% blocktranslate trimmed %}
+        Amounts save as you go — press Enter or the arrow keys to move down the column, Escape to undo an edit.
+      {% endblocktranslate %}
+    </div>
   </div>
 </div>
 
 <script>
-  // Auto-save budget amounts when an input value changes (blur/Enter).
+  // Budget amounts auto-save in place — see assets/javascript/budget/budget-autosave.js.
   // The <noscript> Save buttons remain the fallback when JS is disabled.
-  document.querySelectorAll('form[data-budget-autosave] input[name="budget_amount"]').forEach(function (input) {
-    input.dataset.savedValue = input.value;
-    input.addEventListener('change', function () {
-      if (input.value !== input.dataset.savedValue) {
-        input.form.requestSubmit();
-      }
-    });
-  });
 
   // "Select all" checkbox in the header keeps in sync with the per-row checkboxes
   // used to scope the Auto-Assign actions (see budget_sidebar.html).
