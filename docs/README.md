@@ -33,6 +33,7 @@ Welcome to the Koala Budget documentation. This directory contains comprehensive
 | [Reports](./reports.md) | Reports app documentation |
 | [Goals Design](./goals_design.md) | Goals feature design document |
 | [Actual Tooltip Plan](./actual_tooltip_plan.md) | Budget tooltip implementation plan |
+| [Guided Monthly Review](./monthly-review-plan.md) | Monthly review walkthrough + month dashboard — plan and requirements |
 
 ## Quick Links
 
