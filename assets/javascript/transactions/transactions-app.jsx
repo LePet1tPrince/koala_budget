@@ -19,8 +19,11 @@ const TransactionsApp = () => {
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  // { [columnKey]: string[] } -- the values ticked in each column's menu. An
-  // absent or empty entry means that column isn't filtering anything.
+  // { [columnKey]: [{ value, label }] } -- the values ticked in each column's
+  // menu. An absent or empty entry means that column isn't filtering anything.
+  // The label rides along because a hierarchical column's value is a branch
+  // token (`2025-03`, `g:12`) that nothing on the client could turn back into
+  // "Mar 2025" or "Employment Income".
   const [columnFilters, setColumnFilters] = useState({});
   // { key, dir } or null for the API's default newest-first ordering.
   const [sort, setSort] = useState(null);
@@ -40,8 +43,8 @@ const TransactionsApp = () => {
     if (search) params.set('search', search);
     if (startDate) params.set('start_date', startDate);
     if (endDate) params.set('end_date', endDate);
-    Object.entries(columnFilters).forEach(([key, values]) => {
-      values.forEach((value) => params.append(`f_${key}`, value));
+    Object.entries(columnFilters).forEach(([key, entries]) => {
+      entries.forEach((entry) => params.append(`f_${key}`, entry.value));
     });
     return params;
   }, [search, startDate, endDate, columnFilters]);
@@ -113,11 +116,11 @@ const TransactionsApp = () => {
     setEndDate(end);
   }, []);
 
-  const handleColumnFilterChange = useCallback((columnKey, values) => {
+  const handleColumnFilterChange = useCallback((columnKey, entries) => {
     setColumnFilters((prev) => {
       const next = { ...prev };
-      if (values.length === 0) delete next[columnKey];
-      else next[columnKey] = values;
+      if (entries.length === 0) delete next[columnKey];
+      else next[columnKey] = entries;
       return next;
     });
   }, []);

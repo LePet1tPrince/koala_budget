@@ -1,6 +1,7 @@
 """Page Object Model for the Transactions page (React-rendered)."""
 
 import contextlib
+import re
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import expect
@@ -90,8 +91,32 @@ class TransactionsPage(BasePage):
         return [text.strip() for text in menu.locator("[data-testid='column-value-label']").all_inner_texts()]
 
     def tick_column_value(self, column: str, label: str):
+        """
+        Tick a value by its exact label; a nested value must be expanded first.
+
+        Exact, because every row also renders its count: a substring match for
+        "3" would just as happily hit the year row whose count is 3.
+        """
         menu = self.page.locator(f"[data-testid='column-menu-{column}']")
-        menu.locator("label:has(input[type='checkbox'])", has_text=label).first.click()
+        exact = re.compile(f"^{re.escape(label)}$")
+        menu.locator("label:has(input[type='checkbox'])").filter(
+            has=self.page.get_by_test_id("column-value-label").filter(has_text=exact)
+        ).first.click()
+
+    def expand_tree_node(self, value: str):
+        """Open one branch of a hierarchical column's value tree."""
+        self.page.locator(f"[data-testid='tree-toggle-{value}']").click()
+
+    def menu_selection_summary(self, column: str) -> str:
+        """The open menu's "N selected" / "Showing all" caption."""
+        return self.page.locator(f"[data-testid='column-selected-count-{column}']").inner_text().strip()
+
+    def select_all_in_menu(self, column: str):
+        self.page.locator(f"[data-testid='column-select-all-{column}']").click()
+
+    def clear_menu_selection(self, column: str):
+        """Drop the staged selection without closing the menu."""
+        self.page.locator(f"[data-testid='column-clear-selection-{column}']").click()
 
     def apply_column_filter(self, column: str):
         """Commit an open column menu's selection and wait for the refetch."""
@@ -104,6 +129,9 @@ class TransactionsPage(BasePage):
 
     def has_active_filter(self, column: str) -> bool:
         return self.page.locator(f"[data-testid='active-filter-{column}']").is_visible()
+
+    def active_filter_text(self, column: str) -> str:
+        return self.page.locator(f"[data-testid='active-filter-{column}']").inner_text().strip()
 
     def sort_by(self, column: str):
         """Click a column header, cycling it ascending -> descending -> unsorted."""

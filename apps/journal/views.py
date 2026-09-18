@@ -22,7 +22,7 @@ from apps.teams.permissions import TeamModelAccessPermissions
 
 from .filters import (
     COLUMNS,
-    TRANSACTION_ANNOTATIONS,
+    annotations_for,
     apply_column_filters,
     apply_ordering,
     facet_values,
@@ -285,7 +285,9 @@ TRANSACTION_QUERY_PARAMS = [
         location=OpenApiParameter.QUERY,
         description=(
             "Per-column value filter, repeated once per selected value, e.g. `f_payee=Amazon&f_payee=Costco`. "
-            f"Columns: {', '.join(COLUMNS)}. An empty value selects rows with no value in that column."
+            f"Columns: {', '.join(COLUMNS)}. An empty value selects rows with no value in that column. "
+            "Hierarchical columns take a branch as one value: `f_date=2025` (year), `f_date=2025-03` (month), "
+            "`f_debit_account=t:income` (type), `g:12` (group), `a:34` (account)."
         ),
         required=False,
     ),
@@ -331,16 +333,22 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     permission_classes = [TeamModelAccessPermissions]
     pagination_class = Pagination
 
-    def base_queryset(self):
-        """Team transactions with the annotations every column filter reads."""
+    def base_queryset(self, *, facet_column=None):
+        """
+        Team transactions, annotated for whichever columns this request reads.
+
+        The derived columns are correlated subqueries, so they are applied only
+        when something actually sorts, filters or faceting reads them -- an
+        unfiltered list pays for none of them.
+        """
         return (
             JournalEntry.for_team.select_related("payee")
             .prefetch_related("lines__account")
-            .annotate(**TRANSACTION_ANNOTATIONS)
+            .annotate(**annotations_for(self.request.query_params, facet_column=facet_column))
             .filter(line_count=2)
         )
 
-    def filtered_queryset(self, *, exclude_column=None):
+    def filtered_queryset(self, *, exclude_column=None, facet_column=None):
         """
         Apply search, date range and column filters.
 
@@ -348,7 +356,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         facet list needs: it has to keep offering the values the user has not
         ticked, or unticking one would be impossible.
         """
-        queryset = self.base_queryset()
+        queryset = self.base_queryset(facet_column=facet_column)
         params = self.request.query_params
 
         start_date = parse_date(params.get("start_date") or "")
@@ -372,7 +380,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 Q(payee__name__icontains=search) | Q(description__icontains=search) | Q(id__in=matching_line_entries)
             )
 
-        return apply_column_filters(queryset, params, exclude=exclude_column)
+        return apply_column_filters(queryset, params, self.request.team, exclude=exclude_column)
 
     def get_queryset(self):
         return apply_ordering(self.filtered_queryset(), self.request.query_params)
@@ -402,6 +410,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 "type": "object",
                 "properties": {
                     "column": {"type": "string"},
+                    "hierarchical": {"type": "boolean"},
                     "truncated": {"type": "boolean"},
                     "values": {
                         "type": "array",
@@ -421,11 +430,13 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     @action(detail=False, methods=["get"], url_path="facets")
     def facets(self, request, team_slug=None):
         """
-        List one column's distinct values, with the row count behind each.
+        List the values one column offers, with the row count behind each.
 
         The counts reflect the search, date range and *other* columns' filters
         that are currently applied, so they say what ticking a value would
-        actually show.
+        actually show.  A hierarchical column (dates, the two account columns)
+        nests them under `children`, and a branch is selectable in its own
+        right -- ticking a year means every date in it.
         """
         column = COLUMNS.get((request.query_params.get("column") or "").strip())
         if column is None:
@@ -434,9 +445,9 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        queryset = self.filtered_queryset(exclude_column=column.key)
+        queryset = self.filtered_queryset(exclude_column=column.key, facet_column=column.key)
         query = (request.query_params.get("q") or "").strip()
-        return Response(facet_values(queryset, column, query=query))
+        return Response(facet_values(queryset, column, request.team, query=query))
 
 
 @login_and_team_required

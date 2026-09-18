@@ -1,7 +1,6 @@
 /* globals gettext */
 
 import { formatCurrency } from '../utilities/currency';
-import { formatDate } from '../bank_feed/utils';
 
 /**
  * Source and status codes, with the label and badge colour the table shows.
@@ -45,9 +44,10 @@ const codeFormatter = (styles) => (value, label) => styles[value]?.label || labe
  */
 export const TRANSACTION_COLUMNS = [
   {
+    // The API answers this column with a year -> month -> day tree whose
+    // labels arrive display-ready, so there is no `formatValue` to apply.
     key: 'date',
     label: gettext('Date'),
-    formatValue: (value) => formatDate(value),
     ascLabel: gettext('Oldest first'),
     descLabel: gettext('Newest first'),
   },
@@ -60,6 +60,7 @@ export const TRANSACTION_COLUMNS = [
     label: gettext('Description'),
   },
   {
+    // Likewise a tree: account type -> account group -> account.
     key: 'debit_account',
     label: gettext('Debit Account'),
   },

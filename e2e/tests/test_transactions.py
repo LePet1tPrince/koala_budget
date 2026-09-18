@@ -13,6 +13,7 @@ per-column value filters and column sorting.
 """
 
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from playwright.sync_api import Page
@@ -103,10 +104,11 @@ def ledger(team):
     Enough that filtering on any one column leaves a different set behind, so
     a test can't pass by accident on a table that filters nothing.
     """
-    group = AccountGroupFactory(team=team)
+    group = AccountGroupFactory(team=team, name="Everyday")
+    treats = AccountGroupFactory(team=team, name="Treats")
     bank = AccountFactory(team=team, account_group=group, name="Checking")
     groceries = AccountFactory(team=team, account_group=group, name="Groceries")
-    coffee = AccountFactory(team=team, account_group=group, name="Coffee")
+    coffee = AccountFactory(team=team, account_group=treats, name="Coffee")
 
     amazon = PayeeFactory(team=team, name="Amazon")
     costco = PayeeFactory(team=team, name="Costco")
@@ -126,7 +128,8 @@ def ledger(team):
     entry(1, amazon, groceries, "25.00", "Weekly shop")
     entry(2, costco, groceries, "10.00", "Milk")
     entry(3, amazon, coffee, "5.00", "Beans")
-    return team
+    # The account tree is addressed by id, so the tests need the group's.
+    return SimpleNamespace(slug=team.slug, coffee_group_id=treats.pk)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -166,6 +169,8 @@ def test_column_filters_on_two_columns_combine(requires_vite, authenticated_page
     transactions.apply_column_filter("payee")
 
     transactions.open_column_menu("debit_account")
+    transactions.expand_tree_node("t:expense")
+    transactions.expand_tree_node(f"g:{ledger.coffee_group_id}")
     transactions.tick_column_value("debit_account", "Coffee")
     transactions.apply_column_filter("debit_account")
 
@@ -202,3 +207,90 @@ def test_column_header_sorts_ascending_then_descending(requires_vite, authentica
 
     transactions.sort_by("amount")
     assert transactions.column_text(6) == ["$25.00", "$10.00", "$5.00"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_clear_inside_a_menu_drops_the_staged_selection(requires_vite, authenticated_page: Page, live_server, ledger):
+    """Clear empties what's been ticked without closing the menu, so a long selection can be restarted."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+
+    transactions.open_column_menu("payee")
+    transactions.select_all_in_menu("payee")
+    assert transactions.menu_selection_summary("payee") == "2 selected"
+
+    transactions.clear_menu_selection("payee")
+
+    assert transactions.menu_selection_summary("payee") == "Showing all"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_account_column_nests_type_group_account(requires_vite, authenticated_page: Page, live_server, ledger):
+    """The account columns open on account types and expand down to accounts."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+
+    transactions.open_column_menu("debit_account")
+    assert transactions.column_filter_values("debit_account") == ["Expense"]
+
+    transactions.expand_tree_node("t:expense")
+    assert set(transactions.column_filter_values("debit_account")) == {"Expense", "Everyday", "Treats"}
+
+    transactions.expand_tree_node(f"g:{ledger.coffee_group_id}")
+    assert "Coffee" in transactions.column_filter_values("debit_account")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_ticking_an_account_group_selects_every_account_in_it(
+    requires_vite, authenticated_page: Page, live_server, ledger
+):
+    """A branch is one filter value meaning "everything under it", not a list of leaves."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+    transactions.expect_row_count(3)
+
+    transactions.open_column_menu("debit_account")
+    transactions.expand_tree_node("t:expense")
+    transactions.tick_column_value("debit_account", "Everyday")
+    assert transactions.menu_selection_summary("debit_account") == "1 selected"
+    transactions.apply_column_filter("debit_account")
+
+    # Groceries sits in Everyday; Coffee is in Treats.
+    transactions.expect_row_count(2)
+    assert set(transactions.column_text(4)) == {"Groceries"}
+    assert transactions.active_filter_text("debit_account").endswith("Everyday")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_ticking_a_year_selects_every_date_in_it(requires_vite, authenticated_page: Page, live_server, ledger):
+    """The date column nests year → month → day, and a year selects the whole year."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+
+    transactions.open_column_menu("date")
+    assert transactions.column_filter_values("date") == ["2025"]
+
+    transactions.expand_tree_node("2025")
+    assert transactions.column_filter_values("date") == ["2025", "Mar"]
+
+    transactions.tick_column_value("date", "2025")
+    transactions.apply_column_filter("date")
+
+    transactions.expect_row_count(3)
+    assert transactions.active_filter_text("date").endswith("2025")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_ticking_a_month_narrows_to_that_month(requires_vite, authenticated_page: Page, live_server, ledger):
+    """A month is selectable in its own right, and its chip carries the year."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(ledger.slug)
+
+    transactions.open_column_menu("date")
+    transactions.expand_tree_node("2025")
+    transactions.expand_tree_node("2025-03")
+    transactions.tick_column_value("date", "3")  # the 3rd of March
+    transactions.apply_column_filter("date")
+
+    transactions.expect_row_count(1)
+    assert transactions.column_text(3) == ["Beans"]

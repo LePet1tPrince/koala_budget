@@ -75,7 +75,12 @@ const ColumnHeader = ({ column, sort, onSortChange, filterValues, onFilterChange
   );
 };
 
-/** The "Payee: Amazon, Costco ×" chips summarising what's currently filtered. */
+/**
+ * The "Payee: Amazon, Costco ×" chips summarising what's currently filtered.
+ *
+ * Each entry carries its own label, set when it was ticked — a branch token
+ * like `g:12` or `2025-03` has no readable form the client could derive.
+ */
 const ActiveFilters = ({ columnFilters, onFilterChange, onClearAll }) => {
   const active = TRANSACTION_COLUMNS.filter((column) => (columnFilters[column.key] || []).length > 0);
   if (active.length === 0) return null;
@@ -86,7 +91,7 @@ const ActiveFilters = ({ columnFilters, onFilterChange, onClearAll }) => {
         const values = columnFilters[column.key];
         const shown = values
           .slice(0, 3)
-          .map((value) => (value === '' ? gettext('(none)') : column.formatValue(value, null)))
+          .map((entry) => entry.label || gettext('(none)'))
           .join(', ');
         const extra = values.length - 3;
         return (
@@ -129,12 +134,12 @@ const ActiveFilters = ({ columnFilters, onFilterChange, onClearAll }) => {
  *   onSearchChange – (value) => void
  *   startDate/endDate – current date range filter
  *   onDateApply   – (start, end) => void
- *   columnFilters – { [columnKey]: string[] } of selected values per column
- *   onColumnFilterChange – (columnKey, values) => void
+ *   columnFilters – { [columnKey]: [{value, label}] } of selected values per column
+ *   onColumnFilterChange – (columnKey, entries) => void
  *   onClearColumnFilters – () => void
  *   sort          – { key, dir } or null for the default newest-first order
  *   onSortChange  – (sort | null) => void
- *   fetchFacets   – (columnKey, query) => Promise<{values, truncated}>
+ *   fetchFacets   – (columnKey, query) => Promise<{values, hierarchical, truncated}>
  *   onLoadMore    – () => void, fetches the next page of the current filters
  *   hasMore       – whether another page is available
  *   loadingMore   – whether a "load more" request is in flight
