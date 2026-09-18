@@ -176,6 +176,27 @@ class CategorySuggestionSerializer(serializers.Serializer):
     category_name = serializers.CharField(help_text="Name of the most recently used category")
 
 
+class SimilarCategorySuggestionSerializer(serializers.Serializer):
+    """
+    A category suggested for one uncategorized transaction, with the evidence
+    behind it: how many similar transactions carried that category, and what
+    made them similar.
+    """
+
+    transaction_id = serializers.IntegerField(help_text="Bank transaction the suggestion is for")
+    category_id = serializers.IntegerField(help_text="Account ID of the suggested category")
+    category_name = serializers.CharField(help_text="Name of the suggested category")
+    count = serializers.IntegerField(help_text="How many similar transactions were categorized this way")
+    match_type = serializers.ChoiceField(
+        choices=["payee", "description", "similar"],
+        help_text="What made the transactions similar: same payee, same description, or similar wording",
+    )
+    payee = serializers.CharField(
+        allow_blank=True,
+        help_text="Payee the matched transactions share (blank when matched on description alone)",
+    )
+
+
 class TransferSuggestionSerializer(serializers.Serializer):
     """A suggested pair of bank transactions that look like two legs of one transfer."""
 

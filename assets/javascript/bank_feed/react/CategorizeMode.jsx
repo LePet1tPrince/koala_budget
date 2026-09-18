@@ -1,8 +1,30 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
 import { createConfetti } from '../../common/confetti';
+import { getUploadApiHelpers } from '../bank_feed';
+import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
+import Modal from '../../common/Modal';
 
 const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
+
+// How many cards ahead of the current one to look up similar-transaction
+// suggestions for.
+const SUGGESTION_PREFETCH = 8;
+
+// A feed row's id is its BankTransaction id, which is what the suggestion
+// endpoint keys on.
+function transactionId(tx) {
+  return tx?.imported_transaction_id ?? tx?.id ?? null;
+}
+
+// A rough "same merchant" key, used only to decide which cached suggestions a
+// fresh categorization invalidates. The real matching happens on the server.
+function lookalikeKey(tx) {
+  return (tx?.payee || tx?.merchant_name || tx?.description || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
 const TOP_LEVEL_FILTERS = [
   { key: 'income_expense', label: 'Income / Expense', icon: '💸', types: ['income', 'expense'] },
@@ -138,30 +160,172 @@ const ACCOUNT_TYPE_LABELS = {
   goal: 'Goal',
 };
 
-function fuzzyMatch(text, query) {
-  if (!query) return true;
-  const t = text.toLowerCase();
-  const q = query.toLowerCase().trim();
-  if (t.includes(q)) return true;
-  const words = q.split(/\s+/);
-  if (words.every(w => t.includes(w))) return true;
-  // Character-sequence match (letters appear in order, not necessarily adjacent)
+function charSequenceMatch(text, query) {
+  // Letters of the query appear in order in text, not necessarily adjacent.
   let ti = 0;
-  for (let qi = 0; qi < q.length; qi++) {
-    if (q[qi] === ' ') continue;
-    while (ti < t.length && t[ti] !== q[qi]) ti++;
-    if (ti >= t.length) return false;
+  for (let qi = 0; qi < query.length; qi++) {
+    if (query[qi] === ' ') continue;
+    while (ti < text.length && text[ti] !== query[qi]) ti++;
+    if (ti >= text.length) return false;
     ti++;
   }
   return true;
 }
 
-function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, currentTransaction, onSelect }) {
+/**
+ * Rank how well an account matches a search query, higher is better.
+ * `null` means no match at all (the account is excluded from results).
+ * Matches on the account's own name are weighted far above matches on its
+ * group/institution/type — otherwise, e.g., every income account's
+ * `account_type` literally contains "income", so searching "income" (or
+ * any string containing it) would rank an unrelated income account the
+ * same as an account actually named "Income".
+ */
+function matchScore(account, query) {
+  const q = query.toLowerCase().trim();
+  if (!q) return 0;
+
+  const name = (account.name || '').toLowerCase();
+  const secondary = [account.account_group_name, account.institution_name, ACCOUNT_TYPE_LABELS[account.account_type]]
+    .filter(Boolean).join(' ').toLowerCase();
+  const qWords = q.split(/\s+/).filter(Boolean);
+
+  if (name === q) return 100;
+  if (name.startsWith(q)) return 90;
+  if (name.split(/\s+/).includes(q)) return 85;
+  if (name.includes(q)) return 70;
+  if (qWords.length > 1 && qWords.every(w => name.includes(w))) return 60;
+  if (secondary.includes(q)) return 40;
+  if (qWords.length > 1 && qWords.every(w => secondary.includes(w))) return 30;
+  if (charSequenceMatch(name, q)) return 10;
+  return null;
+}
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Whether `needle` appears in `haystack` as a whole token — not as part of a
+// longer word — so an account named "BC" doesn't match inside "ABC" and a
+// memo of "ATM WD" doesn't match an account named "AT".
+function containsWholeToken(haystack, needle) {
+  if (!needle) return false;
+  const re = new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(needle.toLowerCase())}(?:$|[^a-z0-9])`, 'i');
+  return re.test(` ${haystack} `);
+}
+
+/**
+ * Find the account whose name is most clearly named in a transaction's
+ * memo/payee text — e.g. a transfer memo that literally says "WS Joint
+ * Checking" or just "BBC" should suggest that account. `excludeAccountId`
+ * keeps the transaction's own (feed) account from ever being suggested,
+ * since categorizing a transaction to the account it's already in would
+ * make it a transfer to itself.
+ */
+function findAccountNamedInText(text, accounts, excludeAccountId) {
+  if (!text) return null;
+  const candidates = accounts.filter(a => a.name && a.id !== excludeAccountId);
+
+  // Prefer the longest full account name that appears verbatim in the text.
+  let fullMatch = null;
+  for (const account of candidates) {
+    const name = account.name.trim();
+    if (containsWholeToken(text, name) && (!fullMatch || name.length > fullMatch.name.trim().length)) {
+      fullMatch = account;
+    }
+  }
+  if (fullMatch) return fullMatch;
+
+  // Otherwise, the longest single word (3+ chars, to skip noise like "of")
+  // from any account name that appears as a whole word in the text.
+  let wordMatch = null;
+  let wordMatchLength = 0;
+  for (const account of candidates) {
+    for (const word of account.name.split(/\s+/)) {
+      if (word.length < 3) continue;
+      if (word.length > wordMatchLength && containsWholeToken(text, word)) {
+        wordMatch = account;
+        wordMatchLength = word.length;
+      }
+    }
+  }
+  return wordMatch;
+}
+
+// The note under a suggestion, explaining why it's suggested. A "named" match
+// (an account named verbatim in the memo/payee) needs no history to justify
+// itself, but still says so when history backs it up too.
+function suggestionNote({ count, match_type }) {
+  if (match_type === 'named') {
+    return count != null
+      ? `Named in the memo — also used ${count}× for this payee`
+      : 'Named in the transaction memo';
+  }
+  const n = `${count} transaction${count === 1 ? '' : 's'}`;
+  const verb = count === 1 ? 'was' : 'were';
+  if (match_type === 'payee') return `${n} with this payee ${verb} categorized as this`;
+  if (match_type === 'description') return `${n} with this description ${verb} categorized as this`;
+  return `${n} like this one ${verb} categorized as this`;
+}
+
+function SuggestedCategories({ suggestions, accountsById, loading, activeKey, onSelect }) {
+  if (loading) {
+    return (
+      <div className="mb-3 flex items-center gap-2 text-xs text-base-content/70">
+        <span className="loading loading-spinner loading-xs" />
+        Looking for similar transactions...
+      </div>
+    );
+  }
+  if (suggestions.length === 0) return null;
+
+  return (
+    <div className="mb-3" data-testid="category-suggestions">
+      <p className="text-xs font-semibold text-success mb-1.5">
+        ✨ Suggested from similar transactions
+      </p>
+      <div className="space-y-1">
+        {suggestions.map(s => (
+          <button
+            key={s.category_id}
+            onClick={() => onSelect(accountsById[s.category_id])}
+            data-nav-key={`s:${s.category_id}`}
+            data-active={activeKey === `s:${s.category_id}` ? 'true' : undefined}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-success bg-success/10 hover:bg-success/20 transition-all hover:shadow-md active:scale-[0.98] ${
+              activeKey === `s:${s.category_id}` ? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100 bg-success/20' : ''
+            }`}
+            data-testid="category-suggestion"
+          >
+            <div className="flex-1 text-left min-w-0">
+              <div className="font-bold truncate">{s.category_name}</div>
+              <div className="text-xs text-base-content/70 truncate">{suggestionNote(s)}</div>
+            </div>
+            {s.count != null && (
+              <span className="badge badge-success badge-sm shrink-0">{s.count}×</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AccountHierarchy({
+  allAccounts,
+  allAccountGroups,
+  suggestions,
+  suggestionsLoading,
+  currentTransaction,
+  onSelect,
+  onCreateNew,
+}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTopFilter, setActiveTopFilter] = useState(null); // TOP_LEVEL_FILTERS key
   const [filterGroupId, setFilterGroupId] = useState(null);
   const [filterInstitution, setFilterInstitution] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(-1); // keyboard highlight; -1 = nothing
   const searchRef = useRef(null);
+  const panelRef = useRef(null);
 
   const activeTopGroup = useMemo(
     () => TOP_LEVEL_FILTERS.find(f => f.key === activeTopFilter) || null,
@@ -169,20 +333,47 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
   );
   const activeTypes = activeTopGroup?.types || null;
 
-  const suggestedAccountId = useMemo(() => {
-    if (!currentTransaction) return null;
-    const merchant = (currentTransaction.merchant_name || '').toLowerCase();
-    if (!merchant) return null;
-    const suggestion = categorySuggestions.find(s =>
-      s.merchant_name?.toLowerCase() === merchant
-    );
-    return suggestion?.category_id || null;
-  }, [currentTransaction, categorySuggestions]);
+  const accountsById = useMemo(() => {
+    const byId = {};
+    allAccounts.forEach(a => { byId[a.id] = a; });
+    return byId;
+  }, [allAccounts]);
 
-  const suggestedAccount = useMemo(() => {
-    if (!suggestedAccountId) return null;
-    return allAccounts.find(a => a.id === suggestedAccountId) || null;
-  }, [suggestedAccountId, allAccounts]);
+  // Two independent signals can each suggest a category: the server's
+  // history-based matches (payee/description/similar-wording), and an
+  // account named verbatim in this transaction's own memo/payee — often the
+  // strongest signal there is, since a transfer memo may literally name the
+  // other side. Merged into one ranked, deduped list (the same account is
+  // never shown twice), and the transaction's own feed account is never
+  // suggested, or categorizing it would make it a transfer to itself.
+  const usableSuggestions = useMemo(() => {
+    const feedAccountId = currentTransaction?.account?.id ?? null;
+    const fromHistory = (suggestions || []).filter(
+      s => accountsById[s.category_id] && s.category_id !== feedAccountId
+    );
+
+    if (!currentTransaction) return fromHistory;
+
+    const memoText = [currentTransaction.description, currentTransaction.merchant_name]
+      .filter(Boolean).join(' ');
+    const namedAccount = findAccountNamedInText(memoText, allAccounts, feedAccountId);
+    if (!namedAccount) return fromHistory;
+
+    const already = fromHistory.find(s => s.category_id === namedAccount.id);
+    const named = {
+      category_id: namedAccount.id,
+      category_name: namedAccount.name,
+      count: already ? already.count : null,
+      match_type: 'named',
+      payee: already ? already.payee : '',
+    };
+    return [named, ...fromHistory.filter(s => s.category_id !== namedAccount.id)];
+  }, [suggestions, accountsById, currentTransaction, allAccounts]);
+
+  const suggestedAccountIds = useMemo(
+    () => new Set(usableSuggestions.map(s => s.category_id)),
+    [usableSuggestions]
+  );
 
   // Second-level filters: only shown when a top-level filter is active
   const relevantGroups = useMemo(() => {
@@ -202,23 +393,38 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
     return [...names].sort();
   }, [allAccounts, activeTypes]);
 
+  const trimmedSearch = searchQuery.trim();
+
   const filteredAccounts = useMemo(() => {
-    return allAccounts.filter(a => {
-      if (activeTypes && !activeTypes.includes(a.account_type)) return false;
-      if (filterGroupId && a.account_group !== filterGroupId) return false;
-      if (filterInstitution && a.institution_name !== filterInstitution) return false;
-      if (searchQuery) {
-        const searchable = [a.name, a.account_group_name, a.institution_name, a.account_type]
-          .filter(Boolean).join(' ');
-        if (!fuzzyMatch(searchable, searchQuery)) return false;
+    const results = [];
+    for (const a of allAccounts) {
+      if (activeTypes && !activeTypes.includes(a.account_type)) continue;
+      if (filterGroupId && a.account_group !== filterGroupId) continue;
+      if (filterInstitution && a.institution_name !== filterInstitution) continue;
+      if (trimmedSearch) {
+        const score = matchScore(a, trimmedSearch);
+        if (score === null) continue;
+        results.push({ account: a, score });
+      } else {
+        results.push({ account: a, score: 0 });
       }
-      return true;
-    });
-  }, [allAccounts, activeTypes, filterGroupId, filterInstitution, searchQuery]);
+    }
+    return results;
+  }, [allAccounts, activeTypes, filterGroupId, filterInstitution, trimmedSearch]);
 
   const groupedAccounts = useMemo(() => {
+    // While searching, relevance beats grouping — an exact-name match must
+    // land at the very top of the list rather than wherever its account
+    // group happens to sort alphabetically.
+    if (trimmedSearch) {
+      const sorted = [...filteredAccounts]
+        .sort((a, b) => b.score - a.score || a.account.name.localeCompare(b.account.name))
+        .map(r => r.account);
+      return sorted.length ? [{ name: 'Search results', accounts: sorted }] : [];
+    }
+
     const groups = {};
-    filteredAccounts.forEach(a => {
+    filteredAccounts.forEach(({ account: a }) => {
       const key = a.account_group_name || 'Other';
       if (!groups[key]) groups[key] = [];
       groups[key].push(a);
@@ -228,12 +434,80 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
       .map(([name, accounts]) => ({ name, accounts: accounts.sort((a, b) => a.name.localeCompare(b.name)) }));
   }, [filteredAccounts]);
 
+  // Accounts already offered in the Suggested section above are dropped
+  // here so nothing appears twice; a group left with nothing to show is
+  // dropped too, rather than rendering an empty header.
+  const visibleGroupedAccounts = useMemo(() => {
+    return groupedAccounts
+      .map(group => ({ ...group, accounts: group.accounts.filter(a => !suggestedAccountIds.has(a.id)) }))
+      .filter(group => group.accounts.length > 0);
+  }, [groupedAccounts, suggestedAccountIds]);
+
+  // Everything the arrow keys walk, in the order it is drawn: the suggestions
+  // first, then the account list. Suggested accounts are excluded from the
+  // list below, so every row has exactly one key.
+  const navRows = useMemo(() => {
+    const rows = usableSuggestions.map(s => ({ key: `s:${s.category_id}`, account: accountsById[s.category_id] }));
+    visibleGroupedAccounts.forEach(group => {
+      group.accounts.forEach(account => rows.push({ key: `a:${account.id}`, account }));
+    });
+    return rows;
+  }, [usableSuggestions, accountsById, visibleGroupedAccounts]);
+
+  // Typing narrows the list under a highlight that was pointing at a row which
+  // may no longer exist, so the index is clamped where it is read rather than
+  // chased with an effect.
+  const activeIdx = navRows.length === 0 ? -1 : Math.min(activeIndex, navRows.length - 1);
+  const activeKey = activeIdx >= 0 ? navRows[activeIdx].key : null;
+
   const clearFilters = () => {
     setActiveTopFilter(null);
     setFilterGroupId(null);
     setFilterInstitution(null);
     setSearchQuery('');
+    setActiveIndex(-1);
   };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (navRows.length === 0) return;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setActiveIndex(
+        activeIdx < 0
+          ? (step === 1 ? 0 : navRows.length - 1)
+          : (activeIdx + step + navRows.length) % navRows.length
+      );
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0) onSelect(navRows[activeIdx].account);
+      return;
+    }
+    if (e.key === 'Escape' && searchQuery) {
+      // Escape backs out of the search rather than out of categorize mode — the
+      // window handler that exits is stopped here, and only while there is a
+      // search to clear.
+      e.preventDefault();
+      e.stopPropagation();
+      setSearchQuery('');
+      setActiveIndex(-1);
+    }
+  };
+
+  // Keep the highlighted row on screen as it walks past the fold.
+  useEffect(() => {
+    if (!activeKey) return;
+    panelRef.current
+      ?.querySelector(`[data-nav-key="${activeKey}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeKey]);
+
+  // A filter change rebuilds the list under the highlight, so it starts over.
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [activeTopFilter, filterGroupId, filterInstitution]);
 
   useEffect(() => { searchRef.current?.focus(); }, []);
 
@@ -242,29 +516,50 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
     setFilterGroupId(null);
     setFilterInstitution(null);
     setSearchQuery('');
+    setActiveIndex(-1);
     searchRef.current?.focus();
   }, [currentTransaction?.id]);
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0" ref={panelRef}>
       {/* Search bar */}
-      <div className="relative mb-3">
+      <div className="relative mb-1">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40">🔍</span>
         <input
           ref={searchRef}
           type="text"
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          onChange={e => {
+            // Typing points the highlight at the best match, so Enter takes it
+            // without a trip through the arrow keys; an empty box highlights
+            // nothing, so a stray Enter categorizes nothing.
+            setSearchQuery(e.target.value);
+            setActiveIndex(e.target.value ? 0 : -1);
+          }}
+          onKeyDown={handleSearchKeyDown}
           placeholder="Search accounts..."
           className="input input-bordered input-sm w-full pl-9 pr-8"
         />
         {searchQuery && (
           <button
-            onClick={() => { setSearchQuery(''); searchRef.current?.focus(); }}
+            onClick={() => { setSearchQuery(''); setActiveIndex(-1); searchRef.current?.focus(); }}
             className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs btn-circle"
           >
             ✕
           </button>
+        )}
+      </div>
+      <div className="h-5 mb-2 text-xs text-base-content/70 flex items-center gap-1.5">
+        {searchQuery && (
+          <>
+            <kbd className="kbd kbd-xs">↑</kbd>
+            <kbd className="kbd kbd-xs">↓</kbd>
+            <span>to move</span>
+            <kbd className="kbd kbd-xs">↵</kbd>
+            <span>to choose</span>
+            <kbd className="kbd kbd-xs">esc</kbd>
+            <span>to clear</span>
+          </>
         )}
       </div>
 
@@ -331,29 +626,24 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
         )}
       </div>
 
-      {/* Suggested account — always at top */}
-      {suggestedAccount && (
-        <div className="mb-3 animate-pulse-subtle">
-          <p className="text-xs font-semibold text-success mb-1.5">✨ Suggested</p>
-          <button
-            onClick={() => onSelect(suggestedAccount)}
-            className="btn btn-outline btn-success w-full justify-start gap-2 text-left"
-          >
-            <span className="font-bold">{suggestedAccount.name}</span>
-            <span className="text-xs opacity-60 ml-auto">{suggestedAccount.account_group_name}</span>
-          </button>
-        </div>
-      )}
+      {/* Categories suggested from history + memo/payee name matches — always at top */}
+      <SuggestedCategories
+        suggestions={usableSuggestions}
+        accountsById={accountsById}
+        loading={suggestionsLoading && usableSuggestions.length === 0}
+        activeKey={activeKey}
+        onSelect={onSelect}
+      />
 
       {/* Account list grouped by account group */}
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-1 custom-scrollbar space-y-3">
-        {groupedAccounts.length === 0 && (
+        {visibleGroupedAccounts.length === 0 && usableSuggestions.length === 0 && (
           <div className="text-center py-8 text-base-content/40">
             <p className="text-lg mb-1">No matching accounts</p>
             <p className="text-sm">Try a different search or clear filters</p>
           </div>
         )}
-        {groupedAccounts.map(group => (
+        {visibleGroupedAccounts.map(group => (
           <div key={group.name}>
             <div className="text-xs font-semibold text-base-content/70 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-base-100 py-1 z-10">
               {group.name}
@@ -363,10 +653,10 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
                 <button
                   key={account.id}
                   onClick={() => onSelect(account)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-all hover:shadow-md active:scale-[0.98] ${
-                    account.id === suggestedAccountId
-                      ? 'border-success bg-success/10 hover:bg-success/20'
-                      : 'border-base-300 hover:border-primary hover:bg-primary/5'
+                  data-nav-key={`a:${account.id}`}
+                  data-active={activeKey === `a:${account.id}` ? 'true' : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-base-300 transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md active:scale-[0.98] ${
+                    activeKey === `a:${account.id}` ? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100 border-primary bg-primary/10' : ''
                   }`}
                 >
                   <div className="flex-1 text-left min-w-0">
@@ -381,14 +671,20 @@ function AccountHierarchy({ allAccounts, allAccountGroups, categorySuggestions, 
                       )}
                     </div>
                   </div>
-                  {account.id === suggestedAccountId && (
-                    <span className="badge badge-success badge-sm shrink-0">Suggested</span>
-                  )}
                 </button>
               ))}
             </div>
           </div>
         ))}
+
+        {/* Create a new account when nothing above is a good match */}
+        <button
+          onClick={onCreateNew}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 mt-1 rounded-lg border border-dashed border-base-300 text-base-content/70 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
+        >
+          <span className="text-lg leading-none">+</span>
+          <span className="font-medium">Create new account</span>
+        </button>
       </div>
     </div>
   );
@@ -422,11 +718,109 @@ function StreakCounter({ streak }) {
   );
 }
 
+// Same feed (home) account and the same description — the two signals that
+// most reliably mean "this is the same recurring charge/deposit" without
+// being so loose it pulls in unrelated transactions.
+function findSimilarTransactions(transactions, reference) {
+  const accountId = reference.account?.id;
+  const description = (reference.description || '').trim().toLowerCase();
+  if (!accountId || !description) return [];
+  return transactions.filter(t =>
+    t.id !== reference.id &&
+    t.account?.id === accountId &&
+    (t.description || '').trim().toLowerCase() === description
+  );
+}
+
+function SimilarTransactionRow({ transaction, checked, onToggle, locked }) {
+  const isOutflow = parseFloat(transaction.outflow) > 0;
+  return (
+    <label
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors ${
+        locked ? 'border-success bg-success/5' : 'border-base-300 hover:bg-base-200 cursor-pointer'
+      }`}
+    >
+      <input
+        type="checkbox"
+        className="checkbox checkbox-sm checkbox-success"
+        checked={checked}
+        disabled={locked}
+        onChange={onToggle}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="font-medium truncate">{transaction.merchant_name || transaction.description}</div>
+        <div className="text-xs text-base-content/70">{transaction.posted_date}</div>
+      </div>
+      <div className={`text-sm font-semibold shrink-0 ${isOutflow ? 'text-error' : 'text-success'}`}>
+        {isOutflow ? `-${formatCurrency(transaction.outflow)}` : `+${formatCurrency(transaction.inflow)}`}
+      </div>
+    </label>
+  );
+}
+
+function SimilarTransactionsModal({ pendingBatch, onConfirm, onSkip, onCancel }) {
+  const [checkedIds, setCheckedIds] = useState(new Set());
+
+  useEffect(() => {
+    if (pendingBatch) setCheckedIds(new Set(pendingBatch.matches.map(m => m.id)));
+  }, [pendingBatch]);
+
+  const matches = pendingBatch?.matches || [];
+  const selectedMatches = matches.filter(m => checkedIds.has(m.id));
+  const totalCount = selectedMatches.length + (pendingBatch ? 1 : 0);
+
+  const toggle = (id) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <Modal
+      open={!!pendingBatch}
+      onClose={onCancel}
+      title="Categorize similar transactions?"
+      size="md"
+      testId="similar-transactions-modal"
+      actions={
+        <>
+          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-ghost" onClick={onSkip}>Just this one</button>
+          <button className="btn btn-primary" onClick={() => onConfirm(selectedMatches)}>
+            Categorize {totalCount}
+          </button>
+        </>
+      }
+    >
+      {pendingBatch && (
+        <>
+          <p className="text-sm text-base-content/70 mb-3">
+            These have the same account and description as the transaction you just categorized as{' '}
+            <span className="font-semibold text-base-content">{pendingBatch.account.name}</span>. Uncheck any you don't want.
+          </p>
+          <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+            <SimilarTransactionRow transaction={pendingBatch.tx} checked locked />
+            {matches.map(m => (
+              <SimilarTransactionRow
+                key={m.id}
+                transaction={m}
+                checked={checkedIds.has(m.id)}
+                onToggle={() => toggle(m.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 export default function CategorizeMode({
   teamSlug,
   allAccounts,
   allAccountGroups,
-  categorySuggestions: initialSuggestions,
   backUrl,
 }) {
   const [transactions, setTransactions] = useState([]);
@@ -439,8 +833,13 @@ export default function CategorizeMode({
   const [undoStack, setUndoStack] = useState([]);
   const [isSkipping, setIsSkipping] = useState(false);
   const [skippedCount, setSkippedCount] = useState(0);
-  const [categorySuggestions, setCategorySuggestions] = useState(initialSuggestions || []);
+  const [suggestionsByTransaction, setSuggestionsByTransaction] = useState({});
+  const suggestionsInFlight = useRef(new Set());
+  const [localAccounts, setLocalAccounts] = useState(allAccounts);
+  const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
+  const [pendingBatch, setPendingBatch] = useState(null); // { account, tx, matches } awaiting the similar-transactions modal
   const headers = getApiHeaders();
+  const uploadApi = useMemo(() => getUploadApiHelpers(teamSlug), [teamSlug]);
 
   const fetchUncategorized = useCallback(async () => {
     setLoading(true);
@@ -463,56 +862,145 @@ export default function CategorizeMode({
     }
   }, [teamSlug]);
 
-  const fetchSuggestions = useCallback(async () => {
+  // Ask the server which categories were used on transactions similar to these.
+  // An id that comes back with nothing is cached as an empty list, so a
+  // transaction with no lookalikes is asked about once rather than every render.
+  const fetchSuggestions = useCallback(async (ids) => {
+    const grouped = {};
+    ids.forEach(id => { grouped[id] = []; });
     try {
-      const resp = await fetch(`/a/${teamSlug}/bankfeed/api/feed/category_suggestions/`, {
-        credentials: 'include',
-        headers,
-      });
-      if (resp.ok) setCategorySuggestions(await resp.json());
-    } catch (err) { /* ignore */ }
+      const resp = await fetch(
+        `/a/${teamSlug}/bankfeed/api/feed/similar_categories/?ids=${ids.join(',')}`,
+        { credentials: 'include', headers }
+      );
+      if (resp.ok) {
+        (await resp.json()).forEach(row => {
+          if (grouped[row.transaction_id]) grouped[row.transaction_id].push(row);
+          else grouped[row.transaction_id] = [row];
+        });
+      }
+    } catch (err) {
+      // Suggestions are a shortcut, not the feature — a failed lookup leaves the
+      // full category list, and the empty cache entries keep it from retrying in
+      // a loop.
+      console.error('Failed to load category suggestions:', err);
+    } finally {
+      setSuggestionsByTransaction(prev => ({ ...prev, ...grouped }));
+      ids.forEach(id => suggestionsInFlight.current.delete(id));
+    }
   }, [teamSlug]);
+
+  // Only the cards about to be seen are looked up, so a queue of a thousand
+  // transactions still costs one small request at a time.
+  useEffect(() => {
+    const wanted = transactions
+      .slice(0, SUGGESTION_PREFETCH)
+      .map(transactionId)
+      .filter(id => id != null && !(id in suggestionsByTransaction) && !suggestionsInFlight.current.has(id));
+    if (wanted.length === 0) return;
+    wanted.forEach(id => suggestionsInFlight.current.add(id));
+    fetchSuggestions(wanted);
+  }, [transactions, suggestionsByTransaction, fetchSuggestions]);
 
   useEffect(() => {
     fetchUncategorized();
-    if (!initialSuggestions?.length) fetchSuggestions();
   }, []);
 
-  const categorizeTransaction = useCallback(async (account) => {
-    const tx = transactions[0];
-    if (!tx) return;
-
-    setIsExiting(true);
+  // Categorizes one or more transactions to `account` in a single batched
+  // request. `txList` always includes the top-of-stack transaction when
+  // it's part of the batch, which drives the card-exit animation.
+  const commitCategorize = useCallback(async (txList, account) => {
+    if (!txList.length) return;
+    const includesTop = txList.some(t => t.id === transactions[0]?.id);
+    if (includesTop) setIsExiting(true);
 
     try {
       await fetch(`/a/${teamSlug}/bankfeed/api/feed/categorize/`, {
         method: 'POST',
         credentials: 'include',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: [{ id: tx.imported_transaction_id || tx.id }], category_id: account.id }),
+        body: JSON.stringify({
+          rows: txList.map(t => ({ id: transactionId(t) })),
+          category_id: account.id,
+        }),
       });
 
-      const newCategorized = categorized + 1;
+      const committedIds = new Set(txList.map(t => t.id));
+      const newCategorized = categorized + txList.length;
       const newStreak = streak + 1;
 
-      setUndoStack(prev => [...prev, { transaction: tx, account }]);
+      setUndoStack(prev => [...prev, { transactions: txList, account }]);
+
+      // The decision(s) just made are evidence about every queued transaction
+      // that looks like one of them, so those cached suggestions are now out
+      // of date and are dropped for the prefetch to pick up again.
+      const staleKeys = new Set(txList.map(lookalikeKey).filter(Boolean));
+      const staleIds = staleKeys.size
+        ? transactions
+            .filter(t => !committedIds.has(t.id) && staleKeys.has(lookalikeKey(t)))
+            .map(transactionId)
+        : [];
 
       setTimeout(() => {
-        setTransactions(prev => prev.slice(1));
+        setTransactions(prev => prev.filter(t => !committedIds.has(t.id)));
+        if (staleIds.length > 0) {
+          setSuggestionsByTransaction(cached => {
+            const next = { ...cached };
+            staleIds.forEach(id => delete next[id]);
+            return next;
+          });
+        }
         setCategorized(newCategorized);
         setStreak(newStreak);
         setIsExiting(false);
 
-        if (newCategorized % 10 === 0 && newCategorized > 0) {
+        if (Math.floor(newCategorized / 10) > Math.floor(categorized / 10)) {
           setShowConfetti(true);
           setTimeout(() => setShowConfetti(false), 3000);
         }
-      }, 300);
+      }, includesTop ? 300 : 0);
     } catch (err) {
       console.error('Failed to categorize:', err);
       setIsExiting(false);
     }
   }, [transactions, categorized, streak, teamSlug, headers]);
+
+  // Categorizing the top transaction: if other uncategorized transactions
+  // share its home account and description, offer to categorize them the
+  // same way instead of committing immediately.
+  const categorizeTransaction = useCallback((account) => {
+    const tx = transactions[0];
+    if (!tx) return;
+
+    const matches = findSimilarTransactions(transactions.slice(1), tx);
+    if (matches.length > 0) {
+      setPendingBatch({ account, tx, matches });
+      return;
+    }
+    commitCategorize([tx], account);
+  }, [transactions, commitCategorize]);
+
+  const handleBatchConfirm = useCallback((selectedMatches) => {
+    if (!pendingBatch) return;
+    commitCategorize([pendingBatch.tx, ...selectedMatches], pendingBatch.account);
+    setPendingBatch(null);
+  }, [pendingBatch, commitCategorize]);
+
+  const handleBatchSkip = useCallback(() => {
+    if (!pendingBatch) return;
+    commitCategorize([pendingBatch.tx], pendingBatch.account);
+    setPendingBatch(null);
+  }, [pendingBatch, commitCategorize]);
+
+  const handleBatchCancel = useCallback(() => setPendingBatch(null), []);
+
+  const handleCreateAccount = useCallback(async (name, accountGroupId) => {
+    const newAccount = await uploadApi.createAccount(name, accountGroupId);
+    setLocalAccounts(prev => [...prev, newAccount].sort((a, b) => a.name.localeCompare(b.name)));
+    setShowCreateAccountModal(false);
+    categorizeTransaction(newAccount);
+    return newAccount;
+  }, [uploadApi, categorizeTransaction]);
 
   const skipTransaction = useCallback(() => {
     const tx = transactions[0];
@@ -528,6 +1016,9 @@ export default function CategorizeMode({
 
   useEffect(() => {
     const handler = (e) => {
+      // The similar-transactions modal handles its own Escape (via the
+      // dialog's `cancel` event) — don't also navigate away or skip under it.
+      if (pendingBatch) return;
       if (e.key === 'Escape') window.location.href = backUrl;
       if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
@@ -537,7 +1028,11 @@ export default function CategorizeMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backUrl, undoStack]);
+  }, [backUrl, undoStack, pendingBatch]);
+
+  const currentId = transactionId(transactions[0]);
+  const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
+  const suggestionsLoading = currentId != null && !(currentId in suggestionsByTransaction);
 
   if (loading) {
     return (
@@ -614,7 +1109,14 @@ export default function CategorizeMode({
       <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6 max-w-7xl mx-auto w-full">
         {/* Left: Card stack */}
         <div className="lg:w-2/5 flex flex-col items-center">
-          <div className="relative w-full max-w-md" style={{ minHeight: '220px' }}>
+          {/* Cards behind the top one are pushed down by `offset * 8px` (see
+              TransactionCard), so the stack's real bottom edge sits below a
+              flat 220px — pad the container for the deepest card's offset
+              or its shadow pokes out past this box. */}
+          <div
+            className="relative w-full max-w-md"
+            style={{ minHeight: `${220 + (Math.min(transactions.length, 5) - 1) * 8}px` }}
+          >
             {transactions.slice(0, 5).map((tx, i) => (
               <TransactionCard
                 key={tx.id}
@@ -646,14 +1148,31 @@ export default function CategorizeMode({
         <div className="lg:w-3/5 bg-base-100 rounded-2xl border border-base-300 shadow-lg p-5 flex flex-col min-h-[400px] lg:min-h-0 lg:max-h-[calc(100vh-140px)]">
           <h2 className="text-lg font-bold mb-3 shrink-0">Choose a Category</h2>
           <AccountHierarchy
-            allAccounts={allAccounts}
+            allAccounts={localAccounts}
             allAccountGroups={allAccountGroups}
-            categorySuggestions={categorySuggestions}
+            suggestions={currentSuggestions}
+            suggestionsLoading={suggestionsLoading}
             currentTransaction={transactions[0]}
             onSelect={categorizeTransaction}
+            onCreateNew={() => setShowCreateAccountModal(true)}
           />
         </div>
       </div>
+
+      {showCreateAccountModal && (
+        <CreateAccountModal
+          allAccountGroups={allAccountGroups}
+          onSave={handleCreateAccount}
+          onCancel={() => setShowCreateAccountModal(false)}
+        />
+      )}
+
+      <SimilarTransactionsModal
+        pendingBatch={pendingBatch}
+        onConfirm={handleBatchConfirm}
+        onSkip={handleBatchSkip}
+        onCancel={handleBatchCancel}
+      />
 
       <style>{`
         .card-exit {
