@@ -38,6 +38,13 @@ class YnabImportPage(BasePage):
     def is_blocked(self) -> bool:
         return self.page.locator("[data-testid='ynab-blocked']").count() > 0
 
+    def showing(self) -> str:
+        """Which screen the page opened on -- what a returning user is shown."""
+        for name in ("ynab-done", "ynab-failed", "ynab-running", "ynab-blocked", "ynab-dropzone"):
+            if self.page.locator(f"[data-testid='{name}']").count():
+                return name
+        return ""
+
     def upload(self, paths: list[str], timeout: int = 60_000):
         self.page.locator("[data-testid='ynab-file-input']").set_input_files(paths)
         self.page.locator("[data-testid='ynab-upload-btn']").click()

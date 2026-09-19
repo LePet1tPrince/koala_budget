@@ -400,3 +400,134 @@ class StatusReportingTest(TestCase):
             payload = self.status()
         self.assertEqual(payload["progress"], 40)
         self.assertEqual(payload["status"], "running")
+
+
+class ResumeTest(TestCase):
+    """
+    Coming back to an import that outlived the browser.
+
+    The work runs in a worker, so the page has to answer three questions a user who
+    closed the tab will have: is it still going, did it work, and if not, why.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team, cls.user = make_team("Resume", "resume")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def record(self, **fields) -> YnabImport:
+        return YnabImport.objects.create(team=self.team, register_csv=TINY_REGISTER, plan_csv=TINY_PLAN, **fields)
+
+    def resume(self):
+        response = self.client.get(reverse("ynab_import:home", args=[self.team.slug]))
+        self.assertEqual(response.status_code, 200)
+        return response.context["ynab_props"]["resume"]
+
+    def test_an_upload_that_was_never_applied_is_not_resumed(self):
+        # Nothing is running and nothing was written: the wizard should start where
+        # it always starts, at the files.
+        self.record(status=YnabImport.STATUS_UPLOADED)
+        self.assertIsNone(self.resume())
+
+    def test_an_import_in_flight_is_handed_to_the_page(self):
+        self.record(
+            status=YnabImport.STATUS_RUNNING,
+            task_id="task-1",
+            progress=62,
+            step="Importing your transactions",
+            started_at=timezone.now() - timedelta(seconds=30),
+        )
+        resume = self.resume()
+        self.assertEqual(resume["status"], "running")
+        self.assertEqual(resume["progress"], 62)
+        self.assertEqual(resume["step"], "Importing your transactions")
+
+    def test_an_import_queued_but_not_yet_started_is_handed_over_too(self):
+        # Between `delay()` and the worker's first write, the row still says
+        # "uploaded" -- but it has a task, so something is coming.
+        self.record(status=YnabImport.STATUS_UPLOADED, task_id="task-2")
+        self.assertEqual(self.resume()["status"], "uploaded")
+
+    def test_a_finished_import_is_shown_instead_of_the_already_has_transactions_refusal(self):
+        self.record(
+            status=YnabImport.STATUS_DONE,
+            finished_at=timezone.now() - timedelta(hours=2),
+            progress=100,
+            result={"created": {"entries": 5}},
+        )
+        resume = self.resume()
+        self.assertEqual(resume["status"], "done")
+        self.assertEqual(resume["result"]["created"]["entries"], 5)
+
+    def test_a_failed_import_comes_back_with_its_reason(self):
+        self.record(
+            status=YnabImport.STATUS_FAILED,
+            finished_at=timezone.now() - timedelta(minutes=5),
+            error="The import stopped before it finished.",
+        )
+        resume = self.resume()
+        self.assertEqual(resume["status"], "failed")
+        self.assertIn("stopped before it finished", resume["error"])
+
+    def test_an_old_import_is_left_alone(self):
+        # A week later, someone opening this page is not asking about that import.
+        self.record(status=YnabImport.STATUS_DONE, finished_at=timezone.now() - timedelta(days=7))
+        self.assertIsNone(self.resume())
+
+    def test_the_most_recent_import_wins(self):
+        self.record(status=YnabImport.STATUS_FAILED, finished_at=timezone.now() - timedelta(hours=3))
+        self.record(status=YnabImport.STATUS_RUNNING, task_id="task-3", progress=10)
+        self.assertEqual(self.resume()["status"], "running")
+
+
+class DashboardYnabStateTest(TestCase):
+    """
+    What the dashboard says about an import the user walked away from.
+
+    They come back *here*, not to the import page, so a run still going or one that
+    failed has to leave a trace on this page or it leaves none at all.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team, cls.user = make_team("Dash", "dash")
+        # Past the walkthrough, as anyone returning from an import is -- otherwise
+        # the dashboard redirects into the onboarding takeover and there is no page
+        # to read.
+        state = OnboardingState.objects.create(team=cls.team)
+        state.complete()
+        state.finish_tasks()
+        state.save()
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def home(self):
+        return self.client.get(reverse("web_team:home", args=[self.team.slug]))
+
+    def test_nothing_is_said_when_there_is_no_import(self):
+        self.assertEqual(self.home().context["ynab_state"], "")
+
+    def test_a_running_import_is_named(self):
+        YnabImport.objects.create(team=self.team, status=YnabImport.STATUS_RUNNING, task_id="task-1")
+        response = self.home()
+        self.assertEqual(response.context["ynab_state"], "running")
+        self.assertContains(response, "ynab-import-running")
+
+    def test_a_failed_import_is_named(self):
+        YnabImport.objects.create(
+            team=self.team,
+            status=YnabImport.STATUS_FAILED,
+            finished_at=timezone.now(),
+            error="The import stopped before it finished.",
+        )
+        response = self.home()
+        self.assertEqual(response.context["ynab_state"], "failed")
+        self.assertContains(response, "ynab-import-failed")
+
+    def test_a_successful_import_needs_no_mention(self):
+        # The numbers all over the dashboard are the mention.
+        YnabImport.objects.create(team=self.team, status=YnabImport.STATUS_DONE, finished_at=timezone.now())
+        self.assertEqual(self.home().context["ynab_state"], "")

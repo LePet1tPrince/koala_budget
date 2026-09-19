@@ -17,8 +17,11 @@ financial history in a staging table after it has been imported into the ledger
 buys nothing.
 """
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.teams.models import BaseTeamModel
@@ -26,6 +29,37 @@ from apps.teams.models import BaseTeamModel
 # Refuse an upload larger than this. The sample export's register is 1.1 MB at
 # 7,572 rows; 20 MB is a budget many times bigger than any real one.
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+# How long a finished import stays the answer to "what happened?" when someone
+# opens the import page again. Long enough to cover closing the laptop and coming
+# back tomorrow; short enough that an import from last month does not greet a user
+# who came looking for something else.
+RESUME_WINDOW = timedelta(hours=24)
+
+
+class YnabImportQuerySet(models.QuerySet):
+    def resumable(self, team, now=None):
+        """
+        The import worth showing when this team opens the import page.
+
+        Two cases, and they are the whole point of the row outliving the browser:
+
+        * one still going -- the user closed the tab, or never had it open, since
+          the work is in a worker and does not need them;
+        * one that finished or failed recently -- so coming back gets the result,
+          or the reason, rather than a page that behaves as though it never
+          happened.
+
+        An upload that was never applied is neither: nothing is running and nothing
+        was written, so the wizard should start where it always does.
+        """
+        now = now or timezone.now()
+        in_flight = Q(status=self.model.STATUS_RUNNING) | Q(status=self.model.STATUS_UPLOADED, task_id__gt="")
+        recently_finished = Q(
+            status__in=(self.model.STATUS_DONE, self.model.STATUS_FAILED),
+            finished_at__gte=now - RESUME_WINDOW,
+        )
+        return self.filter(team=team).filter(in_flight | recently_finished).order_by("-created_at").first()
 
 
 class YnabImport(BaseTeamModel):
@@ -42,6 +76,8 @@ class YnabImport(BaseTeamModel):
     ]
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_UPLOADED)
+
+    objects = YnabImportQuerySet.as_manager()
 
     register_csv = models.TextField(blank=True, help_text="The uploaded register export, cleared once applied.")
     plan_csv = models.TextField(blank=True, help_text="The uploaded plan export, cleared once applied.")

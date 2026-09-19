@@ -23,6 +23,7 @@ from apps.accounts.models import Account
 from apps.budget.models import Budget, Goal
 from apps.journal.models import JournalEntry
 from apps.ynab_import.tests.fixtures import TINY_PLAN, TINY_REGISTER
+from e2e.factories import JournalEntryFactory
 from e2e.pages.ynab_import import YnabImportPage, sample_export_paths
 
 
@@ -134,10 +135,15 @@ def test_one_file_is_not_enough(import_page, tiny_export, requires_vite):
 
 
 @pytest.mark.django_db
-def test_a_team_that_already_has_books_is_told_why_not(import_page, tiny_export, team, requires_vite):
-    import_page.upload(tiny_export)
-    import_page.continue_to_preview()
-    import_page.apply()
+def test_a_team_that_already_has_books_is_told_why_not(import_page, team, requires_vite):
+    """
+    A team with a ledger and no import to speak of -- books kept in the app, or an
+    import old enough that nobody opening this page is asking about it.
+
+    (A team whose *recent* import put those transactions there sees the result of
+    that import instead; that is the test above.)
+    """
+    JournalEntryFactory(team=team)
 
     import_page.goto_import(team.slug)
     assert import_page.is_blocked()
@@ -154,6 +160,55 @@ def test_the_reconciliation_is_shown_before_anything_is_written(import_page, tin
     assert "Every account ends on the balance YNAB shows" in text
     # Nothing is written until the last screen.
     assert not JournalEntry.objects.filter(team=team).exists()
+
+
+@pytest.mark.django_db
+def test_reopening_the_page_after_an_import_shows_the_result(import_page, tiny_export, team, requires_vite):
+    """
+    The import runs in a worker, so the browser may be gone when it lands. Coming
+    back has to answer what happened -- not present an upload form, and not refuse
+    with "this team already has transactions", which says nothing about the import
+    the user actually ran.
+    """
+    import_page.upload(tiny_export)
+    import_page.continue_to_preview()
+    import_page.apply()
+    assert import_page.succeeded()
+
+    # A fresh page load, as though the tab had been closed and reopened.
+    import_page.goto_import(team.slug)
+
+    assert import_page.showing() == "ynab-done"
+    assert "Your budget is in" in import_page.result_text()
+    assert not import_page.is_blocked()
+
+
+@pytest.mark.django_db
+def test_a_failed_import_is_waiting_when_the_user_comes_back(import_page, team, requires_vite):
+    """
+    A worker that dies writes nothing, so the team looks untouched -- and without
+    this the user has no way to learn that their import even ran.
+    """
+    from django.utils import timezone
+
+    from apps.ynab_import.models import YnabImport
+
+    YnabImport.objects.create(
+        team=team,
+        status=YnabImport.STATUS_FAILED,
+        started_at=timezone.now(),
+        finished_at=timezone.now(),
+        error="The import stopped before it finished.",
+    )
+
+    import_page.goto_import(team.slug)
+    assert import_page.showing() == "ynab-failed"
+    assert "stopped before it finished" in import_page.page.locator("[data-testid='ynab-failed']").inner_text()
+
+    # Starting again returns to the files rather than back to the failure.
+    import_page.page.click("[data-testid='ynab-failed'] button")
+    import_page.page.wait_for_selector("[data-testid='ynab-dropzone']", timeout=15_000)
+    assert import_page.showing() == "ynab-dropzone"
 
 
 @pytest.mark.slow

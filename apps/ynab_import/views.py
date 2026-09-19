@@ -89,7 +89,16 @@ def ynab_import_home(request, team_slug):
 
     Reachable both from the onboarding takeover ("Coming from YNAB?") and on its own,
     for a user who clicked through onboarding first and only then found their export.
+
+    The import runs in a worker, so the browser is free to go away -- which means
+    this page has to be able to answer what happened while it was gone. An import
+    still running, or one that finished or failed in the last day, is handed to the
+    wizard so it opens on that rather than on an upload form (or, once the
+    transactions are in, on a "this team already has transactions" refusal that
+    tells the user nothing about the import they ran).
     """
+    resume = YnabImport.objects.resumable(request.team)
+
     return render(
         request,
         "ynab_import/ynab_import.html",
@@ -99,6 +108,7 @@ def ynab_import_home(request, team_slug):
                 "teamSlug": team_slug,
                 "teamName": request.team.name,
                 "canImport": can_import(request.team),
+                "resume": resume.as_dict() if resume else None,
                 "homeUrl": reverse("web_team:home", args=[team_slug]),
                 "accountsUrl": reverse("accounts:accounts_home", args=[team_slug]),
                 "budgetUrl": reverse("budget:budget_home", args=[team_slug]),

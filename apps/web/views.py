@@ -89,6 +89,10 @@ def team_home(request, team_slug):
         and not JournalEntry.objects.filter(team=team).exclude(status=JournalEntry.STATUS_VOID).exists()
         else ""
     )
+    # An import runs in a worker, so a user who closed the tab comes back *here*,
+    # not to the import page. Without this, an import that was still going or that
+    # failed while they were away leaves no trace on the page they land on.
+    ynab_state = _ynab_state(team) if ynab_url else ""
 
     report_service = ReportService(team)
     income_ytd = report_service.get_income_statement_data(month.replace(month=1, day=1), today)
@@ -141,6 +145,7 @@ def team_home(request, team_slug):
             "show_resume": show_resume,
             "resume_url": reverse("onboarding:api_task", args=[team.slug]),
             "ynab_url": ynab_url,
+            "ynab_state": ynab_state,
             "show_monthly_review_nudge": show_monthly_review_nudge,
             "monthly_review_month": last_reviewable_month,
             "monthly_review_url": (
@@ -149,6 +154,22 @@ def team_home(request, team_slug):
             "monthly_review_dismiss_url": reverse("monthly_review:api_dismiss", args=[team.slug]),
         },
     )
+
+
+def _ynab_state(team) -> str:
+    """
+    Whether this team has a YNAB import worth mentioning on the dashboard.
+
+    Only the two states the user cannot otherwise find out about: one still going,
+    and one that failed. A successful import needs no mention -- the numbers all
+    over this page are the mention.
+    """
+    from apps.ynab_import.models import YnabImport
+
+    record = YnabImport.objects.resumable(team)
+    if record is None or record.status == YnabImport.STATUS_DONE:
+        return ""
+    return "failed" if record.status == YnabImport.STATUS_FAILED else "running"
 
 
 def _is_set_up(team) -> bool:

@@ -207,6 +207,13 @@ make test-e2e-accounts  # Run specific test file
   `api_status` must never hand that number to a running bar; there are tests for the
   clamp, for a dead worker being reported rather than waited for, and for the
   ordinary race (task returned, row about to be written) *not* being called a death
+- **Coming back to an import is its own contract.** The work outlives the browser, so
+  `YnabImportQuerySet.resumable()` decides what the page opens on, and the tests cover each
+  case separately: one still running, one queued but not yet started (`uploaded` *with* a
+  task id), one finished or failed inside the 24-hour window, one older than it, and an
+  upload that was never applied — which must *not* resume, since nothing is running and
+  nothing was written. Note the dashboard tests need an `OnboardingState` marked finished,
+  or `team_home` redirects into the takeover and there is no page to read
 - The full-export E2E test is marked `slow` (`-m "not slow"` to skip it); everything else uses the small synthetic
   export in `apps/ynab_import/tests/fixtures.py`
 

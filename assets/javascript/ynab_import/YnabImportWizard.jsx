@@ -17,6 +17,11 @@ import Step6Apply from './Step6Apply';
  * from the server, which rebuilds the whole import from the stored export each time
  * the choices change. That is what makes the preview trustworthy -- it is produced
  * by the same code that writes the books, not by a second implementation here.
+ *
+ * The import itself runs in a worker, so the browser is free to leave once it has
+ * been started. `props.resume` is how coming back works: the server hands over an
+ * import still running, or one that finished or failed in the last day, and the
+ * wizard opens on that screen instead of on the upload form.
  */
 const STEPS = [
   { key: 'upload', label: gettext('Your export') },
@@ -32,22 +37,38 @@ const STEPS = [
 // thousand requests.
 const POLL_MS = 900;
 
-const YnabImportWizard = ({ props }) => {
-  const { api, canImport, teamName, homeUrl, accountsUrl, budgetUrl, goalsUrl } = props;
+const APPLY_STEP = STEPS.findIndex((item) => item.key === 'apply');
 
-  const [step, setStep] = useState(0);
+const YnabImportWizard = ({ props }) => {
+  const { api, canImport, resume, teamName, homeUrl, accountsUrl, budgetUrl, goalsUrl } = props;
+
+  const [step, setStep] = useState(resume ? APPLY_STEP : 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const [importId, setImportId] = useState(null);
+  const [importId, setImportId] = useState(resume?.id ?? null);
   const [analysis, setAnalysis] = useState(null);
   const [choices, setChoices] = useState({ accounts: {}, income: {}, categories: {} });
 
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState(resume ?? null);
+  // A resumed import that failed wrote nothing, so starting again means starting
+  // from the files -- and must not land back on the screen we just left.
+  const [resumed, setResumed] = useState(Boolean(resume));
 
   const polling = useRef(null);
+
+  const startOver = useCallback(() => {
+    setResumed(false);
+    setStatus(null);
+    setImportId(null);
+    setAnalysis(null);
+    setPreview(null);
+    setChoices({ accounts: {}, income: {}, categories: {} });
+    setError(null);
+    setStep(0);
+  }, []);
 
   const upload = useCallback(
     async (files) => {
@@ -88,7 +109,7 @@ const YnabImportWizard = ({ props }) => {
     try {
       const result = await api.apply(importId, choices);
       setStatus(result);
-      setStep(5);
+      setStep(APPLY_STEP);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -99,7 +120,7 @@ const YnabImportWizard = ({ props }) => {
   // Poll only while something is actually running, and stop the moment it is not:
   // a finished import that keeps asking is a request every second, forever.
   useEffect(() => {
-    if (step !== 5 || !importId) return undefined;
+    if (step !== APPLY_STEP || !importId) return undefined;
     if (status && (status.status === 'done' || status.status === 'failed')) return undefined;
 
     polling.current = setInterval(async () => {
@@ -120,7 +141,7 @@ const YnabImportWizard = ({ props }) => {
 
   const current = STEPS[step];
 
-  if (!canImport && step === 0) {
+  if (!canImport && !resumed && step === 0) {
     return (
       <div className="app-card max-w-xl space-y-4" data-testid="ynab-blocked">
         <h1 className="text-xl font-semibold tracking-tight">{gettext('Import from YNAB')}</h1>
@@ -178,11 +199,7 @@ const YnabImportWizard = ({ props }) => {
         {current.key === 'preview' && <Step5Preview preview={preview} loading={previewing} />}
 
         {current.key === 'apply' && (
-          <Step6Apply
-            status={status}
-            urls={{ homeUrl, accountsUrl, budgetUrl, goalsUrl }}
-            onRetry={() => window.location.reload()}
-          />
+          <Step6Apply status={status} urls={{ homeUrl, accountsUrl, budgetUrl, goalsUrl }} onRetry={startOver} />
         )}
 
         {error && current.key !== 'upload' && current.key !== 'apply' && (
