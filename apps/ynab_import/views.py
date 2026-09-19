@@ -7,10 +7,13 @@ only endpoint that changes anything is `api_apply`, and it hands the work to a
 Celery task rather than doing it while the browser waits.
 """
 
+import functools
 import json
+import logging
 
 from celery.result import AsyncResult
 from celery_progress.backend import Progress
+from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -31,6 +34,42 @@ from .services.payload import analysis_payload, plan_payload
 from .services.reconcile import reconcile
 from .services.session import analyse_record
 from .tasks import run_ynab_import
+
+logger = logging.getLogger(__name__)
+
+
+def json_errors(view):
+    """
+    Answer an unexpected exception with JSON, not with Django's HTML error page.
+
+    Every endpoint here is called by `fetch`, which reads `error` off the body. An
+    unhandled exception returns an HTML page instead, so the wizard has nothing to
+    show but "Something went wrong." -- which is exactly the least useful thing to
+    say to someone whose migrations have not been run. The exception is still
+    logged with its traceback, so an error tracker reading the log sees it, and in
+    DEBUG the reason itself is handed to the browser, because a developer looking
+    at the wizard is the person who can act on it.
+    """
+
+    @functools.wraps(view)
+    def wrapped(request, *args, **kwargs):
+        try:
+            return view(request, *args, **kwargs)
+        except Exception as error:  # noqa: BLE001 - the wizard must say something, whatever broke
+            logger.exception("YNAB import request failed: %s", request.path)
+            detail = f"{type(error).__name__}: {error}" if settings.DEBUG else ""
+            return JsonResponse(
+                {
+                    "error": (
+                        "The server could not complete that step. If this team was set up from a new "
+                        "version of the app, its database may need migrating."
+                    ),
+                    "detail": detail,
+                },
+                status=500,
+            )
+
+    return wrapped
 
 
 @ensure_csrf_cookie
@@ -81,6 +120,7 @@ def _record(request, body) -> YnabImport | None:
 
 @require_POST
 @login_and_team_required
+@json_errors
 def api_upload(request, team_slug):
     """
     Take both exports, work out which is which, and hand back what we found.
@@ -133,6 +173,7 @@ def api_upload(request, team_slug):
 
 @require_POST
 @login_and_team_required
+@json_errors
 def api_preview(request, team_slug):
     """
     What the import will produce, given the answers so far.
@@ -165,6 +206,7 @@ def api_preview(request, team_slug):
 
 @require_POST
 @login_and_team_required
+@json_errors
 def api_apply(request, team_slug):
     """
     Start the import.
@@ -210,6 +252,7 @@ def api_apply(request, team_slug):
 
 
 @login_and_team_required
+@json_errors
 def api_status(request, team_slug):
     """
     Where the import has got to.

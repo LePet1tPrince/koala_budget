@@ -14,7 +14,13 @@ const headers = () => ({
 const read = async (response) => {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw Object.assign(new Error(payload.error || 'Something went wrong.'), { payload });
+    // A response with no `error` is one that never reached the view -- a crash
+    // that returned Django's HTML page, a proxy timeout, a 413. "Something went
+    // wrong" tells the user nothing they can act on, so say what the server
+    // actually answered, and carry the server's own detail when it sent one.
+    const reason = payload.error || `The server answered ${response.status} ${response.statusText}.`.trim();
+    const detail = payload.detail ? ` (${payload.detail})` : '';
+    throw Object.assign(new Error(`${reason}${detail}`), { payload, status: response.status });
   }
   return payload;
 };

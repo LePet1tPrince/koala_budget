@@ -7,8 +7,10 @@ task -- actually lands the books when it is driven the way the wizard drives it.
 """
 
 import json
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.utils import ProgrammingError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -205,3 +207,37 @@ class TeamScopingTest(TestCase):
         response = self.client.get(reverse("ynab_import:home", args=[self.team.slug]))
         self.assertEqual(response.status_code, 302)
         self.assertIn("login", response.url)
+
+
+class UnexpectedErrorTest(TestCase):
+    """
+    What the wizard says when something breaks that is not the user's doing.
+
+    The endpoints are read by `fetch`, so an unhandled exception that returned
+    Django's HTML page left the wizard with nothing to show but "Something went
+    wrong." The commonest cause is a database that has not been migrated, which is
+    a one-command fix the user can only make if they are told.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team, cls.user = make_team("Broken", "broken")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_a_crash_answers_json_the_wizard_can_read(self):
+        url = reverse("ynab_import:api_upload", args=[self.team.slug])
+        with patch("apps.ynab_import.views.YnabImport.objects.create", side_effect=ProgrammingError("no such table")):
+            response = self.client.post(url, {"files": upload_files()})
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("migrating", response.json()["error"])
+
+    @override_settings(DEBUG=True)
+    def test_in_debug_the_reason_itself_reaches_the_browser(self):
+        url = reverse("ynab_import:api_upload", args=[self.team.slug])
+        with patch("apps.ynab_import.views.YnabImport.objects.create", side_effect=ProgrammingError("no such table")):
+            response = self.client.post(url, {"files": upload_files()})
+
+        self.assertIn("ProgrammingError: no such table", response.json()["detail"])
