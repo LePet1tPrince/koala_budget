@@ -49,6 +49,7 @@ team_urlpatterns = [
     path("plaid/", include("apps.plaid.urls")),
     path("bankfeed/", include("apps.bank_feed.urls")),
     path("onboarding/", include("apps.onboarding.urls")),
+    path("ynab-import/", include("apps.ynab_import.urls")),
 ]
 
 urlpatterns = [

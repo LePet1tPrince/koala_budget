@@ -52,3 +52,9 @@ DJANGO_VITE = {
         "manifest_path": BASE_DIR / "static" / ".vite" / "manifest.json",  # noqa: F405
     }
 }
+
+# Run Celery tasks inline. The YNAB import is a Celery task, and a test (or an E2E
+# run) has no worker -- eager mode is what makes the wizard finish rather than sit
+# at 0%.
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True

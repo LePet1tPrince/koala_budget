@@ -65,6 +65,14 @@
           <p class="mt-1 text-sm text-base-content/70">
             {% translate "Import some transactions, set a budget, and your reports will fill in." %}
           </p>
+          {% if ynab_url %}
+            <p class="mt-1 text-sm text-base-content/70">
+              {% blocktranslate trimmed %}
+                Coming from YNAB? <a href="{{ ynab_url }}" class="link link-primary">Import your export</a>
+                and bring your history, budgets and savings with it.
+              {% endblocktranslate %}
+            </p>
+          {% endif %}
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-resume-onboarding data-url="{{ resume_url }}">
           {% translate "Pick it back up" %}

@@ -1,0 +1,36 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+
+{% block app %}
+  {{ ynab_props|json_script:'ynab-props' }}
+
+  <div class="container mx-auto px-4 py-6">
+    <div class="mb-6">
+      <h1 class="text-2xl font-semibold tracking-tight">{% translate "Import from YNAB" %}</h1>
+      <p class="mt-1 text-base-content/70">
+        {% blocktranslate trimmed %}
+          Your accounts, your whole transaction history, your monthly budgets and your savings —
+          brought over and checked against YNAB's own numbers.
+        {% endblocktranslate %}
+      </p>
+    </div>
+
+    <div id="ynab-import-app"></div>
+
+    <noscript>
+      <div class="app-card">
+        <p>{% translate "The import wizard needs JavaScript." %}</p>
+      </div>
+    </noscript>
+  </div>
+{% endblock %}
+
+{% block page_js %}
+  {% comment %}
+    vite_react_refresh must come first: without the plugin's preamble the React
+    entry throws "can't detect preamble" in dev and the page renders nothing.
+  {% endcomment %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/ynab_import/ynab-import-app.jsx' %}
+{% endblock %}

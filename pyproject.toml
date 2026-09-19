@@ -56,6 +56,11 @@ exclude_lines = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "koala_budget.settings_e2e"
 testpaths = ["e2e"]
+markers = [
+    # A test that drives a large fixture end to end (the YNAB sample export is
+    # 7,572 rows). Deselect with `-m "not slow"` for a quicker run.
+    "slow: end-to-end over a large fixture",
+]
 
 [tool.setuptools]
 py-modules = []

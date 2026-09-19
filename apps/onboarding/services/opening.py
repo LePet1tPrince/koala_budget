@@ -133,6 +133,14 @@ def create_opening_balances(team, rows: list[OpeningRow], as_of: date) -> list[J
 
     for row in rows:
         is_asset = row.account.account_group.account_type == ACCOUNT_TYPE_ASSET
+        amount = row.amount
+
+        if amount < 0:
+            # A negative amount is the opposite side: an overdrawn chequing account,
+            # or a credit card in credit. `parse_rows` never produces one -- the user
+            # enters what they have or owe -- but an importer reading a real history
+            # can, and refusing it would be refusing the truth.
+            is_asset, amount = not is_asset, -amount
 
         entry = JournalEntry.objects.create(
             team=team,
@@ -146,15 +154,15 @@ def create_opening_balances(team, rows: list[OpeningRow], as_of: date) -> list[J
             team=team,
             journal_entry=entry,
             account=row.account,
-            dr_amount=row.amount if is_asset else Decimal("0"),
-            cr_amount=Decimal("0") if is_asset else row.amount,
+            dr_amount=amount if is_asset else Decimal("0"),
+            cr_amount=Decimal("0") if is_asset else amount,
         )
         JournalLine.objects.create(
             team=team,
             journal_entry=entry,
             account=offset,
-            dr_amount=Decimal("0") if is_asset else row.amount,
-            cr_amount=row.amount if is_asset else Decimal("0"),
+            dr_amount=Decimal("0") if is_asset else amount,
+            cr_amount=amount if is_asset else Decimal("0"),
         )
 
         entries.append(entry)

@@ -45,6 +45,8 @@ class AuditEvent(models.Model):
     MONTHLY_REVIEW_COMPLETED = "monthly_review_completed"
     MONTHLY_REVIEW_DISMISSED = "monthly_review_dismissed"
     MONTHLY_REVIEW_BASELINE_CHANGED = "monthly_review_baseline_changed"
+    YNAB_IMPORT_STARTED = "ynab_import_started"
+    YNAB_IMPORT = "ynab_import"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -81,6 +83,8 @@ class AuditEvent(models.Model):
         (MONTHLY_REVIEW_COMPLETED, "Monthly Review Completed"),
         (MONTHLY_REVIEW_DISMISSED, "Monthly Review Dismissed"),
         (MONTHLY_REVIEW_BASELINE_CHANGED, "Monthly Review Baseline Changed"),
+        (YNAB_IMPORT_STARTED, "YNAB Import Started"),
+        (YNAB_IMPORT, "YNAB Import Applied"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)

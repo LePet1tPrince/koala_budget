@@ -80,6 +80,15 @@ def team_home(request, team_slug):
     # rail, which covers the same ground with real gates. What survives is a
     # nudge for someone who skipped or dismissed the guide and still has gaps.
     show_resume = settings.ONBOARDING_ENABLED and not onboarding.shows_tasks and not _is_set_up(team)
+    # The YNAB wizard needs an empty ledger, so it is only offered while the team
+    # still has one -- a link that leads to "this team already has transactions" is
+    # worse than no link.
+    ynab_url = (
+        reverse("ynab_import:home", args=[team.slug])
+        if getattr(settings, "YNAB_IMPORT_ENABLED", False)
+        and not JournalEntry.objects.filter(team=team).exclude(status=JournalEntry.STATUS_VOID).exists()
+        else ""
+    )
 
     report_service = ReportService(team)
     income_ytd = report_service.get_income_statement_data(month.replace(month=1, day=1), today)
@@ -131,6 +140,7 @@ def team_home(request, team_slug):
             "net_worth_chart_data": net_worth_chart_data,
             "show_resume": show_resume,
             "resume_url": reverse("onboarding:api_task", args=[team.slug]),
+            "ynab_url": ynab_url,
             "show_monthly_review_nudge": show_monthly_review_nudge,
             "monthly_review_month": last_reviewable_month,
             "monthly_review_url": (

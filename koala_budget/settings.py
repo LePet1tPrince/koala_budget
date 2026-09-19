@@ -107,6 +107,7 @@ PROJECT_APPS = [
     "apps.bank_feed.apps.BankFeedConfig",
     "apps.onboarding.apps.OnboardingConfig",
     "apps.monthly_review.apps.MonthlyReviewConfig",
+    "apps.ynab_import.apps.YnabImportConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -672,6 +673,11 @@ BOOTSTRAP_TEAM_ON_CREATE = True
 # cosmetic. Turning this off restores the old behaviour: bootstrap applies the
 # stock template and nobody is sent through the walkthrough.
 ONBOARDING_ENABLED = True
+
+# The "Coming from YNAB?" branch on the onboarding takeover, and the standalone
+# import wizard. Off switches the entry points, not the app: an import already
+# running is unaffected.
+YNAB_IMPORT_ENABLED = env.bool("YNAB_IMPORT_ENABLED", default=True)
 STRICT_TEAM_CONTEXT = True
 
 # Guided monthly review (see docs/monthly-review-plan.md). Tunables live next to

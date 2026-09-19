@@ -98,6 +98,30 @@ class JournalEntry(BaseTeamModel):
         return self.total_debits == self.total_credits
 
 
+class JournalLineQuerySet(models.QuerySet):
+    def bulk_create_for_import(self, lines, budget_map, batch_size=1000):
+        """
+        Insert many lines at once, standing in for `save()`'s budget lookup.
+
+        `JournalLine.save()` resolves `budget` with a query per line, and `post_save`
+        then writes an audit row: at import volumes (a YNAB export is ~13,000 lines)
+        that is tens of thousands of extra queries, the difference between an import
+        that takes seconds and one that takes minutes. `bulk_create` skips `save()`
+        and its signals, so the budget link has to be made here instead --
+        `budget_map` is `{(account_id, first_of_month): budget_id}`, built once from
+        the budgets the same import created.
+
+        Deliberate consequence: no row-level `AuditLog` entries are written. An
+        import is one operation, and 13,000 field diffs describing it would be noise;
+        the `AuditEvent` the importer records is the meaningful trail.
+        """
+        for line in lines:
+            if line.budget_id is None:
+                month = line.journal_entry.entry_date.replace(day=1)
+                line.budget_id = budget_map.get((line.account_id, month))
+        return self.bulk_create(lines, batch_size=batch_size)
+
+
 class JournalLine(BaseTeamModel):
     """
     Journal Line model representing individual debit/credit lines in a journal entry.
@@ -146,6 +170,8 @@ class JournalLine(BaseTeamModel):
         editable=False,
         help_text="Link to budget based on account_id and journal entry date month",
     )
+
+    objects = JournalLineQuerySet.as_manager()
 
     class Meta:
         ## No date_posted field in journal_line. That's in journal_entry. Can we incorporate that?
@@ -200,7 +226,13 @@ class JournalLine(BaseTeamModel):
         ).first()
 
     def save(self, *args, **kwargs):
-        """Automatically link to budget based on account and entry date."""
+        """
+        Automatically link to budget based on account and entry date.
+
+        One query per line. Bulk paths skip `save()` entirely and must resolve the
+        same link themselves -- see `JournalLineQuerySet.bulk_create_for_import`,
+        which exists so the two cannot drift apart unnoticed.
+        """
         self.budget = self._calculate_budget()
         super().save(*args, **kwargs)
 
