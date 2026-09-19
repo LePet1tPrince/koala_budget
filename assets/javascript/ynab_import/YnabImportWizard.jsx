@@ -27,9 +27,10 @@ const STEPS = [
   { key: 'apply', label: gettext('Import') },
 ];
 
-// How often the apply screen asks how it is going. Fast enough to feel live,
-// slow enough that a long import is not a thousand requests.
-const POLL_MS = 1200;
+// How often the apply screen asks how it is going. Fast enough that a phase change
+// shows up while it still means something, slow enough that a long import is not a
+// thousand requests.
+const POLL_MS = 900;
 
 const YnabImportWizard = ({ props }) => {
   const { api, canImport, teamName, homeUrl, accountsUrl, budgetUrl, goalsUrl } = props;

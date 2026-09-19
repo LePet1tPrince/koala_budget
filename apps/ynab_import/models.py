@@ -19,6 +19,7 @@ buys nothing.
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.teams.models import BaseTeamModel
 
@@ -60,6 +61,7 @@ class YnabImport(BaseTeamModel):
     progress = models.PositiveSmallIntegerField(default=0, help_text="Percent complete, for the wizard's apply screen.")
     step = models.CharField(max_length=100, blank=True, help_text="What the import is doing right now.")
 
+    started_at = models.DateTimeField(null=True, blank=True, help_text="When the worker picked this import up.")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -81,6 +83,28 @@ class YnabImport(BaseTeamModel):
     def is_finished(self) -> bool:
         return self.status in (self.STATUS_DONE, self.STATUS_FAILED)
 
+    @property
+    def elapsed_seconds(self) -> float | None:
+        """How long the worker has been at it, or took."""
+        if self.started_at is None:
+            return None
+        end = self.finished_at or timezone.now()
+        return max(0.0, (end - self.started_at).total_seconds())
+
+    @property
+    def eta_seconds(self) -> int | None:
+        """
+        A guess at what is left, from what the run has managed so far.
+
+        Deliberately silent below a tenth of the way in: the opening phase creates
+        accounts and payees, which is nothing like the per-transaction rate that
+        dominates the rest, so an estimate made from it would be confidently wrong.
+        """
+        elapsed = self.elapsed_seconds
+        if self.is_finished or elapsed is None or self.progress < 10:
+            return None
+        return max(0, int(round(elapsed * (100 - self.progress) / self.progress)))
+
     def as_dict(self) -> dict:
         return {
             "id": self.id,
@@ -89,4 +113,9 @@ class YnabImport(BaseTeamModel):
             "step": self.step,
             "error": self.error,
             "result": self.result,
+            # The wizard shows a bar for a job it cannot see, so it is told how long
+            # this has been going and what is left rather than left to guess.
+            "started": self.started_at is not None,
+            "elapsed_seconds": self.elapsed_seconds,
+            "eta_seconds": self.eta_seconds,
         }

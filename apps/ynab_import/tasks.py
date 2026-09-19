@@ -22,6 +22,7 @@ from apps.audit.utils import log_event
 from .models import YnabImport
 from .services.apply import ApplyError, apply_plan
 from .services.build import BuildError, build, parse_choices
+from .services.progress import ProgressChannel
 from .services.reconcile import reconcile
 from .services.session import analyse_record
 
@@ -40,42 +41,53 @@ def run_ynab_import(self, import_id: int):
         return record.as_dict()
 
     recorder = ProgressRecorder(self)
+    channel = ProgressChannel(record.id)
+
     record.status = YnabImport.STATUS_RUNNING
     record.progress = 0
     record.step = "Reading your export"
-    record.save(update_fields=["status", "progress", "step", "updated_at"])
+    record.started_at = timezone.now()
+    record.save(update_fields=["status", "progress", "step", "started_at", "updated_at"])
 
     def report(percent: int, step: str):
+        """
+        Two channels, because each fails in a way the other does not.
+
+        The result backend is Redis and so is not inside the import's transaction;
+        the second connection is the database, so it still works where results are
+        turned off. Neither may fail the import: losing the progress bar is a far
+        better outcome than losing the books.
+        """
         try:
             recorder.set_progress(percent, 100, description=step)
         except Exception:  # noqa: BLE001 - progress is a nicety; the import is not
-            # The result backend is how progress reaches the page *during* a run.
-            # If it is unreachable the import still has to finish -- losing the
-            # progress bar is a far better outcome than losing the books.
-            logger.debug("Could not report YNAB import progress", exc_info=True)
-        # Mirrored onto the row so a user who reloads the page mid-import still sees
-        # where it got to: the Celery result expires, the row does not.
-        YnabImport.objects.filter(id=record.id).update(progress=percent, step=step)
+            logger.debug("Could not report YNAB import progress to the result backend", exc_info=True)
+        channel.report(percent, step)
 
     try:
+        report(2, "Reading your export")
         analysis = analyse_record(record)
         choices = parse_choices(analysis, record.choices)
         plan = build(analysis, choices)
         result = apply_plan(record.team, plan, user=record.created_by, on_progress=report)
         checks = reconcile(analysis, plan)
     except (ApplyError, BuildError) as error:
+        channel.close()
         record.status = YnabImport.STATUS_FAILED
         record.error = str(error)
         record.finished_at = timezone.now()
         record.save(update_fields=["status", "error", "finished_at", "updated_at"])
         return record.as_dict()
     except Exception as error:  # noqa: BLE001 - the wizard must say something, whatever broke
+        channel.close()
         logger.exception("YNAB import %s failed", import_id)
         record.status = YnabImport.STATUS_FAILED
         record.error = f"The import could not be completed: {error}"
         record.finished_at = timezone.now()
         record.save(update_fields=["status", "error", "finished_at", "updated_at"])
         return record.as_dict()
+
+    channel.close()
 
     with transaction.atomic():
         record.status = YnabImport.STATUS_DONE

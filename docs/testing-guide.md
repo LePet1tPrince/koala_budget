@@ -196,6 +196,17 @@ make test-e2e-accounts  # Run specific test file
 - E2E: an account's name lives in an `<input>`'s value, which no text locator can see — the rows carry
   `data-account` / `data-payee` / `data-category` for that reason. The walk clicks Continue until the review screen
   appears rather than counting steps, so adding a screen does not break the suite
+- **Progress is a contract, and it has its own tests.** The import runs in one
+  transaction, so a progress row written inside it is invisible until the whole
+  thing commits — a `TransactionTestCase` asserts the figure written through
+  `ProgressChannel` is readable from another connection *while* that transaction is
+  still open, with a control asserting the import's own write is not. Two more pin
+  the safeguards: a channel that cannot open a connection, and one whose row is
+  locked, both give up rather than stalling the import
+- `celery_progress` reports **100% for any finished task, successful or failed**, so
+  `api_status` must never hand that number to a running bar; there are tests for the
+  clamp, for a dead worker being reported rather than waited for, and for the
+  ordinary race (task returned, row about to be written) *not* being called a death
 - The full-export E2E test is marked `slow` (`-m "not slow"` to skip it); everything else uses the small synthetic
   export in `apps/ynab_import/tests/fixtures.py`
 

@@ -17,6 +17,7 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
@@ -36,6 +37,14 @@ from .services.session import analyse_record
 from .tasks import run_ynab_import
 
 logger = logging.getLogger(__name__)
+
+# The bar never shows a full sweep while work is still going on: 100% is reserved
+# for a row that says so.
+NEARLY_DONE = 99
+
+# How long a task Celery calls finished may leave its row untouched before it is
+# treated as a worker that died rather than one that is a moment behind.
+DEAD_WORKER_GRACE_SECONDS = 20
 
 
 def json_errors(view):
@@ -257,22 +266,74 @@ def api_status(request, team_slug):
     """
     Where the import has got to.
 
-    The row carries the authoritative status; Celery carries the live progress within
-    a run, which is finer-grained and survives nothing. Both are reported, and the row
-    wins -- a reloaded page must still show a finished import as finished.
+    The row is authoritative -- a reloaded page must show a finished import as
+    finished -- and Celery is consulted only for progress the row has not caught up
+    with yet, since the two are written from the same worker microseconds apart.
+
+    The one thing Celery is trusted for outright is *death*. A worker that is
+    killed (an out-of-memory container, a deploy mid-import) never reaches the code
+    that marks the row failed, so the row says "running" forever. Without this the
+    wizard sits at whatever it last saw, waiting for a worker that is not coming.
     """
     record = YnabImport.objects.filter(team=request.team, id=request.GET.get("import_id")).first()
     if record is None:
         return JsonResponse({"error": "That import is no longer available."}, status=404)
 
     payload = record.as_dict()
-    if record.task_id and not record.is_finished:
-        try:
-            live = Progress(AsyncResult(record.task_id)).get_info()
-        except Exception:  # noqa: BLE001 - a missing result backend must not break the page
-            live = None
-        if live and live.get("progress"):
-            payload["progress"] = max(payload["progress"], int(live["progress"].get("percent") or 0))
-            payload["step"] = live["progress"].get("description") or payload["step"]
+    if record.is_finished or not record.task_id:
+        return JsonResponse(payload)
+
+    live = _live_progress(record)
+    if live is None:
+        return JsonResponse(payload)
+
+    if live["complete"]:
+        # `celery_progress` reports 100% for a finished task whether it succeeded or
+        # failed, so that number must never reach the bar while the row still says
+        # running -- that is the full-bar-forever the user would otherwise stare at.
+        if _worker_is_gone(record):
+            record.status = YnabImport.STATUS_FAILED
+            record.error = (
+                "The import stopped before it finished. Nothing was written -- it is applied in one go, so a "
+                "run that does not reach the end leaves your books exactly as they were. Check the worker log, "
+                "then start again."
+            )
+            record.finished_at = timezone.now()
+            record.save(update_fields=["status", "error", "finished_at", "updated_at"])
+            return JsonResponse(record.as_dict())
+        # Still within the moment between the task returning and the row being
+        # written: report near-complete rather than complete, and let the next poll
+        # see the row itself.
+        payload["progress"] = max(payload["progress"], NEARLY_DONE)
+        return JsonResponse(payload)
+
+    progress = live.get("progress") or {}
+    percent = int(progress.get("percent") or 0)
+    payload["progress"] = min(NEARLY_DONE, max(payload["progress"], percent))
+    payload["step"] = progress.get("description") or payload["step"]
+    payload["started"] = payload["started"] or not progress.get("pending")
 
     return JsonResponse(payload)
+
+
+def _live_progress(record) -> dict | None:
+    """What Celery makes of the task, or None when there is no result backend to ask."""
+    try:
+        return Progress(AsyncResult(record.task_id)).get_info()
+    except Exception:  # noqa: BLE001 - a missing result backend must not break the page
+        logger.debug("No live progress for YNAB import %s", record.id, exc_info=True)
+        return None
+
+
+def _worker_is_gone(record) -> bool:
+    """
+    Whether a task Celery calls finished has stopped writing to its row.
+
+    The grace period is what separates a dead worker from the ordinary race: the
+    task returns, and a moment later the same worker commits the row. Only silence
+    that outlasts the grace period is a death.
+    """
+    last_seen = record.updated_at or record.started_at
+    if last_seen is None:
+        return True
+    return (timezone.now() - last_seen).total_seconds() > DEAD_WORKER_GRACE_SECONDS
