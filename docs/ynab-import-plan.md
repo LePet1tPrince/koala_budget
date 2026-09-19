@@ -266,10 +266,27 @@ change, so it goes to the D5 income/expense pair. The wizard confirms the
 mapping (step 4 in §4) rather than assuming it, since `Savings Expenses` is a
 spending category wearing a savings label and belongs with the expenses.
 
-`Goal.target_amount` is non-nullable and the export carries **no YNAB targets**,
-so the wizard has to ask for a target per goal (or default it to the amount
-saved so far, which marks the goal complete — acceptable for a historical goal
-like `RESP`, wrong for an ongoing one like `House`).
+`Goal.target_amount` is non-nullable and the export carries **no YNAB targets**.
+**Decision: set `target_amount` to the amount already saved** — no extra wizard
+screen.
+
+One consequence to build for, because it is functional rather than cosmetic.
+`apps/budget/views.py:717` computes a goal's `funded` state as
+`is_complete or (target_amount > 0 and saved >= target_amount)`, so every
+imported goal arrives funded: the ✓ Funded / Treetop / WINNER badge shows, the
+goal counts toward "on pace or funded", **and the quick-assign button is
+disabled** — `goal_assign_available` 400s on a funded goal. A migrated user
+cannot put money into `House` or `Retirement` until they raise the target.
+
+So the importer must:
+- leave `is_complete = False`, so the goals stay in `Goal.objects.active()` and
+  remain editable rather than being treated as finished;
+- say plainly in the import summary that targets were set to the amount already
+  saved and need raising for any goal still being saved for, linking to the
+  goals page.
+
+That keeps the no-extra-screen decision while making the one blocked action
+discoverable instead of a dead button.
 
 Note `GoalAllocation` is `unique_together ["team", "goal", "month"]`, so
 multiple transfers in a month sum into one allocation row. And `Goal.save()`
@@ -329,18 +346,28 @@ transaction. Set the flag on the **bank-account leg only**, following the
 transfer-mirror precedent already in the codebase ("the two legs reconcile
 independently, per-`JournalLine` `is_reconciled`").
 
-### D10 — Closed accounts and hidden categories
+### D10 — Closed accounts and hidden categories · **decided**
 
 13 of 36 accounts end at exactly `0.00` — emptied and abandoned rather than
 closed (YNAB doesn't export closure state). 9 categories sit in
 `Hidden Categories`.
 
-Decision needed: import and archive, or skip? Skipping loses history and breaks
-the §2 reconciliation. Recommendation: import everything, and mark hidden
-categories' accounts + zero-balance-with-no-recent-activity accounts as archived
-so they stay out of the pickers. (Note `Account` has no `is_archived` field —
-`JournalLine` does. This may need a small model addition, or the accounts board's
-group ordering used to park them.)
+**Decision: import everything, all visible.** No `Account.is_archived` field and
+no migration — `Account` has no such field today (`JournalLine` does), and this
+import is not the reason to add one.
+
+History and the §2 gate stay complete. The cost is clutter: the accounts board
+and every category picker carry ~22 entries the user has finished with. Two
+things make that cheaper without a model change:
+- Put the hidden categories in their own account group (`Hidden`, or the
+  export's own group name) with a high `sort_order`, so the board's Type → Group
+  → Account ordering parks them at the bottom of their section rather than
+  interleaving them with live categories.
+- The categorize-mode search already ranks by `matchScore()`, so a dead category
+  only surfaces when its name is actually typed.
+
+If the clutter turns out to matter, `Account.is_archived` is a later, separate
+change — and one that pays off beyond the importer.
 
 ### D11 — Free ordering
 
@@ -354,15 +381,19 @@ budget page and grid.
 Account numbers follow the project convention (1000s/2000s/3000s/4000s/5000s)
 assigned in Plan order within each block.
 
-### D12 — Staging vs direct posting · **decision required**
+### D12 — Staging vs direct posting · **decided**
 
 Does the register land in `BankTransaction` (the feed, awaiting categorisation)
 or straight into the journal?
 
-The pitch is "drop the CSVs and everything is populated", and the register is
-**already categorised** — so: direct `JournalEntry` rows,
+**Decision: straight to the journal.** 6,644 `JournalEntry` rows,
 `source=SOURCE_IMPORT`, `status=STATUS_POSTED`, and **no** `BankTransaction`
-rows. Creating feed rows would present 7,572 already-answered questions.
+rows. The register is already categorised; creating feed rows would present
+7,572 already-answered questions.
+
+This also settles the 122 uncategorized tracking rows (§D5): they post to the
+`Investment Income` / `Investment Loss` pair rather than landing in the feed, so
+the user's first sight of the app is a populated dashboard and not a to-do list.
 
 Corollary to flag: the team's bank feed then starts empty, and the first
 Plaid/CSV sync will re-import anything overlapping the register's end date. The
@@ -478,9 +509,17 @@ Vite entry `ynab-import-app`, reusing `common/Modal`, `Combobox`, `Toast` and th
    §2), plus a note naming the D2 top-up months and the D1 income back-fill so
    neither looks like a number the importer invented
 
-Entry points: the onboarding takeover (a "Coming from YNAB?" branch on the
-welcome screen, which is exactly the right moment and skips the questionnaire
-entirely) and a standalone page for an existing empty team.
+Entry points — **decided: both.**
+- A "Coming from YNAB?" branch on the onboarding takeover's welcome screen. It
+  is the right moment, and it **skips the questionnaire entirely**: the export
+  answers every question in `QUESTION_CATALOG` better than the user can, so
+  `build_template()` is never called and `OnboardingState` goes straight to the
+  `tasks` phase via `complete()`.
+- A standalone page for a team already past onboarding but still empty, so a
+  user who clicked through first and only then found their export is not forced
+  into a new team.
+
+Both call the same Phase 2 apply; only the chrome differs.
 
 ### Phase 4 — Tests
 
@@ -500,27 +539,28 @@ entirely) and a standalone page for an existing empty team.
 
 ---
 
-## 5. Decisions
-
-### Settled
+## 5. Decisions — all settled
 
 | | question | resolution |
 |---|---|---|
 | **D1** | Envelope vs forecast/actual | Import expense `Assigned`; back-fill income budgets to equal actuals so income `Available` is 0 and the current period starts with no phantom budgeted income. No RTA figure added. |
-| **D2** | YNAB resets negative `Available`; KB carries it forward | Keep KB's rollover unchanged — negatives carry forward, no setting, `BudgetService` untouched. Importer writes `Assigned + max(0, −PrevAvailable)`, which records the money YNAB actually assigned to cover each overspend and reproduces YNAB's `Available` exactly (0/2,610 mismatches). |
+| **D2** | YNAB resets negative `Available`; KB carries it forward | Keep KB's rollover unchanged — negatives carry forward, no setting, `BudgetService` untouched. Importer writes `Assigned + max(0, −PrevAvailable)`, recording the money YNAB actually assigned to cover each overspend, which reproduces YNAB's `Available` exactly (0/2,610 mismatches). |
+| **D3** | Credit Card Payment categories | Discard as categories; use their names as the credit-card account list. |
 | **D4** | Income has no categories | Wizard screen mapping the 43 inflow payees to income accounts, pre-filled by heuristic, with a "not income" option for bookkeeping payees. |
-| **D6** | Categorised transfers to tracking accounts | Map the `Savings` categories onto KB `Goal`s, confirmed in the wizard; `Investment Gain/Loss` carved out to the D5 income/expense pair. |
-| **perf** | `JournalLine.save()`'s per-line budget lookup | `bulk_create` already skips `save()`; add `bulk_create_for_import` that resolves `budget_id` from an in-memory map. Accepts skipping row-level audit logs. |
+| **D5** | On-budget vs tracking | Import tracking accounts as ordinary assets; their 122 uncategorized rows post to a new `Investment Income` / `Investment Loss` pair. |
+| **D6** | Categorised transfers to tracking accounts | Map the `Savings` categories onto KB `Goal`s (`Investment Gain/Loss` carved out). `target_amount` = amount already saved, `is_complete` left False, and the import summary must flag that every imported goal arrives `funded` with its assign button disabled until the target is raised. |
+| **D7** | Account type inference | CC-payment list, then never-positive balance, then negative starting balance; everything else an asset. Shown for review before anything is written. |
+| **D8** | Splits | Walk `(i/n)` in file order within `(account, date)`; 83 groups. The 3 transfer pairs with one leg inside a split merge into that split's entry. |
+| **D9** | Reconciliation state | Set `is_reconciled`/`is_cleared` on the bank-account leg only, per the transfer-mirror precedent. |
+| **D10** | Zero-balance accounts and hidden categories | Import everything, all visible. No `Account.is_archived` field, no migration. Park hidden categories in their own high-`sort_order` group so the board's ordering keeps them out of the way. |
+| **D11** | Ordering | Take group and category `sort_order` from the Plan's own ordering, which is identical across all 58 months. |
+| **D12** | Staging vs direct posting | Straight to the journal: 6,644 posted entries, `source=SOURCE_IMPORT`, no `BankTransaction` rows. |
+| **D13** | Currency | Assume the team's currency; state the assumption in the import summary. |
+| **entry** | Where the import starts | Both — a "Coming from YNAB?" branch on the onboarding takeover (skipping the questionnaire entirely) and a standalone page for an existing empty team. |
+| **perf** | `JournalLine.save()`'s per-line budget lookup | `bulk_create` already skips `save()`; add `bulk_create_for_import` resolving `budget_id` from an in-memory map. Accepts skipping row-level audit logs. |
+| **re-run** | Importing over a team that already has data | Refuse, guarding on "team has any non-void `JournalEntry`"; offer wipe-and-retry. |
 
-### Still open
-
-| | question | my recommendation |
-|---|---|---|
-| **D10** | Zero-balance accounts and 9 hidden categories: import-and-archive or skip? | Import and archive — skipping breaks §2. Needs an `Account.is_archived` field, which does not exist yet. |
-| **D12** | Register straight to the journal as posted, or through the bank feed? | Straight to the journal; no `BankTransaction` rows. |
-| — | Entry point: a branch on the onboarding takeover's welcome screen, or its own page? | Both — the takeover branch is the natural moment, the standalone page covers an existing empty team. |
-| — | Re-running the import over a team that already has data? | Refuse; offer wipe-and-retry. |
-| **D6** | `Goal.target_amount` is required and the export has no targets — ask per goal, or default to amount-saved? | Ask, defaulting to amount-saved. |
+Nothing is blocking. Phase 1 can start.
 
 ## 6. Risks
 
