@@ -31,10 +31,10 @@ Sample shape:
 | months of plan data | 58 |
 | plan cells with non-zero `Assigned` (excl. CC Payments) | 1,468 |
 | transfer legs | 1,678 → **839 pairs, 0 unmatched** |
-| split legs | 172 → 80 parent transactions |
+| split legs | 172 → 83 parent transactions |
 | `Starting Balance` rows | 21 |
-| plain rows | 5,701 |
-| **estimated journal entries** | **~6,641** (~13,300 lines) |
+| plain rows | 5,704 |
+| **journal entries** | **6,644** (~13,300 lines) — every one of the 7,572 rows accounted for |
 
 ### What the export does *not* contain
 
@@ -52,6 +52,11 @@ Everything in §3 is about recovering those from what *is* there.
 ---
 
 ## 2. Reconciliation: the import's integrity gate
+
+> Every measured claim below and in §3 is re-derivable by running
+> `python docs/reference/checks/verify_ynab_assumptions.py`, which exits
+> non-zero if any of them stops holding. Point it at a different export to see
+> which rules survive contact with someone else's budget.
 
 Deriving activity per `(month, category)` from the Register and comparing it to
 the Plan's `Activity` column:
@@ -75,72 +80,99 @@ report the export month separately as informational. That assertion is a real,
 achievable post-import check — not a soft heuristic — and it should gate the
 "your data is in" screen.
 
+With D2's decision applied the gate extends to the whole Plan: `Activity`
+reconciles as above, `Assigned` is imported verbatim plus a top-up that is
+itself derived from `Available`, and KB's own `Available` then matches YNAB's on
+**all 2,610 category-months**. So all three Plan columns are checkable, not just
+one.
+
 ---
 
-## 3. Methodological differences and the decisions they force
+## 3. Methodological differences
 
 Ranked by how much of the design they move.
 
-### D1 — Envelope budgeting vs forecast/actual · **decision required**
+### D1 — Envelope budgeting vs forecast/actual · **decided**
 
 YNAB is envelope: income lands in **Ready to Assign**, the user hands it out to
 categories, and `Assigned` is *money allocated*. Koala Budget's `Budget` is a
 *plan*: `budget_amount` per income/expense category, with
 `BudgetService.available()` computing `Budget − Actual + Available(prev)` for
 expenses and `Actual − Budget + Available(prev)` for income. There is no RTA
-pool and no concept of unassigned money.
+pool.
 
-Consequences:
-- YNAB `Assigned` maps cleanly onto `Budget.budget_amount` for **expense**
-  categories. 1,468 rows in the sample.
-- For **income** there is nothing to map: YNAB never assigns to income
-  categories, so a migrated team has empty income budgets and every income
-  category shows `Available = Actual`.
-- A migrated user will look for "Ready to Assign" and not find it. There is no
-  number in KB that answers "how much is unbudgeted right now".
+Expense `Assigned` maps onto `budget_amount` directly (1,468 rows in the
+sample — see D2 for the one adjustment). Income is the gap: YNAB never assigns
+to income categories, so there is nothing in the export to import.
 
-Options:
-- **(a)** Import expense `Assigned` only; leave income budgets empty. Simplest,
-  honest, and the numbers that do exist are exactly right.
-- **(b)** Back-fill income budgets from actual income per month, so income rows
-  read `Available = 0`. Tidier-looking, but invents a plan the user never made.
-- **(c)** Add a derived "Ready to Assign"-alike figure to the budget page
-  (`total income actual − total expense budgeted` for the month). New feature,
-  outside the importer.
+**Decision: back-fill each income budget from its own actual.** For every
+(income account, month) with activity, write `budget_amount = actual income for
+that month`. KB's income formula is `Actual − Budget + Available(prev)`, so
+`Budget == Actual` makes every month contribute zero and income `Available`
+stays 0 throughout — including the current period, which is the point: the user
+starts with no phantom budgeted income.
 
-Recommendation: **(a)** for the importer, and treat **(c)** as a separate
-product question. **This is the one decision I would not make without you** —
-it decides whether the migration feels like YNAB or like a different tool.
+Left at 0 instead, income `Available` would accumulate every dollar ever
+earned — $699,774 across the sample — and read as an enormous surplus.
 
-### D2 — Negative `Available` rollover · **decision required**
+Two implementation consequences:
+- The back-fill must run **after** the D4 payee → income-account mapping, since
+  "actual per income account" is only defined once the mapping exists.
+- It is computed from the imported rows, not from a post-import query, so it
+  stays inside the single atomic apply.
+
+No RTA-equivalent figure is being added to KB. Worth revisiting separately: a
+migrated user will look for "Ready to Assign" and no number in KB answers it.
+
+### D2 — Negative `Available` rollover · **decided**
 
 Measured on the sample: in **186 of 186** cases where a category's previous-month
 `Available` was negative, YNAB **reset it to 0** and did not carry the negative
-forward. Zero cases carried forward. This holds across every category group,
-including credit-card payment categories.
+forward. Zero cases carried forward, across every category group.
+`BudgetService.available()` always carries the negative forward, uncapped.
 
-`BudgetService.available()` **always** carries the negative forward, with no cap.
+**Decision: keep KB's rollover exactly as it is.** Negatives carry forward;
+`BudgetService` is not touched and no team setting is added.
 
-So from a migrated user's first overspend onward, KB's `Available` diverges from
-the YNAB figure they remember, and the divergence compounds for the life of the
-category.
+That decision is kept, but importing YNAB's `Assigned` column verbatim under it
+would have been a serious problem, so the importer does one thing differently.
+Measured: replaying 58 months of history through KB's rule with the raw
+`Assigned` column diverges from YNAB on **1,259 of 2,610 category-months
+(48.2%)**, and lands **31 of 45 categories** on a wrong *current* `Available` —
+not stale history, but the number the user budgets against:
 
-Options:
-- **(a)** Leave `BudgetService` alone; explain the difference in the import
-  summary. Cheapest; the historical Available column will disagree with YNAB
-  everywhere an overspend ever happened.
-- **(b)** Add a team setting (`overspend_rolls_forward`, default current
-  behaviour) and honour it in `available()`. Correct fix, touches the one method
-  every budget surface depends on — needs its own test pass across the budget
-  page, grid, `budget-vs-actual` report and the account-activity budget chart.
-- **(c)** Importer-only: where YNAB reset a negative, write a compensating
-  amount into the next month's `budget_amount` so KB's carry cancels out. Gets
-  the numbers to match with no code change to `available()`, at the cost of
-  `budget_amount` values that are not what YNAB said was assigned — which then
-  looks wrong in the budget grid.
+| category | YNAB Available (Sep 2026) | KB, raw `Assigned` |
+|---|---|---|
+| `Monthly: Groceries` | $739.34 | **−$1,988.14** |
+| `Monthly: Amroth House` | $3,759.81 | **−$11,442.53** |
+| `Savings: House` | $1,503.00 | **−$15,568.84** |
+| `Tax Deductible: Medical` | $0.00 | **−$2,401.82** |
 
-Recommendation: **(b)**, because (c) corrupts the meaning of the stored plan and
-(a) leaves the headline "your numbers came across" claim false.
+A migrated user would open the budget page to find most categories deeply in the
+red. That is not a divergence to explain away; it makes the imported budget
+unusable.
+
+The cause is that KB would accumulate *every historical overspend forever*,
+while YNAB absorbed each one into Ready to Assign at the time. Which points at
+the fix, and it is not a fudge: **that money really was assigned.** When YNAB
+reset a negative to 0 it covered the overspend out of RTA — the `Assigned`
+column simply does not show it. So the faithful import of what YNAB did is:
+
+```
+budget_amount(cat, m) = Assigned(cat, m) + max(0, −Available(cat, m−1))
+```
+
+With KB's unchanged carry-forward rule this reproduces YNAB's `Available`
+**exactly — 0 mismatches across all 2,610 category-months**, because
+`x + max(0, −x) = max(x, 0)` is precisely the reset YNAB performs.
+
+In the sample the top-up fires in 143 months and totals $68,418.75. The only
+visible cost: in those months the budget grid shows a `budget_amount` above
+YNAB's `Assigned` figure — which is the accurate number, being the money that
+actually went into the category. The import summary should say so.
+
+Note this is orthogonal to §2: the reconciliation gate is on `Activity`, which
+the top-up does not touch. `Assigned`, `Activity` and `Available` all reconcile.
 
 ### D3 — Credit Card Payment categories
 
@@ -156,7 +188,7 @@ user's credit-card account names, which makes the Plan a free, exact
 credit-card-account list. On the sample this identified all 6 liabilities with no
 false positives, and it is the strongest type signal in the export (see D7).
 
-### D4 — Income has no categories · **decision required**
+### D4 — Income has no categories · **decided**
 
 All 1,133 inflow rows carry the single category `Inflow: Ready to Assign`. KB
 needs income *accounts* (4000s) for the income statement, the budget page's
@@ -176,10 +208,16 @@ Options:
 - **(c)** Wizard step: show the 43 payees with counts and totals, pre-grouped by
   (b), let the user merge/rename/drop before applying.
 
-Recommendation: **(c)**. It is one screen, it is the highest-leverage screen in
-the whole flow, and the existing "Map Categories" step of the CSV wizard is the
-same shape — `Step4MapCategories` / `suggest_account_for_category` can be
-followed closely.
+**Decision: (c)** — a mapping screen, pre-filled by the heuristic. It is one
+screen, it is the highest-leverage screen in the flow, and the existing "Map
+Categories" step of the CSV wizard is the same shape, so
+`Step4MapCategories` / `suggest_account_for_category` can be followed closely.
+
+The screen must also let a payee be marked **not income** — `Starting Balance`
+(14 rows), `reconcile` and `Reconciliation Balance Adjustment` are bookkeeping,
+not earnings, and routing them to an income account would overstate income on
+every report. `Starting Balance` rows are already claimed by the opening-balance
+pass (§1), so the mapping screen should exclude them rather than ask.
 
 ### D5 — On-budget vs tracking accounts
 
@@ -188,8 +226,9 @@ Not in the export. Recoverable signal, exact on the sample:
 > An account is **on-budget** if its `Starting Balance` row carries a category,
 > or if any of its rows carries a category. Otherwise it is **tracking**.
 
-That splits the sample 21 on-budget / 15 tracking, and every tracking account it
-finds is genuinely one (TFSAs, FHSAs, GICs, pensions, RESP, home equity).
+That splits the sample 22 on-budget / 14 tracking, with the `Starting Balance`
+signal and the any-categorised-row signal agreeing on every account that has
+both, and every tracking account it finds is genuinely one (TFSAs, FHSAs, GICs, pensions, RESP, home equity).
 
 KB has no on/off-budget concept: every account is in one chart of accounts and
 every transaction needs both legs. The consequence is D6 and the 122
@@ -202,7 +241,7 @@ uncategorized activity against a new non-system income/expense pair
 `Reconciliation Adjustments` — these are real economic events, not bookkeeping
 plugs, and burying them in equity would understate income.
 
-### D6 — Transfers that carry a category · **decision required**
+### D6 — Transfers that carry a category · **decided**
 
 315 transfer legs carry a category; 306 of those are in the `Savings` group
 (`House` 189, `Retirement` 120, `RESP` 17, `Emergency Fund`, `Savings Expenses`).
@@ -221,8 +260,16 @@ Options:
   `budget.Goal` exists for.
 - **(c)** Post to an expense account. Net worth wrong. Rejected.
 
-Recommendation: **(b)**, with one carve-out: `Investment Gain/Loss` (57 rows) is
-not a goal, it is a valuation change — send it to the D5 income/expense pair.
+**Decision: (b)** — map YNAB's `Savings` categories onto KB `Goal`s, with one
+carve-out: `Investment Gain/Loss` (57 rows) is not a goal but a valuation
+change, so it goes to the D5 income/expense pair. The wizard confirms the
+mapping (step 4 in §4) rather than assuming it, since `Savings Expenses` is a
+spending category wearing a savings label and belongs with the expenses.
+
+`Goal.target_amount` is non-nullable and the export carries **no YNAB targets**,
+so the wizard has to ask for a target per goal (or default it to the amount
+saved so far, which marks the goal complete — acceptable for a historical goal
+like `RESP`, wrong for an ongoing one like `House`).
 
 Note `GoalAllocation` is `unique_together ["team", "goal", "month"]`, so
 multiple transfers in a month sum into one allocation row. And `Goal.save()`
@@ -251,17 +298,22 @@ user fixes institution names and drops accounts they don't want.
 
 ### D8 — Splits
 
-80 parent transactions, 172 legs, memos prefixed `Split (i/n)`. KB handles these
+83 parent transactions, 172 legs, memos prefixed `Split (i/n)`. KB handles these
 natively as a multi-line `JournalEntry`, so the mapping is good — the grouping is
 the fiddly part:
 
-- 3 of 80 `(account, date)` buckets contain **two different splits**, so
-  grouping by account+date alone is wrong.
+- 3 of the 80 `(account, date)` buckets contain **two different splits** — which
+  is why the correct walk yields 83 groups, not 80. Grouping by account+date
+  alone both undercounts and merges unrelated legs.
 - 1 bucket is **not contiguous** in file order (an unrelated row sits between two
   splits on `BBC Chequing 2024-04-30`).
 - A split leg can itself be a **transfer** (`Viv's Paycheck (TD) 2026-05-28`:
   leg 1 an expense, leg 2 `Transfer : Cash`) — and that leg is also one half of a
-  transfer pair, so naive handling double-counts the movement.
+  transfer pair, so naive handling double-counts the movement. Measured: **3 of
+  the 839 transfer pairs have exactly one leg inside a split**, and none has
+  both. Those 3 pairs must **merge into** the split's entry rather than becoming
+  entries of their own — which is where the 6,644 total comes from
+  (83 splits + 836 standalone transfer pairs + 21 opening + 5,704 plain).
 
 Algorithm: scan in file order; on `(1/n)` open a group; consume the next
 expected `(k/n)` within the same `(account, date)`, skipping unrelated rows;
@@ -347,18 +399,20 @@ New Django app `apps/ynab_import`, mirroring how `apps/onboarding` is built
 - Deliberately pure so the review screens preview exactly what gets applied —
   the same discipline as `onboarding.services.builder.build_template`.
 
-Tests: the sample export is the fixture. Assert 839 transfer pairs / 0
-unmatched, 80 split groups, 6 liabilities, 21 on-budget accounts.
+Tests: the sample export is the fixture, and
+`docs/reference/checks/verify_ynab_assumptions.py` already re-derives every
+figure this plan asserts (8/8 passing) — port its checks as the Phase 1 test
+body rather than restating them. Assert 839 transfer pairs / 0 unmatched, 83
+split groups, 6 liabilities, 22 on-budget accounts, 6,644 entries.
 
 ### Phase 2 — Apply
 
 `apps/ynab_import/services/apply.py`, one `transaction.atomic` block:
 1. `AccountGroup` / `Account` / `Institution` / `Payee` (1,123 payees →
    `bulk_create(ignore_conflicts=True)`)
-2. `Budget` rows **first** — `JournalLine.save()` looks up its `Budget` on every
-   save, so budgets must exist before lines, and lines must be `bulk_create`d
-   with `budget_id` resolved in memory. **~13,300 lines: a naive per-line
-   `save()` is ~13,300 extra queries.** This is the main performance trap.
+2. `Budget` rows **first**, including the D2 top-up and the D1 income
+   back-fill — because `JournalLine` carries a `budget` FK that must point at
+   them (see "Bulk insert" below)
 3. `JournalEntry` + `JournalLine` in batches, with the balance assertion run
    per entry in Python before insert (`full_clean` on 6,641 entries is its own
    query storm)
@@ -377,7 +431,37 @@ unmatched, 80 split groups, 6 liabilities, 21 on-budget accounts.
 Idempotency: a second run on a non-empty team must refuse, not merge. Guard on
 "team has any non-void `JournalEntry`" and offer a wipe-and-retry instead.
 
-Given the volume, run it as a **Celery task** with progress, not in the request.
+Given the volume (6,644 entries, ~13,300 lines), run it as a **Celery task**
+with progress, not in the request.
+
+#### Bulk insert · **decided**
+
+`JournalLine.save()` calls `_calculate_budget()` — one `Budget` query per line —
+and `post_save` then writes an `AuditLog` row via `apps/audit/signals.py`. At
+~13,300 lines the naive path is roughly **26,600 extra queries** (a SELECT and
+an INSERT each), which is the difference between a 20-second import and a
+10-minute one.
+
+`bulk_create` already bypasses `save()` and its signals entirely, so the work is
+not to add a bulk path but to make the existing one correct:
+
+- **Resolve `budget_id` in memory.** Build `{(category_id, month): budget_id}`
+  from the `Budget` rows created in step 2 and assign `line.budget_id` before
+  `bulk_create`. Skipping this leaves every imported line's `budget` NULL, which
+  silently breaks nothing visible today but is wrong and would be hard to trace
+  later.
+- **Add `JournalLine.objects.bulk_create_for_import(lines, budget_map)`** on the
+  queryset rather than open-coding it in the importer, so the budget resolution
+  lives next to the `save()` override it is standing in for. A comment on
+  `save()` pointing at it stops the two drifting.
+- Batch with `batch_size` and keep it inside the atomic block.
+
+**Consequence to accept deliberately:** `bulk_create` skips the audit signals, so
+an import writes **no row-level `AuditLog` entries**. That is the right outcome —
+13,300 field-diff rows for a single import is noise, and the `AuditEvent` from
+step 6 is the meaningful record — but it is a real behaviour difference from
+every other write path in the app, and it needs a comment where it happens and
+a line in `docs/testing-guide.md`.
 
 ### Phase 3 — Wizard
 
@@ -387,9 +471,12 @@ Vite entry `ynab-import-app`, reusing `common/Modal`, `Combobox`, `Toast` and th
 1. **Drop** both CSVs (auto-identified)
 2. **Accounts** — review inferred type / group / opening balance, rename, drop (§D7)
 3. **Income** — map the 43 inflow payees to income accounts (§D4)
-4. **Savings → Goals** — confirm which `Savings` categories become goals (§D6)
+4. **Savings → Goals** — confirm which `Savings` categories become goals, and
+   set a target for each (§D6)
 5. **Preview** — counts, date range, net worth, and what will be skipped
-6. **Apply** — progress, then the reconciliation result
+6. **Apply** — progress, then the reconciliation result (all three Plan columns,
+   §2), plus a note naming the D2 top-up months and the D1 income back-fill so
+   neither looks like a number the importer invented
 
 Entry points: the onboarding takeover (a "Coming from YNAB?" branch on the
 welcome screen, which is exactly the right moment and skips the questionnaire
@@ -399,8 +486,13 @@ entirely) and a standalone page for an existing empty team.
 
 - Unit: parsing, pairing, splits, inference — sample export as fixture
 - Integration: apply to a fresh team, then assert **§2's reconciliation passes
-  for all 57 elapsed months**, net worth equals the sum of inferred closing
-  balances, and every `JournalEntry` balances
+  for all 57 elapsed months** — on `Activity`, on `Assigned`, and on
+  `BudgetService.available()` against YNAB's `Available` (the D2 claim, which is
+  exact and so belongs in a test, not a comment) — that income `Available` is 0
+  in every month (D1), that net worth equals the sum of inferred closing
+  balances, and that every `JournalEntry` balances
+- A regression test pinning `bulk_create_for_import` to populate `budget_id`,
+  since a NULL there is invisible until something reads it
 - E2E (`e2e/tests/test_ynab_import.py` + `e2e/pages/ynab_import.py`): drop both
   files, walk the wizard, land on a dashboard with a non-zero net worth
 - Note the `team` fixture is marked past onboarding, so a YNAB-import test needs
@@ -408,29 +500,35 @@ entirely) and a standalone page for an existing empty team.
 
 ---
 
-## 5. Decisions I need from you
+## 5. Decisions
+
+### Settled
+
+| | question | resolution |
+|---|---|---|
+| **D1** | Envelope vs forecast/actual | Import expense `Assigned`; back-fill income budgets to equal actuals so income `Available` is 0 and the current period starts with no phantom budgeted income. No RTA figure added. |
+| **D2** | YNAB resets negative `Available`; KB carries it forward | Keep KB's rollover unchanged — negatives carry forward, no setting, `BudgetService` untouched. Importer writes `Assigned + max(0, −PrevAvailable)`, which records the money YNAB actually assigned to cover each overspend and reproduces YNAB's `Available` exactly (0/2,610 mismatches). |
+| **D4** | Income has no categories | Wizard screen mapping the 43 inflow payees to income accounts, pre-filled by heuristic, with a "not income" option for bookkeeping payees. |
+| **D6** | Categorised transfers to tracking accounts | Map the `Savings` categories onto KB `Goal`s, confirmed in the wizard; `Investment Gain/Loss` carved out to the D5 income/expense pair. |
+| **perf** | `JournalLine.save()`'s per-line budget lookup | `bulk_create` already skips `save()`; add `bulk_create_for_import` that resolves `budget_id` from an in-memory map. Accepts skipping row-level audit logs. |
+
+### Still open
 
 | | question | my recommendation |
 |---|---|---|
-| **D1** | Envelope vs forecast/actual: import expense `Assigned` only, back-fill income budgets, or build a Ready-to-Assign figure? | Import expense only; treat RTA as a separate product question |
-| **D2** | YNAB resets negative `Available` to 0 (186/186 measured); KB carries it forward. Accept the divergence, add a team setting, or fudge `budget_amount`? | Add the setting — it is the only option that is both accurate and honest |
-| **D4** | Income: one account, auto-derive from 43 payees, or a mapping screen? | Mapping screen, pre-filled by the heuristic |
-| **D6** | Categorised transfers to tracking accounts: drop the category, or turn the 6 `Savings` categories into KB Goals? | Goals, with `Investment Gain/Loss` carved out |
-| **D10** | Zero-balance accounts and 9 hidden categories: import-and-archive or skip? | Import and archive (skipping breaks §2) |
-| **D12** | Register straight to the journal as posted, or through the bank feed? | Straight to the journal; no `BankTransaction` rows |
-
-Also worth your call, lower stakes: whether this lives in the onboarding
-takeover as a branch (my assumption) or as its own page, and whether a
-migrated team should be able to re-run the import over existing data (my
-assumption: no — refuse, offer wipe-and-retry).
-
----
+| **D10** | Zero-balance accounts and 9 hidden categories: import-and-archive or skip? | Import and archive — skipping breaks §2. Needs an `Account.is_archived` field, which does not exist yet. |
+| **D12** | Register straight to the journal as posted, or through the bank feed? | Straight to the journal; no `BankTransaction` rows. |
+| — | Entry point: a branch on the onboarding takeover's welcome screen, or its own page? | Both — the takeover branch is the natural moment, the standalone page covers an existing empty team. |
+| — | Re-running the import over a team that already has data? | Refuse; offer wipe-and-retry. |
+| **D6** | `Goal.target_amount` is required and the export has no targets — ask per goal, or default to amount-saved? | Ask, defaulting to amount-saved. |
 
 ## 6. Risks
 
 - **`BudgetService.available()` is recursive per category per month.** 45
   categories × 58 months on the budget page and the grid, after import. Existing
-  teams are small; a migrated team is not. Needs a look before Phase 3 ships.
+  teams are small; a migrated team is not. Needs a look before Phase 3 ships —
+  and D2 raises the stakes, since the top-up is only correct if `available()`
+  keeps behaving exactly as it does today.
 - **`JournalLine.save()`'s per-line budget lookup** (Phase 2 step 2) is the
   difference between a 20-second import and a 10-minute one.
 - Inference is only as good as the export. Every inferred value is shown for
