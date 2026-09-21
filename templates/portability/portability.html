@@ -1,0 +1,26 @@
+{% extends "web/settings/settings_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+
+{% block settings_content %}
+  {{ portability_props|json_script:'portability-props' }}
+
+  <div>
+    <div id="data-transfer-app"></div>
+
+    <noscript>
+      <div class="app-card">
+        <p>{% translate "Export & Import needs JavaScript." %}</p>
+      </div>
+    </noscript>
+  </div>
+{% endblock %}
+
+{% block page_js %}
+  {% comment %}
+    vite_react_refresh must come first: without the plugin's preamble the React
+    entry throws "can't detect preamble" in dev and the page renders nothing.
+  {% endcomment %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/portability/data-transfer-app.jsx' %}
+{% endblock %}

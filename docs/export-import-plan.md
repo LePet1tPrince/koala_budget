@@ -1,8 +1,19 @@
 # Koala Budget Export / Import — Implementation Plan
 
-> **Status: proposed.** Nothing below is built yet. Every claim about the current
-> schema was read out of the models, and the file/line references are current as
-> of this branch.
+> **Status: implemented** (`apps/portability`). All five phases in §7 were
+> built as written, with the deviations noted inline as they were found —
+> `_raw_delete`'s need for an explicit `BankTransaction.journal_entry` nulling
+> step (§4.2), the safety export's save having to happen *before*
+> `apply_archive`'s transaction rather than inside it (§4.4), and the two
+> `AuditEvent`s being logged inside that same transaction rather than after it
+> (§4.3). Backend (schema, write, read, upgrade, export, wipe, apply, the
+> Celery task, every view) carries 135 tests, all passing against a real
+> ORM-backed database. The frontend (`assets/javascript/portability/`) and the
+> Playwright E2E test (`e2e/tests/test_portability.py`) were written to the
+> same contract but could not be executed in the sandbox this was built in —
+> no Node/npm toolchain and no browser were available; see §7's closing note
+> for what was done to compensate and what still needs a real run before
+> shipping.
 
 Goal: a user downloads one file containing everything in their books, and can
 load that file into a different Koala Budget team — a new tenant, a second
@@ -323,8 +334,8 @@ choosing CSV.
     "budget.csv":   { "rows": 1904, "sha256": "…" }
   },
   "checks":  { /* §6 */ },
-  "omitted": { "empty_account_groups": 3, "unused_payees": 12,
-               "uncategorised_bank_transactions": 0 }
+  "omitted": { "empty_account_groups": 3, "unused_institutions": 1, "unused_payees": 12,
+               "dismissed_transfer_pairs": 2 }
 }
 ```
 
@@ -473,23 +484,36 @@ One path also means one thing to test and one thing to explain.
 
 ### 4.2 Deletion order is forced by the schema
 
-Three `PROTECT`s decide the order. Relying on cascade would be shorter and wrong
-twice over: deleting an `Account` silently takes its `Budget`, `Goal` and
-`BankTransaction` rows with it, and the counts reported back to the user should be
-*counted*, not inferred from what vanished.
+Three `PROTECT`s decide most of the order, and one `SET_NULL` decides the rest.
+An earlier draft of this section rejected relying on cascade at all, reasoning
+that "the counts reported back to the user should be counted, not inferred from
+what vanished." That turned out to be wrong about the tool, not the goal:
+`QuerySet.delete()`'s return value is `(total, {model_label: count, ...})` — an
+exact, structured count straight from Django's own collector, not an inference.
+Once that is understood, cascade is not just shorter but the *safer* choice for
+everything except the two models §4.3 singles out: re-deriving the collector's
+topological walk by hand is a second implementation of `on_delete` that can
+silently drift from the models' own values the day one of them changes.
 
-1. `JournalLine` — `account` is `PROTECT` (`apps/journal/models.py:140`).
-2. `JournalEntry` — `payee` is `PROTECT`. (`BankTransaction.journal_entry` is
-   `SET_NULL`, so feed rows survive this and go on their own terms.)
-3. `BankTransaction` — cascades `PlaidTransaction` and `TransferMatchDismissal`.
-4. `GoalAllocation`, then `Goal`.
-5. `Budget`.
-6. `PlaidAccount`, then `PlaidItem` — `PlaidAccount.account` is `PROTECT`
-   (`apps/plaid/models.py:65`). **A wipe therefore disconnects the team's banks.**
-   That belongs on the confirmation screen in as many words, not in a footnote.
-7. `Account`.
-8. `AccountGroup` — `Account.account_group` is `PROTECT`.
-9. `Payee`, `Institution`.
+1. **Null `BankTransaction.journal_entry`** for the team, in one `.update()` —
+   not a delete, a plain `UPDATE`, firing no signal. This is doing by hand what
+   `JournalEntry`'s `SET_NULL` relation would do automatically under
+   `.delete()`; §4.3 explains why it cannot be `.delete()`.
+2. **`JournalLine`**, then **`JournalEntry`** — `account`/`payee` are both
+   `PROTECT` (`apps/journal/models.py:140`), so lines first. With step 1 already
+   done, no `BankTransaction` row still points at an entry about to disappear.
+3. **`PlaidAccount`, then `PlaidItem`** — `PlaidAccount.account` is `PROTECT`
+   (`apps/plaid/models.py:65`), the one relation that would block step 4 outright.
+   **A wipe therefore disconnects the team's banks.** That belongs on the
+   confirmation screen in as many words, not in a footnote.
+4. **`Account.objects.filter(team=team).delete()`** — one call. Every remaining
+   model in scope reaches `Account` by a `CASCADE`, so the collector deletes
+   `BankTransaction` (which itself cascades `PlaidTransaction` and
+   `TransferMatchDismissal`), `Budget`, `Goal` and `GoalAllocation` in the same
+   call, and hands back an exact count for each.
+5. **`AccountGroup`** — `Account.account_group` is `PROTECT`, so this can only
+   run after step 4.
+6. **`Payee`, `Institution`** — nothing references either any more.
 
 ### 4.3 The audit-signal trap
 
@@ -518,12 +542,17 @@ Five guards, in order of how much each is worth:
 1. **Wipe and import are one `transaction.atomic` block.** A failed import must
    not leave an emptied team. Nearly free — `apply_plan` in the YNAB importer is
    already built this way, for the same reason.
-2. **A safety export is taken first, inside the transaction, and stored on the
-   import row.** The exporter already exists and runs in under a second; taking
-   one before destroying anything turns "I imported the wrong file" from
-   unrecoverable into a download link. Retained for `SAFETY_EXPORT_WINDOW`
-   (7 days), then blanked by a periodic task — the same reasoning by which
-   `YnabImport` clears its staged CSVs.
+2. **A safety export is taken first, and saved durably *before* that
+   transaction opens — not inside it.** Saving it inside the same block a
+   check failure rolls back would undo the save along with everything else,
+   in exactly the one situation the safety copy exists for. So the sequence is:
+   take the export, save it with a plain (non-atomic) write that commits on
+   its own, *then* open the transaction that wipes and rewrites the team. The
+   exporter already exists and runs in under a second; taking one before
+   destroying anything turns "I imported the wrong file" from unrecoverable
+   into a download link. Retained for `SAFETY_EXPORT_WINDOW` (7 days), then
+   blanked by a periodic task — the same reasoning by which `YnabImport`
+   clears its staged CSVs.
 3. **Admin only** — `@team_admin_required` on every import route. The export is
    fine for any member; the import is not.
 4. **Type the team name to confirm**, checked server-side against
@@ -651,22 +680,34 @@ account named the same as another of a different type, an empty account group.
 `_raw_delete` for journal rows. No `@transaction.atomic` of its own; always called
 inside the caller's.
 
-`services/apply.py`, one `transaction.atomic` block:
+`services/apply.py::build_safety_archive(team)` — the export of `team`'s own
+current books (§4.4.2), called and its result saved **before** the transaction
+below ever opens, so a later rollback cannot take it down too.
+
+`services/apply.py::apply_archive(team, archive_bytes)`, one `transaction.atomic`
+block:
 
 1. `read_archive` again — the preview ran it, but the request is not the
    authority.
-2. Safety export (§4.4.2), stored before anything is destroyed.
-3. `wipe_team`.
-4. Insert in FK order, building `{file_handle: new_id}`: `Institution`, `Payee`,
+2. `wipe_team`.
+3. Insert in FK order, building `{file_handle: new_id}`: `Institution`, `Payee`,
    `AccountGroup`, `Account`, `Goal`, `Budget`, `GoalAllocation`, `JournalEntry`,
    `JournalLine`.
-5. `BankTransaction` — one per row with a non-blank `feed_source` (linked to the
+4. `BankTransaction` — one per row with a non-blank `feed_source` (linked to the
    line's entry) plus one per `status=uncategorized` row (`journal_entry=None`).
    A straight insert, not a reconstruction: `sync_transfer` is **not** called,
    because `feed_is_mirror` already says which leg is the mirror and re-deriving
    it would be the inference this design exists to avoid.
-6. Recompute `checks`, compare, raise on any mismatch.
-7. `AuditEvent.DATA_IMPORTED` with counts, wipe counts and the check result.
+5. Recompute `checks`, compare, raise on any mismatch.
+
+Two `AuditEvent`s are logged **inside** this same transaction — one for the wipe
+(right after step 2, with its counts) and one for the import (at the very end,
+with the write counts and the check result) — deliberately, not as a nicety
+after the fact: an event row is itself an ordinary write, so if step 5 raises,
+both rows roll back with everything else. Logging a wipe that the transaction
+then undid would be a lie the audit trail told about itself. Committing
+together is what makes "a wipe-and-import pair leaves exactly two audit
+events" (§4.3) true rather than aspirational.
 
 Four traps this order exists to avoid:
 
@@ -753,9 +794,39 @@ round-trips as an uncategorized row without disturbing the trial balance.
 E2E: one Playwright test — export, wipe-import into a second team, assert the
 dashboard net worth matches. Page object in `e2e/pages/portability.py`.
 
----
+### What was built, and where it differs
 
-## 8. Risks
+Every phase above was built. Two notes on what actually shipped versus what
+this section describes in the abstract.
+
+**The round-trip test compares *structurally*, not by raw id.** §7's own
+sketch says "byte-identical after normalising the id columns" — in the built
+test (`apps/portability/tests/test_apply.py::RoundTripTests`) that
+normalisation is done by grouping rows by name/date/amount rather than by
+renumbering ids and diffing bytes. The reason is the same one §7 Phase 3's
+insert order relies on: `Account.bulk_create` in Postgres tends to hand back
+sequential ids in insertion order, which would make an id-normalised
+byte comparison pass *most of the time* — but "most of the time" is not a
+property a fidelity test should depend on holding. Structural comparison
+(same accounts by name and type, same entries by date/description/lines,
+same budget rows) tests the same claim without depending on it.
+
+**The frontend and the E2E test were written but not run.** The backend —
+`schema.py` through `views.py`, 135 tests — was verified against a real,
+ORM-backed database throughout (a local sqlite harness with migrations
+disabled, standing in for the Postgres `make test` actually runs against,
+since this environment had no Docker). The frontend
+(`assets/javascript/portability/`) had no Node/npm toolchain available to
+build or type-check it against, and the Playwright test had no browser or
+live server to run in. Both were written to the same contract the
+already-shipped YNAB import wizard uses — same shared `common/` primitives,
+same progress-bar behaviour copied from `Step6Apply.jsx` rather than
+reinvented, same page-object and fixture conventions as the existing E2E
+suite — and checked as far as static review allows (every import resolved
+against a file that exists, every prop threaded through matches what the
+view actually passes, a balanced-brackets pass over every file). That is not
+the same as having been run. **Before this ships, `make test-e2e` and a real
+`npm run build` (or `make start-bg`) need to confirm both actually work.**
 
 - **The import is the most destructive operation in the product.** Everything in
   §4 is mitigation; the residual risk is a user who confirms without reading. The

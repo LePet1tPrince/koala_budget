@@ -47,6 +47,7 @@ export default defineConfig({
         'task-rail-app': path.resolve(__dirname, './assets/javascript/onboarding/task-rail-app.jsx'),
         'onboarding-resume': path.resolve(__dirname, './assets/javascript/onboarding/resume.js'),
         'ynab-import-app': path.resolve(__dirname, './assets/javascript/ynab_import/ynab-import-app.jsx'),
+        'data-transfer-app': path.resolve(__dirname, './assets/javascript/portability/data-transfer-app.jsx'),
         'monthly-review-app': path.resolve(__dirname, './assets/javascript/monthly_review/monthly-review-app.jsx'),
         'monthly-review-resume': path.resolve(__dirname, './assets/javascript/monthly_review/resume.js'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
