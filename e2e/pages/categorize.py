@@ -25,7 +25,22 @@ class CategorizePage(BasePage):
         return self.page.locator("input[placeholder='Search accounts...']")
 
     def current_card_title(self) -> str:
-        return self.page.locator("h3.font-bold").first.inner_text().strip()
+        """The payee on the card at the top of the stack (an editable field, not a heading)."""
+        return self.payee_field.input_value().strip()
+
+    @property
+    def payee_field(self):
+        return self.page.locator("[data-testid='categorize-payee']")
+
+    @property
+    def description_field(self):
+        return self.page.locator("[data-testid='categorize-description']")
+
+    def current_card_description(self) -> str:
+        return self.description_field.input_value().strip()
+
+    def details_are_dirty(self) -> bool:
+        return self.page.locator("[data-testid='categorize-details-dirty']").count() > 0
 
     def active_row_name(self) -> str | None:
         """The name on the highlighted row, or None when nothing is highlighted."""
@@ -53,6 +68,20 @@ class CategorizePage(BasePage):
     def press(self, key: str):
         self.search_box.press(key)
         self.page.wait_for_timeout(150)
+
+    def edit_payee(self, text: str):
+        self.payee_field.fill(text)
+        # The payee combobox opens its suggestion list on focus and closes on a
+        # pointer press outside it — clicking the next field is how a user
+        # leaves it. Escape would do it too, but Escape on an edited field
+        # reverts the draft, which is the opposite of what a caller wants here.
+        self.description_field.click()
+
+    def edit_description(self, text: str):
+        self.description_field.fill(text)
+
+    def revert_details(self):
+        self.page.locator("[data-testid='categorize-details-revert']").click()
 
     def wait_for_suggestions(self):
         self.page.wait_for_selector("[data-testid='category-suggestions']", timeout=10_000)

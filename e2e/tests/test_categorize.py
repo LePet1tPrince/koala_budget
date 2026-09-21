@@ -140,3 +140,109 @@ def test_suggestions_name_the_transactions_behind_them(
     categorize.wait_for_suggestions()
 
     assert categorize.suggestion_notes() == ["2 transactions with this payee were categorized as this"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_payee_and_description_are_editable_on_the_card(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """The card at the top of the stack shows the bank's payee/description in editable fields."""
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.slug)
+
+    assert categorize.current_card_title() == "Blue Bottle"
+    assert categorize.current_card_description() == "UNCATEGORIZED ROW"
+    assert not categorize.details_are_dirty()
+
+    categorize.edit_payee("Blue Bottle Coffee")
+    assert categorize.details_are_dirty()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_edits_are_saved_with_the_categorization(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """Nothing is written while typing — the edits land in the same step that files the card."""
+    row = categorize_fixture["row"]
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.slug)
+
+    categorize.edit_payee("Blue Bottle Coffee")
+    categorize.edit_description("Morning coffee")
+
+    # Still untouched in the database: a draft is not a save.
+    row.refresh_from_db()
+    assert row.merchant_name == "Blue Bottle"
+    assert row.description == "UNCATEGORIZED ROW"
+
+    categorize.search("zed coffee")
+    categorize.press("Enter")
+    authenticated_page.wait_for_timeout(1_500)
+
+    row.refresh_from_db()
+    assert row.merchant_name == "Blue Bottle Coffee"
+    assert row.description == "Morning coffee"
+    # The edits reach the ledger too, not just the staging row.
+    assert row.journal_entry is not None
+    assert row.journal_entry.description == "Morning coffee"
+    assert row.journal_entry.payee.name == "Blue Bottle Coffee"
+    categorized_to = {line.account.name for line in row.journal_entry.lines.all() if line.account_id != row.account_id}
+    assert categorized_to == {"Zed Coffee"}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_revert_puts_the_banks_wording_back(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """Revert drops the draft, leaving the card as the bank reported it."""
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.slug)
+
+    categorize.edit_payee("Something else")
+    categorize.edit_description("Something else entirely")
+    assert categorize.details_are_dirty()
+
+    categorize.revert_details()
+
+    assert not categorize.details_are_dirty()
+    assert categorize.current_card_title() == "Blue Bottle"
+    assert categorize.current_card_description() == "UNCATEGORIZED ROW"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_escape_in_an_edited_field_stays_in_categorize_mode(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """Escape backs out of the edit, never out of the queue — losing your place mid-word is worse."""
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.slug)
+
+    categorize.description_field.fill("Half-typed")
+    categorize.description_field.press("Escape")
+
+    assert "/categorize/" in authenticated_page.url
+    assert categorize.current_card_description() == "UNCATEGORIZED ROW"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_draft_survives_a_skip(requires_vite, authenticated_page: Page, live_server, categorize_fixture, team):
+    """A skipped card comes back around, so the edit that was typed on it is still there."""
+    account = categorize_fixture["account"]
+    feed_transaction(team, account, description="SECOND ROW", merchant_name="Other Merchant")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.slug)
+
+    categorize.edit_payee("Renamed while passing through")
+
+    # Skipping rotates the edited card to the back of the queue...
+    authenticated_page.get_by_role("button", name="Skip for now").click()
+    authenticated_page.wait_for_timeout(600)
+    assert categorize.current_card_title() != "Renamed while passing through"
+
+    # ...and skipping the other one brings it back with the draft intact.
+    authenticated_page.get_by_role("button", name="Skip for now").click()
+    authenticated_page.wait_for_timeout(600)
+    assert categorize.current_card_title() == "Renamed while passing through"
+    assert categorize.details_are_dirty()
