@@ -9,14 +9,19 @@
 // The <noscript> Save buttons remain the fallback when JS is disabled.
 import Cookies from 'js-cookie';
 
-const SAVE_URL = document.querySelector('[data-budget-save-url]')?.dataset.budgetSaveUrl;
-const forms = Array.from(document.querySelectorAll('form[data-budget-autosave]'));
+init();
 
-if (SAVE_URL && forms.length) {
-  init();
-}
+// Changing month replaces the table without reloading the page (month-swap.js),
+// so every form and figure this module holds a reference to is thrown away and
+// rebuilt. Bind again over the new markup: the previous listeners went out with
+// the elements they were attached to, and all the state below is per-call.
+document.addEventListener('budget:swapped', init);
 
 function init() {
+  const SAVE_URL = document.querySelector('[data-budget-save-url]')?.dataset.budgetSaveUrl;
+  const forms = Array.from(document.querySelectorAll('form[data-budget-autosave]'));
+  if (!SAVE_URL || !forms.length) return;
+
   // A stale response must never overwrite fresher totals: each save takes a
   // ticket, and only the newest one that has come back gets to paint.
   let ticket = 0;
