@@ -1,13 +1,12 @@
 {% load i18n %}
-{% load team_tags %}
 {% load icons %}
 {% comment %}
   Shared by the desktop sidebar (web/components/app_nav.html) and the mobile
   dropdown (web/components/top_nav_app.html). Plain anchors, not daisyUI `menu`
   items, so both can use it without wrapping it in a <ul>.
 
-  Account-level actions (Profile, Change Password, Sign out) deliberately live
-  in the user menu at the bottom of the sidebar rather than here — they are not
+  Account-level actions (Profile, Settings, Sign out) deliberately live in the
+  user menu at the bottom of the sidebar rather than here — they are not
   product navigation and were taking prime space above the fold.
 {% endcomment %}
 {% if request.team %}
@@ -50,6 +49,13 @@
     {% translate "Monthly Review" %}
   </a>
 
+  {% comment %}
+    Audit log, Team and Subscription used to sit here. They are sections of
+    Settings now, reached from the user menu at the foot of the sidebar — they
+    are account and workspace administration, not product navigation. Accounts
+    stays: the chart of accounts is the ledger's own structure, and it is used
+    while working rather than while configuring.
+  {% endcomment %}
   {% if not user.is_anonymous %}
     <div class="side-section">{% translate "Manage" %}</div>
     <a href="{% url 'accounts:accounts_home' request.team.slug %}"
@@ -57,23 +63,6 @@
       {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
       {% translate "Accounts" %}
     </a>
-    <a href="{% url 'audit:audit_log' request.team.slug %}"
-       class="side-link {% if active_tab == 'audit-log' %}side-link-active{% endif %}">
-      {% icon "history" class="inline-block shrink-0 w-4 h-4" %}
-      {% translate "Audit log" %}
-    </a>
-    <a href="{% url 'single_team:manage_team' request.team.slug %}"
-       class="side-link {% if active_tab == 'manage-team' %}side-link-active{% endif %}">
-      {% icon "users" class="inline-block shrink-0 w-4 h-4" %}
-      {% translate "Team" %}
-    </a>
-    {% if request.user|is_admin_of:request.team %}
-      <a href="{% url 'subscriptions_team:subscription_details' request.team.slug %}"
-         class="side-link {% if active_tab == 'subscription' %}side-link-active{% endif %}">
-        {% icon "repeat" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Subscription" %}
-      </a>
-    {% endif %}
   {% endif %}
 {% endif %}
 

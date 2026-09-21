@@ -58,7 +58,9 @@ def profile(request):
         "account/profile.html",
         {
             "form": form,
-            "active_tab": "profile",
+            "active_tab": "settings",
+            "settings_section": "profile",
+            "settings_page_title": _("Profile"),
             "page_title": _("Profile"),
             "api_keys": request.user.api_keys.filter(revoked=False),
             "social_accounts": SocialAccount.objects.filter(user=request.user),
@@ -141,7 +143,8 @@ def delete_account(request):
         request,
         "account/delete_account.html",
         {
-            "active_tab": "profile",
+            "active_tab": "settings",
+            "settings_section": "profile",
             "page_title": _("Delete Account"),
         },
     )

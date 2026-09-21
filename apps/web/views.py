@@ -196,3 +196,20 @@ class HealthCheck(MainView):
         if tokens and request.GET.get("token") not in tokens:
             raise Http404
         return super().get(request, *args, **kwargs)
+
+
+@login_and_team_required
+def settings_home(request, team_slug):
+    """
+    The Settings hub: one card per section, and the target of the sidebar's
+    Settings link. The sections themselves come from `settings_sections.py`, so
+    this view holds no list of its own.
+    """
+    return render(
+        request,
+        "web/settings/settings_home.html",
+        {
+            "active_tab": "settings",
+            "page_title": gettext("Settings"),
+        },
+    )

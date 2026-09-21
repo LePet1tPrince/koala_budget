@@ -1,7 +1,7 @@
-{% extends "web/app/app_base.html" %}
+{% extends "web/settings/settings_base.html" %}
 {% load static %}
 {% load django_vite %}
-{% block app %}
+{% block settings_content %}
 <div id="manage-team-content"></div>
 {{ user_json|json_script:'user-details' }}
 {{ team_json|json_script:'team' }}

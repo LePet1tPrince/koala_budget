@@ -1,7 +1,7 @@
-{% extends "web/app/app_base.html" %}
+{% extends "web/settings/settings_base.html" %}
 {% load static %}
 {% load i18n %}
-{% block app %}
+{% block settings_content %}
 <section class="app-card" x-data="{selectedProduct: {{ default_product.to_json }}, selectedInterval: '{{ default_interval }}' }" x-cloak>
   {% include 'subscriptions/components/subscription_hero.html' %}
   <hr>

@@ -52,18 +52,28 @@
         {% icon "ellipsis" class="inline-block shrink-0 w-3 h-3 text-base-content/40" %}
       </div>
       <ul tabindex="0" class="dropdown-content menu z-20 mb-1 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+        {% comment %}
+          Profile and Settings sit side by side: Profile is the one account page
+          people reach for by name, Settings is everything else — password, team,
+          subscription, YNAB import, audit log. Change Password used to be a third
+          entry here and is now a section inside Settings.
+        {% endcomment %}
         <li>
-          <a href="{% url 'users:user_profile' %}" {% if active_tab == 'profile' %}class="menu-active"{% endif %}>
+          <a href="{% url 'users:user_profile' %}" {% if settings_section == 'profile' %}class="menu-active"{% endif %}>
             {% icon "user" class="inline-block shrink-0 h-4 w-4" %}{% translate "Profile" %}
           </a>
         </li>
-        {% if user.has_usable_password %}
-          <li>
-            <a href="{% url 'account_change_password' %}" {% if 'accounts/password/change' in request.path %}class="menu-active"{% endif %}>
-              {% icon "unlock-alt" class="inline-block shrink-0 h-4 w-4" %}{% translate "Change Password" %}
-            </a>
-          </li>
-        {% endif %}
+        {% with settings_team=request.team|default:request.default_team %}
+          {% if settings_team %}
+            <li>
+              <a href="{% url 'web_team:settings' settings_team.slug %}"
+                 data-testid="nav-settings"
+                 {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
+                {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
+              </a>
+            </li>
+          {% endif %}
+        {% endwith %}
         <li class="menu-title pt-2"><span>{% translate "Theme" %}</span></li>
         <li>
           <button onclick="localStorage.setItem('theme', '{{ light_theme|default:'koala' }}'); syncDarkMode();">

@@ -103,6 +103,13 @@ def ynab_import_home(request, team_slug):
         request,
         "ynab_import/ynab_import.html",
         {
+            "active_tab": "settings",
+            "settings_section": "import",
+            "settings_page_title": _("Import from YNAB"),
+            "settings_page_blurb": _(
+                "Your accounts, your whole transaction history, your monthly budgets and your savings — "
+                "brought over and checked against YNAB’s own numbers."
+            ),
             "page_title": _("Import from YNAB"),
             "ynab_props": {
                 "teamSlug": team_slug,

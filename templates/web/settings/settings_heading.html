@@ -1,0 +1,16 @@
+{% comment %}
+  A settings page's own heading, under the shell's "Settings" title.
+
+  Include it with `title` (and optionally `blurb`). Most pages get it for free
+  by setting `settings_page_title` in their view; a page whose view belongs to
+  a library and cannot add context overrides `settings_heading` and includes
+  this directly.
+{% endcomment %}
+{% if title %}
+  <div class="mb-4">
+    <h2 class="text-xl font-semibold tracking-tight">{{ title }}</h2>
+    {% if blurb %}
+      <p class="mt-1 text-sm text-base-content/70">{{ blurb }}</p>
+    {% endif %}
+  </div>
+{% endif %}

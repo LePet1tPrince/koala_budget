@@ -1,0 +1,36 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% comment %}
+  The shell every Settings page renders inside.
+
+  Pages that used to be their own destinations in the sidebar -- Change
+  Password, Team, Subscription, Import from YNAB, Audit log -- now extend this
+  instead of `app_base.html` directly and fill `settings_content` rather than
+  `app`. They keep their own URLs and views; what changes is that they render
+  under one heading with one rail, so Settings reads as a place rather than a
+  scattering of links.
+
+  A page with its own heading (the audit log, the YNAB wizard) can set
+  `settings_page_title` to have it shown above the content, and should then
+  drop the heading from its own markup.
+{% endcomment %}
+{% block app %}
+  <div class="mb-5">
+    <h1 class="text-2xl font-semibold tracking-tight">{% translate "Settings" %}</h1>
+    <p class="mt-1 text-sm text-base-content/70">
+      {% translate "Your account, your workspace and your data, in one place." %}
+    </p>
+  </div>
+
+  <div class="flex flex-col gap-4 lg:flex-row lg:gap-6">
+    {% include "web/settings/settings_nav.html" %}
+
+    <div class="min-w-0 flex-1">
+      {% block settings_heading %}
+        {% include "web/settings/settings_heading.html" with title=settings_page_title blurb=settings_page_blurb %}
+      {% endblock %}
+      {% block settings_content %}
+      {% endblock %}
+    </div>
+  </div>
+{% endblock %}
