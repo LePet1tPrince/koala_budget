@@ -13,6 +13,7 @@ import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.db import transaction
 from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import redirect, render
@@ -105,6 +106,14 @@ def onboarding_home(request, team_slug):
                 "phases": _phase_payload(),
                 "state": _state_payload(state),
                 "homeUrl": reverse("web_team:home", args=[team_slug]),
+                # The YNAB branch. An export answers every question in the catalog
+                # better than the user can, so it skips the questionnaire outright
+                # rather than asking them to answer it twice.
+                "ynabUrl": (
+                    reverse("ynab_import:home", args=[team_slug])
+                    if getattr(settings, "YNAB_IMPORT_ENABLED", False)
+                    else ""
+                ),
                 "urls": {
                     "answers": reverse("onboarding:api_answers", args=[team_slug]),
                     "previewCoa": reverse("onboarding:api_preview_coa", args=[team_slug]),

@@ -173,6 +173,50 @@ make test-e2e-accounts  # Run specific test file
 - Audit API is team-scoped: `event_type` filter works, cross-team events are excluded, non-members are denied
 - Per-entry history endpoint `GET …/journal-entries/{id}/audit/` returns CREATE + UPDATE rows
 
+### YNAB import (`apps/ynab_import/tests/`, `e2e/tests/test_ynab_import.py`)
+- **The sample export is the fixture.** `docs/reference/*.csv` is a real five-year budget (7,572 register rows, 58
+  months), and every figure `docs/ynab-import-plan.md` asserts was measured on it. The unit tests restate those
+  figures — 839 transfer pairs, 83 splits, 6 liabilities, 22 on-budget accounts, 6,644 entries — so a change that
+  quietly loses a transaction moves a number instead of passing
+- `analyse` and `build` are **pure**, so most of the suite is `SimpleTestCase` with no database at all. Parsing the
+  whole sample takes about a quarter of a second, so `fixtures.sample_analysis()` caches it per run rather than
+  mocking it
+- The reconciliation is itself the strongest test: `reconcile()` compares the planned journal lines against the
+  Plan's own `Activity` and `Available` columns for every category in every month, plus each account's closing
+  balance. An integration test asserts it passes after a real apply
+- `BudgetService.available()` recurses a month at a time with a query each, so the exhaustive Available comparison is
+  the pure replay; only a couple of categories are checked through the service itself
+- A regression test pins `JournalLine.objects.bulk_create_for_import` to populate `budget_id`. **`bulk_create` skips
+  `save()` and every signal**, which is the point — 13,000 field-diff `AuditLog` rows for one import would be noise,
+  and the importer writes a single `AuditEvent` instead — but it means the budget link has to be made by hand, and a
+  NULL there is invisible until something reads it
+- Tests must not need a broker: progress reporting goes through the Celery result backend, and the task swallows a
+  failure to report it. `CELERY_TASK_ALWAYS_EAGER` in `settings_test`/`settings_e2e` is what makes the apply path
+  testable without a worker
+- E2E: an account's name lives in an `<input>`'s value, which no text locator can see — the rows carry
+  `data-account` / `data-payee` / `data-category` for that reason. The walk clicks Continue until the review screen
+  appears rather than counting steps, so adding a screen does not break the suite
+- **Progress is a contract, and it has its own tests.** The import runs in one
+  transaction, so a progress row written inside it is invisible until the whole
+  thing commits — a `TransactionTestCase` asserts the figure written through
+  `ProgressChannel` is readable from another connection *while* that transaction is
+  still open, with a control asserting the import's own write is not. Two more pin
+  the safeguards: a channel that cannot open a connection, and one whose row is
+  locked, both give up rather than stalling the import
+- `celery_progress` reports **100% for any finished task, successful or failed**, so
+  `api_status` must never hand that number to a running bar; there are tests for the
+  clamp, for a dead worker being reported rather than waited for, and for the
+  ordinary race (task returned, row about to be written) *not* being called a death
+- **Coming back to an import is its own contract.** The work outlives the browser, so
+  `YnabImportQuerySet.resumable()` decides what the page opens on, and the tests cover each
+  case separately: one still running, one queued but not yet started (`uploaded` *with* a
+  task id), one finished or failed inside the 24-hour window, one older than it, and an
+  upload that was never applied — which must *not* resume, since nothing is running and
+  nothing was written. Note the dashboard tests need an `OnboardingState` marked finished,
+  or `team_home` redirects into the takeover and there is no page to read
+- The full-export E2E test is marked `slow` (`-m "not slow"` to skip it); everything else uses the small synthetic
+  export in `apps/ynab_import/tests/fixtures.py`
+
 ---
 
 ## Known Coverage Gaps
@@ -193,4 +237,5 @@ make test ARGS='apps.journal'                       # Single app
 make test ARGS='apps.journal.tests.JournalTests'    # Single class
 make test-e2e                                       # All E2E tests
 make test-e2e-accounts                              # Specific E2E file
+pytest e2e -m "not slow"                            # Skip the full YNAB export walk
 ```

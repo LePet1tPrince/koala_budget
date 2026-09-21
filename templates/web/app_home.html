@@ -65,6 +65,28 @@
           <p class="mt-1 text-sm text-base-content/70">
             {% translate "Import some transactions, set a budget, and your reports will fill in." %}
           </p>
+          {% if ynab_state == 'running' %}
+            <p class="mt-1 text-sm" data-testid="ynab-import-running">
+              {% blocktranslate trimmed %}
+                Your YNAB import is still running in the background.
+                <a href="{{ ynab_url }}" class="link link-primary">See how it is going</a>.
+              {% endblocktranslate %}
+            </p>
+          {% elif ynab_state == 'failed' %}
+            <p class="mt-1 text-sm text-error" data-testid="ynab-import-failed">
+              {% blocktranslate trimmed %}
+                Your last YNAB import did not finish, so nothing was imported.
+                <a href="{{ ynab_url }}" class="link link-primary">See what happened</a>.
+              {% endblocktranslate %}
+            </p>
+          {% elif ynab_url %}
+            <p class="mt-1 text-sm text-base-content/70">
+              {% blocktranslate trimmed %}
+                Coming from YNAB? <a href="{{ ynab_url }}" class="link link-primary">Import your export</a>
+                and bring your history, budgets and savings with it.
+              {% endblocktranslate %}
+            </p>
+          {% endif %}
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-resume-onboarding data-url="{{ resume_url }}">
           {% translate "Pick it back up" %}

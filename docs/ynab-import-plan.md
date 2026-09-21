@@ -1,5 +1,10 @@
 # YNAB Import — Implementation Plan
 
+> **Status: implemented** (`apps/ynab_import`). Every decision below was built as
+> written, with the deviations listed in §7. The figures in this document are
+> re-derivable by `docs/reference/checks/verify_ynab_assumptions.py` and are
+> restated as tests in `apps/ynab_import/tests/`.
+
 Goal: a new member drops their two YNAB export CSVs into an empty team and gets a
 populated chart of accounts, the full transaction history, per-month budgets,
 opening balances and goals — no manual categorisation.
@@ -577,3 +582,72 @@ Nothing is blocking. Phase 1 can start.
 - The sample is one budget from one country. Rules that are exact here
   (`Starting Balance` categorisation, the CC-payment account list) should be
   treated as strong signals with a review step, never as guarantees.
+
+---
+
+## 7. What was built, and where it differs
+
+Everything in §4 exists: `apps/ynab_import/services/{parse,analyse,build,apply,reconcile,payload,session}.py`,
+a `YnabImport` row holding the uploaded export, a Celery task with progress, a
+six-screen wizard (`assets/javascript/ynab_import/`), and both entry points.
+Measured on the sample: 6,623 transactions + 13 opening balances, 13,335 lines,
+104 accounts, 1,872 budgets, 3 goals — written in about two seconds.
+
+Seven places where building it taught us something the plan did not say.
+
+**A `build` step between analysis and apply.** §4 had `analyse` returning a
+`Migration` that `apply` wrote. In practice the user's answers have to be folded
+in somewhere, and doing it inside `apply` would have put decisions back in the
+step that is supposed to have none. `build(analysis, choices) -> ImportPlan` is
+that fold: pure, and called by the preview screens *and* the apply, so the
+"preview shows exactly what is applied" promise is structural rather than a
+convention.
+
+**The reconciliation compares the import, not the export.** §2 describes
+comparing register-derived activity to the Plan's `Activity` — a check on the
+export's internal consistency, which would pass even if the importer dropped
+every row. `check_activity` instead sums the *planned journal lines* per category
+per month, so it fails if a transaction is lost, posted to the wrong category, or
+posted on the wrong side. Money that YNAB counted against a category while moving
+it between the user's own accounts is subtracted (it cannot post to a category
+without misstating net worth) and reported as a count, so the deviation is
+measured rather than hidden. Two further checks were added: `Available` replayed
+under KB's rollover against YNAB's column, and each account's closing balance.
+
+**`Starting Balance` rows of zero write no entry.** 8 of the sample's 21 are for
+accounts that were added empty. An entry with nothing on either side is not a
+journal entry, so those rows are accounted for and skipped — which is why the
+books hold 6,636 entries rather than 6,644.
+
+**A savings category that was spent down does not become a goal.** `House` nets
+−$20,464 across its categorised transfers: saved for, then spent on a house. D6
+as written would have created a goal reading "$20,464 still to save" and put that
+on the dashboard. Those categories are counted and named in the summary instead.
+
+**Spending against a goal category needs somewhere to go.** 23 rows in the sample
+spend directly against `House` rather than transferring into it. They post to an
+expense account of the same name (the goal's backing account is `Goal: House`, so
+there is no collision), with no budget of its own — the assignments became the
+goal. The summary says so, and the wizard's Savings step is the escape hatch.
+
+**Two fallback pairs, not one.** D5 routes an uncategorised row on a *tracking*
+account to `Investment Income`/`Investment Loss`. On an everyday account an
+uncategorised row is a category the user never picked, and calling that investment
+activity would be a fiction, so those go to
+`Uncategorized Income`/`Uncategorized Expense`. A row whose payee is YNAB's own
+`Reconciliation Balance Adjustment` posts to the system equity account, which is
+what that account is for.
+
+**`create_opening_balances` gained a sign.** §4 step 5 noted the single-date
+signature; the rows are grouped by date and it is called once per group, as
+planned. It also now swaps sides on a negative amount — an overdrawn chequing
+account or a card in credit. `parse_rows` still refuses a negative from a user,
+so the endpoint's contract is unchanged.
+
+Two risks in §6 played out as follows. `JournalLine.save()`'s per-line budget
+lookup was the difference it was predicted to be, and
+`bulk_create_for_import` resolves the link from an in-memory map instead.
+`BudgetService.available()`'s recursion is still a month-at-a-time query chain:
+it is correct after import (tested against YNAB's own figures) but a migrated
+team is the first one large enough for its cost to matter, and it remains worth a
+look.

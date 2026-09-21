@@ -30,7 +30,7 @@ const isAnswered = (question, value) => {
 };
 
 const OnboardingShell = ({ props }) => {
-  const { questions, phases, state, teamName, firstName, urls, homeUrl, api } = props;
+  const { questions, phases, state, teamName, firstName, urls, homeUrl, ynabUrl, api } = props;
 
   const [answers, setAnswers] = useState(() => state.answers || {});
   const [started, setStarted] = useState(() => state.phase !== 'welcome');
@@ -213,6 +213,13 @@ const OnboardingShell = ({ props }) => {
                 'A few quick questions and we’ll set up a chart of accounts that matches your life. It takes about a minute, and you can change anything later.',
               )}
             </p>
+            {ynabUrl && (
+              <p className="mt-2 max-w-prose text-sm text-base-content/70">
+                {gettext(
+                  'Already budget in YNAB? Bring your export over instead — it answers all of this, and brings your history, budgets and savings with it.',
+                )}
+              </p>
+            )}
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -225,6 +232,11 @@ const OnboardingShell = ({ props }) => {
               >
                 {gettext('Set up my books')}
               </button>
+              {ynabUrl && (
+                <a href={ynabUrl} className="btn btn-outline" data-testid="onboarding-ynab">
+                  {gettext('Coming from YNAB?')}
+                </a>
+              )}
               <button
                 type="button"
                 className="btn btn-ghost"
