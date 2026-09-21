@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import DateRangePicker from '../../common/DateRangePicker';
 import EditTransactionModal from './EditTransactionModal';
@@ -71,6 +71,9 @@ const LineTable = ({
   uploadDisabled = false,
   plaidClient,
   onLinkSuccess,
+  onOpenTransferLeg,
+  feedAccountIds = new Set(),
+  focusRequest = null,
 }) => {
   // Date range filter state (YYYY-MM-DD strings)
   const [filterStart, setFilterStart] = useState('');
@@ -106,6 +109,15 @@ const LineTable = ({
   // Id of the row whose checkbox was last clicked, used as the anchor for
   // shift-click range selection
   const [lastCheckedId, setLastCheckedId] = useState(null);
+
+  // Jumping to the other leg of a transfer: `pendingFocusId` is a row we have
+  // been asked to show and have not yet paged to, `highlightId` the row that is
+  // currently flashing. `handledFocusRef` keeps a satisfied request from firing
+  // again the next time the rows reload.
+  const [pendingFocusId, setPendingFocusId] = useState(null);
+  const [highlightId, setHighlightId] = useState(null);
+  const handledFocusRef = useRef(null);
+  const tableBodyRef = useRef(null);
 
   const toggleQuickFilter = (key) => {
     setQuickFilters((prev) => {
@@ -260,6 +272,44 @@ const LineTable = ({
   useEffect(() => {
     setPage(0);
   }, [filteredLines.length, pageSize]);
+
+  // Arriving from the other side of a transfer: the counterpart row is the one
+  // carrying the same journal entry id. It only exists once the new account's
+  // lines have loaded, hence the dependency on `lines`. It may also be archived
+  // or hidden by a filter, so clear whatever would keep it off screen.
+  useEffect(() => {
+    if (!focusRequest || handledFocusRef.current === focusRequest.nonce) return;
+    const target = (Array.isArray(lines) ? lines : []).find((l) => l.journalEntryId === focusRequest.journalEntryId);
+    if (!target) return;
+    handledFocusRef.current = focusRequest.nonce;
+    setShowArchived(target.isArchived ?? target.is_archived ?? false);
+    setQuickFilters({ toReview: false, reconciled: false, uncategorized: false });
+    setFilterStart('');
+    setFilterEnd('');
+    setPendingFocusId(target.id);
+  }, [focusRequest, lines]);
+
+  // Then page to that row and flash it, once clearing the filters has put it
+  // back in the list. Declared after the reset-to-page-0 effect above so that,
+  // in the commit where the filters clear, this page wins.
+  useEffect(() => {
+    if (pendingFocusId == null) return;
+    const index = sortedLines.findIndex((l) => l.id === pendingFocusId);
+    if (index === -1) return;
+    setPage(Math.floor(index / pageSize));
+    setHighlightId(pendingFocusId);
+    setPendingFocusId(null);
+    // The row renders on the next paint; scroll to it then.
+    requestAnimationFrame(() => {
+      tableBodyRef.current
+        ?.querySelector(`[data-testid="feed-row-${pendingFocusId}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    // Drop the flag once the flash has played out, so the row isn't still
+    // marked when the user comes back to this account later.
+    const timer = setTimeout(() => setHighlightId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [pendingFocusId, sortedLines, pageSize]);
 
   const toggleSort = (key) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
@@ -508,16 +558,21 @@ const LineTable = ({
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody ref={tableBodyRef}>
                 {pageRows.map((row) => {
                   // Uncategorized rows are muted outside the archived view. This was a
                   // hardcoded #9CA3AF, which did not follow the theme.
                   const muted = !showArchived && !row.category;
                   const reconciled = row.isReconciled ?? row.is_reconciled ?? false;
+                  // A row categorized to another feed account is a transfer: the
+                  // same journal entry also has a row in that account's feed.
+                  const isTransfer = !!row.category && feedAccountIds.has(row.category.id) && !!row.journalEntryId;
                   return (
                     <tr
                       key={row.id}
-                      className={`cursor-pointer ${muted ? 'text-base-content/50' : ''}`}
+                      className={`cursor-pointer ${muted ? 'text-base-content/50' : ''} ${
+                        row.id === highlightId ? 'feed-row-flash' : ''
+                      }`}
                       onClick={() => handleEditClick(row)}
                       data-testid={`feed-row-${row.id}`}
                     >
@@ -535,7 +590,26 @@ const LineTable = ({
                         {row.payee || ''}
                       </td>
                       <td className="truncate" title={row.category ? row.category.name : gettext('Uncategorized')}>
-                        {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
+                        <span className="inline-flex w-full items-center gap-1">
+                          <span className="truncate">
+                            {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
+                          </span>
+                          {isTransfer && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs shrink-0 px-1 text-primary"
+                              title={`${gettext('Go to the other side of this transfer in')} ${row.category.name}`}
+                              aria-label={`${gettext('Go to the other side of this transfer in')} ${row.category.name}`}
+                              data-testid={`transfer-link-${row.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onOpenTransferLeg) onOpenTransferLeg(row);
+                              }}
+                            >
+                              <Icon name="arrow-right-left" className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </span>
                       </td>
                       <td className="money whitespace-nowrap text-right">
                         {row.inflow && parseFloat(row.inflow) > 0 ? formatCurrency(row.inflow) : ''}
