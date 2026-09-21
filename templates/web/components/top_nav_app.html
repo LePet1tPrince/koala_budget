@@ -12,7 +12,7 @@
   <li>
     <details>
       <summary>
-        {% if team %}{{ team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+        {% if nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
       </summary>
       <ul>
         {% include "web/components/team_nav_items.html" %}
@@ -40,16 +40,14 @@
         {% icon "user" class="inline-block shrink-0 h-4 w-4" %}{% translate "Profile" %}
       </a>
     </li>
-    {% with settings_team=request.team|default:request.default_team %}
-      {% if settings_team %}
-        <li>
-          <a href="{% url 'web_team:settings' settings_team.slug %}"
-             {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
-            {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
-          </a>
-        </li>
-      {% endif %}
-    {% endwith %}
+    {% if nav_team %}
+      <li>
+        <a href="{% url 'web_team:settings' nav_team.slug %}"
+           {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
+          {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
+        </a>
+      </li>
+    {% endif %}
     <li>
       <a href="{% url 'account_logout' %}">{% icon "sign-out" class="inline-block shrink-0 h-4 w-4" %}{% translate "Sign out" %}</a>
     </li>

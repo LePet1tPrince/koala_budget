@@ -140,6 +140,39 @@ class SettingsShellOnAccountPagesTest(TestCase):
         self.assertContains(response, 'data-testid="settings-nav-password"')
         self.assertContains(response, 'data-testid="settings-nav-import"')
 
+    def test_account_pages_keep_the_main_sidebar(self):
+        """
+        The sidebar is chrome, and it used to vanish entirely on Profile and
+        Change Password because `request.team` is None there. Those are the
+        first two pages the user menu links to, so the nav has to survive them.
+        """
+        for url in (reverse("users:user_profile"), reverse("account_change_password")):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, reverse("web_team:home", args=[self.team.slug]))
+                self.assertContains(response, reverse("budget:budget_home", args=[self.team.slug]))
+                self.assertContains(response, reverse("accounts:accounts_home", args=[self.team.slug]))
+                # …and the switcher names the team rather than falling back to
+                # the user's own name.
+                self.assertContains(response, self.team.name)
+
+    def test_a_team_page_follows_its_own_team_not_the_default(self):
+        """
+        The nav's team falls back to the default only when the URL has none.
+        A page that names a team must never be framed by another team's nav —
+        that is how someone ends up acting on the wrong books.
+        """
+        other = Team.objects.create(name="Other Team", slug="other-team")
+        other.members.add(self.user, through_defaults={"role": ROLE_ADMIN})
+        response = self.client.get(reverse("web_team:settings", kwargs={"team_slug": other.slug}))
+        self.assertContains(response, reverse("budget:budget_home", args=[other.slug]))
+        self.assertNotContains(response, reverse("budget:budget_home", args=[self.team.slug]))
+
+    def test_an_account_page_follows_the_team_last_worked_in(self):
+        self.client.get(reverse("web_team:home", kwargs={"team_slug": self.team.slug}))
+        response = self.client.get(reverse("users:user_profile"))
+        self.assertContains(response, reverse("budget:budget_home", args=[self.team.slug]))
+
     def test_a_user_with_no_team_still_gets_the_account_sections(self):
         loner = CustomUser.objects.create_user(username="loner@example.com", password="testpass123")
         self.client.force_login(loner)

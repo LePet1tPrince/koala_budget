@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
+from apps.teams.helpers import get_nav_team
 from apps.teams.roles import is_admin
 
 # Rail headings, in the order they are shown.
@@ -37,24 +38,16 @@ class SettingsSection:
     group: str
 
 
-def team_for(request):
-    """
-    The team the settings links should point at.
-
-    Profile and Change Password are account-level pages on non-team URLs, where
-    `request.team` is None. Falling back to `default_team` keeps the rail whole
-    on those two pages instead of dropping every team-scoped section from it.
-    """
-    return request.team or request.default_team
-
-
 def sections_for(request) -> list[SettingsSection]:
     """The settings sections this user can see, in rail order."""
     user = request.user
     if not user.is_authenticated:
         return []
 
-    team = team_for(request)
+    # Profile and Change Password are account-level pages on non-team URLs,
+    # where `request.team` is None -- `get_nav_team` is the same fallback the
+    # sidebar uses, so the rail stays whole on exactly those two pages.
+    team = get_nav_team(request)
     sections = [
         SettingsSection(
             key="profile",

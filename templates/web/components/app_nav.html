@@ -12,11 +12,11 @@
   <div class="dropdown w-full">
     <div tabindex="0" role="button" class="side-tile" data-testid="team-switcher">
       <span class="side-avatar">
-        {% if request.team %}{{ request.team.name|slice:":1"|upper }}{% else %}{{ request.user.get_display_name|slice:":1"|upper }}{% endif %}
+        {% if nav_team %}{{ nav_team.name|slice:":1"|upper }}{% else %}{{ request.user.get_display_name|slice:":1"|upper }}{% endif %}
       </span>
       <span class="min-w-0 flex-1">
         <span class="block truncate text-sm font-medium leading-tight">
-          {% if request.team %}{{ request.team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+          {% if nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
         </span>
         <span class="block truncate text-xs leading-tight text-base-content/70">{% translate "Workspace" %}</span>
       </span>
@@ -63,17 +63,15 @@
             {% icon "user" class="inline-block shrink-0 h-4 w-4" %}{% translate "Profile" %}
           </a>
         </li>
-        {% with settings_team=request.team|default:request.default_team %}
-          {% if settings_team %}
-            <li>
-              <a href="{% url 'web_team:settings' settings_team.slug %}"
-                 data-testid="nav-settings"
-                 {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
-                {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
-              </a>
-            </li>
-          {% endif %}
-        {% endwith %}
+        {% if nav_team %}
+          <li>
+            <a href="{% url 'web_team:settings' nav_team.slug %}"
+               data-testid="nav-settings"
+               {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
+              {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
+            </a>
+          </li>
+        {% endif %}
         <li class="menu-title pt-2"><span>{% translate "Theme" %}</span></li>
         <li>
           <button onclick="localStorage.setItem('theme', '{{ light_theme|default:'koala' }}'); syncDarkMode();">

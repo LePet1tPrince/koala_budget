@@ -1,11 +1,16 @@
 from django.http import Http404
 
-from apps.teams.helpers import get_open_invitations_for_user
+from apps.teams.helpers import get_nav_team, get_open_invitations_for_user
 
 
 def team(request):
     return {
         "team": getattr(request, "team", None),
+        # `team` is None on non-team URLs, which is right for page content but
+        # wrong for the chrome around it -- see `get_nav_team`. Navigation
+        # templates use this instead so the sidebar survives Profile and
+        # Change Password.
+        "nav_team": get_nav_team(request),
     }
 
 
@@ -14,7 +19,10 @@ def user_teams(request):
         return {}
 
     try:
-        current_team = getattr(request, "team", None)
+        # The team switcher is chrome, so it follows the nav team: on an
+        # account page the switcher should still name the team the user is in
+        # and still offer the others, rather than emptying out.
+        current_team = get_nav_team(request)
         if not current_team:
             return {}
     except Http404:
