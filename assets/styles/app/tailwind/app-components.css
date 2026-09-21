@@ -494,6 +494,17 @@
   }
 }
 
+/* Changing month replaces the budget content in place rather than reloading the
+   page (budget/month-swap.js). The outgoing figures stay on screen and fully
+   opaque while the next month is fetched — dimming every swap would be exactly
+   the flicker that replacing the navigation was meant to remove. This only
+   applies once the wait has run long enough to look like nothing happened, so
+   an ordinary swap never reaches it. */
+#budget-swap.is-swapping {
+  opacity: 0.55;
+  transition: opacity 200ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .budget-status.is-saving {
     animation: none;
@@ -502,5 +513,9 @@
 
   .budget-cell-flash {
     animation: none;
+  }
+
+  #budget-swap.is-swapping {
+    transition: none;
   }
 }

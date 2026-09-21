@@ -13,12 +13,41 @@ import PickerPopover, { MonthGrid } from '../../common/PickerPopover';
  * @param {Object} props
  * @param {string} props.initialMonth - Current month as YYYY-MM-DD string
  * @param {string} [props.triggerClassName] - Override for the month label button's classes
+ * @param {string} [props.labelFormat] - date-fns format for the trigger label.
+ *   'MMM yyyy' keeps the label a near-constant width, so the prev/next chevrons
+ *   either side of it stop shifting as the month changes; the full name suits a
+ *   picker being used as a page heading.
+ * @param {function} [props.onNavigate] - Takes over from the full page load. Given
+ *   the chosen Date, it is expected to bring the page to that month itself (the
+ *   budget page swaps its content in place). Without it the picker navigates,
+ *   which is still what the Goals and Monthly Review pages want.
  */
-const BudgetMonthPicker = ({ initialMonth, triggerClassName = 'btn btn-ghost btn-sm text-lg font-bold' }) => {
+const BudgetMonthPicker = ({
+  initialMonth,
+  triggerClassName = 'btn btn-ghost btn-sm text-lg font-bold',
+  labelFormat = 'MMMM yyyy',
+  onNavigate = null,
+}) => {
   const currentMonth = parseMonth(initialMonth);
   const [pickerYear, setPickerYear] = useState(currentMonth.getFullYear());
 
+  // The budget page keeps this controlled, so the selected month can now change
+  // under a mounted picker. Follow it across a year boundary — otherwise
+  // reopening the panel after jumping to another year shows the old one, with
+  // nothing selected in it. (Adjusting state during render rather than in an
+  // effect: React re-renders before painting, so the grid never shows the
+  // stale year.)
+  const [seenMonth, setSeenMonth] = useState(initialMonth);
+  if (seenMonth !== initialMonth) {
+    setSeenMonth(initialMonth);
+    setPickerYear(currentMonth.getFullYear());
+  }
+
   const navigateToMonth = (date) => {
+    if (onNavigate) {
+      onNavigate(date);
+      return;
+    }
     const url = new URL(window.location);
     url.searchParams.set('month', format(date, 'yyyy-MM-dd'));
     window.location.href = url.toString();
@@ -36,7 +65,7 @@ const BudgetMonthPicker = ({ initialMonth, triggerClassName = 'btn btn-ghost btn
       </button>
 
       <PickerPopover
-        label={format(currentMonth, 'MMMM yyyy')}
+        label={format(currentMonth, labelFormat)}
         buttonClassName={triggerClassName}
         testId="budget-month-trigger"
         panelClassName="w-max"

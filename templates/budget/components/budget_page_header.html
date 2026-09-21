@@ -5,7 +5,23 @@ Shared header row for the Budget and Goals pages so the two render as one shell.
 Context: header_title, month, prev_month, next_month.
 Flags: show_grid_link (Budget page), goals_header (Goals page: style picker + New Goal).
 {% endcomment %}
-<div class="flex flex-wrap items-center gap-3 mb-6" data-testid="budget-page-header">
+<style>
+  /* The header stays put while the table scrolls under it.
+
+     It is pulled out to the container's own padding (and given that padding
+     back) so its background covers the full width of the page — otherwise rows
+     would show through the gutters as they pass behind it. The background is
+     opaque for the same reason: a translucent one lets scrolled text bleed
+     through. */
+  .budget-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--color-base-200);
+  }
+</style>
+<div class="budget-sticky-header flex flex-wrap items-center gap-3 -mx-4 -mt-3 px-4 pt-3 pb-4"
+     id="budget-page-header" data-testid="budget-page-header">
   <h1 class="text-3xl font-bold mr-auto">{{ header_title }}</h1>
   <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}"></div>
   <noscript>
@@ -46,3 +62,19 @@ Flags: show_grid_link (Budget page), goals_header (Goals page: style picker + Ne
     </a>
   {% endif %}
 </div>
+
+<script>
+  // Anything else that sticks on these pages has to sit below this bar, and the
+  // bar's height is not a constant — it wraps to two rows at narrow widths. So
+  // publish the measured height rather than hard-coding an offset that would be
+  // wrong on exactly the layouts where it matters.
+  (function () {
+    const bar = document.getElementById('budget-page-header');
+    if (!bar) return;
+    const publish = function () {
+      document.documentElement.style.setProperty('--budget-header-h', bar.offsetHeight + 'px');
+    };
+    publish();
+    if (window.ResizeObserver) new ResizeObserver(publish).observe(bar);
+  })();
+</script>

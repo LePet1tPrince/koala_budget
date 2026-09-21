@@ -13,8 +13,13 @@
     {% translate "Budget" as budget_title %}
     {% include "budget/components/budget_page_header.html" with header_title=budget_title show_grid_link=True %}
 
+    {% comment %}
+ Everything that changes when the month changes lives inside #budget-swap, so
+    switching months can replace just this and leave the header, the scroll
+    position and the page itself alone. See budget/month-swap.js.
+    {% endcomment %}
     <!-- Main Content: Budget Table + Sidebar -->
-    <div class="flex gap-6 items-start">
+    <div class="flex gap-6 items-start" id="budget-swap">
       <!-- Budget Table (left, takes remaining space) -->
       <div class="flex-1 min-w-0">
         {% include "budget/components/net_worth_card.html" %}
