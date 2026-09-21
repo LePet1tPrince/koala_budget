@@ -1,8 +1,28 @@
 {% load i18n %}
 {% load currency_tags %}
 
-<div class="flex flex-col gap-4 w-72 shrink-0">
-  <div class="sticky top-4 flex flex-col gap-4">
+<style>
+  /* The summary and Auto-Assign cards follow the page down.
+
+     `position: sticky` moves an element only within its own containing block,
+     so this has to be the column itself: the previous inner wrapper filled the
+     column exactly, leaving it nowhere to travel. The column is a flex item of
+     a row with `items-start`, so it keeps its content height while the sticky
+     offset is measured against the tall row beside it.
+
+     The offset clears the sticky page header, whose height the header include
+     publishes as `--budget-header-h`; the fallback covers the moment before
+     that script runs. The max height keeps the cards inside the viewport, so a
+     short screen can still reach the Auto-Assign buttons. */
+  #budget-sidebar {
+    position: sticky;
+    top: calc(var(--budget-header-h, 4rem) + 1rem);
+    max-height: calc(100vh - var(--budget-header-h, 4rem) - 2rem);
+    overflow-y: auto;
+  }
+</style>
+<div class="flex flex-col gap-4 w-72 shrink-0" id="budget-sidebar">
+  <div class="flex flex-col gap-4">
     <!-- Monthly Summary -->
     <div class="bg-base-100 rounded-lg shadow p-5">
       <h3 class="font-bold text-lg mb-4">{{ month|date:"F" }}{% translate "'s Summary" %}</h3>
