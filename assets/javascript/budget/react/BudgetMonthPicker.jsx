@@ -13,6 +13,10 @@ import PickerPopover, { MonthGrid } from '../../common/PickerPopover';
  * @param {Object} props
  * @param {string} props.initialMonth - Current month as YYYY-MM-DD string
  * @param {string} [props.triggerClassName] - Override for the month label button's classes
+ * @param {string} [props.labelFormat] - date-fns format for the trigger label.
+ *   'MMM yyyy' keeps the label a near-constant width, so the prev/next chevrons
+ *   either side of it stop shifting as the month changes; the full name suits a
+ *   picker being used as a page heading.
  * @param {function} [props.onNavigate] - Takes over from the full page load. Given
  *   the chosen Date, it is expected to bring the page to that month itself (the
  *   budget page swaps its content in place). Without it the picker navigates,
@@ -21,6 +25,7 @@ import PickerPopover, { MonthGrid } from '../../common/PickerPopover';
 const BudgetMonthPicker = ({
   initialMonth,
   triggerClassName = 'btn btn-ghost btn-sm text-lg font-bold',
+  labelFormat = 'MMMM yyyy',
   onNavigate = null,
 }) => {
   const currentMonth = parseMonth(initialMonth);
@@ -60,7 +65,7 @@ const BudgetMonthPicker = ({
       </button>
 
       <PickerPopover
-        label={format(currentMonth, 'MMMM yyyy')}
+        label={format(currentMonth, labelFormat)}
         buttonClassName={triggerClassName}
         testId="budget-month-trigger"
         panelClassName="w-max"
