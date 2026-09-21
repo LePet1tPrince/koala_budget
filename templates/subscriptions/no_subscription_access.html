@@ -1,9 +1,9 @@
-{% extends "web/app/app_base.html" %}
+{% extends "web/settings/settings_base.html" %}
 {% load static %}
 {% load i18n %}
-{% block app %}
+{% block settings_content %}
   <section class="app-card">
-    <h1 class="text-xl mb-1">{% translate "Sorry, you don't have access to this page" %}</h1>
+    <h2 class="text-xl mb-1">{% translate "Sorry, you don't have access to this page" %}</h2>
     <p>
       {% blocktranslate trimmed %}
         Only team administrators are allowed to manage subscriptions.

@@ -49,33 +49,33 @@
       </div>
     </main>
   </div>
-  {% if request.team %}
+  {% if nav_team %}
     {# Bottom tab bar for the main destinations on mobile; the sidebar covers desktop #}
     <div class="dock lg:hidden z-20" data-testid="mobile-dock">
-      <a href="{% url 'web_team:home' request.team.slug %}" {% if active_tab == 'dashboard' %}class="dock-active"{% endif %}>
+      <a href="{% url 'web_team:home' nav_team.slug %}" {% if active_tab == 'dashboard' %}class="dock-active"{% endif %}>
         {% icon "home" class="inline-block shrink-0 w-4 h-4" %}
         <span class="dock-label">{% translate "Home" %}</span>
       </a>
-      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" {% if active_tab == 'bank-feed' %}class="dock-active"{% endif %}>
+      <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug %}" {% if active_tab == 'bank-feed' %}class="dock-active"{% endif %}>
         <span class="indicator">
           {% if inbox_count %}<span class="indicator-item badge badge-primary badge-xs">{{ inbox_count }}</span>{% endif %}
           {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
         </span>
         <span class="dock-label">{% translate "Inbox" %}</span>
       </a>
-      <a href="{% url 'journal:transactions_home' request.team.slug %}" {% if active_tab == 'transactions' %}class="dock-active"{% endif %}>
+      <a href="{% url 'journal:transactions_home' nav_team.slug %}" {% if active_tab == 'transactions' %}class="dock-active"{% endif %}>
         {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
         <span class="dock-label">{% translate "Transactions" %}</span>
       </a>
-      <a href="{% url 'budget:budget_home' request.team.slug %}" {% if active_tab == 'budget' %}class="dock-active"{% endif %}>
+      <a href="{% url 'budget:budget_home' nav_team.slug %}" {% if active_tab == 'budget' %}class="dock-active"{% endif %}>
         {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
         <span class="dock-label">{% translate "Budget" %}</span>
       </a>
-      <a href="{% url 'budget:goals_list' request.team.slug %}" {% if active_tab == 'goals' %}class="dock-active"{% endif %}>
+      <a href="{% url 'budget:goals_list' nav_team.slug %}" {% if active_tab == 'goals' %}class="dock-active"{% endif %}>
         {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
         <span class="dock-label">{% translate "Goals" %}</span>
       </a>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" {% if active_tab == 'reports' %}class="dock-active"{% endif %}>
+      <a href="{% url 'reports:reports_home' nav_team.slug %}" {% if active_tab == 'reports' %}class="dock-active"{% endif %}>
         {% icon "chart-bar" class="inline-block shrink-0 w-4 h-4" %}
         <span class="dock-label">{% translate "Reports" %}</span>
       </a>

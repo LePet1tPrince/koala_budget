@@ -1,0 +1,28 @@
+{% load i18n %}
+{% load icons %}
+{% load settings_tags %}
+{% comment %}
+  The Settings rail. A column beside the content above `lg`, a horizontally
+  scrolling strip above it -- one list of links either way, so there is nothing
+  to keep in sync between the two layouts.
+
+  A section is active when the view said so (`settings_section`) or when the
+  current path is its own. The path test is what covers Change Password, whose
+  view belongs to allauth and sets no context of ours.
+{% endcomment %}
+{% settings_section_groups as section_groups %}
+<nav class="app-surface flex shrink-0 gap-1 overflow-x-auto p-2 lg:w-60 lg:flex-col lg:overflow-x-visible"
+     aria-label="{% translate 'Settings' %}"
+     data-testid="settings-nav">
+  {% for heading, sections in section_groups %}
+    <div class="side-section hidden lg:block {% if forloop.first %}!mt-1{% endif %}">{{ heading }}</div>
+    {% for section in sections %}
+      <a href="{{ section.url }}"
+         class="side-link whitespace-nowrap {% if settings_section == section.key or request.path == section.url %}side-link-active{% endif %}"
+         data-testid="settings-nav-{{ section.key }}">
+        {% icon section.icon class="inline-block shrink-0 w-4 h-4" %}
+        {{ section.label }}
+      </a>
+    {% endfor %}
+  {% endfor %}
+</nav>

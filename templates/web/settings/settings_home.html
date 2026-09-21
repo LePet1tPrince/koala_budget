@@ -1,0 +1,24 @@
+{% extends "web/settings/settings_base.html" %}
+{% load i18n %}
+{% load icons %}
+{% load settings_tags %}
+
+{% block settings_content %}
+  {% settings_sections as sections %}
+  <div class="grid gap-3 sm:grid-cols-2" data-testid="settings-hub">
+    {% for section in sections %}
+      <a href="{{ section.url }}"
+         class="app-card flex items-start gap-3 transition-colors hover:bg-base-200"
+         data-testid="settings-card-{{ section.key }}">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-field bg-primary/10 text-primary">
+          {% icon section.icon class="inline-block shrink-0 w-4 h-4" %}
+        </span>
+        <span class="min-w-0 flex-1">
+          <span class="block font-medium">{{ section.label }}</span>
+          <span class="mt-0.5 block text-sm text-base-content/70">{{ section.blurb }}</span>
+        </span>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 mt-1 text-base-content/40" %}
+      </a>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -1,21 +1,12 @@
-{% extends "web/app/app_base.html" %}
+{% extends "web/settings/settings_base.html" %}
 {% load i18n %}
 {% load django_vite %}
 
-{% block app %}
+{% block settings_content %}
   {{ ynab_props|json_script:'ynab-props' }}
 
-  <div class="container mx-auto px-4 py-6">
-    <div class="mb-6">
-      <h1 class="text-2xl font-semibold tracking-tight">{% translate "Import from YNAB" %}</h1>
-      <p class="mt-1 text-base-content/70">
-        {% blocktranslate trimmed %}
-          Your accounts, your whole transaction history, your monthly budgets and your savings —
-          brought over and checked against YNAB's own numbers.
-        {% endblocktranslate %}
-      </p>
-    </div>
-
+  {# The heading is the shell's, from the view's `settings_page_title`. #}
+  <div>
     <div id="ynab-import-app"></div>
 
     <noscript>

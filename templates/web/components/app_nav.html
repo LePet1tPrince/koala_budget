@@ -12,11 +12,11 @@
   <div class="dropdown w-full">
     <div tabindex="0" role="button" class="side-tile" data-testid="team-switcher">
       <span class="side-avatar">
-        {% if request.team %}{{ request.team.name|slice:":1"|upper }}{% else %}{{ request.user.get_display_name|slice:":1"|upper }}{% endif %}
+        {% if nav_team %}{{ nav_team.name|slice:":1"|upper }}{% else %}{{ request.user.get_display_name|slice:":1"|upper }}{% endif %}
       </span>
       <span class="min-w-0 flex-1">
         <span class="block truncate text-sm font-medium leading-tight">
-          {% if request.team %}{{ request.team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+          {% if nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
         </span>
         <span class="block truncate text-xs leading-tight text-base-content/70">{% translate "Workspace" %}</span>
       </span>
@@ -52,15 +52,23 @@
         {% icon "ellipsis" class="inline-block shrink-0 w-3 h-3 text-base-content/40" %}
       </div>
       <ul tabindex="0" class="dropdown-content menu z-20 mb-1 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+        {% comment %}
+          Profile and Settings sit side by side: Profile is the one account page
+          people reach for by name, Settings is everything else — password, team,
+          subscription, YNAB import, audit log. Change Password used to be a third
+          entry here and is now a section inside Settings.
+        {% endcomment %}
         <li>
-          <a href="{% url 'users:user_profile' %}" {% if active_tab == 'profile' %}class="menu-active"{% endif %}>
+          <a href="{% url 'users:user_profile' %}" {% if settings_section == 'profile' %}class="menu-active"{% endif %}>
             {% icon "user" class="inline-block shrink-0 h-4 w-4" %}{% translate "Profile" %}
           </a>
         </li>
-        {% if user.has_usable_password %}
+        {% if nav_team %}
           <li>
-            <a href="{% url 'account_change_password' %}" {% if 'accounts/password/change' in request.path %}class="menu-active"{% endif %}>
-              {% icon "unlock-alt" class="inline-block shrink-0 h-4 w-4" %}{% translate "Change Password" %}
+            <a href="{% url 'web_team:settings' nav_team.slug %}"
+               data-testid="nav-settings"
+               {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
+              {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
             </a>
           </li>
         {% endif %}

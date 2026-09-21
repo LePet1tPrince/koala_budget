@@ -36,7 +36,9 @@ def manage_team(request, team_slug):
             "team": team,
             "team_json": TeamSerializer(team, context={"request": request}).data,
             "user_json": CustomUserSerializer(request.user).data,
-            "active_tab": "manage-team",
+            "active_tab": "settings",
+            "settings_section": "team",
+            "settings_page_title": _("Team"),
             "api_urls": get_team_api_url_templates(),
         },
     )

@@ -34,6 +34,23 @@ def get_team_for_request(request, view_kwargs) -> Team | None:
     return None
 
 
+def get_nav_team(request) -> Team | None:
+    """
+    The team the chrome — sidebar, mobile dock, team switcher — should point at.
+
+    Account-level pages (Profile, Change Password) are not team-scoped, so
+    `request.team` is None on them and every team link in the navigation would
+    have to be dropped. `request.default_team` is the same team the user was
+    last working in, so the nav stays whole and takes them back to it. Note
+    `default_team` costs no extra query when `request.team` is set: the
+    middleware computes it from the same cached lookup.
+
+    Page *content* must keep using `request.team` — a page that acts on a team
+    may only ever act on the one in its own URL.
+    """
+    return getattr(request, "team", None) or getattr(request, "default_team", None)
+
+
 def get_default_team_from_request(request: HttpRequest) -> Team | None:
     if isinstance(request.user, AnonymousUser):
         return None

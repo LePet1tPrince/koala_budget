@@ -46,7 +46,10 @@ def audit_log_view(request, team_slug):
         request,
         "audit/audit_log.html",
         {
-            "active_tab": "audit-log",
+            "active_tab": "settings",
+            "settings_section": "audit",
+            "settings_page_title": _("Audit log"),
+            "settings_page_blurb": _("Logins, imports, syncs and bulk operations for this team."),
             "page_title": _("Audit Log | {team}").format(team=request.team),
             "api_base_url": f"/a/{team_slug}/audit/api/events/",
             "event_type_choices": event_type_choices,

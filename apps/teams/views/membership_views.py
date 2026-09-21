@@ -44,7 +44,9 @@ def team_membership_details(request, team_slug, membership_id):
         request,
         "teams/team_membership_details.html",
         {
-            "active_tab": "manage-team",
+            "active_tab": "settings",
+            "settings_section": "team",
+            "settings_page_title": _("Team"),
             "membership": membership,
             "membership_form": membership_form,
             "editing_self": editing_self,

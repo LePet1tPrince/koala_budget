@@ -1,10 +1,10 @@
 {% load i18n %}
 {% load team_tags %}
 {% load icons %}
-{% if team %}
-{% if request.user|is_member_of:team %}
+{% if nav_team %}
+{% if request.user|is_member_of:nav_team %}
 <li>
-  <a href="{% url 'single_team:manage_team' team.slug %}">
+  <a href="{% url 'single_team:manage_team' nav_team.slug %}">
     {% icon "gear" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Team Settings" %}
   </a>

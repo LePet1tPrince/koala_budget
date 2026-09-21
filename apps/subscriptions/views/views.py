@@ -28,7 +28,11 @@ log = logging.getLogger("koala_budget.subscription")
 def subscription(request, team_slug):
     # non-admins aren't allowed to manage team subscriptions
     if not is_admin(request.user, request.team):
-        return TemplateResponse(request, "subscriptions/no_subscription_access.html")
+        return TemplateResponse(
+            request,
+            "subscriptions/no_subscription_access.html",
+            {"active_tab": "settings", "settings_section": "subscription", "settings_page_title": _("Subscription")},
+        )
 
     subscription_holder = request.team
     if subscription_holder.has_active_subscription():
@@ -95,7 +99,9 @@ def _view_subscription(request, subscription_holder: SubscriptionModelBase):
         request,
         "subscriptions/view_subscription.html",
         {
-            "active_tab": "subscription",
+            "active_tab": "settings",
+            "settings_section": "subscription",
+            "settings_page_title": _("Subscription"),
             "page_title": _("Subscription | {team}").format(team=request.team),
             "subscription": wrapped_subscription,
             "next_invoice": InvoiceFacade(next_invoice) if next_invoice else None,
@@ -118,7 +124,9 @@ def _upgrade_subscription(request, subscription_holder):
         request,
         "subscriptions/upgrade_subscription.html",
         {
-            "active_tab": "subscription",
+            "active_tab": "settings",
+            "settings_section": "subscription",
+            "settings_page_title": _("Subscription"),
             "default_product": default_product,
             "active_products": active_products,
             "active_plan_intervals": get_active_plan_interval_metadata(),

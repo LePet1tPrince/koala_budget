@@ -24,6 +24,7 @@ urlpatterns = [
 team_urlpatterns = (
     [
         path("", views.team_home, name="home"),
+        path("settings/", views.settings_home, name="settings"),
     ],
     "web_team",
 )

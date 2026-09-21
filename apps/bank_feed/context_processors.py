@@ -1,3 +1,5 @@
+from apps.teams.helpers import get_nav_team
+
 from .models import BankTransaction
 
 
@@ -6,10 +8,12 @@ def inbox_count(request):
     Number of uncategorized bank transactions for the current team.
 
     Powers the badge on the "Inbox" navigation item so users can see at a
-    glance how many transactions are waiting for review.
+    glance how many transactions are waiting for review. It follows the nav
+    team rather than `request.team`, so the badge does not blink out on the
+    account pages where the nav itself has no team of its own.
     """
     # request.team is a SimpleLazyObject that may wrap None; truthiness unwraps it
-    team = getattr(request, "team", None)
+    team = get_nav_team(request)
     if not team or not request.user.is_authenticated:
         return {}
     return {

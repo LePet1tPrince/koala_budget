@@ -12,7 +12,7 @@
   <li>
     <details>
       <summary>
-        {% if team %}{{ team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+        {% if nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
       </summary>
       <ul>
         {% include "web/components/team_nav_items.html" %}
@@ -36,14 +36,15 @@
     {% endcomment %}
     <li class="menu-title"><span>{% translate "Account" %}</span></li>
     <li>
-      <a href="{% url 'users:user_profile' %}" {% if active_tab == 'profile' %}class="menu-active"{% endif %}>
+      <a href="{% url 'users:user_profile' %}" {% if settings_section == 'profile' %}class="menu-active"{% endif %}>
         {% icon "user" class="inline-block shrink-0 h-4 w-4" %}{% translate "Profile" %}
       </a>
     </li>
-    {% if user.has_usable_password %}
+    {% if nav_team %}
       <li>
-        <a href="{% url 'account_change_password' %}">
-          {% icon "unlock-alt" class="inline-block shrink-0 h-4 w-4" %}{% translate "Change Password" %}
+        <a href="{% url 'web_team:settings' nav_team.slug %}"
+           {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
+          {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
         </a>
       </li>
     {% endif %}

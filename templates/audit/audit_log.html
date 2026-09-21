@@ -1,16 +1,9 @@
-{% extends "web/app/app_base.html" %}
+{% extends "web/settings/settings_base.html" %}
 {% load i18n %}
 
-{% block app %}
+{% block settings_content %}
 <section class="app-card">
-  <div class="flex justify-between items-center mb-4">
-    <div>
-      <h1 class="text-2xl font-semibold">{% translate "Audit Log" %}</h1>
-      <p class="text-sm text-base-content/70 mt-1">{% translate "Logins, imports, syncs, and bulk operations for this team." %}</p>
-    </div>
-  </div>
-
-  {# Filters #}
+  {# Filters. The heading is the shell's, from the view's `settings_page_title`. #}
   <div class="flex flex-wrap gap-3 mb-4">
     <select id="audit-filter-type" class="select select-bordered select-sm">
       <option value="">{% translate "All event types" %}</option>
