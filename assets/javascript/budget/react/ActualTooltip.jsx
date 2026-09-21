@@ -179,7 +179,7 @@ const ActualTooltip = ({
         panelClassName="p-4"
       >
         {() => (
-          <div className="max-h-[400px] min-w-[32rem] max-w-[44rem] overflow-auto">
+          <div className="max-h-[400px] min-w-[36rem] max-w-[50rem] overflow-auto">
             <h3 className="mb-2 text-lg font-bold">
               {categoryName} - {gettext('Transactions')}
             </h3>
@@ -194,6 +194,7 @@ const ActualTooltip = ({
                   <tr>
                     <th>{gettext('Date')}</th>
                     <th>{gettext('Payee')}</th>
+                    <th>{gettext('Account')}</th>
                     <th>{gettext('Memo')}</th>
                     <th className="text-right">{gettext('Amount')}</th>
                     <th>{gettext('Recategorize')}</th>
@@ -202,10 +203,17 @@ const ActualTooltip = ({
                 <tbody>
                   {transactions.map((tx) => {
                     const lineId = tx.line_id || tx.lineId;
+                    // The other side of the journal entry — the bank/cash account the money moved
+                    // through. The API leaves it null when the entry has more than two lines, i.e.
+                    // a split, where there is no single other side to name.
+                    const accountName = tx.category_name || tx.categoryName || gettext('Split');
                     return (
                       <tr key={lineId}>
                         <td className="whitespace-nowrap">{formatWeekDayDate(new Date(tx.date))}</td>
                         <td className="max-w-[120px] truncate">{tx.payee_name || tx.payeeName || '-'}</td>
+                        <td className="max-w-[140px] truncate" title={accountName}>
+                          {accountName}
+                        </td>
                         <td className="max-w-[150px] truncate" title={tx.description}>
                           {tx.description || '-'}
                         </td>
