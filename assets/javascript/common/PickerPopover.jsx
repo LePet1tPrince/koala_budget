@@ -61,7 +61,15 @@ const PickerPopover = ({
   useEffect(() => {
     if (!open) return undefined;
     const onPointerDown = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) close();
+      // The panel is portaled out of the trigger (see popoverPosition.js), so it
+      // is not a DOM descendant of `rootRef` and has to be tested separately.
+      // Testing the trigger alone reported every press *inside* the panel as an
+      // outside press, closing it on `pointerdown` — so the panel unmounted
+      // before the `click` on the month or day being aimed at could land, and
+      // picking a value silently did nothing.
+      const inside =
+        rootRef.current?.contains(e.target) || panelRef.current?.contains(e.target);
+      if (!inside) close();
     };
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return;
@@ -230,9 +238,9 @@ const Caret = () => (
  * A menu that drops out of a calendar header label.
  *
  * It lives inside the picker panel, so `PickerPopover`'s outside-press handler
- * treats it as inside and leaves the panel alone. The backdrop deliberately does
- * not stop propagation: a press outside the panel then closes this menu *and*
- * the panel, while a press elsewhere inside the panel closes only this menu.
+ * treats it as inside and leaves the panel alone. Its backdrop is part of the
+ * panel too, so any press while the menu is open dismisses just the menu and
+ * leaves the picker where it was.
  */
 const HeaderMenu = ({ open, onClose, label, children, width = 'w-[15rem]' }) => {
   // Escape should dismiss this menu, not the whole picker. A capture-phase

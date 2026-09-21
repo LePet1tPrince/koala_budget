@@ -132,15 +132,17 @@ class BatchEditRequestSerializer(BatchIdsSerializer):
         max_length=255,
         required=False,
         allow_null=True,
+        allow_blank=True,
         default=None,
-        help_text="Payee/merchant name",
+        help_text="Payee/merchant name (blank clears it; omit or null to leave it unchanged)",
     )
     description = serializers.CharField(
         max_length=255,
         required=False,
         allow_null=True,
+        allow_blank=True,
         default=None,
-        help_text="Transaction description",
+        help_text="Transaction description (blank clears it; omit or null to leave it unchanged)",
     )
     date = serializers.DateField(
         required=False,

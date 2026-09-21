@@ -2,7 +2,30 @@
 {% load currency_tags %}
 
 <!-- Budget Table -->
-<div class="overflow-x-auto bg-base-100 rounded-lg shadow" data-budget-save-url="{{ save_amount_url }}">
+<style>
+  /* The column headings stay visible while the rows scroll under them.
+
+     They stick to the *page*, not to a window of their own: the table scrolls
+     with the document so the summary cards beside it can follow along, which a
+     nested scroll area would defeat. That rules out an `overflow` on the
+     wrapper, because any non-visible overflow makes it the scrollport a sticky
+     child measures against — and a wrapper that is exactly as tall as its
+     content never scrolls, so the heading row would simply ride away with it.
+     Horizontal scrolling is therefore kept only below `lg`, where the narrow
+     viewport actually needs it and the frozen heading matters least.
+
+     A sticky cell needs an opaque background of its own, or rows show through
+     as they pass beneath. The offset clears the sticky page header, whose
+     height the header include publishes as `--budget-header-h`. */
+  #budget-table-card thead th {
+    position: sticky;
+    top: var(--budget-header-h, 4rem);
+    z-index: 20;
+    background: var(--color-base-100);
+  }
+</style>
+<div class="overflow-x-auto lg:overflow-x-visible bg-base-100 rounded-lg shadow"
+     id="budget-table-card" data-budget-save-url="{{ save_amount_url }}">
   <table class="table table-sm w-full" data-testid="budget-table">
     <thead>
       <tr>
