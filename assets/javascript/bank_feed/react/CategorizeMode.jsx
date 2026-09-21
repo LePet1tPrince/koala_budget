@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
 import { createConfetti } from '../../common/confetti';
-import { getUploadApiHelpers } from '../bank_feed';
+import { getBatchOperationsApi, getUploadApiHelpers } from '../bank_feed';
 import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
+import Combobox from '../../common/Combobox';
 import Modal from '../../common/Modal';
 
 const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
@@ -15,6 +16,25 @@ const SUGGESTION_PREFETCH = 8;
 // endpoint keys on.
 function transactionId(tx) {
   return tx?.imported_transaction_id ?? tx?.id ?? null;
+}
+
+// The feed row maps `merchant_name` onto `payee`, and either can be null — this
+// is the pair the card lets you edit.
+function detailsOf(tx) {
+  return { payee: tx?.payee ?? tx?.merchant_name ?? '', description: tx?.description ?? '' };
+}
+
+// What a draft actually changes, shaped as a `batch_edit` payload. A field that
+// matches what the bank sent is left out, since the endpoint updates only the
+// fields it is given. `null` when nothing changed, so a plain categorization
+// never takes the edit path.
+function changedDetails(tx, draft) {
+  if (!tx || !draft) return null;
+  const original = detailsOf(tx);
+  const changes = {};
+  if (draft.payee.trim() !== original.payee.trim()) changes.payee = draft.payee.trim();
+  if (draft.description.trim() !== original.description.trim()) changes.description = draft.description.trim();
+  return Object.keys(changes).length > 0 ? changes : null;
 }
 
 // A rough "same merchant" key, used only to decide which cached suggestions a
@@ -98,7 +118,88 @@ function SimilarTransactionsTooltip({ transaction, allTransactions }) {
   );
 }
 
-function TransactionCard({ transaction, index, total, allTransactions, isExiting, isSkipping }) {
+/**
+ * The payee and description of the card on top of the stack, editable in place.
+ *
+ * Nothing is written while you type: the draft is held by the parent, keyed by
+ * transaction id, and saved in the same request that files the transaction —
+ * so a card is never left renamed but uncategorized, and a draft survives a
+ * skip, since the card comes back around.
+ */
+function TransactionDetailsEditor({ values, dirty, payeeOptions, onChange, onRevert }) {
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      // Escape backs out of the edit, never out of categorize mode. The window
+      // handler that navigates back to the feed is stopped here whatever the
+      // field holds, because being thrown out of the queue mid-word costs far
+      // more than having to press Escape a second time. (The payee combobox
+      // stops it first when its list is open, closing just the list.)
+      e.stopPropagation();
+      if (dirty) onRevert();
+      else e.target.blur();
+      return;
+    }
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+      // There's no form to submit — Enter just finishes the field. Buttons in
+      // here (Revert) are left alone, or preventDefault would swallow the
+      // keyboard press that activates them.
+      e.preventDefault();
+      e.target.blur();
+    }
+  };
+
+  return (
+    <div className="space-y-2" onKeyDown={handleKeyDown} data-testid="categorize-details-editor">
+      <Combobox
+        label="Payee"
+        value={values.payee}
+        onChange={v => onChange('payee', v)}
+        options={payeeOptions}
+        freeText
+        placeholder="Who was this with?"
+        testId="categorize-payee"
+      />
+      <label className="form-control w-full">
+        <span className="label-text mb-1 block text-sm text-base-content/70">Description</span>
+        <input
+          type="text"
+          className="input input-bordered w-full"
+          value={values.description}
+          placeholder="What was it for?"
+          onChange={e => onChange('description', e.target.value)}
+          data-testid="categorize-description"
+        />
+      </label>
+      <div className="flex items-center justify-between gap-2 min-h-6">
+        {dirty && (
+          <>
+            <span className="text-xs text-warning font-medium" data-testid="categorize-details-dirty">
+              Saved when you pick a category
+            </span>
+            <button onClick={onRevert} className="btn btn-ghost btn-xs" data-testid="categorize-details-revert">
+              Revert
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TransactionCard({
+  transaction,
+  index,
+  total,
+  allTransactions,
+  isExiting,
+  isSkipping,
+  details,
+  detailsDirty,
+  payeeOptions,
+  onDetailChange,
+  onDetailsRevert,
+  cardRef,
+}) {
   const isTop = index === 0;
   const offset = Math.min(index, 4);
   const scale = 1 - offset * 0.03;
@@ -115,25 +216,43 @@ function TransactionCard({ transaction, index, total, allTransactions, isExiting
         zIndex: total - index,
       }}
     >
-      <div className={`card bg-base-100 shadow-xl border border-base-300 ${isTop ? 'ring-2 ring-primary/30' : ''}`}>
+      <div
+        ref={isTop ? cardRef : null}
+        className={`card bg-base-100 shadow-xl border border-base-300 ${isTop ? 'ring-2 ring-primary/30' : ''}`}
+      >
         <div className="card-body p-5">
-          {isTop && (
-            <div className="absolute top-3 right-3">
-              <SimilarTransactionsTooltip transaction={transaction} allTransactions={allTransactions} />
-            </div>
-          )}
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-base-content/70 mb-1">
-                {transaction.account?.name || 'Unknown Account'}
-              </p>
-              <h3 className="font-bold text-lg truncate">
-                {transaction.merchant_name || transaction.description || 'No description'}
-              </h3>
-              {transaction.merchant_name && transaction.description && (
-                <p className="text-sm text-base-content/70 truncate">{transaction.description}</p>
-              )}
-            </div>
+          {/* The lookalike button shares a row with the account name rather than
+              floating over the corner, or it would sit on top of the payee
+              field below it. */}
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs text-base-content/70 truncate">
+              {transaction.account?.name || 'Unknown Account'}
+            </p>
+            {isTop && (
+              <div className="-mt-1.5 -mr-1.5 shrink-0">
+                <SimilarTransactionsTooltip transaction={transaction} allTransactions={allTransactions} />
+              </div>
+            )}
+          </div>
+          <div className="mt-1">
+            {isTop ? (
+              <TransactionDetailsEditor
+                values={details}
+                dirty={detailsDirty}
+                payeeOptions={payeeOptions}
+                onChange={onDetailChange}
+                onRevert={onDetailsRevert}
+              />
+            ) : (
+              <>
+                <h3 className="font-bold text-lg truncate">
+                  {transaction.merchant_name || transaction.description || 'No description'}
+                </h3>
+                {transaction.merchant_name && transaction.description && (
+                  <p className="text-sm text-base-content/70 truncate">{transaction.description}</p>
+                )}
+              </>
+            )}
           </div>
           <div className="flex items-center justify-between mt-3">
             <span className="text-sm text-base-content/70">{transaction.posted_date}</span>
@@ -821,6 +940,7 @@ export default function CategorizeMode({
   teamSlug,
   allAccounts,
   allAccountGroups,
+  allPayees = [],
   backUrl,
 }) {
   const [transactions, setTransactions] = useState([]);
@@ -838,8 +958,14 @@ export default function CategorizeMode({
   const [localAccounts, setLocalAccounts] = useState(allAccounts);
   const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
   const [pendingBatch, setPendingBatch] = useState(null); // { account, tx, matches } awaiting the similar-transactions modal
+  const [drafts, setDrafts] = useState({}); // transaction id -> { payee, description } edited but not yet filed
+  const [error, setError] = useState(null);
+  const [cardHeight, setCardHeight] = useState(220);
+  const topCardRef = useRef(null);
   const headers = getApiHeaders();
   const uploadApi = useMemo(() => getUploadApiHelpers(teamSlug), [teamSlug]);
+  const batchApi = useMemo(() => getBatchOperationsApi(teamSlug), [teamSlug]);
+  const payeeOptions = useMemo(() => allPayees.map(p => p.name).filter(Boolean), [allPayees]);
 
   const fetchUncategorized = useCallback(async () => {
     setLoading(true);
@@ -913,17 +1039,41 @@ export default function CategorizeMode({
     if (!txList.length) return;
     const includesTop = txList.some(t => t.id === transactions[0]?.id);
     if (includesTop) setIsExiting(true);
+    setError(null);
+
+    // A card whose payee/description was edited goes through `batch_edit`,
+    // which applies the edits and the category in one atomic request, so the
+    // transaction is never left renamed but uncategorized. Anything untouched
+    // takes the plain categorize path in a single batched call. Drafts belong
+    // to individual cards, so a transaction swept into a batch still carries
+    // its own edits rather than the edited card's.
+    const edited = txList.map(t => ({ tx: t, changes: changedDetails(t, drafts[t.id]) })).filter(e => e.changes);
+    const editedIds = new Set(edited.map(e => e.tx.id));
+    const plain = txList.filter(t => !editedIds.has(t.id));
 
     try {
-      await fetch(`/a/${teamSlug}/bankfeed/api/feed/categorize/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rows: txList.map(t => ({ id: transactionId(t) })),
-          category_id: account.id,
-        }),
-      });
+      await Promise.all([
+        ...edited.map(({ tx, changes }) =>
+          batchApi.batchEdit([transactionId(tx)], { category_id: account.id, ...changes })
+        ),
+        ...(plain.length
+          ? [
+              fetch(`/a/${teamSlug}/bankfeed/api/feed/categorize/`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  rows: plain.map(t => ({ id: transactionId(t) })),
+                  category_id: account.id,
+                }),
+              }).then(resp => {
+                // A refusal must not let the card slide away as though it had
+                // been filed.
+                if (!resp.ok) throw new Error('Could not categorize that transaction.');
+              }),
+            ]
+          : []),
+      ]);
 
       const committedIds = new Set(txList.map(t => t.id));
       const newCategorized = categorized + txList.length;
@@ -943,6 +1093,15 @@ export default function CategorizeMode({
 
       setTimeout(() => {
         setTransactions(prev => prev.filter(t => !committedIds.has(t.id)));
+        // Dropped with the card rather than on the response, or the top card
+        // would visibly snap back to the bank's wording mid-flight.
+        if (editedIds.size > 0) {
+          setDrafts(prev => {
+            const next = { ...prev };
+            editedIds.forEach(id => delete next[id]);
+            return next;
+          });
+        }
         if (staleIds.length > 0) {
           setSuggestionsByTransaction(cached => {
             const next = { ...cached };
@@ -961,9 +1120,10 @@ export default function CategorizeMode({
       }, includesTop ? 300 : 0);
     } catch (err) {
       console.error('Failed to categorize:', err);
+      setError(err.message || 'Could not categorize that transaction.');
       setIsExiting(false);
     }
-  }, [transactions, categorized, streak, teamSlug, headers]);
+  }, [transactions, categorized, streak, teamSlug, headers, drafts, batchApi]);
 
   // Categorizing the top transaction: if other uncategorized transactions
   // share its home account and description, offer to categorize them the
@@ -1001,6 +1161,53 @@ export default function CategorizeMode({
     categorizeTransaction(newAccount);
     return newAccount;
   }, [uploadApi, categorizeTransaction]);
+
+  // --- Payee/description drafts for the card on top of the stack ---
+
+  const topTransaction = transactions[0] || null;
+
+  const topDetails = useMemo(
+    () => (topTransaction ? (drafts[topTransaction.id] ?? detailsOf(topTransaction)) : null),
+    [topTransaction, drafts]
+  );
+
+  const topDetailsDirty = useMemo(
+    () => (topTransaction ? changedDetails(topTransaction, drafts[topTransaction.id]) !== null : false),
+    [topTransaction, drafts]
+  );
+
+  const handleDetailChange = useCallback((field, value) => {
+    if (!topTransaction) return;
+    setDrafts(prev => ({
+      ...prev,
+      [topTransaction.id]: { ...(prev[topTransaction.id] ?? detailsOf(topTransaction)), [field]: value },
+    }));
+  }, [topTransaction]);
+
+  const handleDetailsRevert = useCallback(() => {
+    if (!topTransaction) return;
+    setDrafts(prev => {
+      const next = { ...prev };
+      delete next[topTransaction.id];
+      return next;
+    });
+  }, [topTransaction]);
+
+  // The cards are absolutely positioned, so the stack has no height of its own
+  // and the container's minimum is the only thing holding the layout open. The
+  // top card is the tall one (it carries the editor), so it is measured rather
+  // than guessed at. The effect re-runs per card because React replaces the
+  // DOM node when the top of the queue changes. Measured before paint, or the
+  // stack visibly resettles on every card.
+  useLayoutEffect(() => {
+    const el = topCardRef.current;
+    if (!el) return undefined;
+    setCardHeight(el.offsetHeight);
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => setCardHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [topTransaction?.id]);
 
   const skipTransaction = useCallback(() => {
     const tx = transactions[0];
@@ -1109,13 +1316,19 @@ export default function CategorizeMode({
       <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6 max-w-7xl mx-auto w-full">
         {/* Left: Card stack */}
         <div className="lg:w-2/5 flex flex-col items-center">
+          {error && (
+            <div className="alert alert-error mb-3 w-full max-w-md py-2" data-testid="categorize-error">
+              <span className="text-sm">{error}</span>
+              <button className="btn btn-ghost btn-xs" onClick={() => setError(null)}>✕</button>
+            </div>
+          )}
           {/* Cards behind the top one are pushed down by `offset * 8px` (see
-              TransactionCard), so the stack's real bottom edge sits below a
-              flat 220px — pad the container for the deepest card's offset
+              TransactionCard), so the stack's real bottom edge sits below the
+              measured card — pad the container for the deepest card's offset
               or its shadow pokes out past this box. */}
           <div
             className="relative w-full max-w-md"
-            style={{ minHeight: `${220 + (Math.min(transactions.length, 5) - 1) * 8}px` }}
+            style={{ minHeight: `${cardHeight + (Math.min(transactions.length, 5) - 1) * 8}px` }}
           >
             {transactions.slice(0, 5).map((tx, i) => (
               <TransactionCard
@@ -1126,6 +1339,12 @@ export default function CategorizeMode({
                 allTransactions={transactions}
                 isExiting={isExiting}
                 isSkipping={isSkipping}
+                cardRef={topCardRef}
+                details={topDetails}
+                detailsDirty={topDetailsDirty}
+                payeeOptions={payeeOptions}
+                onDetailChange={handleDetailChange}
+                onDetailsRevert={handleDetailsRevert}
               />
             ))}
           </div>

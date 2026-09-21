@@ -1214,8 +1214,10 @@ class BankFeedViewSet(
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+        # A blank payee is how the caller clears one, so it must not create a
+        # nameless Payee row — the entry's payee is unset instead.
         payee_obj = None
-        if payee_name is not None:
+        if payee_name:
             payee_obj, _ = Payee.objects.get_or_create(
                 team=request.team,
                 name=payee_name,
@@ -1963,9 +1965,11 @@ def categorize_mode(request, team_slug):
 
     all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")
     all_account_groups = AccountGroup.for_team.all().order_by("account_type", "name")
+    all_payees = Payee.for_team.all().order_by("name")
 
     all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
     all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
+    all_payees_data = PayeeSerializer(all_payees, many=True).data
 
     back_url = reverse("bank_feed:bank_feed_home", kwargs={"team_slug": team_slug})
 
@@ -1976,6 +1980,7 @@ def categorize_mode(request, team_slug):
             "page_title": _("Categorize Mode | {team}").format(team=request.team),
             "all_accounts": all_accounts_data,
             "all_account_groups": all_account_groups_data,
+            "all_payees": all_payees_data,
             "team_slug": team_slug,
             "back_url": back_url,
         },

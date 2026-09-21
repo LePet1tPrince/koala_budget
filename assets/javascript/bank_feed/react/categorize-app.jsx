@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 
 const allAccounts = JSON.parse(document.getElementById('all-accounts').textContent);
 const allAccountGroups = JSON.parse(document.getElementById('all-account-groups').textContent);
+const allPayees = JSON.parse(document.getElementById('all-payees').textContent);
 const teamSlug = JSON.parse(document.getElementById('team-slug').textContent);
 const backUrl = JSON.parse(document.getElementById('back-url').textContent);
 
@@ -17,6 +18,7 @@ root.render(
     teamSlug={teamSlug}
     allAccounts={allAccounts}
     allAccountGroups={allAccountGroups}
+    allPayees={allPayees}
     backUrl={backUrl}
   />
 );

@@ -15,6 +15,7 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_INCOME,
     Account,
     AccountGroup,
+    Payee,
 )
 from apps.bank_feed.models import BankTransaction
 from apps.teams.context import current_team
@@ -209,6 +210,61 @@ class BatchEditTest(TestCase):
         self.assertEqual(tx.merchant_name, "Target")
         self.assertEqual(tx.description, "Bulk update")
         self.assertEqual(tx.posted_date, date(2024, 1, 1))
+
+    # ---- Clearing a payee ----
+
+    def test_batch_edit_blank_payee_clears_it(self):
+        """A blank payee is how the caller clears one — and must not create a nameless Payee."""
+        tx = self._create_tx(merchant_name="Walmart")
+        with current_team(self.team):
+            self.client.patch(self.url, {"ids": [tx.id], "payee": "Walmart"}, format="json")
+            resp = self.client.patch(self.url, {"ids": [tx.id], "payee": ""}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        tx.refresh_from_db()
+        self.assertEqual(tx.merchant_name, "")
+        self.assertFalse(Payee.objects.filter(team=self.team, name="").exists())
+
+    def test_batch_edit_blank_payee_unsets_the_journal_payee(self):
+        tx = self._create_tx(merchant_name="Walmart")
+        with current_team(self.team):
+            self.client.patch(
+                self.url,
+                {"ids": [tx.id], "category_id": self.expense_category.id, "payee": "Walmart"},
+                format="json",
+            )
+            tx.refresh_from_db()
+            self.assertIsNotNone(tx.journal_entry.payee)
+
+            self.client.patch(self.url, {"ids": [tx.id], "payee": ""}, format="json")
+        tx.refresh_from_db()
+        self.assertIsNone(tx.journal_entry.payee)
+
+    # ---- Categorizing and renaming in one request (categorize mode's edit path) ----
+
+    def test_batch_edit_applies_category_and_details_together(self):
+        """Categorize mode saves a card's payee/description edits with its category."""
+        tx = self._create_tx(description="SQ *BLUE BOTTLE 4417", merchant_name="SQ *BLUE BOTTLE")
+        with current_team(self.team):
+            resp = self.client.patch(
+                self.url,
+                {
+                    "ids": [tx.id],
+                    "category_id": self.expense_category.id,
+                    "payee": "Blue Bottle Coffee",
+                    "description": "Morning coffee",
+                },
+                format="json",
+            )
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        tx.refresh_from_db()
+        self.assertEqual(tx.merchant_name, "Blue Bottle Coffee")
+        self.assertEqual(tx.description, "Morning coffee")
+        self.assertIsNotNone(tx.journal_entry)
+        # The entry is created from the transaction's old description, so the
+        # edit has to land on it too rather than only on the staging row.
+        self.assertEqual(tx.journal_entry.description, "Morning coffee")
+        self.assertEqual(tx.journal_entry.payee.name, "Blue Bottle Coffee")
+        self.assertTrue(tx.journal_entry.lines.filter(account=self.expense_category).exists())
 
     # ---- Only provided fields are updated ----
 
