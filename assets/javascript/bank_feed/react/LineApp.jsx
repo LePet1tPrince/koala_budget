@@ -43,12 +43,20 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // View mode state (synced from LineTable): 'active' | 'archived'
   const [viewMode, setViewMode] = useState('active');
 
+  // A row the table should page to and flash, set when jumping to the other leg
+  // of a transfer: {journalEntryId, nonce}
+  const [focusRequest, setFocusRequest] = useState(null);
+
   // Snackbar state for batch operations
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
     severity: 'info',
   });
+
+  // Accounts that have a feed of their own. A row categorized to one of these is
+  // a transfer, and the only kind of row with another feed to link across to.
+  const feedAccountIds = useMemo(() => new Set(accounts.map((a) => a.id)), [accounts]);
 
   // Batch operations API
   const batchApi = useMemo(() => getBatchOperationsApi(teamSlug), [teamSlug]);
@@ -174,6 +182,30 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       }
     }
   };
+
+  /**
+   * Jump to the other leg of a transfer: the row for the same journal entry in
+   * the category account's feed.
+   *
+   * The two legs share one journal entry, so the counterpart needs no extra data
+   * from the server — switch to the category account and let the table find the
+   * row carrying this entry id once its lines have loaded.
+   */
+  const handleOpenTransferLeg = useCallback(
+    (row) => {
+      // The category must be a feed account — that is what makes this a transfer
+      // rather than a spending category, and what gives it a feed to open.
+      const target = accounts.find((a) => a.id === row.category?.id);
+      if (!target || !row.journalEntryId) return;
+      setFocusRequest({ journalEntryId: row.journalEntryId, nonce: `${row.id}-${Date.now()}` });
+      if (selectedAccountRef.current?.id === target.id) return;
+      // Selection refers to rows of the account we are leaving
+      setSelectedIds(new Set());
+      setSelectedAccount(target);
+      setIsAccountPickerOpen(false);
+    },
+    [accounts]
+  );
 
   const handleAccountSelect = (account) => {
     // Selection refers to rows of the previous account; don't let the batch
@@ -632,6 +664,9 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             uploadDisabled={loading}
             plaidClient={plaidClient}
             onLinkSuccess={handlePlaidSuccess}
+            onOpenTransferLeg={handleOpenTransferLeg}
+            feedAccountIds={feedAccountIds}
+            focusRequest={focusRequest}
           />
         </section>
       )}
