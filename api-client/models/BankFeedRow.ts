@@ -20,6 +20,13 @@ import {
     SimpleAccountToJSON,
     SimpleAccountToJSONTyped,
 } from './SimpleAccount';
+import type { SplitLeg } from './SplitLeg';
+import {
+    SplitLegFromJSON,
+    SplitLegFromJSONTyped,
+    SplitLegToJSON,
+    SplitLegToJSONTyped,
+} from './SplitLeg';
 import type { BankFeedRowSourceEnum } from './BankFeedRowSourceEnum';
 import {
     BankFeedRowSourceEnumFromJSON,
@@ -161,6 +168,24 @@ export interface BankFeedRow {
      * @memberof BankFeedRow
      */
     isEditable: boolean;
+    /**
+     * Whether this transaction is split across several categories
+     * @type {boolean}
+     * @memberof BankFeedRow
+     */
+    isSplit: boolean;
+    /**
+     * Number of split legs (0 when not split)
+     * @type {number}
+     * @memberof BankFeedRow
+     */
+    splitCount: number;
+    /**
+     * The split legs (empty when not split)
+     * @type {Array<SplitLeg>}
+     * @memberof BankFeedRow
+     */
+    splits: Array<SplitLeg>;
 }
 
 
@@ -189,6 +214,9 @@ export function instanceOfBankFeedRow(value: object): value is BankFeedRow {
     if (!('importedTransactionId' in value) || value['importedTransactionId'] === undefined) return false;
     if (!('journalEntryId' in value) || value['journalEntryId'] === undefined) return false;
     if (!('isEditable' in value) || value['isEditable'] === undefined) return false;
+    if (!('isSplit' in value) || value['isSplit'] === undefined) return false;
+    if (!('splitCount' in value) || value['splitCount'] === undefined) return false;
+    if (!('splits' in value) || value['splits'] === undefined) return false;
     return true;
 }
 
@@ -222,6 +250,9 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'importedTransactionId': json['imported_transaction_id'],
         'journalEntryId': json['journal_entry_id'],
         'isEditable': json['is_editable'],
+        'isSplit': json['is_split'],
+        'splitCount': json['split_count'],
+        'splits': ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
     };
 }
 
@@ -256,6 +287,9 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'imported_transaction_id': value['importedTransactionId'],
         'journal_entry_id': value['journalEntryId'],
         'is_editable': value['isEditable'],
+        'is_split': value['isSplit'],
+        'split_count': value['splitCount'],
+        'splits': ((value['splits'] as Array<any>).map(SplitLegToJSON)),
     };
 }
 

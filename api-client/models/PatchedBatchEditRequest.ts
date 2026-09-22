@@ -38,13 +38,13 @@ export interface PatchedBatchEditRequest {
      */
     accountId?: number | null;
     /**
-     * Payee/merchant name
+     * Payee/merchant name (blank clears it; omit or null to leave it unchanged)
      * @type {string}
      * @memberof PatchedBatchEditRequest
      */
     payee?: string | null;
     /**
-     * Transaction description
+     * Transaction description (blank clears it; omit or null to leave it unchanged)
      * @type {string}
      * @memberof PatchedBatchEditRequest
      */

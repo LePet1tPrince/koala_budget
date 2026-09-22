@@ -942,6 +942,139 @@ class TransactionZeroAmountAPITest(TestCase):
         self.assertEqual(row["amount"], "0.00")
 
 
+class TransactionSplitAPITest(TestCase):
+    """
+    Splits on the Transactions list.
+
+    This list used to filter to `line_count=2`, so every split -- an entry
+    apportioned across several categories, which `apps.ynab_import` creates by
+    the dozen -- was silently missing from the page that presents itself as the
+    ledger, and from its filters, facet counts and export.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Split Team", slug="split-team")
+        cls.user = CustomUser.objects.create_user(username="splituser", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.asset_group = AccountGroup.objects.create(
+            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+        )
+        cls.expense_group = AccountGroup.objects.create(
+            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.chequing = Account.objects.create(team=cls.team, name="Chequing", account_group=cls.asset_group)
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.household = Account.objects.create(team=cls.team, name="Household Goods", account_group=cls.expense_group)
+        cls.salary = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
+
+        with current_team(cls.team):
+            # An outflow split: one credit line, two debit legs.
+            cls.split = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 9, 14), description="Costco")
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.split, account=cls.chequing, cr_amount=Decimal("210.40")
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.split, account=cls.groceries, dr_amount=Decimal("160.00")
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.split, account=cls.household, dr_amount=Decimal("50.40")
+            )
+
+            # An inflow split: one debit line, two credit legs.
+            cls.inflow_split = JournalEntry.objects.create(
+                team=cls.team, entry_date=date(2026, 9, 15), description="Paycheque"
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.inflow_split, account=cls.chequing, dr_amount=Decimal("2000.00")
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.inflow_split, account=cls.salary, cr_amount=Decimal("1800.00")
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.inflow_split, account=cls.groceries, cr_amount=Decimal("200.00")
+            )
+
+            # An ordinary two-line entry, to prove nothing about it changed.
+            cls.plain = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 9, 16), description="Coffee")
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.plain, account=cls.chequing, cr_amount=Decimal("5.00")
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=cls.plain, account=cls.groceries, dr_amount=Decimal("5.00")
+            )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def url(self):
+        return f"/a/{self.team.slug}/journal/api/transactions/"
+
+    def row_for(self, response, entry):
+        return next(row for row in response.data["results"] if row["id"] == entry.id)
+
+    def test_splits_appear_in_the_list(self):
+        """The regression this class exists for: a split must be in the ledger."""
+        response = self.client.get(self.url())
+
+        self.assertEqual(response.data["count"], 3)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.split.id, ids)
+        self.assertIn(self.inflow_split.id, ids)
+
+    def test_outflow_split_row(self):
+        response = self.client.get(self.url())
+        row = self.row_for(response, self.split)
+
+        self.assertEqual(row["debit_account"], "Split (2)")
+        self.assertEqual(row["credit_account"], "Chequing")
+        self.assertEqual(row["amount"], "210.40")
+        self.assertEqual(row["line_count"], 3)
+        self.assertTrue(row["is_split"])
+        self.assertEqual(
+            sorted((leg["account"], leg["debit"], leg["credit"]) for leg in row["legs"]),
+            [
+                ("Chequing", "0.00", "210.40"),
+                ("Groceries", "160.00", "0.00"),
+                ("Household Goods", "50.40", "0.00"),
+            ],
+        )
+
+    def test_inflow_split_puts_the_label_on_the_credit_side(self):
+        response = self.client.get(self.url())
+        row = self.row_for(response, self.inflow_split)
+
+        self.assertEqual(row["debit_account"], "Chequing")
+        self.assertEqual(row["credit_account"], "Split (2)")
+        self.assertEqual(row["amount"], "2000.00")
+
+    def test_plain_entry_is_unchanged(self):
+        """The two-line branch must be byte-for-byte what it was."""
+        response = self.client.get(self.url())
+        row = self.row_for(response, self.plain)
+
+        self.assertEqual(row["debit_account"], "Groceries")
+        self.assertEqual(row["credit_account"], "Chequing")
+        self.assertEqual(row["amount"], "5.00")
+        self.assertEqual(row["line_count"], 2)
+        self.assertFalse(row["is_split"])
+        self.assertEqual(row["legs"], [])
+
+    def test_search_reaches_splits(self):
+        response = self.client.get(self.url(), {"search": "Costco"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.split.id)
+
+    def test_date_filter_includes_splits(self):
+        response = self.client.get(self.url(), {"start_date": "2026-09-14", "end_date": "2026-09-15"})
+
+        self.assertEqual(response.data["count"], 2)
+
+
 class JournalPermissionsTest(TestCase):
     """Tests for journal permissions."""
 

@@ -42,6 +42,20 @@ from .models import JournalEntry, JournalLine
 # serializer reports as the debit (resp. credit) side.  ``pk`` breaks the tie
 # in opposite directions so a $0.00 entry -- where every amount is zero --
 # still resolves to two different lines.
+#
+# Known limitation, deliberate: for a **split** -- an entry with several lines
+# on one side -- these resolve to the largest leg, so sorting by an account
+# column sorts a split by its biggest leg and filtering by an account matches a
+# split only when that account *is* its biggest leg.  A $50.40 household leg on
+# a $160.00-groceries split will not match a "Household Goods" filter.
+#
+# This is not an oversight.  Matching any line on the side means an ``Exists``
+# subquery per selected value, and the facet counts then stop summing to the row
+# count -- one split would be counted under several accounts, so the numbers in
+# the column menu would no longer describe what ticking a value shows.  That is
+# a bigger change than the one that made splits visible at all, and strictly
+# better than the previous behaviour, where a split appeared under no filter
+# because it was not in the list.
 _DEBIT_LINE = JournalLine.objects.filter(journal_entry=OuterRef("pk")).order_by("-dr_amount", "pk")
 _CREDIT_LINE = JournalLine.objects.filter(journal_entry=OuterRef("pk")).order_by("dr_amount", "-pk")
 

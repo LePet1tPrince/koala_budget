@@ -505,6 +505,23 @@
   transition: opacity 200ms ease-out;
 }
 
+/* Following a transfer to its other leg lands on a row that was not on screen a
+   moment ago, possibly in a different account and on a different page. The flash
+   is what says "this is the one". */
+.feed-row-flash > * {
+  animation: feed-row-flash 1800ms ease-out;
+}
+
+@keyframes feed-row-flash {
+  0%,
+  35% {
+    background-color: color-mix(in oklch, var(--color-primary) 22%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .budget-status.is-saving {
     animation: none;
@@ -513,6 +530,11 @@
 
   .budget-cell-flash {
     animation: none;
+  }
+
+  .feed-row-flash > * {
+    animation: none;
+    background-color: color-mix(in oklch, var(--color-primary) 22%, transparent);
   }
 
   #budget-swap.is-swapping {

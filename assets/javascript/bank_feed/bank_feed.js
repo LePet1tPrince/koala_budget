@@ -193,6 +193,10 @@ export function getTransactionApi(teamSlug) {
           payee: data.payee || '',
           description: data.description || '',
           account: data.account,
+          // Split legs, when the transaction is apportioned across categories.
+          // Null (the common case) leaves the single-category path untouched.
+          splits: data.splits ?? null,
+          remove_split: data.remove_split ?? false,
         }),
       });
 
@@ -226,6 +230,10 @@ export function getTransactionApi(teamSlug) {
           payee: data.payee || '',
           description: data.description || '',
           account: data.account,
+          // Split legs, when the transaction is apportioned across categories.
+          // Null (the common case) leaves the single-category path untouched.
+          splits: data.splits ?? null,
+          remove_split: data.remove_split ?? false,
         }),
       });
 

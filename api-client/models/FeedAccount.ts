@@ -14,107 +14,125 @@
 
 import { mapValues } from '../runtime';
 /**
- * Serializer for Account model.
+ * AccountSerializer plus the count of transactions awaiting categorization, for the account picker.
  * @export
- * @interface Account
+ * @interface FeedAccount
  */
-export interface Account {
+export interface FeedAccount {
     /**
      * 
      * @type {number}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly id: number;
     /**
      * 
      * @type {string}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     name: string;
     /**
      * Account group classification
      * @type {number}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     accountGroup: number;
     /**
      * 
      * @type {string}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly accountGroupName: string;
     /**
      * 
      * @type {string}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly accountType: string;
     /**
      * Bank or financial institution this account is held with
      * @type {number}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     institution?: number | null;
     /**
      * 
      * @type {string}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly institutionName: string;
     /**
      * Whether this account has a bank feed
      * @type {boolean}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     hasFeed?: boolean;
     /**
      * 
      * @type {string}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly balance: string;
     /**
      * 
      * @type {string}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly categorizedBalance: string | null;
     /**
      * Get reconciled_balance from annotation if available.
      * @type {string}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly reconciledBalance: string | null;
     /**
      * 
      * @type {Date}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly createdAt: Date;
     /**
      * 
      * @type {Date}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly updatedAt: Date;
     /**
      * Set to true to archive this item
      * @type {boolean}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     isArchived?: boolean;
     /**
      * Date this item was archived
      * @type {Date}
-     * @memberof Account
+     * @memberof FeedAccount
      */
     readonly archivedAt: Date | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof FeedAccount
+     */
+    readonly uncategorizedCount: number;
+    /**
+     * 
+     * @type {Date}
+     * @memberof FeedAccount
+     */
+    readonly latestTransactionDate: Date;
+    /**
+     * 
+     * @type {Date}
+     * @memberof FeedAccount
+     */
+    readonly latestReconciledDate: Date;
 }
 
 /**
- * Check if a given object implements the Account interface.
+ * Check if a given object implements the FeedAccount interface.
  */
-export function instanceOfAccount(value: object): value is Account {
+export function instanceOfFeedAccount(value: object): value is FeedAccount {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('accountGroup' in value) || value['accountGroup'] === undefined) return false;
@@ -127,14 +145,17 @@ export function instanceOfAccount(value: object): value is Account {
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     if (!('archivedAt' in value) || value['archivedAt'] === undefined) return false;
+    if (!('uncategorizedCount' in value) || value['uncategorizedCount'] === undefined) return false;
+    if (!('latestTransactionDate' in value) || value['latestTransactionDate'] === undefined) return false;
+    if (!('latestReconciledDate' in value) || value['latestReconciledDate'] === undefined) return false;
     return true;
 }
 
-export function AccountFromJSON(json: any): Account {
-    return AccountFromJSONTyped(json, false);
+export function FeedAccountFromJSON(json: any): FeedAccount {
+    return FeedAccountFromJSONTyped(json, false);
 }
 
-export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): Account {
+export function FeedAccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): FeedAccount {
     if (json == null) {
         return json;
     }
@@ -155,14 +176,17 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
         'updatedAt': (new Date(json['updated_at'])),
         'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
         'archivedAt': (json['archived_at'] == null ? null : new Date(json['archived_at'])),
+        'uncategorizedCount': json['uncategorized_count'],
+        'latestTransactionDate': (new Date(json['latest_transaction_date'])),
+        'latestReconciledDate': (new Date(json['latest_reconciled_date'])),
     };
 }
 
-  export function AccountToJSON(json: any): Account {
-      return AccountToJSONTyped(json, false);
+  export function FeedAccountToJSON(json: any): FeedAccount {
+      return FeedAccountToJSONTyped(json, false);
   }
 
-  export function AccountToJSONTyped(value?: Omit<Account, 'id'|'account_group_name'|'account_type'|'institution_name'|'balance'|'categorized_balance'|'reconciled_balance'|'created_at'|'updated_at'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function FeedAccountToJSONTyped(value?: Omit<FeedAccount, 'id'|'account_group_name'|'account_type'|'institution_name'|'balance'|'categorized_balance'|'reconciled_balance'|'created_at'|'updated_at'|'archived_at'|'uncategorized_count'|'latest_transaction_date'|'latest_reconciled_date'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

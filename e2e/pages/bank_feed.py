@@ -172,3 +172,69 @@ class BankFeedPage(BasePage):
 
     def transfer_dismiss_button(self):
         return self.page.get_by_role("button", name="Not a duplicate", exact=True)
+
+    # ------------------------------------------------------------------
+    # Split transactions
+    # ------------------------------------------------------------------
+
+    def open_row(self, transaction_id: int):
+        """Click a feed row to open it in the edit modal."""
+        self.page.locator(f"[data-testid='feed-row-{transaction_id}']").click()
+        self.page.wait_for_selector("[data-testid='edit-transaction-modal']", timeout=5_000)
+
+    def split_badge_text(self, transaction_id: int) -> str:
+        return self.page.locator(f"[data-testid='split-badge-{transaction_id}']").inner_text()
+
+    def has_split_badge(self, transaction_id: int) -> bool:
+        return self.page.locator(f"[data-testid='split-badge-{transaction_id}']").count() > 0
+
+    def start_split(self):
+        self.page.locator("[data-testid='start-split-btn']").click()
+        self.page.wait_for_selector("[data-testid='split-editor']", timeout=5_000)
+
+    def has_split_editor(self) -> bool:
+        return self.page.locator("[data-testid='split-editor']").count() > 0
+
+    def split_leg_count(self) -> int:
+        return self.page.locator("[data-testid^='split-amount-']").count()
+
+    def split_amounts(self) -> list[str]:
+        return self.page.locator("[data-testid^='split-amount-']").all_input_values()
+
+    def set_split_amount(self, index: int, value: str):
+        field = self.page.locator(f"[data-testid='split-amount-{index}']")
+        field.fill(value)
+        field.blur()
+
+    def choose_split_category(self, index: int, name: str):
+        """Pick a category in one leg's combobox.
+
+        The option is a `button[role=option]`, not the `<li>` wrapping it —
+        clicking the wrapper looks like it works (the input shows the typed
+        text) but never commits a selection.
+        """
+        self.page.locator(f"[data-testid='split-category-{index}']").click()
+        self.page.locator(f"[data-testid='split-category-{index}']").fill(name)
+        self.page.get_by_role("option", name=name, exact=False).first.click()
+
+    def add_split_leg(self):
+        self.page.locator("[data-testid='split-add-btn']").click()
+
+    def remove_split_leg(self, index: int):
+        self.page.locator(f"[data-testid='split-remove-{index}']").click()
+
+    def remove_split(self):
+        self.page.locator("[data-testid='remove-split-btn']").click()
+
+    def split_remaining(self) -> str:
+        return self.page.locator("[data-testid='split-remaining']").inner_text().strip()
+
+    def assign_split_remainder(self):
+        self.page.locator("[data-testid='split-remaining']").click()
+
+    def save_disabled(self) -> bool:
+        return self.page.locator("[data-testid='modal-save-btn']").is_disabled()
+
+    def save_modal(self):
+        self.page.locator("[data-testid='modal-save-btn']").click()
+        self.page.wait_for_selector("[data-testid='edit-transaction-modal']", state="detached", timeout=10_000)

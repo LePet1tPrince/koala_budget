@@ -53,6 +53,7 @@ from .serializers import (
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.sample_csv import build_sample_csv
 from .services.similar_transactions import suggest_categories
+from .services.splits import SplitError, apply_splits, check_legs_total, is_split, parse_legs
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_mirror import linked_legs, sync_transfer, would_orphan_primary
 
@@ -150,6 +151,27 @@ class ManualTransactionSerializer(serializers.Serializer):
         help_text="Transaction description",
     )
     account = serializers.IntegerField(help_text="Bank account ID")
+    splits = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text=(
+            "Split this transaction across categories. Each item is "
+            '{"category": <account id>, "amount": "<signed decimal>"}, positive for an '
+            "outflow. The amounts must add up to outflow - inflow. Mutually exclusive "
+            "with `category`."
+        ),
+    )
+    remove_split = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text=(
+            "Collapse an existing split back onto the single `category` given. "
+            "Required because dropping a split is destructive, so it must be asked "
+            "for rather than implied by a request that simply omits `splits`."
+        ),
+    )
 
     def validate(self, data):
         inflow = data.get("inflow") or Decimal("0")
@@ -160,6 +182,10 @@ class ManualTransactionSerializer(serializers.Serializer):
             raise serializers.ValidationError("Specify either inflow or outflow, not both.")
         if inflow == 0 and outflow == 0:
             raise serializers.ValidationError("Either inflow or outflow must be greater than zero.")
+        # The leg contents are validated by `parse_legs`, so the rules and their
+        # wording live in one place; only the either/or belongs here.
+        if data.get("splits") is not None and data.get("category") is not None:
+            raise serializers.ValidationError("Send either a single category or splits, not both.")
         return data
 
 
@@ -464,6 +490,16 @@ class BankFeedViewSet(
         outflow = data.get("outflow", Decimal("0")) or Decimal("0")
         amount = outflow - inflow  # positive = outflow
 
+        # Split legs, when the client sent them. Validated before anything is
+        # written, so a bad payload never opens a transaction.
+        legs = None
+        if data.get("splits") is not None:
+            try:
+                legs = parse_legs(data["splits"])
+                check_legs_total(legs, total=amount)
+            except SplitError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         # Get or create payee if provided
         payee = None
         payee_name = data.get("payee", "")
@@ -475,9 +511,10 @@ class BankFeedViewSet(
 
         with transaction.atomic():
             # Only categorized transactions get a journal entry; a blank category
-            # leaves the transaction uncategorized (journal_entry=None).
+            # and no splits leave the transaction uncategorized (journal_entry=None).
             journal_entry = None
-            if category_account is not None:
+            entry_legs = legs if legs is not None else ([(category_account, amount)] if category_account else None)
+            if entry_legs is not None:
                 journal_entry = JournalEntry.objects.create(
                     team=request.team,
                     entry_date=data["date"],
@@ -486,41 +523,15 @@ class BankFeedViewSet(
                     source=JournalEntry.SOURCE_MANUAL,
                     status=JournalEntry.STATUS_POSTED,
                 )
-
-                # Create journal lines
-                abs_amount = abs(amount)
-                if inflow > 0:
-                    # Money coming in: debit bank account, credit category
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        team=request.team,
-                        account=bank_account,
-                        dr_amount=abs_amount,
-                        cr_amount=Decimal("0"),
-                    )
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        team=request.team,
-                        account=category_account,
-                        dr_amount=Decimal("0"),
-                        cr_amount=abs_amount,
-                    )
-                else:
-                    # Money going out: credit bank account, debit category
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        team=request.team,
-                        account=bank_account,
-                        dr_amount=Decimal("0"),
-                        cr_amount=abs_amount,
-                    )
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        team=request.team,
-                        account=category_account,
-                        dr_amount=abs_amount,
-                        cr_amount=Decimal("0"),
-                    )
+                # Placeholder bank line; `apply_splits` below gives it the right
+                # side and amount, so only one place decides that.
+                JournalLine.objects.create(
+                    journal_entry=journal_entry,
+                    team=request.team,
+                    account=bank_account,
+                    dr_amount=Decimal("0"),
+                    cr_amount=Decimal("0"),
+                )
 
             # Create bank transaction
             bank_tx = BankTransaction.objects.create(
@@ -533,6 +544,9 @@ class BankFeedViewSet(
                 source=BankTransaction.SOURCE_MANUAL,
                 journal_entry=journal_entry,
             )
+
+            if entry_legs is not None:
+                apply_splits(bank_tx, entry_legs, total=amount)
 
             # Mirror the leg into the counterpart account's feed if it's a transfer.
             # (No-op for an uncategorized transaction with no journal entry.)
@@ -602,9 +616,13 @@ class BankFeedViewSet(
             )
 
         # Removing the category from a reconciled transaction would drop confirmed
-        # history out of the ledger; refuse until it is unreconciled.
+        # history out of the ledger; refuse until it is unreconciled. A request
+        # carrying `splits` has no single category by design and is re-apportioning
+        # rather than de-categorizing, so it is not this guard's business -- the
+        # bank line keeps its amount either way.
         if (
             category_account is None
+            and data.get("splits") is None
             and bank_tx.journal_entry
             and bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists()
         ):
@@ -617,6 +635,45 @@ class BankFeedViewSet(
         inflow = data.get("inflow", Decimal("0")) or Decimal("0")
         outflow = data.get("outflow", Decimal("0")) or Decimal("0")
         amount = outflow - inflow  # positive = outflow
+
+        # Split legs, when the client sent them. Validated (and their sum checked
+        # against the total) before anything is written, so a bad payload never
+        # opens a transaction.
+        legs = None
+        if data.get("splits") is not None:
+            try:
+                legs = parse_legs(data["splits"])
+                check_legs_total(legs, total=amount)
+            except SplitError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # An existing split must be sent with its legs, or explicitly collapsed.
+        # Dropping them silently would fold the user's apportionment into whatever
+        # single category the request happened to carry -- which is exactly what the
+        # old code did, and why a split could not survive being opened.
+        if (
+            legs is None
+            and category_account is not None
+            and not data.get("remove_split")
+            and is_split(bank_tx.journal_entry)
+        ):
+            return Response(
+                {"error": "This transaction is split across categories. Send its splits, or remove the split first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Reconciliation is a fact about the bank line, whose amount does not change
+        # when legs are re-apportioned -- so re-splitting a reconciled transaction is
+        # allowed, and changing its total is not.
+        if (
+            amount != bank_tx.amount
+            and bank_tx.journal_entry_id
+            and bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists()
+        ):
+            return Response(
+                {"error": "This transaction is reconciled. Unreconcile it before changing its amount."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Get or create payee if provided
         payee = None
@@ -640,9 +697,15 @@ class BankFeedViewSet(
             bank_tx.merchant_name = payee_name
             bank_tx.save()
 
-            # Update, create, or remove the journal entry depending on the category
+            # Update, create, or remove the journal entry depending on the category.
+            # `apply_splits` writes the lines in every case -- a plain transaction is
+            # just a split with one leg -- so there is one place that decides which
+            # side of a line an amount lands on, and one place that checks the
+            # entry balances.
             journal_entry = bank_tx.journal_entry
-            if category_account is None:
+            entry_legs = legs if legs is not None else [(category_account, amount)]
+
+            if category_account is None and legs is None:
                 # Blank category: leave the transaction uncategorized. Drop any
                 # existing journal entry (and its mirror leg) so it disappears from
                 # balances and reappears as an uncategorized feed row.
@@ -655,33 +718,19 @@ class BankFeedViewSet(
                 journal_entry.payee = payee
                 journal_entry.save()
 
-                # Update journal lines
-                lines = list(journal_entry.lines.all())
-                abs_amount = abs(amount)
-
-                for line in lines:
-                    if line.account == old_account or line.account == bank_account:
-                        # Bank account line
+                # Follow an account move before the lines are rewritten: everything
+                # below finds the bank line by the transaction's *current* account.
+                # Saved one at a time rather than through `QuerySet.update()` so the
+                # audit signals fire.
+                if old_account != bank_account:
+                    for line in journal_entry.lines.filter(account=old_account):
                         line.account = bank_account
-                        if inflow > 0:
-                            line.dr_amount = abs_amount
-                            line.cr_amount = Decimal("0")
-                        else:
-                            line.dr_amount = Decimal("0")
-                            line.cr_amount = abs_amount
                         line.save()
-                    else:
-                        # Category line
-                        line.account = category_account
-                        if inflow > 0:
-                            line.dr_amount = Decimal("0")
-                            line.cr_amount = abs_amount
-                        else:
-                            line.dr_amount = abs_amount
-                            line.cr_amount = Decimal("0")
-                        line.save()
+
+                apply_splits(bank_tx, entry_legs, total=amount)
             else:
-                # Create new journal entry if one doesn't exist
+                # Create the entry with a placeholder bank line; `apply_splits`
+                # immediately gives it the right side and amount.
                 journal_entry = JournalEntry.objects.create(
                     team=request.team,
                     entry_date=data["date"],
@@ -690,41 +739,18 @@ class BankFeedViewSet(
                     source=JournalEntry.SOURCE_MANUAL,
                     status=JournalEntry.STATUS_POSTED,
                 )
-
-                abs_amount = abs(amount)
-                if inflow > 0:
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        team=request.team,
-                        account=bank_account,
-                        dr_amount=abs_amount,
-                        cr_amount=Decimal("0"),
-                    )
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        team=request.team,
-                        account=category_account,
-                        dr_amount=Decimal("0"),
-                        cr_amount=abs_amount,
-                    )
-                else:
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        team=request.team,
-                        account=bank_account,
-                        dr_amount=Decimal("0"),
-                        cr_amount=abs_amount,
-                    )
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        team=request.team,
-                        account=category_account,
-                        dr_amount=abs_amount,
-                        cr_amount=Decimal("0"),
-                    )
+                JournalLine.objects.create(
+                    journal_entry=journal_entry,
+                    team=request.team,
+                    account=bank_account,
+                    dr_amount=Decimal("0"),
+                    cr_amount=Decimal("0"),
+                )
 
                 bank_tx.journal_entry = journal_entry
                 bank_tx.save()
+
+                apply_splits(bank_tx, entry_legs, total=amount)
 
             # Keep the transfer's two legs in lockstep — moves/creates/removes the
             # counterpart leg and syncs its display fields, in either direction.
@@ -1230,13 +1256,23 @@ class BankFeedViewSet(
         ).select_related("account", "journal_entry")
 
         # Reject up front: re-pointing a mirror leg to a non-feed category would
-        # orphan the real primary transaction.
+        # orphan the real primary transaction, and a split has no single category
+        # line to re-point. Checked before the loop so the batch is all-or-nothing --
+        # one split caught in a select-all must not half-apply the rest.
         if category_account is not None:
             for tx in transactions:
                 if would_orphan_primary(tx, category_account):
                     return Response(
                         {
                             "error": "This is the mirror side of a transfer. Edit the original transaction to change its category."  # noqa: E501
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if is_split(tx.journal_entry):
+                    return Response(
+                        {
+                            "error": "One or more selected transactions are split across categories. "
+                            "Open a split transaction to edit its categories."
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
@@ -1322,6 +1358,13 @@ class BankFeedViewSet(
             raise ValueError(
                 "This is the mirror side of a transfer. Edit the original transaction to change its category."
             )
+
+        # A split has several category lines, and this method re-points one. Doing
+        # that to a split would leave the other legs alone -- balanced, and quietly
+        # not what the user apportioned. Collapsing a split is a real action, but it
+        # has to be asked for in the editor, not implied by a bulk categorize.
+        if is_split(bank_tx.journal_entry):
+            raise SplitError("This is a split transaction. Open it to edit its categories, or remove the split first.")
 
         journal_entry = bank_tx.journal_entry
         # Find the category line (the one that's not the bank account)

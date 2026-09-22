@@ -26,11 +26,11 @@ export interface ManualTransaction {
      */
     date: Date;
     /**
-     * Category account ID
+     * Category account ID (optional; leave blank to keep the transaction uncategorized)
      * @type {number}
      * @memberof ManualTransaction
      */
-    category: number;
+    category?: number | null;
     /**
      * Money coming in
      * @type {string}
@@ -61,6 +61,18 @@ export interface ManualTransaction {
      * @memberof ManualTransaction
      */
     account: number;
+    /**
+     * Split this transaction across categories. Each item is {"category": <account id>, "amount": "<signed decimal>"}, positive for an outflow. The amounts must add up to outflow - inflow. Mutually exclusive with `category`.
+     * @type {Array<{ [key: string]: any; }>}
+     * @memberof ManualTransaction
+     */
+    splits?: Array<{ [key: string]: any; }> | null;
+    /**
+     * Collapse an existing split back onto the single `category` given. Required because dropping a split is destructive, so it must be asked for rather than implied by a request that simply omits `splits`.
+     * @type {boolean}
+     * @memberof ManualTransaction
+     */
+    removeSplit?: boolean;
 }
 
 /**
@@ -68,7 +80,6 @@ export interface ManualTransaction {
  */
 export function instanceOfManualTransaction(value: object): value is ManualTransaction {
     if (!('date' in value) || value['date'] === undefined) return false;
-    if (!('category' in value) || value['category'] === undefined) return false;
     if (!('account' in value) || value['account'] === undefined) return false;
     return true;
 }
@@ -84,12 +95,14 @@ export function ManualTransactionFromJSONTyped(json: any, ignoreDiscriminator: b
     return {
         
         'date': (new Date(json['date'])),
-        'category': json['category'],
+        'category': json['category'] == null ? undefined : json['category'],
         'inflow': json['inflow'] == null ? undefined : json['inflow'],
         'outflow': json['outflow'] == null ? undefined : json['outflow'],
         'payee': json['payee'] == null ? undefined : json['payee'],
         'description': json['description'] == null ? undefined : json['description'],
         'account': json['account'],
+        'splits': json['splits'] == null ? undefined : json['splits'],
+        'removeSplit': json['remove_split'] == null ? undefined : json['remove_split'],
     };
 }
 
@@ -111,6 +124,8 @@ export function ManualTransactionFromJSONTyped(json: any, ignoreDiscriminator: b
         'payee': value['payee'],
         'description': value['description'],
         'account': value['account'],
+        'splits': value['splits'],
+        'remove_split': value['removeSplit'],
     };
 }
 
