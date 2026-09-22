@@ -66,11 +66,27 @@ _REPEATED_ENTRY_COLUMNS = (
 )
 
 # feed_* columns that must be present together whenever a line has a feed row
-# at all, i.e. whenever feed_source is non-blank. feed_merchant and
-# feed_is_mirror are excluded: BankTransaction.merchant_name is nullable even
-# on a real row, and feed_is_mirror is a plain False (not blank) rather than
-# absent -- both decode to a value either way, so there is nothing to enforce.
-_REQUIRED_WITH_FEED_SOURCE = ("feed_amount", "feed_posted_date", "feed_description", "feed_is_archived")
+# at all, i.e. whenever feed_source is non-blank.
+#
+# Only columns whose model field can neither be null nor be meaningfully empty
+# belong here. Three feed_* columns are deliberately excluded:
+#
+#   feed_merchant     BankTransaction.merchant_name is nullable, so None is a
+#                     real value rather than a missing one.
+#   feed_is_mirror    a plain False, not blank -- it decodes to a value either
+#                     way, so there is nothing to enforce.
+#   feed_description  BankTransaction.description is NOT NULL but "" is an
+#                     ordinary value for it (an empty CSV column, a Plaid row
+#                     with no description, a mirror copied from a primary that
+#                     had none). It is KIND_STR, so a blank cell decodes to ""
+#                     and never to None -- listing it here would test a
+#                     condition that cannot arise.
+#
+# That last one was a real bug, hit on real books: feed_description used to be
+# KIND_STR_OR_NONE, so an empty description decoded to None and this check
+# rejected it as missing -- making the exporter capable of producing an
+# archive its own importer refused. See BANK_TRANSACTION in schema.py.
+_REQUIRED_WITH_FEED_SOURCE = ("feed_amount", "feed_posted_date", "feed_is_archived")
 
 ZERO = Decimal("0")
 

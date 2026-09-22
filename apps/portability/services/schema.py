@@ -419,7 +419,17 @@ BANK_TRANSACTION = FieldMap(
         "source": ColumnSpec("feed_source", KIND_STR_OR_NONE),
         "amount": ColumnSpec("feed_amount", KIND_DECIMAL),
         "posted_date": ColumnSpec("feed_posted_date", KIND_DATE),
-        "description": ColumnSpec("feed_description", KIND_STR_OR_NONE),
+        # STR, not STR_OR_NONE: `BankTransaction.description` is a plain
+        # `CharField` -- NOT NULL, so "" is an ordinary value for it and None
+        # is not one it can hold. A blank cell here therefore means "a feed
+        # row whose description is empty", never "no feed row at all"; that
+        # question is answered by `feed_source`, exactly as `goal_name`
+        # answers it for goals above. Typing it STR_OR_NONE let a blank decode
+        # to None, which read.py's completeness check then read as a *missing*
+        # column -- so the exporter could produce an archive its own importer
+        # refused. Reported from real books, not caught by a test.
+        "description": ColumnSpec("feed_description", KIND_STR),
+        # merchant_name IS nullable, so None stays the honest value here.
         "merchant_name": ColumnSpec("feed_merchant", KIND_STR_OR_NONE),
         "is_transfer_mirror": ColumnSpec("feed_is_mirror", KIND_BOOL),
         "is_archived": ColumnSpec("feed_is_archived", KIND_BOOL),
@@ -455,7 +465,7 @@ JOURNAL_COLUMNS = (
     Column("feed_source", KIND_STR_OR_NONE),
     Column("feed_amount", KIND_DECIMAL),
     Column("feed_posted_date", KIND_DATE),
-    Column("feed_description", KIND_STR_OR_NONE),
+    Column("feed_description", KIND_STR),
     Column("feed_merchant", KIND_STR_OR_NONE),
     Column("feed_is_mirror", KIND_BOOL),
     Column("feed_is_archived", KIND_BOOL),

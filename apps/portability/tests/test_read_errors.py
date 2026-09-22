@@ -249,3 +249,61 @@ class HashWarningTests(SimpleTestCase):
 
         tables = read.read_archive(buf.getvalue())
         self.assertEqual(len(tables.hash_warnings), 1)  # only accounts.csv, not journal/budget
+
+
+class FeedRowCompletenessTests(SimpleTestCase):
+    """
+    What a `feed_source` obliges the rest of the row to carry -- and what it
+    does not.
+
+    `BankTransaction.description` is a plain `CharField`: NOT NULL, but `""`
+    is a perfectly ordinary value for it (a CSV column left empty, a Plaid row
+    with no description, a transfer mirror copied from a primary that had
+    none). The exporter writes that as a blank cell, so requiring the cell to
+    be non-blank made the exporter capable of producing an archive its own
+    importer refused -- reported from real books, and the reason this class
+    exists.
+    """
+
+    def _journal_with(self, **feed_overrides):
+        _accounts, journal, _budget = build_fixture_tables()
+        row = next(r for r in journal if r["feed_source"] is not None)
+        row.update(feed_overrides)
+        return journal
+
+    def test_a_feed_row_with_a_blank_description_is_accepted(self):
+        data = _archive(journal=self._journal_with(feed_description=""))
+        tables = read.read_archive(data)  # must not raise
+        feed_rows = [r for r in tables.journal_rows if r["feed_source"] is not None]
+        self.assertTrue(any(r["feed_description"] == "" for r in feed_rows))
+
+    def test_a_blank_description_round_trips_as_empty_string_not_none(self):
+        # `BankTransaction.description` cannot hold None, so decoding a blank
+        # cell to None would hand `apply` a value the column rejects.
+        data = _archive(journal=self._journal_with(feed_description=""))
+        tables = read.read_archive(data)
+        row = next(r for r in tables.journal_rows if r["feed_source"] is not None)
+        self.assertEqual(row["feed_description"], "")
+        self.assertIsNotNone(row["feed_description"])
+
+    def test_a_missing_amount_is_still_refused(self):
+        with self.assertRaises(DocumentError) as ctx:
+            read.read_archive(_archive(journal=self._journal_with(feed_amount=None)))
+        self.assertIn("feed_amount", str(ctx.exception))
+
+    def test_a_missing_posted_date_is_still_refused(self):
+        with self.assertRaises(DocumentError) as ctx:
+            read.read_archive(_archive(journal=self._journal_with(feed_posted_date=None)))
+        self.assertIn("feed_posted_date", str(ctx.exception))
+
+    def test_a_missing_archived_flag_is_still_refused(self):
+        with self.assertRaises(DocumentError) as ctx:
+            read.read_archive(_archive(journal=self._journal_with(feed_is_archived=None)))
+        self.assertIn("feed_is_archived", str(ctx.exception))
+
+    def test_a_blank_merchant_name_is_accepted(self):
+        # merchant_name IS nullable, so None is the honest value here.
+        data = _archive(journal=self._journal_with(feed_merchant=None))
+        tables = read.read_archive(data)
+        row = next(r for r in tables.journal_rows if r["feed_source"] is not None)
+        self.assertIsNone(row["feed_merchant"])

@@ -74,7 +74,7 @@ def journal_row(**overrides) -> dict:
         "feed_source": None,
         "feed_amount": None,
         "feed_posted_date": None,
-        "feed_description": None,
+        "feed_description": "",
         "feed_merchant": None,
         "feed_is_mirror": False,
         "feed_is_archived": False,

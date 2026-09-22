@@ -20,6 +20,7 @@ from django.test import TestCase
 
 from apps.accounts.models import Account, AccountGroup
 from apps.audit.models import AuditEvent
+from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget
 from apps.journal.models import JournalEntry, JournalLine
 from apps.portability.services import apply, export, read, write
@@ -302,3 +303,88 @@ class ApplyErrorMessageTests(TestCase):
         with self.assertRaises(DocumentError):
             apply.apply_archive(team, bad_bytes, user=user)
         self.assertEqual(Account.objects.filter(team=team).count(), original_count)
+
+
+class BlankFeedDescriptionTests(TestCase):
+    """
+    A feed row whose description is empty must survive the whole path.
+
+    `BankTransaction.description` is NOT NULL but `""` is an ordinary value:
+    a CSV whose description column was blank, a Plaid row that carried none,
+    a transfer mirror copied from a primary that had none. Until this was
+    fixed the exporter wrote that as a blank cell and the importer then
+    refused its own file --
+
+        journal.csv, row N: entry_id X has feed_source set but is missing
+        feed_description.
+
+    -- which is how it was found, on real books rather than by a test.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.source_team, cls.source_user = make_team("Blank Desc Source", "blank-desc-source")
+        cls.dest_team, cls.dest_user = make_team("Blank Desc Dest", "blank-desc-dest")
+
+        asset_group = AccountGroup.objects.create(team=cls.source_team, name="Cash", account_type="asset")
+        expense_group = AccountGroup.objects.create(team=cls.source_team, name="Spending", account_type="expense")
+        cls.chequing = Account.objects.create(
+            team=cls.source_team, name="Chequing", account_group=asset_group, has_feed=True
+        )
+        cls.groceries = Account.objects.create(team=cls.source_team, name="Groceries", account_group=expense_group)
+
+        # A categorised feed row with no description at all.
+        entry = JournalEntry.objects.create(
+            team=cls.source_team,
+            entry_date=date(2026, 3, 1),
+            description="Nameless purchase",
+            source=JournalEntry.SOURCE_BANK_MATCH,
+            status=JournalEntry.STATUS_POSTED,
+        )
+        JournalLine.objects.create(
+            team=cls.source_team, journal_entry=entry, account=cls.groceries, dr_amount=Decimal("41.00")
+        )
+        JournalLine.objects.create(
+            team=cls.source_team, journal_entry=entry, account=cls.chequing, cr_amount=Decimal("41.00")
+        )
+        BankTransaction.objects.create(
+            team=cls.source_team,
+            account=cls.chequing,
+            journal_entry=entry,
+            amount=Decimal("41.00"),
+            posted_date=date(2026, 3, 1),
+            description="",  # the whole point
+            source=BankTransaction.SOURCE_CSV,
+        )
+
+        # An *uncategorized* feed row with no description either -- the other
+        # branch of `_feed_columns`, which travels with a blank entry_id.
+        BankTransaction.objects.create(
+            team=cls.source_team,
+            account=cls.chequing,
+            journal_entry=None,
+            amount=Decimal("9.99"),
+            posted_date=date(2026, 3, 2),
+            description="",
+            source=BankTransaction.SOURCE_PLAID,
+        )
+
+    def test_the_export_can_be_read_back(self):
+        read.read_archive(export_bytes(self.source_team))  # must not raise
+
+    def test_importing_it_writes_both_rows_with_empty_descriptions(self):
+        apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
+        rows = BankTransaction.objects.filter(team=self.dest_team).order_by("posted_date")
+        self.assertEqual([r.description for r in rows], ["", ""])
+
+    def test_description_is_an_empty_string_not_none_after_import(self):
+        # The column cannot hold None; writing one would be an IntegrityError.
+        apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
+        for row in BankTransaction.objects.filter(team=self.dest_team):
+            self.assertIsNotNone(row.description)
+
+    def test_the_uncategorized_row_survives_as_uncategorized(self):
+        apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
+        uncategorized = BankTransaction.objects.filter(team=self.dest_team, journal_entry__isnull=True)
+        self.assertEqual(uncategorized.count(), 1)
+        self.assertEqual(uncategorized.first().amount, Decimal("9.99"))

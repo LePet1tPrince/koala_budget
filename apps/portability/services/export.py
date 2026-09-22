@@ -142,7 +142,10 @@ def _feed_columns(bank_tx: BankTransaction | None) -> dict:
             "feed_source": None,
             "feed_amount": None,
             "feed_posted_date": None,
-            "feed_description": None,
+            # "" not None, mirroring goal_description on a non-goal row: the
+            # discriminator (feed_source) carries the None, the KIND_STR
+            # payload column carries the empty string.
+            "feed_description": "",
             "feed_merchant": None,
             "feed_is_mirror": False,
             "feed_is_archived": False,
