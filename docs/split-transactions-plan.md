@@ -1,6 +1,8 @@
 # Split Transactions in the UI — Requirements & Implementation Plan
 
-**Status:** proposal. No code written yet. Implement §12 in order.
+**Status:** implemented (2026-09-22), except Phase 7 (categorize-mode split button and
+any-line account filtering), which remains optional. Kept as the record of why the
+design is what it is.
 **Priority:** P1.1 in `docs/feature-priority-report.md` — the highest-value single item there.
 **Prerequisite reading:** this document only. Everything you need is quoted inline.
 

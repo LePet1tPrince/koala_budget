@@ -5,6 +5,7 @@ Handles nested journal entries with lines for double-entry bookkeeping.
 
 from decimal import Decimal
 
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.accounts.models import (
@@ -395,13 +396,22 @@ class SimpleLineSerializer(serializers.Serializer):
 class TransactionRowSerializer(serializers.Serializer):
     """
     Read-only serializer that flattens a JournalEntry with its lines into a
-    single transaction row.  Only entries with exactly 2 lines are supported;
-    entries with more lines are skipped by the view.
+    single transaction row.
+
+    A **split** -- an entry apportioned across several categories -- always has
+    one line on one side and several on the other, which is what makes a single
+    row possible: the one-line side names its account, and the many-line side
+    reads ``Split (N)``.  The legs themselves come through ``legs`` so the table
+    can disclose them, and ``is_split`` drives the "Split" marker shown beside
+    the description.
 
     Fields exposed:
         id, date, payee_id, payee_name, description, source, status,
-        debit_account, credit_account, amount
+        debit_account, credit_account, amount, line_count, is_split, legs
     """
+
+    #: How a side reads when several lines share it.
+    SPLIT_LABEL = _("Split (%(count)d)")
 
     id = serializers.IntegerField(source="pk")
     date = serializers.DateField(source="entry_date")
@@ -413,6 +423,9 @@ class TransactionRowSerializer(serializers.Serializer):
     debit_account = serializers.SerializerMethodField()
     credit_account = serializers.SerializerMethodField()
     amount = serializers.SerializerMethodField()
+    line_count = serializers.SerializerMethodField()
+    is_split = serializers.SerializerMethodField()
+    legs = serializers.SerializerMethodField()
 
     # ------------------------------------------------------------------
     # helpers
@@ -428,33 +441,69 @@ class TransactionRowSerializer(serializers.Serializer):
     def get_payee_name(self, entry):
         return entry.payee.name if entry.payee else None
 
-    def _debit_and_credit_lines(self, entry):
+    def _sides(self, entry):
         """
-        Split the entry's two lines into (debit_line, credit_line).
+        The entry's lines grouped into (debit lines, credit lines).
 
-        Comparing the lines against each other (rather than testing each
-        line's dr_amount/cr_amount against zero in isolation) still finds
-        the right line for a normal entry, and also handles a $0.00 entry
-        (e.g. a zero-amount bank transaction) where both lines have
-        dr_amount == cr_amount == 0 and neither would otherwise look like
-        it carries a debit or a credit.
+        For a two-line entry the lines are compared against each other (rather
+        than each testing its own amounts against zero), which finds the right
+        line for a normal entry and also handles a $0.00 entry -- e.g. a
+        zero-amount bank transaction -- where both lines have
+        dr_amount == cr_amount == 0 and neither would otherwise look like it
+        carries a debit or a credit.  That branch is preserved exactly, so
+        existing rows are unchanged.
+
+        A split has more lines, none of them all-zero, so each can simply be
+        asked which side it is on.
         """
         lines = self._get_lines(entry)
-        if len(lines) != 2:
-            return None, None
-        first, second = lines
-        return (first, second) if first.dr_amount >= second.dr_amount else (second, first)
+        if len(lines) == 2:
+            first, second = lines
+            debit, credit = (first, second) if first.dr_amount >= second.dr_amount else (second, first)
+            return [debit], [credit]
+        return (
+            [line for line in lines if line.dr_amount > 0],
+            [line for line in lines if line.cr_amount > 0],
+        )
+
+    def _side_label(self, lines):
+        """One account's name, or `Split (N)` when several lines share the side."""
+        if len(lines) == 1:
+            return lines[0].account.name
+        if not lines:
+            return None
+        return self.SPLIT_LABEL % {"count": len(lines)}
 
     def get_debit_account(self, entry):
-        """Return the account name of the line that carries the debit."""
-        debit_line, _ = self._debit_and_credit_lines(entry)
-        return debit_line.account.name if debit_line else None
+        """The account name of the line that carries the debit, or `Split (N)`."""
+        debits, _ = self._sides(entry)
+        return self._side_label(debits)
 
     def get_credit_account(self, entry):
-        """Return the account name of the line that carries the credit."""
-        _, credit_line = self._debit_and_credit_lines(entry)
-        return credit_line.account.name if credit_line else None
+        """The account name of the line that carries the credit, or `Split (N)`."""
+        _, credits = self._sides(entry)
+        return self._side_label(credits)
 
     def get_amount(self, entry):
         """Return total debits (== total credits for a balanced entry)."""
         return str(sum(line.dr_amount for line in self._get_lines(entry)))
+
+    def get_line_count(self, entry) -> int:
+        return len(self._get_lines(entry))
+
+    def get_is_split(self, entry) -> bool:
+        return len(self._get_lines(entry)) > 2
+
+    def get_legs(self, entry):
+        """Every line, for the table's split disclosure. Empty for a plain entry."""
+        lines = self._get_lines(entry)
+        if len(lines) <= 2:
+            return []
+        return [
+            {
+                "account": line.account.name,
+                "debit": str(line.dr_amount),
+                "credit": str(line.cr_amount),
+            }
+            for line in lines
+        ]

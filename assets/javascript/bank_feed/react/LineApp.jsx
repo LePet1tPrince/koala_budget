@@ -314,6 +314,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       await transactionApi.createTransaction({
         date: lineData.date,
         category: lineData.category,
+        splits: lineData.splits ?? null,
         inflow: lineData.inflow || '0',
         outflow: lineData.outflow || '0',
         payee: lineData.payee || '',
@@ -334,12 +335,14 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
    */
   const handleEditTransaction = async (updatedData) => {
     try {
-      const { id, date, category, inflow, outflow, payee, description } = updatedData;
+      const { id, date, category, splits, remove_split, inflow, outflow, payee, description } = updatedData;
 
       // Use the transaction API to update the transaction
       await transactionApi.updateTransaction(id, {
         date: date,
         category: category,
+        splits: splits ?? null,
+        remove_split: remove_split ?? false,
         inflow: inflow || '0',
         outflow: outflow || '0',
         payee: payee || '',

@@ -170,3 +170,43 @@ def feed_transaction(team, account, *, category=None, reconciled=False, archived
         is_archived=archived,
         **kwargs,
     )
+
+
+def split_feed_transaction(team, account, *, legs, reconciled=False, **kwargs):
+    """Create one categorized feed row split across several categories.
+
+    `legs` is [(category_account, signed_amount)] in the feed's convention --
+    positive is an outflow. The bank line carries their sum on the opposite
+    side, which is what makes the entry balance; see
+    docs/split-transactions-plan.md for the sign table.
+    """
+    total = sum(amount for _, amount in legs)
+    entry = JournalEntryFactory(team=team, entry_date=kwargs.get("posted_date") or "2026-01-15")
+
+    # The bank line takes the opposite side of the total, and is the one the
+    # feed reads reconciliation from.
+    JournalLineFactory(
+        team=team,
+        journal_entry=entry,
+        account=account,
+        dr_amount=-total if total < 0 else Decimal("0"),
+        cr_amount=total if total > 0 else Decimal("0"),
+        is_reconciled=reconciled,
+    )
+    # Each leg takes the same side as its own sign.
+    for category, amount in legs:
+        JournalLineFactory(
+            team=team,
+            journal_entry=entry,
+            account=category,
+            dr_amount=amount if amount > 0 else Decimal("0"),
+            cr_amount=-amount if amount < 0 else Decimal("0"),
+        )
+
+    return BankTransactionFactory(
+        team=team,
+        account=account,
+        journal_entry=entry,
+        amount=total,
+        **kwargs,
+    )

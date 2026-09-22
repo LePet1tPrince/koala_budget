@@ -665,12 +665,15 @@ class BankFeedViewSet(
         # Reconciliation is a fact about the bank line, whose amount does not change
         # when legs are re-apportioned -- so re-splitting a reconciled transaction is
         # allowed, and changing its total is not.
-        if amount != bank_tx.amount and bank_tx.journal_entry_id:
-            if bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists():
-                return Response(
-                    {"error": "This transaction is reconciled. Unreconcile it before changing its amount."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        if (
+            amount != bank_tx.amount
+            and bank_tx.journal_entry_id
+            and bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists()
+        ):
+            return Response(
+                {"error": "This transaction is reconciled. Unreconcile it before changing its amount."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Get or create payee if provided
         payee = None
@@ -1361,9 +1364,7 @@ class BankFeedViewSet(
         # not what the user apportioned. Collapsing a split is a real action, but it
         # has to be asked for in the editor, not implied by a bulk categorize.
         if is_split(bank_tx.journal_entry):
-            raise SplitError(
-                "This is a split transaction. Open it to edit its categories, or remove the split first."
-            )
+            raise SplitError("This is a split transaction. Open it to edit its categories, or remove the split first.")
 
         journal_entry = bank_tx.journal_entry
         # Find the category line (the one that's not the bank account)

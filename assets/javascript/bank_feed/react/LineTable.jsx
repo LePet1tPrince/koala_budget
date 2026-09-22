@@ -9,7 +9,7 @@ import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc, formatDateForInput } from '../utils';
 import Icon from '../../common/Icon';
 
-/* globals gettext */
+/* globals gettext, interpolate */
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -40,6 +40,19 @@ const sortValue = (row, key) => {
     default:
       return (row[key] || '').toString().toLowerCase();
   }
+};
+
+/**
+ * What the category cell says on hover. A split has no single category, so it
+ * lists the legs -- which answers the obvious question without opening the row.
+ */
+const categoryTitle = (row) => {
+  if (row.isSplit) {
+    return (row.splits || [])
+      .map((leg) => `${leg.categoryName ?? leg.category_name}: ${formatCurrency(Math.abs(Number(leg.amount)))}`)
+      .join(' · ');
+  }
+  return row.category ? row.category.name : gettext('Uncategorized');
 };
 
 /**
@@ -589,11 +602,17 @@ const LineTable = ({
                       <td className="truncate" title={row.payee || ''}>
                         {row.payee || ''}
                       </td>
-                      <td className="truncate" title={row.category ? row.category.name : gettext('Uncategorized')}>
+                      <td className="truncate" title={categoryTitle(row)}>
                         <span className="inline-flex w-full items-center gap-1">
-                          <span className="truncate">
-                            {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
-                          </span>
+                          {row.isSplit ? (
+                            <span className="badge badge-ghost badge-sm shrink-0" data-testid={`split-badge-${row.id}`}>
+                              {interpolate(gettext('Split (%s)'), [row.splitCount])}
+                            </span>
+                          ) : (
+                            <span className="truncate">
+                              {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
+                            </span>
+                          )}
                           {isTransfer && (
                             <button
                               type="button"
@@ -618,6 +637,11 @@ const LineTable = ({
                         {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
                       </td>
                       <td className="truncate" title={row.description || ''}>
+                        {/* A split has no per-leg memo, so the marker beside the
+                            description is what identifies one without opening it. */}
+                        {row.isSplit && (
+                          <span className="badge badge-ghost badge-sm mr-1 shrink-0">{gettext('Split')}</span>
+                        )}
                         {row.description || ''}
                       </td>
                       <td className="text-center">

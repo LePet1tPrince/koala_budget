@@ -1,12 +1,27 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Combobox from '../../common/Combobox';
 import DateField from '../../common/DateField';
 import Modal from '../../common/Modal';
 import { buildCategoryOptions } from '../../common/categoryOptions';
+import { parseAmount, round2 } from '../../common/amount';
 import { formatDateForInput } from '../utils';
+import SplitEditor, { MIN_LEGS } from './SplitEditor';
 import TransactionHistory from './TransactionHistory';
 
 /* globals gettext */
+
+/** Stable client-side keys for leg rows, so React never re-mounts a field mid-edit. */
+let legKeySeq = 0;
+const nextLegKey = () => {
+  legKeySeq += 1;
+  return `leg-${legKeySeq}`;
+};
+
+/** A leg's amount as the input should show it: signed, two decimals, no symbol. */
+const formatLegAmount = (value) => {
+  const parsed = parseAmount(value);
+  return parsed === null ? '' : parsed.toFixed(2);
+};
 
 /**
  * EditTransactionModal - Modal dialog for creating/editing bank feed transactions
@@ -48,6 +63,12 @@ const EditTransactionModal = ({
   const [categorySuggested, setCategorySuggested] = useState(false);
   // Active tab: 0 = Details, 1 = History
   const [activeTab, setActiveTab] = useState(0);
+  // Split legs, or null when this transaction has a single category.
+  // Each leg: { key, category, amount } -- `amount` is the raw typed string.
+  const [splits, setSplits] = useState(null);
+  // True once the user has removed a split, so the save asks the server to
+  // collapse it rather than being refused for omitting the legs.
+  const [removedSplit, setRemovedSplit] = useState(false);
 
   // Create options array for category Autocomplete (grouped by account type)
   const categoryOptions = useMemo(() => {
@@ -62,6 +83,9 @@ const EditTransactionModal = ({
     if (!open) return;
 
     setActiveTab(0);
+
+    setSplits(null);
+    setRemovedSplit(false);
 
     if (isCreateMode) {
       // Create mode - set defaults
@@ -95,6 +119,22 @@ const EditTransactionModal = ({
       setPayee(transaction.payee || '');
       setDescription(transaction.description || '');
       setErrors({});
+
+      // Rows arrive from the generated client in camelCase, but some callers
+      // pass raw API data -- tolerate both, as the journalEntryId read below does.
+      const rowSplits = transaction.splits ?? transaction.split_legs ?? [];
+      if (rowSplits.length > 0) {
+        setSplits(
+          rowSplits.map((leg) => {
+            const categoryId = leg.categoryId ?? leg.category_id;
+            return {
+              key: nextLegKey(),
+              category: categoryOptions.find((opt) => opt.id === categoryId) || null,
+              amount: formatLegAmount(leg.amount),
+            };
+          }),
+        );
+      }
     }
   }, [open, transaction, categoryOptions, categorySuggestions, isCreateMode]);
 
@@ -113,6 +153,78 @@ const EditTransactionModal = ({
   const canEditCategory = isCreateMode || !isReadOnly;
   const canEditPayee = true; // Always editable
   const canEditDescription = true; // Always editable
+
+  // --- splits ----------------------------------------------------------
+
+  const isSplit = splits !== null;
+
+  // Signed transaction total, positive for an outflow -- the same convention
+  // the server uses, so the legs mean the same thing on both sides.
+  const total = useMemo(
+    () => round2((parseAmount(outflow) ?? 0) - (parseAmount(inflow) ?? 0)),
+    [inflow, outflow],
+  );
+
+  const legSum = useMemo(
+    () => round2((splits ?? []).reduce((acc, leg) => acc + (parseAmount(leg.amount) ?? 0), 0)),
+    [splits],
+  );
+
+  const remaining = round2(total - legSum);
+  // Compared with a cent tolerance, never `===`: 0.1 + 0.2 !== 0.3 in floating point.
+  const isBalanced = Math.abs(remaining) < 0.005;
+
+  const updateLeg = (index, patch) =>
+    setSplits((current) => current.map((leg, i) => (i === index ? { ...leg, ...patch } : leg)));
+
+  const addLeg = () => setSplits((current) => [...current, { key: nextLegKey(), category: null, amount: '' }]);
+
+  const removeLeg = (index) => setSplits((current) => current.filter((_, i) => i !== index));
+
+  const startSplit = () => {
+    // The first leg carries the whole total, so Remaining starts at $0.00 and
+    // goes negative as the second is typed -- which reads as "you have
+    // over-assigned". Two blank legs would instead greet the user with the full
+    // amount outstanding before they had done anything wrong.
+    setSplits([
+      { key: nextLegKey(), category, amount: total ? total.toFixed(2) : '' },
+      { key: nextLegKey(), category: null, amount: '' },
+    ]);
+    setRemovedSplit(false);
+  };
+
+  const removeSplit = () => {
+    // Collapse onto the largest leg by absolute amount: of the categories the
+    // user chose, that is the likeliest one they meant the transaction to be.
+    const largest = [...splits]
+      .filter((leg) => leg.category)
+      .sort((a, b) => Math.abs(parseAmount(b.amount) ?? 0) - Math.abs(parseAmount(a.amount) ?? 0))[0];
+    setCategory(largest ? largest.category : null);
+    setCategorySuggested(false);
+    setSplits(null);
+    // Only meaningful for a transaction that *was* split on the server; harmless
+    // when the user split and unsplit without saving.
+    setRemovedSplit(true);
+  };
+
+  const assignRemainder = () => {
+    const blank = splits.findIndex((leg) => parseAmount(leg.amount) === null);
+    const target = blank === -1 ? splits.length - 1 : blank;
+    const current = blank === -1 ? (parseAmount(splits[target].amount) ?? 0) : 0;
+    updateLeg(target, { amount: round2(current + remaining).toFixed(2) });
+  };
+
+  /** The first thing wrong with the legs, or null. */
+  const splitProblem = () => {
+    if (!isSplit) return null;
+    if (splits.length < MIN_LEGS) return gettext('A split needs at least two categories.');
+    if (splits.some((leg) => !leg.category)) return gettext('Every split needs a category.');
+    const bad = splits.findIndex((leg) => parseAmount(leg.amount) === null);
+    if (bad !== -1) return gettext('Every split needs an amount.');
+    if (splits.some((leg) => parseAmount(leg.amount) === 0)) return gettext('A split amount cannot be zero.');
+    if (!isBalanced) return gettext('The splits must add up to the transaction total.');
+    return null;
+  };
 
   // Validate form
   const validate = () => {
@@ -134,6 +246,11 @@ const EditTransactionModal = ({
       newErrors.amount = gettext('Cannot have both inflow and outflow');
     }
 
+    const problem = splitProblem();
+    if (problem) {
+      newErrors.splits = problem;
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -144,12 +261,23 @@ const EditTransactionModal = ({
 
     setSaving(true);
     try {
+      // Amounts go over the wire as strings, so no float ever reaches the
+      // server's Decimal. `splits` and `category` are mutually exclusive.
+      const splitPayload = isSplit
+        ? splits.map((leg) => ({ category: leg.category.id, amount: parseAmount(leg.amount).toFixed(2) }))
+        : null;
+
       if (isCreateMode) {
         // Create mode - send new transaction data
         const newData = {
           source: 'manual',
           date: date,
-          category: category ? { id: category.id, name: category.name, account_number: category.accountNumber } : null,
+          category: isSplit
+            ? null
+            : category
+              ? { id: category.id, name: category.name, account_number: category.accountNumber }
+              : null,
+          splits: splitPayload,
           inflow: inflow || '0',
           outflow: outflow || '0',
           payee: payee,
@@ -163,7 +291,13 @@ const EditTransactionModal = ({
           source: transaction.source,
           journal_entry_id: journalEntryId,
           date: canEditDate ? date : transaction.postedDate,
-          category: canEditCategory ? (category ? { id: category.id, name: category.name, account_number: category.accountNumber } : null) : transaction.category,
+          category: isSplit
+            ? null
+            : canEditCategory ? (category ? { id: category.id, name: category.name, account_number: category.accountNumber } : null) : transaction.category,
+          splits: splitPayload,
+          // Collapsing a split is destructive, so the server requires it to be
+          // asked for rather than inferred from a payload with no legs.
+          remove_split: removedSplit && !isSplit,
           inflow: canEditAmounts ? (inflow || '0') : transaction.inflow,
           outflow: canEditAmounts ? (outflow || '0') : transaction.outflow,
           payee: payee,
@@ -215,7 +349,8 @@ const EditTransactionModal = ({
     <Modal
       open={open}
       onClose={onClose}
-      size="sm"
+      // The leg table needs the width; a single category does not.
+      size={isSplit ? 'lg' : 'sm'}
       testId="edit-transaction-modal"
       title={title}
       actions={
@@ -228,7 +363,10 @@ const EditTransactionModal = ({
               type="button"
               className="btn btn-sm btn-primary"
               onClick={handleSave}
-              disabled={saving}
+              // An unbalanced split cannot be saved. The server enforces this too,
+              // but a disabled button explains itself sooner than a 400 does.
+              disabled={saving || Boolean(splitProblem())}
+              title={splitProblem() || ''}
               data-testid="modal-save-btn"
             >
               {saveButtonText}
@@ -279,24 +417,60 @@ const EditTransactionModal = ({
             </p>
           )}
 
-          <Combobox
-            label={gettext('Category (optional)')}
-            value={category}
-            onChange={(newValue) => {
-              setCategory(newValue);
-              setCategorySuggested(false);
-            }}
-            options={categoryOptions}
-            getGroup={(option) => option.groupLabel}
-            disabled={!canEditCategory}
-            error={errors.category}
-            helperText={
-              (categorySuggested && gettext('Suggested from how this payee was last categorized'))
-              || (!canEditCategory && !isCreateMode && gettext('Category cannot be edited for this transaction'))
-              || ''
-            }
-            testId="transaction-category"
-          />
+          {isSplit ? (
+            <SplitEditor
+              legs={splits}
+              categoryOptions={categoryOptions}
+              total={total}
+              legSum={legSum}
+              remaining={remaining}
+              isBalanced={isBalanced}
+              disabled={!canEditCategory}
+              onChangeLeg={updateLeg}
+              onAddLeg={addLeg}
+              onRemoveLeg={removeLeg}
+              onAssignRemainder={assignRemainder}
+              onRemoveSplit={removeSplit}
+            />
+          ) : (
+            <>
+              <Combobox
+                label={gettext('Category (optional)')}
+                value={category}
+                onChange={(newValue) => {
+                  setCategory(newValue);
+                  setCategorySuggested(false);
+                }}
+                options={categoryOptions}
+                getGroup={(option) => option.groupLabel}
+                disabled={!canEditCategory}
+                error={errors.category}
+                helperText={
+                  (categorySuggested && gettext('Suggested from how this payee was last categorized'))
+                  || (!canEditCategory && !isCreateMode && gettext('Category cannot be edited for this transaction'))
+                  || ''
+                }
+                testId="transaction-category"
+              />
+              {canEditCategory && (
+                <div className="-mt-2">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    onClick={startSplit}
+                    data-testid="start-split-btn"
+                  >
+                    {gettext('Split this transaction')}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+          {errors.splits && (
+            <p className="-mt-2 text-xs text-error" data-testid="split-error">
+              {errors.splits}
+            </p>
+          )}
 
           <div className="flex gap-4">
             <label className="form-control w-full">

@@ -14,6 +14,13 @@
 
 import { mapValues } from '../runtime';
 import type { SimpleAccount } from './SimpleAccount';
+import type { SplitLeg } from './SplitLeg';
+import {
+    SplitLegFromJSON,
+    SplitLegFromJSONTyped,
+    SplitLegToJSON,
+    SplitLegToJSONTyped,
+} from './SplitLeg';
 import {
     SimpleAccountFromJSON,
     SimpleAccountFromJSONTyped,
@@ -161,6 +168,24 @@ export interface PatchedBankFeedRow {
      * @memberof PatchedBankFeedRow
      */
     isEditable?: boolean;
+    /**
+     * Whether this transaction is split across several categories
+     * @type {boolean}
+     * @memberof PatchedBankFeedRow
+     */
+    isSplit?: boolean;
+    /**
+     * Number of split legs (0 when not split)
+     * @type {number}
+     * @memberof PatchedBankFeedRow
+     */
+    splitCount?: number;
+    /**
+     * The split legs (empty when not split)
+     * @type {Array<SplitLeg>}
+     * @memberof PatchedBankFeedRow
+     */
+    splits?: Array<SplitLeg>;
 }
 
 
@@ -202,6 +227,9 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'importedTransactionId': json['imported_transaction_id'] == null ? undefined : json['imported_transaction_id'],
         'journalEntryId': json['journal_entry_id'] == null ? undefined : json['journal_entry_id'],
         'isEditable': json['is_editable'] == null ? undefined : json['is_editable'],
+        'isSplit': json['is_split'] == null ? undefined : json['is_split'],
+        'splitCount': json['split_count'] == null ? undefined : json['split_count'],
+        'splits': json['splits'] == null ? undefined : ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
     };
 }
 
@@ -236,6 +264,9 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'imported_transaction_id': value['importedTransactionId'],
         'journal_entry_id': value['journalEntryId'],
         'is_editable': value['isEditable'],
+        'is_split': value['isSplit'],
+        'split_count': value['splitCount'],
+        'splits': value['splits'] == null ? undefined : ((value['splits'] as Array<any>).map(SplitLegToJSON)),
     };
 }
 

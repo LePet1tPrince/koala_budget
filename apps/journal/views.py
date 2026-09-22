@@ -318,7 +318,13 @@ TRANSACTION_QUERY_PARAMS = [
 class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """
     Read-only list of journal entries flattened into transaction rows.
-    Only entries with exactly 2 lines are returned (simple debit/credit pairs).
+
+    Every entry is returned, including splits -- an entry apportioned across
+    several categories, which has one line on one side and several on the other.
+    This list used to filter to ``line_count=2``, which silently hid every split
+    from the page that presents itself as the ledger, and from its filters,
+    facet counts and CSV export.  A split row reports ``Split (N)`` on its
+    many-line side and carries its ``legs`` for the table's disclosure.
 
     Search, date range, per-column value filters and sorting all run as query
     params so that they apply to the whole ledger, not just whatever page the
@@ -345,7 +351,6 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             JournalEntry.for_team.select_related("payee")
             .prefetch_related("lines__account")
             .annotate(**annotations_for(self.request.query_params, facet_column=facet_column))
-            .filter(line_count=2)
         )
 
     def filtered_queryset(self, *, exclude_column=None, facet_column=None):

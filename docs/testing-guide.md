@@ -217,6 +217,30 @@ make test-e2e-accounts  # Run specific test file
 - The full-export E2E test is marked `slow` (`-m "not slow"` to skip it); everything else uses the small synthetic
   export in `apps/ynab_import/tests/fixtures.py`
 
+### Split transactions (`apps/bank_feed/tests/test_splits.py`)
+
+- **Six of these were written against the unfixed code first and confirmed failing
+  there**, which is the only way to know a regression test has teeth. The corruption
+  one matters most: re-saving an existing split used to return HTTP 200 and leave the
+  entry with debits at double its credits, so the test asserts `total_debits ==
+  total_credits` rather than a status code
+- `SplitTestCase.make_split()` builds the canonical shape — one bank line carrying the
+  total, one counter line per leg. Reuse it rather than hand-rolling lines; getting the
+  sign convention wrong in a fixture produces a test that passes against broken code
+- `SplitArithmeticTest` walks the four worked examples in
+  `docs/split-transactions-plan.md` §3.3 line by line, including the two mixed-sign
+  cases (a refund leg inside an outflow, a gross paycheque with deductions). Those are
+  where a sign convention breaks, and a two-leg same-sign test would not catch it
+- A split's bank line keeps its `id` across every edit — asserted explicitly, because
+  the obvious implementation (delete all lines, recreate) silently unreconciles a
+  transaction the user confirmed against a statement
+- `test_plain_entry_is_unchanged` in `apps/journal/tests.py` is the regression guard for
+  the two-line branch of `TransactionRowSerializer._sides()`, including the $0.00 entry
+  whose split falls back to line order
+
+- `e2e/tests/test_splits.py` is **written but has not been run** — see the note under
+  Known Coverage Gaps. Its selectors were verified against the running app by hand, but
+  the suite itself needs an environment with a working Playwright browser
 ---
 
 ## Known Coverage Gaps
@@ -226,6 +250,11 @@ make test-e2e-accounts  # Run specific test file
 - `subscriptions/` webhook handling has no automated tests
 - `chat/` and `ai/` apps have no unit tests for agent logic
 - Frontend React components have no unit tests (no Jest/Vitest setup)
+- `e2e/tests/test_splits.py` has never been executed. Playwright's pinned browser build
+  refuses to install on Ubuntu 26.04, the chromium already in the WSL cache is missing
+  system libraries that need root, and running the suite from Windows hits a
+  `NotImplementedError` in the asyncio/live-server stack. Run it in the Docker image
+  (`make test-e2e ARGS="e2e/tests/test_splits.py"`) before trusting it
 
 ---
 

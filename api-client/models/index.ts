@@ -53,6 +53,7 @@ export * from './SimpleAccount';
 export * from './SimpleLine';
 export * from './SimpleLinesRecategorize200Response';
 export * from './SimpleLinesRecategorizeRequest';
+export * from './SplitLeg';
 export * from './Subscription';
 export * from './SubscriptionItem';
 export * from './SubscriptionStatusEnum';
