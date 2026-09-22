@@ -1,6 +1,8 @@
 # Split Transactions in the UI — Requirements & Implementation Plan
 
-**Status:** proposal. No code written yet. Implement §12 in order.
+**Status:** implemented (2026-09-22), except Phase 7 (categorize-mode split button and
+any-line account filtering), which remains optional. Kept as the record of why the
+design is what it is.
 **Priority:** P1.1 in `docs/feature-priority-report.md` — the highest-value single item there.
 **Prerequisite reading:** this document only. Everything you need is quoted inline.
 
@@ -252,9 +254,10 @@ An implementer should not have to make a judgement call. These are decided.
 | # | Decision | Why |
 |---|---|---|
 | D1 | **No new model, no migration.** | `JournalEntry`/`JournalLine` already express a split and the API already validates it. |
-| D2 | **No per-leg memo in v1.** | `JournalLine` has no text field; adding one is a migration for a nicety. The entry-level `description` covers it. Deferred, noted in §13. |
+| D2 | **No per-leg memo in v1.** Instead, a split is marked with the word **"Split"** alongside its description everywhere the description is shown. | `JournalLine` has no text field; adding one is a migration for a nicety. Marking the description is what makes a split identifiable without one. See D2a for where the marker lives. |
+| D2a | **The "Split" marker is derived at display time, never written into `JournalEntry.description`.** | `description` is user-editable and full-text-searchable. Storing the word there means un-splitting leaves a lie behind, an ordinary description edit silently deletes the marker, and a search for "split" starts matching the marker instead of the user's own text. A derived marker cannot drift from the thing it describes. Rendered as a badge beside the description in the UI, and as a literal `Split — ` prefix in CSV exports, where there is no markup. |
 | D3 | **The split editor lives inside the existing `EditTransactionModal`**, as a mode, not a new modal. | It is already the single edit surface for a feed row and already has a Details/History tab strip. A second modal is a second thing to keep in sync. |
-| D4 | **Minimum 2 legs, maximum 50.** | A 1-leg "split" is a normal transaction — offer "Remove split" instead. 50 is an abuse ceiling, not a product limit. |
+| D4 | **Minimum 2 legs, maximum 20.** | A 1-leg "split" is a normal transaction — offer "Remove split" instead. 20 is an abuse ceiling that is also comfortably above any real receipt. |
 | D5 | **A leg amount of exactly 0 is rejected.** | It is not a category apportionment; it is a mistake. Use Remove-leg. |
 | D6 | **Legs are signed** (§3.2); a negative leg is a refund within the split. | Needed for example (d), which is how every real paycheque looks. |
 | D7 | **`sum(legs) == total` is enforced server-side and 400s on mismatch**, even though the client also enforces it. | The bank sets the total. A client that miscomputes must not be able to write an unbalanced entry. |
@@ -299,7 +302,7 @@ from apps.journal.models import JournalEntry, JournalLine
 MIN_LEGS = 2
 
 #: Not a product limit -- an abuse ceiling.
-MAX_LEGS = 50
+MAX_LEGS = 20
 
 CENT = Decimal("0.01")
 
@@ -980,7 +983,7 @@ Implement each of these. They are requirements, not suggestions.
    have over-assigned" — the alternative (both blank) shows a scary full-amount
    `Remaining` before the user has done anything wrong.
 2. **"+ Add a category"** — appends `{category: null, amount: ''}`. Disabled at
-   `MAX_LEGS` (50) with a tooltip.
+   `MAX_LEGS` (20) with a tooltip.
 3. **Row "×"** — removes that leg. Disabled when only 2 legs remain, with the tooltip
    *"A split needs at least two categories. Use Remove split instead."*
 4. **"Remove split"** — collapses to non-split mode: `setSplits(null)` and set
@@ -1090,6 +1093,31 @@ renders correctly with **no change**. Add only the disclosure:
 Use `/70` for muted text, not `/50` or `/60` — CLAUDE.md records that both fail the
 4.5:1 AA contrast floor.
 
+### 9.11 The "Split" description marker (D2 / D2a)
+
+Because a split has no per-leg memo, **the word "Split" is shown alongside the
+description wherever a transaction's description appears**, so a split is identifiable
+without opening it.
+
+It is **derived, never stored** (D2a). `JournalEntry.description` keeps exactly what the
+user typed.
+
+Where it appears, and as what:
+
+| Surface | Rendering |
+|---|---|
+| Bank feed table (`LineTable.jsx`) | `Split` badge before the description text |
+| Transactions table (`TransactionsTable.jsx`) | `Split` badge before the description text |
+| Reports account activity (`templates/reports/components/account_activity_section.html`) | `Split` badge before the description text |
+| **CSV exports** (`apps/reports/exports.py`) | literal `Split — ` prefix on the description cell — there is no markup in a CSV, and this is the surface where the marker matters most, since a spreadsheet is where someone reconciles by hand |
+
+The badge is `badge badge-ghost badge-sm` (not `badge-soft badge-neutral`, which CLAUDE.md
+records as illegible on the dark surface), carrying a `title` that lists the legs.
+
+Server side this needs one thing: the reports' row builders must know the line count.
+`ReportService.get_account_activity()` already loads the entry; expose `is_split` on each
+transaction dict it returns and let both the template and the exporter read it.
+
 ---
 
 ## 10. Validation rules — the complete table
@@ -1099,7 +1127,7 @@ Every rule, where it is enforced, and the exact user-facing message.
 | # | Rule | Client | Server | Message |
 |---|---|---|---|---|
 | V1 | ≥ 2 legs | Remove disabled at 2 | `parse_legs` | "A split needs at least 2 categories." |
-| V2 | ≤ 50 legs | Add disabled at 50 | `parse_legs` | "A split cannot have more than 50 categories." |
+| V2 | ≤ 20 legs | Add disabled at 20 | `parse_legs` | "A split cannot have more than 20 categories." |
 | V3 | Every leg has a category | Save disabled | `parse_legs` | "Split {n}: category not found." |
 | V4 | Leg category belongs to the team | n/a | `parse_legs` via `Account.for_team` | "Split {n}: category not found." |
 | V5 | Leg amount parses | Save disabled | `parse_legs` | "Split {n}: amount is not a number." |
@@ -1145,7 +1173,7 @@ proved green against the **old** components ... then required to pass untouched"
 | T12 | `collapse_split` | 2 lines; the single category is the one requested; bank line's `id` unchanged |
 | T13 | A leg naming another team's account | 400 "category not found"; nothing written |
 | T14 | Zero-amount leg | 400 (V6) |
-| T15 | 1 leg and 51 legs | 400 (V1, V2) |
+| T15 | 1 leg and 21 legs | 400 (V1, V2) |
 | T16 | Budget actuals after a split | Each leg's category actual equals its own leg amount (proves §4.6 still holds) |
 | T17 | Income statement over a split | Total expense equals the sum of the legs, not the transaction total, and not double-counted |
 | T18 | Delete a split (`batch_delete`) | Entry and all lines gone; no orphan lines |

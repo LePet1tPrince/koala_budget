@@ -1,6 +1,6 @@
 /* globals gettext */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { formatCurrency } from '../utilities/currency';
 import { formatDate } from '../bank_feed/utils';
@@ -167,6 +167,18 @@ const TransactionsTable = ({
 }) => {
   const sentinelRef = useRef(null);
 
+  // Which splits are showing their legs. Local and deliberately not persisted:
+  // it is a glance at one row, not a view setting worth surviving a reload.
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+
+  const toggleExpanded = (id) =>
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   useEffect(() => {
     const node = sentinelRef.current;
     if (!node || !hasMore) return undefined;
@@ -240,34 +252,72 @@ const TransactionsTable = ({
             {transactions.map((tx) => {
               const source = SOURCE_STYLES[tx.source] || { label: tx.source, className: FALLBACK_BADGE };
               const statusStyle = STATUS_STYLES[tx.status] || { label: tx.status, className: FALLBACK_BADGE };
+              const expanded = expandedIds.has(tx.id);
 
               return (
-                <tr key={tx.id} data-testid="transaction-row">
-                  <td className="whitespace-nowrap">
-                    {formatDate(tx.date)}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    {tx.payee_name || <span className="text-base-content/40 italic">{gettext('—')}</span>}
-                  </td>
-                  <td className="max-w-xs truncate">
-                    {tx.description}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    {tx.debit_account || '—'}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    {tx.credit_account || '—'}
-                  </td>
-                  <td className="money whitespace-nowrap text-right">
-                    {formatCurrency(tx.amount)}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    <Badge className={source.className}>{source.label}</Badge>
-                  </td>
-                  <td className="whitespace-nowrap">
-                    <Badge className={statusStyle.className}>{statusStyle.label}</Badge>
-                  </td>
-                </tr>
+                <React.Fragment key={tx.id}>
+                  <tr data-testid="transaction-row">
+                    <td className="whitespace-nowrap">
+                      {formatDate(tx.date)}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      {tx.payee_name || <span className="text-base-content/40 italic">{gettext('—')}</span>}
+                    </td>
+                    <td className="max-w-xs truncate">
+                      {/* A split has no per-leg memo, so the marker beside the
+                          description is what identifies one in the ledger. */}
+                      {tx.is_split && (
+                        <button
+                          type="button"
+                          className="badge badge-ghost badge-sm mr-1"
+                          onClick={() => toggleExpanded(tx.id)}
+                          aria-expanded={expanded}
+                          title={gettext('Show the categories this transaction is split across')}
+                          data-testid={`split-toggle-${tx.id}`}
+                        >
+                          <Icon
+                            name="chevron-right"
+                            className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+                          />
+                          {gettext('Split')}
+                        </button>
+                      )}
+                      {tx.description}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      {tx.debit_account || '—'}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      {tx.credit_account || '—'}
+                    </td>
+                    <td className="money whitespace-nowrap text-right">
+                      {formatCurrency(tx.amount)}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <Badge className={source.className}>{source.label}</Badge>
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <Badge className={statusStyle.className}>{statusStyle.label}</Badge>
+                    </td>
+                  </tr>
+                  {expanded
+                    && (tx.legs || []).map((leg, index) => (
+                      <tr key={`${tx.id}-leg-${index}`} data-testid={`split-leg-${tx.id}`}>
+                        <td />
+                        <td />
+                        <td className="pl-8 text-base-content/70">{leg.account}</td>
+                        <td className="money whitespace-nowrap text-base-content/70">
+                          {Number(leg.debit) > 0 ? formatCurrency(leg.debit) : ''}
+                        </td>
+                        <td className="money whitespace-nowrap text-base-content/70">
+                          {Number(leg.credit) > 0 ? formatCurrency(leg.credit) : ''}
+                        </td>
+                        <td />
+                        <td />
+                        <td />
+                      </tr>
+                    ))}
+                </React.Fragment>
               );
             })}
           </tbody>

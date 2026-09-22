@@ -31,6 +31,12 @@ export interface BatchReconcileRequest {
      * @memberof BatchReconcileRequest
      */
     adjustmentAmount?: string;
+    /**
+     * Date for the reconciliation adjustment transaction (defaults to today)
+     * @type {Date}
+     * @memberof BatchReconcileRequest
+     */
+    reconciliationDate?: Date | null;
 }
 
 /**
@@ -53,6 +59,7 @@ export function BatchReconcileRequestFromJSONTyped(json: any, ignoreDiscriminato
         
         'ids': json['ids'],
         'adjustmentAmount': json['adjustment_amount'] == null ? undefined : json['adjustment_amount'],
+        'reconciliationDate': json['reconciliation_date'] == null ? undefined : (new Date(json['reconciliation_date'])),
     };
 }
 
@@ -69,6 +76,7 @@ export function BatchReconcileRequestFromJSONTyped(json: any, ignoreDiscriminato
         
         'ids': value['ids'],
         'adjustment_amount': value['adjustmentAmount'],
+        'reconciliation_date': value['reconciliationDate'] == null ? undefined : ((value['reconciliationDate'] as any).toISOString().substring(0,10)),
     };
 }
 

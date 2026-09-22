@@ -1,35 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Cookies from 'js-cookie';
 
+import { sanitizeAmount } from '../../common/amount';
+
 const cellKey = (categoryId, monthKey) => `${categoryId}|${monthKey}`;
-
-/**
- * Parse one pasted/typed cell into a normalized amount string, or null if it
- * isn't a number. Handles common spreadsheet formats: "$1,234.56", "(45.00)"
- * (negative), currency symbols, thin/non-breaking spaces.
- */
-export function sanitizeAmount(raw) {
-  if (raw === null || raw === undefined) return null;
-  let text = String(raw).replace(/[\s\u00A0\u2009\u202F]/g, '');
-  if (text === '') return null;
-
-  let negative = false;
-  const parens = text.match(/^\((.*)\)$/);
-  if (parens) {
-    negative = true;
-    text = parens[1];
-  }
-  text = text.replace(/[$€£]/g, '').replace(/,/g, '');
-  if (text.startsWith('-')) {
-    negative = !negative;
-    text = text.slice(1);
-  }
-  if (text === '' || !/^\d*\.?\d*$/.test(text) || !/\d/.test(text)) return null;
-
-  const value = parseFloat(text);
-  if (!isFinite(value)) return null;
-  return (negative ? -value : value).toFixed(2);
-}
 
 /**
  * Parse spreadsheet clipboard text (TSV from Excel / Google Sheets) into a

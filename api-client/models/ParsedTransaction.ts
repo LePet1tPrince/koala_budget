@@ -73,6 +73,18 @@ export interface ParsedTransaction {
      * @memberof ParsedTransaction
      */
     isPotentialDuplicate: boolean;
+    /**
+     * Which field the error came from ("date" or "amount"), for a specific UI message
+     * @type {string}
+     * @memberof ParsedTransaction
+     */
+    errorField: string | null;
+    /**
+     * The raw, unparsed date cell from the file
+     * @type {string}
+     * @memberof ParsedTransaction
+     */
+    rawDate: string | null;
 }
 
 /**
@@ -88,6 +100,8 @@ export function instanceOfParsedTransaction(value: object): value is ParsedTrans
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('matchedCategoryId' in value) || value['matchedCategoryId'] === undefined) return false;
     if (!('isPotentialDuplicate' in value) || value['isPotentialDuplicate'] === undefined) return false;
+    if (!('errorField' in value) || value['errorField'] === undefined) return false;
+    if (!('rawDate' in value) || value['rawDate'] === undefined) return false;
     return true;
 }
 
@@ -110,6 +124,8 @@ export function ParsedTransactionFromJSONTyped(json: any, ignoreDiscriminator: b
         'error': json['error'],
         'matchedCategoryId': json['matched_category_id'],
         'isPotentialDuplicate': json['is_potential_duplicate'],
+        'errorField': json['error_field'],
+        'rawDate': json['raw_date'],
     };
 }
 
@@ -133,6 +149,8 @@ export function ParsedTransactionFromJSONTyped(json: any, ignoreDiscriminator: b
         'error': value['error'],
         'matched_category_id': value['matchedCategoryId'],
         'is_potential_duplicate': value['isPotentialDuplicate'],
+        'error_field': value['errorField'],
+        'raw_date': value['rawDate'],
     };
 }
 

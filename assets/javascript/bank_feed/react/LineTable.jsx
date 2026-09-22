@@ -9,7 +9,7 @@ import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc, formatDateForInput } from '../utils';
 import Icon from '../../common/Icon';
 
-/* globals gettext */
+/* globals gettext, interpolate */
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -40,6 +40,30 @@ const sortValue = (row, key) => {
     default:
       return (row[key] || '').toString().toLowerCase();
   }
+};
+
+/**
+ * Whether a row has been categorized.
+ *
+ * A split is apportioned across several categories and therefore has no single
+ * one, so its `category` is null -- the same shape an uncategorized row has.
+ * Testing `category` alone greys the row out, counts it in the uncategorized
+ * badge and surfaces it under the Uncategorized filter, none of which is true
+ * of a transaction whose every dollar has been assigned.
+ */
+const isCategorized = (row) => Boolean(row.category) || Boolean(row.isSplit);
+
+/**
+ * What the category cell says on hover. A split has no single category, so it
+ * lists the legs -- which answers the obvious question without opening the row.
+ */
+const categoryTitle = (row) => {
+  if (row.isSplit) {
+    return (row.splits || [])
+      .map((leg) => `${leg.categoryName ?? leg.category_name}: ${formatCurrency(Math.abs(Number(leg.amount)))}`)
+      .join(' · ');
+  }
+  return row.category ? row.category.name : gettext('Uncategorized');
 };
 
 /**
@@ -204,7 +228,7 @@ const LineTable = ({
         filtered = filtered.filter((l) => isReconciled(l));
       }
       if (quickFilters.uncategorized) {
-        filtered = filtered.filter((l) => !l.category);
+        filtered = filtered.filter((l) => !isCategorized(l));
       }
     }
 
@@ -242,7 +266,7 @@ const LineTable = ({
         } else {
           acc.to_review += 1;
         }
-        if (!l.category) {
+        if (!isCategorized(l)) {
           acc.uncategorized += 1;
         }
         return acc;
@@ -562,7 +586,7 @@ const LineTable = ({
                 {pageRows.map((row) => {
                   // Uncategorized rows are muted outside the archived view. This was a
                   // hardcoded #9CA3AF, which did not follow the theme.
-                  const muted = !showArchived && !row.category;
+                  const muted = !showArchived && !isCategorized(row);
                   const reconciled = row.isReconciled ?? row.is_reconciled ?? false;
                   // A row categorized to another feed account is a transfer: the
                   // same journal entry also has a row in that account's feed.
@@ -589,11 +613,17 @@ const LineTable = ({
                       <td className="truncate" title={row.payee || ''}>
                         {row.payee || ''}
                       </td>
-                      <td className="truncate" title={row.category ? row.category.name : gettext('Uncategorized')}>
+                      <td className="truncate" title={categoryTitle(row)}>
                         <span className="inline-flex w-full items-center gap-1">
-                          <span className="truncate">
-                            {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
-                          </span>
+                          {row.isSplit ? (
+                            <span className="badge badge-ghost badge-sm shrink-0" data-testid={`split-badge-${row.id}`}>
+                              {interpolate(gettext('Split (%s)'), [row.splitCount])}
+                            </span>
+                          ) : (
+                            <span className="truncate">
+                              {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
+                            </span>
+                          )}
                           {isTransfer && (
                             <button
                               type="button"
@@ -618,6 +648,11 @@ const LineTable = ({
                         {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
                       </td>
                       <td className="truncate" title={row.description || ''}>
+                        {/* A split has no per-leg memo, so the marker beside the
+                            description is what identifies one without opening it. */}
+                        {row.isSplit && (
+                          <span className="badge badge-ghost badge-sm mr-1 shrink-0">{gettext('Split')}</span>
+                        )}
                         {row.description || ''}
                       </td>
                       <td className="text-center">
