@@ -19,7 +19,12 @@ class PortabilityPage(BasePage):
 
     def start_import(self):
         self.page.locator("[data-testid='start-import-button']").click()
-        self.page.wait_for_selector("[data-testid='upload-input']")
+        # The file input is deliberately `.hidden` -- the visible control is the
+        # dropzone button that clicks it -- so waiting for the *input* to become
+        # visible would never succeed. Wait for the dropzone the user actually
+        # sees, and address the input itself as merely attached.
+        self.page.wait_for_selector("[data-testid='upload-dropzone']")
+        self.page.wait_for_selector("[data-testid='upload-input']", state="attached")
 
     def upload_file(self, path: str):
         self.page.locator("[data-testid='upload-input']").set_input_files(path)

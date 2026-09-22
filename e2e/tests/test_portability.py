@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 from playwright.sync_api import Page
 
+from apps.onboarding.models import OnboardingState
 from apps.teams.helpers import create_default_team_for_user
 from e2e.factories import AssetAccountFactory, IncomeAccountFactory, JournalEntryFactory, JournalLineFactory
 from e2e.pages.portability import PortabilityPage
@@ -37,6 +38,15 @@ def test_export_then_import_into_a_second_team_matches_net_worth(
 ):
     source_team = funded_team
     dest_team = create_default_team_for_user(user, team_name="E2E Destination")
+    # `create_default_team_for_user` leaves a team with no `OnboardingState`,
+    # which by definition means un-onboarded -- so `team_home` would redirect
+    # the dashboard check below into the onboarding takeover. The shared `team`
+    # fixture does exactly this for the same reason; a second team made inside
+    # a test needs it too.
+    dest_state = OnboardingState.objects.create(team=dest_team)
+    dest_state.complete()
+    dest_state.finish_tasks()
+    dest_state.save()
 
     portability = PortabilityPage(authenticated_page, live_server.url)
 

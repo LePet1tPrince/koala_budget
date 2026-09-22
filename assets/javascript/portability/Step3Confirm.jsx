@@ -5,10 +5,17 @@ import React, { useState } from 'react';
 import Icon from '../common/Icon';
 import Spinner from '../common/Spinner';
 
+// Matches the shared `currency` template filter and
+// `monthly_review/format.js`: the sign goes *outside* the dollar sign, so a
+// negative net worth reads "-$159.12" and not "$-159.12". This screen shows
+// the destination's net worth beside the file's, and a figure formatted
+// differently from the dashboard it is being compared against is exactly the
+// kind of mismatch that makes someone doubt the number.
 const money = (value) => {
   const n = Number(value);
   if (Number.isNaN(n)) return '—';
-  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const sign = n < 0 ? '-' : '';
+  return `${sign}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 const dateRangeText = (range) => {

@@ -140,15 +140,19 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
             'Nothing was changed — the whole import runs in one transaction, so a run that does not finish leaves your books exactly as they were.',
           )}
         </p>
-        {status.safety_archive_available && safetyLink && (
-          <a href={safetyLink} className="btn btn-outline btn-sm" data-testid="safety-download-failed">
-            <Icon name="download" className="h-4 w-4" />
-            {gettext('Download the backup taken before this run')}
-          </a>
-        )}
-        <button type="button" className="btn btn-primary" onClick={onStartOver} data-testid="start-over-button">
-          {gettext('Start again')}
-        </button>
+        {/* Both controls are `inline-flex` (daisyUI `btn`), so `space-y-5`
+            would not separate them either -- lay them out deliberately. */}
+        <div className="flex flex-wrap items-center gap-3">
+          {status.safety_archive_available && safetyLink && (
+            <a href={safetyLink} className="btn btn-outline btn-sm" data-testid="safety-download-failed">
+              <Icon name="download" className="h-4 w-4" />
+              {gettext('Download the backup taken before this run')}
+            </a>
+          )}
+          <button type="button" className="btn btn-primary" onClick={onStartOver} data-testid="start-over-button">
+            {gettext('Start again')}
+          </button>
+        </div>
       </div>
     );
   }
@@ -220,13 +224,17 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
         <CountRow label={gettext('Bank feed rows')} value={result.bank_transactions || 0} />
       </div>
 
+      {/* `block w-fit`, not a bare anchor: an inline element is not a block-
+          level sibling, so the card's `space-y-6` applies no margin against it
+          and this link would sit on the button's own line (and, at phone width,
+          three pixels above it). */}
       {status.safety_archive_available && safetyLink && (
-        <a href={safetyLink} className="link link-primary text-sm" data-testid="safety-download-done">
+        <a href={safetyLink} className="link link-primary text-sm block w-fit" data-testid="safety-download-done">
           {gettext('Download a copy of this team’s books from just before the import')}
         </a>
       )}
 
-      <a href={homeUrl} className="btn btn-primary" data-testid="apply-go-home">
+      <a href={homeUrl} className="btn btn-primary w-fit" data-testid="apply-go-home">
         {gettext('Go to my dashboard')}
       </a>
     </div>
