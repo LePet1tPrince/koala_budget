@@ -7,13 +7,14 @@
 > `apply_archive`'s transaction rather than inside it (§4.4), and the two
 > `AuditEvent`s being logged inside that same transaction rather than after it
 > (§4.3). Backend (schema, write, read, upgrade, export, wipe, apply, the
-> Celery task, every view) carries 135 tests, all passing against a real
-> ORM-backed database. The frontend (`assets/javascript/portability/`) and the
-> Playwright E2E test (`e2e/tests/test_portability.py`) were written to the
-> same contract but could not be executed in the sandbox this was built in —
-> no Node/npm toolchain and no browser were available; see §7's closing note
-> for what was done to compensate and what still needs a real run before
-> shipping.
+> Celery task, every view) carries 135 tests, all passing against real
+> PostgreSQL 18. The frontend (`assets/javascript/portability/`) and the
+> Playwright E2E test (`e2e/tests/test_portability.py`) were written without a
+> browser available and have since been run against one, with a live Celery
+> worker and Vite dev server: that run found four defects — two of which meant
+> the E2E test could never have passed — which are fixed, and then confirmed
+> the whole path by hand, export through import into a freshly created tenant.
+> See §7's closing note for the specifics.
 
 Goal: a user downloads one file containing everything in their books, and can
 load that file into a different Koala Budget team — a new tenant, a second
@@ -811,22 +812,44 @@ property a fidelity test should depend on holding. Structural comparison
 (same accounts by name and type, same entries by date/description/lines,
 same budget rows) tests the same claim without depending on it.
 
-**The frontend and the E2E test were written but not run.** The backend —
-`schema.py` through `views.py`, 135 tests — was verified against a real,
-ORM-backed database throughout (a local sqlite harness with migrations
-disabled, standing in for the Postgres `make test` actually runs against,
-since this environment had no Docker). The frontend
-(`assets/javascript/portability/`) had no Node/npm toolchain available to
-build or type-check it against, and the Playwright test had no browser or
-live server to run in. Both were written to the same contract the
-already-shipped YNAB import wizard uses — same shared `common/` primitives,
-same progress-bar behaviour copied from `Step6Apply.jsx` rather than
-reinvented, same page-object and fixture conventions as the existing E2E
-suite — and checked as far as static review allows (every import resolved
-against a file that exists, every prop threaded through matches what the
-view actually passes, a balanced-brackets pass over every file). That is not
-the same as having been run. **Before this ships, `make test-e2e` and a real
-`npm run build` (or `make start-bg`) need to confirm both actually work.**
+**The frontend and the E2E test have now been run — and running them found
+four things static review had not.** They were originally written without a
+Node/npm toolchain or a browser, against the same contract the shipped YNAB
+import wizard uses, and that got the shape right but not the details. A
+later pass stood the whole stack up on PostgreSQL 18 with a real Celery
+worker, a real Vite dev server and a real Chromium, and turned up:
+
+1. `PortabilityPage.start_import` waited for the upload `<input>` to become
+   *visible*. It is deliberately `.hidden` — the visible control is the
+   dropzone button that clicks it — so that wait could only ever time out.
+   **The E2E test could never have passed as written.**
+2. The same test built its destination team with `create_default_team_for_user`,
+   which leaves no `OnboardingState`, so its closing dashboard assertion
+   landed on the onboarding takeover. The shared `team` fixture exists to
+   avoid exactly this; a second team made *inside* a test needs it too.
+3. `Step3Confirm`'s `money()` printed a negative net worth as `$-159.12`
+   where the rest of the app writes `-$159.12` (the `currency` filter,
+   `monthly_review/format.js`). That screen's whole job is to be compared
+   against the dashboard.
+4. On the result card the safety-archive link is a bare `<a>` — `display:
+   inline`, so the card's `space-y-6` applied no margin against it and at
+   phone width it sat three pixels above the button instead of twenty-four.
+
+Nothing in the backend moved. What the run then confirmed positively: the
+135 backend tests pass on real PostgreSQL (they had only ever run on a
+sqlite harness, so `_raw_delete` and the single `Account.delete()` cascade
+in §4.2 were until now unproven on the backend that actually runs them);
+the Playwright test passes in a real browser, real download and upload
+included; every malformed archive in §6 is refused at upload with the
+message that section specifies; the permission matrix in §4.3 holds
+(export open to any member, every import endpoint admin-only, outsiders
+404, and a safety archive unreachable from another team's context); and a
+hand-driven export → import into a tenant created fresh through the app
+reproduced the source's dashboard figures exactly, with a row-by-row
+database comparison of accounts, groups, journal lines, feed rows, budgets,
+goals and allocations showing no difference except the empty account group
+the manifest already declares as omitted. The safety archive was also used
+for what it is for: restoring it put the destination's original books back.
 
 - **The import is the most destructive operation in the product.** Everything in
   §4 is mitigation; the residual risk is a user who confirms without reading. The
