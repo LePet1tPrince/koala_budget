@@ -16,6 +16,7 @@
 import * as runtime from '../runtime';
 import type {
   JournalEntry,
+  PaginatedAuditLogList,
   PaginatedJournalEntryList,
   PaginatedSimpleLineList,
   PaginatedTransactionRowList,
@@ -24,10 +25,13 @@ import type {
   SimpleLine,
   SimpleLinesRecategorize200Response,
   SimpleLinesRecategorizeRequest,
+  TransactionsFacets200Response,
 } from '../models/index';
 import {
     JournalEntryFromJSON,
     JournalEntryToJSON,
+    PaginatedAuditLogListFromJSON,
+    PaginatedAuditLogListToJSON,
     PaginatedJournalEntryListFromJSON,
     PaginatedJournalEntryListToJSON,
     PaginatedSimpleLineListFromJSON,
@@ -44,7 +48,15 @@ import {
     SimpleLinesRecategorize200ResponseToJSON,
     SimpleLinesRecategorizeRequestFromJSON,
     SimpleLinesRecategorizeRequestToJSON,
+    TransactionsFacets200ResponseFromJSON,
+    TransactionsFacets200ResponseToJSON,
 } from '../models/index';
+
+export interface JournalEntriesAuditRequest {
+    id: number;
+    teamSlug: string;
+    page?: number;
+}
 
 export interface JournalEntriesCreateRequest {
     teamSlug: string;
@@ -118,15 +130,84 @@ export interface SimpleLinesUpdateRequest {
     simpleLine: Omit<SimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
 }
 
+export interface TransactionsFacetsRequest {
+    column: string;
+    teamSlug: string;
+    dir?: string;
+    endDate?: string;
+    fColumn?: string;
+    q?: string;
+    search?: string;
+    sort?: string;
+    startDate?: string;
+}
+
 export interface TransactionsListRequest {
     teamSlug: string;
+    dir?: string;
+    endDate?: string;
+    fColumn?: string;
     page?: number;
+    search?: string;
+    sort?: string;
+    startDate?: string;
 }
 
 /**
  * 
  */
 export class JournalApi extends runtime.BaseAPI {
+
+    /**
+     * Return the row-level audit history for this journal entry and its lines.
+     */
+    async journalEntriesAuditRaw(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedAuditLogList>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling journalEntriesAudit().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling journalEntriesAudit().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/journal-entries/{id}/audit/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedAuditLogListFromJSON(jsonValue));
+    }
+
+    /**
+     * Return the row-level audit history for this journal entry and its lines.
+     */
+    async journalEntriesAudit(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedAuditLogList> {
+        const response = await this.journalEntriesAuditRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * ViewSet for JournalEntry model. Provides CRUD operations for journal entries with nested lines.
@@ -775,7 +856,86 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * Read-only list of journal entries flattened into transaction rows. Only entries with exactly 2 lines are returned (simple debit/credit pairs).
+     * List the values one column offers, with the row count behind each.  The counts reflect the search, date range and *other* columns\' filters that are currently applied, so they say what ticking a value would actually show.  A hierarchical column (dates, the two account columns) nests them under `children`, and a branch is selectable in its own right -- ticking a year means every date in it.
+     */
+    async transactionsFacetsRaw(requestParameters: TransactionsFacetsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionsFacets200Response>> {
+        if (requestParameters['column'] == null) {
+            throw new runtime.RequiredError(
+                'column',
+                'Required parameter "column" was null or undefined when calling transactionsFacets().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling transactionsFacets().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['column'] != null) {
+            queryParameters['column'] = requestParameters['column'];
+        }
+
+        if (requestParameters['dir'] != null) {
+            queryParameters['dir'] = requestParameters['dir'];
+        }
+
+        if (requestParameters['endDate'] != null) {
+            queryParameters['end_date'] = requestParameters['endDate'];
+        }
+
+        if (requestParameters['fColumn'] != null) {
+            queryParameters['f_{column}'] = requestParameters['fColumn'];
+        }
+
+        if (requestParameters['q'] != null) {
+            queryParameters['q'] = requestParameters['q'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
+        }
+
+        if (requestParameters['sort'] != null) {
+            queryParameters['sort'] = requestParameters['sort'];
+        }
+
+        if (requestParameters['startDate'] != null) {
+            queryParameters['start_date'] = requestParameters['startDate'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/journal/api/transactions/facets/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionsFacets200ResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * List the values one column offers, with the row count behind each.  The counts reflect the search, date range and *other* columns\' filters that are currently applied, so they say what ticking a value would actually show.  A hierarchical column (dates, the two account columns) nests them under `children`, and a branch is selectable in its own right -- ticking a year means every date in it.
+     */
+    async transactionsFacets(requestParameters: TransactionsFacetsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionsFacets200Response> {
+        const response = await this.transactionsFacetsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Read-only list of journal entries flattened into transaction rows.  Every entry is returned, including splits -- an entry apportioned across several categories, which has one line on one side and several on the other. This list used to filter to ``line_count=2``, which silently hid every split from the page that presents itself as the ledger, and from its filters, facet counts and CSV export.  A split row reports ``Split (N)`` on its many-line side and carries its ``legs`` for the table\'s disclosure.  Search, date range, per-column value filters and sorting all run as query params so that they apply to the whole ledger, not just whatever page the client has fetched so far.  `facets/` lists a column\'s distinct values so the table\'s column menus can offer them.
      */
     async transactionsListRaw(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
         if (requestParameters['teamSlug'] == null) {
@@ -787,8 +947,32 @@ export class JournalApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
+        if (requestParameters['dir'] != null) {
+            queryParameters['dir'] = requestParameters['dir'];
+        }
+
+        if (requestParameters['endDate'] != null) {
+            queryParameters['end_date'] = requestParameters['endDate'];
+        }
+
+        if (requestParameters['fColumn'] != null) {
+            queryParameters['f_{column}'] = requestParameters['fColumn'];
+        }
+
         if (requestParameters['page'] != null) {
             queryParameters['page'] = requestParameters['page'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
+        }
+
+        if (requestParameters['sort'] != null) {
+            queryParameters['sort'] = requestParameters['sort'];
+        }
+
+        if (requestParameters['startDate'] != null) {
+            queryParameters['start_date'] = requestParameters['startDate'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -811,7 +995,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * Read-only list of journal entries flattened into transaction rows. Only entries with exactly 2 lines are returned (simple debit/credit pairs).
+     * Read-only list of journal entries flattened into transaction rows.  Every entry is returned, including splits -- an entry apportioned across several categories, which has one line on one side and several on the other. This list used to filter to ``line_count=2``, which silently hid every split from the page that presents itself as the ledger, and from its filters, facet counts and CSV export.  A split row reports ``Split (N)`` on its many-line side and carries its ``legs`` for the table\'s disclosure.  Search, date range, per-column value filters and sorting all run as query params so that they apply to the whole ledger, not just whatever page the client has fetched so far.  `facets/` lists a column\'s distinct values so the table\'s column menus can offer them.
      */
     async transactionsList(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
         const response = await this.transactionsListRaw(requestParameters, initOverrides);

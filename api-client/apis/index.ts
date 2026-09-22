@@ -1,6 +1,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export * from './AApi';
+export * from './AuditApi';
 export * from './BankFeedApi';
 export * from './JournalApi';
 export * from './PegasusApi';

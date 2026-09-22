@@ -14,6 +14,12 @@
 
 import { mapValues } from '../runtime';
 import type { SimpleAccount } from './SimpleAccount';
+import {
+    SimpleAccountFromJSON,
+    SimpleAccountFromJSONTyped,
+    SimpleAccountToJSON,
+    SimpleAccountToJSONTyped,
+} from './SimpleAccount';
 import type { SplitLeg } from './SplitLeg';
 import {
     SplitLegFromJSON,
@@ -21,12 +27,6 @@ import {
     SplitLegToJSON,
     SplitLegToJSONTyped,
 } from './SplitLeg';
-import {
-    SimpleAccountFromJSON,
-    SimpleAccountFromJSONTyped,
-    SimpleAccountToJSON,
-    SimpleAccountToJSONTyped,
-} from './SimpleAccount';
 import type { BankFeedRowSourceEnum } from './BankFeedRowSourceEnum';
 import {
     BankFeedRowSourceEnumFromJSON,

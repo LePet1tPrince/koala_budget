@@ -23,12 +23,18 @@ import type {
   ManualTransaction,
   PaginatedAccountGroupList,
   PaginatedBankFeedRowList,
+  PaginatedFeedAccountList,
   PatchedBatchEditRequest,
+  SimilarCategorySuggestion,
   SimpleAccount,
+  TransferDismissRequest,
+  TransferResolveRequest,
+  TransferSuggestion,
   UploadConfirmRequest,
   UploadConfirmResponse,
   UploadParseResponse,
   UploadPreviewResponse,
+  UploadValidateDatesResponse,
 } from '../models/index';
 import {
     BankFeedRowFromJSON,
@@ -47,10 +53,20 @@ import {
     PaginatedAccountGroupListToJSON,
     PaginatedBankFeedRowListFromJSON,
     PaginatedBankFeedRowListToJSON,
+    PaginatedFeedAccountListFromJSON,
+    PaginatedFeedAccountListToJSON,
     PatchedBatchEditRequestFromJSON,
     PatchedBatchEditRequestToJSON,
+    SimilarCategorySuggestionFromJSON,
+    SimilarCategorySuggestionToJSON,
     SimpleAccountFromJSON,
     SimpleAccountToJSON,
+    TransferDismissRequestFromJSON,
+    TransferDismissRequestToJSON,
+    TransferResolveRequestFromJSON,
+    TransferResolveRequestToJSON,
+    TransferSuggestionFromJSON,
+    TransferSuggestionToJSON,
     UploadConfirmRequestFromJSON,
     UploadConfirmRequestToJSON,
     UploadConfirmResponseFromJSON,
@@ -59,6 +75,8 @@ import {
     UploadParseResponseToJSON,
     UploadPreviewResponseFromJSON,
     UploadPreviewResponseToJSON,
+    UploadValidateDatesResponseFromJSON,
+    UploadValidateDatesResponseToJSON,
 } from '../models/index';
 
 export interface BankFeedAccountGroupsRequest {
@@ -111,6 +129,11 @@ export interface BankFeedCreateAccountRequest {
     bankFeedRow: BankFeedRow;
 }
 
+export interface BankFeedFeedAccountsRequest {
+    teamSlug: string;
+    page?: number;
+}
+
 export interface BankFeedFeedCreateRequest {
     teamSlug: string;
     manualTransaction: ManualTransaction;
@@ -128,9 +151,32 @@ export interface BankFeedFeedUpdateRequest {
     manualTransaction: ManualTransaction;
 }
 
+export interface BankFeedSampleCsvRequest {
+    teamSlug: string;
+}
+
+export interface BankFeedSimilarCategoriesRequest {
+    ids: string;
+    teamSlug: string;
+}
+
 export interface BankFeedTransactionsCategorizeRequest {
     teamSlug: string;
     categorizeTransactionsRequest: CategorizeTransactionsRequest;
+}
+
+export interface BankFeedTransferDismissRequest {
+    teamSlug: string;
+    transferDismissRequest: TransferDismissRequest;
+}
+
+export interface BankFeedTransferResolveRequest {
+    teamSlug: string;
+    transferResolveRequest: TransferResolveRequest;
+}
+
+export interface BankFeedTransferSuggestionsRequest {
+    teamSlug: string;
 }
 
 export interface BankFeedUploadConfirmRequest {
@@ -149,6 +195,14 @@ export interface BankFeedUploadPreviewRequest {
     accountId?: number;
     columnMapping?: string;
     categoryMappings?: string;
+}
+
+export interface BankFeedUploadValidateDatesRequest {
+    teamSlug: string;
+    file?: Blob;
+    dateColumn?: number;
+    dateFormat?: string;
+    hasHeaders?: boolean;
 }
 
 /**
@@ -632,6 +686,50 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
+     * Return feed accounts with up-to-date balances and review counts.
+     */
+    async bankFeedFeedAccountsRaw(requestParameters: BankFeedFeedAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedFeedAccountList>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedFeedAccounts().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/feed_accounts/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedFeedAccountListFromJSON(jsonValue));
+    }
+
+    /**
+     * Return feed accounts with up-to-date balances and review counts.
+     */
+    async bankFeedFeedAccounts(requestParameters: BankFeedFeedAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedFeedAccountList> {
+        const response = await this.bankFeedFeedAccountsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Create a new manual bank transaction with associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
      */
     async bankFeedFeedCreateRaw(requestParameters: BankFeedFeedCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
@@ -787,6 +885,101 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
+     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the team\'s books are ones the user knowingly imported.
+     */
+    async bankFeedSampleCsvRaw(requestParameters: BankFeedSampleCsvRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedSampleCsv().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/sample_csv/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        if (this.isJsonMime(response.headers.get('content-type'))) {
+            return new runtime.JSONApiResponse<string>(response);
+        } else {
+            return new runtime.TextApiResponse(response) as any;
+        }
+    }
+
+    /**
+     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the team\'s books are ones the user knowingly imported.
+     */
+    async bankFeedSampleCsv(requestParameters: BankFeedSampleCsvRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
+        const response = await this.bankFeedSampleCsvRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Suggest categories for uncategorized transactions from how similar ones were categorized before — matching on payee, on description, or on descriptions that share most of their wording.  Returns a flat list ranked per transaction (strongest match first), each item carrying the count behind it so the UI can show why it is suggested.
+     */
+    async bankFeedSimilarCategoriesRaw(requestParameters: BankFeedSimilarCategoriesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SimilarCategorySuggestion>>> {
+        if (requestParameters['ids'] == null) {
+            throw new runtime.RequiredError(
+                'ids',
+                'Required parameter "ids" was null or undefined when calling bankFeedSimilarCategories().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedSimilarCategories().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['ids'] != null) {
+            queryParameters['ids'] = requestParameters['ids'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/similar_categories/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(SimilarCategorySuggestionFromJSON));
+    }
+
+    /**
+     * Suggest categories for uncategorized transactions from how similar ones were categorized before — matching on payee, on description, or on descriptions that share most of their wording.  Returns a flat list ranked per transaction (strongest match first), each item carrying the count behind it so the UI can show why it is suggested.
+     */
+    async bankFeedSimilarCategories(requestParameters: BankFeedSimilarCategoriesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SimilarCategorySuggestion>> {
+        const response = await this.bankFeedSimilarCategoriesRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Categorize one or more bank transactions. Creates journal entries linking the bank account to the category account.  Body: - rows: List of transaction objects with \'id\' field - category_id: ID of the category account
      */
     async bankFeedTransactionsCategorizeRaw(requestParameters: BankFeedTransactionsCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -833,6 +1026,144 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedTransactionsCategorize(requestParameters: BankFeedTransactionsCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedTransactionsCategorizeRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Dismiss a suggested pair as \'not a duplicate\' so it stops being suggested.
+     */
+    async bankFeedTransferDismissRaw(requestParameters: BankFeedTransferDismissRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedTransferDismiss().'
+            );
+        }
+
+        if (requestParameters['transferDismissRequest'] == null) {
+            throw new runtime.RequiredError(
+                'transferDismissRequest',
+                'Required parameter "transferDismissRequest" was null or undefined when calling bankFeedTransferDismiss().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/transfers/dismiss/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: TransferDismissRequestToJSON(requestParameters['transferDismissRequest']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Dismiss a suggested pair as \'not a duplicate\' so it stops being suggested.
+     */
+    async bankFeedTransferDismiss(requestParameters: BankFeedTransferDismissRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedTransferDismissRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Resolve a duplicate transfer: archive one leg, keep the other.  Archiving the duplicate leg also voids its journal entry (if categorized) so the movement stops double-counting. The kept leg is left untouched for the user to categorize as a transfer. Reconciled legs are refused.
+     */
+    async bankFeedTransferResolveRaw(requestParameters: BankFeedTransferResolveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedTransferResolve().'
+            );
+        }
+
+        if (requestParameters['transferResolveRequest'] == null) {
+            throw new runtime.RequiredError(
+                'transferResolveRequest',
+                'Required parameter "transferResolveRequest" was null or undefined when calling bankFeedTransferResolve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/transfers/resolve/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: TransferResolveRequestToJSON(requestParameters['transferResolveRequest']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Resolve a duplicate transfer: archive one leg, keep the other.  Archiving the duplicate leg also voids its journal entry (if categorized) so the movement stops double-counting. The kept leg is left untouched for the user to categorize as a transfer. Reconciled legs are refused.
+     */
+    async bankFeedTransferResolve(requestParameters: BankFeedTransferResolveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedTransferResolveRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * List likely-duplicate transfer pairs (a transfer reported by both banks).  Each pair shows both legs so the user can archive the duplicate, archive the other side, or dismiss the suggestion. Read-only; nothing is changed.
+     */
+    async bankFeedTransferSuggestionsRaw(requestParameters: BankFeedTransferSuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TransferSuggestion>>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedTransferSuggestions().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/transfers/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(TransferSuggestionFromJSON));
+    }
+
+    /**
+     * List likely-duplicate transfer pairs (a transfer reported by both banks).  Each pair shows both legs so the user can archive the duplicate, archive the other side, or dismiss the suggestion. Read-only; nothing is changed.
+     */
+    async bankFeedTransferSuggestions(requestParameters: BankFeedTransferSuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TransferSuggestion>> {
+        const response = await this.bankFeedTransferSuggestionsRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**
@@ -1016,6 +1347,79 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedUploadPreview(requestParameters: BankFeedUploadPreviewRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadPreviewResponse> {
         const response = await this.bankFeedUploadPreviewRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Check every row\'s date cell against the chosen date format.  Used by the column-mapping step of the upload wizard to warn about rows that would be rejected, before the user walks the rest of the wizard.  Request: multipart/form-data with file, date_column, date_format, has_headers Response: total_rows, invalid_count, invalid_samples, suggested_format
+     */
+    async bankFeedUploadValidateDatesRaw(requestParameters: BankFeedUploadValidateDatesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadValidateDatesResponse>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedUploadValidateDates().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const consumes: runtime.Consume[] = [
+            { contentType: 'multipart/form-data' },
+        ];
+        // @ts-ignore: canConsumeForm may be unused
+        const canConsumeForm = runtime.canConsumeForm(consumes);
+
+        let formParams: { append(param: string, value: any): any };
+        let useForm = false;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        if (useForm) {
+            formParams = new FormData();
+        } else {
+            formParams = new URLSearchParams();
+        }
+
+        if (requestParameters['file'] != null) {
+            formParams.append('file', requestParameters['file'] as any);
+        }
+
+        if (requestParameters['dateColumn'] != null) {
+            formParams.append('date_column', requestParameters['dateColumn'] as any);
+        }
+
+        if (requestParameters['dateFormat'] != null) {
+            formParams.append('date_format', requestParameters['dateFormat'] as any);
+        }
+
+        if (requestParameters['hasHeaders'] != null) {
+            formParams.append('has_headers', requestParameters['hasHeaders'] as any);
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/bankfeed/api/feed/upload_validate_dates/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: formParams,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadValidateDatesResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Check every row\'s date cell against the chosen date format.  Used by the column-mapping step of the upload wizard to warn about rows that would be rejected, before the user walks the rest of the wizard.  Request: multipart/form-data with file, date_column, date_format, has_headers Response: total_rows, invalid_count, invalid_samples, suggested_format
+     */
+    async bankFeedUploadValidateDates(requestParameters: BankFeedUploadValidateDatesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadValidateDatesResponse> {
+        const response = await this.bankFeedUploadValidateDatesRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
