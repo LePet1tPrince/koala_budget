@@ -369,6 +369,26 @@ One row per **line**, entry columns repeated, plus one row per uncategorized fee
 row (§2.4). Ordered by `(entry_date, entry_id)` then line order within the entry
 (§2.6), with uncategorized rows last.
 
+**An entry is not assumed to have two lines.** A *split* — one bank transaction
+apportioned across several categories — is one entry carrying a bank line for the
+total and one counter line per leg (`apps/bank_feed/services/splits.py`), so it is
+simply three or more rows sharing an `entry_id`. Nothing in this format treats it
+specially: the exporter iterates lines, the balance check in §6 sums debits and
+credits per entry, and the importer groups rows by `entry_id` and inserts them all.
+Two consequences are worth stating, because both are places a two-line assumption
+would have been easy to make and wrong:
+
+- **The feed row attaches to the bank line, not to every leg.** `BankTransaction`
+  is looked up by `(entry_id, account_id)`, so a split's `feed_*` columns land on
+  the one line whose account the bank actually reported; its legs carry blank feed
+  columns. One feed row per split, not one per leg.
+- **A split's legs are never mirrors.** `feed_is_mirror` is carried, never
+  re-derived (§2.4), and the importer does not call `transfer_mirror.sync_transfer`
+  — which matters here, because a split has no single counterpart and deriving one
+  would put a phantom feed row for the split's *whole* amount into some leg's
+  account. That is a bug the feed itself had before splits shipped; this format
+  cannot reproduce it, because it never guesses.
+
 | column | notes |
 |---|---|
 | `entry_id` | Groups lines into entries. File-local. **Blank** on an uncategorized feed row. |

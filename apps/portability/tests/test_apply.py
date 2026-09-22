@@ -21,6 +21,7 @@ from django.test import TestCase
 from apps.accounts.models import Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
+from apps.bank_feed.services.splits import is_split
 from apps.budget.models import Budget
 from apps.journal.models import JournalEntry, JournalLine
 from apps.portability.services import apply, export, read, write
@@ -388,3 +389,61 @@ class BlankFeedDescriptionTests(TestCase):
         uncategorized = BankTransaction.objects.filter(team=self.dest_team, journal_entry__isnull=True)
         self.assertEqual(uncategorized.count(), 1)
         self.assertEqual(uncategorized.first().amount, Decimal("9.99"))
+
+
+class SplitRoundTripTests(TestCase):
+    """
+    A split must come out of an import as the same split it went in as.
+
+    Splits are one `JournalEntry` with a bank line and several category legs
+    (`apps/bank_feed/services/splits.py`). Nothing in this format treats them
+    specially -- journal.csv is one row per line, so three lines are three
+    rows -- but "nothing treats them specially" is a claim worth testing
+    rather than assuming: five places in the feed assumed two lines and were
+    silently wrong until splits shipped.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.source_team, cls.source_user, cls.handles = build_db_fixture_team("Split Src", "split-src")
+        cls.dest_team, cls.dest_user = make_team("Split Dest", "split-dest")
+
+    def setUp(self):
+        apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
+        self.split = (
+            JournalEntry.objects.filter(team=self.dest_team, description="Costco run").prefetch_related("lines").get()
+        )
+
+    def test_the_split_arrives_with_all_three_lines(self):
+        self.assertEqual(self.split.lines.count(), 3)
+
+    def test_the_split_balances_after_import(self):
+        lines = list(self.split.lines.all())
+        self.assertEqual(sum(line.dr_amount for line in lines), sum(line.cr_amount for line in lines))
+
+    def test_the_legs_keep_their_opposite_signs(self):
+        by_account = {line.account.name: (line.dr_amount, line.cr_amount) for line in self.split.lines.all()}
+        self.assertEqual(by_account["Groceries"], (Decimal("100.00"), Decimal("0.00")))
+        self.assertEqual(by_account["Misc"], (Decimal("0.00"), Decimal("20.00")))
+        self.assertEqual(by_account["Chequing"], (Decimal("0.00"), Decimal("80.00")))
+
+    def test_the_bank_line_keeps_its_cleared_flag(self):
+        # `apply_splits` updates the bank line in place precisely so its
+        # reconciliation state is not lost; an import must not lose it either.
+        bank_line = self.split.lines.get(account__name="Chequing")
+        self.assertTrue(bank_line.is_cleared)
+
+    def test_one_feed_row_for_the_split_not_one_per_leg(self):
+        feed = BankTransaction.objects.filter(team=self.dest_team, journal_entry=self.split)
+        self.assertEqual(feed.count(), 1)
+        self.assertEqual(feed.get().amount, Decimal("80.00"))
+        self.assertEqual(feed.get().account.name, "Chequing")
+
+    def test_the_split_is_still_recognised_as_a_split(self):
+        self.assertTrue(is_split(self.split))
+
+    def test_no_mirror_was_invented_for_the_split(self):
+        # The import never calls `sync_transfer`, so a split cannot pick up the
+        # phantom mirror that re-deriving the relationship would create.
+        mirrors = BankTransaction.objects.filter(team=self.dest_team, journal_entry=self.split, is_transfer_mirror=True)
+        self.assertEqual(mirrors.count(), 0)

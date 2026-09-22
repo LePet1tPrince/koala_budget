@@ -163,9 +163,20 @@ class BuildChecksTests(TestCase):
         self.checks = export.build_checks(self.team)
 
     def test_trial_balance_matches_and_excludes_the_void_entry(self):
-        # Non-void dr/cr totals: 84.12 + 50.00 + 30.00 + 30.00 + 15.00 + 0.00
-        # + 12.50 (uncategorized has no line, so it is NOT in this sum).
-        expected = Decimal("84.12") + Decimal("50.00") + Decimal("30.00") + Decimal("30.00") + Decimal("15.00")
+        # Non-void debit totals: 84.12 + 50.00 + 30.00 + 30.00 + 15.00 + 0.00,
+        # plus the split's single debit leg of 100.00 (its other leg is a
+        # -20.00 refund, so it lands on the credit side with the 80.00 bank
+        # line -- 100 dr against 20 + 80 cr, which is the balance the split
+        # service guarantees). The uncategorized row has no line at all, so
+        # its 12.50 is NOT in this sum.
+        expected = (
+            Decimal("84.12")
+            + Decimal("50.00")
+            + Decimal("30.00")
+            + Decimal("30.00")
+            + Decimal("15.00")
+            + Decimal("100.00")
+        )
         self.assertEqual(self.checks["trial_balance"]["dr"], self.checks["trial_balance"]["cr"])
         self.assertEqual(Decimal(self.checks["trial_balance"]["dr"]), expected)
 

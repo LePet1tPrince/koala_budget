@@ -294,6 +294,52 @@ def build_fixture_tables() -> tuple[list[dict], list[dict], list[dict]]:
             dr_amount=Decimal("0.00"),
             cr_amount=Decimal("0.00"),
         ),
+        # A split: one bank line carrying the total, one counter line per leg
+        # (`apps/bank_feed/services/splits.py`). Three lines on one entry, so
+        # every place this format groups lines by entry has to cope with more
+        # than two -- and the legs carry *opposite* signs (a +100.00 purchase
+        # with a -20.00 refund against an +80.00 total), which is the mixed
+        # case that service calls out and the one a naive "debit leg, credit
+        # leg" reading gets wrong.
+        journal_row(
+            entry_id=700,
+            entry_date=date(2026, 1, 18),
+            description="Costco run",
+            source="bank_match",
+            status="posted",
+            account_id=4,
+            account_name="Groceries",
+            dr_amount=Decimal("100.00"),
+            cr_amount=Decimal("0.00"),
+        ),
+        journal_row(
+            entry_id=700,
+            entry_date=date(2026, 1, 18),
+            description="Costco run",
+            source="bank_match",
+            status="posted",
+            account_id=10,
+            account_name="Misc",
+            dr_amount=Decimal("0.00"),
+            cr_amount=Decimal("20.00"),
+        ),
+        journal_row(
+            entry_id=700,
+            entry_date=date(2026, 1, 18),
+            description="Costco run",
+            source="bank_match",
+            status="posted",
+            account_id=1,
+            account_name="Chequing",
+            dr_amount=Decimal("0.00"),
+            cr_amount=Decimal("80.00"),
+            is_cleared=True,
+            feed_source="csv",
+            feed_amount=Decimal("80.00"),
+            feed_posted_date=date(2026, 1, 18),
+            feed_description="COSTCO WHOLESALE",
+            feed_merchant="Costco",
+        ),
         # An uncategorized bank-feed row -- no entry at all (§2.4).
         journal_row(
             status="uncategorized",

@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
+from apps.bank_feed.services.splits import apply_splits
 from apps.bank_feed.services.transfer_mirror import sync_transfer
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
@@ -211,6 +212,39 @@ def build_db_fixture_team(name: str = "Fixture Team", slug: str = "fixture-team"
     )
     JournalLine.objects.create(team=team, journal_entry=entry7, account=chequing, dr_amount=Decimal("0.00"))
     JournalLine.objects.create(team=team, journal_entry=entry7, account=groceries, cr_amount=Decimal("0.00"))
+
+    # A split, written through the real service rather than hand-rolled, so
+    # what this fixture holds is exactly what the UI produces
+    # (`apps/bank_feed/services/splits.py`). One bank line carrying the total
+    # and one counter line per leg -- three lines on one entry, and the legs
+    # carry opposite signs (+100.00 spent, -20.00 refunded, against an +80.00
+    # total), which is the mixed case that service calls out.
+    split_entry = JournalEntry.objects.create(
+        team=team,
+        entry_date=date(2026, 1, 18),
+        description="Costco run",
+        source=JournalEntry.SOURCE_BANK_MATCH,
+        status=JournalEntry.STATUS_POSTED,
+    )
+    JournalLine.objects.create(team=team, journal_entry=split_entry, account=groceries, dr_amount=Decimal("80.00"))
+    JournalLine.objects.create(
+        team=team, journal_entry=split_entry, account=chequing, cr_amount=Decimal("80.00"), is_cleared=True
+    )
+    split_tx = BankTransaction.objects.create(
+        team=team,
+        account=chequing,
+        journal_entry=split_entry,
+        amount=Decimal("80.00"),
+        posted_date=date(2026, 1, 18),
+        description="COSTCO WHOLESALE",
+        merchant_name="Costco",
+        source=BankTransaction.SOURCE_CSV,
+    )
+    apply_splits(
+        split_tx,
+        [(groceries, Decimal("100.00")), (misc_expense, Decimal("-20.00"))],
+        total=Decimal("80.00"),
+    )
 
     # An uncategorized feed row.
     BankTransaction.objects.create(

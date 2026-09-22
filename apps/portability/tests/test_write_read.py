@@ -104,6 +104,33 @@ class RoundTripTests(SimpleTestCase):
         self.assertEqual({a["account_id"] for a in miscs}, {10, 11})
         self.assertEqual({a["account_type"] for a in miscs}, {"expense", "income"})
 
+    def test_split_keeps_all_three_lines_on_one_entry(self):
+        rows = [r for r in self.tables.journal_rows if r["entry_id"] == 700]
+        self.assertEqual(len(rows), 3)
+        self.assertEqual({r["description"] for r in rows}, {"Costco run"})
+
+    def test_split_balances_with_legs_on_opposite_sides(self):
+        rows = [r for r in self.tables.journal_rows if r["entry_id"] == 700]
+        dr = sum(r["dr_amount"] for r in rows)
+        cr = sum(r["cr_amount"] for r in rows)
+        self.assertEqual(dr, cr)
+        self.assertEqual(dr, Decimal("100.00"))  # 100 dr vs 20 + 80 cr
+
+    def test_only_the_splits_bank_line_carries_the_feed_row(self):
+        # The feed row belongs to the account the bank reported, not to each
+        # leg -- so exactly one of the three rows has feed_* columns.
+        rows = [r for r in self.tables.journal_rows if r["entry_id"] == 700]
+        with_feed = [r for r in rows if r["feed_source"] is not None]
+        self.assertEqual(len(with_feed), 1)
+        self.assertEqual(with_feed[0]["account_name"], "Chequing")
+        self.assertEqual(with_feed[0]["feed_amount"], Decimal("80.00"))
+
+    def test_a_splits_legs_are_not_mirrors(self):
+        # A split has no counterpart leg to mirror; nothing in it may claim to
+        # be one, or the feed would show a phantom row for the whole amount.
+        rows = [r for r in self.tables.journal_rows if r["entry_id"] == 700]
+        self.assertTrue(all(r["feed_is_mirror"] is False for r in rows))
+
 
 class AccentedPayeeUtf8Tests(SimpleTestCase):
     """UTF-8-with-BOM round trip, since a payee name is exactly where this bites."""
