@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
 import { createConfetti } from '../../common/confetti';
-import { getBatchOperationsApi, getUploadApiHelpers } from '../bank_feed';
+import { getBatchOperationsApi, getTransactionApi, getUploadApiHelpers } from '../bank_feed';
 import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
+import EditTransactionModal from './EditTransactionModal';
 import Combobox from '../../common/Combobox';
+import Icon from '../../common/Icon';
 import Modal from '../../common/Modal';
 
 const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
@@ -437,6 +439,7 @@ function AccountHierarchy({
   currentTransaction,
   onSelect,
   onCreateNew,
+  onSplit,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTopFilter, setActiveTopFilter] = useState(null); // TOP_LEVEL_FILTERS key
@@ -796,7 +799,16 @@ function AccountHierarchy({
           </div>
         ))}
 
-        {/* Create a new account when nothing above is a good match */}
+        {/* The two escapes from "none of these single categories is right":
+            the transaction belongs to several, or to one that doesn't exist yet. */}
+        <button
+          onClick={onSplit}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 mt-1 rounded-lg border border-dashed border-base-300 text-base-content/70 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
+          data-testid="categorize-split-btn"
+        >
+          <Icon name="split" className="h-4 w-4" />
+          <span className="font-medium">Split across categories</span>
+        </button>
         <button
           onClick={onCreateNew}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 mt-1 rounded-lg border border-dashed border-base-300 text-base-content/70 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
@@ -958,6 +970,7 @@ export default function CategorizeMode({
   const [localAccounts, setLocalAccounts] = useState(allAccounts);
   const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
   const [pendingBatch, setPendingBatch] = useState(null); // { account, tx, matches } awaiting the similar-transactions modal
+  const [splitModalOpen, setSplitModalOpen] = useState(false);
   const [drafts, setDrafts] = useState({}); // transaction id -> { payee, description } edited but not yet filed
   const [error, setError] = useState(null);
   const [cardHeight, setCardHeight] = useState(220);
@@ -965,6 +978,7 @@ export default function CategorizeMode({
   const headers = getApiHeaders();
   const uploadApi = useMemo(() => getUploadApiHelpers(teamSlug), [teamSlug]);
   const batchApi = useMemo(() => getBatchOperationsApi(teamSlug), [teamSlug]);
+  const transactionApi = useMemo(() => getTransactionApi(teamSlug), [teamSlug]);
   const payeeOptions = useMemo(() => allPayees.map(p => p.name).filter(Boolean), [allPayees]);
 
   const fetchUncategorized = useCallback(async () => {
@@ -975,7 +989,11 @@ export default function CategorizeMode({
       while (url) {
         const resp = await fetch(url, { credentials: 'include', headers });
         const data = await resp.json();
-        const rows = (data.results || []).filter(r => r.category === null && !r.is_archived);
+        // A split reports `category: null` because it has several, not none —
+        // the same shape an uncategorized row has. Without the `is_split` test
+        // a transaction split here would come straight back into the queue on
+        // the next visit, asking to be categorized again.
+        const rows = (data.results || []).filter(r => r.category === null && !r.is_split && !r.is_archived);
         allRows = allRows.concat(rows);
         url = data.next || null;
       }
@@ -1032,6 +1050,55 @@ export default function CategorizeMode({
     fetchUncategorized();
   }, []);
 
+  // Everything that happens once transactions are filed, whichever way they
+  // were filed: the card leaves, the counters and streak move, the confetti
+  // threshold is checked, and the suggestions the decision invalidated are
+  // dropped. Shared by the single-category path and the split modal, so the
+  // two cannot drift in how the queue behaves.
+  const advanceQueue = useCallback((txList, { editedIds = new Set(), includesTop = true } = {}) => {
+    const committedIds = new Set(txList.map(t => t.id));
+    const newCategorized = categorized + txList.length;
+    const newStreak = streak + 1;
+
+    // The decision(s) just made are evidence about every queued transaction
+    // that looks like one of them, so those cached suggestions are now out
+    // of date and are dropped for the prefetch to pick up again.
+    const staleKeys = new Set(txList.map(lookalikeKey).filter(Boolean));
+    const staleIds = staleKeys.size
+      ? transactions
+          .filter(t => !committedIds.has(t.id) && staleKeys.has(lookalikeKey(t)))
+          .map(transactionId)
+      : [];
+
+    setTimeout(() => {
+      setTransactions(prev => prev.filter(t => !committedIds.has(t.id)));
+      // Dropped with the card rather than on the response, or the top card
+      // would visibly snap back to the bank's wording mid-flight.
+      if (editedIds.size > 0) {
+        setDrafts(prev => {
+          const next = { ...prev };
+          editedIds.forEach(id => delete next[id]);
+          return next;
+        });
+      }
+      if (staleIds.length > 0) {
+        setSuggestionsByTransaction(cached => {
+          const next = { ...cached };
+          staleIds.forEach(id => delete next[id]);
+          return next;
+        });
+      }
+      setCategorized(newCategorized);
+      setStreak(newStreak);
+      setIsExiting(false);
+
+      if (Math.floor(newCategorized / 10) > Math.floor(categorized / 10)) {
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 3000);
+      }
+    }, includesTop ? 300 : 0);
+  }, [transactions, categorized, streak]);
+
   // Categorizes one or more transactions to `account` in a single batched
   // request. `txList` always includes the top-of-stack transaction when
   // it's part of the batch, which drives the card-exit animation.
@@ -1075,55 +1142,14 @@ export default function CategorizeMode({
           : []),
       ]);
 
-      const committedIds = new Set(txList.map(t => t.id));
-      const newCategorized = categorized + txList.length;
-      const newStreak = streak + 1;
-
       setUndoStack(prev => [...prev, { transactions: txList, account }]);
-
-      // The decision(s) just made are evidence about every queued transaction
-      // that looks like one of them, so those cached suggestions are now out
-      // of date and are dropped for the prefetch to pick up again.
-      const staleKeys = new Set(txList.map(lookalikeKey).filter(Boolean));
-      const staleIds = staleKeys.size
-        ? transactions
-            .filter(t => !committedIds.has(t.id) && staleKeys.has(lookalikeKey(t)))
-            .map(transactionId)
-        : [];
-
-      setTimeout(() => {
-        setTransactions(prev => prev.filter(t => !committedIds.has(t.id)));
-        // Dropped with the card rather than on the response, or the top card
-        // would visibly snap back to the bank's wording mid-flight.
-        if (editedIds.size > 0) {
-          setDrafts(prev => {
-            const next = { ...prev };
-            editedIds.forEach(id => delete next[id]);
-            return next;
-          });
-        }
-        if (staleIds.length > 0) {
-          setSuggestionsByTransaction(cached => {
-            const next = { ...cached };
-            staleIds.forEach(id => delete next[id]);
-            return next;
-          });
-        }
-        setCategorized(newCategorized);
-        setStreak(newStreak);
-        setIsExiting(false);
-
-        if (Math.floor(newCategorized / 10) > Math.floor(categorized / 10)) {
-          setShowConfetti(true);
-          setTimeout(() => setShowConfetti(false), 3000);
-        }
-      }, includesTop ? 300 : 0);
+      advanceQueue(txList, { editedIds, includesTop });
     } catch (err) {
       console.error('Failed to categorize:', err);
       setError(err.message || 'Could not categorize that transaction.');
       setIsExiting(false);
     }
-  }, [transactions, categorized, streak, teamSlug, headers, drafts, batchApi]);
+  }, [transactions, teamSlug, headers, drafts, batchApi, advanceQueue]);
 
   // Categorizing the top transaction: if other uncategorized transactions
   // share its home account and description, offer to categorize them the
@@ -1139,6 +1165,41 @@ export default function CategorizeMode({
     }
     commitCategorize([tx], account);
   }, [transactions, commitCategorize]);
+
+  // The card's unsaved payee/description edits belong to the transaction the
+  // modal is about to show, so it opens on what the user typed rather than on
+  // what the bank sent. The modal's save posts both fields, so filing the split
+  // files the edit too -- the same guarantee the categorize path gets from
+  // `batch_edit`.
+  const splitTransaction = useMemo(() => {
+    const tx = transactions[0];
+    if (!tx) return null;
+    const draft = drafts[tx.id];
+    return draft ? { ...tx, payee: draft.payee, description: draft.description } : tx;
+  }, [transactions, drafts]);
+
+  // Saving a split is one `update` carrying the legs, the date and the details,
+  // so the transaction is never left half-filed. A refusal propagates to the
+  // modal, which shows it and stays open with the legs intact.
+  const handleSplitSave = useCallback(async (data) => {
+    const tx = transactions[0];
+    if (!tx) return;
+
+    await transactionApi.updateTransaction(transactionId(tx), {
+      date: data.date,
+      category: null,
+      splits: data.splits,
+      inflow: data.inflow,
+      outflow: data.outflow,
+      payee: data.payee,
+      description: data.description,
+      account: tx.account.id,
+    });
+
+    setSplitModalOpen(false);
+    setIsExiting(true);
+    advanceQueue([tx], { editedIds: new Set([tx.id]) });
+  }, [transactions, transactionApi, advanceQueue]);
 
   const handleBatchConfirm = useCallback((selectedMatches) => {
     if (!pendingBatch) return;
@@ -1223,9 +1284,10 @@ export default function CategorizeMode({
 
   useEffect(() => {
     const handler = (e) => {
-      // The similar-transactions modal handles its own Escape (via the
-      // dialog's `cancel` event) — don't also navigate away or skip under it.
-      if (pendingBatch) return;
+      // A modal over the stack handles its own Escape (via the dialog's
+      // `cancel` event) — don't also navigate away or skip under it, which
+      // would throw the user out of the queue while they were editing.
+      if (pendingBatch || splitModalOpen) return;
       if (e.key === 'Escape') window.location.href = backUrl;
       if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
@@ -1235,7 +1297,7 @@ export default function CategorizeMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backUrl, undoStack, pendingBatch]);
+  }, [backUrl, undoStack, pendingBatch, splitModalOpen]);
 
   const currentId = transactionId(transactions[0]);
   const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
@@ -1374,6 +1436,7 @@ export default function CategorizeMode({
             currentTransaction={transactions[0]}
             onSelect={categorizeTransaction}
             onCreateNew={() => setShowCreateAccountModal(true)}
+            onSplit={() => setSplitModalOpen(true)}
           />
         </div>
       </div>
@@ -1385,6 +1448,21 @@ export default function CategorizeMode({
           onCancel={() => setShowCreateAccountModal(false)}
         />
       )}
+
+      {/* The same editor the feed uses, so a split is made one way in the app
+          rather than two. It opens straight into split mode via `startSplit`
+          below, since that is the only reason to reach it from here. */}
+      <EditTransactionModal
+        open={splitModalOpen}
+        onClose={() => setSplitModalOpen(false)}
+        transaction={splitTransaction}
+        allAccounts={localAccounts}
+        allPayees={allPayees}
+        teamSlug={teamSlug}
+        onSave={handleSplitSave}
+        mode="edit"
+        startSplit
+      />
 
       <SimilarTransactionsModal
         pendingBatch={pendingBatch}
