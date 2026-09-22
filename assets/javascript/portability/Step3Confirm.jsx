@@ -61,7 +61,15 @@ const Step3Confirm = ({ api, importId, teamName, file, destination, onApplyStart
   const [typedName, setTypedName] = useState('');
   const [busy, setBusy] = useState(false);
   const nameMatches = typedName === teamName;
-  const omittedTotal = Object.values(file.omitted || {}).reduce((sum, n) => sum + (Number(n) || 0), 0);
+  const omitted = file.omitted || {};
+  // Unlinked feed rows are reported separately: unlike the other entries here
+  // they are not things left behind, they are rows that arrive needing a
+  // decision, which is worth its own sentence rather than being folded into
+  // "a few things could not be carried across".
+  const unlinkedFeedRows = Number(omitted.unlinked_feed_rows) || 0;
+  const omittedTotal = Object.entries(omitted)
+    .filter(([key]) => key !== 'unlinked_feed_rows')
+    .reduce((sum, [, n]) => sum + (Number(n) || 0), 0);
 
   const handleConfirm = async () => {
     setBusy(true);
@@ -121,6 +129,17 @@ const Step3Confirm = ({ api, importId, teamName, file, destination, onApplyStart
             'A few things in the source team could not be carried across: empty account groups, unused institutions or payees, and dismissed transfer suggestions. Nothing that affects your balances.',
           )}
         </p>
+      )}
+
+      {unlinkedFeedRows > 0 && (
+        <div className="alert alert-warning" data-testid="unlinked-feed-note">
+          <Icon name="triangle-alert" className="h-5 w-5 shrink-0" />
+          <span>
+            {gettext(
+              '{count} bank transaction(s) in the source team are linked to a transaction that does not use their account. They will arrive in your Bank Feed to review instead. Your balances are unaffected — the transactions themselves come across in full.',
+            ).replace('{count}', unlinkedFeedRows)}
+          </span>
+        </div>
       )}
 
       <div className="border-t border-base-300 pt-5 space-y-3">

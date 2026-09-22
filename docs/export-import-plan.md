@@ -382,6 +382,21 @@ would have been easy to make and wrong:
   is looked up by `(entry_id, account_id)`, so a split's `feed_*` columns land on
   the one line whose account the bank actually reported; its legs carry blank feed
   columns. One feed row per split, not one per leg.
+- **A feed row that no line can carry still travels.** A row rides on the line
+  whose account it shares, and two real states leave it with no line to ride on:
+  its entry has no line on its own account, or another row already claimed that
+  line. Both used to make the row vanish from `journal.csv` while §6's checks
+  went on counting it from the database, so the export produced a file that
+  failed its own integrity gate on import — `feed_counts did not match after
+  writing` — with nothing to say about why. Such a row is now emitted as a
+  standalone feed row, arriving as one to review. That drops its entry link and
+  nothing else: the entry, its lines and every balance ride on the line rows
+  regardless, so no figure moves. It is the honest landing place, too — a feed
+  row whose account its entry never touched has no category the product can
+  name, and `bank_transaction_to_feed_row()` picks an arbitrary line for one
+  today. The count is reported in the manifest's `omitted` block as
+  `unlinked_feed_rows` and called out on the confirmation screen, so the repair
+  is disclosed rather than done quietly.
 - **A split's legs are never mirrors.** `feed_is_mirror` is carried, never
   re-derived (§2.4), and the importer does not call `transfer_mirror.sync_transfer`
   — which matters here, because a split has no single counterpart and deriving one

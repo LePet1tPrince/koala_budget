@@ -122,18 +122,57 @@ def _build_accounts(team) -> list[dict]:
     return rows
 
 
-def _feed_rows_by_entry_and_account(team) -> dict[tuple[int, int], BankTransaction]:
+def _place_feed_rows(team) -> tuple[dict[tuple[int, int], BankTransaction], list[BankTransaction]]:
     """
-    `{(journal_entry_id, account_id): BankTransaction}` for every categorized
-    feed row. Categorizing always creates exactly one `BankTransaction` per
-    (entry, feed account) pair, so this is a true 1:1 lookup in practice; a
-    row that collided with an existing key would silently lose one, which is
-    an invariant worth asserting rather than an expected case to handle.
+    Decide where every categorized feed row goes: `(lookup, unplaceable)`.
+
+    A feed row rides on the journal line whose account it shares, keyed
+    `(journal_entry_id, account_id)`. Categorizing writes exactly one
+    `BankTransaction` per (entry, feed account) pair, so in healthy data every
+    row places and `unplaceable` is empty.
+
+    Two states break that, and both exist in real books:
+
+    * the row's entry has **no line on the row's own account** -- the link
+      points at an entry that, as far as the ledger is concerned, never
+      touched that account;
+    * **two rows claim the same line**, so only one can ride on it.
+
+    Both were previously silent: the lookup overwrote on collision and simply
+    never asked about the orphan, so those rows vanished from journal.csv
+    while `build_checks` went on counting them straight from the database. The
+    export then produced a file that failed its own integrity gate on import
+    ("feed_counts did not match after writing") with nothing to say about why.
+
+    They are returned instead of dropped, and the caller emits them as
+    standalone feed rows (§2.4's uncategorized shape). That loses the entry
+    link and nothing else -- the entry, its lines and every balance are
+    carried by the line rows regardless -- and it is the honest landing place:
+    a feed row whose account the entry never touched has no category the
+    product can name. `bank_transaction_to_feed_row()` picks an arbitrary line
+    for such a row today, which is the same class of bug the split work fixed.
+    The count is reported in the manifest so the repair is disclosed rather
+    than done quietly.
     """
+    line_accounts: set[tuple[int, int]] = set(
+        JournalLine.objects.filter(team=team).values_list("journal_entry_id", "account_id")
+    )
+
     lookup: dict[tuple[int, int], BankTransaction] = {}
-    for bank_tx in BankTransaction.objects.filter(team=team, journal_entry__isnull=False):
-        lookup[(bank_tx.journal_entry_id, bank_tx.account_id)] = bank_tx
-    return lookup
+    unplaceable: list[BankTransaction] = []
+
+    # Ordered by id so which of two colliding rows keeps the line is stable
+    # across exports of the same team, rather than query-order dependent.
+    rows = (
+        BankTransaction.objects.filter(team=team, journal_entry__isnull=False).select_related("account").order_by("id")
+    )
+    for bank_tx in rows:
+        key = (bank_tx.journal_entry_id, bank_tx.account_id)
+        if key in line_accounts and key not in lookup:
+            lookup[key] = bank_tx
+        else:
+            unplaceable.append(bank_tx)
+    return lookup, unplaceable
 
 
 def _feed_columns(bank_tx: BankTransaction | None) -> dict:
@@ -164,7 +203,7 @@ def _feed_columns(bank_tx: BankTransaction | None) -> dict:
 
 
 def _build_journal_rows(team) -> list[dict]:
-    feed_lookup = _feed_rows_by_entry_and_account(team)
+    feed_lookup, unplaceable = _place_feed_rows(team)
 
     lines = (
         JournalLine.objects.filter(team=team)
@@ -201,8 +240,12 @@ def _build_journal_rows(team) -> list[dict]:
     # Uncategorized feed rows: no JournalLine at all, so nothing above touches
     # them. Entry-level and line-level columns are genuinely absent, not
     # false -- there is no entry and no line to report them for (§2.4).
-    uncategorized = BankTransaction.objects.filter(team=team, journal_entry__isnull=True).select_related("account")
-    for bank_tx in uncategorized:
+    uncategorized = list(
+        BankTransaction.objects.filter(team=team, journal_entry__isnull=True).select_related("account")
+    )
+    # Plus any categorized row no line could carry (see `_place_feed_rows`),
+    # which travels in the same shape and arrives as a row to review.
+    for bank_tx in uncategorized + unplaceable:
         rows.append(
             {
                 "entry_id": None,
@@ -302,9 +345,17 @@ def build_checks(team) -> dict:
     entries_count = JournalEntry.objects.filter(team=team).count()
     goals_count = Account.objects.filter(team=team, goal__isnull=False).count()
 
+    # `uncategorized` counts what the *file* will hold as uncategorized, which
+    # is every row with no entry plus every row no line could carry -- still
+    # derived from the database (both are database queries), not read back off
+    # the rows just built, so the check cannot degrade into the exporter
+    # agreeing with itself.
+    _placed, unplaceable = _place_feed_rows(team)
     feed_counts = {
         "total": BankTransaction.objects.filter(team=team).count(),
-        "uncategorized": BankTransaction.objects.filter(team=team, journal_entry__isnull=True).count(),
+        "uncategorized": (
+            BankTransaction.objects.filter(team=team, journal_entry__isnull=True).count() + len(unplaceable)
+        ),
         "archived": BankTransaction.objects.filter(team=team, is_archived=True).count(),
         "mirror": BankTransaction.objects.filter(team=team, is_transfer_mirror=True).count(),
     }
@@ -344,9 +395,15 @@ def build_omitted(team) -> dict:
 
     dismissed_transfer_pairs = TransferMatchDismissal.objects.filter(team=team).count()
 
+    # Not a row that was dropped -- the row travels -- but a *link* that could
+    # not be carried, which is the same kind of stated loss. See
+    # `_place_feed_rows` for when this is non-zero.
+    _placed, unplaceable = _place_feed_rows(team)
+
     return {
         "empty_account_groups": empty_account_groups,
         "unused_institutions": unused_institutions,
         "unused_payees": unused_payees,
         "dismissed_transfer_pairs": dismissed_transfer_pairs,
+        "unlinked_feed_rows": len(unplaceable),
     }

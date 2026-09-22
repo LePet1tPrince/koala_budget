@@ -447,3 +447,127 @@ class SplitRoundTripTests(TestCase):
         # phantom mirror that re-deriving the relationship would create.
         mirrors = BankTransaction.objects.filter(team=self.dest_team, journal_entry=self.split, is_transfer_mirror=True)
         self.assertEqual(mirrors.count(), 0)
+
+
+class UnplaceableFeedRowTests(TestCase):
+    """
+    Every `BankTransaction` must reach the file, including the ones no journal
+    line can carry.
+
+    A feed row rides on the line whose account it shares. Two real states
+    leave a row with no line to ride on -- its entry has no line on its own
+    account, or another row already claimed that line -- and both used to make
+    the row vanish from journal.csv while `build_checks` kept counting it from
+    the database. The import's own integrity gate caught the discrepancy and
+    refused the file with "feed_counts did not match after writing", which is
+    the gate working correctly and the export being wrong: it had produced a
+    file that could not pass. Reported from real books.
+
+    Such a row now travels as a standalone feed row, arriving as one to
+    review. That loses its entry link and nothing else -- the entry, its lines
+    and every balance ride on the line rows regardless -- and the count is
+    disclosed in the manifest's `omitted` block.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team, cls.user = make_team("Unplaceable", "unplaceable")
+        cls.dest, cls.dest_user = make_team("Unplaceable Dest", "unplaceable-dest")
+
+        asset = AccountGroup.objects.create(team=cls.team, name="Cash", account_type="asset")
+        expense = AccountGroup.objects.create(team=cls.team, name="Spend", account_type="expense")
+        cls.chequing = Account.objects.create(team=cls.team, name="Chequing", account_group=asset, has_feed=True)
+        cls.savings = Account.objects.create(team=cls.team, name="Savings", account_group=asset, has_feed=True)
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=expense)
+
+        cls.entry = JournalEntry.objects.create(
+            team=cls.team,
+            entry_date=date(2026, 4, 1),
+            description="Thing",
+            source=JournalEntry.SOURCE_BANK_MATCH,
+            status=JournalEntry.STATUS_POSTED,
+        )
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=cls.entry, account=cls.groceries, dr_amount=Decimal("10.00")
+        )
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=cls.entry, account=cls.chequing, cr_amount=Decimal("10.00")
+        )
+
+        # The row that places normally.
+        cls.placed = BankTransaction.objects.create(
+            team=cls.team,
+            account=cls.chequing,
+            journal_entry=cls.entry,
+            amount=Decimal("10.00"),
+            posted_date=date(2026, 4, 1),
+            description="PLACED",
+            source=BankTransaction.SOURCE_CSV,
+        )
+        # Collision: a second row claiming the same line.
+        cls.collided = BankTransaction.objects.create(
+            team=cls.team,
+            account=cls.chequing,
+            journal_entry=cls.entry,
+            amount=Decimal("10.00"),
+            posted_date=date(2026, 4, 1),
+            description="COLLIDED",
+            source=BankTransaction.SOURCE_CSV,
+        )
+        # Orphan: an entry with no line on this row's own account.
+        cls.orphan = BankTransaction.objects.create(
+            team=cls.team,
+            account=cls.savings,
+            journal_entry=cls.entry,
+            amount=Decimal("10.00"),
+            posted_date=date(2026, 4, 1),
+            description="ORPHAN",
+            source=BankTransaction.SOURCE_CSV,
+        )
+
+    def test_every_feed_row_reaches_the_file(self):
+        _accounts, journal, _budget = export.build_archive(self.team)
+        emitted = [r for r in journal if r["feed_source"] is not None]
+        self.assertEqual(len(emitted), BankTransaction.objects.filter(team=self.team).count())
+        self.assertEqual({r["feed_description"] for r in emitted}, {"PLACED", "COLLIDED", "ORPHAN"})
+
+    def test_the_lowest_id_keeps_the_line_so_exports_are_stable(self):
+        _accounts, journal, _budget = export.build_archive(self.team)
+        on_a_line = [r for r in journal if r["feed_source"] is not None and r["entry_id"] is not None]
+        self.assertEqual(len(on_a_line), 1)
+        self.assertEqual(on_a_line[0]["feed_description"], "PLACED")
+
+    def test_unplaceable_rows_travel_as_rows_to_review(self):
+        _accounts, journal, _budget = export.build_archive(self.team)
+        standalone = [r for r in journal if r["status"] == UNCATEGORIZED_STATUS]
+        self.assertEqual({r["feed_description"] for r in standalone}, {"COLLIDED", "ORPHAN"})
+
+    def test_the_manifest_counts_them_as_uncategorized(self):
+        # Or the import's own gate would refuse the file it just produced.
+        checks = export.build_checks(self.team)
+        self.assertEqual(checks["feed_counts"]["total"], 3)
+        self.assertEqual(checks["feed_counts"]["uncategorized"], 2)
+
+    def test_the_repair_is_disclosed_not_silent(self):
+        self.assertEqual(export.build_omitted(self.team)["unlinked_feed_rows"], 2)
+
+    def test_the_import_verifies(self):
+        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)  # must not raise
+
+    def test_all_three_rows_arrive(self):
+        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)
+        arrived = BankTransaction.objects.filter(team=self.dest)
+        self.assertEqual(arrived.count(), 3)
+        self.assertEqual(arrived.filter(journal_entry__isnull=True).count(), 2)
+
+    def test_the_entry_and_its_balances_are_untouched_by_the_repair(self):
+        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)
+        entry = JournalEntry.objects.get(team=self.dest, description="Thing")
+        lines = list(entry.lines.all())
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(sum(line.dr_amount for line in lines), Decimal("10.00"))
+        self.assertEqual(sum(line.cr_amount for line in lines), Decimal("10.00"))
+
+    def test_a_healthy_team_reports_no_repair(self):
+        healthy, _user = make_team("Healthy", "healthy-feed")
+        self.assertEqual(export.build_omitted(healthy)["unlinked_feed_rows"], 0)
