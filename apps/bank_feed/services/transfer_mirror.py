@@ -39,8 +39,26 @@ def would_orphan_primary(edited_tx, new_category_account):
     the primary's ledger line away from the primary's home account, leaving the
     real imported transaction stranded. Callers reject that and tell the user to
     edit the original transaction instead.
+
+    A split is never a mirror -- it has one bank line and several category legs,
+    and no counterpart to orphan -- so it is not this guard's business. Answering
+    False here keeps the "this is the mirror side of a transfer" message off a
+    split, which would be both wrong and baffling.
     """
+    if _is_split_entry(edited_tx.journal_entry_id and edited_tx.journal_entry):
+        return False
     return bool(edited_tx.is_transfer_mirror and not is_transfer_target(new_category_account))
+
+
+def _is_split_entry(entry) -> bool:
+    """
+    True when this entry apportions one transaction across several categories.
+
+    Local rather than imported from `services.splits` because that module imports
+    from the journal app and this one is imported by it during categorization;
+    the check is one query either way.
+    """
+    return bool(entry) and entry.lines.count() > 2
 
 
 def _counterpart_account(entry, primary_account):
@@ -81,6 +99,15 @@ def sync_transfer(edited_tx):
         return
 
     entry = edited_tx.journal_entry
+
+    # A split has no single counterpart: its entry carries one bank line and
+    # several category legs, so `_counterpart_account` would pick an arbitrary
+    # one. If that leg happened to be a feed account, mirroring it would put a
+    # row for the split's *whole* amount in that account's feed -- a transaction
+    # no bank ever reported. A transfer is a two-line movement; a split is not.
+    if entry.lines.count() > 2:
+        return
+
     counterpart_account = _counterpart_account(entry, edited_tx.account)
     counterpart_tx = BankTransaction.objects.filter(journal_entry=entry).exclude(id=edited_tx.id).first()
 

@@ -238,6 +238,18 @@ class TransferDismissRequestSerializer(serializers.Serializer):
         return data
 
 
+class SplitLegSerializer(serializers.Serializer):
+    """One leg of a split: a category and its signed share of the transaction total."""
+
+    category_id = serializers.IntegerField(help_text="Account ID of this leg's category")
+    category_name = serializers.CharField(help_text="Name of this leg's category")
+    amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Signed share of the transaction total; positive is an outflow",
+    )
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.
@@ -311,6 +323,10 @@ class BankFeedRowSerializer(serializers.Serializer):
     )
 
     is_editable = serializers.BooleanField(help_text="Whether this row can be edited")
+
+    is_split = serializers.BooleanField(help_text="Whether this transaction is split across several categories")
+    split_count = serializers.IntegerField(help_text="Number of split legs (0 when not split)")
+    splits = SplitLegSerializer(many=True, help_text="The split legs (empty when not split)")
 
 
 # Adapter Functions
@@ -555,15 +571,31 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     # Get category and reconciliation status from JournalEntry if categorized
     category = None
     is_reconciled = False
+    split_legs = []
     if tx.journal_entry:
         # Find the category account (the one that's not the bank account)
         # and the bank account line for reconciliation status
-        for line in tx.journal_entry.lines.all():
-            if line.account != tx.account:
-                category = line.account
-            else:
+        lines = list(tx.journal_entry.lines.all())
+        for line in lines:
+            if line.account_id == tx.account_id:
                 # Bank account line - get reconciliation status from here
                 is_reconciled = line.is_reconciled
+
+        legs = [line for line in lines if line.account_id != tx.account_id]
+        if len(lines) > 2:
+            # A split has no single category. Report its legs and leave `category`
+            # null, so nothing renders one leg as though it were the whole
+            # transaction -- which is what the old loop did, silently.
+            split_legs = [
+                {
+                    "category_id": line.account_id,
+                    "category_name": line.account.name,
+                    "amount": line.dr_amount - line.cr_amount,
+                }
+                for line in legs
+            ]
+        elif legs:
+            category = legs[0].account
 
     return {
         "id": tx.id,
@@ -587,4 +619,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "journal_entry_id": tx.journal_entry_id,  # ID of linked journal entry (for checking if categorized)
         "imported_transaction_id": tx.id,
         "is_editable": True,  # All transactions can be edited via the modal
+        "is_split": bool(split_legs),
+        "split_count": len(split_legs),
+        "splits": split_legs,
     }
