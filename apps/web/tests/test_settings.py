@@ -98,7 +98,7 @@ class SettingsSectionsTest(TestCase):
     def test_admin_sees_every_section(self):
         self.assertEqual(
             self._sections(self.admin),
-            {"profile", "password", "team", "subscription", "import", "audit"},
+            {"profile", "password", "team", "subscription", "import", "data_transfer", "audit"},
         )
 
     def test_member_is_not_offered_subscription(self):
