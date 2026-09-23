@@ -34,6 +34,9 @@ const Combobox = ({
   placeholder = '',
   error = '',
   helperText = '',
+  size = 'md',
+  listMinWidth = 0,
+  ariaLabel,
   testId,
 }) => {
   const [open, setOpen] = useState(false);
@@ -77,7 +80,10 @@ const Combobox = ({
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open, close, listId]);
 
-  const { style: listStyle, measure } = useAnchoredPosition(showList, rootRef, listRef, { matchWidth: true });
+  const { style: listStyle, measure } = useAnchoredPosition(showList, rootRef, listRef, {
+    matchWidth: true,
+    minWidth: listMinWidth,
+  });
 
   useEffect(() => {
     if (showList) measure();
@@ -194,7 +200,8 @@ const Combobox = ({
           aria-expanded={showList}
           aria-controls={showList ? listId : undefined}
           aria-autocomplete="list"
-          className={`input input-bordered w-full ${error ? 'input-error' : ''}`}
+          aria-label={ariaLabel}
+          className={`input input-bordered w-full ${size === 'sm' ? 'input-sm' : ''} ${error ? 'input-error' : ''}`}
           disabled={disabled}
           placeholder={placeholder}
           value={text}

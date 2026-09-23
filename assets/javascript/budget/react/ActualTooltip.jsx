@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import Combobox from '../../common/Combobox';
 import PickerPopover from '../../common/PickerPopover';
 import Spinner from '../../common/Spinner';
 import { Toast } from '../../common/Toast';
@@ -218,22 +219,18 @@ const ActualTooltip = ({
                           {tx.description || '-'}
                         </td>
                         <td className="money whitespace-nowrap text-right">{formatCurrency(getAmount(tx))}</td>
-                        <td>
-                          <select
-                            className="select select-bordered select-sm min-w-[7.5rem]"
-                            value=""
-                            onChange={(e) => handleRecategorize(lineId, e.target.value)}
-                            aria-label={gettext('Move to...')}
-                          >
-                            <option value="" disabled>
-                              {gettext('Move to...')}
-                            </option>
-                            {categoryOptions.map((account) => (
-                              <option key={account.id} value={account.id}>
-                                {account.name}
-                              </option>
-                            ))}
-                          </select>
+                        <td className="min-w-[10rem]">
+                          <Combobox
+                            size="sm"
+                            value={null}
+                            onChange={(option) => option && handleRecategorize(lineId, option.id)}
+                            options={categoryOptions}
+                            getGroup={(option) => option.groupLabel}
+                            placeholder={gettext('Move to...')}
+                            ariaLabel={gettext('Move to...')}
+                            listMinWidth={288}
+                            testId={`move-to-${lineId}`}
+                          />
                         </td>
                       </tr>
                     );
