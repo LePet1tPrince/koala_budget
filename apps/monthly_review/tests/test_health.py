@@ -121,32 +121,36 @@ class AccountHealthTests(TestCase):
         self.assertEqual(kinds[UNRECONCILED]["count"], 1)
         self.assertNotIn(UNCATEGORIZED, kinds)
 
-    def test_balance_gap_flag_without_bank_feed_activity(self):
+    def test_manual_journal_entry_does_not_cause_a_false_balance_gap(self):
+        # A manual journal entry (e.g. an opening balance) is not tied to any bank
+        # transaction, so the user has no way to ever mark it reconciled. It must
+        # not read as a permanent, unfixable "balance doesn't match reconciled
+        # balance" warning.
         account = self._account("Chequing")
         other = Account.objects.create(team=self.team, name="Misc", account_group=self.equity_group)
-        # A manual journal entry not tied to any bank transaction still moves the
-        # balance without moving the reconciled balance.
         entry = JournalEntry.objects.create(
             team=self.team, entry_date=date(2026, 8, 3), description="Manual", status="posted"
         )
         JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=Decimal("50"))
         JournalLine.objects.create(team=self.team, journal_entry=entry, account=other, cr_amount=Decimal("50"))
 
-        # Give the account a transaction this month so no_transactions doesn't fire.
-        BankTransaction.objects.create(
+        # Give the account a categorized, reconciled transaction this month so
+        # no_transactions/unreconciled don't fire either -- every reconcilable
+        # transaction really has been reconciled.
+        category = Account.objects.create(team=self.team, name="Groceries", account_group=self.equity_group)
+        txn = BankTransaction.objects.create(
             team=self.team,
             account=account,
             amount=Decimal("1.00"),
-            posted_date=date(2026, 8, 5),
-            description="Unrelated",
-            journal_entry=None,
+            posted_date=date(2026, 8, 25),
+            description="Coffee",
         )
+        self._categorize(txn, category, reconciled=True)
 
         health = account_health(self.team, self.month)
         row = health["accounts"][0]
-        kinds = {f["kind"]: f for f in row["flags"]}
-        self.assertIn(BALANCE_GAP, kinds)
-        self.assertEqual(kinds[BALANCE_GAP]["gap"], Decimal("50"))
+        self.assertEqual(row["flags"], [])
+        self.assertNotIn(BALANCE_GAP, [f["kind"] for f in row["flags"]])
 
     def test_all_clear(self):
         account = self._account("Chequing")
