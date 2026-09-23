@@ -6,6 +6,7 @@ extend-exclude = [
     ".ruff_cache",
     "node_modules",
     "migrations",
+    "docs/reference",
 ]
 line-length = 120
 indent-width = 4
