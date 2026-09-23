@@ -27,7 +27,7 @@ from .filters import (
     apply_ordering,
     facet_values,
 )
-from .models import JournalEntry, JournalLine
+from .models import JournalEntry, JournalLine, counted_entries
 from .serializers import JournalEntrySerializer, SimpleLineSerializer, TransactionRowSerializer
 
 
@@ -184,6 +184,9 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
             )
             .prefetch_related("journal_entry__lines__account")
         )
+        if self.action == "list":
+            # A listing mirrors the balances it explains: voided and archived entries count nowhere.
+            qs = qs.filter(counted_entries("journal_entry__"))
 
         # Filter by account (category) if provided
         account_id = self.request.query_params.get("account")
@@ -319,7 +322,10 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """
     Read-only list of journal entries flattened into transaction rows.
 
-    Every entry is returned, including splits -- an entry apportioned across
+    Voided entries and entries behind an archived bank transaction are left out:
+    they count toward no balance, so they are not on the ledger either.
+
+    Every other entry is returned, including splits -- an entry apportioned across
     several categories, which has one line on one side and several on the other.
     This list used to filter to ``line_count=2``, which silently hid every split
     from the page that presents itself as the ledger, and from its filters,
@@ -348,7 +354,8 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         unfiltered list pays for none of them.
         """
         return (
-            JournalEntry.for_team.select_related("payee")
+            JournalEntry.for_team.filter(counted_entries())
+            .select_related("payee")
             .prefetch_related("lines__account")
             .annotate(**annotations_for(self.request.query_params, facet_column=facet_column))
         )

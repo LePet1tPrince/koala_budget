@@ -14,7 +14,7 @@ archive one leg (keeping a single entry) or dismiss the suggestion. It only
 
 from django.conf import settings
 
-from apps.journal.models import JournalEntry
+from apps.journal.models import counted_entries
 
 from ..models import BankTransaction, TransferMatchDismissal
 
@@ -55,7 +55,7 @@ def find_transfer_candidates(team, window_days=None):
     # underlying transfer as a second, spurious suggestion.
     transactions = list(
         BankTransaction.objects.filter(team=team, is_archived=False, is_transfer_mirror=False)
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("account", "journal_entry")
         .order_by("posted_date", "id")
     )

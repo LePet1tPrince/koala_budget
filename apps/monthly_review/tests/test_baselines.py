@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import SimpleTestCase
 
 from apps.monthly_review.services.baselines import (
+    ALL_TIME,
     MonthlyMatrix,
     build_baselines,
     clamp_window,
@@ -67,6 +68,27 @@ class ClampWindowTests(SimpleTestCase):
         self.assertEqual(window, [date(2025, 11, 1), date(2025, 12, 1), date(2026, 1, 1)])
 
 
+class AllTimeWindowTests(SimpleTestCase):
+    def test_all_time_reaches_back_to_first_activity(self):
+        window = clamp_window(date(2026, 8, 1), ALL_TIME, date(2024, 11, 1))
+        self.assertEqual(window[0], date(2024, 11, 1))
+        self.assertEqual(window[-1], date(2026, 7, 1))
+        self.assertEqual(len(window), 21)
+
+    def test_all_time_baseline_averages_every_prior_month_and_is_never_clamped(self):
+        first, month = date(2025, 1, 1), date(2026, 8, 1)
+        matrix = _months_matrix(first, month)
+        matrix.income = {m: Decimal("100") if m.year == 2025 else Decimal("400") for m in matrix.months}
+        baselines, order, _default = build_baselines(matrix, month)
+        self.assertEqual(order[-1], "all")
+        all_time = baselines["all"]
+        self.assertEqual(all_time["months"], 19)  # Jan 2025 - Jul 2026
+        self.assertFalse(all_time["clamped"])
+        self.assertEqual(all_time["short"], "All time")
+        # 12 months at 100 + 7 at 400, averaged over 19
+        self.assertEqual(all_time["avgs"]["income"], (Decimal("1200") + Decimal("2800")) / 19)
+
+
 class BuildBaselinesTests(SimpleTestCase):
     def test_zero_history_yields_no_baselines(self):
         matrix = _months_matrix(date(2026, 8, 1), date(2026, 8, 1))
@@ -80,7 +102,7 @@ class BuildBaselinesTests(SimpleTestCase):
         baselines, order, default = build_baselines(matrix, date(2026, 8, 1))
         # Only enough history for a (clamped) 1m; 3/6/12m all clamp to the
         # same single month too, since that's all there is.
-        self.assertEqual(set(order), {"1m", "3m", "6m", "12m"})
+        self.assertEqual(set(order), {"1m", "3m", "6m", "12m", "all"})
         self.assertEqual(baselines["1m"]["months"], 1)
         self.assertFalse(baselines["1m"]["clamped"])  # 1m with exactly 1 month is not clamped
         self.assertEqual(baselines["3m"]["months"], 1)
@@ -113,10 +135,10 @@ class BuildBaselinesTests(SimpleTestCase):
             self.assertNotIn(date(2026, 8, 1).isoformat(), baseline["keys"])
             self.assertNotEqual(baseline["avgs"]["income"], Decimal("999999"))
 
-    def test_full_history_all_four_baselines_present_and_unclamped(self):
+    def test_full_history_all_baselines_present_and_unclamped(self):
         matrix = _months_matrix(date(2024, 1, 1), date(2026, 8, 1))
         baselines, order, default = build_baselines(matrix, date(2026, 8, 1))
-        self.assertEqual(order, ["1m", "3m", "6m", "12m"])
+        self.assertEqual(order, ["1m", "3m", "6m", "12m", "all"])
         for baseline_id in order:
             self.assertFalse(baselines[baseline_id]["clamped"])
         self.assertEqual(baselines["12m"]["months"], 12)

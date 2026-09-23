@@ -86,40 +86,54 @@ class Step1HealthInsightTests(SimpleTestCase):
         self.assertEqual(kinds, ["all_clear"])
         self.assertEqual(insights[0].severity, "good")
 
-    def test_no_transactions_is_bad(self):
-        flag = {"kind": "no_transactions", "account": _Named("Chequing"), "url": "/inbox/"}
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
-        step1 = [i for i in generate(review) if i.step == 1]
-        self.assertEqual(len(step1), 1)
-        self.assertEqual(step1[0].kind, "no_transactions")
-        self.assertEqual(step1[0].severity, "bad")
-        self.assertIn("Chequing", step1[0].title)
-
     def test_stale_account_is_warn(self):
         flag = {"kind": "stale_account", "account": _Named("Savings"), "days": 20, "url": ""}
         review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
         step1 = [i for i in generate(review) if i.step == 1]
         self.assertEqual(step1[0].severity, "warn")
 
-    def test_uncategorized_is_warn(self):
-        flag = {"kind": "uncategorized", "account": _Named("Chequing"), "count": 3, "url": ""}
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
+    def test_no_transactions_is_one_card_with_a_line_per_account(self):
+        flags = [
+            {"kind": "no_transactions", "account": _Named("Chequing"), "url": "/inbox/"},
+            {"kind": "no_transactions", "account": _Named("Visa"), "url": "/inbox/"},
+        ]
+        review = _review(health={"accounts": [], "flags": flags, "all_clear": False})
         step1 = [i for i in generate(review) if i.step == 1]
-        self.assertEqual(step1[0].severity, "warn")
-        self.assertEqual(step1[0].metric, Decimal("3"))
+        self.assertEqual(len(step1), 1)
+        self.assertEqual(step1[0].kind, "no_transactions")
+        self.assertEqual(step1[0].severity, "bad")
+        self.assertEqual(step1[0].lines, ("Chequing", "Visa"))
 
-    def test_unreconciled_is_warn(self):
-        flag = {"kind": "unreconciled", "account": _Named("Chequing"), "count": 2, "gap": Decimal("15"), "url": ""}
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
+    def test_uncategorized_is_one_card_with_a_line_per_account(self):
+        flags = [
+            {"kind": "uncategorized", "account": _Named("Chequing"), "count": 3, "url": "/inbox/"},
+            {"kind": "uncategorized", "account": _Named("Visa"), "count": 2, "url": "/inbox/"},
+        ]
+        review = _review(health={"accounts": [], "flags": flags, "all_clear": False})
         step1 = [i for i in generate(review) if i.step == 1]
+        self.assertEqual(len(step1), 1)
         self.assertEqual(step1[0].severity, "warn")
-        self.assertEqual(step1[0].delta, Decimal("15"))
+        self.assertEqual(step1[0].metric, Decimal("5"))
+        self.assertEqual(step1[0].url, "/inbox/")
+        self.assertEqual(step1[0].lines, ("Chequing: 3 uncategorized", "Visa: 2 uncategorized"))
 
-    def test_balance_gap_is_warn(self):
-        flag = {"kind": "balance_gap", "account": _Named("Chequing"), "gap": Decimal("-5"), "url": ""}
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
+    def test_unreconciled_and_balance_gap_share_one_reconciliation_card(self):
+        flags = [
+            {"kind": "unreconciled", "account": _Named("Chequing"), "count": 2, "gap": Decimal("15"), "url": ""},
+            {"kind": "unreconciled", "account": _Named("Visa"), "count": 10, "gap": Decimal("-40"), "url": ""},
+            {"kind": "balance_gap", "account": _Named("Savings"), "gap": Decimal("-5"), "url": ""},
+        ]
+        review = _review(health={"accounts": [], "flags": flags, "all_clear": False})
         step1 = [i for i in generate(review) if i.step == 1]
-        self.assertEqual(step1[0].severity, "warn")
+        self.assertEqual([i.kind for i in step1], ["reconciliation"])
+        card = step1[0]
+        self.assertEqual(card.severity, "warn")
+        self.assertEqual(card.metric, Decimal("12"))
+        self.assertEqual(len(card.lines), 3)
+        self.assertIn("Chequing: 2 unreconciled", card.lines[0])
+        self.assertIn("Visa: 10 unreconciled", card.lines[1])
+        self.assertIn("Savings", card.lines[2])
+        self.assertIn("doesn't match", card.lines[2])
 
 
 class Step2GlanceInsightTests(SimpleTestCase):
@@ -161,7 +175,7 @@ class Step3IncomeInsightTests(SimpleTestCase):
         income_down = [i for i in generate(review) if i.kind == "income_down"]
         self.assertEqual(income_down, [])
 
-    def test_missing_stream_is_bad(self):
+    def test_missing_stream_is_not_flagged(self):
         stream = {
             "payee": "Acme Payroll",
             "amount": Decimal("0"),
@@ -171,9 +185,7 @@ class Step3IncomeInsightTests(SimpleTestCase):
         }
         baseline = _baseline(streams=[stream])
         review = _review(baselines={"3m": baseline}, default_baseline="3m")
-        missing = [i for i in generate(review) if i.kind == "stream_missing"]
-        self.assertEqual(len(missing), 1)
-        self.assertEqual(missing[0].severity, "bad")
+        self.assertEqual([i for i in generate(review) if i.step == 3], [])
 
     def test_new_stream_is_info(self):
         stream = {
@@ -245,15 +257,13 @@ class Step5BiggestInsightTests(SimpleTestCase):
 
 
 class Step6BreakdownInsightTests(SimpleTestCase):
-    def test_unbudgeted_spend_is_warn(self):
+    def test_unbudgeted_spend_is_not_flagged(self):
         group = {
             "name": "Everyday",
             "categories": [{"id": 1, "name": "Misc", "spent": Decimal("30"), "unbudgeted": True}],
         }
         review = _review(budget={"groups": [group], "totals": {}, "overspent": [], "over_assigned": []})
-        unbudgeted = [i for i in generate(review) if i.kind == "unbudgeted_spend"]
-        self.assertEqual(len(unbudgeted), 1)
-        self.assertEqual(unbudgeted[0].severity, "warn")
+        self.assertEqual([i for i in generate(review) if i.step == 6], [])
 
     def test_biggest_movers_reported(self):
         group = {
@@ -316,7 +326,7 @@ class Step8NetWorthInsightTests(SimpleTestCase):
         step8 = [i for i in generate(review) if i.kind == "net_worth_month"][0]
         self.assertEqual(step8.severity, "bad")
 
-    def test_net_worth_window_change_uses_series_start(self):
+    def test_net_worth_window_change_is_left_to_the_page(self):
         net_worth = _review()["net_worth"]
         net_worth = {
             **net_worth,
@@ -338,9 +348,8 @@ class Step8NetWorthInsightTests(SimpleTestCase):
             ],
         }
         review = _review(net_worth=net_worth)
-        window = [i for i in generate(review) if i.kind == "net_worth_window"][0]
-        self.assertEqual(window.severity, "good")
-        self.assertEqual(window.delta, Decimal("500"))
+        # The page states the change over the selected baseline; a server insight can't follow the toggle.
+        self.assertEqual([i.kind for i in generate(review) if i.step == 8], ["net_worth_month"])
 
 
 class GenerateAggregationTests(SimpleTestCase):

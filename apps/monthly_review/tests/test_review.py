@@ -106,3 +106,50 @@ class BuildReviewTests(TestCase):
         self.assertEqual(review["baselines"], {})
         self.assertIsNone(review["default_baseline"])
         self.assertEqual(review["baseline_order"], [])
+
+    def test_all_time_baseline_and_net_worth_span_back_to_first_activity(self):
+        # 2+ years of history: longer than the 12-month baseline.
+        self._entry(date(2024, 3, 5), self.salary, Decimal("1000"), dr_category=False)
+        self._entry(date(2026, 6, 10), self.salary, Decimal("500"), dr_category=False)
+        self._entry(date(2026, 8, 10), self.groceries, Decimal("100"))
+        review = build_review(self.team, date(2026, 8, 1))
+
+        self.assertEqual(review["baseline_order"][-1], "all")
+        self.assertEqual(review["baselines"]["all"]["keys"][0], "2024-03-01")
+        self.assertEqual(review["net_worth"]["series"][0]["key"], "2024-03-01")
+        self.assertEqual(review["net_worth"]["series"][-1]["key"], "2026-08-01")
+
+        # Change is measured from the end of the baseline's first month.
+        chequing = next(r for r in review["net_worth"]["by_account"] if r["name"] == "Chequing")
+        self.assertEqual(chequing["balance"], Decimal("1400"))
+        self.assertEqual(chequing["changes"]["1m"], Decimal("-100"))  # since end of Jul 2026
+        self.assertEqual(chequing["changes"]["3m"], Decimal("400"))  # since end of May 2026
+        self.assertEqual(chequing["changes"]["all"], Decimal("400"))  # since end of Mar 2024
+
+    def test_net_worth_bands_combine_feed_accounts_and_keep_other_groups(self):
+        liability_group = AccountGroup.objects.create(team=self.team, name="Cards", account_type="liability")
+        loan_group = AccountGroup.objects.create(team=self.team, name="Loans", account_type="liability")
+        card = Account.objects.create(team=self.team, name="Visa", account_group=liability_group, has_feed=True)
+        loan = Account.objects.create(team=self.team, name="Car loan", account_group=loan_group)
+
+        def post(day, dr, cr, amount):
+            entry = JournalEntry.objects.create(team=self.team, entry_date=day, description="t", status="posted")
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=dr, dr_amount=amount)
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=cr, cr_amount=amount)
+
+        self._entry(date(2026, 7, 10), self.salary, Decimal("1000"), dr_category=False)  # chequing +1000
+        post(date(2026, 8, 5), self.groceries, card, Decimal("80"))  # card owes 80
+        post(date(2026, 8, 6), self.chequing, loan, Decimal("500"))  # borrowed 500 into chequing
+
+        stack = build_review(self.team, date(2026, 8, 1))["net_worth"]["stack"]
+        bands = {band["bucket"]: band for band in stack}
+
+        # Chequing (feed) and the Visa (feed) are one band, net of each other.
+        self.assertEqual(bands["Bank accounts & credit cards"]["type"], "cash")
+        self.assertEqual(bands["Bank accounts & credit cards"]["values"][-1], 1000 + 500 - 80)
+        # The loan is not on a feed: its own liability band, signed negative.
+        self.assertEqual(bands["Loans"]["type"], "liability")
+        self.assertEqual(bands["Loans"]["values"][-1], -500)
+        self.assertNotIn("Cards", bands)
+        # Bands sum to net worth.
+        self.assertEqual(sum(band["values"][-1] for band in stack), 1000 - 80)

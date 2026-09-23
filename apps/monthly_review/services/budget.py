@@ -16,7 +16,7 @@ from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
 from apps.budget.models import Budget
 from apps.budget.services import BudgetService
 from apps.budget.views import _budget_categories
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalLine, counted_entries
 
 
 def build_section(items, budget_rows, spending=True):
@@ -124,7 +124,7 @@ def budget_breakdown(team, month) -> dict:
             account_id__in=category_ids,
             journal_entry__entry_date__range=(month_start, month_end),
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .values("account_id")
         .annotate(count=Count("id"))
         .values_list("account_id", "count")

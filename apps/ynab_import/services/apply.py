@@ -17,7 +17,7 @@ from django.db import transaction
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.budget.models import Budget, Goal, GoalAllocation
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
 
 from .build import ASSET, EQUITY_TYPE, ImportPlan
@@ -336,7 +336,7 @@ def net_worth_of(team) -> Decimal:
             team=team,
             account__account_group__account_type__in=(ASSET, "liability"),
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .aggregate(dr=Sum("dr_amount"), cr=Sum("cr_amount"))
     )
     return (totals["dr"] or ZERO) - (totals["cr"] or ZERO)

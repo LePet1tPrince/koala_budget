@@ -67,8 +67,9 @@ class AccountSerializer(serializers.ModelSerializer):
         ]
 
     def get_categorized_balance(self, obj) -> str | None:
-        if hasattr(obj, "_categorized_balance"):
-            return str(obj._categorized_balance)
+        """Same as `balance` now that archived entries count nowhere; kept for API compatibility."""
+        if hasattr(obj, "_balance"):
+            return str(obj._balance)
         return None
 
     def get_reconciled_balance(self, obj) -> str | None:

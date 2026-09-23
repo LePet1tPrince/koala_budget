@@ -67,8 +67,8 @@ def _annotate_feed_account_activity(accounts, team):
     Attach per-account review/activity fields to feed accounts: uncategorized_count,
     latest_transaction_date, latest_reconciled_date.
 
-    Computed as separate queries (not chained onto the with_balance()/with_categorized_balance()/
-    with_reconciled_balance() annotations) to avoid the join fan-out that would inflate the Sum()
+    Computed as separate queries (not chained onto the with_balance()/with_reconciled_balance()
+    annotations) to avoid the join fan-out that would inflate the Sum()
     balances: bank_transactions and journal_lines are different reverse relations, so annotating
     both in one query would cross-multiply their rows per account.
     """
@@ -274,7 +274,6 @@ class BankFeedViewSet(
         accounts = list(
             Account.for_team.filter(has_feed=True)
             .with_balance()
-            .with_categorized_balance()
             .with_reconciled_balance()
             .select_related("account_group", "institution")
             .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
@@ -1958,7 +1957,6 @@ def bank_feed_home(request, team_slug):
     accounts_with_feeds = list(
         Account.for_team.filter(has_feed=True)
         .with_balance()
-        .with_categorized_balance()
         .with_reconciled_balance()
         .select_related("account_group", "institution")
         .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
