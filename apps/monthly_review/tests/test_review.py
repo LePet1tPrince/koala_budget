@@ -126,17 +126,30 @@ class BuildReviewTests(TestCase):
         self.assertEqual(chequing["changes"]["3m"], Decimal("400"))  # since end of May 2026
         self.assertEqual(chequing["changes"]["all"], Decimal("400"))  # since end of Mar 2024
 
-    def test_net_worth_stack_marks_each_band_asset_or_liability(self):
+    def test_net_worth_bands_combine_feed_accounts_and_keep_other_groups(self):
         liability_group = AccountGroup.objects.create(team=self.team, name="Cards", account_type="liability")
-        card = Account.objects.create(team=self.team, name="Visa", account_group=liability_group)
-        self._entry(date(2026, 7, 10), self.salary, Decimal("1000"), dr_category=False)
-        entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2026, 8, 5), description="t", status="posted"
-        )
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.groceries, dr_amount=Decimal("80"))
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=card, cr_amount=Decimal("80"))
+        loan_group = AccountGroup.objects.create(team=self.team, name="Loans", account_type="liability")
+        card = Account.objects.create(team=self.team, name="Visa", account_group=liability_group, has_feed=True)
+        loan = Account.objects.create(team=self.team, name="Car loan", account_group=loan_group)
+
+        def post(day, dr, cr, amount):
+            entry = JournalEntry.objects.create(team=self.team, entry_date=day, description="t", status="posted")
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=dr, dr_amount=amount)
+            JournalLine.objects.create(team=self.team, journal_entry=entry, account=cr, cr_amount=amount)
+
+        self._entry(date(2026, 7, 10), self.salary, Decimal("1000"), dr_category=False)  # chequing +1000
+        post(date(2026, 8, 5), self.groceries, card, Decimal("80"))  # card owes 80
+        post(date(2026, 8, 6), self.chequing, loan, Decimal("500"))  # borrowed 500 into chequing
 
         stack = build_review(self.team, date(2026, 8, 1))["net_worth"]["stack"]
-        self.assertEqual(
-            {(band["bucket"], band["type"]) for band in stack}, {("Assets", "asset"), ("Cards", "liability")}
-        )
+        bands = {band["bucket"]: band for band in stack}
+
+        # Chequing (feed) and the Visa (feed) are one band, net of each other.
+        self.assertEqual(bands["Bank accounts & credit cards"]["type"], "cash")
+        self.assertEqual(bands["Bank accounts & credit cards"]["values"][-1], 1000 + 500 - 80)
+        # The loan is not on a feed: its own liability band, signed negative.
+        self.assertEqual(bands["Loans"]["type"], "liability")
+        self.assertEqual(bands["Loans"]["values"][-1], -500)
+        self.assertNotIn("Cards", bands)
+        # Bands sum to net worth.
+        self.assertEqual(sum(band["values"][-1] for band in stack), 1000 - 80)

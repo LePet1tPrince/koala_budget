@@ -21,7 +21,7 @@ from django.urls import reverse
 from django.utils.formats import date_format
 from django.utils.translation import gettext as _
 
-from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_LIABILITY
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
@@ -280,6 +280,70 @@ def _balance_by_account(report_service, month_end, baselines) -> list:
     return rows
 
 
+CASH_BAND = "cash"
+
+
+def _net_worth_bands(team, window_start, month_end, month_keys) -> list:
+    """
+    Month-end net worth split into bands for the composition chart, each value
+    signed as its contribution to net worth (dr - cr: assets positive,
+    liabilities negative) and aligned with `month_keys`:
+
+    - one CASH_BAND for every account on a bank feed, asset *and* liability --
+      bank accounts net of credit cards, so everyday card debt reads as money
+      spent rather than as a negative band of its own;
+    - one band per account group for the remaining assets and liabilities
+      (investments, a mortgage, ...), typed "asset" or "liability".
+
+    Bands that are zero throughout are dropped. Whether the cash band dips below
+    zero is decided on the page, over the months the selected baseline shows.
+    """
+    deltas = (
+        JournalLine.objects.filter(
+            team=team,
+            journal_entry__entry_date__lte=month_end,
+            account__account_group__account_type__in=(ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY),
+        )
+        .filter(counted_entries("journal_entry__"))
+        .annotate(month=TruncMonth("journal_entry__entry_date"))
+        .values(
+            "month",
+            "account__has_feed",
+            "account__account_group_id",
+            "account__account_group__name",
+            "account__account_group__account_type",
+        )
+        .annotate(delta=Sum("dr_amount") - Sum("cr_amount"))
+    )
+
+    months = [date.fromisoformat(key) for key in month_keys]
+    bands = {}  # key -> {"bucket", "type", "deltas": {month: Decimal}}
+    for row in deltas:
+        if row["account__has_feed"]:
+            key, bucket, band_type = CASH_BAND, _("Bank accounts & credit cards"), CASH_BAND
+        else:
+            key = row["account__account_group_id"]
+            bucket, band_type = row["account__account_group__name"], row["account__account_group__account_type"]
+        band = bands.setdefault(key, {"bucket": bucket, "type": band_type, "deltas": {}})
+        month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
+        band["deltas"][month] = band["deltas"].get(month, Decimal("0")) + row["delta"]
+
+    out = []
+    for band in bands.values():
+        running = sum((amount for m, amount in band["deltas"].items() if months and m < months[0]), Decimal("0"))
+        values = []
+        for m in months:
+            running += band["deltas"].get(m, Decimal("0"))
+            values.append(float(running))
+        if any(values):
+            out.append({"bucket": band["bucket"], "type": band["type"], "values": values})
+
+    # Cash at the bottom, then other assets (largest first), then liabilities (largest debt nearest zero).
+    order = {CASH_BAND: 0, ACCOUNT_TYPE_ASSET: 1, ACCOUNT_TYPE_LIABILITY: 2}
+    out.sort(key=lambda b: (order[b["type"]], -abs(b["values"][-1]) if b["values"] else 0))
+    return out
+
+
 def _net_worth_section(team, window_start, month, month_end, report_service, baselines) -> dict:
     """
     Month-end net worth from `window_start` through the reviewed month. The page
@@ -297,17 +361,7 @@ def _net_worth_section(team, window_start, month, month_end, report_service, bas
         for point in trend
     ]
 
-    composition = report_service.get_balance_composition_data(window_start, month_end)
-    stack = [
-        *(
-            {"bucket": group["name"], "type": "asset", "values": group["values"]}
-            for group in composition["asset_groups"]
-        ),
-        *(
-            {"bucket": group["name"], "type": "liability", "values": group["values"]}
-            for group in composition["liability_groups"]
-        ),
-    ]
+    stack = _net_worth_bands(team, window_start, month_end, [point["key"] for point in series])
 
     now_data = report_service.get_balance_sheet_data(month_end)
     prev_month_end = _month_bounds(_prev_month(month))[1]
