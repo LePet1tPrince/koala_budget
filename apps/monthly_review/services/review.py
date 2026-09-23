@@ -11,7 +11,7 @@ Returns rich Python objects (Decimal amounts, Account/Goal instances), same as
 page's `json_script` payload is the view's job, not this one's.
 """
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
@@ -27,7 +27,7 @@ from apps.budget.models import GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.reports.services import ReportService
 
-from .baselines import MonthlyMatrix, build_baselines
+from .baselines import ALL_TIME, MonthlyMatrix, build_baselines
 from .budget import _month_bounds, _prev_month, budget_breakdown
 from .health import account_health
 
@@ -39,7 +39,19 @@ def _add_months(d: date, n: int) -> date:
 
 
 def _baseline_months_setting():
-    return tuple(getattr(settings, "MONTHLY_REVIEW_BASELINE_MONTHS", (1, 3, 6, 12)))
+    return tuple(getattr(settings, "MONTHLY_REVIEW_BASELINE_MONTHS", (1, 3, 6, 12, ALL_TIME)))
+
+
+def _window_start(month: date, baseline_months, first_month: date | None) -> date:
+    """
+    The first month the review loads: far enough back for the longest numeric
+    baseline, and back to the team's first activity when "all time" is offered.
+    """
+    numeric = [m for m in baseline_months if m != ALL_TIME]
+    start = _add_months(month, -max(numeric, default=0))
+    if ALL_TIME in baseline_months and first_month and first_month < start:
+        start = first_month
+    return start
 
 
 def _drill_limit():
@@ -105,7 +117,7 @@ def _saved_by_month(goals: dict, months: list) -> dict:
     }
 
 
-def _build_matrix(team, window_start, month, month_end, report_service) -> MonthlyMatrix:
+def _build_matrix(team, window_start, month, month_end, report_service, first_month) -> MonthlyMatrix:
     data = report_service.get_income_statement_data(window_start, month_end, period="month")
     months = data["periods"]
 
@@ -140,7 +152,7 @@ def _build_matrix(team, window_start, month, month_end, report_service) -> Month
         categories=categories,
         streams=streams,
         goals=goals,
-        first_month=_team_first_activity_month(team),
+        first_month=first_month,
     )
 
 
@@ -226,14 +238,28 @@ def _category_transactions(team, month, month_end, limit=200) -> dict:
     return cat_txns
 
 
-def _balance_by_account(report_service, window_start, month_end) -> list:
-    end_data = report_service.get_balance_sheet_data(month_end)
-    start_data = report_service.get_balance_sheet_data(window_start - timedelta(days=1))
-    start_by_id = {}
-    for section in ("assets", "liabilities", "equity"):
-        for item in start_data[section]:
-            start_by_id[item["account"].pk] = item["amount"]
+def _balance_by_account(report_service, month_end, baselines) -> list:
+    """
+    Each non-system balance-sheet account's balance at month end, plus its change
+    per baseline: measured from the end of the baseline window's first month, the
+    same point the net worth chart starts from when that baseline is selected.
+    """
 
+    def amounts(as_of):
+        data = report_service.get_balance_sheet_data(as_of)
+        return {
+            item["account"].pk: item["amount"]
+            for section in ("assets", "liabilities", "equity")
+            for item in data[section]
+        }
+
+    start_by_baseline = {}
+    for baseline_id, baseline in baselines.items():
+        first_month = date.fromisoformat(baseline["keys"][0])
+        start_by_baseline[baseline_id] = _month_bounds(first_month)[1]
+    start_amounts = {as_of: amounts(as_of) for as_of in set(start_by_baseline.values())}
+
+    end_data = report_service.get_balance_sheet_data(month_end)
     rows = []
     for section, type_label in (("assets", "asset"), ("liabilities", "liability"), ("equity", "equity")):
         for item in end_data[section]:
@@ -245,13 +271,20 @@ def _balance_by_account(report_service, window_start, month_end) -> list:
                     "name": account.name,
                     "type": type_label,
                     "balance": item["amount"],
-                    "change": item["amount"] - start_by_id.get(account.pk, Decimal("0")),
+                    "changes": {
+                        baseline_id: item["amount"] - start_amounts[as_of].get(account.pk, Decimal("0"))
+                        for baseline_id, as_of in start_by_baseline.items()
+                    },
                 }
             )
     return rows
 
 
-def _net_worth_section(team, window_start, month, month_end, report_service) -> dict:
+def _net_worth_section(team, window_start, month, month_end, report_service, baselines) -> dict:
+    """
+    Month-end net worth from `window_start` through the reviewed month. The page
+    shows the slice matching the selected baseline (its months plus this one).
+    """
     trend = report_service.get_net_worth_trend_data_by_date_range(window_start, month_end)
     series = [
         {
@@ -287,7 +320,7 @@ def _net_worth_section(team, window_start, month, month_end, report_service) -> 
             "assets": prev_data["total_assets"],
             "liabilities": prev_data["total_liabilities"],
         },
-        "by_account": _balance_by_account(report_service, window_start, month_end),
+        "by_account": _balance_by_account(report_service, month_end, baselines),
     }
 
 
@@ -295,10 +328,11 @@ def build_review(team, month: date) -> dict:
     month = month.replace(day=1)
     month_start, month_end = _month_bounds(month)
     baseline_months = _baseline_months_setting()
-    window_start = _add_months(month, -max(baseline_months))
+    first_month = _team_first_activity_month(team)
+    window_start = _window_start(month, baseline_months, first_month)
 
     report_service = ReportService(team)
-    matrix = _build_matrix(team, window_start, month, month_end, report_service)
+    matrix = _build_matrix(team, window_start, month, month_end, report_service, first_month)
     baselines, baseline_order, default_baseline = build_baselines(matrix, month, baseline_months)
 
     transaction_count = BankTransaction.objects.filter(
@@ -325,7 +359,7 @@ def build_review(team, month: date) -> dict:
         "budget": budget_breakdown(team, month),
         "biggest": _biggest_transactions(team, month_start, month_end, limit=25),
         "cat_txns": _category_transactions(team, month_start, month_end, limit=_drill_limit()),
-        "net_worth": _net_worth_section(team, window_start, month, month_end, report_service),
+        "net_worth": _net_worth_section(team, window_start, month, month_end, report_service, baselines),
         "notes": [
             _(
                 '"Saved" is the amount assigned to your savings goals this month -- it '

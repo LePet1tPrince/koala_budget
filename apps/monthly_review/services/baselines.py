@@ -3,7 +3,7 @@ The comparison-window machinery for the guided monthly review.
 
 Pure arithmetic over an already-assembled monthly matrix -- no database access,
 so this is fully unit-testable without a team, ledger, or fixtures. `review.py`
-does the querying and hands this module one dict; this module slices it four
+does the querying and hands this module one dict; this module slices it five
 ways (or fewer, if the team's history is short) and never looks at the database
 itself.
 
@@ -23,14 +23,19 @@ from django.utils.formats import date_format
 
 METRICS = ("income", "spend", "net", "saved")
 
+# The "all time" baseline: every month from the team's first activity up to the
+# month before the one under review.
+ALL_TIME = "all"
+
 BASELINE_META = {
     1: {"id": "1m", "label": "Last month", "short": "1-mo", "against": "last month"},
     3: {"id": "3m", "label": "3-month average", "short": "3-mo", "against": "the 3-month average"},
     6: {"id": "6m", "label": "6-month average", "short": "6-mo", "against": "the 6-month average"},
     12: {"id": "12m", "label": "12-month average", "short": "12-mo", "against": "the 12-month average"},
+    ALL_TIME: {"id": "all", "label": "All-time average", "short": "All time", "against": "the all-time average"},
 }
 
-DEFAULT_BASELINE_MONTHS = (1, 3, 6, 12)
+DEFAULT_BASELINE_MONTHS = (1, 3, 6, 12, ALL_TIME)
 DEFAULT_BASELINE_ID = "3m"
 
 
@@ -72,10 +77,10 @@ def _month_span_label(window: list) -> str:
     return f"{date_format(window[0], 'M')} – {date_format(window[-1], 'M Y')}"
 
 
-def clamp_window(month: date, months: int, first_month: date | None) -> list:
+def clamp_window(month: date, months, first_month: date | None) -> list:
     """
     Up to `months` calendar months strictly before `month`, oldest first,
-    never reaching earlier than `first_month`.
+    never reaching earlier than `first_month`. `months=ALL_TIME` means no limit.
 
     Returns [] when there is no room at all -- either no history exists, or
     the month under review is the team's first month (or earlier).
@@ -84,7 +89,7 @@ def clamp_window(month: date, months: int, first_month: date | None) -> list:
         return []
     window = []
     cursor = _prev_month(month)
-    for _ in range(months):
+    while months == ALL_TIME or len(window) < months:
         if cursor < first_month:
             break
         window.append(cursor)
@@ -173,7 +178,7 @@ def build_baselines(matrix: MonthlyMatrix, month: date, baseline_months=DEFAULT_
             "against": meta["against"],
             "span": _month_span_label(window),
             "months": len(window),
-            "clamped": len(window) < months,
+            "clamped": months != ALL_TIME and len(window) < months,
             "keys": [d.isoformat() for d in window],
             "avgs": avgs,
             "streams": _stream_rows(matrix.streams, window, month),

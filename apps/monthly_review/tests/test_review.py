@@ -106,3 +106,22 @@ class BuildReviewTests(TestCase):
         self.assertEqual(review["baselines"], {})
         self.assertIsNone(review["default_baseline"])
         self.assertEqual(review["baseline_order"], [])
+
+    def test_all_time_baseline_and_net_worth_span_back_to_first_activity(self):
+        # 2+ years of history: longer than the 12-month baseline.
+        self._entry(date(2024, 3, 5), self.salary, Decimal("1000"), dr_category=False)
+        self._entry(date(2026, 6, 10), self.salary, Decimal("500"), dr_category=False)
+        self._entry(date(2026, 8, 10), self.groceries, Decimal("100"))
+        review = build_review(self.team, date(2026, 8, 1))
+
+        self.assertEqual(review["baseline_order"][-1], "all")
+        self.assertEqual(review["baselines"]["all"]["keys"][0], "2024-03-01")
+        self.assertEqual(review["net_worth"]["series"][0]["key"], "2024-03-01")
+        self.assertEqual(review["net_worth"]["series"][-1]["key"], "2026-08-01")
+
+        # Change is measured from the end of the baseline's first month.
+        chequing = next(r for r in review["net_worth"]["by_account"] if r["name"] == "Chequing")
+        self.assertEqual(chequing["balance"], Decimal("1400"))
+        self.assertEqual(chequing["changes"]["1m"], Decimal("-100"))  # since end of Jul 2026
+        self.assertEqual(chequing["changes"]["3m"], Decimal("400"))  # since end of May 2026
+        self.assertEqual(chequing["changes"]["all"], Decimal("400"))  # since end of Mar 2024

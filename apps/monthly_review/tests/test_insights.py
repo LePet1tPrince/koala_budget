@@ -326,7 +326,7 @@ class Step8NetWorthInsightTests(SimpleTestCase):
         step8 = [i for i in generate(review) if i.kind == "net_worth_month"][0]
         self.assertEqual(step8.severity, "bad")
 
-    def test_net_worth_window_change_uses_series_start(self):
+    def test_net_worth_window_change_is_left_to_the_page(self):
         net_worth = _review()["net_worth"]
         net_worth = {
             **net_worth,
@@ -348,9 +348,8 @@ class Step8NetWorthInsightTests(SimpleTestCase):
             ],
         }
         review = _review(net_worth=net_worth)
-        window = [i for i in generate(review) if i.kind == "net_worth_window"][0]
-        self.assertEqual(window.severity, "good")
-        self.assertEqual(window.delta, Decimal("500"))
+        # The page states the change over the selected baseline; a server insight can't follow the toggle.
+        self.assertEqual([i.kind for i in generate(review) if i.step == 8], ["net_worth_month"])
 
 
 class GenerateAggregationTests(SimpleTestCase):

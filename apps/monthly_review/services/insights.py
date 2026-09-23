@@ -434,22 +434,6 @@ def _step8_net_worth(review) -> list:
         )
     )
 
-    series = net_worth["series"]
-    if len(series) > 1:
-        window_change = net_worth["now"]["net"] - series[0]["net"]
-        out.append(
-            Insight(
-                kind="net_worth_window",
-                severity="good" if window_change >= 0 else "bad",
-                step=8,
-                title=_("Net worth is %(direction)s %(amount)s since %(start)s.")
-                % {
-                    "direction": _("up") if window_change >= 0 else _("down"),
-                    "amount": _money(abs(window_change)),
-                    "start": series[0]["label"],
-                },
-                metric=net_worth["now"]["net"],
-                delta=window_change,
-            )
-        )
+    # The change over the comparison window is stated on the page itself, which
+    # follows the selected baseline -- an insight computed here could not.
     return out

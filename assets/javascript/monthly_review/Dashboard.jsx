@@ -5,6 +5,7 @@ import BaselineBar from './BaselineBar';
 import { createFlowChart } from './charts/flowChart';
 import { createNetWorthStackChart } from './charts/networthStackChart';
 import { currency } from './format';
+import { accountChange, netWorthWindow } from './netWorthWindow';
 import ChartCanvas from './parts/ChartCanvas';
 import DrillTable from './parts/DrillTable';
 import InsightList from './parts/InsightList';
@@ -14,14 +15,26 @@ import InsightList from './parts/InsightList';
  * everything at once, no step gating. Always reachable at the review's own
  * URL for any month.
  */
-const Dashboard = ({ review, baselines, baselineOrder, baseline, currentBaseline, onBaselineChange, onWalkthrough, urls }) => {
+const Dashboard = ({
+  review,
+  baselines,
+  baselineOrder,
+  baseline,
+  currentBaseline,
+  onBaselineChange,
+  onWalkthrough,
+  urls,
+}) => {
   const { current, budget, biggest, net_worth: netWorth, health } = review;
 
   return (
     <div className="max-w-6xl mx-auto py-6 space-y-6" data-testid="monthly-review-dashboard">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <BudgetMonthPicker initialMonth={review.month} triggerClassName="btn btn-ghost btn-sm px-0 text-2xl font-semibold" />
+          <BudgetMonthPicker
+            initialMonth={review.month}
+            triggerClassName="btn btn-ghost btn-sm px-0 text-2xl font-semibold"
+          />
           {review.is_current_month && (
             <div className="badge badge-warning badge-sm mt-1">This month isn&apos;t over yet</div>
           )}
@@ -46,7 +59,9 @@ const Dashboard = ({ review, baselines, baselineOrder, baseline, currentBaseline
         className={`app-card ${health.all_clear ? 'border-success/40' : 'border-warning/40'}`}
         data-testid="health-strip"
       >
-        {health.all_clear ? "Everything's accounted for." : `${health.flags.length} thing(s) need attention this month.`}
+        {health.all_clear
+          ? "Everything's accounted for."
+          : `${health.flags.length} thing(s) need attention this month.`}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -90,8 +105,11 @@ const Dashboard = ({ review, baselines, baselineOrder, baseline, currentBaseline
         <div className="app-card">
           <h2 className="font-semibold mb-2">Net worth composition</h2>
           <ChartCanvas
-            create={(canvas) => createNetWorthStackChart(canvas, netWorth.series, netWorth.stack)}
-            deps={[netWorth]}
+            create={(canvas) => {
+              const windowed = netWorthWindow(netWorth, currentBaseline, review.month);
+              return createNetWorthStackChart(canvas, windowed.series, windowed.stack);
+            }}
+            deps={[netWorth, currentBaseline]}
             height={260}
             testId="dash-net-worth-chart"
           />
@@ -151,15 +169,22 @@ const Dashboard = ({ review, baselines, baselineOrder, baseline, currentBaseline
                 </tr>
               </thead>
               <tbody>
-                {netWorth.by_account.map((r, i) => (
-                  <tr key={i}>
-                    <td>{r.name}</td>
-                    <td className="text-right">{currency(r.balance)}</td>
-                    <td className={`text-right ${r.change >= 0 ? 'text-success' : 'text-error'}`}>
-                      {currency(r.change)}
-                    </td>
-                  </tr>
-                ))}
+                {netWorth.by_account.map((r, i) => {
+                  const change = accountChange(r, currentBaseline);
+                  return (
+                    <tr key={i}>
+                      <td>{r.name}</td>
+                      <td className="text-right">{currency(r.balance)}</td>
+                      {change === null ? (
+                        <td className="text-right text-base-content/70">—</td>
+                      ) : (
+                        <td className={`text-right ${change >= 0 ? 'text-success' : 'text-error'}`}>
+                          {currency(change)}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -192,7 +217,7 @@ const StatBlock = ({ label, value, delta, testId, goodIsUp = true }) => (
     <div className="text-sm text-base-content/70">{label}</div>
     <div className="text-2xl font-semibold mt-1">{currency(value)}</div>
     {delta !== undefined && delta !== null && (
-      <div className={`text-xs font-medium mt-1 ${(delta >= 0) === goodIsUp ? 'text-success' : 'text-error'}`}>
+      <div className={`text-xs font-medium mt-1 ${delta >= 0 === goodIsUp ? 'text-success' : 'text-error'}`}>
         {delta >= 0 ? '▲' : '▼'} {currency(Math.abs(delta))}
       </div>
     )}
