@@ -257,15 +257,13 @@ class Step5BiggestInsightTests(SimpleTestCase):
 
 
 class Step6BreakdownInsightTests(SimpleTestCase):
-    def test_unbudgeted_spend_is_warn(self):
+    def test_unbudgeted_spend_is_not_flagged(self):
         group = {
             "name": "Everyday",
             "categories": [{"id": 1, "name": "Misc", "spent": Decimal("30"), "unbudgeted": True}],
         }
         review = _review(budget={"groups": [group], "totals": {}, "overspent": [], "over_assigned": []})
-        unbudgeted = [i for i in generate(review) if i.kind == "unbudgeted_spend"]
-        self.assertEqual(len(unbudgeted), 1)
-        self.assertEqual(unbudgeted[0].severity, "warn")
+        self.assertEqual([i for i in generate(review) if i.step == 6], [])
 
     def test_biggest_movers_reported(self):
         group = {

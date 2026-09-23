@@ -335,18 +335,8 @@ def _step6_breakdown(review) -> list:
         {**category, "group": group["name"]} for group in review["budget"]["groups"] for category in group["categories"]
     ]
 
-    for row in rows:
-        if row["unbudgeted"] and row["spent"]:
-            out.append(
-                Insight(
-                    kind="unbudgeted_spend",
-                    severity="warn",
-                    step=6,
-                    title=_("%(category)s had spending but no budget.") % {"category": row["name"]},
-                    body=_("Spent %(spent)s with nothing assigned.") % {"spent": _money(row["spent"])},
-                    metric=row["spent"],
-                )
-            )
+    # Spending in a category with no budget is deliberately not flagged: the
+    # breakdown table already marks those rows "unbudgeted".
 
     if baseline is not None:
         cat_avg = baseline["cat_avg"]
