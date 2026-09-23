@@ -78,6 +78,7 @@ def _step1_health(review) -> list:
         ]
 
     out = []
+    no_transactions = []
     uncategorized = []
     reconciliation = []  # UNRECONCILED and BALANCE_GAP: both say the reconciled balance is off
     for flag in health["flags"]:
@@ -85,16 +86,7 @@ def _step1_health(review) -> list:
         url = flag.get("url", "")
         kind = flag["kind"]
         if kind == NO_TRANSACTIONS:
-            out.append(
-                Insight(
-                    kind=kind,
-                    severity="bad",
-                    step=1,
-                    title=_("%(account)s has no transactions this month.") % {"account": account_name},
-                    body=_("Did an import get missed? Fix in Inbox."),
-                    url=url,
-                )
-            )
+            no_transactions.append(flag)
         elif kind == STALE_ACCOUNT:
             out.append(
                 Insight(
@@ -112,11 +104,27 @@ def _step1_health(review) -> list:
         elif kind in (UNRECONCILED, BALANCE_GAP):
             reconciliation.append(flag)
 
+    if no_transactions:
+        out.insert(0, _no_transactions_card(no_transactions))
     if uncategorized:
         out.append(_uncategorized_card(uncategorized))
     if reconciliation:
         out.append(_reconciliation_card(reconciliation))
     return out
+
+
+def _no_transactions_card(flags) -> Insight:
+    """One card for every account with no transactions this month, a line per account."""
+    return Insight(
+        kind=NO_TRANSACTIONS,
+        severity="bad",
+        step=1,
+        title=_("%(accounts)d account(s) have no transactions this month.") % {"accounts": len(flags)},
+        body=_("Did an import get missed? Fix in Inbox."),
+        url=flags[0].get("url", ""),
+        metric=Decimal(len(flags)),
+        lines=tuple(f["account"].name for f in flags),
+    )
 
 
 def _uncategorized_card(flags) -> Insight:
@@ -227,20 +235,10 @@ def _step3_income(review) -> list:
                 )
             )
 
+    # A stream that paid nothing this month is deliberately not flagged: irregular
+    # income (a side gig, a quarterly payout) skips months routinely.
     for row in baseline["streams"]:
-        if not row["amount"] and row["avg"] > 0:
-            out.append(
-                Insight(
-                    kind="stream_missing",
-                    severity="bad",
-                    step=3,
-                    title=_("No income from %(payee)s this month.") % {"payee": row["payee"]},
-                    body=_("It usually brings in about %(avg)s.") % {"avg": _money(row["avg"])},
-                    metric=row["amount"],
-                    delta=-row["avg"],
-                )
-            )
-        elif row["new"]:
+        if row["new"]:
             out.append(
                 Insight(
                     kind="stream_new",

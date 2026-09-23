@@ -86,20 +86,23 @@ class Step1HealthInsightTests(SimpleTestCase):
         self.assertEqual(kinds, ["all_clear"])
         self.assertEqual(insights[0].severity, "good")
 
-    def test_no_transactions_is_bad(self):
-        flag = {"kind": "no_transactions", "account": _Named("Chequing"), "url": "/inbox/"}
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
-        step1 = [i for i in generate(review) if i.step == 1]
-        self.assertEqual(len(step1), 1)
-        self.assertEqual(step1[0].kind, "no_transactions")
-        self.assertEqual(step1[0].severity, "bad")
-        self.assertIn("Chequing", step1[0].title)
-
     def test_stale_account_is_warn(self):
         flag = {"kind": "stale_account", "account": _Named("Savings"), "days": 20, "url": ""}
         review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
         step1 = [i for i in generate(review) if i.step == 1]
         self.assertEqual(step1[0].severity, "warn")
+
+    def test_no_transactions_is_one_card_with_a_line_per_account(self):
+        flags = [
+            {"kind": "no_transactions", "account": _Named("Chequing"), "url": "/inbox/"},
+            {"kind": "no_transactions", "account": _Named("Visa"), "url": "/inbox/"},
+        ]
+        review = _review(health={"accounts": [], "flags": flags, "all_clear": False})
+        step1 = [i for i in generate(review) if i.step == 1]
+        self.assertEqual(len(step1), 1)
+        self.assertEqual(step1[0].kind, "no_transactions")
+        self.assertEqual(step1[0].severity, "bad")
+        self.assertEqual(step1[0].lines, ("Chequing", "Visa"))
 
     def test_uncategorized_is_one_card_with_a_line_per_account(self):
         flags = [
@@ -172,7 +175,7 @@ class Step3IncomeInsightTests(SimpleTestCase):
         income_down = [i for i in generate(review) if i.kind == "income_down"]
         self.assertEqual(income_down, [])
 
-    def test_missing_stream_is_bad(self):
+    def test_missing_stream_is_not_flagged(self):
         stream = {
             "payee": "Acme Payroll",
             "amount": Decimal("0"),
@@ -182,9 +185,7 @@ class Step3IncomeInsightTests(SimpleTestCase):
         }
         baseline = _baseline(streams=[stream])
         review = _review(baselines={"3m": baseline}, default_baseline="3m")
-        missing = [i for i in generate(review) if i.kind == "stream_missing"]
-        self.assertEqual(len(missing), 1)
-        self.assertEqual(missing[0].severity, "bad")
+        self.assertEqual([i for i in generate(review) if i.step == 3], [])
 
     def test_new_stream_is_info(self):
         stream = {
