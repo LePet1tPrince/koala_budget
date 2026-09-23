@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { endOfMonth, format, startOfMonth } from 'date-fns';
+import { format, startOfMonth } from 'date-fns';
 
 import DateRangePicker from '../common/DateRangePicker';
 import { createRoot } from 'react-dom/client';
@@ -36,23 +36,25 @@ const DateRangePickerWrapper = () => {
       setStartDate(urlStartDate);
       setEndDate(urlEndDate);
     } else {
-      // Set default to current month and auto-load report
+      // No params: this is exactly the range the server already rendered the
+      // page with (start of month through today -- see e.g. AccountDetailView
+      // and ReportService's own default), so just reflect it in the URL
+      // instead of navigating -- a real reload here would throw away
+      // anything already on the page, including a just-shown message popup.
       const now = new Date();
-      const startOfCurrentMonth = startOfMonth(now);
-      const endOfCurrentMonth = endOfMonth(now);
-
-      const defaultStart = format(startOfCurrentMonth, 'yyyy-MM-dd');
-      const defaultEnd = format(endOfCurrentMonth, 'yyyy-MM-dd');
+      const defaultStart = format(startOfMonth(now), 'yyyy-MM-dd');
+      const defaultEnd = format(now, 'yyyy-MM-dd');
 
       setStartDate(defaultStart);
       setEndDate(defaultEnd);
 
-      // Auto-load report with default dates
-      setTimeout(() => {
-        handleDateRangeApply(defaultStart, defaultEnd);
-      }, 100); // Small delay to ensure component is mounted
+      const url = new URL(window.location);
+      url.searchParams.set('start_date', defaultStart);
+      url.searchParams.set('end_date', defaultEnd);
+      url.searchParams.delete('period');
+      window.history.replaceState({}, '', url.toString());
     }
-  }, [handleDateRangeApply]);
+  }, []);
 
   return (
     <DateRangePicker
