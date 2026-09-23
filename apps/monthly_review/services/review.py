@@ -24,7 +24,7 @@ from django.utils.translation import gettext as _
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import GoalAllocation
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.reports.services import ReportService
 
 from .baselines import MonthlyMatrix, build_baselines
@@ -49,7 +49,7 @@ def _drill_limit():
 def _team_first_activity_month(team):
     first_date = (
         JournalEntry.objects.filter(team=team)
-        .exclude(status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
         .first()
@@ -65,7 +65,7 @@ def _stream_series(team, window_start, month_end):
             account__account_group__account_type=ACCOUNT_TYPE_INCOME,
             journal_entry__entry_date__range=(window_start, month_end),
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("journal_entry__payee", "account")
         .annotate(month=TruncMonth("journal_entry__entry_date"))
     )
@@ -173,7 +173,7 @@ def _biggest_transactions(team, month, month_end, limit=25) -> list:
             journal_entry__entry_date__range=(month, month_end),
             dr_amount__gt=0,
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("journal_entry__payee", "account")
         .prefetch_related("journal_entry__lines__account")
         .order_by("-dr_amount")[:limit]
@@ -200,7 +200,7 @@ def _category_transactions(team, month, month_end, limit=200) -> dict:
             account__account_group__account_type__in=(ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE),
             journal_entry__entry_date__range=(month, month_end),
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("journal_entry__payee", "account", "account__account_group")
         .prefetch_related("journal_entry__lines__account")
         .order_by("account_id", "journal_entry__entry_date", "pk")

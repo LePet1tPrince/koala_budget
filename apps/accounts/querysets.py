@@ -6,9 +6,12 @@ from django.db import models
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 
-# Lines belonging to voided journal entries must not count toward any balance.
-# (String literal to avoid a circular import of JournalEntry.STATUS_VOID.)
-NOT_VOID = ~Q(journal_lines__journal_entry__status="void")
+
+def _counted():
+    """Lines of entries that count (not void, not behind an archived bank transaction)."""
+    from apps.journal.models import counted_entries
+
+    return counted_entries("journal_lines__journal_entry__")
 
 
 class AccountQuerySet(models.QuerySet):
@@ -16,28 +19,15 @@ class AccountQuerySet(models.QuerySet):
 
     def with_balance(self):
         """Annotate accounts with their calculated balance in a single query."""
+        counted = _counted()
         return self.annotate(
-            _balance=Coalesce(Sum("journal_lines__dr_amount", filter=NOT_VOID), Decimal("0"))
-            - Coalesce(Sum("journal_lines__cr_amount", filter=NOT_VOID), Decimal("0"))
-        )
-
-    def with_categorized_balance(self):
-        """Balance excluding journal entries linked to archived bank transactions in this account."""
-        from apps.bank_feed.models import BankTransaction
-
-        archived_je_ids = BankTransaction.objects.filter(
-            is_archived=True,
-            journal_entry__isnull=False,
-        ).values("journal_entry_id")
-        categorized_filter = NOT_VOID & ~Q(journal_lines__journal_entry_id__in=archived_je_ids)
-        return self.annotate(
-            _categorized_balance=Coalesce(Sum("journal_lines__dr_amount", filter=categorized_filter), Decimal("0"))
-            - Coalesce(Sum("journal_lines__cr_amount", filter=categorized_filter), Decimal("0"))
+            _balance=Coalesce(Sum("journal_lines__dr_amount", filter=counted), Decimal("0"))
+            - Coalesce(Sum("journal_lines__cr_amount", filter=counted), Decimal("0"))
         )
 
     def with_reconciled_balance(self):
         """Annotate accounts with their reconciled balance (only reconciled journal lines)."""
-        reconciled = Q(journal_lines__is_reconciled=True) & NOT_VOID
+        reconciled = Q(journal_lines__is_reconciled=True) & _counted()
         return self.annotate(
             _reconciled_balance=Coalesce(Sum("journal_lines__dr_amount", filter=reconciled), Decimal("0"))
             - Coalesce(Sum("journal_lines__cr_amount", filter=reconciled), Decimal("0"))

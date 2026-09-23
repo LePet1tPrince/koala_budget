@@ -8,12 +8,12 @@ from django.db.models import Sum
 
 from apps.accounts.models import Account
 from apps.budget.models import Budget, Goal, GoalAllocation
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalLine, counted_entries
 
 
 def _active_lines():
     """Journal lines that count toward budgets/net worth (voided entries don't)."""
-    return JournalLine.objects.exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+    return JournalLine.objects.filter(counted_entries("journal_entry__"))
 
 
 class BudgetService:

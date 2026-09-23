@@ -22,7 +22,7 @@ from django.db import transaction
 from django.utils.translation import gettext as _
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EQUITY, ACCOUNT_TYPE_LIABILITY, Account
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry, JournalLine, counted_entries
 
 OPENING_DESCRIPTION = _("Opening balance")
 
@@ -187,6 +187,6 @@ def existing_opening_balances(team) -> set[int]:
             account__account_group__account_type__in=(ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY),
             account__is_system=False,
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .values_list("account_id", flat=True)
     )

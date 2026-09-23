@@ -24,7 +24,7 @@ Nothing here writes: it only suggests, and the user picks.
 
 import re
 
-from apps.journal.models import JournalEntry
+from apps.journal.models import counted_entries
 
 from ..models import BankTransaction
 
@@ -201,7 +201,7 @@ def build_history_index(team, limit=HISTORY_LIMIT):
             is_archived=False,
             is_transfer_mirror=False,
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("account")
         .prefetch_related("journal_entry__lines__account")
         .order_by("-posted_date", "-created_at")[:limit]

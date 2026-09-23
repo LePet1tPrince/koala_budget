@@ -1554,3 +1554,75 @@ class TransactionHierarchicalFilterAPITest(TestCase):
         response = self.client.get(self.url(), {"f_credit_account": "nonsense"})
 
         self.assertEqual(response.data["count"], 5)
+
+
+class ArchivedAndVoidedEntriesExcludedTest(TestCase):
+    """
+    Voided entries and entries behind an archived bank transaction count toward
+    nothing: account balances, reconciled balances, reports, budget actuals, net
+    worth, and the transactions ledger.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.bank_feed.models import BankTransaction
+
+        cls.team = Team.objects.create(name="Counted Team", slug="counted-team")
+        cls.user = CustomUser.objects.create_user(username="counted", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        asset_group = AccountGroup.objects.create(team=cls.team, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        expense_group = AccountGroup.objects.create(team=cls.team, name="Spend", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.bank = Account.objects.create(team=cls.team, name="Checking", account_group=asset_group, has_feed=True)
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=expense_group)
+        cls.day = date(2026, 8, 10)
+
+        def spend(amount, description, *, status_=JournalEntry.STATUS_POSTED, archived=False):
+            entry = JournalEntry.objects.create(
+                team=cls.team, entry_date=cls.day, description=description, status=status_
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=entry, account=cls.groceries, dr_amount=Decimal(amount)
+            )
+            JournalLine.objects.create(
+                team=cls.team, journal_entry=entry, account=cls.bank, cr_amount=Decimal(amount), is_reconciled=True
+            )
+            BankTransaction.objects.create(
+                team=cls.team,
+                account=cls.bank,
+                amount=Decimal(amount),
+                posted_date=cls.day,
+                description=description,
+                journal_entry=entry,
+                is_archived=archived,
+            )
+
+        spend("10.00", "Kept")
+        spend("500.00", "Archived", archived=True)
+        spend("7000.00", "Voided", status_=JournalEntry.STATUS_VOID)
+
+    def test_account_balances(self):
+        account = Account.objects.filter(pk=self.bank.pk).with_balance().with_reconciled_balance().get()
+        self.assertEqual(account._balance, Decimal("-10.00"))
+        self.assertEqual(account._reconciled_balance, Decimal("-10.00"))
+        self.assertEqual(Account.objects.get(pk=self.bank.pk).balance, Decimal("-10.00"))
+
+    def test_reports(self):
+        from apps.reports.services import ReportService
+
+        service = ReportService(self.team)
+        income_statement = service.get_income_statement_data(date(2026, 8, 1), date(2026, 8, 31))
+        self.assertEqual(income_statement["total_expenses"], Decimal("10.00"))
+        self.assertEqual(service.get_balance_sheet_data(date(2026, 8, 31))["net_worth"], Decimal("-10.00"))
+
+    def test_budget_actual_and_net_worth(self):
+        from apps.budget.services import BudgetService, NetWorthService
+
+        self.assertEqual(BudgetService(self.team).actual(self.groceries, date(2026, 8, 1)), Decimal("10.00"))
+        self.assertEqual(NetWorthService(self.team).get_net_worth(date(2026, 8, 1)), Decimal("-10.00"))
+
+    def test_transactions_ledger(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.get(f"/a/{self.team.slug}/journal/api/transactions/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["description"] for row in response.data["results"]], ["Kept"])
