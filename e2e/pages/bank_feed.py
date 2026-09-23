@@ -199,7 +199,7 @@ class BankFeedPage(BasePage):
         return self.page.locator("[data-testid^='split-amount-']").count()
 
     def split_amounts(self) -> list[str]:
-        return self.page.locator("[data-testid^='split-amount-']").all_input_values()
+        return self.page.locator("[data-testid^='split-amount-']").evaluate_all("els => els.map((el) => el.value)")
 
     def set_split_amount(self, index: int, value: str):
         field = self.page.locator(f"[data-testid='split-amount-{index}']")
