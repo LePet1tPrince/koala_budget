@@ -43,6 +43,24 @@ class AccountQuerySet(models.QuerySet):
             - Coalesce(Sum("journal_lines__cr_amount", filter=reconciled), Decimal("0"))
         )
 
+    def with_reconcilable_balance(self):
+        """
+        Balance restricted to journal lines backed by a live (non-archived) bank
+        feed transaction in this account -- i.e. lines the user could ever mark
+        reconciled. A manual journal entry (an opening balance, a hand-entered
+        adjustment) has no bank transaction to reconcile against, so it is
+        permanently excluded here rather than permanently reading as a gap.
+        """
+        reconcilable = (
+            NOT_VOID
+            & Q(journal_lines__journal_entry__bank_feed_transactions__account=models.F("pk"))
+            & Q(journal_lines__journal_entry__bank_feed_transactions__is_archived=False)
+        )
+        return self.annotate(
+            _reconcilable_balance=Coalesce(Sum("journal_lines__dr_amount", filter=reconcilable), Decimal("0"))
+            - Coalesce(Sum("journal_lines__cr_amount", filter=reconcilable), Decimal("0"))
+        )
+
 
 class AccountTeamScopedManager(models.Manager):
     """

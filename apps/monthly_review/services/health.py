@@ -41,7 +41,7 @@ def account_health(team, month) -> dict:
               "last_transaction_date": date | None,
               "balance": Decimal,
               "reconciled_balance": Decimal,
-              "balance_gap": Decimal,
+              "balance_gap": Decimal,  # gap over reconcilable (bank-feed-backed) lines only
               "flags": [{"kind": str, ...}, ...],
           }, ...],
           "flags": [{"kind": str, "account": Account, ...}, ...],  # flattened
@@ -56,6 +56,7 @@ def account_health(team, month) -> dict:
         .select_related("account_group")
         .with_balance()
         .with_reconciled_balance()
+        .with_reconcilable_balance()
         .order_by("sort_order", "name")
     )
     account_ids = [a.pk for a in accounts]
@@ -113,7 +114,10 @@ def account_health(team, month) -> dict:
         last_transaction_date = last_transaction_dates.get(account.pk)
         balance = account._balance
         reconciled_balance = account._reconciled_balance
-        balance_gap = balance - reconciled_balance
+        # Gap over lines the user could ever reconcile (backed by a live bank feed
+        # transaction) -- a manual entry or opening balance moves `balance` without
+        # ever being reconcilable, so it must not read as a permanent gap.
+        balance_gap = account._reconcilable_balance - reconciled_balance
 
         flags = []
         if transaction_count == 0:

@@ -205,19 +205,10 @@ def _step3_income(review) -> list:
             )
 
     for row in baseline["streams"]:
-        if not row["amount"] and row["avg"] > 0:
-            out.append(
-                Insight(
-                    kind="stream_missing",
-                    severity="bad",
-                    step=3,
-                    title=_("No income from %(payee)s this month.") % {"payee": row["payee"]},
-                    body=_("It usually brings in about %(avg)s.") % {"avg": _money(row["avg"])},
-                    metric=row["amount"],
-                    delta=-row["avg"],
-                )
-            )
-        elif row["new"]:
+        # An income stream absent this month is not noteworthy on its own -- income
+        # streams are naturally irregular (a client project, a seasonal gig), so no
+        # insight is raised for one simply not showing up.
+        if row["new"]:
             out.append(
                 Insight(
                     kind="stream_new",
