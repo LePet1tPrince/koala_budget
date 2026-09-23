@@ -571,3 +571,119 @@ class UnplaceableFeedRowTests(TestCase):
     def test_a_healthy_team_reports_no_repair(self):
         healthy, _user = make_team("Healthy", "healthy-feed")
         self.assertEqual(export.build_omitted(healthy)["unlinked_feed_rows"], 0)
+
+
+class FeedRowRidesOneLineTests(TestCase):
+    """
+    An entry may hold more than one line on the same account, and its feed row
+    must still travel exactly once.
+
+    The commonest way that shape arises is a split with a leg pointing back at
+    the bank account -- cash back at the till, or a partial transfer to
+    yourself. The feed lookup is keyed `(entry_id, account_id)`, so consulting
+    it once per line handed the same `BankTransaction` to both rows and the
+    import wrote it twice: one row in the database against two in the file,
+    which `_verify` caught as "feed_counts did not match after writing" only
+    after the destination had already been wiped and rolled back.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team, cls.user = make_team("Two Lines", "two-lines")
+        cls.dest, cls.dest_user = make_team("Two Lines Dest", "two-lines-dest")
+
+        cash = AccountGroup.objects.create(team=cls.team, name="Cash", account_type="asset")
+        spend = AccountGroup.objects.create(team=cls.team, name="Spend", account_type="expense")
+        cls.chequing = Account.objects.create(team=cls.team, name="Chequing", account_group=cash, has_feed=True)
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=spend)
+
+        cls.entry = JournalEntry.objects.create(
+            team=cls.team,
+            entry_date=date(2026, 5, 2),
+            description="Groceries with cash back",
+            source=JournalEntry.SOURCE_BANK_MATCH,
+            status=JournalEntry.STATUS_POSTED,
+        )
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=cls.entry, account=cls.groceries, dr_amount=Decimal("70.00")
+        )
+        # The second line on the bank account -- the leg that made the row
+        # ride twice.
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=cls.entry, account=cls.chequing, dr_amount=Decimal("30.00")
+        )
+        JournalLine.objects.create(
+            team=cls.team, journal_entry=cls.entry, account=cls.chequing, cr_amount=Decimal("100.00")
+        )
+        BankTransaction.objects.create(
+            team=cls.team,
+            account=cls.chequing,
+            journal_entry=cls.entry,
+            amount=Decimal("100.00"),
+            posted_date=date(2026, 5, 2),
+            description="CASH BACK",
+            source=BankTransaction.SOURCE_CSV,
+        )
+
+    def test_the_feed_row_is_emitted_once_not_once_per_line(self):
+        _accounts, journal, _budget = export.build_archive(self.team)
+        carrying = [r for r in journal if r["feed_source"] is not None]
+        self.assertEqual(len(carrying), 1)
+
+    def test_all_three_lines_still_travel(self):
+        _accounts, journal, _budget = export.build_archive(self.team)
+        lines = [r for r in journal if r["entry_id"] is not None]
+        self.assertEqual(len(lines), 3)
+
+    def test_the_row_rides_the_lowest_id_line_of_its_account(self):
+        # Stable across exports of the same team, rather than query-order
+        # dependent -- the dr 30.00 leg is written before the cr 100.00 one.
+        _accounts, journal, _budget = export.build_archive(self.team)
+        carrying = next(r for r in journal if r["feed_source"] is not None)
+        self.assertEqual(carrying["dr_amount"], Decimal("30.00"))
+
+    def test_the_import_verifies_and_writes_one_feed_row(self):
+        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)
+        self.assertEqual(BankTransaction.objects.filter(team=self.dest).count(), 1)
+
+    def test_the_entry_arrives_intact_and_balanced(self):
+        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)
+        entry = JournalEntry.objects.get(team=self.dest, description="Groceries with cash back")
+        lines = list(entry.lines.all())
+        self.assertEqual(len(lines), 3)
+        self.assertEqual(sum(line.dr_amount for line in lines), sum(line.cr_amount for line in lines))
+
+
+class ExportInvariantGuardTests(TestCase):
+    """
+    The export refuses to write a file whose feed-row count disagrees with the
+    database, rather than leaving the importer to discover it after the wipe.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team, cls.user, _handles = build_db_fixture_team("Guard", "guard-team")
+
+    def test_a_healthy_team_exports(self):
+        export.build_archive(self.team)  # must not raise
+
+    def test_a_mismatch_is_refused_before_anything_is_written(self):
+        # Simulate a future regression in the row-building walk: a feed row
+        # that never reaches the file. The guard has to notice, whatever the
+        # cause, since its whole point is catching the case nobody predicted.
+        real = export._build_journal_rows
+
+        def dropping_one(team):
+            rows = real(team)
+            for index, row in enumerate(rows):
+                if row["feed_source"] is not None:
+                    return rows[:index] + rows[index + 1 :]
+            return rows
+
+        export._build_journal_rows = dropping_one
+        try:
+            with self.assertRaises(export.ExportError) as ctx:
+                export.build_archive(self.team)
+        finally:
+            export._build_journal_rows = real
+        self.assertIn("bank feed row", str(ctx.exception))

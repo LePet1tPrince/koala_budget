@@ -74,7 +74,39 @@ def build_archive(team) -> tuple[list[dict], list[dict], list[dict]]:
             "supports. Contact support -- this is a real limit worth raising, not a wall."
         )
 
-    return _build_accounts(team), _build_journal_rows(team), _build_budget_rows(team)
+    accounts = _build_accounts(team)
+    journal = _build_journal_rows(team)
+    budget = _build_budget_rows(team)
+    _assert_every_feed_row_travels(team, journal)
+    return accounts, journal, budget
+
+
+def _assert_every_feed_row_travels(team, journal_rows: list[dict]) -> None:
+    """
+    Exactly as many feed rows in the file as in the database, checked before
+    the file is written.
+
+    `build_checks` counts feed rows straight from the database while the rows
+    are assembled by walking journal lines, and three separate bugs have made
+    those two disagree: a row no line could carry was dropped, two rows
+    claiming one line lost the loser, and one row on an entry with two lines
+    on its account was emitted twice. Every one of them surfaced the same way
+    -- an import that ran, wiped the destination, failed `_verify` with
+    "feed_counts did not match after writing" and rolled back -- which says
+    nothing about which end was wrong or why.
+
+    So the invariant is asserted here instead, where it can name the mismatch
+    and where nothing has been written yet. A file that would fail the
+    importer's gate is never produced in the first place.
+    """
+    in_file = sum(1 for row in journal_rows if row["feed_source"] is not None)
+    in_db = BankTransaction.objects.filter(team=team).count()
+    if in_file != in_db:
+        raise ExportError(
+            f"This export is inconsistent and has not been written: the team has {in_db:,} bank feed row(s) "
+            f"but the file would carry {in_file:,}. This is a bug in the exporter, not something you did -- "
+            "please report it."
+        )
 
 
 def _build_accounts(team) -> list[dict]:
@@ -212,9 +244,24 @@ def _build_journal_rows(team) -> list[dict]:
     )
 
     rows = []
+    # A feed row rides on exactly *one* line. The lookup is keyed by
+    # (entry, account), and an entry may hold more than one line on the same
+    # account -- a split with a leg pointing back at the bank account is the
+    # ordinary way that happens -- so consulting it per line would hand the
+    # same `BankTransaction` to two rows and write it twice on import. That
+    # was one feed row in the database against two in the file, which the
+    # integrity gate caught as `feed_counts did not match after writing`.
+    # Lines arrive ordered by (entry_date, entry_id, id), so the row rides on
+    # the lowest-id line of its account and the choice is stable.
+    attached: set[int] = set()
     for line in lines:
         entry = line.journal_entry
         bank_tx = feed_lookup.get((entry.id, line.account_id))
+        if bank_tx is not None:
+            if bank_tx.id in attached:
+                bank_tx = None
+            else:
+                attached.add(bank_tx.id)
         rows.append(
             {
                 "entry_id": entry.id,

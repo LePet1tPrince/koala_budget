@@ -397,6 +397,26 @@ would have been easy to make and wrong:
   today. The count is reported in the manifest's `omitted` block as
   `unlinked_feed_rows` and called out on the confirmation screen, so the repair
   is disclosed rather than done quietly.
+- **A feed row rides exactly one line, even when its account has two.** An
+  entry may hold more than one line on the same account — a split with a leg
+  pointing back at the bank account (cash back at the till, a partial transfer
+  to yourself) is the ordinary way it happens. The lookup is keyed
+  `(entry_id, account_id)`, so consulting it once per line handed the same
+  `BankTransaction` to two rows and the import wrote it twice. The row now
+  rides the lowest-id line of its account, which is stable across exports
+  rather than query-order dependent.
+
+  This was the third bug of one shape: the rows are assembled by walking
+  journal lines while §6's checks count feed rows straight from the database,
+  and the two disagreed when a row could not be placed, when two rows claimed
+  one line, and when one row was placed twice. Each surfaced identically — an
+  import that ran, wiped the destination, failed `_verify` with `feed_counts
+  did not match after writing`, and rolled back — which says nothing about
+  which end was wrong. **The invariant is now asserted in `build_archive`**
+  (`_assert_every_feed_row_travels`): as many feed rows in the file as in the
+  database, checked before a byte is written, so a file that would fail the
+  importer's gate is never produced and the fourth variant of this bug reports
+  itself instead of being discovered after a wipe.
 - **A split's legs are never mirrors.** `feed_is_mirror` is carried, never
   re-derived (§2.4), and the importer does not call `transfer_mirror.sync_transfer`
   — which matters here, because a split has no single counterpart and deriving one
