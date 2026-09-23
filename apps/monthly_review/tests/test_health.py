@@ -10,6 +10,7 @@ from apps.monthly_review.services.health import (
     BALANCE_GAP,
     NO_TRANSACTIONS,
     STALE_ACCOUNT,
+    STATEMENT_DUE,
     UNCATEGORIZED,
     UNRECONCILED,
     account_health,
@@ -249,3 +250,61 @@ class AccountHealthTests(TestCase):
         september_row = account_health(self.team, date(2026, 9, 1))["accounts"][0]
         self.assertEqual(september_row["uncategorized_count"], 1)
         self.assertEqual(september_row["unreconciled_count"], 1)
+
+
+class StatementDueTests(TestCase):
+    """The monthly review points at the reconcile page when a statement is overdue."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Due Team", slug="due-team")
+        group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.account = Account.objects.create(team=cls.team, name="Chequing", account_group=group, has_feed=True)
+        cls.month = date(2026, 8, 1)
+
+    def _row(self, posted):
+        BankTransaction.objects.create(
+            team=self.team, account=self.account, amount=Decimal("1.00"), posted_date=posted, description="x"
+        )
+
+    def _kinds(self):
+        return [f["kind"] for f in account_health(self.team, self.month)["accounts"][0]["flags"]]
+
+    def test_an_account_with_a_month_of_history_and_no_statement_is_due(self):
+        self._row(date(2026, 7, 1))
+        self._row(date(2026, 8, 20))
+        self.assertIn(STATEMENT_DUE, self._kinds())
+
+    def test_a_recent_statement_is_not_due(self):
+        from apps.reconciliation.models import Reconciliation
+
+        self._row(date(2026, 7, 1))
+        self._row(date(2026, 8, 20))
+        Reconciliation.objects.create(
+            team=self.team,
+            account=self.account,
+            statement_date=date(2026, 7, 31),
+            statement_balance=Decimal("0"),
+            status=Reconciliation.STATUS_COMPLETED,
+        )
+        self.assertNotIn(STATEMENT_DUE, self._kinds())
+
+    def test_the_flag_links_to_the_reconcile_page(self):
+        self._row(date(2026, 6, 1))
+        self._row(date(2026, 8, 20))
+        flag = next(f for f in account_health(self.team, self.month)["flags"] if f["kind"] == STATEMENT_DUE)
+        self.assertIn(f"/reconcile/{self.account.pk}/", flag["url"])
+
+    def test_a_statement_after_the_reviewed_month_does_not_count(self):
+        from apps.reconciliation.models import Reconciliation
+
+        self._row(date(2026, 6, 1))
+        self._row(date(2026, 8, 20))
+        Reconciliation.objects.create(
+            team=self.team,
+            account=self.account,
+            statement_date=date(2026, 9, 30),
+            statement_balance=Decimal("0"),
+            status=Reconciliation.STATUS_COMPLETED,
+        )
+        self.assertIn(STATEMENT_DUE, self._kinds())

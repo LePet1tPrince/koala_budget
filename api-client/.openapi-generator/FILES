@@ -5,6 +5,7 @@ apis/BankFeedApi.ts
 apis/JournalApi.ts
 apis/PegasusApi.ts
 apis/PlaidApi.ts
+apis/ReconciliationApi.ts
 apis/TeamsApi.ts
 apis/index.ts
 index.ts
@@ -18,7 +19,6 @@ models/AuditLog.ts
 models/BankFeedRow.ts
 models/BankFeedRowSourceEnum.ts
 models/BatchIds.ts
-models/BatchReconcileRequest.ts
 models/CategorizeTransactionsRequest.ts
 models/CategorySuggestion.ts
 models/DepartmentEnum.ts
@@ -58,6 +58,7 @@ models/PatchedEmployee.ts
 models/PatchedInvitation.ts
 models/PatchedJournalEntry.ts
 models/PatchedPlaidAccount.ts
+models/PatchedReconciliationUpdate.ts
 models/PatchedSimpleLine.ts
 models/PatchedTeam.ts
 models/PlaidAccount.ts
@@ -66,6 +67,10 @@ models/PlaidItem.ts
 models/PlaidItemsSync200Response.ts
 models/PlaidTransaction.ts
 models/Price.ts
+models/ReconciliationFinish.ts
+models/ReconciliationStart.ts
+models/ReconciliationTick.ts
+models/ReconciliationTickThrough.ts
 models/RoleEnum.ts
 models/SimilarCategorySuggestion.ts
 models/SimpleAccount.ts

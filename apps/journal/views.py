@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from apps.accounts.models import Account
 from apps.audit.models import AuditLog
 from apps.audit.serializers import AuditLogSerializer
+from apps.reconciliation.services.guards import ReconciledLineError, assert_entry_voidable
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
@@ -96,6 +97,12 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
                 {"error": "Only posted entries can be voided."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Voiding drops every line out of every balance, reconciled ones included.
+        try:
+            assert_entry_voidable(journal_entry)
+        except ReconciledLineError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         journal_entry.status = JournalEntry.STATUS_VOID
         journal_entry.save()

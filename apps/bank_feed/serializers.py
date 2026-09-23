@@ -19,12 +19,16 @@ class FeedAccountSerializer(AccountSerializer):
     uncategorized_count = serializers.IntegerField(read_only=True, default=0)
     latest_transaction_date = serializers.DateField(read_only=True, default=None)
     latest_reconciled_date = serializers.DateField(read_only=True, default=None)
+    last_statement_date = serializers.DateField(read_only=True, default=None)
+    last_statement_intact = serializers.BooleanField(read_only=True, allow_null=True, default=None)
 
     class Meta(AccountSerializer.Meta):
         fields = AccountSerializer.Meta.fields + [
             "uncategorized_count",
             "latest_transaction_date",
             "latest_reconciled_date",
+            "last_statement_date",
+            "last_statement_intact",
         ]
 
 
@@ -152,24 +156,6 @@ class BatchEditRequestSerializer(BatchIdsSerializer):
     )
 
 
-class BatchReconcileRequestSerializer(BatchIdsSerializer):
-    """Serializer for batch reconcile request."""
-
-    adjustment_amount = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        required=False,
-        default=0,
-        help_text="Optional adjustment amount to create if balance doesn't match",
-    )
-    reconciliation_date = serializers.DateField(
-        required=False,
-        allow_null=True,
-        default=None,
-        help_text="Date for the reconciliation adjustment transaction (defaults to today)",
-    )
-
-
 class CategorySuggestionSerializer(serializers.Serializer):
     """A suggested category for a merchant, based on how it was last categorized."""
 
@@ -294,6 +280,11 @@ class BankFeedRowSerializer(serializers.Serializer):
     is_cleared = serializers.BooleanField(help_text="Whether transaction is cleared")
     is_archived = serializers.BooleanField(help_text="Whether transaction is archived")
     is_reconciled = serializers.BooleanField(help_text="Whether transaction is reconciled")
+    reconciled_statement_date = serializers.DateField(
+        allow_null=True,
+        required=False,
+        help_text="Closing date of the finished statement that reconciled this row, if any",
+    )
 
     payee = serializers.CharField(
         allow_null=True,
@@ -571,6 +562,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     # Get category and reconciliation status from JournalEntry if categorized
     category = None
     is_reconciled = False
+    statement_date = None
     split_legs = []
     if tx.journal_entry:
         # Find the category account (the one that's not the bank account)
@@ -580,6 +572,10 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
             if line.account_id == tx.account_id:
                 # Bank account line - get reconciliation status from here
                 is_reconciled = line.is_reconciled
+                # The statement it was locked on, so unreconciling can say which
+                # statement it breaks. Checked on the id first: no query per row.
+                if is_reconciled and line.reconciliation_id and line.reconciliation.is_completed:
+                    statement_date = line.reconciliation.statement_date
 
         legs = [line for line in lines if line.account_id != tx.account_id]
         if len(lines) > 2:
@@ -612,6 +608,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
         "is_archived": tx.is_archived,
         "is_reconciled": is_reconciled,  # From the bank account's journal line
+        "reconciled_statement_date": statement_date,
         "payee": tx.merchant_name,  # Map merchant_name to payee
         "payment_channel": payment_channel,
         "confidence": "manual" if tx.journal_entry else category_confidence,

@@ -71,6 +71,7 @@ def journal_row(**overrides) -> dict:
         "is_reconciled": False,
         "is_archived": False,
         "archived_at": None,
+        "reconciliation_id": None,
         "feed_source": None,
         "feed_amount": None,
         "feed_posted_date": None,

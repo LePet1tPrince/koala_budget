@@ -42,6 +42,12 @@ export function parseAmount(raw) {
   return sanitized === null ? null : parseFloat(sanitized);
 }
 
+/**
+ * Integer cents from an API amount string ("-12.75" -> -1275). Sums of money
+ * are done in cents so a long column of ticks never drifts by a float's worth.
+ */
+export const toCents = (value) => Math.round((Number(value) || 0) * 100);
+
 /** Round to cents, so a sum of parsed amounts can be compared exactly. */
 export const round2 = (value) => Math.round(value * 100) / 100;
 

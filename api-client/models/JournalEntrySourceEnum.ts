@@ -18,13 +18,15 @@
  * * `import` - Import
  * * `bank_match` - Bank Match
  * * `recurring` - Recurring Entry
+ * * `reconciliation` - Reconciliation Adjustment
  * @export
  */
 export const JournalEntrySourceEnum = {
     Manual: 'manual',
     Import: 'import',
     BankMatch: 'bank_match',
-    Recurring: 'recurring'
+    Recurring: 'recurring',
+    Reconciliation: 'reconciliation'
 } as const;
 export type JournalEntrySourceEnum = typeof JournalEntrySourceEnum[keyof typeof JournalEntrySourceEnum];
 

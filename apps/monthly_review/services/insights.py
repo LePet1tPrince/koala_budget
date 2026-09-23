@@ -19,7 +19,7 @@ from django.utils.translation import gettext as _
 
 from apps.web.templatetags.currency_tags import currency
 
-from .health import BALANCE_GAP, NO_TRANSACTIONS, STALE_ACCOUNT, UNCATEGORIZED, UNRECONCILED
+from .health import BALANCE_GAP, NO_TRANSACTIONS, STALE_ACCOUNT, STATEMENT_DUE, UNCATEGORIZED, UNRECONCILED
 
 INCOME_DOWN_THRESHOLD = Decimal("0.10")  # 10%
 TOP_TRANSACTIONS_SHARE_THRESHOLD = Decimal("0.50")  # 50%
@@ -81,6 +81,7 @@ def _step1_health(review) -> list:
     no_transactions = []
     uncategorized = []
     reconciliation = []  # UNRECONCILED and BALANCE_GAP: both say the reconciled balance is off
+    statements_due = []
     for flag in health["flags"]:
         account_name = flag["account"].name
         url = flag.get("url", "")
@@ -103,6 +104,8 @@ def _step1_health(review) -> list:
             uncategorized.append(flag)
         elif kind in (UNRECONCILED, BALANCE_GAP):
             reconciliation.append(flag)
+        elif kind == STATEMENT_DUE:
+            statements_due.append(flag)
 
     if no_transactions:
         out.insert(0, _no_transactions_card(no_transactions))
@@ -110,6 +113,8 @@ def _step1_health(review) -> list:
         out.append(_uncategorized_card(uncategorized))
     if reconciliation:
         out.append(_reconciliation_card(reconciliation))
+    if statements_due:
+        out.append(_statement_due_card(statements_due))
     return out
 
 
@@ -172,6 +177,32 @@ def _reconciliation_card(flags) -> Insight:
         else _("Fix in Inbox."),
         url=flags[0].get("url", ""),
         metric=Decimal(count),
+        lines=tuple(lines),
+    )
+
+
+def _statement_due_card(flags) -> Insight:
+    """
+    One card for every account whose statement is overdue, a line per account.
+    It links to that account's reconcile page when there is one, the hub otherwise.
+    """
+    lines = []
+    for f in flags:
+        last = f.get("last_statement_date")
+        if last:
+            lines.append(
+                _("%(account)s: last reconciled %(date)s") % {"account": f["account"].name, "date": last.isoformat()}
+            )
+        else:
+            lines.append(_("%(account)s: never reconciled against a statement") % {"account": f["account"].name})
+    return Insight(
+        kind=STATEMENT_DUE,
+        severity="warn",
+        step=1,
+        title=_("%(accounts)d account(s) due for a statement check.") % {"accounts": len(flags)},
+        body=_("Check each against your latest statement."),
+        url=flags[0].get("url", "") if len(flags) == 1 else flags[0].get("hub_url", ""),
+        metric=Decimal(len(flags)),
         lines=tuple(lines),
     )
 

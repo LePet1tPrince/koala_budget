@@ -1,0 +1,87 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load icons %}
+{% load currency_tags %}
+
+{% block app %}
+<section class="app-card" data-testid="reconcile-hub">
+  <div class="flex flex-wrap items-start justify-between gap-2 mb-4">
+    <div>
+      <h1 class="text-2xl font-semibold mb-1">{% translate "Reconciliation" %}</h1>
+      <p class="text-sm text-base-content/70">
+        {% blocktranslate trimmed %}
+          Check each account against its bank or card statement. A reconciled statement locks its
+          transactions, so the balance it confirmed stays confirmed.
+        {% endblocktranslate %}
+      </p>
+    </div>
+    <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm">{% translate "Back to Reports" %}</a>
+  </div>
+
+  {% if all_intact %}
+    <div role="status" class="alert alert-success mb-4" data-testid="reconcile-all-intact">
+      {% icon "check-circle" class="w-5 h-5" %}
+      <span>{% translate "Every account is reconciled to the penny, and every statement still holds." %}</span>
+    </div>
+  {% endif %}
+
+  {% if accounts %}
+    <div class="overflow-x-auto">
+      <table class="table table-sm table-quiet" data-testid="reconcile-accounts-table">
+        <thead>
+          <tr>
+            <th>{% translate "Account" %}</th>
+            <th class="text-right">{% translate "Reconciled balance" %}</th>
+            <th>{% translate "Last statement" %}</th>
+            <th>{% translate "Status" %}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for account in accounts %}
+            <tr data-testid="reconcile-account-row" data-account-id="{{ account.id }}">
+              <td>
+                <div class="font-medium">{{ account.name }}</div>
+                <div class="text-xs text-base-content/70">
+                  {% if account.is_liability %}{% translate "Liability" %}{% else %}{% translate "Asset" %}{% endif %}
+                  {% if not account.has_feed %} · {% translate "no bank feed" %}{% endif %}
+                </div>
+              </td>
+              <td class="text-right money">{{ account.reconciled_balance|currency }}</td>
+              <td>
+                {% if account.last_statement %}
+                  <a class="link link-primary" href="{{ account.last_statement.url }}">{{ account.last_statement.statement_date }}</a>
+                  <span class="text-base-content/70 money">· {{ account.last_statement.statement_balance|currency }}</span>
+                {% else %}
+                  <span class="text-base-content/70">{% translate "Never" %}</span>
+                {% endif %}
+              </td>
+              <td data-testid="reconcile-account-status">
+                {% if account.draft %}
+                  <span class="badge badge-soft badge-info badge-sm">{% translate "In progress" %}</span>
+                {% endif %}
+                {% if account.last_statement %}
+                  {% if account.last_statement.intact %}
+                    <span class="badge badge-soft badge-success badge-sm">{% translate "Intact" %}</span>
+                  {% else %}
+                    <span class="badge badge-soft badge-warning badge-sm">{% translate "Changed" %}</span>
+                  {% endif %}
+                {% elif not account.draft %}
+                  <span class="badge badge-ghost badge-sm">{% translate "Not reconciled" %}</span>
+                {% endif %}
+              </td>
+              <td class="text-right">
+                <a href="{{ account.url }}" class="btn btn-sm {% if account.draft %}btn-primary{% else %}btn-outline{% endif %}" data-testid="reconcile-start">
+                  {% if account.draft %}{% translate "Continue" %}{% else %}{% translate "Reconcile" %}{% endif %}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-base-content/70">{% translate "No asset or liability accounts yet." %}</p>
+  {% endif %}
+</section>
+{% endblock %}

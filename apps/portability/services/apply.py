@@ -24,6 +24,7 @@ from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
+from apps.reconciliation.models import Reconciliation
 
 from . import export, read, schema, write
 from .schema import UNCATEGORIZED_STATUS
@@ -49,6 +50,7 @@ class ApplyResult:
     entries: int
     lines: int
     bank_transactions: int
+    reconciliations: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -63,6 +65,7 @@ class ApplyResult:
             "entries": self.entries,
             "lines": self.lines,
             "bank_transactions": self.bank_transactions,
+            "reconciliations": self.reconciliations,
         }
 
 
@@ -90,6 +93,7 @@ def build_safety_archive(team) -> bytes:
         accounts=accounts,
         journal=journal_rows,
         budget=budget_rows,
+        reconciliations=export.build_reconciliation_rows(team),
         source={"team_name": team.name},
         checks=checks,
         omitted=omitted,
@@ -131,9 +135,12 @@ def apply_archive(team, archive_bytes: bytes, *, user=None, on_progress=None) ->
     _insert_budgets(team, tables.budget_rows, account_id_map)
     _insert_goal_allocations(team, tables.budget_rows, account_id_map, goal_id_by_account_id)
 
+    report(55, "Writing statements")
+    reconciliation_id_map = _insert_reconciliations(team, tables.reconciliations, account_id_map)
+
     report(60, "Writing the journal")
     entry_id_map, uncategorized_rows, lines_created = _insert_journal(
-        team, tables.journal_rows, account_id_map, payee_by_name
+        team, tables.journal_rows, account_id_map, payee_by_name, reconciliation_id_map
     )
 
     report(85, "Writing the bank feed")
@@ -156,6 +163,7 @@ def apply_archive(team, archive_bytes: bytes, *, user=None, on_progress=None) ->
         entries=len(entry_id_map),
         lines=lines_created,
         bank_transactions=bank_transactions_created,
+        reconciliations=len(reconciliation_id_map),
     )
     log_event(AuditEvent.DATA_IMPORTED, user=user, team=team, metadata={"result": result.as_dict()})
     report(100, "Done")
@@ -279,7 +287,24 @@ def _insert_goal_allocations(team, budget_rows, account_id_map, goal_id_by_accou
     GoalAllocation.objects.bulk_create(objs)
 
 
-def _insert_journal(team, journal_rows, account_id_map, payee_by_name) -> tuple[dict[int, int], list[dict], int]:
+def _insert_reconciliations(team, rows, account_id_map) -> dict[int, int]:
+    """`{file reconciliation_id: new id}`. Before the journal, whose lines point at these."""
+    objs = [
+        Reconciliation(
+            team=team,
+            account_id=account_id_map[row["account_id"]],
+            adjustment_amount=row["adjustment_amount"] or Decimal("0"),
+            **schema.model_kwargs(schema.RECONCILIATION, row, skip={"id", "account", "adjustment_amount"}),
+        )
+        for row in rows
+    ]
+    created = Reconciliation.objects.bulk_create(objs)
+    return {row["reconciliation_id"]: obj.id for row, obj in zip(rows, created, strict=True)}
+
+
+def _insert_journal(
+    team, journal_rows, account_id_map, payee_by_name, reconciliation_id_map=None
+) -> tuple[dict[int, int], list[dict], int]:
     """`(entry_id_map, uncategorized_rows, lines_created)`."""
     entry_order: list[int] = []
     entry_row_by_id: dict[int, dict] = {}
@@ -312,7 +337,8 @@ def _insert_journal(team, journal_rows, account_id_map, payee_by_name) -> tuple[
             team=team,
             journal_entry_id=entry_id_map[file_id],
             account_id=account_id_map[row["account_id"]],
-            **schema.model_kwargs(schema.JOURNAL_LINE, row, skip={"account"}),
+            reconciliation_id=(reconciliation_id_map or {}).get(row.get("reconciliation_id")),
+            **schema.model_kwargs(schema.JOURNAL_LINE, row, skip={"account", "reconciliation"}),
         )
         for file_id in entry_order
         for row in line_rows_by_entry[file_id]
@@ -385,6 +411,8 @@ def _verify(tables: read.Tables, account_id_map: dict[int, int], team) -> None:
     _require_equal("budget_totals", expected.get("budget_totals"), actual["budget_totals"])
     _require_equal("feed_counts", expected.get("feed_counts"), actual["feed_counts"])
     _require_equal("counts", expected.get("counts"), actual["counts"])
+    if "statements" in expected:  # absent from version-1 archives, which carried none
+        _require_equal("statements", expected["statements"], actual["statements"])
 
     _require_equal_remapped(
         "account_balances", expected.get("account_balances"), actual["account_balances"], account_id_map

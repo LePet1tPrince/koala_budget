@@ -50,12 +50,16 @@ class JournalEntry(BaseTeamModel):
     SOURCE_IMPORT = "import"
     SOURCE_BANK_MATCH = "bank_match"
     SOURCE_RECURRING = "recurring"
+    # An adjustment posted when a statement is finished with a difference
+    # (apps.reconciliation). Its own source so undo can find it without guessing.
+    SOURCE_RECONCILIATION = "reconciliation"
 
     SOURCE_CHOICES = [
         (SOURCE_MANUAL, "Manual Entry"),
         (SOURCE_IMPORT, "Import"),
         (SOURCE_BANK_MATCH, "Bank Match"),
         (SOURCE_RECURRING, "Recurring Entry"),
+        (SOURCE_RECONCILIATION, "Reconciliation Adjustment"),
     ]
 
     entry_date = models.DateField(help_text="Date of the journal entry")
@@ -179,6 +183,18 @@ class JournalLine(BaseTeamModel):
     is_cleared = models.BooleanField(default=False, help_text="Whether this line has cleared the bank")
     is_reconciled = models.BooleanField(default=False, help_text="Whether this line has been reconciled")
     is_archived = models.BooleanField(default=False, help_text="Whether this line has been archived")
+
+    # The statement that ticked (draft) or locked (completed) this line. Kept when
+    # a line is unreconciled or its statement undone, so the drift check can name
+    # the lines that moved; `is_reconciled` stays the only input to balances.
+    reconciliation = models.ForeignKey(
+        "reconciliation.Reconciliation",
+        on_delete=models.SET_NULL,
+        related_name="lines",
+        null=True,
+        blank=True,
+        help_text="Statement this line was ticked or reconciled on",
+    )
 
     # Budget foreign key - commented out until Budget model is ready
     budget = models.ForeignKey(

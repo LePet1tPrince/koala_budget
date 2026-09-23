@@ -6,4 +6,5 @@ export * from './BankFeedApi';
 export * from './JournalApi';
 export * from './PegasusApi';
 export * from './PlaidApi';
+export * from './ReconciliationApi';
 export * from './TeamsApi';
