@@ -39,7 +39,7 @@ def account_health(team, month) -> dict:
               "uncategorized_count": int,      # all time, non-archived (Inbox definition)
               "unreconciled_count": int,       # all time, categorized + non-archived
               "last_transaction_date": date | None,
-              "balance": Decimal,
+              "balance": Decimal,              # categorized balance (Inbox definition)
               "reconciled_balance": Decimal,
               "balance_gap": Decimal,
               "flags": [{"kind": str, ...}, ...],
@@ -54,7 +54,7 @@ def account_health(team, month) -> dict:
     accounts = list(
         Account.objects.filter(team=team, has_feed=True, is_system=False)
         .select_related("account_group")
-        .with_balance()
+        .with_categorized_balance()
         .with_reconciled_balance()
         .order_by("sort_order", "name")
     )
@@ -111,7 +111,10 @@ def account_health(team, month) -> dict:
         uncategorized_count = uncategorized_counts.get(account.pk, 0)
         unreconciled_count = unreconciled_counts.get(account.pk, 0)
         last_transaction_date = last_transaction_dates.get(account.pk)
-        balance = account._balance
+        # The Inbox's "Categorized balance": excludes entries linked to archived
+        # bank transactions. The raw ledger balance counts those, so comparing it
+        # to the reconciled balance flagged a gap the Inbox shows as zero.
+        balance = account._categorized_balance
         reconciled_balance = account._reconciled_balance
         balance_gap = balance - reconciled_balance
 

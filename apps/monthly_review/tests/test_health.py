@@ -192,3 +192,33 @@ class AccountHealthTests(TestCase):
         row = health["accounts"][0]
         self.assertEqual(row["transaction_count"], 0)
         self.assertIn(NO_TRANSACTIONS, [f["kind"] for f in row["flags"]])
+
+    def test_archived_categorized_transaction_does_not_create_balance_gap(self):
+        # Matches the Inbox: an archived row's journal entry is excluded from the
+        # categorized balance, so it must not surface as a gap to the reconciled one.
+        account = self._account("Chequing")
+        category = Account.objects.create(team=self.team, name="Groceries", account_group=self.equity_group)
+        live = BankTransaction.objects.create(
+            team=self.team,
+            account=account,
+            amount=Decimal("10.00"),
+            posted_date=date(2026, 8, 25),
+            description="Coffee",
+        )
+        self._categorize(live, category, reconciled=True)
+        archived = BankTransaction.objects.create(
+            team=self.team,
+            account=account,
+            amount=Decimal("500.00"),
+            posted_date=date(2026, 8, 20),
+            description="Archived duplicate",
+        )
+        self._categorize(archived, category)
+        archived.is_archived = True
+        archived.save()
+
+        health = account_health(self.team, self.month)
+        row = health["accounts"][0]
+        self.assertEqual(row["balance"], row["reconciled_balance"])
+        self.assertEqual(row["balance_gap"], Decimal("0"))
+        self.assertEqual(row["flags"], [])
