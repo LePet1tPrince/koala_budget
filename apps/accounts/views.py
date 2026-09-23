@@ -308,7 +308,18 @@ class AccountUpdateView(AccountViewMixin, UpdateView):
 
 
 class AccountDeleteView(AccountViewMixin, DeleteView):
-    """Delete an account."""
+    """
+    Delete an account.
+
+    Confirmation is a dialog on the account detail page, not a separate page --
+    this view only ever handles the POST it submits. A GET (a stale bookmark,
+    a direct hit) has nothing to render, so it just bounces back to the detail
+    page rather than serving the old standalone confirm page.
+    """
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        return redirect(self.object.get_absolute_url())
 
     def dispatch(self, request, *args, **kwargs):
         obj = self.get_object()

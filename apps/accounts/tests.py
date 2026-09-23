@@ -561,6 +561,25 @@ class AccountViewTest(TestCase):
         with current_team(self.team):
             self.assertFalse(Account.for_team.filter(pk=account.pk).exists())
 
+    def test_account_delete_view_get_redirects_to_detail(self):
+        """Deletion is confirmed via a dialog on the detail page, not a separate page -- a GET bounces back to it."""
+        account = Account.objects.create(team=self.team, name="Still Here", account_group=self.account_group)
+        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        response = self.client.get(url)
+        detail_url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        self.assertRedirects(response, detail_url, fetch_redirect_response=False)
+        self.assertTrue(Account.objects.filter(pk=account.pk).exists())
+
+    def test_account_detail_view_has_delete_confirmation_dialog(self):
+        """The detail page carries its own delete-confirmation dialog rather than linking to a separate page."""
+        account = Account.objects.create(team=self.team, name="Has Dialog", account_group=self.account_group)
+        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        response = self.client.get(url)
+        self.assertContains(response, 'id="delete-account-modal"')
+        self.assertContains(response, 'id="delete-account-btn"')
+        delete_url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        self.assertContains(response, f'action="{delete_url}"')
+
 
 class PayeeViewTest(TestCase):
     """Tests for Payee views."""
