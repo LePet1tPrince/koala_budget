@@ -299,8 +299,14 @@ def _net_worth_section(team, window_start, month, month_end, report_service, bas
 
     composition = report_service.get_balance_composition_data(window_start, month_end)
     stack = [
-        {"bucket": group["name"], "values": group["values"]}
-        for group in (*composition["asset_groups"], *composition["liability_groups"])
+        *(
+            {"bucket": group["name"], "type": "asset", "values": group["values"]}
+            for group in composition["asset_groups"]
+        ),
+        *(
+            {"bucket": group["name"], "type": "liability", "values": group["values"]}
+            for group in composition["liability_groups"]
+        ),
     ]
 
     now_data = report_service.get_balance_sheet_data(month_end)

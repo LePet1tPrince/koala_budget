@@ -125,3 +125,18 @@ class BuildReviewTests(TestCase):
         self.assertEqual(chequing["changes"]["1m"], Decimal("-100"))  # since end of Jul 2026
         self.assertEqual(chequing["changes"]["3m"], Decimal("400"))  # since end of May 2026
         self.assertEqual(chequing["changes"]["all"], Decimal("400"))  # since end of Mar 2024
+
+    def test_net_worth_stack_marks_each_band_asset_or_liability(self):
+        liability_group = AccountGroup.objects.create(team=self.team, name="Cards", account_type="liability")
+        card = Account.objects.create(team=self.team, name="Visa", account_group=liability_group)
+        self._entry(date(2026, 7, 10), self.salary, Decimal("1000"), dr_category=False)
+        entry = JournalEntry.objects.create(
+            team=self.team, entry_date=date(2026, 8, 5), description="t", status="posted"
+        )
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.groceries, dr_amount=Decimal("80"))
+        JournalLine.objects.create(team=self.team, journal_entry=entry, account=card, cr_amount=Decimal("80"))
+
+        stack = build_review(self.team, date(2026, 8, 1))["net_worth"]["stack"]
+        self.assertEqual(
+            {(band["bucket"], band["type"]) for band in stack}, {("Assets", "asset"), ("Cards", "liability")}
+        )
