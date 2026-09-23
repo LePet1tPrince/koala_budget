@@ -39,15 +39,19 @@ from .schema import (
     ACCOUNTS_FILE,
     BUDGET_FILE,
     BUDGET_ROW_KINDS,
+    COLUMNS_ADDED_IN,
     DATA_FILES,
     ENTRY_SOURCES,
     ENTRY_STATUSES,
     FEED_SOURCES,
     FILE_COLUMNS,
+    FILES_ADDED_IN,
     FORMAT,
     FORMAT_VERSION,
     JOURNAL_FILE,
     MANIFEST_FILE,
+    RECONCILIATION_STATUSES,
+    RECONCILIATIONS_FILE,
     UNCATEGORIZED_STATUS,
     DocumentError,
     decode_cell,
@@ -108,6 +112,7 @@ class Tables:
     accounts: list = field(default_factory=list)
     journal_rows: list = field(default_factory=list)
     budget_rows: list = field(default_factory=list)
+    reconciliations: list = field(default_factory=list)
     # Non-fatal: a per-file sha256 in the manifest did not match the file's
     # actual contents (§3.1) -- shown to the user, does not block the import.
     hash_warnings: list = field(default_factory=list)
@@ -123,18 +128,35 @@ def read_archive(data: bytes) -> Tables:
         manifest = _read_manifest(zf)
         _check_version(manifest.format_version)
 
+        version = manifest.format_version
+        expected_files = [filename for filename in DATA_FILES if FILES_ADDED_IN.get(filename, 1) <= version]
         names = set(zf.namelist())
-        missing_files = [filename for filename in DATA_FILES if filename not in names]
+        missing_files = [filename for filename in expected_files if filename not in names]
         if missing_files:
             raise DocumentError(f"This export is missing: {', '.join(missing_files)}.")
 
-        file_bytes = {filename: zf.read(filename) for filename in DATA_FILES}
+        file_bytes = {filename: zf.read(filename) for filename in expected_files}
 
     hash_warnings = _check_hashes(manifest, file_bytes)
 
-    accounts = _read_csv(file_bytes[ACCOUNTS_FILE], ACCOUNTS_FILE, FILE_COLUMNS[ACCOUNTS_FILE])
-    journal_rows = _read_csv(file_bytes[JOURNAL_FILE], JOURNAL_FILE, FILE_COLUMNS[JOURNAL_FILE])
-    budget_rows = _read_csv(file_bytes[BUDGET_FILE], BUDGET_FILE, FILE_COLUMNS[BUDGET_FILE])
+    def read_file(filename):
+        if filename not in file_bytes:
+            return []
+        return _read_csv(file_bytes[filename], filename, _columns_for(filename, version))
+
+    parsed = upgrade.upgrade_to_current(
+        {
+            "accounts": read_file(ACCOUNTS_FILE),
+            "journal_rows": read_file(JOURNAL_FILE),
+            "budget_rows": read_file(BUDGET_FILE),
+            "reconciliations": read_file(RECONCILIATIONS_FILE),
+        },
+        from_version=version,
+    )
+    accounts = parsed["accounts"]
+    journal_rows = parsed["journal_rows"]
+    budget_rows = parsed["budget_rows"]
+    reconciliations = parsed["reconciliations"]
 
     _validate_enums(accounts, journal_rows, budget_rows)
     _validate_journal_row_shape(journal_rows)
@@ -144,13 +166,22 @@ def read_archive(data: bytes) -> Tables:
     account_ids = {row["account_id"] for row in accounts}
     _validate_account_references(journal_rows, budget_rows, account_ids)
     _validate_months(budget_rows)
+    _validate_reconciliations(reconciliations, journal_rows, account_ids)
 
     return Tables(
         manifest=manifest,
         accounts=accounts,
         journal_rows=journal_rows,
         budget_rows=budget_rows,
+        reconciliations=reconciliations,
         hash_warnings=hash_warnings,
+    )
+
+
+def _columns_for(filename: str, version: int) -> tuple:
+    """The columns an archive of `version` has for `filename` -- later ones are `upgrade.py`'s to fill."""
+    return tuple(
+        column for column in FILE_COLUMNS[filename] if COLUMNS_ADDED_IN.get((filename, column.name), 1) <= version
     )
 
 
@@ -200,9 +231,9 @@ def _check_version(declared_version: int) -> None:
             "again from the older one."
         )
     if declared_version < FORMAT_VERSION:
-        # Always raises today -- see upgrade.py's docstring for why that is
-        # correct, not a placeholder.
-        upgrade.upgrade_to_current({}, from_version=declared_version)
+        # Refuse up front, before any file is read, if there is no path from
+        # this version; the upgrade itself runs once the files are parsed.
+        upgrade.check_path(declared_version)
 
 
 def _check_hashes(manifest: Manifest, file_bytes: dict) -> list[str]:
@@ -364,4 +395,34 @@ def _validate_months(budget_rows: list[dict]) -> None:
         if month.day != 1:
             raise DocumentError(
                 f"{BUDGET_FILE}, row {row_number}: month {month.isoformat()} is not the first of the month."
+            )
+
+
+def _validate_reconciliations(reconciliations: list[dict], journal_rows: list[dict], account_ids: set) -> None:
+    """Statements name real accounts and statuses, at most one draft per account, and lines name real statements."""
+    ids = set()
+    drafts = set()
+    for row_number, row in enumerate(reconciliations, start=2):
+        where = f"{RECONCILIATIONS_FILE}, row {row_number}"
+        if row["reconciliation_id"] is None:
+            raise DocumentError(f"{where}: reconciliation_id is required.")
+        if row["reconciliation_id"] in ids:
+            raise DocumentError(f"{where}: reconciliation_id {row['reconciliation_id']} appears twice.")
+        ids.add(row["reconciliation_id"])
+        if row["account_id"] not in account_ids:
+            raise DocumentError(f"{where}: account_id {row['account_id']} does not appear in {ACCOUNTS_FILE}.")
+        if row["status"] not in RECONCILIATION_STATUSES:
+            raise DocumentError(f"{where}: unknown status '{row['status']}'.")
+        if row["statement_date"] is None or row["statement_balance"] is None:
+            raise DocumentError(f"{where}: statement_date and statement_balance are required.")
+        if row["status"] == "draft":
+            if row["account_id"] in drafts:
+                raise DocumentError(f"{where}: account_id {row['account_id']} has more than one draft statement.")
+            drafts.add(row["account_id"])
+
+    for row_number, row in enumerate(journal_rows, start=2):
+        if row.get("reconciliation_id") is not None and row["reconciliation_id"] not in ids:
+            raise DocumentError(
+                f"{JOURNAL_FILE}, row {row_number}: reconciliation_id {row['reconciliation_id']} does not appear "
+                f"in {RECONCILIATIONS_FILE}."
             )

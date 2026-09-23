@@ -162,6 +162,21 @@ class ChequingExampleTests(ReconciliationTestCase):
         self.assertTrue(BankTransaction.objects.get(journal_entry=adjustment).is_archived)
         self.assertEqual(candidates.reconciled_balance(self.chequing), D("3904.11"))
 
+    def test_undoing_an_older_statement_names_its_lines_but_not_its_voided_adjustment(self):
+        august = self._finish_august()
+        self.entry(self.chequing, self.salary, "100.00", on=date(2026, 9, 5), description="Sept")
+        september = session.start(self.chequing, date(2026, 9, 30), D("4282.19"), self.user)
+        session.tick_through(september, date(2026, 9, 30))
+        session.finish(september, self.user)
+
+        session.undo(august, self.user)
+        found = integrity.drift(self.chequing)
+        self.assertNotEqual(found.amount, D("0"))
+        ids = {line.id for line in found.lines}
+        self.assertIn(self.pay.id, ids)
+        adjustment = JournalEntry.objects.get(source=JournalEntry.SOURCE_RECONCILIATION)
+        self.assertNotIn(adjustment.lines.get(account=self.chequing).id, ids)
+
     def test_any_statement_can_be_undone_not_only_the_latest(self):
         august = self._finish_august()
         self.entry(self.chequing, self.salary, "100.00", on=date(2026, 9, 5), description="Sept")

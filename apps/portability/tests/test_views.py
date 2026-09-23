@@ -51,7 +51,10 @@ class ExportViewTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/zip")
         self.assertTrue(response["Content-Length"])
         with zipfile.ZipFile(BytesIO(response.content)) as zf:
-            self.assertEqual(set(zf.namelist()), {"manifest.json", "accounts.csv", "journal.csv", "budget.csv"})
+            self.assertEqual(
+                set(zf.namelist()),
+                {"manifest.json", "accounts.csv", "journal.csv", "budget.csv", "reconciliations.csv"},
+            )
 
     def test_a_plain_member_can_export_their_own_team(self):
         member = self._add_member()

@@ -1,6 +1,9 @@
 # Statement Reconciliation — Requirements & Implementation Plan
 
-**Status:** proposal for review. No code written.
+**Status:** implemented (2026-09-23). Decisions D1–D9 accepted as recommended, except
+D6, changed on review to allow undoing **any** statement (see §5). What the build did
+differently from this plan is listed in §16; the rest of the document is kept as the
+record of why the design is what it is.
 **Priority:** P1.3 in `docs/feature-priority-report.md`.
 **Estimate:** 9–10 dev-days (report said 6–9; §12 explains the difference).
 **Prerequisite reading:** this document only.
@@ -137,7 +140,7 @@ same checks.
 
 ---
 
-## 5. Decisions — **please review; each has a recommendation**
+## 5. Decisions (accepted; D6 changed on review)
 
 **D1. Replace the feed's quick reconcile with the statement flow.**
 *Recommended: yes.* The feed's **Reconcile** button now opens `/reconcile/<account>/`
@@ -175,11 +178,13 @@ is stricter, but more annoying when fixing one mistake.
 through the existing helper. Adjustments then never appear in income or expense reports.
 A real missing fee should be entered as a transaction (§9.4), not as an adjustment.
 
-**D6. Undo.**
-*Recommended:* only the **latest** completed statement per account can be undone. Undo
-clears its lines' `is_reconciled` and link, voids its adjustment entry, and marks the
-statement `undone`; the row is kept for history. Undoing an older statement would break
-the chain of balances from one statement to the next.
+**D6. Undo.** *Decided: any completed statement can be undone, not only the latest.*
+Undo clears its lines' `is_reconciled`, voids its adjustment entry (archiving the
+adjustment's feed row), and marks the statement `undone`; the row is kept for history.
+The lines **keep** their link to the undone statement, so the next session's drift
+banner can say which statement they came from. Undoing an older statement leaves later
+statements intact (their own lines are untouched); the reconciled balance falls by what
+the undone one locked, and those lines are candidates again.
 
 **D7. Export/import.**
 *Recommended:* statements travel with the data export: a new `reconciliations.csv`, a
@@ -322,7 +327,7 @@ for the difference.
      `completed_by`.
   6. `log_event(RECONCILIATION_COMPLETED, …)`.
 - `discard(draft)` deletes the draft row. `SET_NULL` releases its ticks.
-- `undo(rec)`: see D6. Only the latest completed statement per account can be undone.
+- `undo(rec)`: see D6. Any completed statement can be undone.
 
 ### 7.4 `integrity.py`
 - `is_intact(rec)`: Σ(`dr − cr` of lines where `reconciliation=rec`, `is_reconciled`,
@@ -428,7 +433,7 @@ written by hand.
 | POST | `reconciliations/{id}/tick/` | `line_ids, ticked` | Summary and hints |
 | POST | `reconciliations/{id}/tick_through/` | `date` | Summary, hints, and the ids that were ticked |
 | POST | `reconciliations/{id}/finish/` | `adjust, expected_difference` | The completed statement (200), or 400/409 |
-| POST | `reconciliations/{id}/undo/` | — | The undone statement (latest only) |
+| POST | `reconciliations/{id}/undo/` | — | The undone statement (any completed statement) |
 | DELETE | `reconciliations/{id}/` | — | 204 (draft only) |
 
 ### 9.2 Page views
@@ -477,7 +482,7 @@ props passed through `json_script`.
     $12.75 adjustment", with a plain-language explanation of what the adjustment posts.
     The adjustment button is secondary, never the default.
 - **`History.jsx`:** the per-account statement list, with **Intact** / **Changed**
-  badges and **Undo** on the latest statement.
+  badges and **Undo** on every completed statement.
 
 ### 9.4 Adding a missing transaction (feed accounts only)
 A missing bank fee is the most common real difference. For `has_feed` accounts,
@@ -523,7 +528,7 @@ can finish with an adjustment.
   `tick_through` are idempotent and team-scoped. Finish at 0; finish with a difference
   and no adjust → 400; stale `expected_difference` → 409. A feed account's adjustment
   creates a feed row; a non-feed account's does not. `AuditLog` has a row per flipped
-  line. Discard releases the ticks. Undo works only on the latest statement, and it
+  line. Discard releases the ticks. Undo works on any completed statement, and it
   voids the adjustment.
 - `test_integrity`: a statement stays intact after finishing, becomes Changed after one
   line is unreconciled, and drift names that line.
@@ -622,3 +627,34 @@ built.
 `e2e/pages/reconcile.py` · `e2e/tests/test_reconcile.py`
 
 **Changed:** see §10.
+
+---
+
+## 16. As built — where the code differs from this plan
+
+- **D6** as above: any statement is undoable, and undo keeps each line's link.
+- **More unguarded write paths than §3 listed**, all fixed through `guards.py`: bulk
+  re-categorize (`_update_journal_category`) re-pointed a reconciled transfer
+  counterpart; de-categorizing deleted it; `batch_edit` re-dated reconciled rows past
+  their statement; `SimpleLineSerializer.update()` could move or re-amount a reconciled
+  line. `batch_edit` now runs in one atomic helper so a refusal rolls back the batch.
+- **`JournalEntry.SOURCE_RECONCILIATION`** (new choice, migration `journal.0002`) marks
+  adjustment entries, so undo finds them without guessing and they travel in exports
+  through the existing `source` column. The Transactions page badges them "Adjustment".
+- **Feed handoff** passes journal entry ids (`?entries=`), not line ids: a feed row
+  knows its entry, and the page maps each to the account's own line.
+- **Hints**: a duplicate pair is one hint whose one-click fix unticks the later copy
+  (`action_ids`), rather than an "untick it?" per copy plus a duplicate note.
+- **API client**: the viewset is annotated for drf-spectacular (0 schema errors) and
+  `api-client/` was regenerated with openapi-generator 7.9.0, which reproduced the
+  committed client byte-for-byte apart from this feature's changes. The page itself
+  uses a small hand-written `assets/javascript/reconcile/api.js`, the same pattern as
+  the portability and YNAB wizards.
+- **Portability**: `export.build_archive()` still returns three lists (a dozen call
+  sites unpack it); statements come from `export.build_reconciliation_rows()` and are
+  passed to `write.build_archive_bytes(reconciliations=...)`. Format version 2; a
+  version-1 archive is read without the new file and column and upgraded by
+  `upgrade.upgrade_1_to_2`. The integrity gate gains a `statements` check, compared
+  only when the archive carries one.
+- **Phone layout**: below `sm` the table shows one signed Amount column and puts the
+  date under the payee.

@@ -19,7 +19,7 @@ from django.utils.translation import gettext as _
 
 from apps.web.templatetags.currency_tags import currency
 
-from .health import BALANCE_GAP, NO_TRANSACTIONS, STALE_ACCOUNT, UNCATEGORIZED, UNRECONCILED
+from .health import BALANCE_GAP, NO_TRANSACTIONS, STALE_ACCOUNT, STATEMENT_DUE, UNCATEGORIZED, UNRECONCILED
 
 INCOME_DOWN_THRESHOLD = Decimal("0.10")  # 10%
 TOP_TRANSACTIONS_SHARE_THRESHOLD = Decimal("0.50")  # 50%
@@ -140,6 +140,23 @@ def _step1_health(review) -> list:
                     body=_("Off by %(gap)s.") % {"gap": _money(flag["gap"])},
                     url=url,
                     delta=flag["gap"],
+                )
+            )
+        elif kind == STATEMENT_DUE:
+            last = flag.get("last_statement_date")
+            out.append(
+                Insight(
+                    kind=kind,
+                    severity="warn",
+                    step=1,
+                    title=(
+                        _("%(account)s hasn't been reconciled since %(date)s.")
+                        % {"account": account_name, "date": last.isoformat()}
+                        if last
+                        else _("%(account)s has never been reconciled against a statement.") % {"account": account_name}
+                    ),
+                    body=_("Check it against your latest statement."),
+                    url=url,
                 )
             )
     return out

@@ -83,6 +83,11 @@ def drift(account) -> Drift:
             reconciliation__status__in=(Reconciliation.STATUS_COMPLETED, Reconciliation.STATUS_UNDONE),
         )
         .filter(~LOCKED)
+        # An undone statement's adjustment is voided on purpose; it is not a
+        # line that moved, and it will not be back in the list to tick.
+        .exclude(
+            journal_entry__source=JournalEntry.SOURCE_RECONCILIATION, journal_entry__status=JournalEntry.STATUS_VOID
+        )
         .select_related("journal_entry", "journal_entry__payee", "reconciliation")
         .order_by("journal_entry__entry_date", "pk")
     )

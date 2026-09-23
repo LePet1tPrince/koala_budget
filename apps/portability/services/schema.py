@@ -32,15 +32,26 @@ from apps.accounts.models import (
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
+from apps.reconciliation.models import Reconciliation
 
 FORMAT = "koala-budget-export"
-FORMAT_VERSION = 1
+# 2: statements (`reconciliations.csv`, and `reconciliation_id` on journal
+# lines). A version-1 archive still imports -- see `upgrade.py` -- with no
+# statements, since it never had any to carry.
+FORMAT_VERSION = 2
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
 JOURNAL_FILE = "journal.csv"
 BUDGET_FILE = "budget.csv"
-DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE)
+RECONCILIATIONS_FILE = "reconciliations.csv"
+DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE, RECONCILIATIONS_FILE)
+
+#: The format version each file / column first appeared in. An older archive
+#: is read without them and `upgrade.py` fills them in, so adding a file or a
+#: column is not a reason to refuse every export made before it.
+FILES_ADDED_IN = {RECONCILIATIONS_FILE: 2}
+COLUMNS_ADDED_IN = {(JOURNAL_FILE, "reconciliation_id"): 2}
 
 # journal.csv's `status` column carries every `JournalEntry.status` value plus
 # this one, file-level sentinel for a pending bank-feed row that belongs to no
@@ -49,6 +60,7 @@ DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE)
 UNCATEGORIZED_STATUS = "uncategorized"
 ENTRY_STATUSES = frozenset({*dict(JournalEntry.STATUS_CHOICES), UNCATEGORIZED_STATUS})
 ENTRY_SOURCES = frozenset(dict(JournalEntry.SOURCE_CHOICES))
+RECONCILIATION_STATUSES = frozenset(dict(Reconciliation.STATUS_CHOICES))
 FEED_SOURCES = frozenset(dict(BankTransaction.SOURCE_CHOICES))
 ACCOUNT_TYPES = frozenset(dict(ACCOUNT_TYPE_CHOICES))
 
@@ -492,6 +504,9 @@ JOURNAL_LINE = FieldMap(
         "is_reconciled": ColumnSpec("is_reconciled", KIND_BOOL),
         "is_archived": ColumnSpec("is_archived", KIND_BOOL),
         "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
+        # The statement that ticked or locked the line: a handle into
+        # reconciliations.csv, remapped on import like account_id.
+        "reconciliation": ColumnSpec("reconciliation_id", KIND_INT, read=lambda line: line.reconciliation_id),
     },
     omitted={
         "id": "no cross-reference needs a line handle; line order is preserved positionally (§2.6)",
@@ -565,6 +580,7 @@ JOURNAL_COLUMNS = (
     Column("is_reconciled", KIND_BOOL),
     Column("is_archived", KIND_BOOL),
     Column("archived_at", KIND_DATETIME),
+    Column("reconciliation_id", KIND_INT),
     Column("feed_source", KIND_STR_OR_NONE),
     Column("feed_amount", KIND_DECIMAL),
     Column("feed_posted_date", KIND_DATE),
@@ -632,6 +648,52 @@ BUDGET_COLUMNS = (
     Column("archived_at", KIND_DATETIME),
 )
 
+# --- reconciliations.csv -------------------------------------------------
+#
+# One row per statement (apps.reconciliation). Journal lines point back at a
+# row by `reconciliation_id`; the amounts are in ledger sign (dr - cr), as the
+# model stores them.
+
+RECONCILIATION = FieldMap(
+    model=Reconciliation,
+    columns={
+        "id": ColumnSpec("reconciliation_id", KIND_INT),
+        "account": ColumnSpec("account_id", KIND_INT, read=lambda rec: rec.account_id),
+        "statement_date": ColumnSpec("statement_date", KIND_DATE),
+        "statement_balance": ColumnSpec("statement_balance", KIND_DECIMAL),
+        "status": ColumnSpec("status", KIND_STR),
+        "opening_balance": ColumnSpec("opening_balance", KIND_DECIMAL),
+        "cleared_total": ColumnSpec("cleared_total", KIND_DECIMAL),
+        "adjustment_amount": ColumnSpec("adjustment_amount", KIND_DECIMAL),
+        "completed_at": ColumnSpec("completed_at", KIND_DATETIME),
+        "undone_at": ColumnSpec("undone_at", KIND_DATETIME),
+        "is_archived": ColumnSpec("is_archived", KIND_BOOL),
+        "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
+    },
+    omitted={
+        "team": _TENANT,
+        "created_at": _TIMESTAMP,
+        "updated_at": _TIMESTAMP,
+        "started_by": "a user of one instance is not a user of another; the books do not carry people",
+        "completed_by": "a user of one instance is not a user of another; the books do not carry people",
+    },
+)
+
+RECONCILIATIONS_COLUMNS = (
+    Column("reconciliation_id", KIND_INT),
+    Column("account_id", KIND_INT),
+    Column("statement_date", KIND_DATE),
+    Column("statement_balance", KIND_DECIMAL),
+    Column("status", KIND_STR),
+    Column("opening_balance", KIND_DECIMAL),
+    Column("cleared_total", KIND_DECIMAL),
+    Column("adjustment_amount", KIND_DECIMAL),
+    Column("completed_at", KIND_DATETIME),
+    Column("undone_at", KIND_DATETIME),
+    Column("is_archived", KIND_BOOL),
+    Column("archived_at", KIND_DATETIME),
+)
+
 # Every model this format exports, and the field maps that describe it. Used
 # by the completeness test; iteration order does not matter.
 FIELD_MAPS = (
@@ -645,6 +707,7 @@ FIELD_MAPS = (
     BANK_TRANSACTION,
     BUDGET,
     GOAL_ALLOCATION,
+    RECONCILIATION,
 )
 
 #: Which field maps compose one row, per file. `export.py` builds rows against
@@ -662,12 +725,14 @@ ROW_COMPOSITIONS = {
         (BUDGET,),
         (GOAL_ALLOCATION,),
     ),
+    RECONCILIATIONS_FILE: ((RECONCILIATION,),),
 }
 
 FILE_COLUMNS = {
     ACCOUNTS_FILE: ACCOUNTS_COLUMNS,
     JOURNAL_FILE: JOURNAL_COLUMNS,
     BUDGET_FILE: BUDGET_COLUMNS,
+    RECONCILIATIONS_FILE: RECONCILIATIONS_COLUMNS,
 }
 
 

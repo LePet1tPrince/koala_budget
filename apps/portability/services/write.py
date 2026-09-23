@@ -22,25 +22,20 @@ from decimal import Decimal
 from django.utils import timezone as dj_timezone
 
 from .schema import (
-    ACCOUNTS_COLUMNS,
     ACCOUNTS_FILE,
-    BUDGET_COLUMNS,
     BUDGET_FILE,
     DATA_FILES,
+    FILE_COLUMNS,
     FORMAT,
     FORMAT_VERSION,
-    JOURNAL_COLUMNS,
     JOURNAL_FILE,
     MANIFEST_FILE,
+    RECONCILIATIONS_FILE,
     Column,
     encode_cell,
 )
 
-FILE_COLUMN_LISTS = {
-    ACCOUNTS_FILE: ACCOUNTS_COLUMNS,
-    JOURNAL_FILE: JOURNAL_COLUMNS,
-    BUDGET_FILE: BUDGET_COLUMNS,
-}
+FILE_COLUMN_LISTS = FILE_COLUMNS
 
 
 def _json_default(value):
@@ -76,20 +71,28 @@ def build_archive_bytes(
     accounts: list[dict],
     journal: list[dict],
     budget: list[dict],
+    reconciliations: list[dict] = (),
     source: dict,
     checks: dict,
     omitted: dict,
     exported_at: datetime | None = None,
 ) -> bytes:
     """
-    Assemble the zip: three CSVs plus `manifest.json` (§3.1). `checks` and
+    Assemble the zip: the data CSVs plus `manifest.json` (§3.1). A caller with
+    no statements to carry may leave `reconciliations` out; the file is still
+    written, header only. `checks` and
     `omitted` are written through as-is -- Phase 2's `export.py` is what
     computes them from the database (§6); this function only serialises
     whatever it is given.
     """
     exported_at = exported_at or dj_timezone.now()
 
-    rows_by_file = {ACCOUNTS_FILE: accounts, JOURNAL_FILE: journal, BUDGET_FILE: budget}
+    rows_by_file = {
+        ACCOUNTS_FILE: accounts,
+        JOURNAL_FILE: journal,
+        BUDGET_FILE: budget,
+        RECONCILIATIONS_FILE: list(reconciliations),
+    }
     file_bytes = {filename: write_csv(FILE_COLUMN_LISTS[filename], rows_by_file[filename]) for filename in DATA_FILES}
 
     manifest = {

@@ -310,7 +310,7 @@ def build_review(team, month: date) -> dict:
     for flag in health["flags"]:
         # `health["accounts"][i]["flags"]` holds the same dict objects (not
         # copies), so this also covers the per-account view of the flags.
-        flag["url"] = inbox_url
+        flag.setdefault("url", inbox_url)
 
     review = {
         "month": month.isoformat(),

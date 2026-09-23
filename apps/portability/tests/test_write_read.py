@@ -41,7 +41,7 @@ class RoundTripTests(SimpleTestCase):
 
     def test_manifest_format_and_version(self):
         self.assertEqual(self.tables.manifest.format, "koala-budget-export")
-        self.assertEqual(self.tables.manifest.format_version, 1)
+        self.assertEqual(self.tables.manifest.format_version, 2)
 
     def test_manifest_file_row_counts(self):
         self.assertEqual(self.tables.manifest.files["accounts.csv"]["rows"], len(self.accounts))
@@ -210,6 +210,7 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "is_reconciled": False,
                 "is_archived": False,
                 "archived_at": None,
+                "reconciliation_id": None,
                 "feed_source": None,
                 "feed_amount": None,
                 "feed_posted_date": None,
@@ -236,6 +237,7 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "is_reconciled": False,
                 "is_archived": False,
                 "archived_at": None,
+                "reconciliation_id": None,
                 "feed_source": None,
                 "feed_amount": None,
                 "feed_posted_date": None,

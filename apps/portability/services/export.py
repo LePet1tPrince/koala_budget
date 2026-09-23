@@ -19,6 +19,7 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.budget.models import Budget, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
+from apps.reconciliation.models import Reconciliation
 
 from . import schema
 from .schema import (
@@ -246,6 +247,18 @@ def _build_journal_rows(team) -> list[dict]:
     return rows
 
 
+def build_reconciliation_rows(team) -> list[dict]:
+    """
+    One row per statement (`reconciliations.csv`), drafts and undone ones
+    included -- a draft's ticks and an undone statement's links both ride on
+    the journal lines, and would dangle without their row.
+    """
+    statements = Reconciliation.objects.filter(team=team).order_by("account_id", "statement_date", "id")
+    return [
+        schema.build_row((schema.RECONCILIATION, rec), columns=schema.RECONCILIATIONS_COLUMNS) for rec in statements
+    ]
+
+
 def _build_budget_rows(team) -> list[dict]:
     """One row per monthly amount -- a `Budget` or a `GoalAllocation`, told apart by `kind` (§2.1)."""
     rows = []
@@ -301,6 +314,13 @@ def build_checks(team) -> dict:
 
     date_bounds = JournalEntry.objects.filter(team=team).aggregate(first=Min("entry_date"), last=Max("entry_date"))
 
+    statements = Reconciliation.objects.filter(team=team)
+    statement_counts = {
+        "total": statements.count(),
+        "completed": statements.filter(status=Reconciliation.STATUS_COMPLETED).count(),
+        "reconciled_lines": JournalLine.objects.filter(team=team, is_reconciled=True).count(),
+    }
+
     accounts_count = Account.objects.filter(team=team).count()
     entries_count = JournalEntry.objects.filter(team=team).count()
     goals_count = Account.objects.filter(team=team, goal__isnull=False).count()
@@ -336,6 +356,9 @@ def build_checks(team) -> dict:
             "last": date_bounds["last"].isoformat() if date_bounds["last"] else None,
         },
         "feed_counts": feed_counts,
+        # Its own key rather than a member of `counts`, so a version-1 archive
+        # (which has none) still verifies: `_verify` checks it only when present.
+        "statements": statement_counts,
     }
 
 

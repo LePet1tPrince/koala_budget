@@ -35,7 +35,7 @@ def _rezip_with_manifest(data: bytes, manifest: dict) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
         zf_out.writestr("manifest.json", json.dumps(manifest))
-        for name in ("accounts.csv", "journal.csv", "budget.csv"):
+        for name in ("accounts.csv", "journal.csv", "budget.csv", "reconciliations.csv"):
             zf_out.writestr(name, zf_in.read(name))
     return buf.getvalue()
 
@@ -70,6 +70,7 @@ class StructuralErrorTests(SimpleTestCase):
             zf_out.writestr("manifest.json", json.dumps(manifest))
             zf_out.writestr("accounts.csv", zf_in.read("accounts.csv"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
+            zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
             # journal.csv omitted
         with self.assertRaises(DocumentError) as ctx:
             read.read_archive(buf.getvalue())
@@ -91,6 +92,7 @@ class StructuralErrorTests(SimpleTestCase):
             zf_out.writestr("accounts.csv", broken.encode("utf-8-sig"))
             zf_out.writestr("journal.csv", zf_in.read("journal.csv"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
+            zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
 
         with self.assertRaises(DocumentError) as ctx:
             read.read_archive(buf.getvalue())
@@ -115,6 +117,27 @@ class VersionTests(SimpleTestCase):
         with self.assertRaises(DocumentError):
             read.read_archive(_rezip_with_manifest(data, manifest))
 
+    def test_a_version_1_archive_still_imports_without_statements(self):
+        """Made before statements existed: no reconciliations.csv, no reconciliation_id column."""
+        data = _archive()
+        zf_in = zipfile.ZipFile(io.BytesIO(data))
+        manifest = json.loads(zf_in.read("manifest.json"))
+        manifest["format_version"] = 1
+        lines = zf_in.read("journal.csv").decode("utf-8-sig").splitlines()
+        header = lines[0].split(",")
+        drop = header.index("reconciliation_id")
+        journal_v1 = "\r\n".join(",".join(c for i, c in enumerate(line.split(",")) if i != drop) for line in lines)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
+            zf_out.writestr("manifest.json", json.dumps(manifest))
+            zf_out.writestr("accounts.csv", zf_in.read("accounts.csv"))
+            zf_out.writestr("journal.csv", (journal_v1 + "\r\n").encode("utf-8-sig"))
+            zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
+
+        tables = read.read_archive(buf.getvalue())
+        self.assertEqual(tables.reconciliations, [])
+        self.assertTrue(all(row["reconciliation_id"] is None for row in tables.journal_rows))
+
     def test_current_format_version_is_accepted(self):
         # Not a regression test so much as a sanity check that the two above
         # aren't vacuously true because every version gets refused.
@@ -130,6 +153,14 @@ class BusinessRuleTests(SimpleTestCase):
         with self.assertRaises(DocumentError) as ctx:
             read.read_archive(_archive(accounts, journal, budget))
         self.assertIn("does not balance", str(ctx.exception))
+
+    def test_dangling_reconciliation_reference_is_refused(self):
+        accounts, journal, budget = build_fixture_tables()
+        journal = copy.deepcopy(journal)
+        journal[0]["reconciliation_id"] = 4242
+        with self.assertRaises(DocumentError) as ctx:
+            read.read_archive(_archive(accounts, journal, budget))
+        self.assertIn("4242", str(ctx.exception))
 
     def test_dangling_account_reference_in_journal_is_refused(self):
         accounts, journal, budget = build_fixture_tables()
@@ -228,6 +259,7 @@ class HashWarningTests(SimpleTestCase):
             zf_out.writestr("accounts.csv", edited_accounts_csv)
             zf_out.writestr("journal.csv", zf_in.read("journal.csv"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
+            zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
 
         tables = read.read_archive(buf.getvalue())  # must not raise
         self.assertEqual(len(tables.hash_warnings), 1)
@@ -246,6 +278,7 @@ class HashWarningTests(SimpleTestCase):
             zf_out.writestr("accounts.csv", edited_accounts_csv)
             zf_out.writestr("journal.csv", zf_in.read("journal.csv"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
+            zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
 
         tables = read.read_archive(buf.getvalue())
         self.assertEqual(len(tables.hash_warnings), 1)  # only accounts.csv, not journal/budget

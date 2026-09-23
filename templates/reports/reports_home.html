@@ -25,6 +25,15 @@
       </a>
     </li>
     <li>
+      <a href="{% url 'reconciliation:hub' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-reconciliation">
+        <div>
+          <div class="font-medium">{% translate "Reconciliation Status" %}</div>
+          <div class="text-sm text-base-content/70">{% translate "Every account checked against its bank or card statement, and whether each statement still holds." %}</div>
+        </div>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+      </a>
+    </li>
+    <li>
       <a href="{% url 'reports:income_statement' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-income-statement">
         <div>
           <div class="font-medium">{% translate "Income Statement" %}</div>
