@@ -108,6 +108,7 @@ PROJECT_APPS = [
     "apps.onboarding.apps.OnboardingConfig",
     "apps.monthly_review.apps.MonthlyReviewConfig",
     "apps.ynab_import.apps.YnabImportConfig",
+    "apps.portability.apps.PortabilityConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS

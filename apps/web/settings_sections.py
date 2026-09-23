@@ -103,6 +103,14 @@ def sections_for(request) -> list[SettingsSection]:
                 group=GROUP_DATA,
             ),
             SettingsSection(
+                key="data_transfer",
+                label=_("Export & Import"),
+                blurb=_("Download this team's whole books, or replace them with a Koala Budget export."),
+                icon="download",
+                url=reverse("portability:home", args=[team.slug]),
+                group=GROUP_DATA,
+            ),
+            SettingsSection(
                 key="audit",
                 label=_("Audit log"),
                 blurb=_("Logins, imports, syncs and bulk operations for this team."),
