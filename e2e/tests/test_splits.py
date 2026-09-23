@@ -167,9 +167,7 @@ def test_splitting_an_uncategorized_transaction(requires_vite, authenticated_pag
 
 
 @pytest.mark.django_db(transaction=True)
-def test_remove_split_collapses_to_the_largest_leg(
-    requires_vite, authenticated_page: Page, live_server, split_fixture
-):
+def test_remove_split_collapses_to_the_largest_leg(requires_vite, authenticated_page: Page, live_server, split_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(split_fixture["team"].slug)
     feed.click_account_card(split_fixture["account"].id)
