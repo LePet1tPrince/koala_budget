@@ -14,7 +14,7 @@ from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 
 from apps.bank_feed.models import BankTransaction
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalLine, counted_entries
 
 from ..models import Reconciliation
 from .signs import to_statement
@@ -34,16 +34,7 @@ def _ledger_sum(queryset) -> Decimal:
 def reconciled_balance(account) -> Decimal:
     """Ledger-sign reconciled balance: the same figure `with_reconciled_balance()` gives."""
     return _ledger_sum(
-        JournalLine.objects.filter(account=account, is_reconciled=True).exclude(
-            journal_entry__status=JournalEntry.STATUS_VOID
-        )
-    )
-
-
-def _archived_entry_ids(account):
-    """Entries behind archived feed rows in this account -- dismissed duplicates, not activity."""
-    return BankTransaction.objects.filter(account=account, is_archived=True, journal_entry__isnull=False).values(
-        "journal_entry_id"
+        JournalLine.objects.filter(account=account, is_reconciled=True).filter(counted_entries("journal_entry__"))
     )
 
 
@@ -51,15 +42,15 @@ def candidate_lines(reconciliation):
     """
     Every line on the account this draft may tick, ticked or not, with no date window.
 
-    Excludes reconciled lines, void entries, lines another draft holds (there is
-    only ever one draft per account, so this is belt and braces), and lines
-    behind archived feed rows -- matching `with_categorized_balance()`.
+    Excludes reconciled lines, entries that count toward nothing (void, or
+    behind an archived bank transaction -- `counted_entries`, the ledger-wide
+    rule), and lines another draft holds (there is only ever one draft per
+    account, so this is belt and braces).
     """
     return (
         JournalLine.objects.filter(team=reconciliation.team, account=reconciliation.account, is_reconciled=False)
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .exclude(Q(reconciliation__status=Reconciliation.STATUS_DRAFT) & ~Q(reconciliation_id=reconciliation.id))
-        .exclude(journal_entry_id__in=_archived_entry_ids(reconciliation.account))
     )
 
 

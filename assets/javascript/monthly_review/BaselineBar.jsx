@@ -1,6 +1,6 @@
 import React from 'react';
 
-/** The 1m/3m/6m/12m comparison toggle, rendered on steps 2-8 and the dashboard. */
+/** The 1m/3m/6m/12m/all-time comparison toggle, rendered on steps 2-8 and the dashboard. */
 const BaselineBar = ({ baselines, order, value, onChange }) => {
   if (!order || !order.length) return null;
   return (

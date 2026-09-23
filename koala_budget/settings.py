@@ -687,7 +687,7 @@ STRICT_TEAM_CONTEXT = True
 # the logic that reads them, via getattr(settings, ...) -- these are the defaults.
 MONTHLY_REVIEW_ENABLED = True
 MONTHLY_REVIEW_STALE_DAYS = 14
-MONTHLY_REVIEW_BASELINE_MONTHS = (1, 3, 6, 12)
+MONTHLY_REVIEW_BASELINE_MONTHS = (1, 3, 6, 12, "all")
 MONTHLY_REVIEW_DRILL_LIMIT = 200
 
 # settings.py

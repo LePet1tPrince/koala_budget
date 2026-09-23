@@ -118,13 +118,13 @@ class TeamFacts:
 def team_facts(team) -> TeamFacts:
     from apps.bank_feed.models import BankTransaction
     from apps.budget.models import Budget
-    from apps.journal.models import JournalEntry
+    from apps.journal.models import JournalEntry, counted_entries
 
     return TeamFacts(
         has_transactions=BankTransaction.objects.filter(team=team).exists(),
         # A voided entry is excluded everywhere else in the app, so it must not
         # count as "you have categorized something" here either.
-        has_entries=JournalEntry.objects.filter(team=team).exclude(status=JournalEntry.STATUS_VOID).exists(),
+        has_entries=JournalEntry.objects.filter(team=team).filter(counted_entries()).exists(),
         has_budget=Budget.objects.filter(team=team).exists(),
     )
 

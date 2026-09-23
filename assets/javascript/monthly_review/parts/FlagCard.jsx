@@ -9,7 +9,7 @@ const SEVERITY_STYLE = {
   bad: { icon: 'circle-alert', cls: 'border-error/40 bg-error/5 text-error' },
 };
 
-/** One rendered `Insight` from the server -- title, optional body, optional action link. */
+/** One rendered `Insight` from the server -- title, optional body, optional per-account lines, optional action link. */
 const FlagCard = ({ insight }) => {
   const style = SEVERITY_STYLE[insight.severity] || SEVERITY_STYLE.info;
   return (
@@ -21,6 +21,13 @@ const FlagCard = ({ insight }) => {
       <div className="flex-1">
         <div className="font-medium text-base-content">{insight.title}</div>
         {insight.body && <div className="text-sm text-base-content/70 mt-0.5">{insight.body}</div>}
+        {insight.lines?.length > 0 && (
+          <ul className="text-sm text-base-content mt-2 space-y-0.5" data-testid="insight-lines">
+            {insight.lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
         {insight.url && (
           <a href={insight.url} className="link link-primary text-sm mt-1 inline-block">
             Fix in Inbox &rarr;

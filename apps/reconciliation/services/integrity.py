@@ -14,21 +14,25 @@ from decimal import Decimal
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry, JournalLine, counted_entries
 
 from ..models import Reconciliation
 from .candidates import reconciled_balance
 from .session import last_completed
 
 ZERO = Decimal("0")
-LOCKED = Q(is_reconciled=True) & ~Q(journal_entry__status=JournalEntry.STATUS_VOID)
+
+
+def _locked():
+    """A line still locked by its statement: reconciled, on an entry that counts (`counted_entries`)."""
+    return Q(is_reconciled=True) & counted_entries("journal_entry__")
 
 
 def locked_totals(reconciliations) -> dict[int, Decimal]:
     """{reconciliation id: ledger sum of its still-locked lines}, in one query."""
     ids = [r.id for r in reconciliations]
     rows = (
-        JournalLine.objects.filter(LOCKED, reconciliation_id__in=ids)
+        JournalLine.objects.filter(_locked(), reconciliation_id__in=ids)
         .values("reconciliation_id")
         .annotate(dr=Coalesce(Sum("dr_amount"), ZERO), cr=Coalesce(Sum("cr_amount"), ZERO))
     )
@@ -49,7 +53,7 @@ def is_intact(reconciliation) -> bool:
 def moved_lines(reconciliation):
     """Lines this statement locked that are no longer locked."""
     return (
-        reconciliation.lines.filter(~LOCKED)
+        reconciliation.lines.filter(~_locked())
         .select_related("journal_entry", "journal_entry__payee")
         .order_by("journal_entry__entry_date", "pk")
     )
@@ -82,7 +86,7 @@ def drift(account) -> Drift:
             account=account,
             reconciliation__status__in=(Reconciliation.STATUS_COMPLETED, Reconciliation.STATUS_UNDONE),
         )
-        .filter(~LOCKED)
+        .filter(~_locked())
         # An undone statement's adjustment is voided on purpose; it is not a
         # line that moved, and it will not be back in the list to tick.
         .exclude(

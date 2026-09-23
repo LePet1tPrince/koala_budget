@@ -27,7 +27,7 @@ from django.views.decorators.http import require_POST
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
-from apps.journal.models import JournalEntry
+from apps.journal.models import JournalEntry, counted_entries
 from apps.teams.decorators import login_and_team_required
 
 from .exports import export_monthly_review_csv
@@ -101,7 +101,7 @@ def _team_has_activity_by(team, month) -> bool:
     """Whether the team had any (non-void) ledger activity on or before `month`."""
     first_entry_date = (
         JournalEntry.objects.filter(team=team)
-        .exclude(status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
         .first()

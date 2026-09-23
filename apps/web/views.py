@@ -15,7 +15,7 @@ from apps.accounts.models import Account
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal
 from apps.budget.services import NetWorthService
-from apps.journal.models import JournalEntry
+from apps.journal.models import JournalEntry, counted_entries
 from apps.monthly_review.models import MonthlyReviewState
 from apps.monthly_review.services.budget import _prev_month
 from apps.onboarding.views import get_or_create_state
@@ -102,7 +102,7 @@ def team_home(request, team_slug):
 
     first_entry_date = (
         JournalEntry.objects.filter(team=team)
-        .exclude(status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
         .first()

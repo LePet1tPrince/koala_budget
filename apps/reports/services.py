@@ -10,7 +10,7 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_INCOME,
     ACCOUNT_TYPE_LIABILITY,
 )
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalLine, counted_entries
 
 
 class ReportService:
@@ -52,7 +52,7 @@ class ReportService:
                 team=self.team,
                 journal_entry__entry_date__range=(start_date, end_date),
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .select_related("account", "account__account_group", "journal_entry")
         )
 
@@ -222,7 +222,7 @@ class ReportService:
                 team=self.team,
                 journal_entry__entry_date__lte=as_of_date,
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .select_related("account", "account__account_group")
         )
 
@@ -311,7 +311,7 @@ class ReportService:
                 journal_entry__entry_date__lte=end_date,
                 account__account_group__account_type__in=[ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY],
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .annotate(month=TruncMonth("journal_entry__entry_date"))
             .values(
                 "month",
@@ -408,7 +408,7 @@ class ReportService:
         )
         first_activity_date = (
             JournalLine.objects.filter(team=self.team, account=account)
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .order_by("journal_entry__entry_date")
             .values_list("journal_entry__entry_date", flat=True)
             .first()
@@ -439,7 +439,7 @@ class ReportService:
                     journal_entry__entry_date__gte=first_month,
                     journal_entry__entry_date__lt=month_after_last,
                 )
-                .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+                .filter(counted_entries("journal_entry__"))
                 .annotate(month=TruncMonth("journal_entry__entry_date"))
                 .values("month")
                 .annotate(total=Sum(signed_amount))
@@ -523,7 +523,7 @@ class ReportService:
                 team=self.team,
                 account=account,
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .select_related("journal_entry", "journal_entry__payee")
             .prefetch_related("journal_entry__lines__account__account_group")
         )
@@ -563,7 +563,7 @@ class ReportService:
                     team=self.team,
                     account=account,
                     journal_entry__entry_date__lt=start_date,
-                ).exclude(journal_entry__status=JournalEntry.STATUS_VOID).aggregate(balance=Sum(signed_amount))[
+                ).filter(counted_entries("journal_entry__")).aggregate(balance=Sum(signed_amount))[
                     "balance"
                 ] or Decimal("0")
 
@@ -622,7 +622,7 @@ class ReportService:
                 journal_entry__entry_date__lte=end_date,
                 account__account_group__account_type__in=[ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY],
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .annotate(month=TruncMonth("journal_entry__entry_date"))
             .values("month", "account__account_group__account_type")
             .annotate(delta=Sum(F("dr_amount") - F("cr_amount")))

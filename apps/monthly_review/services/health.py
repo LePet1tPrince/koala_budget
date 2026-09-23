@@ -44,11 +44,11 @@ def account_health(team, month) -> dict:
           "accounts": [{
               "account": Account,
               "transaction_count": int,        # this month, non-archived
-              "uncategorized_count": int,      # all time, non-archived (Inbox definition)
-              "unreconciled_count": int,       # all time, categorized + non-archived
+              "uncategorized_count": int,      # posted by month end, non-archived (Inbox definition)
+              "unreconciled_count": int,       # posted by month end, categorized + non-archived
               "last_transaction_date": date | None,
-              "balance": Decimal,
-              "reconciled_balance": Decimal,
+              "balance": Decimal,              # as of month end; voided/archived entries excluded
+              "reconciled_balance": Decimal,   # as of month end
               "balance_gap": Decimal,
               "flags": [{"kind": str, ...}, ...],
           }, ...],
@@ -62,8 +62,9 @@ def account_health(team, month) -> dict:
     accounts = list(
         Account.objects.filter(team=team, has_feed=True, is_system=False)
         .select_related("account_group")
-        .with_balance()
-        .with_reconciled_balance()
+        # As of month end: reviewing August must not flag what happened in September.
+        .with_balance(as_of=month_end)
+        .with_reconciled_balance(as_of=month_end)
         .order_by("sort_order", "name")
     )
     account_ids = [a.pk for a in accounts]
@@ -85,6 +86,7 @@ def account_health(team, month) -> dict:
             account_id__in=account_ids,
             journal_entry__isnull=True,
             is_archived=False,
+            posted_date__lte=month_end,
         )
         .values("account_id")
         .annotate(count=Count("id"))
@@ -95,6 +97,7 @@ def account_health(team, month) -> dict:
             team=team,
             account_id__in=account_ids,
             is_archived=False,
+            posted_date__lte=month_end,
             journal_entry__isnull=False,
             journal_entry__lines__account_id=F("account_id"),
             journal_entry__lines__is_reconciled=False,
@@ -104,7 +107,9 @@ def account_health(team, month) -> dict:
         .values_list("account_id", "count")
     )
     last_transaction_dates = dict(
-        BankTransaction.objects.filter(team=team, account_id__in=account_ids, is_archived=False)
+        BankTransaction.objects.filter(
+            team=team, account_id__in=account_ids, is_archived=False, posted_date__lte=month_end
+        )
         .values("account_id")
         .annotate(latest=Max("posted_date"))
         .values_list("account_id", "latest")
@@ -116,7 +121,14 @@ def account_health(team, month) -> dict:
         .values_list("account_id", "first")
     )
     last_statement_dates = dict(
-        Reconciliation.objects.filter(team=team, account_id__in=account_ids, status=Reconciliation.STATUS_COMPLETED)
+        # As of the month's end, like every other check here: reviewing July must
+        # not be satisfied by a statement reconciled in September.
+        Reconciliation.objects.filter(
+            team=team,
+            account_id__in=account_ids,
+            status=Reconciliation.STATUS_COMPLETED,
+            statement_date__lte=month_end,
+        )
         .values("account_id")
         .annotate(latest=Max("statement_date"))
         .values_list("account_id", "latest")
@@ -183,6 +195,7 @@ def account_health(team, month) -> dict:
                     "account": account,
                     "last_statement_date": last_statement,
                     "url": reverse("reconciliation:account", args=[team.slug, account.pk]),
+                    "hub_url": reverse("reconciliation:hub", args=[team.slug]),
                 }
             )
 

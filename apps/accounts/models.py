@@ -96,8 +96,10 @@ class Account(BaseTeamModel):
         """Return annotated balance if available, otherwise calculate."""
         if hasattr(self, "_balance"):
             return self._balance or Decimal("0")
-        # Fallback for non-annotated queries (voided entries don't count)
-        lines = self.journal_lines.exclude(journal_entry__status="void")
+        # Fallback for non-annotated queries (voided/archived entries don't count)
+        from apps.journal.models import counted_entries
+
+        lines = self.journal_lines.filter(counted_entries("journal_entry__"))
         totals = lines.aggregate(dr=Sum("dr_amount"), cr=Sum("cr_amount"))
         return (totals["dr"] or Decimal("0")) - (totals["cr"] or Decimal("0"))
 
