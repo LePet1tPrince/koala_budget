@@ -990,3 +990,81 @@ for what it is for: restoring it put the destination's original books back.
 5. **`AuditEvent` types.** Three new — `DATA_EXPORTED`, `DATA_WIPED`,
    `DATA_IMPORTED` — and one audit migration, named here so the numbering is
    settled before two branches both add one.
+
+---
+
+## 10. Changing this feature
+
+The models this format carries will keep moving. This section is the whole
+answer to "what do I edit", and it is short on purpose: **the mapping between a
+model field and a file column is declared once, in `services/schema.py`, and
+both directions are generated from it.**
+
+`export.py` never names a field. It composes maps into a row:
+
+```python
+schema.build_row(
+    (schema.ACCOUNT, account),
+    (schema.ACCOUNT_GROUP, account.account_group),
+    (schema.INSTITUTION, account.institution),      # may be None
+    (schema.GOAL, getattr(account, "goal", None)),  # may be None
+    columns=schema.ACCOUNTS_COLUMNS,
+)
+```
+
+`apply.py` never names one either. It turns a row back into constructor
+kwargs, naming only what it has to resolve itself:
+
+```python
+Account(
+    team=team,
+    account_group_id=group_by_name[row["group_name"]],
+    institution_id=...,
+    **schema.model_kwargs(schema.ACCOUNT, row, skip={"id"}),
+)
+```
+
+### Adding a field to an exported model
+
+1. Add it to the model's `FieldMap` in `schema.py` — either a `ColumnSpec`, or
+   an `omitted` entry with the reason it deliberately does not travel.
+2. Add the column to that file's `*_COLUMNS` tuple.
+
+That is it for the ordinary case. Export and import both pick it up, because
+both read the same declaration. Until step 1 is done, `test_schema.py` fails
+and names the field; until step 2 is done, `validate_schema()` fails at app
+startup and names the column.
+
+A field only needs more than that when plain attribute access will not do, and
+the three cases each have a `ColumnSpec` argument:
+
+| when | use |
+|---|---|
+| the value is not `getattr(obj, field_name)` — an FK carried as a name or a bare id | `read=lambda obj: ...` |
+| the column should hold something other than a blank when the object is absent | `absent=...` |
+| another map in the same row already writes this column | `writes=False` |
+
+On import, a field that needs remapping (a foreign key) or normalising goes in
+`skip={...}` and gets an explicit keyword at the call site, where the reason for
+it is visible.
+
+### Adding a model
+
+1. Write its `FieldMap`, add it to `FIELD_MAPS`, and add its columns to a file.
+2. Add it to that file's entry in `ROW_COMPOSITIONS` — the declaration of which
+   maps make up one row. `test_schema.py` checks every map belongs to one, that
+   no two maps in a row write the same column, and that no column is left with
+   no writer.
+3. Give `apply.py` an `_insert_*` for it, in FK order, and add its wipe to
+   `wipe.py` in the reverse order.
+
+### What the tests will not let you get wrong
+
+- A concrete field that is neither mapped nor omitted (`test_schema.py`).
+- A `FieldMap` naming a field the model no longer has.
+- A column two maps write, or none writes.
+- A `writes=False` spec whose column nothing else writes.
+- A feed row that would not travel — checked in `build_archive` itself, before
+  a byte is written, rather than left to the importer's gate after a wipe.
+- Any of it failing to survive a real export → wipe → import → re-export, which
+  is what `test_apply.py`'s round trip does against a database.

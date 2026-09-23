@@ -25,7 +25,7 @@ from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 
-from . import export, read, write
+from . import export, read, schema, write
 from .schema import UNCATEGORIZED_STATUS
 from .wipe import WipeCounts, wipe_team
 
@@ -182,9 +182,10 @@ def _insert_institutions(team, account_rows) -> dict[str, int]:
     objs = [
         Institution(
             team=team,
-            name=name,
+            # NOT NULL, and the column is blank on every account with no
+            # institution, so a name first seen on such a row decodes it None.
             is_archived=bool(by_name[name]["institution_is_archived"]),
-            archived_at=by_name[name]["institution_archived_at"],
+            **schema.model_kwargs(schema.INSTITUTION, by_name[name], skip={"is_archived"}),
         )
         for name in order
     ]
@@ -201,19 +202,7 @@ def _insert_payees(team, journal_rows) -> dict[str, int]:
 
 def _insert_account_groups(team, account_rows) -> dict[str, int]:
     order, by_name = _first_by_key(account_rows, lambda row: row["group_name"])
-    objs = [
-        AccountGroup(
-            team=team,
-            name=name,
-            account_type=by_name[name]["account_type"],
-            description=by_name[name]["group_description"],
-            is_system=by_name[name]["group_is_system"],
-            sort_order=by_name[name]["group_sort_order"],
-            is_archived=by_name[name]["group_is_archived"],
-            archived_at=by_name[name]["group_archived_at"],
-        )
-        for name in order
-    ]
+    objs = [AccountGroup(team=team, **schema.model_kwargs(schema.ACCOUNT_GROUP, by_name[name])) for name in order]
     created = AccountGroup.objects.bulk_create(objs)
     return {obj.name: obj.id for obj in created}
 
@@ -222,14 +211,9 @@ def _insert_accounts(team, account_rows, institution_by_name, group_by_name) -> 
     objs = [
         Account(
             team=team,
-            name=row["name"],
             account_group_id=group_by_name[row["group_name"]],
             institution_id=institution_by_name.get(row["institution"]) if row["institution"] else None,
-            has_feed=row["has_feed"],
-            is_system=row["is_system"],
-            sort_order=row["sort_order"],
-            is_archived=row["is_archived"],
-            archived_at=row["archived_at"],
+            **schema.model_kwargs(schema.ACCOUNT, row, skip={"id"}),
         )
         for row in account_rows
     ]
@@ -251,15 +235,14 @@ def _insert_goals(team, account_rows, account_id_map) -> dict[int, int]:
     objs = [
         Goal(
             team=team,
-            name=row["goal_name"],
-            description=row["goal_description"],
-            target_amount=row["goal_target_amount"],
-            target_date=row["goal_target_date"],
             account_id=account_id_map[row["account_id"]],
+            # Three NOT NULL columns that read.py does not require a goal row
+            # to fill, the way _REQUIRED_WITH_FEED_SOURCE requires a feed
+            # row's, so a hand-edited file can still leave them blank.
             is_complete=bool(row["goal_is_complete"]),
             is_archived=bool(row["goal_is_archived"]),
-            archived_at=row["goal_archived_at"],
             order=row["goal_order"] or 0,
+            **schema.model_kwargs(schema.GOAL, row, skip={"is_complete", "is_archived", "order"}),
         )
         for row in goal_rows
     ]
@@ -271,11 +254,8 @@ def _insert_budgets(team, budget_rows, account_id_map) -> None:
     objs = [
         Budget(
             team=team,
-            month=row["month"],
             category_id=account_id_map[row["account_id"]],
-            budget_amount=row["amount"],
-            is_archived=row["is_archived"],
-            archived_at=row["archived_at"],
+            **schema.model_kwargs(schema.BUDGET, row, skip={"category"}),
         )
         for row in budget_rows
         if row["kind"] == "budget"
@@ -293,11 +273,7 @@ def _insert_goal_allocations(team, budget_rows, account_id_map, goal_id_by_accou
             GoalAllocation(
                 team=team,
                 goal_id=goal_id_by_account_id[new_account_id],
-                month=row["month"],
-                amount=row["amount"],
-                notes=row["notes"],
-                is_archived=row["is_archived"],
-                archived_at=row["archived_at"],
+                **schema.model_kwargs(schema.GOAL_ALLOCATION, row, skip={"goal"}),
             )
         )
     GoalAllocation.objects.bulk_create(objs)
@@ -323,13 +299,8 @@ def _insert_journal(team, journal_rows, account_id_map, payee_by_name) -> tuple[
     entry_objs = [
         JournalEntry(
             team=team,
-            entry_date=entry_row_by_id[file_id]["entry_date"],
             payee_id=payee_by_name.get(entry_row_by_id[file_id]["payee"]),
-            description=entry_row_by_id[file_id]["description"],
-            source=entry_row_by_id[file_id]["source"],
-            status=entry_row_by_id[file_id]["status"],
-            is_archived=entry_row_by_id[file_id]["entry_is_archived"],
-            archived_at=entry_row_by_id[file_id]["entry_archived_at"],
+            **schema.model_kwargs(schema.JOURNAL_ENTRY, entry_row_by_id[file_id], skip={"id", "payee"}),
         )
         for file_id in entry_order
     ]
@@ -341,12 +312,7 @@ def _insert_journal(team, journal_rows, account_id_map, payee_by_name) -> tuple[
             team=team,
             journal_entry_id=entry_id_map[file_id],
             account_id=account_id_map[row["account_id"]],
-            dr_amount=row["dr_amount"],
-            cr_amount=row["cr_amount"],
-            is_cleared=row["is_cleared"],
-            is_reconciled=row["is_reconciled"],
-            is_archived=row["is_archived"],
-            archived_at=row["archived_at"],
+            **schema.model_kwargs(schema.JOURNAL_LINE, row, skip={"account"}),
         )
         for file_id in entry_order
         for row in line_rows_by_entry[file_id]
@@ -378,14 +344,7 @@ def _insert_bank_transactions(team, journal_rows, uncategorized_rows, account_id
                 team=team,
                 account_id=account_id_map[row["account_id"]],
                 journal_entry_id=entry_id_map[row["entry_id"]],
-                amount=row["feed_amount"],
-                posted_date=row["feed_posted_date"],
-                description=row["feed_description"] or "",
-                merchant_name=row["feed_merchant"],
-                source=row["feed_source"],
-                is_transfer_mirror=row["feed_is_mirror"],
-                is_archived=row["feed_is_archived"],
-                archived_at=row["feed_archived_at"],
+                **schema.model_kwargs(schema.BANK_TRANSACTION, row),
             )
         )
     for row in uncategorized_rows:
@@ -394,14 +353,7 @@ def _insert_bank_transactions(team, journal_rows, uncategorized_rows, account_id
                 team=team,
                 account_id=account_id_map[row["account_id"]],
                 journal_entry=None,
-                amount=row["feed_amount"],
-                posted_date=row["feed_posted_date"],
-                description=row["feed_description"] or "",
-                merchant_name=row["feed_merchant"],
-                source=row["feed_source"],
-                is_transfer_mirror=row["feed_is_mirror"],
-                is_archived=row["feed_is_archived"],
-                archived_at=row["feed_archived_at"],
+                **schema.model_kwargs(schema.BANK_TRANSACTION, row),
             )
         )
     BankTransaction.objects.bulk_create(objs)

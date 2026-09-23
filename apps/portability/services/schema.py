@@ -172,6 +172,17 @@ def decode_cell(kind: str, cell: str, *, file: str, row_number: int, column: str
     raise ValueError(f"Unknown column kind: {kind!r}")  # pragma: no cover - schema bug, not user data
 
 
+def blank_value(kind: str):
+    """
+    What a blank cell of this kind decodes back into.
+
+    One rule in one place, so a row built from model instances and the same row
+    read back out of a file agree on what "nothing here" looks like -- which is
+    the identity the round-trip test asserts.
+    """
+    return "" if kind == KIND_STR else None
+
+
 @dataclass(frozen=True)
 class Column:
     name: str
@@ -182,12 +193,46 @@ class Column:
             raise ValueError(f"Column {self.name!r} has an unknown kind {self.kind!r}")
 
 
+_UNSET = object()
+
+
 @dataclass(frozen=True)
 class ColumnSpec:
-    """Where one model field lands: a column name and how to encode/decode it."""
+    """
+    Where one model field lands, and how to get it there and back.
+
+    `name` and `kind` are the column and its codec. The other three exist so
+    this declaration is the *only* place the mapping is written -- `export.py`
+    reads a row through `build_row` and never names a field itself:
+
+    `read`     how to get the value off a model instance, when plain attribute
+               access by the field name this spec is keyed on will not do (an
+               FK carried as its target's name, or as a bare id).
+    `absent`   what the column holds when there is no instance at all -- no
+               goal on this account, no feed row on this line. The default is
+               the value the codec would decode a blank cell back into, so a
+               row built here and a row read from a file agree: "" for a plain
+               string column, None for everything else. Override it only where
+               the file really should carry a value rather than a blank, as the
+               feed's two booleans do.
+    `writes`   False when another map owns the column and this spec exists only
+               to account for the field. `BankTransaction.account` and
+               `.journal_entry` are the cases: both are already carried, by the
+               line's `account_id` and the entry's `entry_id`, and a second
+               writer would overwrite them with the feed row's own values.
+    """
 
     name: str
     kind: str
+    read: object = None
+    absent: object = _UNSET
+    writes: bool = True
+
+    def value_from(self, obj, field_name: str):
+        """This column's value for `obj`, or its absent value when there is none."""
+        if obj is None:
+            return blank_value(self.kind) if self.absent is _UNSET else self.absent
+        return self.read(obj) if self.read else getattr(obj, field_name)
 
 
 @dataclass(frozen=True)
@@ -212,6 +257,55 @@ class FieldMap:
     model: type
     columns: dict = field(default_factory=dict)
     omitted: dict = field(default_factory=dict)
+
+
+def build_row(*pairs, columns=None) -> dict:
+    """
+    `(field_map, instance), ...` -> `{column: value}`.
+
+    The caller resolves each map's instance -- some are reached from the row's
+    subject (an account's group), one is looked up entirely outside it (the
+    feed row belonging to a line) -- and passing `None` for a map means "this
+    row has no such object", which fills its columns with their absent values.
+
+    Pass the file's `columns` and anything no map wrote is filled with that
+    column's blank value, so a row is always the full width of its file. Two
+    kinds of column rely on that: the ones no model field produces at all
+    (`account_name`, informational; `kind`, telling two models apart in one
+    file -- both of which the caller then sets), and the ones only *one* of a
+    file's two models has (`notes` belongs to `GoalAllocation`, not `Budget`).
+    """
+    row: dict = {}
+    for field_map, obj in pairs:
+        for field_name, spec in field_map.columns.items():
+            if spec.writes:
+                row[spec.name] = spec.value_from(obj, field_name)
+    for column in columns or ():
+        row.setdefault(column.name, blank_value(column.kind))
+    return row
+
+
+def model_kwargs(field_map, row: dict, *, skip: set | None = None) -> dict:
+    """
+    `{model field name: value}` for constructing this map's model from a row --
+    the reverse of `build_row`, off the same declaration.
+
+    `skip` names the fields the caller supplies itself, which is always the
+    same two kinds and no others: a foreign key, whose file value is a handle
+    that has to be remapped to the destination's own id, and a primary key,
+    which the destination assigns. Fields marked `writes=False` are already
+    another map's to carry, so they are skipped without being asked for.
+
+    Everything else arrives exactly as the file's codec decoded it. A field
+    that needs normalising beyond that belongs in `skip` and in an explicit
+    keyword at the call site, where the reason for it can be read.
+    """
+    skip = skip or set()
+    return {
+        field_name: row[spec.name]
+        for field_name, spec in field_map.columns.items()
+        if spec.writes and field_name not in skip
+    }
 
 
 _TENANT = "tenant identity, not part of the books (§2.5)"
@@ -286,7 +380,10 @@ INSTITUTION = FieldMap(
 PAYEE = FieldMap(
     model=Payee,
     columns={
-        "name": ColumnSpec("payee", KIND_STR_OR_NONE),
+        # The entry is what reaches the payee, so `JournalEntry.payee` writes
+        # this column; Payee is in the journal row's map set to account for its
+        # own fields, not to write anything itself.
+        "name": ColumnSpec("payee", KIND_STR_OR_NONE, writes=False),
     },
     omitted={
         "id": "Payee is unique per (team, name); no separate handle is needed (§2.2)",
@@ -371,7 +468,7 @@ JOURNAL_ENTRY = FieldMap(
         # this field, so it is mapped here rather than omitted.
         "id": ColumnSpec("entry_id", KIND_INT),
         "entry_date": ColumnSpec("entry_date", KIND_DATE),
-        "payee": ColumnSpec("payee", KIND_STR_OR_NONE),
+        "payee": ColumnSpec("payee", KIND_STR_OR_NONE, read=lambda entry: entry.payee.name if entry.payee_id else None),
         "description": ColumnSpec("description", KIND_STR),
         "source": ColumnSpec("source", KIND_STR),
         "status": ColumnSpec("status", KIND_STR),
@@ -388,7 +485,7 @@ JOURNAL_ENTRY = FieldMap(
 JOURNAL_LINE = FieldMap(
     model=JournalLine,
     columns={
-        "account": ColumnSpec("account_id", KIND_INT),
+        "account": ColumnSpec("account_id", KIND_INT, read=lambda line: line.account_id),
         "dr_amount": ColumnSpec("dr_amount", KIND_DECIMAL),
         "cr_amount": ColumnSpec("cr_amount", KIND_DECIMAL),
         "is_cleared": ColumnSpec("is_cleared", KIND_BOOL),
@@ -413,9 +510,12 @@ BANK_TRANSACTION = FieldMap(
         # On a categorised row this is the line's own account; on an
         # uncategorized row it is this field directly. Either way it is the
         # row's `account_id` column.
-        "account": ColumnSpec("account_id", KIND_INT),
+        # Both of these are already carried -- `account_id` by the line this
+        # feed row rides on, `entry_id` by that line's entry -- so they are
+        # accounted for here but written by those maps (`writes=False`).
+        "account": ColumnSpec("account_id", KIND_INT, writes=False),
         # Whether this is set is exactly what a blank `entry_id` records.
-        "journal_entry": ColumnSpec("entry_id", KIND_INT),
+        "journal_entry": ColumnSpec("entry_id", KIND_INT, writes=False),
         "source": ColumnSpec("feed_source", KIND_STR_OR_NONE),
         "amount": ColumnSpec("feed_amount", KIND_DECIMAL),
         "posted_date": ColumnSpec("feed_posted_date", KIND_DATE),
@@ -431,8 +531,11 @@ BANK_TRANSACTION = FieldMap(
         "description": ColumnSpec("feed_description", KIND_STR),
         # merchant_name IS nullable, so None stays the honest value here.
         "merchant_name": ColumnSpec("feed_merchant", KIND_STR_OR_NONE),
-        "is_transfer_mirror": ColumnSpec("feed_is_mirror", KIND_BOOL),
-        "is_archived": ColumnSpec("feed_is_archived", KIND_BOOL),
+        # `absent=False`, not a blank: a line with no feed row is not a line
+        # whose feed row has an unknown mirror/archived state, and the file
+        # reads better saying so.
+        "is_transfer_mirror": ColumnSpec("feed_is_mirror", KIND_BOOL, absent=False),
+        "is_archived": ColumnSpec("feed_is_archived", KIND_BOOL, absent=False),
         "archived_at": ColumnSpec("feed_archived_at", KIND_DATETIME),
     },
     omitted={
@@ -483,7 +586,7 @@ BUDGET = FieldMap(
     model=Budget,
     columns={
         "month": ColumnSpec("month", KIND_DATE),
-        "category": ColumnSpec("account_id", KIND_INT),
+        "category": ColumnSpec("account_id", KIND_INT, read=lambda budget: budget.category_id),
         "budget_amount": ColumnSpec("amount", KIND_DECIMAL),
         "is_archived": ColumnSpec("is_archived", KIND_BOOL),
         "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
@@ -502,7 +605,7 @@ GOAL_ALLOCATION = FieldMap(
     columns={
         # Via allocation.goal.account_id -- a goal is identified by its
         # account everywhere in this format (§2.1), not by its own id.
-        "goal": ColumnSpec("account_id", KIND_INT),
+        "goal": ColumnSpec("account_id", KIND_INT, read=lambda allocation: allocation.goal.account_id),
         "month": ColumnSpec("month", KIND_DATE),
         "amount": ColumnSpec("amount", KIND_DECIMAL),
         "notes": ColumnSpec("notes", KIND_STR),
@@ -543,6 +646,23 @@ FIELD_MAPS = (
     BUDGET,
     GOAL_ALLOCATION,
 )
+
+#: Which field maps compose one row, per file. `export.py` builds rows against
+#: exactly these groupings, and `test_schema.py` checks each one covers its
+#: file's columns without two maps writing the same one -- the invariant
+#: `build_row` depends on, since a second writer silently overwrites the first.
+#:
+#: A file with more than one grouping writes *alternative* row kinds rather
+#: than a blend: budget.csv holds a `Budget` row or a `GoalAllocation` row, and
+#: its `kind` column is what says which.
+ROW_COMPOSITIONS = {
+    ACCOUNTS_FILE: ((ACCOUNT, ACCOUNT_GROUP, INSTITUTION, GOAL),),
+    JOURNAL_FILE: ((JOURNAL_ENTRY, JOURNAL_LINE, PAYEE, BANK_TRANSACTION),),
+    BUDGET_FILE: (
+        (BUDGET,),
+        (GOAL_ALLOCATION,),
+    ),
+}
 
 FILE_COLUMNS = {
     ACCOUNTS_FILE: ACCOUNTS_COLUMNS,

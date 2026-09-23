@@ -20,8 +20,11 @@ from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.budget.models import Budget, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 
+from . import schema
 from .schema import (
+    KIND_BUDGET,
     KIND_DECIMAL,
+    KIND_GOAL,
     UNCATEGORIZED_STATUS,
     encode_cell,
 )
@@ -110,48 +113,22 @@ def _assert_every_feed_row_travels(team, journal_rows: list[dict]) -> None:
 
 
 def _build_accounts(team) -> list[dict]:
+    """One row per account, with its group, institution and goal folded in (§2.1)."""
     accounts = (
         Account.objects.filter(team=team)
         .select_related("account_group", "institution", "goal")
         .order_by(*Account._meta.ordering)
     )
-
-    rows = []
-    for account in accounts:
-        group = account.account_group
-        institution = account.institution
-        goal = getattr(account, "goal", None)
-
-        rows.append(
-            {
-                "account_id": account.id,
-                "name": account.name,
-                "account_type": group.account_type,
-                "group_name": group.name,
-                "group_description": group.description,
-                "group_is_system": group.is_system,
-                "group_sort_order": group.sort_order,
-                "group_is_archived": group.is_archived,
-                "group_archived_at": group.archived_at,
-                "institution": institution.name if institution else None,
-                "institution_is_archived": institution.is_archived if institution else None,
-                "institution_archived_at": institution.archived_at if institution else None,
-                "has_feed": account.has_feed,
-                "is_system": account.is_system,
-                "sort_order": account.sort_order,
-                "is_archived": account.is_archived,
-                "archived_at": account.archived_at,
-                "goal_name": goal.name if goal else None,
-                "goal_description": goal.description if goal else "",
-                "goal_target_amount": goal.target_amount if goal else None,
-                "goal_target_date": goal.target_date if goal else None,
-                "goal_is_complete": goal.is_complete if goal else None,
-                "goal_is_archived": goal.is_archived if goal else None,
-                "goal_archived_at": goal.archived_at if goal else None,
-                "goal_order": goal.order if goal else None,
-            }
+    return [
+        schema.build_row(
+            (schema.ACCOUNT, account),
+            (schema.ACCOUNT_GROUP, account.account_group),
+            (schema.INSTITUTION, account.institution),
+            (schema.GOAL, getattr(account, "goal", None)),
+            columns=schema.ACCOUNTS_COLUMNS,
         )
-    return rows
+        for account in accounts
+    ]
 
 
 def _place_feed_rows(team) -> tuple[dict[tuple[int, int], BankTransaction], list[BankTransaction]]:
@@ -207,34 +184,11 @@ def _place_feed_rows(team) -> tuple[dict[tuple[int, int], BankTransaction], list
     return lookup, unplaceable
 
 
-def _feed_columns(bank_tx: BankTransaction | None) -> dict:
-    if bank_tx is None:
-        return {
-            "feed_source": None,
-            "feed_amount": None,
-            "feed_posted_date": None,
-            # "" not None, mirroring goal_description on a non-goal row: the
-            # discriminator (feed_source) carries the None, the KIND_STR
-            # payload column carries the empty string.
-            "feed_description": "",
-            "feed_merchant": None,
-            "feed_is_mirror": False,
-            "feed_is_archived": False,
-            "feed_archived_at": None,
-        }
-    return {
-        "feed_source": bank_tx.source,
-        "feed_amount": bank_tx.amount,
-        "feed_posted_date": bank_tx.posted_date,
-        "feed_description": bank_tx.description,
-        "feed_merchant": bank_tx.merchant_name,
-        "feed_is_mirror": bank_tx.is_transfer_mirror,
-        "feed_is_archived": bank_tx.is_archived,
-        "feed_archived_at": bank_tx.archived_at,
-    }
-
-
 def _build_journal_rows(team) -> list[dict]:
+    """
+    One row per journal line, then one per feed row that rides on no line
+    (§2.4) -- the uncategorized ones, plus any the ledger could not place.
+    """
     feed_lookup, unplaceable = _place_feed_rows(team)
 
     lines = (
@@ -255,103 +209,62 @@ def _build_journal_rows(team) -> list[dict]:
     # the lowest-id line of its account and the choice is stable.
     attached: set[int] = set()
     for line in lines:
-        entry = line.journal_entry
-        bank_tx = feed_lookup.get((entry.id, line.account_id))
+        bank_tx = feed_lookup.get((line.journal_entry_id, line.account_id))
         if bank_tx is not None:
             if bank_tx.id in attached:
                 bank_tx = None
             else:
                 attached.add(bank_tx.id)
-        rows.append(
-            {
-                "entry_id": entry.id,
-                "entry_date": entry.entry_date,
-                "payee": entry.payee.name if entry.payee_id else None,
-                "description": entry.description,
-                "source": entry.source,
-                "status": entry.status,
-                "account_id": line.account_id,
-                "account_name": line.account.name,
-                "entry_is_archived": entry.is_archived,
-                "entry_archived_at": entry.archived_at,
-                "dr_amount": line.dr_amount,
-                "cr_amount": line.cr_amount,
-                "is_cleared": line.is_cleared,
-                "is_reconciled": line.is_reconciled,
-                "is_archived": line.is_archived,
-                "archived_at": line.archived_at,
-                **_feed_columns(bank_tx),
-            }
+        row = schema.build_row(
+            (schema.JOURNAL_ENTRY, line.journal_entry),
+            (schema.JOURNAL_LINE, line),
+            (schema.BANK_TRANSACTION, bank_tx),
+            columns=schema.JOURNAL_COLUMNS,
         )
+        row["account_name"] = line.account.name  # informational only (§2.2)
+        rows.append(row)
 
-    # Uncategorized feed rows: no JournalLine at all, so nothing above touches
-    # them. Entry-level and line-level columns are genuinely absent, not
-    # false -- there is no entry and no line to report them for (§2.4).
+    # Feed rows belonging to no line: never categorized, or categorized
+    # against an entry no line of which uses their account (`_place_feed_rows`).
+    # Entry-level and line-level columns are genuinely absent here, which is
+    # what passing None for those two maps records.
     uncategorized = list(
         BankTransaction.objects.filter(team=team, journal_entry__isnull=True).select_related("account")
     )
-    # Plus any categorized row no line could carry (see `_place_feed_rows`),
-    # which travels in the same shape and arrives as a row to review.
     for bank_tx in uncategorized + unplaceable:
-        rows.append(
-            {
-                "entry_id": None,
-                "entry_date": None,
-                "payee": None,
-                "description": "",
-                "source": "",
-                "status": UNCATEGORIZED_STATUS,
-                "account_id": bank_tx.account_id,
-                "account_name": bank_tx.account.name,
-                "entry_is_archived": None,
-                "entry_archived_at": None,
-                "dr_amount": None,
-                "cr_amount": None,
-                "is_cleared": None,
-                "is_reconciled": None,
-                "is_archived": None,
-                "archived_at": None,
-                **_feed_columns(bank_tx),
-            }
+        row = schema.build_row(
+            (schema.JOURNAL_ENTRY, None),
+            (schema.JOURNAL_LINE, None),
+            (schema.BANK_TRANSACTION, bank_tx),
+            columns=schema.JOURNAL_COLUMNS,
         )
+        row["status"] = UNCATEGORIZED_STATUS
+        row["account_id"] = bank_tx.account_id
+        row["account_name"] = bank_tx.account.name
+        rows.append(row)
 
     return rows
 
 
 def _build_budget_rows(team) -> list[dict]:
+    """One row per monthly amount -- a `Budget` or a `GoalAllocation`, told apart by `kind` (§2.1)."""
     rows = []
 
     budgets = Budget.objects.filter(team=team).select_related("category").order_by("month", "category__name")
     for budget in budgets:
-        rows.append(
-            {
-                "kind": "budget",
-                "month": budget.month,
-                "account_id": budget.category_id,
-                "account_name": budget.category.name,
-                "amount": budget.budget_amount,
-                "notes": "",
-                "is_archived": budget.is_archived,
-                "archived_at": budget.archived_at,
-            }
-        )
+        row = schema.build_row((schema.BUDGET, budget), columns=schema.BUDGET_COLUMNS)
+        row["kind"] = KIND_BUDGET
+        row["account_name"] = budget.category.name
+        rows.append(row)
 
     allocations = (
         GoalAllocation.objects.filter(team=team).select_related("goal", "goal__account").order_by("month", "goal__name")
     )
     for allocation in allocations:
-        rows.append(
-            {
-                "kind": "goal",
-                "month": allocation.month,
-                "account_id": allocation.goal.account_id,
-                "account_name": allocation.goal.account.name if allocation.goal.account_id else allocation.goal.name,
-                "amount": allocation.amount,
-                "notes": allocation.notes,
-                "is_archived": allocation.is_archived,
-                "archived_at": allocation.archived_at,
-            }
-        )
+        row = schema.build_row((schema.GOAL_ALLOCATION, allocation), columns=schema.BUDGET_COLUMNS)
+        row["kind"] = KIND_GOAL
+        row["account_name"] = allocation.goal.account.name if allocation.goal.account_id else allocation.goal.name
+        rows.append(row)
 
     return rows
 

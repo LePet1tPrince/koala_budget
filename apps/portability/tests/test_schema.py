@@ -55,6 +55,89 @@ class SchemaCompletenessTests(SimpleTestCase):
         # schema fails a test, not just an import.
         schema.validate_schema()
 
+    def test_no_two_maps_in_one_composition_write_the_same_column(self):
+        """
+        `build_row` composes several maps into one row, so two writable specs
+        sharing a column would mean one silently overwriting the other -- which
+        is exactly what `writes=False` exists to prevent.
+        """
+        for filename, compositions in schema.ROW_COMPOSITIONS.items():
+            for composition in compositions:
+                writers: dict[str, list[str]] = {}
+                for field_map in composition:
+                    for field_name, spec in field_map.columns.items():
+                        if spec.writes:
+                            writers.setdefault(spec.name, []).append(f"{field_map.model.__name__}.{field_name}")
+                for column_name, owners in writers.items():
+                    with self.subTest(file=filename, column=column_name):
+                        self.assertEqual(
+                            len(owners),
+                            1,
+                            f"{filename}: '{column_name}' is written by {owners} in one row. Exactly one "
+                            "spec may write a column; mark the others `writes=False`.",
+                        )
+
+    def test_every_column_is_written_by_some_composition(self):
+        """
+        A column no composition writes would go out blank on every row -- the
+        quiet half of the same failure.
+        """
+        for filename, columns in schema.FILE_COLUMNS.items():
+            written = {
+                spec.name
+                for composition in schema.ROW_COMPOSITIONS[filename]
+                for field_map in composition
+                for spec in field_map.columns.values()
+                if spec.writes
+            }
+            for column in columns:
+                if column.name in schema.INFORMATIONAL_COLUMNS | schema.SYNTHETIC_COLUMNS:
+                    continue
+                with self.subTest(file=filename, column=column.name):
+                    self.assertIn(
+                        column.name,
+                        written,
+                        f"{filename}: no FieldMap writes '{column.name}', so it would be blank on every row.",
+                    )
+
+    def test_a_non_writing_spec_names_a_column_its_own_composition_writes(self):
+        """
+        `writes=False` says "another map in this row carries it". If none does,
+        the field quietly stops travelling.
+        """
+        for filename, compositions in schema.ROW_COMPOSITIONS.items():
+            for composition in compositions:
+                written = {spec.name for field_map in composition for spec in field_map.columns.values() if spec.writes}
+                for field_map in composition:
+                    for field_name, spec in field_map.columns.items():
+                        if not spec.writes:
+                            with self.subTest(file=filename, model=field_map.model.__name__, field=field_name):
+                                self.assertIn(
+                                    spec.name,
+                                    written,
+                                    f"{field_map.model.__name__}.{field_name} is writes=False but nothing else "
+                                    f"in {filename}'s row writes '{spec.name}'.",
+                                )
+
+    def test_every_field_map_belongs_to_a_composition(self):
+        """A map in FIELD_MAPS but no composition is declared and never used."""
+        composed = {fm.model for maps in schema.ROW_COMPOSITIONS.values() for c in maps for fm in c}
+        for field_map in schema.FIELD_MAPS:
+            with self.subTest(model=field_map.model.__name__):
+                self.assertIn(field_map.model, composed)
+
+    def test_blank_value_matches_what_the_codec_decodes_a_blank_cell_into(self):
+        """
+        `build_row` fills an absent value with `blank_value(kind)`. If that ever
+        disagreed with `decode_cell`, a row built from model instances and the
+        same row read back from a file would differ -- and the round-trip test
+        asserts they do not.
+        """
+        for kind in sorted(schema._VALID_KINDS):
+            with self.subTest(kind=kind):
+                decoded = schema.decode_cell(kind, "", file="t.csv", row_number=2, column="c")
+                self.assertEqual(schema.blank_value(kind), decoded)
+
     def test_no_duplicate_columns_within_a_file(self):
         for filename, columns in schema.FILE_COLUMNS.items():
             names = [c.name for c in columns]
