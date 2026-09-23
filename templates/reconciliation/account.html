@@ -1,0 +1,24 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+
+{% block app %}
+  {{ reconcile_props|json_script:'reconcile-props' }}
+  <div id="reconcile-app">
+    <div class="app-card animate-pulse h-40" aria-hidden="true"></div>
+  </div>
+  <noscript>
+    <div class="app-card">
+      <p>{% translate "Reconciling a statement needs JavaScript." %}</p>
+    </div>
+  </noscript>
+{% endblock %}
+
+{% block page_js %}
+  {% comment %}
+    vite_react_refresh must come first: without the plugin's preamble the React
+    entry throws "can't detect preamble" in dev and the page renders nothing.
+  {% endcomment %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/reconcile/reconcile-app.jsx' %}
+{% endblock %}

@@ -96,6 +96,7 @@ def export_view(request, team_slug):
         accounts=accounts,
         journal=journal_rows,
         budget=budget_rows,
+        reconciliations=export.build_reconciliation_rows(request.team),
         source={"team_name": request.team.name},
         checks=checks,
         omitted=omitted,

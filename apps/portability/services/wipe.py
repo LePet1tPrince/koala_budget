@@ -54,6 +54,7 @@ class WipeCounts:
     account_groups: int = 0
     payees: int = 0
     institutions: int = 0
+    reconciliations: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -71,6 +72,7 @@ class WipeCounts:
             "account_groups": self.account_groups,
             "payees": self.payees,
             "institutions": self.institutions,
+            "reconciliations": self.reconciliations,
         }
 
 
@@ -98,7 +100,8 @@ def wipe_team(team) -> WipeCounts:
     plaid_items.delete()
 
     # One call, one cascade: BankTransaction (-> PlaidTransaction,
-    # TransferMatchDismissal), Budget, Goal (-> GoalAllocation). The
+    # TransferMatchDismissal), Budget, Goal (-> GoalAllocation), Reconciliation
+    # (its lines are already gone, so nothing points back at it). The
     # collector's own breakdown is the "counted, not inferred" figure (§4.2).
     _total, breakdown = Account.objects.filter(team=team).delete()
     counts.accounts = breakdown.get("accounts.Account", 0)
@@ -108,6 +111,7 @@ def wipe_team(team) -> WipeCounts:
     counts.budgets = breakdown.get("budget.Budget", 0)
     counts.goals = breakdown.get("budget.Goal", 0)
     counts.goal_allocations = breakdown.get("budget.GoalAllocation", 0)
+    counts.reconciliations = breakdown.get("reconciliation.Reconciliation", 0)
 
     account_groups = AccountGroup.objects.filter(team=team)
     counts.account_groups = account_groups.count()

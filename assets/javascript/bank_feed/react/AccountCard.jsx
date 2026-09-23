@@ -69,6 +69,21 @@ const AccountCard = ({ account, isSelected, onClick }) => {
         <p className="text-sm font-semibold tabular-nums text-right">
           {formatCurrency(account.categorized_balance ?? account.balance)}
         </p>
+        {account.last_statement_date && (
+          <p
+            className={`text-[10px] tabular-nums truncate ${
+              account.last_statement_intact ? 'text-base-content/70' : 'text-warning'
+            }`}
+            title={
+              account.last_statement_intact
+                ? gettext('Reconciled through this statement date')
+                : gettext('A reconciled statement has changed since it was finished')
+            }
+            data-testid="account-card-reconciled-through"
+          >
+            {account.last_statement_intact ? '✓' : '⚠'} {formatDate(account.last_statement_date)}
+          </p>
+        )}
       </div>
     </div>
   );

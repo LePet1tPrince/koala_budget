@@ -6,6 +6,18 @@
 
 ## Resolved Issues
 
+### 2026-09-23 — Statement reconciliation (`apps.reconciliation`)
+**Feature:** Reconcile an asset/liability account against a bank or card statement; statements are recorded, can be undone, and report whether they still hold.
+**Verdict:** No Critical or High findings.
+
+- **Team scoping.** Every lookup of an account or statement is `filter(pk=..., team=request.team)`; another team's id is a 404. Ticking re-checks each line id against the draft's own candidate set (same team, same account), so a foreign line id is refused rather than linked (tests: `PermissionTests`).
+- **Who may act.** Any authenticated team member (plan D8) — `TeamModelAccessPermissions.has_permission` runs on every action; object-level admin checks are not used because the viewset never calls `get_object()`. Every start/finish/undo writes an `AuditEvent`, and finishing writes an `AuditLog` row per line.
+- **Integrity of confirmed data.** Reconciled lines are now guarded on every write path (`services/guards.py`); three of these returned HTTP 200 and silently changed reconciled state before this feature (plan §3).
+- **Stale confirmations.** An adjustment is only posted when the client names the difference it showed the user and the server's recomputed figure matches (else 409), so a concurrent edit cannot turn one confirmation into a different posting.
+- **Input.** Amounts are DRF `DecimalField`s (2 dp); line-id lists are capped at 5,000; no raw SQL.
+
+**Accepted, low:** the workspace loads every candidate line for the account (not paginated). A first reconciliation of years of unreconciled history can be thousands of rows; "Tick all through" is server-side, so no request carries them all.
+
 ### 2026-09-19 — YNAB import (`apps.ynab_import`)
 **Feature:** Import a YNAB export (two CSVs) into an empty team: chart of accounts, full transaction history, budgets, goals and opening balances.
 **Verdict:** No Critical or High findings.

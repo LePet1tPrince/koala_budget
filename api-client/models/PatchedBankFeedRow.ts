@@ -133,6 +133,12 @@ export interface PatchedBankFeedRow {
      */
     isReconciled?: boolean;
     /**
+     * Closing date of the finished statement that reconciled this row, if any
+     * @type {Date}
+     * @memberof PatchedBankFeedRow
+     */
+    reconciledStatementDate?: Date | null;
+    /**
      * Payee name (maps to merchant_name)
      * @type {string}
      * @memberof PatchedBankFeedRow
@@ -221,6 +227,7 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'isCleared': json['is_cleared'] == null ? undefined : json['is_cleared'],
         'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
         'isReconciled': json['is_reconciled'] == null ? undefined : json['is_reconciled'],
+        'reconciledStatementDate': json['reconciled_statement_date'] == null ? undefined : (new Date(json['reconciled_statement_date'])),
         'payee': json['payee'] == null ? undefined : json['payee'],
         'paymentChannel': json['payment_channel'] == null ? undefined : json['payment_channel'],
         'confidence': json['confidence'] == null ? undefined : json['confidence'],
@@ -258,6 +265,7 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'is_cleared': value['isCleared'],
         'is_archived': value['isArchived'],
         'is_reconciled': value['isReconciled'],
+        'reconciled_statement_date': value['reconciledStatementDate'] == null ? undefined : ((value['reconciledStatementDate'] as any).toISOString().substring(0,10)),
         'payee': value['payee'],
         'payment_channel': value['paymentChannel'],
         'confidence': value['confidence'],

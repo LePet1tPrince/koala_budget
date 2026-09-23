@@ -21,6 +21,8 @@ from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.services.opening import OPENING_DESCRIPTION
+from apps.reconciliation import presenters
+from apps.reconciliation.services.signs import is_reconcilable
 from apps.teams.decorators import login_and_team_required
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
@@ -290,6 +292,10 @@ class AccountDetailView(AccountViewMixin, DetailView):
         context["budget_chart_data"] = service.get_budget_vs_actual_chart_data(self.object, start_date, end_date)
         context["start_date"] = start_date
         context["end_date"] = end_date
+        # Statement history for accounts a statement can confirm (assets and liabilities).
+        if is_reconcilable(self.object):
+            context["statements"] = presenters.history_payload(self.object)[:6]
+            context["reconcilable"] = True
         return context
 
 

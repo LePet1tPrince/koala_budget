@@ -38,6 +38,7 @@ def export_bytes(team) -> bytes:
         accounts=accounts,
         journal=journal_rows,
         budget=budget_rows,
+        reconciliations=export.build_reconciliation_rows(team),
         source={"team_name": team.name},
         checks=checks,
         omitted=omitted,
@@ -389,6 +390,58 @@ class BlankFeedDescriptionTests(TestCase):
         uncategorized = BankTransaction.objects.filter(team=self.dest_team, journal_entry__isnull=True)
         self.assertEqual(uncategorized.count(), 1)
         self.assertEqual(uncategorized.first().amount, Decimal("9.99"))
+
+
+class StatementRoundTripTests(TestCase):
+    """
+    Statements travel (format version 2): a finished one arrives intact, with
+    its lines still pointing at it, and a draft arrives with its ticks.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.reconciliation.services import candidates, session
+        from apps.reconciliation.services.signs import to_statement
+
+        cls.source_team, cls.source_user, _ = build_db_fixture_team("Stmt Src", "stmt-src")
+        cls.dest_team, cls.dest_user = make_team("Stmt Dest", "stmt-dest")
+        chequing = Account.objects.get(team=cls.source_team, name="Chequing")
+        card = Account.objects.get(team=cls.source_team, name="Credit Card")
+
+        draft = session.start(chequing, date(2099, 1, 31), Decimal("0"), cls.source_user)
+        session.tick_through(draft, date(2099, 1, 31))
+        current = candidates.summary(draft)
+        session.update_statement(
+            draft, statement_balance=to_statement(chequing, current.opening + current.ticked_total)
+        )
+        cls.finished = session.finish(draft, cls.source_user)
+        cls.finished_lines = cls.finished.lines.count()
+
+        card_draft = session.start(card, date(2099, 1, 31), Decimal("1.00"), cls.source_user)
+        cls.card_ticks = len(session.tick_through(card_draft, date(2099, 1, 31)))
+
+    def setUp(self):
+        from apps.reconciliation.models import Reconciliation
+
+        self.result = apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
+        self.statements = {r.account.name: r for r in Reconciliation.objects.filter(team=self.dest_team)}
+
+    def test_both_statements_arrive(self):
+        self.assertEqual(self.result.reconciliations, 2)
+        self.assertEqual(set(self.statements), {"Chequing", "Credit Card"})
+
+    def test_the_finished_statement_is_intact_with_its_lines(self):
+        from apps.reconciliation.services.integrity import is_intact
+
+        rec = self.statements["Chequing"]
+        self.assertEqual(rec.status, "completed")
+        self.assertEqual(rec.lines.count(), self.finished_lines)
+        self.assertTrue(is_intact(rec))
+
+    def test_the_draft_keeps_its_ticks(self):
+        rec = self.statements["Credit Card"]
+        self.assertEqual(rec.status, "draft")
+        self.assertEqual(rec.lines.filter(is_reconciled=False).count(), self.card_ticks)
 
 
 class SplitRoundTripTests(TestCase):

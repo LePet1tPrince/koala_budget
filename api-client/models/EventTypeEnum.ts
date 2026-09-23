@@ -50,6 +50,12 @@
  * * `monthly_review_baseline_changed` - Monthly Review Baseline Changed
  * * `ynab_import_started` - YNAB Import Started
  * * `ynab_import` - YNAB Import Applied
+ * * `data_exported` - Data Exported
+ * * `data_wiped` - Data Wiped
+ * * `data_imported` - Data Imported
+ * * `reconciliation_started` - Reconciliation Started
+ * * `reconciliation_completed` - Reconciliation Completed
+ * * `reconciliation_undone` - Reconciliation Undone
  * @export
  */
 export const EventTypeEnum = {
@@ -88,7 +94,13 @@ export const EventTypeEnum = {
     MonthlyReviewDismissed: 'monthly_review_dismissed',
     MonthlyReviewBaselineChanged: 'monthly_review_baseline_changed',
     YnabImportStarted: 'ynab_import_started',
-    YnabImport: 'ynab_import'
+    YnabImport: 'ynab_import',
+    DataExported: 'data_exported',
+    DataWiped: 'data_wiped',
+    DataImported: 'data_imported',
+    ReconciliationStarted: 'reconciliation_started',
+    ReconciliationCompleted: 'reconciliation_completed',
+    ReconciliationUndone: 'reconciliation_undone'
 } as const;
 export type EventTypeEnum = typeof EventTypeEnum[keyof typeof EventTypeEnum];
 
