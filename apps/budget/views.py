@@ -216,11 +216,11 @@ def budget_month_view(request, team_slug):
 
     figures = _budget_figures(request.team, month)
 
-    # Get all accounts for React recategorize dropdown
+    # Every account type is a valid "Move to..." target in the Actual popup (the
+    # client groups them by type); moving onto a feed account makes it a transfer.
+    # System accounts (reconciliation adjustments) are bookkeeping, not destinations.
     all_accounts = (
-        Account.for_team.filter(
-            account_group__account_type__in=("expense", "income"),
-        )
+        Account.for_team.filter(account_group__isnull=False, is_system=False)
         .select_related("account_group")
         .order_by("name")
     )

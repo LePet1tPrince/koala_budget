@@ -15,10 +15,11 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 const GUTTER = 8;
 
 /** Where a panel of this size should sit, given its trigger. */
-export const placePanel = (anchorRect, panelRect, { matchWidth = false } = {}) => {
+export const placePanel = (anchorRect, panelRect, { matchWidth = false, minWidth = 0 } = {}) => {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const width = matchWidth ? anchorRect.width : panelRect.width;
+  // `minWidth` keeps a list opened from a narrow trigger (a table cell) readable.
+  const width = matchWidth ? Math.max(anchorRect.width, minWidth) : panelRect.width;
 
   let left = anchorRect.left;
   if (left + width > vw - GUTTER) left = vw - GUTTER - width;
@@ -53,15 +54,15 @@ export const portalTarget = (node) => node?.closest('dialog') ?? document.body;
  */
 export const useAnchoredPosition = (open, anchorRef, panelRef, options = {}) => {
   const [style, setStyle] = useState(null);
-  const { matchWidth = false } = options;
+  const { matchWidth = false, minWidth = 0 } = options;
 
   const measure = useCallback(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
     const panel = panelRef.current;
     const panelRect = panel ? panel.getBoundingClientRect() : { width: 0, height: 0 };
-    setStyle(placePanel(anchor.getBoundingClientRect(), panelRect, { matchWidth }));
-  }, [anchorRef, panelRef, matchWidth]);
+    setStyle(placePanel(anchor.getBoundingClientRect(), panelRect, { matchWidth, minWidth }));
+  }, [anchorRef, panelRef, matchWidth, minWidth]);
 
   useLayoutEffect(() => {
     if (!open) {

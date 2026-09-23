@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from apps.accounts.models import Account
 from apps.audit.models import AuditLog
 from apps.audit.serializers import AuditLogSerializer
-from apps.reconciliation.services.guards import ReconciledLineError, assert_entry_voidable
+from apps.reconciliation.services.guards import ReconciledLineError, assert_entry_voidable, assert_line_mutable
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
@@ -261,8 +261,32 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
             )
 
         new_category = get_object_or_404(Account.objects.filter(team=self.request.team), id=new_category_id)
+
+        # A line moved onto an account the entry already posts to on the *other*
+        # side (e.g. the bank account the money came through) cancels itself out.
+        other_side = {"cr_amount__gt": 0} if line.dr_amount > 0 else {"dr_amount__gt": 0}
+        if line.journal_entry.lines.exclude(pk=line.pk).filter(account=new_category, **other_side).exists():
+            return Response(
+                {"error": _("The transaction already uses that account on its other side.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            assert_line_mutable(line, new_account=new_category)
+        except ReconciledLineError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         line.account = new_category
         line.save()
+
+        # Moving the category side onto another feed account turns the entry into a
+        # transfer, which the bank feed shows in both accounts via a mirror leg.
+        from apps.bank_feed.models import BankTransaction
+        from apps.bank_feed.services.transfer_mirror import sync_transfer
+
+        primary = BankTransaction.objects.filter(journal_entry=line.journal_entry, is_transfer_mirror=False).first()
+        if primary is not None:
+            sync_transfer(primary)
 
         return Response({"status": "success", "line_id": line.id})
 
