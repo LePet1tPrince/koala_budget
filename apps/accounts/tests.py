@@ -523,8 +523,8 @@ class AccountViewTest(TestCase):
         self.assertContains(response, "account-budget-chart")
         self.assertNotContains(response, "account-balance-chart")
 
-    def test_account_detail_view_defaults_to_current_month(self):
-        """Without date params the activity section defaults to the current month."""
+    def test_account_detail_view_defaults_to_current_year(self):
+        """Without date params the activity section defaults to the current year."""
         from datetime import date
 
         account = Account.objects.create(team=self.team, name="Default Range", account_group=self.account_group)
@@ -533,7 +533,7 @@ class AccountViewTest(TestCase):
 
         today = date.today()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["start_date"], today.replace(day=1))
+        self.assertEqual(response.context["start_date"], today.replace(month=1, day=1))
         self.assertEqual(response.context["end_date"], today)
 
     def test_account_update_view(self):

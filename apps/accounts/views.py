@@ -272,13 +272,15 @@ class AccountDetailView(AccountViewMixin, DetailView):
         context["journal_lines"] = self.object.journal_lines.all()
 
         # Activity section (same components as the reports drill-down):
-        # date range from ?start_date/?end_date, defaulting to the current month.
+        # date range from ?start_date/?end_date, defaulting to this year --
+        # matches the "year" default the date-range picker sets client-side
+        # (data-default-range="year" on account_detail.html).
         try:
             start_date = datetime.strptime(self.request.GET.get("start_date", ""), "%Y-%m-%d").date()
             end_date = datetime.strptime(self.request.GET.get("end_date", ""), "%Y-%m-%d").date()
         except ValueError:
             today = date.today()
-            start_date = today.replace(day=1)
+            start_date = today.replace(month=1, day=1)
             end_date = today
 
         service = ReportService(self.request.team)
