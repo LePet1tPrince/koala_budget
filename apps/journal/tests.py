@@ -15,6 +15,7 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_ASSET,
     ACCOUNT_TYPE_EXPENSE,
     ACCOUNT_TYPE_INCOME,
+    ACCOUNT_TYPE_LIABILITY,
     Account,
     AccountGroup,
     Payee,
@@ -1626,3 +1627,76 @@ class ArchivedAndVoidedEntriesExcludedTest(TestCase):
         response = client.get(f"/a/{self.team.slug}/journal/api/transactions/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual([row["description"] for row in response.data["results"]], ["Kept"])
+
+
+class RecategorizeLineAPITest(TestCase):
+    """The budget Actual popup's "Move to..." accepts any account type."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Recat Team", slug="recat-team")
+        cls.user = CustomUser.objects.create_user(username="recat", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        asset_group = AccountGroup.objects.create(team=cls.team, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        liability_group = AccountGroup.objects.create(team=cls.team, name="Cards", account_type=ACCOUNT_TYPE_LIABILITY)
+        expense_group = AccountGroup.objects.create(team=cls.team, name="Spend", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.checking = Account.objects.create(team=cls.team, name="Checking", account_group=asset_group, has_feed=True)
+        cls.savings = Account.objects.create(team=cls.team, name="Cash Box", account_group=asset_group)
+        cls.card = Account.objects.create(team=cls.team, name="Visa", account_group=liability_group, has_feed=True)
+        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=expense_group)
+
+        other_team = Team.objects.create(name="Other", slug="other-recat")
+        other_group = AccountGroup.objects.create(team=other_team, name="X", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.foreign = Account.objects.create(team=other_team, name="Foreign", account_group=other_group)
+
+    def setUp(self):
+        from apps.bank_feed.models import BankTransaction
+
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.entry = JournalEntry.objects.create(team=self.team, entry_date=date(2026, 9, 1), description="Paid")
+        self.expense_line = JournalLine.objects.create(
+            team=self.team, journal_entry=self.entry, account=self.groceries, dr_amount=Decimal("40.00")
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=self.entry, account=self.checking, cr_amount=Decimal("40.00")
+        )
+        self.bank_tx = BankTransaction.objects.create(
+            team=self.team,
+            account=self.checking,
+            journal_entry=self.entry,
+            amount=Decimal("40.00"),
+            posted_date=date(2026, 9, 1),
+            description="Paid",
+        )
+
+    def _move(self, account_id):
+        url = f"/a/{self.team.slug}/journal/api/lines/{self.expense_line.pk}/recategorize/"
+        return self.client.post(url, {"new_category_id": account_id}, format="json")
+
+    def test_move_to_asset_account(self):
+        response = self._move(self.savings.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.expense_line.refresh_from_db()
+        self.assertEqual(self.expense_line.account, self.savings)
+
+    def test_move_to_feed_account_creates_transfer_mirror(self):
+        from apps.bank_feed.models import BankTransaction
+
+        response = self._move(self.card.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mirror = BankTransaction.objects.get(journal_entry=self.entry, is_transfer_mirror=True)
+        self.assertEqual(mirror.account, self.card)
+        self.assertEqual(mirror.amount, Decimal("-40.00"))
+
+    def test_move_onto_other_side_account_refused(self):
+        response = self._move(self.checking.pk)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.expense_line.refresh_from_db()
+        self.assertEqual(self.expense_line.account, self.groceries)
+
+    def test_other_team_account_not_found(self):
+        response = self._move(self.foreign.pk)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.expense_line.refresh_from_db()
+        self.assertEqual(self.expense_line.account, self.groceries)

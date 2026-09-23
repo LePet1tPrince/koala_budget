@@ -41,12 +41,9 @@ const ActualTooltip = ({
     return () => window.removeEventListener('transaction-moved', handleTransactionMoved);
   }, [categoryId]);
 
-  // Filter accounts to show only expense/income categories (exclude current category)
+  // Every account type, grouped Expense → Income → Transfer → Goal (current category excluded)
   const categoryOptions = useMemo(() => {
-    return buildCategoryOptions(allAccounts, {
-      excludeId: parseInt(categoryId),
-      filterTypes: ['expense', 'income'],
-    });
+    return buildCategoryOptions(allAccounts, { excludeId: parseInt(categoryId) });
   }, [allAccounts, categoryId]);
 
   const fetchTransactions = async () => {
@@ -102,11 +99,12 @@ const ActualTooltip = ({
         setUndoInfo({ lineId, fromCategoryId: parseInt(categoryId), toCategoryId: parseInt(newCategoryId), amount: movedAmount, transaction: removedTx });
         setSnackbar({ open: true, message: `${formatCurrency(Math.abs(movedAmount))} ${gettext('recategorized to')} ${destName}`, severity: 'success' });
       } else {
-        throw new Error('Failed to recategorize');
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || gettext('Failed to recategorize'));
       }
     } catch (error) {
       console.error('Failed to recategorize:', error);
-      setSnackbar({ open: true, message: gettext('Failed to recategorize'), severity: 'error' });
+      setSnackbar({ open: true, message: error.message || gettext('Failed to recategorize'), severity: 'error' });
     }
   };
 
@@ -208,6 +206,8 @@ const ActualTooltip = ({
                     // through. The API leaves it null when the entry has more than two lines, i.e.
                     // a split, where there is no single other side to name.
                     const accountName = tx.category_name || tx.categoryName || gettext('Split');
+                    // Not the account the money moved through — the entry would cancel itself out.
+                    const moveOptions = categoryOptions.filter((o) => o.id !== tx.category);
                     return (
                       <tr key={lineId}>
                         <td className="whitespace-nowrap">{formatWeekDayDate(new Date(tx.date))}</td>
@@ -224,7 +224,7 @@ const ActualTooltip = ({
                             size="sm"
                             value={null}
                             onChange={(option) => option && handleRecategorize(lineId, option.id)}
-                            options={categoryOptions}
+                            options={moveOptions}
                             getGroup={(option) => option.groupLabel}
                             placeholder={gettext('Move to...')}
                             ariaLabel={gettext('Move to...')}
