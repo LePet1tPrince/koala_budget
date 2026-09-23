@@ -5,8 +5,9 @@ Views for accounts app.
 import json
 from urllib.parse import urlencode
 
+from django.contrib import messages
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, ProtectedError
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -18,6 +19,8 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, T
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
+from apps.journal.models import JournalEntry, JournalLine
+from apps.onboarding.services.opening import OPENING_DESCRIPTION
 from apps.teams.decorators import login_and_team_required
 from apps.teams.mixins import LoginAndTeamRequiredMixin
 
@@ -308,14 +311,72 @@ class AccountDeleteView(AccountViewMixin, DeleteView):
     def dispatch(self, request, *args, **kwargs):
         obj = self.get_object()
         if obj.is_system:
-            from django.contrib import messages
-
             messages.error(request, _("System accounts cannot be deleted."))
             return redirect(obj.get_absolute_url())
         return super().dispatch(request, *args, **kwargs)
 
     def get_success_url(self):
         return reverse("accounts:accounts_home", args=[self.request.team.slug])
+
+    def _blocking_journal_entries(self, account):
+        """
+        Journal entries referencing this account that are *not* its own opening
+        balance -- real activity the user needs to know about before it's gone.
+
+        An opening balance entry is exactly the shape `create_opening_balances`
+        writes: two lines, one on this account and the other on the team's system
+        equity offset. Anything else -- a categorized transaction, a transfer leg,
+        a split -- blocks the delete rather than being silently discarded.
+        """
+        entry_ids = JournalLine.objects.filter(account=account).values_list("journal_entry_id", flat=True).distinct()
+        entries = JournalEntry.objects.filter(pk__in=entry_ids).prefetch_related("lines__account__account_group")
+
+        opening_ids = []
+        blocking = []
+        for entry in entries:
+            lines = list(entry.lines.all())
+            other_lines = [line for line in lines if line.account_id != account.id]
+            is_opening = (
+                len(lines) == 2
+                and len(other_lines) == 1
+                and str(entry.description).startswith(str(OPENING_DESCRIPTION))
+                and other_lines[0].account.is_system
+                and other_lines[0].account.account_group.account_type == ACCOUNT_TYPE_EQUITY
+            )
+            if is_opening:
+                opening_ids.append(entry.pk)
+            else:
+                blocking.append(entry)
+
+        return opening_ids, blocking
+
+    def form_valid(self, form):
+        self.object = self.get_object()
+        success_url = self.get_success_url()
+
+        opening_entry_ids, blocking_entries = self._blocking_journal_entries(self.object)
+        if blocking_entries:
+            messages.error(
+                self.request,
+                _('"%(name)s" has transactions and can\'t be deleted. Recategorize or delete its transactions first.')
+                % {"name": self.object.name},
+            )
+            return redirect(self.object.get_absolute_url())
+
+        try:
+            with transaction.atomic():
+                if opening_entry_ids:
+                    JournalEntry.objects.filter(pk__in=opening_entry_ids).delete()
+                self.object.delete()
+        except ProtectedError:
+            messages.error(
+                self.request,
+                _('"%(name)s" has transactions and can\'t be deleted. Recategorize or delete its transactions first.')
+                % {"name": self.object.name},
+            )
+            return redirect(self.object.get_absolute_url())
+
+        return redirect(success_url)
 
 
 # Payee Views

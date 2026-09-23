@@ -3,10 +3,15 @@ Tests for accounts app.
 Tests models, views, forms, and API endpoints.
 """
 
+from datetime import date
+from decimal import Decimal
+
 from django.db import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
 
+from apps.journal.models import JournalEntry, JournalLine
+from apps.onboarding.services.opening import OpeningRow, create_opening_balances
 from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN, ROLE_MEMBER
@@ -15,6 +20,7 @@ from apps.users.models import CustomUser
 from .forms import AccountForm, AccountGroupForm, PayeeForm
 from .models import (
     ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_EQUITY,
     ACCOUNT_TYPE_EXPENSE,
     Account,
     AccountGroup,
@@ -729,6 +735,67 @@ class AccountRedirectTest(TestCase):
         self.assertEqual(response.status_code, 302)
         home_url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
         self.assertRedirects(response, home_url, fetch_redirect_response=False)
+
+    def test_delete_view_removes_opening_balance_and_account(self):
+        """An account whose only journal activity is its own opening balance can be deleted."""
+        equity_group = AccountGroup.objects.create(
+            team=self.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY, is_system=True
+        )
+        Account.objects.create(
+            team=self.team, name="Reconciliation Adjustments", account_group=equity_group, is_system=True
+        )
+        account_to_delete = Account.objects.create(team=self.team, name="Savings", account_group=self.account_group)
+        create_opening_balances(
+            self.team, [OpeningRow(account=account_to_delete, amount=Decimal("100.00"))], date.today()
+        )
+        self.assertTrue(JournalLine.objects.filter(account=account_to_delete).exists())
+
+        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
+        response = self.client.post(url)
+
+        home_url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        self.assertRedirects(response, home_url, fetch_redirect_response=False)
+        self.assertFalse(Account.objects.filter(pk=account_to_delete.pk).exists())
+        self.assertFalse(JournalLine.objects.filter(account_id=account_to_delete.pk).exists())
+
+    def test_delete_view_blocks_account_with_real_transactions(self):
+        """An account with a real (non-opening-balance) transaction cannot be deleted."""
+        account_to_delete = Account.objects.create(team=self.team, name="Savings", account_group=self.account_group)
+        expense_group = AccountGroup.objects.create(
+            team=self.team, name="Groceries Group", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        expense_account = Account.objects.create(team=self.team, name="Groceries", account_group=expense_group)
+        entry = JournalEntry.objects.create(
+            team=self.team,
+            entry_date=date.today(),
+            description="Grocery run",
+            status=JournalEntry.STATUS_POSTED,
+        )
+        JournalLine.objects.create(
+            team=self.team,
+            journal_entry=entry,
+            account=account_to_delete,
+            dr_amount=Decimal("0"),
+            cr_amount=Decimal("50.00"),
+        )
+        JournalLine.objects.create(
+            team=self.team,
+            journal_entry=entry,
+            account=expense_account,
+            dr_amount=Decimal("50.00"),
+            cr_amount=Decimal("0"),
+        )
+
+        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
+        response = self.client.post(url, follow=True)
+
+        detail_url = reverse(
+            "accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk}
+        )
+        self.assertRedirects(response, detail_url)
+        self.assertTrue(Account.objects.filter(pk=account_to_delete.pk).exists())
+        messages_list = list(response.context["messages"])
+        self.assertTrue(any("can't be deleted" in str(m) for m in messages_list))
 
 
 class AccountsBoardApiTest(TestCase):
