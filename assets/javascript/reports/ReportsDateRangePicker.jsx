@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { endOfMonth, format, startOfMonth } from 'date-fns';
+import { format, startOfMonth, startOfYear } from 'date-fns';
 
 import DateRangePicker from '../common/DateRangePicker';
 import { createRoot } from 'react-dom/client';
 
 // Component that integrates with URL parameters
-const DateRangePickerWrapper = () => {
+const DateRangePickerWrapper = ({ defaultRange }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -36,23 +36,26 @@ const DateRangePickerWrapper = () => {
       setStartDate(urlStartDate);
       setEndDate(urlEndDate);
     } else {
-      // Set default to current month and auto-load report
+      // No params: this is exactly the range the server already rendered the
+      // page with (see the matching default in the view -- start of month, or
+      // start of year on the account page, through today), so just reflect it
+      // in the URL instead of navigating -- a real reload here would throw
+      // away anything already on the page, including a just-shown message popup.
       const now = new Date();
-      const startOfCurrentMonth = startOfMonth(now);
-      const endOfCurrentMonth = endOfMonth(now);
-
-      const defaultStart = format(startOfCurrentMonth, 'yyyy-MM-dd');
-      const defaultEnd = format(endOfCurrentMonth, 'yyyy-MM-dd');
+      const rangeStart = defaultRange === 'year' ? startOfYear(now) : startOfMonth(now);
+      const defaultStart = format(rangeStart, 'yyyy-MM-dd');
+      const defaultEnd = format(now, 'yyyy-MM-dd');
 
       setStartDate(defaultStart);
       setEndDate(defaultEnd);
 
-      // Auto-load report with default dates
-      setTimeout(() => {
-        handleDateRangeApply(defaultStart, defaultEnd);
-      }, 100); // Small delay to ensure component is mounted
+      const url = new URL(window.location);
+      url.searchParams.set('start_date', defaultStart);
+      url.searchParams.set('end_date', defaultEnd);
+      url.searchParams.delete('period');
+      window.history.replaceState({}, '', url.toString());
     }
-  }, [handleDateRangeApply]);
+  }, [defaultRange]);
 
   return (
     <DateRangePicker
@@ -63,11 +66,12 @@ const DateRangePickerWrapper = () => {
   );
 };
 
-// Mount the React app
+// Mount the React app. `data-default-range="year"` on the mount point opts a
+// page into a this-year default instead of the usual this-month one.
 const el = document.getElementById('date-range-picker');
 
 if (!el) {
   console.warn('Date range picker mount point not found');
 } else {
-  createRoot(el).render(<DateRangePickerWrapper />);
+  createRoot(el).render(<DateRangePickerWrapper defaultRange={el.dataset.defaultRange || 'month'} />);
 }

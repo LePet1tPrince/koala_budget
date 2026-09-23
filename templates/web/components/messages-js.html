@@ -6,5 +6,10 @@
           $notification.parentNode.removeChild($notification);
         });
       });
+      (document.querySelectorAll('dialog.message-modal') || []).forEach(($dialog) => {
+        if (typeof $dialog.showModal === 'function') {
+          $dialog.showModal();
+        }
+      });
     });
 </script>

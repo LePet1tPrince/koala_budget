@@ -5,8 +5,9 @@ Views for accounts app.
 import json
 from urllib.parse import urlencode
 
+from django.contrib import messages
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, ProtectedError
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -18,6 +19,8 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, T
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
+from apps.journal.models import JournalEntry, JournalLine
+from apps.onboarding.services.opening import OPENING_DESCRIPTION
 from apps.reconciliation import presenters
 from apps.reconciliation.services.signs import is_reconcilable
 from apps.teams.decorators import login_and_team_required
@@ -271,13 +274,15 @@ class AccountDetailView(AccountViewMixin, DetailView):
         context["journal_lines"] = self.object.journal_lines.all()
 
         # Activity section (same components as the reports drill-down):
-        # date range from ?start_date/?end_date, defaulting to the current month.
+        # date range from ?start_date/?end_date, defaulting to this year --
+        # matches the "year" default the date-range picker sets client-side
+        # (data-default-range="year" on account_detail.html).
         try:
             start_date = datetime.strptime(self.request.GET.get("start_date", ""), "%Y-%m-%d").date()
             end_date = datetime.strptime(self.request.GET.get("end_date", ""), "%Y-%m-%d").date()
         except ValueError:
             today = date.today()
-            start_date = today.replace(day=1)
+            start_date = today.replace(month=1, day=1)
             end_date = today
 
         service = ReportService(self.request.team)
@@ -309,19 +314,89 @@ class AccountUpdateView(AccountViewMixin, UpdateView):
 
 
 class AccountDeleteView(AccountViewMixin, DeleteView):
-    """Delete an account."""
+    """
+    Delete an account.
+
+    Confirmation is a dialog on the account detail page, not a separate page --
+    this view only ever handles the POST it submits. A GET (a stale bookmark,
+    a direct hit) has nothing to render, so it just bounces back to the detail
+    page rather than serving the old standalone confirm page.
+    """
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        return redirect(self.object.get_absolute_url())
 
     def dispatch(self, request, *args, **kwargs):
         obj = self.get_object()
         if obj.is_system:
-            from django.contrib import messages
-
             messages.error(request, _("System accounts cannot be deleted."))
             return redirect(obj.get_absolute_url())
         return super().dispatch(request, *args, **kwargs)
 
     def get_success_url(self):
         return reverse("accounts:accounts_home", args=[self.request.team.slug])
+
+    def _blocking_journal_entries(self, account):
+        """
+        Journal entries referencing this account that are *not* its own opening
+        balance -- real activity the user needs to know about before it's gone.
+
+        An opening balance entry is exactly the shape `create_opening_balances`
+        writes: two lines, one on this account and the other on the team's system
+        equity offset. Anything else -- a categorized transaction, a transfer leg,
+        a split -- blocks the delete rather than being silently discarded.
+        """
+        entry_ids = JournalLine.objects.filter(account=account).values_list("journal_entry_id", flat=True).distinct()
+        entries = JournalEntry.objects.filter(pk__in=entry_ids).prefetch_related("lines__account__account_group")
+
+        opening_ids = []
+        blocking = []
+        for entry in entries:
+            lines = list(entry.lines.all())
+            other_lines = [line for line in lines if line.account_id != account.id]
+            is_opening = (
+                len(lines) == 2
+                and len(other_lines) == 1
+                and str(entry.description).startswith(str(OPENING_DESCRIPTION))
+                and other_lines[0].account.is_system
+                and other_lines[0].account.account_group.account_type == ACCOUNT_TYPE_EQUITY
+            )
+            if is_opening:
+                opening_ids.append(entry.pk)
+            else:
+                blocking.append(entry)
+
+        return opening_ids, blocking
+
+    def _warn_has_transactions(self):
+        # extra_tags="modal" -- messages.html renders this as a dialog popup
+        # instead of the auto-dismissing toast, since it needs to actually be read.
+        messages.error(
+            self.request,
+            _("Please delete all associated transactions before deleting an account."),
+            extra_tags="modal",
+        )
+
+    def form_valid(self, form):
+        self.object = self.get_object()
+        success_url = self.get_success_url()
+
+        opening_entry_ids, blocking_entries = self._blocking_journal_entries(self.object)
+        if blocking_entries:
+            self._warn_has_transactions()
+            return redirect(self.object.get_absolute_url())
+
+        try:
+            with transaction.atomic():
+                if opening_entry_ids:
+                    JournalEntry.objects.filter(pk__in=opening_entry_ids).delete()
+                self.object.delete()
+        except ProtectedError:
+            self._warn_has_transactions()
+            return redirect(self.object.get_absolute_url())
+
+        return redirect(success_url)
 
 
 # Payee Views

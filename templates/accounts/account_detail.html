@@ -15,9 +15,9 @@
       <a href="{% url 'accounts:account_update' request.team.slug account.pk %}" class="btn btn-primary">
         {% translate "Edit" %}
       </a>
-      <a href="{% url 'accounts:account_delete' request.team.slug account.pk %}" class="btn btn-outline btn-error">
+      <button type="button" id="delete-account-btn" class="btn btn-outline btn-error" data-testid="delete-account-btn">
         {% translate "Delete" %}
-      </a>
+      </button>
     </div>
   </div>
   <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -103,10 +103,47 @@
       </p>
       {% endif %}
     </div>
-    <div id="date-range-picker"></div>
+    <div id="date-range-picker" data-default-range="year"></div>
   </div>
   {% include "reports/components/account_activity_section.html" %}
 </section>
+
+<dialog id="delete-account-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg">{% translate "Delete Account" %}</h3>
+    <p class="py-4">
+      {% blocktranslate with name=account.name trimmed %}
+        Are you sure you want to delete "{{ name }}"?
+      {% endblocktranslate %}
+    </p>
+    <div class="modal-action">
+      <form method="dialog">
+        <button class="btn">{% translate "Cancel" %}</button>
+      </form>
+      <form method="post" action="{% url 'accounts:account_delete' request.team.slug account.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline btn-error" data-testid="confirm-delete-btn">
+          {% translate "Delete" %}
+        </button>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>{% translate "close" %}</button>
+  </form>
+</dialog>
+
+<script>
+  (function () {
+    const openBtn = document.getElementById('delete-account-btn');
+    const modal = document.getElementById('delete-account-modal');
+    if (openBtn && modal) {
+      openBtn.addEventListener('click', function () {
+        modal.showModal();
+      });
+    }
+  })();
+</script>
 {% endblock %}
 
 {% block page_js %}
