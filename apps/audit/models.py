@@ -50,6 +50,9 @@ class AuditEvent(models.Model):
     DATA_EXPORTED = "data_exported"
     DATA_WIPED = "data_wiped"
     DATA_IMPORTED = "data_imported"
+    RECONCILIATION_STARTED = "reconciliation_started"
+    RECONCILIATION_COMPLETED = "reconciliation_completed"
+    RECONCILIATION_UNDONE = "reconciliation_undone"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -91,6 +94,9 @@ class AuditEvent(models.Model):
         (DATA_EXPORTED, "Data Exported"),
         (DATA_WIPED, "Data Wiped"),
         (DATA_IMPORTED, "Data Imported"),
+        (RECONCILIATION_STARTED, "Reconciliation Started"),
+        (RECONCILIATION_COMPLETED, "Reconciliation Completed"),
+        (RECONCILIATION_UNDONE, "Reconciliation Undone"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)

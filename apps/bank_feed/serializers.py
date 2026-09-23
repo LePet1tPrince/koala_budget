@@ -152,24 +152,6 @@ class BatchEditRequestSerializer(BatchIdsSerializer):
     )
 
 
-class BatchReconcileRequestSerializer(BatchIdsSerializer):
-    """Serializer for batch reconcile request."""
-
-    adjustment_amount = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        required=False,
-        default=0,
-        help_text="Optional adjustment amount to create if balance doesn't match",
-    )
-    reconciliation_date = serializers.DateField(
-        required=False,
-        allow_null=True,
-        default=None,
-        help_text="Date for the reconciliation adjustment transaction (defaults to today)",
-    )
-
-
 class CategorySuggestionSerializer(serializers.Serializer):
     """A suggested category for a merchant, based on how it was last categorized."""
 

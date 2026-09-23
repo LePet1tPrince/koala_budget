@@ -28,6 +28,7 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import Account
 from apps.journal.models import JournalLine
+from apps.reconciliation.services.guards import assert_line_mutable, assert_line_removable
 
 #: A split with one leg is a plain transaction; offer "remove split" instead.
 MIN_LEGS = 2
@@ -157,26 +158,47 @@ def apply_splits(bank_tx, legs, *, total):
         raise SplitError(_("This transaction's ledger entry cannot be split automatically."))
     bank_line = bank_lines[0]
 
+    # Match each leg to an existing category line on the same account (same
+    # amount first), so an unchanged leg is left exactly as it is. That matters
+    # for a transfer: its "category" line is the *other* feed's bank line, which
+    # carries that feed's reconciliation -- deleting and recreating it silently
+    # unreconciled the other side of every transfer edited from this one.
+    remaining = [line for line in existing if line.id != bank_line.id]
+    plan = []
+    for account, amount in legs:
+        match = next(
+            (line for line in remaining if line.account_id == account.id and signed_amount(line) == amount), None
+        ) or next((line for line in remaining if line.account_id == account.id), None)
+        if match is not None:
+            remaining.remove(match)
+        plan.append((match, account, amount))
+
+    # Refuse before writing anything: a reconciled line may be neither dropped
+    # nor re-amounted.
+    for line in remaining:
+        assert_line_removable(line, own=False, verb=_("changing its category"))
+    for match, _account, amount in plan:
+        if match is not None:
+            assert_line_mutable(match, new_amount=amount, own=False)
+
     # The bank line takes the opposite side of the total.
     bank_line.dr_amount = -total if total < 0 else Decimal("0")
     bank_line.cr_amount = total if total > 0 else Decimal("0")
     bank_line.save()
 
-    # Replace the category lines. They carry no state the user set -- only the
-    # bank line does -- so recreating them is safe, and it keeps this function
-    # independent of how many legs the entry had before.
-    for line in existing:
-        if line.id != bank_line.id:
-            line.delete()
+    for line in remaining:
+        line.delete()
 
-    for account, amount in legs:
-        JournalLine.objects.create(
-            journal_entry=entry,
-            team=bank_tx.team,
-            account=account,
-            dr_amount=amount if amount > 0 else Decimal("0"),
-            cr_amount=-amount if amount < 0 else Decimal("0"),
-        )
+    for match, account, amount in plan:
+        dr = amount if amount > 0 else Decimal("0")
+        cr = -amount if amount < 0 else Decimal("0")
+        if match is None:
+            JournalLine.objects.create(
+                journal_entry=entry, team=bank_tx.team, account=account, dr_amount=dr, cr_amount=cr
+            )
+        elif (match.dr_amount, match.cr_amount) != (dr, cr):
+            match.dr_amount, match.cr_amount = dr, cr
+            match.save()
 
     return entry
 

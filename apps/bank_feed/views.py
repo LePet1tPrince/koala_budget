@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Count, F, Max
 from django.http import HttpResponse
 from django.shortcuts import render
-from django.utils import timezone
+from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -27,6 +27,12 @@ from apps.accounts.serializers import (
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.journal.models import JournalEntry, JournalLine
+from apps.reconciliation.services.guards import (
+    ReconciledLineError,
+    assert_date_change_allowed,
+    assert_entry_removable,
+    assert_line_mutable,
+)
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
@@ -35,7 +41,6 @@ from .serializers import (
     BankFeedRowSerializer,
     BatchEditRequestSerializer,
     BatchIdsSerializer,
-    BatchReconcileRequestSerializer,
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
     FeedAccountSerializer,
@@ -675,6 +680,23 @@ class BankFeedViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # The rest of what can change a reconciled line: moving it to another
+        # account, re-dating it past its statement, or dropping the other side of
+        # a transfer by de-categorizing. `apply_splits` guards the legs themselves.
+        try:
+            entry = bank_tx.journal_entry
+            if entry is not None:
+                if bank_account.id != bank_tx.account_id:
+                    for line in entry.lines.filter(account=bank_tx.account):
+                        assert_line_mutable(line, new_account=bank_account)
+                assert_date_change_allowed(entry, data["date"])
+                if category_account is None and data.get("splits") is None:
+                    assert_entry_removable(
+                        entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category")
+                    )
+        except ReconciledLineError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         # Get or create payee if provided
         payee = None
         payee_name = data.get("payee", "")
@@ -684,77 +706,82 @@ class BankFeedViewSet(
                 name=payee_name,
             )
 
-        with transaction.atomic():
-            # Remember the original bank account so we can still identify the bank-side
-            # journal line after the account is reassigned
-            old_account = bank_tx.account
+        try:
+            with transaction.atomic():
+                # Remember the original bank account so we can still identify the bank-side
+                # journal line after the account is reassigned
+                old_account = bank_tx.account
 
-            # Update bank transaction
-            bank_tx.account = bank_account
-            bank_tx.amount = amount
-            bank_tx.posted_date = data["date"]
-            bank_tx.description = data.get("description", "")
-            bank_tx.merchant_name = payee_name
-            bank_tx.save()
-
-            # Update, create, or remove the journal entry depending on the category.
-            # `apply_splits` writes the lines in every case -- a plain transaction is
-            # just a split with one leg -- so there is one place that decides which
-            # side of a line an amount lands on, and one place that checks the
-            # entry balances.
-            journal_entry = bank_tx.journal_entry
-            entry_legs = legs if legs is not None else [(category_account, amount)]
-
-            if category_account is None and legs is None:
-                # Blank category: leave the transaction uncategorized. Drop any
-                # existing journal entry (and its mirror leg) so it disappears from
-                # balances and reappears as an uncategorized feed row.
-                if journal_entry is not None:
-                    self._decategorize(bank_tx)
-            elif journal_entry:
-                # Update existing journal entry
-                journal_entry.entry_date = data["date"]
-                journal_entry.description = data.get("description", "")
-                journal_entry.payee = payee
-                journal_entry.save()
-
-                # Follow an account move before the lines are rewritten: everything
-                # below finds the bank line by the transaction's *current* account.
-                # Saved one at a time rather than through `QuerySet.update()` so the
-                # audit signals fire.
-                if old_account != bank_account:
-                    for line in journal_entry.lines.filter(account=old_account):
-                        line.account = bank_account
-                        line.save()
-
-                apply_splits(bank_tx, entry_legs, total=amount)
-            else:
-                # Create the entry with a placeholder bank line; `apply_splits`
-                # immediately gives it the right side and amount.
-                journal_entry = JournalEntry.objects.create(
-                    team=request.team,
-                    entry_date=data["date"],
-                    description=data.get("description", ""),
-                    payee=payee,
-                    source=JournalEntry.SOURCE_MANUAL,
-                    status=JournalEntry.STATUS_POSTED,
-                )
-                JournalLine.objects.create(
-                    journal_entry=journal_entry,
-                    team=request.team,
-                    account=bank_account,
-                    dr_amount=Decimal("0"),
-                    cr_amount=Decimal("0"),
-                )
-
-                bank_tx.journal_entry = journal_entry
+                # Update bank transaction
+                bank_tx.account = bank_account
+                bank_tx.amount = amount
+                bank_tx.posted_date = data["date"]
+                bank_tx.description = data.get("description", "")
+                bank_tx.merchant_name = payee_name
                 bank_tx.save()
 
-                apply_splits(bank_tx, entry_legs, total=amount)
+                # Update, create, or remove the journal entry depending on the category.
+                # `apply_splits` writes the lines in every case -- a plain transaction is
+                # just a split with one leg -- so there is one place that decides which
+                # side of a line an amount lands on, and one place that checks the
+                # entry balances.
+                journal_entry = bank_tx.journal_entry
+                entry_legs = legs if legs is not None else [(category_account, amount)]
 
-            # Keep the transfer's two legs in lockstep — moves/creates/removes the
-            # counterpart leg and syncs its display fields, in either direction.
-            sync_transfer(bank_tx)
+                if category_account is None and legs is None:
+                    # Blank category: leave the transaction uncategorized. Drop any
+                    # existing journal entry (and its mirror leg) so it disappears from
+                    # balances and reappears as an uncategorized feed row.
+                    if journal_entry is not None:
+                        self._decategorize(bank_tx)
+                elif journal_entry:
+                    # Update existing journal entry
+                    journal_entry.entry_date = data["date"]
+                    journal_entry.description = data.get("description", "")
+                    journal_entry.payee = payee
+                    journal_entry.save()
+
+                    # Follow an account move before the lines are rewritten: everything
+                    # below finds the bank line by the transaction's *current* account.
+                    # Saved one at a time rather than through `QuerySet.update()` so the
+                    # audit signals fire.
+                    if old_account != bank_account:
+                        for line in journal_entry.lines.filter(account=old_account):
+                            line.account = bank_account
+                            line.save()
+
+                    apply_splits(bank_tx, entry_legs, total=amount)
+                else:
+                    # Create the entry with a placeholder bank line; `apply_splits`
+                    # immediately gives it the right side and amount.
+                    journal_entry = JournalEntry.objects.create(
+                        team=request.team,
+                        entry_date=data["date"],
+                        description=data.get("description", ""),
+                        payee=payee,
+                        source=JournalEntry.SOURCE_MANUAL,
+                        status=JournalEntry.STATUS_POSTED,
+                    )
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        team=request.team,
+                        account=bank_account,
+                        dr_amount=Decimal("0"),
+                        cr_amount=Decimal("0"),
+                    )
+
+                    bank_tx.journal_entry = journal_entry
+                    bank_tx.save()
+
+                    apply_splits(bank_tx, entry_legs, total=amount)
+
+                # Keep the transfer's two legs in lockstep — moves/creates/removes the
+                # counterpart leg and syncs its display fields, in either direction.
+                sync_transfer(bank_tx)
+
+        except ValueError as e:
+            # A reconciled leg `apply_splits` refused to drop or re-amount.
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Reload to get updated data
         bank_tx.refresh_from_db()
@@ -1277,65 +1304,20 @@ class BankFeedViewSet(
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-        with transaction.atomic():
-            for tx in transactions:
-                # --- Category ---
-                if category_account is not None:
-                    if tx.journal_entry:
-                        self._update_journal_category(tx, category_account)
-                    else:
-                        self._create_journal_from_bank_transaction(
-                            transaction_id=tx.id,
-                            category_account=category_account,
-                            team=request.team,
-                        )
-                        tx.refresh_from_db()
+        if new_date is not None:
+            try:
+                for tx in transactions:
+                    assert_date_change_allowed(tx.journal_entry, new_date)
+            except ReconciledLineError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-                # --- Move account ---
-                if target_account is not None:
-                    # Reconciled transactions cannot be moved to another account
-                    is_reconciled = (
-                        tx.journal_entry
-                        and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
-                    )
-                    if not is_reconciled:
-                        old_account = tx.account
-                        tx.account = target_account
-                        if tx.journal_entry:
-                            for line in tx.journal_entry.lines.all():
-                                if line.account == old_account:
-                                    line.account = target_account
-                                    line.save()
-                                    break
-
-                # --- Payee ---
-                if payee_name is not None:
-                    tx.merchant_name = payee_name
-                    if tx.journal_entry:
-                        tx.journal_entry.payee = payee_obj
-                        tx.journal_entry.save()
-
-                # --- Description ---
-                if description is not None:
-                    tx.description = description
-                    if tx.journal_entry:
-                        tx.journal_entry.description = description
-                        tx.journal_entry.save()
-
-                # --- Date ---
-                if new_date is not None:
-                    tx.posted_date = new_date
-                    if tx.journal_entry:
-                        tx.journal_entry.entry_date = new_date
-                        tx.journal_entry.save()
-                        # Re-save lines so their auto-linked budget follows the new month
-                        for line in tx.journal_entry.lines.all():
-                            line.save()
-
-                tx.save()
-
-                # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
-                sync_transfer(tx)
+        try:
+            self._apply_batch_edit(
+                transactions, category_account, target_account, payee_name, payee_obj, description, new_date, request
+            )
+        except ValueError as e:
+            # Raised inside the atomic block, so nothing in the batch was written.
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         log_event(
             AuditEvent.BULK_EDIT,
@@ -1348,6 +1330,69 @@ class BankFeedViewSet(
             },
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @transaction.atomic
+    def _apply_batch_edit(
+        self, transactions, category_account, target_account, payee_name, payee_obj, description, new_date, request
+    ):
+        """The writes behind `batch_edit`, in one transaction so a refusal rolls back the whole batch."""
+        for tx in transactions:
+            # --- Category ---
+            if category_account is not None:
+                if tx.journal_entry:
+                    self._update_journal_category(tx, category_account)
+                else:
+                    self._create_journal_from_bank_transaction(
+                        transaction_id=tx.id,
+                        category_account=category_account,
+                        team=request.team,
+                    )
+                    tx.refresh_from_db()
+
+            # --- Move account ---
+            if target_account is not None:
+                # Reconciled transactions cannot be moved to another account
+                is_reconciled = (
+                    tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
+                )
+                if not is_reconciled:
+                    old_account = tx.account
+                    tx.account = target_account
+                    if tx.journal_entry:
+                        for line in tx.journal_entry.lines.all():
+                            if line.account == old_account:
+                                line.account = target_account
+                                line.save()
+                                break
+
+            # --- Payee ---
+            if payee_name is not None:
+                tx.merchant_name = payee_name
+                if tx.journal_entry:
+                    tx.journal_entry.payee = payee_obj
+                    tx.journal_entry.save()
+
+            # --- Description ---
+            if description is not None:
+                tx.description = description
+                if tx.journal_entry:
+                    tx.journal_entry.description = description
+                    tx.journal_entry.save()
+
+            # --- Date ---
+            if new_date is not None:
+                tx.posted_date = new_date
+                if tx.journal_entry:
+                    tx.journal_entry.entry_date = new_date
+                    tx.journal_entry.save()
+                    # Re-save lines so their auto-linked budget follows the new month
+                    for line in tx.journal_entry.lines.all():
+                        line.save()
+
+            tx.save()
+
+            # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
+            sync_transfer(tx)
 
     @transaction.atomic
     def _update_journal_category(self, bank_tx, new_category_account):
@@ -1370,6 +1415,8 @@ class BankFeedViewSet(
         # Find the category line (the one that's not the bank account)
         for line in journal_entry.lines.all():
             if line.account != bank_tx.account:
+                # On a transfer this line is the other feed's bank line.
+                assert_line_mutable(line, new_account=new_category_account, own=False)
                 line.account = new_category_account
                 line.save()
                 break
@@ -1388,6 +1435,7 @@ class BankFeedViewSet(
         entry = bank_tx.journal_entry
         if entry is None:
             return
+        assert_entry_removable(entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category"))
 
         # A transfer's counterpart mirror leg only exists to surface the shared
         # entry in the other feed; drop it so it doesn't linger as an orphan.
@@ -1607,176 +1655,6 @@ class BankFeedViewSet(
         rows = [bank_transaction_to_feed_row(tx) for tx in created_transactions]
         response_serializer = BankFeedRowSerializer(rows, many=True)
         return Response(response_serializer.data)
-
-    @extend_schema(
-        operation_id="bank_feed_batch_reconcile",
-        tags=["bank-feed"],
-        request=BatchReconcileRequestSerializer,
-        responses={204: None},
-    )
-    @action(detail=False, methods=["post"], url_path="batch_reconcile")
-    def batch_reconcile(self, request, team_slug=None):
-        """
-        Batch reconcile multiple bank transactions.
-        Sets is_reconciled=True on the JournalLine for the bank account side.
-        Optionally creates an adjustment if adjustment_amount is non-zero.
-        """
-        serializer = BatchReconcileRequestSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        ids = serializer.validated_data["ids"]
-        adjustment_amount = serializer.validated_data.get("adjustment_amount", Decimal("0"))
-        reconciliation_date = serializer.validated_data.get("reconciliation_date") or timezone.localdate()
-
-        # Get transactions that belong to this team
-        transactions = BankTransaction.objects.filter(
-            id__in=ids,
-            team=request.team,
-        ).select_related("account", "journal_entry")
-
-        # Validate: All transactions must be categorized (have journal_entry)
-        uncategorized = [tx for tx in transactions if not tx.journal_entry]
-        if uncategorized:
-            return Response(
-                {
-                    "error": f"Cannot reconcile uncategorized transactions. {len(uncategorized)} transaction(s) need to be categorized first."  # noqa: E501
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not transactions:
-            return Response(status=status.HTTP_204_NO_CONTENT)
-
-        # Reconciliation (and any adjustment) only makes sense against a single account
-        account_ids = {tx.account_id for tx in transactions}
-        if len(account_ids) > 1:
-            return Response(
-                {"error": "All transactions must belong to the same account to reconcile."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        bank_account = transactions[0].account
-
-        with transaction.atomic():
-            # Mark each transaction's bank account journal line as reconciled
-            for tx in transactions:
-                for line in tx.journal_entry.lines.all():
-                    if line.account == tx.account:
-                        line.is_reconciled = True
-                        line.save()
-                        break
-
-            # Create adjustment if needed
-            if adjustment_amount and adjustment_amount != Decimal("0"):
-                self._create_reconciliation_adjustment(
-                    team=request.team,
-                    bank_account=bank_account,
-                    amount=adjustment_amount,
-                    date=reconciliation_date,
-                )
-
-        log_event(AuditEvent.BULK_RECONCILE, request=request, metadata={"count": len(ids)})
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @transaction.atomic
-    def _create_reconciliation_adjustment(self, team, bank_account, amount, date=None):
-        """
-        Create a reconciliation adjustment transaction.
-        Creates a BankTransaction and JournalEntry against the system equity
-        "Reconciliation Adjustments" account. The adjustment is marked as reconciled immediately.
-        """
-        from apps.accounts.models import ACCOUNT_TYPE_EQUITY, AccountGroup
-
-        if date is None:
-            date = timezone.localdate()
-
-        # Find or create the system equity group for reconciliation adjustments
-        equity_group, _ = AccountGroup.objects.get_or_create(
-            team=team,
-            name="Equity Adjustments",
-            defaults={
-                "account_type": ACCOUNT_TYPE_EQUITY,
-                "is_system": True,
-            },
-        )
-        # Ensure existing group is marked system (in case it was created before this field existed)
-        if not equity_group.is_system:
-            equity_group.is_system = True
-            equity_group.save(update_fields=["is_system"])
-
-        # Find or create the system reconciliation adjustments account
-        adjustments_account, _ = Account.objects.get_or_create(
-            team=team,
-            name="Reconciliation Adjustments",
-            defaults={
-                "has_feed": False,
-                "account_group": equity_group,
-                "is_system": True,
-            },
-        )
-        if not adjustments_account.is_system:
-            adjustments_account.is_system = True
-            adjustments_account.save(update_fields=["is_system"])
-
-        # Create the journal entry
-        journal_entry = JournalEntry.objects.create(
-            team=team,
-            entry_date=date,
-            description="Reconciliation Adjustment",
-            source=JournalEntry.SOURCE_BANK_MATCH,
-            status=JournalEntry.STATUS_POSTED,
-        )
-
-        # Determine dr/cr based on sign (positive = increase bank balance)
-        abs_amount = abs(amount)
-        if amount > 0:
-            # Positive adjustment: debit bank account, credit adjustments
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=bank_account,
-                dr_amount=abs_amount,
-                cr_amount=Decimal("0"),
-                is_reconciled=True,
-            )
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=adjustments_account,
-                dr_amount=Decimal("0"),
-                cr_amount=abs_amount,
-            )
-        else:
-            # Negative adjustment: credit bank account, debit adjustments
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=bank_account,
-                dr_amount=Decimal("0"),
-                cr_amount=abs_amount,
-                is_reconciled=True,
-            )
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=adjustments_account,
-                dr_amount=abs_amount,
-                cr_amount=Decimal("0"),
-            )
-
-        # Create the BankTransaction
-        BankTransaction.objects.create(
-            team=team,
-            account=bank_account,
-            amount=-amount if amount > 0 else abs_amount,  # Plaid convention: positive = outflow
-            posted_date=date,
-            description="Reconciliation Adjustment",
-            source=BankTransaction.SOURCE_SYSTEM,
-            journal_entry=journal_entry,
-        )
-
-        return journal_entry
 
     @extend_schema(
         operation_id="bank_feed_batch_unreconcile",

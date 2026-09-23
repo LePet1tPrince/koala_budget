@@ -5,12 +5,19 @@ Handles nested journal entries with lines for double-entry bookkeeping.
 
 from decimal import Decimal
 
+from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.accounts.models import (
     Account,
     Payee,
+)
+from apps.reconciliation.services.guards import (
+    ReconciledLineError,
+    assert_date_change_allowed,
+    assert_entry_removable,
+    assert_line_mutable,
 )
 
 from .models import JournalEntry, JournalLine
@@ -136,6 +143,17 @@ class JournalEntrySerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         """Update journal entry and replace all lines."""
         lines_data = validated_data.pop("lines", None)
+
+        # Replacing the lines deletes and recreates them, which would drop
+        # `is_reconciled` from a line confirmed against a statement; re-dating
+        # past that statement would make it false.
+        try:
+            if lines_data is not None:
+                assert_entry_removable(instance, verb=gettext("replacing its lines"))
+            if "entry_date" in validated_data:
+                assert_date_change_allowed(instance, validated_data["entry_date"])
+        except ReconciledLineError as e:
+            raise serializers.ValidationError(str(e)) from None
 
         # Update journal entry fields
         for attr, value in validated_data.items():
@@ -329,6 +347,20 @@ class SimpleLineSerializer(serializers.Serializer):
         else:
             inflow = instance.dr_amount
             outflow = instance.cr_amount
+
+        # A reconciled line keeps its account, amount and statement period, unless
+        # this same request unreconciles it. The sibling is the other side of a
+        # transfer when both accounts have feeds, and carries its own flag.
+        try:
+            if validated_data.get("is_reconciled", instance.is_reconciled):
+                assert_line_mutable(instance, new_account=account, new_amount=inflow - outflow)
+                assert_date_change_allowed(journal_entry, validated_data.get("date"))
+            if sibling is not None:
+                assert_line_mutable(
+                    sibling, new_account=category or sibling.account, new_amount=outflow - inflow, own=False
+                )
+        except ReconciledLineError as e:
+            raise serializers.ValidationError(str(e)) from None
 
         # Update journal entry fields
         journal_entry.entry_date = validated_data.get("date", journal_entry.entry_date)
