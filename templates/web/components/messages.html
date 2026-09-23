@@ -1,9 +1,27 @@
+{% load i18n %}
 {% load icons %}
 {% if messages %}
   {% for message in messages %}
-    <div class="notification flex w-full justify-between alert {% if message.tags %}alert-{{ message.level_tag }}{% endif %} shadow-md rounded-none! {{ message.extra_tags }} mb-1" >
-      <div>{{ message }}</div>
-      <button class="delete">{% icon "times" class="inline-block shrink-0 w-4 h-4" %}</button>
-    </div>
+    {% if "modal" in message.extra_tags %}
+      <dialog class="modal message-modal">
+        <div class="modal-box">
+          <h3 class="font-bold text-lg">{% translate "Can't Delete" %}</h3>
+          <p class="py-4">{{ message }}</p>
+          <div class="modal-action">
+            <form method="dialog">
+              <button class="btn btn-primary" data-testid="message-modal-ok">{% translate "OK" %}</button>
+            </form>
+          </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button>{% translate "close" %}</button>
+        </form>
+      </dialog>
+    {% else %}
+      <div class="notification flex w-full justify-between alert {% if message.tags %}alert-{{ message.level_tag }}{% endif %} shadow-md rounded-none! {{ message.extra_tags }} mb-1" >
+        <div>{{ message }}</div>
+        <button class="delete">{% icon "times" class="inline-block shrink-0 w-4 h-4" %}</button>
+      </div>
+    {% endif %}
   {% endfor %}
 {% endif %}

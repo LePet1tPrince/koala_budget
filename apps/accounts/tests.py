@@ -795,7 +795,8 @@ class AccountRedirectTest(TestCase):
         self.assertRedirects(response, detail_url)
         self.assertTrue(Account.objects.filter(pk=account_to_delete.pk).exists())
         messages_list = list(response.context["messages"])
-        self.assertTrue(any("can't be deleted" in str(m) for m in messages_list))
+        self.assertTrue(any("Please delete all associated transactions" in str(m) for m in messages_list))
+        self.assertTrue(any("modal" in m.extra_tags for m in messages_list))
 
 
 class AccountsBoardApiTest(TestCase):

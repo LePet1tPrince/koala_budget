@@ -350,17 +350,22 @@ class AccountDeleteView(AccountViewMixin, DeleteView):
 
         return opening_ids, blocking
 
+    def _warn_has_transactions(self):
+        # extra_tags="modal" -- messages.html renders this as a dialog popup
+        # instead of the auto-dismissing toast, since it needs to actually be read.
+        messages.error(
+            self.request,
+            _("Please delete all associated transactions before deleting an account."),
+            extra_tags="modal",
+        )
+
     def form_valid(self, form):
         self.object = self.get_object()
         success_url = self.get_success_url()
 
         opening_entry_ids, blocking_entries = self._blocking_journal_entries(self.object)
         if blocking_entries:
-            messages.error(
-                self.request,
-                _('"%(name)s" has transactions and can\'t be deleted. Recategorize or delete its transactions first.')
-                % {"name": self.object.name},
-            )
+            self._warn_has_transactions()
             return redirect(self.object.get_absolute_url())
 
         try:
@@ -369,11 +374,7 @@ class AccountDeleteView(AccountViewMixin, DeleteView):
                     JournalEntry.objects.filter(pk__in=opening_entry_ids).delete()
                 self.object.delete()
         except ProtectedError:
-            messages.error(
-                self.request,
-                _('"%(name)s" has transactions and can\'t be deleted. Recategorize or delete its transactions first.')
-                % {"name": self.object.name},
-            )
+            self._warn_has_transactions()
             return redirect(self.object.get_absolute_url())
 
         return redirect(success_url)
