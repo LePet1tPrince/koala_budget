@@ -18,7 +18,7 @@
 
   {# Inbox: expands to the individual bank-feed accounts (assets, then liabilities). #}
   <div x-data="{ open: {% if active_tab == 'bank-feed' %}true{% else %}false{% endif %} }" class="flex flex-col">
-    <div class="flex items-center">
+    <div class="side-row">
       <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug %}"
          class="side-link flex-1 {% if active_tab == 'bank-feed' %}side-link-active{% endif %}">
         {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
@@ -27,7 +27,7 @@
           <span class="ml-auto badge badge-sm badge-soft badge-warning" data-testid="inbox-count">{{ inbox_count }}</span>
         {% endif %}
       </a>
-      {% if nav_bank_accounts or nav_credit_cards %}
+      {% if nav_feed_institutions %}
         <button type="button" @click="open = !open" class="side-link-toggle" data-testid="nav-inbox-toggle"
                 :aria-expanded="open.toString()" aria-label="{% translate 'Toggle Inbox accounts' %}">
           <span :class="open ? 'rotate-90' : ''" class="inline-block transition-transform">
@@ -36,21 +36,21 @@
         </button>
       {% endif %}
     </div>
-    {% if nav_bank_accounts or nav_credit_cards %}
+    {% if nav_feed_institutions %}
       <div x-show="open" x-cloak class="flex flex-col gap-0.5">
-        {% for account in nav_bank_accounts %}
-          <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug %}?account={{ account.id }}"
-             class="side-link side-link-sub" data-testid="nav-inbox-account-{{ account.id }}">
-            {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
-            <span class="truncate">{{ account.name }}</span>
-          </a>
-        {% endfor %}
-        {% for account in nav_credit_cards %}
-          <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug %}?account={{ account.id }}"
-             class="side-link side-link-sub" data-testid="nav-inbox-account-{{ account.id }}">
-            {% icon "credit-card" class="inline-block shrink-0 w-4 h-4" %}
-            <span class="truncate">{{ account.name }}</span>
-          </a>
+        {% for institution in nav_feed_institutions %}
+          <div class="side-sublabel">{% if institution.name %}{{ institution.name }}{% else %}{% translate "Other" %}{% endif %}</div>
+          {% for account in institution.accounts %}
+            <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug %}?account={{ account.id }}"
+               class="side-link side-link-sub" data-testid="nav-inbox-account-{{ account.id }}">
+              {% if account.is_bank_account %}
+                {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
+              {% else %}
+                {% icon "credit-card" class="inline-block shrink-0 w-4 h-4" %}
+              {% endif %}
+              <span class="truncate">{{ account.name }}</span>
+            </a>
+          {% endfor %}
         {% endfor %}
       </div>
     {% endif %}
@@ -61,20 +61,34 @@
     {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Transactions" %}
   </a>
-  <a href="{% url 'budget:budget_home' nav_team.slug %}"
-     class="side-link {% if active_tab == 'budget' %}side-link-active{% endif %}" data-testid="nav-budget">
-    {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
-    {% translate "Budget" %}
-  </a>
-  <a href="{% url 'budget:goals_list' nav_team.slug %}"
-     class="side-link side-link-sub {% if active_tab == 'goals' %}side-link-active{% endif %}" data-testid="nav-goals">
-    {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
-    {% translate "Goals" %}
-  </a>
+
+  {# Budget: expands to Goals. #}
+  <div x-data="{ open: {% if active_tab == 'budget' or active_tab == 'goals' %}true{% else %}false{% endif %} }" class="flex flex-col">
+    <div class="side-row">
+      <a href="{% url 'budget:budget_home' nav_team.slug %}"
+         class="side-link flex-1 {% if active_tab == 'budget' %}side-link-active{% endif %}" data-testid="nav-budget">
+        {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
+        {% translate "Budget" %}
+      </a>
+      <button type="button" @click="open = !open" class="side-link-toggle" data-testid="nav-budget-toggle"
+              :aria-expanded="open.toString()" aria-label="{% translate 'Toggle Budget submenu' %}">
+        <span :class="open ? 'rotate-90' : ''" class="inline-block transition-transform">
+          {% icon "chevron-right" class="inline-block shrink-0 w-3.5 h-3.5" %}
+        </span>
+      </button>
+    </div>
+    <div x-show="open" x-cloak class="flex flex-col gap-0.5">
+      <a href="{% url 'budget:goals_list' nav_team.slug %}"
+         class="side-link side-link-sub {% if active_tab == 'goals' %}side-link-active{% endif %}" data-testid="nav-goals">
+        {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
+        {% translate "Goals" %}
+      </a>
+    </div>
+  </div>
 
   {# Reports: expands to every report page, including Monthly Review. #}
   <div x-data="{ open: {% if active_tab == 'reports' or active_tab == 'monthly-review' %}true{% else %}false{% endif %} }" class="flex flex-col">
-    <div class="flex items-center">
+    <div class="side-row">
       <a href="{% url 'reports:reports_home' nav_team.slug %}"
          class="side-link flex-1 {% if active_tab == 'reports' %}side-link-active{% endif %}">
         {% icon "chart-bar" class="inline-block shrink-0 w-4 h-4" %}
@@ -138,7 +152,7 @@
 
     {# Accounts: expands to the chart-of-accounts management pages. #}
     <div x-data="{ open: {% if active_tab == 'accounts' %}true{% else %}false{% endif %} }" class="flex flex-col">
-      <div class="flex items-center">
+      <div class="side-row">
         <a href="{% url 'accounts:accounts_home' nav_team.slug %}"
            class="side-link flex-1 {% if active_tab == 'accounts' %}side-link-active{% endif %}">
           {% icon "university" class="inline-block shrink-0 w-4 h-4" %}

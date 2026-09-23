@@ -76,10 +76,32 @@
   @apply pl-9;
 }
 
-/* Collapse/expand chevron beside a nav item that has its own submenu. */
+/*
+  A nav item with a submenu: link + chevron toggle share one row, and the row
+  (not either child) carries the hover and active shading so they read as one.
+*/
+.side-row {
+  @apply relative flex items-center rounded-field transition-colors hover:bg-base-300/45;
+}
+
+.side-row > .side-link,
+.side-row > .side-link:hover {
+  @apply bg-transparent;
+}
+
+.side-row:has(> .side-link-active),
+.side-row:has(> .side-link-active):hover {
+  @apply bg-primary/10;
+}
+
 .side-link-toggle {
-  @apply flex shrink-0 items-center justify-center rounded-field p-2 text-base-content/45
-         transition-colors hover:bg-base-300/45 hover:text-base-content;
+  @apply flex shrink-0 items-center justify-center self-stretch rounded-field px-2 text-base-content/45
+         transition-colors hover:text-base-content;
+}
+
+/* Institution heading inside the Inbox submenu. */
+.side-sublabel {
+  @apply mt-1 pl-9 pr-3 pt-1 text-[0.6875rem] font-medium text-base-content/70 truncate;
 }
 
 .side-section {
