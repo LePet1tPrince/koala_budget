@@ -17,7 +17,6 @@ import * as runtime from '../runtime';
 import type {
   BankFeedRow,
   BatchIds,
-  BatchReconcileRequest,
   CategorizeTransactionsRequest,
   CategorySuggestion,
   ManualTransaction,
@@ -41,8 +40,6 @@ import {
     BankFeedRowToJSON,
     BatchIdsFromJSON,
     BatchIdsToJSON,
-    BatchReconcileRequestFromJSON,
-    BatchReconcileRequestToJSON,
     CategorizeTransactionsRequestFromJSON,
     CategorizeTransactionsRequestToJSON,
     CategorySuggestionFromJSON,
@@ -103,11 +100,6 @@ export interface BankFeedBatchDuplicateRequest {
 export interface BankFeedBatchEditRequest {
     teamSlug: string;
     patchedBatchEditRequest?: PatchedBatchEditRequest;
-}
-
-export interface BankFeedBatchReconcileRequest {
-    teamSlug: string;
-    batchReconcileRequest: BatchReconcileRequest;
 }
 
 export interface BankFeedBatchUnarchiveRequest {
@@ -446,55 +438,6 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedBatchEdit(requestParameters: BankFeedBatchEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedBatchEditRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     * Batch reconcile multiple bank transactions. Sets is_reconciled=True on the JournalLine for the bank account side. Optionally creates an adjustment if adjustment_amount is non-zero.
-     */
-    async bankFeedBatchReconcileRaw(requestParameters: BankFeedBatchReconcileRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchReconcile().'
-            );
-        }
-
-        if (requestParameters['batchReconcileRequest'] == null) {
-            throw new runtime.RequiredError(
-                'batchReconcileRequest',
-                'Required parameter "batchReconcileRequest" was null or undefined when calling bankFeedBatchReconcile().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_reconcile/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: BatchReconcileRequestToJSON(requestParameters['batchReconcileRequest']),
-        }, initOverrides);
-
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * Batch reconcile multiple bank transactions. Sets is_reconciled=True on the JournalLine for the bank account side. Optionally creates an adjustment if adjustment_amount is non-zero.
-     */
-    async bankFeedBatchReconcile(requestParameters: BankFeedBatchReconcileRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchReconcileRaw(requestParameters, initOverrides);
     }
 
     /**

@@ -15,18 +15,27 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.accounts.models import Account
+from apps.accounts.models import Account, Payee
+from apps.accounts.serializers import PayeeSerializer, SimpleAccountSerializer
+from apps.journal.models import JournalLine
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
 from . import presenters
 from .models import Reconciliation
-from .serializers import FinishSerializer, StartSerializer, TickSerializer, TickThroughSerializer, UpdateSerializer
+from .serializers import (
+    ReconciliationFinishSerializer,
+    ReconciliationStartSerializer,
+    ReconciliationTickSerializer,
+    ReconciliationTickThroughSerializer,
+    ReconciliationUpdateSerializer,
+)
 from .services import session
 from .services.candidates import reconciled_balance
 from .services.session import ReconciliationError, StaleDifference
@@ -61,7 +70,34 @@ def _invalid(serializer):
     return Response({"error": _("Check the values you entered."), "fields": serializer.errors}, status=400)
 
 
-@extend_schema(tags=["reconciliation"])
+_ID = OpenApiParameter("id", int, OpenApiParameter.PATH)
+_ACCOUNT = OpenApiParameter("account", int, OpenApiParameter.QUERY, required=True)
+_LATER = OpenApiParameter("include_later", bool, OpenApiParameter.QUERY)
+
+
+def _doc(operation_id, request=None, parameters=(), responses=OpenApiTypes.OBJECT):
+    return extend_schema(
+        operation_id=f"reconciliation_{operation_id}",
+        tags=["reconciliation"],
+        request=request,
+        parameters=list(parameters),
+        responses=responses,
+    )
+
+
+@extend_schema_view(
+    list=_doc("list", parameters=[_ACCOUNT]),
+    create=_doc("start", request=ReconciliationStartSerializer),
+    retrieve=_doc("retrieve", parameters=[_ID, _LATER]),
+    partial_update=_doc("update", request=ReconciliationUpdateSerializer, parameters=[_ID]),
+    destroy=_doc("discard", parameters=[_ID], responses={204: None}),
+    tick=_doc("tick", request=ReconciliationTickSerializer, parameters=[_ID]),
+    tick_through=_doc("tick_through", request=ReconciliationTickThroughSerializer, parameters=[_ID]),
+    untick_all=_doc("untick_all", parameters=[_ID]),
+    finish=_doc("finish", request=ReconciliationFinishSerializer, parameters=[_ID]),
+    undo=_doc("undo", parameters=[_ID]),
+    accounts=_doc("accounts"),
+)
 class ReconciliationViewSet(viewsets.ViewSet):
     """
     /a/{team_slug}/reconcile/api/reconciliations/
@@ -83,7 +119,7 @@ class ReconciliationViewSet(viewsets.ViewSet):
         )
 
     def create(self, request, team_slug=None):
-        serializer = StartSerializer(data=request.data)
+        serializer = ReconciliationStartSerializer(data=request.data)
         if not serializer.is_valid():
             return _invalid(serializer)
         data = serializer.validated_data
@@ -110,7 +146,7 @@ class ReconciliationViewSet(viewsets.ViewSet):
 
     def partial_update(self, request, pk=None, team_slug=None):
         rec = _reconciliation(request.team, pk)
-        serializer = UpdateSerializer(data=request.data)
+        serializer = ReconciliationUpdateSerializer(data=request.data)
         if not serializer.is_valid():
             return _invalid(serializer)
         try:
@@ -135,7 +171,7 @@ class ReconciliationViewSet(viewsets.ViewSet):
     @action(detail=True, methods=["post"])
     def tick(self, request, pk=None, team_slug=None):
         rec = _reconciliation(request.team, pk)
-        serializer = TickSerializer(data=request.data)
+        serializer = ReconciliationTickSerializer(data=request.data)
         if not serializer.is_valid():
             return _invalid(serializer)
         try:
@@ -147,7 +183,7 @@ class ReconciliationViewSet(viewsets.ViewSet):
     @action(detail=True, methods=["post"])
     def tick_through(self, request, pk=None, team_slug=None):
         rec = _reconciliation(request.team, pk)
-        serializer = TickThroughSerializer(data=request.data)
+        serializer = ReconciliationTickThroughSerializer(data=request.data)
         if not serializer.is_valid():
             return _invalid(serializer)
         try:
@@ -168,7 +204,7 @@ class ReconciliationViewSet(viewsets.ViewSet):
     @action(detail=True, methods=["post"])
     def finish(self, request, pk=None, team_slug=None):
         rec = _reconciliation(request.team, pk)
-        serializer = FinishSerializer(data=request.data)
+        serializer = ReconciliationFinishSerializer(data=request.data)
         if not serializer.is_valid():
             return _invalid(serializer)
         try:
@@ -214,6 +250,15 @@ def account_page(request, team_slug, account_id):
     draft = session.draft_for(account)
     previous = session.last_completed(account)
     preselect = [int(i) for i in request.GET.get("lines", "").split(",") if i.strip().isdigit()]
+    # The bank feed hands over its selection as journal entry ids (a feed row knows
+    # its entry, not its line); this account's line on each is what gets ticked.
+    entries = [int(i) for i in request.GET.get("entries", "").split(",") if i.strip().isdigit()]
+    if entries:
+        preselect += list(
+            JournalLine.objects.filter(
+                team=request.team, account=account, journal_entry_id__in=entries, is_reconciled=False
+            ).values_list("id", flat=True)
+        )
     api = reverse("reconciliation:reconciliation-list", args=[team_slug])
     props = {
         "account": presenters.account_payload(account),
@@ -223,6 +268,18 @@ def account_page(request, team_slug, account_id):
         "previous": presenters.statement_payload(previous) if previous else None,
         "reconciled_balance": presenters.money(to_statement(account, reconciled_balance(account))),
         "history": presenters.history_payload(account),
+        "team_slug": team_slug,
+        # The "add a missing transaction" modal is the feed's own, so it needs the
+        # feed's pickers -- only for an account that has a feed to add to.
+        "all_accounts": SimpleAccountSerializer(
+            Account.objects.filter(team=request.team).select_related("account_group", "institution").order_by("name"),
+            many=True,
+        ).data
+        if account.has_feed
+        else [],
+        "all_payees": PayeeSerializer(Payee.objects.filter(team=request.team).order_by("name"), many=True).data
+        if account.has_feed
+        else [],
         "urls": {
             "api": api,
             "hub": reverse("reconciliation:hub", args=[team_slug]),

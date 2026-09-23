@@ -479,19 +479,17 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   };
 
   /**
-   * Batch reconcile selected transactions
+   * Reconcile the selection against a statement: hand it to the reconcile page,
+   * which opens (or resumes) the account's draft with these rows already ticked.
+   * A feed row knows its journal entry, not its line, so entries are passed.
    */
-  const handleBatchReconcile = async (adjustmentAmount = 0, reconciliationDate = null) => {
-    try {
-      await batchApi.batchReconcile([...selectedIds], adjustmentAmount, reconciliationDate);
-      setSelectedIds(new Set());
-      await Promise.all([loadLines(), loadAccounts()]);
-
-      showSnackbar(gettext('Transactions reconciled successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch reconcile:', err);
-      showSnackbar(err.message || gettext('Failed to reconcile transactions'), 'error');
-    }
+  const handleBatchReconcile = (rows) => {
+    if (!selectedAccount) return;
+    const entries = (rows || [])
+      .map((r) => r.journal_entry_id ?? r.journalEntryId)
+      .filter(Boolean);
+    const query = entries.length ? `?entries=${entries.join(',')}` : '';
+    window.location.href = `/a/${teamSlug}/reconcile/${selectedAccount.id}/${query}`;
   };
 
   /**
@@ -644,12 +642,31 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               <span className="font-semibold text-base-content">
                 {formatCurrency(selectedAccount.reconciled_balance ?? 0)}
               </span>
-              {selectedAccount.latest_reconciled_date && (
-                <span className="text-base-content/70 ml-2">
-                  {gettext('as of')} {new Date(selectedAccount.latest_reconciled_date).toLocaleDateString()}
+              {selectedAccount.last_statement_date ? (
+                <span className="ml-2" data-testid="reconciled-through">
+                  {gettext('reconciled through')}{' '}
+                  {new Date(`${selectedAccount.last_statement_date}T00:00:00`).toLocaleDateString()}{' '}
+                  {selectedAccount.last_statement_intact ? (
+                    <span className="badge badge-soft badge-success badge-xs">{gettext('Intact')}</span>
+                  ) : (
+                    <span className="badge badge-soft badge-warning badge-xs">{gettext('Changed')}</span>
+                  )}
                 </span>
+              ) : (
+                selectedAccount.latest_reconciled_date && (
+                  <span className="text-base-content/70 ml-2">
+                    {gettext('as of')} {new Date(selectedAccount.latest_reconciled_date).toLocaleDateString()}
+                  </span>
+                )
               )}
             </span>
+            <a
+              className="btn btn-outline btn-xs"
+              href={`/a/${teamSlug}/reconcile/${selectedAccount.id}/`}
+              data-testid="reconcile-statement-btn"
+            >
+              {gettext('Reconcile statement')}
+            </a>
           </div>
           {error && (
             <div className="alert alert-error mb-4">

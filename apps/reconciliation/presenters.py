@@ -108,6 +108,7 @@ def line_payload(account, line, *, ticked, feed_entry_ids, statement_date) -> di
     entry = line.journal_entry
     return {
         "id": line.id,
+        "entry_id": entry.id,
         "date": entry.entry_date.isoformat(),
         "payee": entry.payee.name if entry.payee_id else "",
         "description": entry.description,

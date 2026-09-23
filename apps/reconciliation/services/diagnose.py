@@ -37,9 +37,18 @@ class Hint:
     line_ids: list = field(default_factory=list)
     # What one click on the hint does: "tick", "untick", or None (look, then decide).
     action: str | None = None
+    # The lines the click acts on, when not every highlighted line (a duplicate
+    # highlights both copies and unticks one).
+    action_ids: list | None = None
 
     def as_dict(self):
-        return {"kind": self.kind, "message": self.message, "line_ids": self.line_ids, "action": self.action}
+        return {
+            "kind": self.kind,
+            "message": self.message,
+            "line_ids": self.line_ids,
+            "action": self.action,
+            "action_ids": self.action_ids if self.action_ids is not None else self.line_ids,
+        }
 
 
 def money(amount: Decimal) -> str:
@@ -81,8 +90,28 @@ def diagnose(rows, difference: Decimal, statement_date: date, uncategorized=()) 
         if row.amount == difference:
             hints.append(Hint("missing_tick", _("Tick %(row)s?") % {"row": _describe(row)}, [row.id], "tick"))
 
+    # A duplicate pair is one hint, not one "untick it?" per copy: the message
+    # names both, highlights both, and the one-click fix unticks the later copy.
+    in_duplicate = set()
+    for i, a in enumerate(ticked):
+        for b in ticked[i + 1 :]:
+            if a.amount == b.amount == -difference and abs(a.date - b.date) <= DUPLICATE_WINDOW:
+                if a.id in in_duplicate or b.id in in_duplicate:
+                    continue
+                in_duplicate.update((a.id, b.id))
+                hints.append(
+                    Hint(
+                        "duplicate",
+                        _("These two look like the same transaction: %(a)s and %(b)s. Untick one?")
+                        % {"a": _describe(a), "b": _describe(b)},
+                        [a.id, b.id],
+                        "untick",
+                        [b.id],
+                    )
+                )
+
     for row in ticked:
-        if row.amount == -difference:
+        if row.amount == -difference and row.id not in in_duplicate:
             hints.append(
                 Hint(
                     "extra_tick",
@@ -91,22 +120,6 @@ def diagnose(rows, difference: Decimal, statement_date: date, uncategorized=()) 
                     "untick",
                 )
             )
-
-    seen = set()
-    for i, a in enumerate(ticked):
-        for b in ticked[i + 1 :]:
-            if a.amount == b.amount == -difference and abs(a.date - b.date) <= DUPLICATE_WINDOW:
-                key = (a.id, b.id)
-                if key not in seen:
-                    seen.add(key)
-                    hints.append(
-                        Hint(
-                            "duplicate",
-                            _("These two look like the same transaction: %(a)s and %(b)s. Untick one?")
-                            % {"a": _describe(a), "b": _describe(b)},
-                            [a.id, b.id],
-                        )
-                    )
 
     for row in ticked:
         if row.amount * 2 == -difference:

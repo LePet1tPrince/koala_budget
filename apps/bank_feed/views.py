@@ -27,12 +27,14 @@ from apps.accounts.serializers import (
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.journal.models import JournalEntry, JournalLine
+from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services.guards import (
     ReconciledLineError,
     assert_date_change_allowed,
     assert_entry_removable,
     assert_line_mutable,
 )
+from apps.reconciliation.services.integrity import intact_map
 from apps.teams.decorators import login_and_team_required
 from apps.teams.permissions import TeamModelAccessPermissions
 
@@ -70,7 +72,7 @@ MAX_SIMILAR_CATEGORY_IDS = 50
 def _annotate_feed_account_activity(accounts, team):
     """
     Attach per-account review/activity fields to feed accounts: uncategorized_count,
-    latest_transaction_date, latest_reconciled_date.
+    latest_transaction_date, latest_reconciled_date, last_statement_date, last_statement_intact.
 
     Computed as separate queries (not chained onto the with_balance()/with_categorized_balance()/
     with_reconciled_balance() annotations) to avoid the join fan-out that would inflate the Sum()
@@ -111,10 +113,22 @@ def _annotate_feed_account_activity(accounts, team):
         .order_by("account_id", "-posted_date")
         .values_list("account_id", "posted_date")
     )
+    # The last finished statement per account and whether it still holds, so a
+    # card can say "Reconciled through Aug 31" (and warn when that changed).
+    last_statements = {}
+    for rec in Reconciliation.objects.filter(team=team, status=Reconciliation.STATUS_COMPLETED).order_by(
+        "account_id", "-statement_date", "-id"
+    ):
+        last_statements.setdefault(rec.account_id, rec)
+    intact = intact_map(list(last_statements.values()))
+
     for account in accounts:
         account.uncategorized_count = uncategorized_counts.get(account.id, 0)
         account.latest_transaction_date = latest_transaction_dates.get(account.id)
         account.latest_reconciled_date = latest_reconciled_dates.get(account.id)
+        statement = last_statements.get(account.id)
+        account.last_statement_date = statement.statement_date if statement else None
+        account.last_statement_intact = intact.get(statement.id) if statement else None
 
 
 class ManualTransactionSerializer(serializers.Serializer):
@@ -258,7 +272,7 @@ class BankFeedViewSet(
                 "plaid_transaction__plaid_account",
                 "plaid_transaction__plaid_account__account",
             )
-            .prefetch_related("journal_entry__lines__account__institution")
+            .prefetch_related("journal_entry__lines__account__institution", "journal_entry__lines__reconciliation")
         )
 
         # Filter by account if provided in query params

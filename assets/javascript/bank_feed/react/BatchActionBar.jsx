@@ -1,11 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import DateField from '../../common/DateField';
 import Modal from '../../common/Modal';
 import Icon from '../../common/Icon';
 import BulkEditModal from './BulkEditModal';
-import { formatDateForInput } from '../utils';
 
-/* globals gettext */
+/* globals gettext, interpolate */
 
 /**
  * BatchActionBar - Floating action bar for batch operations on selected transactions.
@@ -40,11 +38,9 @@ const BatchActionBar = ({
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Reconcile dialog states
-  const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false);
+  // Reconciling happens against a statement on its own page; only the
+  // unreconcile confirmation lives here.
   const [unreconcileDialogOpen, setUnreconcileDialogOpen] = useState(false);
-  const [trueBalance, setTrueBalance] = useState('');
-  const [reconciliationDate, setReconciliationDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Calculate inflow, outflow, and net from selected rows
   const { totalInflow, totalOutflow, reconcilingAmount } = useMemo(() => {
@@ -62,13 +58,6 @@ const BatchActionBar = ({
   // Check if all selected rows are categorized (have a category)
   const allCategorized = useMemo(() => {
     return selectedRows.every(row => row.category);
-  }, [selectedRows]);
-
-  // Latest transaction date among selected rows (defaults the reconciliation date)
-  const maxSelectedDate = useMemo(() => {
-    const dates = selectedRows.map(row => formatDateForInput(row.postedDate)).filter(Boolean);
-    if (dates.length === 0) return new Date().toISOString().split('T')[0];
-    return dates.reduce((max, date) => (date > max ? date : max));
   }, [selectedRows]);
 
   // Check if any/all selected rows are reconciled. The quick filters no longer guarantee
@@ -90,32 +79,20 @@ const BatchActionBar = ({
     return 0;
   }, [selectedAccount]);
 
-  // Computed adjustment = trueBalance - (reconciledBalance + reconcilingAmount)
-  const computedAdjustment = useMemo(() => {
-    if (trueBalance === '' || trueBalance === null) return 0;
-    return Math.round((parseFloat(trueBalance) - (reconciledBalance + reconcilingAmount)) * 100) / 100;
-  }, [trueBalance, reconciledBalance, reconcilingAmount]);
+  // Preview of the reconciled balance after reconciling (or unreconciling) the selection
+  const newReconciledBalance = useMemo(
+    () => (allReconciled ? reconciledBalance - reconcilingAmount : reconciledBalance + reconcilingAmount),
+    [reconciledBalance, reconcilingAmount, allReconciled],
+  );
 
-  // Calculate new reconciled balance after reconciling (or unreconciling)
-  const newReconciledBalance = useMemo(() => {
-    if (allReconciled) {
-      return reconciledBalance - reconcilingAmount;
-    }
-    if (trueBalance !== '' && trueBalance !== null) {
-      return parseFloat(trueBalance);
-    }
-    return reconciledBalance + reconcilingAmount;
-  }, [reconciledBalance, reconcilingAmount, trueBalance, allReconciled]);
-
-  // Handle reconcile submit
-  const handleReconcileSubmit = () => {
-    if (onReconcile) {
-      onReconcile(computedAdjustment, reconciliationDate);
-    }
-    setReconcileDialogOpen(false);
-    setTrueBalance('');
-    setReconciliationDate(new Date().toISOString().split('T')[0]);
-  };
+  // Finished statements the selection belongs to: unreconciling breaks them, so
+  // the confirmation names them (they will show as "Changed").
+  const affectedStatements = useMemo(() => {
+    const dates = selectedRows
+      .map((r) => r.reconciled_statement_date ?? r.reconciledStatementDate)
+      .filter(Boolean);
+    return [...new Set(dates)].sort();
+  }, [selectedRows]);
 
   // Handle unreconcile submit
   const handleUnreconcileSubmit = () => {
@@ -164,12 +141,6 @@ const BatchActionBar = ({
   };
 
   if (selectedCount === 0) return null;
-
-  const resetReconcileDialog = () => {
-    setReconcileDialogOpen(false);
-    setTrueBalance('');
-    setReconciliationDate(new Date().toISOString().split('T')[0]);
-  };
 
   const money = (amount) => (amount >= 0 ? 'text-success' : 'text-error');
 
@@ -260,10 +231,7 @@ const BatchActionBar = ({
               type="button"
               className="btn btn-ghost btn-sm"
               disabled={!allCategorized}
-              onClick={() => {
-                setReconciliationDate(maxSelectedDate);
-                setReconcileDialogOpen(true);
-              }}
+              onClick={() => onReconcile?.(selectedRows)}
             >
               <Icon name="check-circle" className="w-4 h-4 shrink-0" />
               {gettext('Reconcile')}
@@ -312,76 +280,6 @@ const BatchActionBar = ({
         hasReconciledRows={anyReconciled}
       />
 
-      {/* Reconcile Dialog */}
-      <Modal
-        open={reconcileDialogOpen}
-        onClose={resetReconcileDialog}
-        size="sm"
-        title={gettext('Reconcile Transactions')}
-        testId="reconcile-dialog"
-        actions={
-          <>
-            <button type="button" className="btn btn-sm" onClick={resetReconcileDialog}>
-              {gettext('Cancel')}
-            </button>
-            <button type="button" className="btn btn-sm btn-primary" onClick={handleReconcileSubmit}>
-              {gettext('Reconcile')}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span>{gettext('Starting reconciled balance:')}</span>
-            <span className="money font-bold">{formatCurrency(reconciledBalance)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>
-              {gettext('Reconciling amount')} ({selectedCount} {gettext('items')}):
-            </span>
-            <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>
-          </div>
-          {trueBalance !== '' && computedAdjustment !== 0 && (
-            <div className="flex justify-between">
-              <span>{gettext('Adjustment:')}</span>
-              <span className={`money font-bold ${money(computedAdjustment)}`}>
-                {formatCurrency(computedAdjustment)}
-              </span>
-            </div>
-          )}
-          <div className="flex justify-between border-t border-base-300 pt-2">
-            <span className="font-bold">{gettext('New reconciled balance:')}</span>
-            <span className="money font-bold">{formatCurrency(newReconciledBalance)}</span>
-          </div>
-
-          <div className="pt-4">
-            <DateField
-              label={gettext('Reconciliation Date')}
-              value={reconciliationDate}
-              onChange={setReconciliationDate}
-              testId="reconciliation-date"
-            />
-          </div>
-
-          <label className="form-control w-full pt-2">
-            <span className="label-text mb-1 block text-sm text-base-content/70">
-              {gettext('True Balance (optional)')}
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              className="input input-bordered w-full"
-              value={trueBalance}
-              onChange={(e) => setTrueBalance(e.target.value)}
-              data-testid="true-balance"
-            />
-            <span className="mt-1 block text-xs text-base-content/70">
-              {gettext('Enter your actual bank balance — an adjustment will be created automatically if needed')}
-            </span>
-          </label>
-        </div>
-      </Modal>
-
       {/* Unreconcile Dialog */}
       <Modal
         open={unreconcileDialogOpen}
@@ -404,6 +302,14 @@ const BatchActionBar = ({
           <p>
             {gettext('Are you sure you want to unreconcile')} {selectedCount} {gettext('transaction(s)?')}
           </p>
+          {affectedStatements.length > 0 && (
+            <div role="alert" className="alert alert-warning text-sm" data-testid="unreconcile-statement-warning">
+              {interpolate(
+                gettext('This is part of your %s statement. Unreconciling will mark that statement as changed.'),
+                [affectedStatements.map((d) => new Date(`${d}T00:00:00`).toLocaleDateString()).join(', ')],
+              )}
+            </div>
+          )}
           <div className="flex justify-between pt-2">
             <span>{gettext('Amount being unreconciled:')}</span>
             <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>

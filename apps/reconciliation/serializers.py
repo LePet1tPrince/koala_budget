@@ -6,7 +6,7 @@ from rest_framework import serializers
 MAX_TICK_IDS = 5000
 
 
-class StartSerializer(serializers.Serializer):
+class ReconciliationStartSerializer(serializers.Serializer):
     account = serializers.IntegerField(help_text="Asset or liability account id")
     statement_date = serializers.DateField()
     statement_balance = serializers.DecimalField(
@@ -17,20 +17,20 @@ class StartSerializer(serializers.Serializer):
     )
 
 
-class UpdateSerializer(serializers.Serializer):
+class ReconciliationUpdateSerializer(serializers.Serializer):
     statement_date = serializers.DateField(required=False)
     statement_balance = serializers.DecimalField(max_digits=15, decimal_places=2, required=False)
 
 
-class TickSerializer(serializers.Serializer):
+class ReconciliationTickSerializer(serializers.Serializer):
     line_ids = serializers.ListField(child=serializers.IntegerField(), max_length=MAX_TICK_IDS)
     ticked = serializers.BooleanField()
 
 
-class TickThroughSerializer(serializers.Serializer):
+class ReconciliationTickThroughSerializer(serializers.Serializer):
     date = serializers.DateField()
 
 
-class FinishSerializer(serializers.Serializer):
+class ReconciliationFinishSerializer(serializers.Serializer):
     adjust = serializers.BooleanField(default=False)
     expected_difference = serializers.DecimalField(max_digits=15, decimal_places=2, required=False, allow_null=True)

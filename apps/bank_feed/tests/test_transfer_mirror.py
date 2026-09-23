@@ -134,7 +134,7 @@ class TransferMirrorTest(TestCase):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
-        mirror = self._mirror_of(tx.journal_entry)
+        self.assertIsNotNone(self._mirror_of(tx.journal_entry))
 
         # Reconcile the mirror's own line (the credit card side).
         tx.journal_entry.lines.filter(account=self.credit_card).update(is_reconciled=True)

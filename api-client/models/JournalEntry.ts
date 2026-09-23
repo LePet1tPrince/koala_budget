@@ -79,6 +79,7 @@ export interface JournalEntry {
      * * `import` - Import
      * * `bank_match` - Bank Match
      * * `recurring` - Recurring Entry
+     * * `reconciliation` - Reconciliation Adjustment
      * @type {JournalEntrySourceEnum}
      * @memberof JournalEntry
      */

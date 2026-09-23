@@ -34,8 +34,9 @@ class DiagnoseTests(SimpleTestCase):
     def test_duplicate(self):
         rows = [row(1, "-12.75", on=date(2026, 8, 30)), row(2, "-12.75", on=date(2026, 8, 30))]
         hints = diagnose(rows, D("12.75"), AUG31)
-        dup = next(h for h in hints if h.kind == "duplicate")
-        self.assertEqual(dup.line_ids, [1, 2])
+        self.assertEqual(kinds(hints), ["duplicate"])  # one hint, not an "untick?" per copy
+        self.assertEqual(hints[0].line_ids, [1, 2])
+        self.assertEqual(hints[0].as_dict()["action_ids"], [2])
 
     def test_duplicate_needs_close_dates(self):
         rows = [row(1, "-12.75", on=date(2026, 8, 1)), row(2, "-12.75", on=date(2026, 8, 30))]
