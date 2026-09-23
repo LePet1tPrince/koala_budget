@@ -222,3 +222,30 @@ class AccountHealthTests(TestCase):
         self.assertEqual(row["balance"], row["reconciled_balance"])
         self.assertEqual(row["balance_gap"], Decimal("0"))
         self.assertEqual(row["flags"], [])
+
+    def test_transactions_after_the_month_are_not_flagged(self):
+        # Reviewing August: September's uncategorized/unreconciled activity is not
+        # August's problem, and must not open a gap in August's balances either.
+        account = self._account("Chequing")
+        category = Account.objects.create(team=self.team, name="Groceries", account_group=self.equity_group)
+        august = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("10.00"), posted_date=date(2026, 8, 25), description="Aug"
+        )
+        self._categorize(august, category, reconciled=True)
+        september = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("99.00"), posted_date=date(2026, 9, 2), description="Sep"
+        )
+        self._categorize(september, category)  # categorized, not reconciled
+        BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("5.00"), posted_date=date(2026, 9, 3), description="New"
+        )  # uncategorized
+
+        row = account_health(self.team, self.month)["accounts"][0]
+        self.assertEqual(row["uncategorized_count"], 0)
+        self.assertEqual(row["unreconciled_count"], 0)
+        self.assertEqual(row["balance_gap"], Decimal("0"))
+        self.assertEqual(row["flags"], [])
+
+        september_row = account_health(self.team, date(2026, 9, 1))["accounts"][0]
+        self.assertEqual(september_row["uncategorized_count"], 1)
+        self.assertEqual(september_row["unreconciled_count"], 1)

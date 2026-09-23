@@ -101,25 +101,36 @@ class Step1HealthInsightTests(SimpleTestCase):
         step1 = [i for i in generate(review) if i.step == 1]
         self.assertEqual(step1[0].severity, "warn")
 
-    def test_uncategorized_is_warn(self):
-        flag = {"kind": "uncategorized", "account": _Named("Chequing"), "count": 3, "url": ""}
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
+    def test_uncategorized_is_one_card_with_a_line_per_account(self):
+        flags = [
+            {"kind": "uncategorized", "account": _Named("Chequing"), "count": 3, "url": "/inbox/"},
+            {"kind": "uncategorized", "account": _Named("Visa"), "count": 2, "url": "/inbox/"},
+        ]
+        review = _review(health={"accounts": [], "flags": flags, "all_clear": False})
         step1 = [i for i in generate(review) if i.step == 1]
+        self.assertEqual(len(step1), 1)
         self.assertEqual(step1[0].severity, "warn")
-        self.assertEqual(step1[0].metric, Decimal("3"))
+        self.assertEqual(step1[0].metric, Decimal("5"))
+        self.assertEqual(step1[0].url, "/inbox/")
+        self.assertEqual(step1[0].lines, ("Chequing: 3 uncategorized", "Visa: 2 uncategorized"))
 
-    def test_unreconciled_is_warn(self):
-        flag = {"kind": "unreconciled", "account": _Named("Chequing"), "count": 2, "gap": Decimal("15"), "url": ""}
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
+    def test_unreconciled_and_balance_gap_share_one_reconciliation_card(self):
+        flags = [
+            {"kind": "unreconciled", "account": _Named("Chequing"), "count": 2, "gap": Decimal("15"), "url": ""},
+            {"kind": "unreconciled", "account": _Named("Visa"), "count": 10, "gap": Decimal("-40"), "url": ""},
+            {"kind": "balance_gap", "account": _Named("Savings"), "gap": Decimal("-5"), "url": ""},
+        ]
+        review = _review(health={"accounts": [], "flags": flags, "all_clear": False})
         step1 = [i for i in generate(review) if i.step == 1]
-        self.assertEqual(step1[0].severity, "warn")
-        self.assertEqual(step1[0].delta, Decimal("15"))
-
-    def test_balance_gap_is_warn(self):
-        flag = {"kind": "balance_gap", "account": _Named("Chequing"), "gap": Decimal("-5"), "url": ""}
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
-        step1 = [i for i in generate(review) if i.step == 1]
-        self.assertEqual(step1[0].severity, "warn")
+        self.assertEqual([i.kind for i in step1], ["reconciliation"])
+        card = step1[0]
+        self.assertEqual(card.severity, "warn")
+        self.assertEqual(card.metric, Decimal("12"))
+        self.assertEqual(len(card.lines), 3)
+        self.assertIn("Chequing: 2 unreconciled", card.lines[0])
+        self.assertIn("Visa: 10 unreconciled", card.lines[1])
+        self.assertIn("Savings", card.lines[2])
+        self.assertIn("doesn't match", card.lines[2])
 
 
 class Step2GlanceInsightTests(SimpleTestCase):

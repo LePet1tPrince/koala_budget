@@ -36,6 +36,7 @@ class Insight:
     url: str = ""  # where to act on it
     metric: Decimal | None = None
     delta: Decimal | None = None
+    lines: tuple = ()  # one plain sentence per account, for a card that covers several
 
 
 def _money(amount) -> str:
@@ -77,6 +78,8 @@ def _step1_health(review) -> list:
         ]
 
     out = []
+    uncategorized = []
+    reconciliation = []  # UNRECONCILED and BALANCE_GAP: both say the reconciled balance is off
     for flag in health["flags"]:
         account_name = flag["account"].name
         url = flag.get("url", "")
@@ -105,44 +108,64 @@ def _step1_health(review) -> list:
                 )
             )
         elif kind == UNCATEGORIZED:
-            out.append(
-                Insight(
-                    kind=kind,
-                    severity="warn",
-                    step=1,
-                    title=_("%(count)d uncategorized transaction(s) in %(account)s.")
-                    % {"count": flag["count"], "account": account_name},
-                    body=_("Fix in Inbox."),
-                    url=url,
-                    metric=Decimal(flag["count"]),
-                )
-            )
-        elif kind == UNRECONCILED:
-            out.append(
-                Insight(
-                    kind=kind,
-                    severity="warn",
-                    step=1,
-                    title=_("%(count)d unreconciled transaction(s) in %(account)s.")
-                    % {"count": flag["count"], "account": account_name},
-                    body=_("The reconciled balance is off by %(gap)s. Fix in Inbox.") % {"gap": _money(flag["gap"])},
-                    url=url,
-                    delta=flag["gap"],
-                )
-            )
-        elif kind == BALANCE_GAP:
-            out.append(
-                Insight(
-                    kind=kind,
-                    severity="warn",
-                    step=1,
-                    title=_("%(account)s's balance doesn't match its reconciled balance.") % {"account": account_name},
-                    body=_("Off by %(gap)s.") % {"gap": _money(flag["gap"])},
-                    url=url,
-                    delta=flag["gap"],
-                )
-            )
+            uncategorized.append(flag)
+        elif kind in (UNRECONCILED, BALANCE_GAP):
+            reconciliation.append(flag)
+
+    if uncategorized:
+        out.append(_uncategorized_card(uncategorized))
+    if reconciliation:
+        out.append(_reconciliation_card(reconciliation))
     return out
+
+
+def _uncategorized_card(flags) -> Insight:
+    """One card for every account with uncategorized transactions, a line per account."""
+    total = sum(f["count"] for f in flags)
+    return Insight(
+        kind=UNCATEGORIZED,
+        severity="warn",
+        step=1,
+        title=_("%(count)d uncategorized transaction(s) across %(accounts)d account(s).")
+        % {"count": total, "accounts": len(flags)},
+        body=_("Fix in Inbox."),
+        url=flags[0].get("url", ""),
+        metric=Decimal(total),
+        lines=tuple(
+            _("%(account)s: %(count)d uncategorized") % {"account": f["account"].name, "count": f["count"]}
+            for f in flags
+        ),
+    )
+
+
+def _reconciliation_card(flags) -> Insight:
+    """
+    One card for every account whose reconciled balance is off, a line per account:
+    the unreconciled count when there are unreconciled feed transactions, the gap
+    alone when there are none (e.g. a manual journal entry touching the account).
+    """
+    lines = []
+    for f in flags:
+        values = {"account": f["account"].name, "gap": _money(f["gap"])}
+        if f["kind"] == UNRECONCILED:
+            values["count"] = f["count"]
+            line = _("%(account)s: %(count)d unreconciled, off by %(gap)s") % values
+        else:
+            line = _("%(account)s: balance doesn't match the reconciled balance, off by %(gap)s") % values
+        lines.append(line)
+    count = sum(f.get("count", 0) for f in flags)
+    return Insight(
+        kind="reconciliation",
+        severity="warn",
+        step=1,
+        title=_("%(accounts)d account(s) not fully reconciled.") % {"accounts": len(flags)},
+        body=(_("%(count)d unreconciled transaction(s). Fix in Inbox.") % {"count": count})
+        if count
+        else _("Fix in Inbox."),
+        url=flags[0].get("url", ""),
+        metric=Decimal(count),
+        lines=tuple(lines),
+    )
 
 
 # Step 2 -- the month at a glance -------------------------------------------
