@@ -1,6 +1,30 @@
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, Account
 from apps.teams.helpers import get_nav_team
 
 from .models import BankTransaction
+
+
+def nav_feed_accounts(request):
+    """
+    Bank-feed accounts for the Inbox nav submenu, grouped by institution
+    (accounts without one last, under "Other"). Each links straight to
+    `bank_feed_home?account=<id>` with that account pre-selected.
+    """
+    team = get_nav_team(request)
+    if not team or not request.user.is_authenticated:
+        return {}
+    feed_accounts = (
+        Account.objects.filter(team=team, has_feed=True)
+        .select_related("account_group", "institution")
+        .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
+    )
+    groups = {}
+    for account in feed_accounts:
+        account.is_bank_account = account.account_group.account_type == ACCOUNT_TYPE_ASSET
+        name = account.institution.name if account.institution else None
+        groups.setdefault(name, []).append(account)
+    ordered = sorted(groups.items(), key=lambda item: (item[0] is None, (item[0] or "").lower()))
+    return {"nav_feed_institutions": [{"name": name, "accounts": accounts} for name, accounts in ordered]}
 
 
 def inbox_count(request):

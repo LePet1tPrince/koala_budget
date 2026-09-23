@@ -215,6 +215,21 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     setIsAccountPickerOpen(false);
   };
 
+  // The Inbox nav submenu links straight to an account via ?account=<id>, so a
+  // click there opens the feed with that account already selected instead of
+  // landing back on the picker. Only applied once, on the first load of the
+  // accounts list.
+  const appliedAccountParamRef = useRef(false);
+  useEffect(() => {
+    if (appliedAccountParamRef.current || accounts.length === 0) return;
+    const requestedId = Number(new URLSearchParams(window.location.search).get('account'));
+    if (!requestedId) return;
+    appliedAccountParamRef.current = true;
+    const target = accounts.find((a) => a.id === requestedId);
+    if (target) handleAccountSelect(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts]);
+
   /**
    * Refresh bank feed data from Plaid
    */
