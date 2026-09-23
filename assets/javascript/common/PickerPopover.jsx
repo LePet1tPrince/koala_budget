@@ -35,6 +35,9 @@ import { portalTarget, useAnchoredPosition } from './popoverPosition';
  * @param {function} onClear      When set, a ✕ appears on the trigger. Clearing
  *                                does not open the panel.
  * @param {string}   testId       data-testid for the trigger button.
+ * @param {boolean}  disabled     Disables the trigger, so it cannot be opened by
+ *                                click *or* by keyboard — which is why this is a
+ *                                real prop rather than `pointer-events-none`.
  * @param {function} children     Render prop; receives `{ close }`.
  */
 const PickerPopover = ({
@@ -43,6 +46,7 @@ const PickerPopover = ({
   onClear = null,
   onOpen = null,
   testId,
+  disabled = false,
   buttonClassName = 'btn btn-outline btn-sm font-normal',
   panelClassName = '',
   children,
@@ -97,7 +101,8 @@ const PickerPopover = ({
     <div className="relative inline-block" ref={rootRef}>
       <button
         type="button"
-        className={buttonClassName}
+        className={`${buttonClassName} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+        disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
@@ -113,7 +118,7 @@ const PickerPopover = ({
       >
         {icon}
         <span className="truncate">{label}</span>
-        {onClear && (
+        {onClear && !disabled && (
           // A <button> may not nest inside a <button>, so this is a span with a role.
           <span
             role="button"

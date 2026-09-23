@@ -145,6 +145,7 @@ const ActiveFilters = ({ columnFilters, onFilterChange, onClearAll }) => {
  *   loadingMore   – whether a "load more" request is in flight
  *   refetching    – whether the current filters are being (re)applied
  *   error         – error message to show alongside stale results, if any
+ *   onEditRow     – (row) => void, opens the edit modal for that transaction
  */
 const TransactionsTable = ({
   transactions,
@@ -164,6 +165,7 @@ const TransactionsTable = ({
   loadingMore,
   refetching,
   error,
+  onEditRow,
 }) => {
   const sentinelRef = useRef(null);
 
@@ -246,6 +248,9 @@ const TransactionsTable = ({
                   fetchFacets={fetchFacets}
                 />
               ))}
+              {/* The edit column. No label: the pencil in each row says what it
+                  is, and a header here would look like a sortable field. */}
+              <th className="w-10" aria-label={gettext('Edit')} />
             </tr>
           </thead>
           <tbody>
@@ -256,7 +261,14 @@ const TransactionsTable = ({
 
               return (
                 <React.Fragment key={tx.id}>
-                  <tr data-testid="transaction-row">
+                  <tr
+                    data-testid="transaction-row"
+                    className="cursor-pointer hover:bg-base-200"
+                    onClick={() => onEditRow?.(tx)}
+                    // The pencil button below is the control a keyboard or screen
+                    // reader reaches; the row click is a convenience on top of it,
+                    // which is why the <tr> gets no tabIndex or role of its own.
+                  >
                     <td className="whitespace-nowrap">
                       {formatDate(tx.date)}
                     </td>
@@ -270,7 +282,12 @@ const TransactionsTable = ({
                         <button
                           type="button"
                           className="badge badge-ghost badge-sm mr-1"
-                          onClick={() => toggleExpanded(tx.id)}
+                          onClick={(e) => {
+                            // Expanding a split is a look, not an edit — without
+                            // this the row handler would open the modal over it.
+                            e.stopPropagation();
+                            toggleExpanded(tx.id);
+                          }}
                           aria-expanded={expanded}
                           title={gettext('Show the categories this transaction is split across')}
                           data-testid={`split-toggle-${tx.id}`}
@@ -299,6 +316,20 @@ const TransactionsTable = ({
                     <td className="whitespace-nowrap">
                       <Badge className={statusStyle.className}>{statusStyle.label}</Badge>
                     </td>
+                    <td className="w-10">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditRow?.(tx);
+                        }}
+                        aria-label={gettext('Edit transaction')}
+                        data-testid={`edit-row-${tx.id}`}
+                      >
+                        <Icon name="edit" className="h-4 w-4" />
+                      </button>
+                    </td>
                   </tr>
                   {expanded
                     && (tx.legs || []).map((leg, index) => (
@@ -312,6 +343,7 @@ const TransactionsTable = ({
                         <td className="money whitespace-nowrap text-base-content/70">
                           {Number(leg.credit) > 0 ? formatCurrency(leg.credit) : ''}
                         </td>
+                        <td />
                         <td />
                         <td />
                         <td />

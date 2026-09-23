@@ -249,12 +249,39 @@ make test-e2e-accounts  # Run specific test file
 - `plaid/` sync logic is tested via mocks only — no integration test against Plaid sandbox
 - `subscriptions/` webhook handling has no automated tests
 - `chat/` and `ai/` apps have no unit tests for agent logic
+- `e2e/tests/test_splits.py::test_opening_a_split_shows_its_legs` fails:
+  `BankFeedPage.split_amounts()` calls `Locator.all_input_values()`, which does not exist
+  in the pinned Playwright. Four tests in `e2e/tests/test_categorize.py` fail too
+  (`test_payee_and_description_are_editable_on_the_card`, `test_edits_are_saved_with_the_categorization`,
+  `test_revert_puts_the_banks_wording_back`, `test_a_draft_survives_a_skip`). All five
+  reproduce on a clean `develop`; they are test bugs, not product bugs
 - Frontend React components have no unit tests (no Jest/Vitest setup)
-- `e2e/tests/test_splits.py` has never been executed. Playwright's pinned browser build
-  refuses to install on Ubuntu 26.04, the chromium already in the WSL cache is missing
-  system libraries that need root, and running the suite from Windows hits a
-  `NotImplementedError` in the asyncio/live-server stack. Run it in the Docker image
-  (`make test-e2e ARGS="e2e/tests/test_splits.py"`) before trusting it
+
+### Running E2E where the pinned browser is missing
+
+Playwright pins a browser build the environment may not have — the failure reads
+`Executable doesn't exist at .../chromium_headless_shell-<n>/...` and tells you to run
+`playwright install`. Don't: point it at the browser that is already there instead, by
+overriding the launch args locally (a `conftest.py` addition you keep out of the commit):
+
+```python
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args):
+    return {**browser_type_launch_args, "executable_path": "/opt/pw-browsers/chromium"}
+```
+
+### Driving `Combobox` and `DateField` in Playwright
+
+Neither is a native control, so neither responds to `fill()` or `select_option()` alone.
+`e2e/pages/transactions.py` has the two recipes every modal test now reuses:
+
+- **`Combobox`**: click the input, `fill()` the text, then click the first `[role='option']`
+  matching it. The option list is **portaled out of the modal** — a `<dialog>` paints in the
+  browser's top layer, so a body portal would render behind it — which is why the option is
+  addressed globally rather than scoped to the modal.
+- **`DateField`**: click `button[data-testid='<id>']` to open it, then click the day inside
+  `[data-testid='<id>-grid']` by its accessible name. It is a hand-drawn day grid, not an
+  `<input type="date">`, so there is no value to type into
 
 ---
 

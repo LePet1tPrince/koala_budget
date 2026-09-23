@@ -149,3 +149,105 @@ class TransactionsPage(BasePage):
         with contextlib.suppress(PlaywrightTimeoutError):
             indicator.wait_for(state="visible", timeout=2_000)
         indicator.wait_for(state="hidden", timeout=15_000)
+
+    # ------------------------------------------------------------------
+    # The edit modal
+    # ------------------------------------------------------------------
+
+    def open_editor(self, description: str):
+        """Click the row carrying `description` and wait for its modal."""
+        self.page.locator("[data-testid='transaction-row']").filter(has_text=description).first.click()
+        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", timeout=15_000)
+        # The modal opens on a detail fetch, so its fields arrive a tick later.
+        self.page.wait_for_selector("[data-testid='transaction-account'], [data-testid='modal-error']", timeout=15_000)
+
+    def close_editor(self):
+        self.page.locator("[data-testid='modal-cancel-btn']").click()
+        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", state="hidden")
+
+    def save_editor(self):
+        """Save and wait for the modal to close and the list to settle."""
+        self.page.locator("[data-testid='modal-save-btn']").click()
+        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", state="hidden", timeout=15_000)
+        self._wait_for_refetch()
+
+    def field_value(self, testid: str) -> str:
+        return self.page.locator(f"[data-testid='{testid}']").input_value()
+
+    def field_is_disabled(self, testid: str) -> bool:
+        return self.page.locator(f"[data-testid='{testid}']").is_disabled()
+
+    def fill_combobox(self, testid: str, text: str):
+        """
+        Type into a `common/Combobox` and pick the first matching option.
+
+        The list is portaled out of the modal (a <dialog> paints in the top
+        layer, so a body portal would render behind it), which is why the option
+        is addressed globally rather than inside the modal.
+        """
+        box = self.page.locator(f"[data-testid='{testid}']")
+        box.click()
+        box.fill(text)
+        self.page.locator("[role='option']").filter(has_text=text).first.click()
+
+    def pick_date(self, testid: str, day: int):
+        """Open a `common/DateField` and click a day in the month on show."""
+        self.page.locator(f"button[data-testid='{testid}']").click()
+        grid = self.page.locator(f"[data-testid='{testid}-grid']")
+        grid.wait_for(timeout=5_000)
+        grid.get_by_role("button", name=str(day), exact=True).click()
+
+    # --- splits ----------------------------------------------------------
+
+    def start_split(self):
+        self.page.locator("[data-testid='start-split-btn']").click()
+        self.page.wait_for_selector("[data-testid='split-editor']")
+
+    def has_split_editor(self) -> bool:
+        return self.page.locator("[data-testid='split-editor']").is_visible()
+
+    def split_leg_count(self) -> int:
+        return self.page.locator("[data-testid^='split-category-']").count()
+
+    def set_split_amount(self, index: int, amount: str):
+        self.page.locator(f"[data-testid='split-amount-{index}']").fill(amount)
+
+    def assign_split_remainder(self):
+        """Click the outstanding amount, which drops it into a leg."""
+        self.page.locator("[data-testid='split-remaining']").click()
+
+    def split_error(self) -> str:
+        return self.page.locator("[data-testid='split-error']").inner_text().strip()
+
+    def expand_split(self, transaction_id: int):
+        self.page.locator(f"[data-testid='split-toggle-{transaction_id}']").click()
+
+    def split_leg_rows(self, transaction_id: int) -> list[str]:
+        return [
+            text.strip() for text in self.page.locator(f"[data-testid='split-leg-{transaction_id}']").all_inner_texts()
+        ]
+
+    # --- destructive actions ---------------------------------------------
+
+    def delete_transaction(self):
+        """Delete through the inline confirm step."""
+        self.page.locator("[data-testid='modal-delete-btn']").click()
+        self.page.locator("[data-testid='modal-delete-confirm']").click()
+        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", state="hidden", timeout=15_000)
+
+    def can_delete(self) -> bool:
+        return self.page.locator("[data-testid='modal-delete-btn']").count() > 0
+
+    def toggle_void(self):
+        """Void the transaction, or restore it if it is already void."""
+        self.page.locator("[data-testid='modal-void-btn']").click()
+        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", state="hidden", timeout=15_000)
+        self._wait_for_refetch()
+
+    def void_button_label(self) -> str:
+        return self.page.locator("[data-testid='modal-void-btn']").inner_text().strip()
+
+    def row_text(self, description: str) -> str:
+        return (
+            self.page.locator("[data-testid='transaction-row']").filter(has_text=description).first.inner_text().strip()
+        )

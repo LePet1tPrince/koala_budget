@@ -19,6 +19,8 @@
 
   {{ api_urls|json_script:'api-urls' }}
   {{ team_slug|json_script:'team-slug' }}
+  {{ all_accounts|json_script:'all-accounts' }}
+  {{ all_payees|json_script:'all-payees' }}
 {% endblock %}
 
 {% block page_js %}
