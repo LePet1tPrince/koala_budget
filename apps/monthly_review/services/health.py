@@ -14,7 +14,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.db.models import Count, F, Max, Min, Sum
+from django.db.models import Count, Max, Min, Sum
 from django.urls import reverse
 
 from apps.accounts.models import Account
@@ -60,9 +60,9 @@ def account_health(team, month) -> dict:
         {
           "accounts": [{
               "account": Account,
-              "transaction_count": int,        # this month, non-archived
+              "transaction_count": int,        # this month: journal entries on the account + uncategorized feed rows
               "uncategorized_count": int,      # posted by month end, non-archived (Inbox definition)
-              "unreconciled_count": int,       # posted by month end, categorized + non-archived
+              "unreconciled_count": int,       # this month: journal entries with an unreconciled line on the account
               "last_transaction_date": date | None,
               "balance": Decimal,              # as of month end; voided/archived entries excluded
               "reconciled_balance": Decimal,   # as of month end
@@ -88,10 +88,29 @@ def account_health(team, month) -> dict:
     )
     account_ids = [a.pk for a in accounts]
 
-    this_month_counts = dict(
+    # The month's own activity: journal lines on the account dated in the month,
+    # the same set `balance_change` sums. Unreconciled is a subset of it, so the
+    # count can never exceed the transaction count.
+    month_lines = JournalLine.objects.filter(
+        team=team, account_id__in=account_ids, journal_entry__entry_date__range=(month_start, month_end)
+    ).filter(counted_entries("journal_entry__"))
+    entry_counts = dict(
+        month_lines.values("account_id")
+        .annotate(count=Count("journal_entry", distinct=True))
+        .values_list("account_id", "count")
+    )
+    unreconciled_counts = dict(
+        month_lines.filter(is_reconciled=False)
+        .values("account_id")
+        .annotate(count=Count("journal_entry", distinct=True))
+        .values_list("account_id", "count")
+    )
+    # Uncategorized feed rows have no journal line yet but are still this month's transactions.
+    uncategorized_this_month = dict(
         BankTransaction.objects.filter(
             team=team,
             account_id__in=account_ids,
+            journal_entry__isnull=True,
             is_archived=False,
             posted_date__range=(month_start, month_end),
         )
@@ -106,20 +125,6 @@ def account_health(team, month) -> dict:
             journal_entry__isnull=True,
             is_archived=False,
             posted_date__lte=month_end,
-        )
-        .values("account_id")
-        .annotate(count=Count("id"))
-        .values_list("account_id", "count")
-    )
-    unreconciled_counts = dict(
-        BankTransaction.objects.filter(
-            team=team,
-            account_id__in=account_ids,
-            is_archived=False,
-            posted_date__lte=month_end,
-            journal_entry__isnull=False,
-            journal_entry__lines__account_id=F("account_id"),
-            journal_entry__lines__is_reconciled=False,
         )
         .values("account_id")
         .annotate(count=Count("id"))
@@ -159,7 +164,7 @@ def account_health(team, month) -> dict:
     all_flags = []
 
     for account in accounts:
-        transaction_count = this_month_counts.get(account.pk, 0)
+        transaction_count = entry_counts.get(account.pk, 0) + uncategorized_this_month.get(account.pk, 0)
         uncategorized_count = uncategorized_counts.get(account.pk, 0)
         unreconciled_count = unreconciled_counts.get(account.pk, 0)
         last_transaction_date = last_transaction_dates.get(account.pk)

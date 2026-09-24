@@ -125,10 +125,10 @@ class AccountHealthTests(TestCase):
     def test_balance_gap_flag_without_bank_feed_activity(self):
         account = self._account("Chequing")
         other = Account.objects.create(team=self.team, name="Misc", account_group=self.equity_group)
-        # A manual journal entry not tied to any bank transaction still moves the
-        # balance without moving the reconciled balance.
+        # An unreconciled entry from an earlier month is not in this month's
+        # unreconciled count, but it still opens a gap as of month end.
         entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2026, 8, 3), description="Manual", status="posted"
+            team=self.team, entry_date=date(2026, 7, 3), description="Manual", status="posted"
         )
         JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=Decimal("50"))
         JournalLine.objects.create(team=self.team, journal_entry=entry, account=other, cr_amount=Decimal("50"))
@@ -250,6 +250,35 @@ class AccountHealthTests(TestCase):
         september_row = account_health(self.team, date(2026, 9, 1))["accounts"][0]
         self.assertEqual(september_row["uncategorized_count"], 1)
         self.assertEqual(september_row["unreconciled_count"], 1)
+
+    def test_counts_cover_only_the_month_and_unreconciled_never_exceeds_transactions(self):
+        account = self._account("Chequing")
+        category = Account.objects.create(team=self.team, name="Groceries", account_group=self.equity_group)
+        # Backlog: unreconciled in July -- not August's transactions.
+        for day in (2, 9, 16):
+            july = BankTransaction.objects.create(
+                team=self.team, account=account, amount=Decimal("5.00"), posted_date=date(2026, 7, day), description="J"
+            )
+            self._categorize(july, category)
+        august = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("5.00"), posted_date=date(2026, 8, 4), description="A"
+        )
+        self._categorize(august, category)
+        BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("5.00"), posted_date=date(2026, 8, 6), description="New"
+        )  # uncategorized: a transaction, not an unreconciled one
+        # A manual entry with no feed row still counts.
+        manual = JournalEntry.objects.create(
+            team=self.team, entry_date=date(2026, 8, 8), description="Manual", status="posted"
+        )
+        JournalLine.objects.create(
+            team=self.team, journal_entry=manual, account=account, dr_amount=Decimal("1"), is_reconciled=True
+        )
+        JournalLine.objects.create(team=self.team, journal_entry=manual, account=category, cr_amount=Decimal("1"))
+
+        row = account_health(self.team, self.month)["accounts"][0]
+        self.assertEqual(row["transaction_count"], 3)
+        self.assertEqual(row["unreconciled_count"], 1)
 
     def test_balance_change_is_movement_within_the_month(self):
         account = self._account("Chequing")
