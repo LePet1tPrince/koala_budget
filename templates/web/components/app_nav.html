@@ -13,7 +13,7 @@
   {% include "budget/components/unassigned_pill.html" %}
 
   {# Primary navigation #}
-  <nav class="app-surface flex min-h-0 flex-1 flex-col overflow-y-auto p-2" aria-label="{% translate 'Main' %}">
+  <nav class="app-nav-panel app-surface flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-2" aria-label="{% translate 'Main' %}">
     <div class="flex flex-col gap-0.5">
       {% include 'web/components/app_nav_menu_items.html' %}
     </div>
@@ -21,63 +21,78 @@
       <a href="{% url 'chat:chat_home' %}"
          class="side-link border border-base-300 bg-base-200/60 {% if active_tab == 'ai-chat' %}side-link-active{% endif %}">
         {% icon "wand-magic-sparkles" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Ask Koala" %}
+        <span class="side-label">{% translate "Ask Koala" %}</span>
       </a>
     </div>
   </nav>
 
-  {# User menu: account actions + theme, out of the nav list #}
-  {% if not user.is_anonymous %}
-    <div class="dropdown dropdown-top w-full">
-      <div tabindex="0" role="button" class="side-tile" data-testid="user-menu">
-        <span class="side-avatar bg-base-300 text-base-content">
-          {{ request.user.get_display_name|slice:":1"|upper }}
-        </span>
-        <span class="min-w-0 flex-1 truncate text-sm">{{ request.user.get_display_name }}</span>
-        {% icon "ellipsis" class="inline-block shrink-0 w-3 h-3 text-base-content/40" %}
-      </div>
-      <ul tabindex="0" class="dropdown-content menu z-20 mb-1 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
-        {% comment %}
-          Profile and Settings sit side by side: Profile is the one account page
-          people reach for by name, Settings is everything else — password, team,
-          subscription, YNAB import, audit log. Change Password used to be a third
-          entry here and is now a section inside Settings.
-        {% endcomment %}
-        <li>
-          <a href="{% url 'users:user_profile' %}" {% if settings_section == 'profile' %}class="menu-active"{% endif %}>
-            {% icon "user" class="inline-block shrink-0 h-4 w-4" %}{% translate "Profile" %}
-          </a>
-        </li>
-        {% if nav_team %}
+  {% comment %}
+    Foot row: the user menu, plus the collapse toggle beside it -- here rather
+    than at the end of the nav panel, where an open submenu scrolls it out of
+    sight. Collapsed, the row stacks (sidebar-foot in app-components.css).
+  {% endcomment %}
+  <div class="sidebar-foot flex items-center gap-2">
+    {% if not user.is_anonymous %}
+      <div class="dropdown dropdown-top min-w-0 flex-1">
+        <div tabindex="0" role="button" class="side-tile" data-testid="user-menu">
+          <span class="side-avatar bg-base-300 text-base-content">
+            {{ request.user.get_display_name|slice:":1"|upper }}
+          </span>
+          <span class="side-tile-text min-w-0 flex-1 truncate text-sm">{{ request.user.get_display_name }}</span>
+          <span class="side-tile-text">{% icon "ellipsis" class="inline-block shrink-0 w-3 h-3 text-base-content/40" %}</span>
+        </div>
+        <ul tabindex="0" class="dropdown-content menu z-20 mb-1 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+          {% comment %}
+            Profile and Settings sit side by side: Profile is the one account page
+            people reach for by name, Settings is everything else — password, team,
+            subscription, YNAB import, audit log. Change Password used to be a third
+            entry here and is now a section inside Settings.
+          {% endcomment %}
           <li>
-            <a href="{% url 'web_team:settings' nav_team.slug %}"
-               data-testid="nav-settings"
-               {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
-              {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
+            <a href="{% url 'users:user_profile' %}" {% if settings_section == 'profile' %}class="menu-active"{% endif %}>
+              {% icon "user" class="inline-block shrink-0 h-4 w-4" %}{% translate "Profile" %}
             </a>
           </li>
-        {% endif %}
-        <li class="menu-title pt-2"><span>{% translate "Theme" %}</span></li>
-        <li>
-          <button onclick="localStorage.setItem('theme', '{{ light_theme|default:'koala' }}'); syncDarkMode();">
-            {% icon "sun-o" class="inline-block shrink-0 h-4 w-4" %}{% translate "Light" %}
-          </button>
-        </li>
-        <li>
-          <button onclick="localStorage.setItem('theme', '{{ dark_theme|default:'koala-dark' }}'); syncDarkMode();">
-            {% icon "moon-o" class="inline-block shrink-0 h-4 w-4" %}{% translate "Dark" %}
-          </button>
-        </li>
-        <li>
-          <button onclick="localStorage.setItem('theme', 'system'); syncDarkMode();">
-            {% icon "desktop" class="inline-block shrink-0 h-4 w-4" %}{% translate "System" %}
-          </button>
-        </li>
-        <li class="menu-title pt-2"><hr class="border-base-300"/></li>
-        <li>
-          <a href="{% url 'account_logout' %}">{% icon "sign-out" class="inline-block shrink-0 h-4 w-4" %}{% translate "Sign out" %}</a>
-        </li>
-      </ul>
-    </div>
-  {% endif %}
+          {% if nav_team %}
+            <li>
+              <a href="{% url 'web_team:settings' nav_team.slug %}"
+                 data-testid="nav-settings"
+                 {% if active_tab == 'settings' and settings_section != 'profile' %}class="menu-active"{% endif %}>
+                {% icon "gear" class="inline-block shrink-0 h-4 w-4" %}{% translate "Settings" %}
+              </a>
+            </li>
+          {% endif %}
+          <li class="menu-title pt-2"><span>{% translate "Theme" %}</span></li>
+          <li>
+            <button onclick="localStorage.setItem('theme', '{{ light_theme|default:'koala' }}'); syncDarkMode();">
+              {% icon "sun-o" class="inline-block shrink-0 h-4 w-4" %}{% translate "Light" %}
+            </button>
+          </li>
+          <li>
+            <button onclick="localStorage.setItem('theme', '{{ dark_theme|default:'koala-dark' }}'); syncDarkMode();">
+              {% icon "moon-o" class="inline-block shrink-0 h-4 w-4" %}{% translate "Dark" %}
+            </button>
+          </li>
+          <li>
+            <button onclick="localStorage.setItem('theme', 'system'); syncDarkMode();">
+              {% icon "desktop" class="inline-block shrink-0 h-4 w-4" %}{% translate "System" %}
+            </button>
+          </li>
+          <li class="menu-title pt-2"><hr class="border-base-300"/></li>
+          <li>
+            <a href="{% url 'account_logout' %}">{% icon "sign-out" class="inline-block shrink-0 h-4 w-4" %}{% translate "Sign out" %}</a>
+          </li>
+        </ul>
+      </div>
+    {% endif %}
+    {# sidebar.js keeps aria-label/title/aria-expanded in step with the state. #}
+    <button type="button" class="sidebar-toggle btn btn-ghost btn-square btn-sm shrink-0" data-sidebar-toggle
+            aria-expanded="true" aria-label="{% translate 'Collapse sidebar' %}" title="{% translate 'Collapse sidebar' %}"
+            data-label-collapse="{% translate 'Collapse sidebar' %}" data-label-expand="{% translate 'Expand sidebar' %}"
+            data-testid="sidebar-toggle">
+      <span class="sidebar-toggle-icon">
+        {% icon "chevrons-right" class="inline-block shrink-0 w-4 h-4" %}
+      </span>
+    </button>
+  </div>
 </div>

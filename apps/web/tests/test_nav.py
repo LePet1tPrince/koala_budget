@@ -127,3 +127,26 @@ class NavInboxBalanceTest(NavTestBase):
     def test_feed_page_shades_the_selected_account(self):
         url = reverse("bank_feed:bank_feed_home", args=[self.team.slug]) + f"?account={self.checking.id}"
         self.assertEqual(_active_testids(self._nav(url)), {f"nav-inbox-account-{self.checking.id}"})
+
+
+class SidebarShellTest(NavTestBase):
+    """
+    The resize handle and collapse toggle are driven by common/sidebar.js; what
+    the server owes it is the hooks, and a `.side-label` on every top-level item
+    so collapsing can hide the words while keeping each link's accessible name.
+    """
+
+    def test_sidebar_carries_resize_and_collapse_hooks(self):
+        page = self._nav(reverse("web_team:home", args=[self.team.slug]))
+        self.assertIn("data-sidebar-root", page)
+        self.assertIn('data-testid="sidebar-resizer"', page)
+        self.assertIn('data-testid="sidebar-toggle"', page)
+        # Applied before first paint, so a reload never flashes the default width.
+        self.assertIn("koala.sidebar.collapsed", page)
+
+    def test_top_level_items_have_labels_and_submenus_are_marked(self):
+        page = self._nav(reverse("web_team:home", args=[self.team.slug]))
+        for label in ("Home", "Inbox", "Transactions", "Budget", "Reports", "Accounts", "Ask Koala"):
+            with self.subTest(label=label):
+                self.assertIn(f'<span class="side-label">{label}</span>', page)
+        self.assertIn('class="side-sub ', page)

@@ -62,6 +62,7 @@ export default defineConfig({
         'account-budget-chart': path.resolve(__dirname, './assets/javascript/reports/account-budget-chart.js'),
         'dollar-map-chart': path.resolve(__dirname, './assets/javascript/reports/dollar-map-chart.js'),
         'unassigned-pill': path.resolve(__dirname, './assets/javascript/unassigned/unassigned-pill.js'),
+        'sidebar': path.resolve(__dirname, './assets/javascript/common/sidebar.js'),
       },
       output: {
         // Output JS bundles to js/ directory with -bundle suffix

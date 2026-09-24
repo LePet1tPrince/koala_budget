@@ -121,6 +121,126 @@
 }
 
 /*
+  Resizable, collapsible desktop sidebar (assets/javascript/common/sidebar.js).
+
+  The width is a custom property on <html>, set before first paint by the inline
+  script in app_base.html, so a reload never flashes the default width. Collapsed
+  (`html[data-sidebar="collapsed"]`) keeps only the top-level items' icons: labels
+  go screen-reader-only (the link keeps its accessible name; sidebar.js adds a
+  `title` for the hover tooltip), and sub-menus, chevrons, section headings, the
+  Unassigned pill and the user's name are hidden. Scoped to `.app-sidebar`, so the
+  mobile dropdown -- which renders the same nav markup -- is never affected.
+*/
+.app-sidebar {
+  width: var(--sidebar-w, 248px);
+  transition: width 150ms ease;
+}
+
+html[data-sidebar-resizing] .app-sidebar {
+  transition: none;
+}
+
+html[data-sidebar-resizing],
+html[data-sidebar-resizing] * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+/* The drag handle: a hairline on the sidebar's right edge, wider hit area than it looks. */
+.sidebar-resizer {
+  @apply absolute inset-y-3 -right-1 z-10 w-2 cursor-col-resize rounded-full;
+  touch-action: none;
+}
+
+.sidebar-resizer::after {
+  content: '';
+  @apply absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 rounded-full bg-transparent transition-colors;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+html[data-sidebar-resizing] .sidebar-resizer::after {
+  @apply bg-primary/50;
+}
+
+.sidebar-resizer:focus-visible {
+  @apply outline-none;
+}
+
+/* The collapse button's chevrons point left (collapse) while open, right (expand) while collapsed. */
+.sidebar-toggle-icon {
+  @apply inline-block rotate-180 transition-transform;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar {
+  width: 72px;
+  @apply p-2;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .app-nav-panel {
+  @apply p-1.5;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .side-label {
+  @apply sr-only;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .side-link {
+  @apply justify-center px-0;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .side-sub,
+html[data-sidebar="collapsed"] .app-sidebar .side-link-toggle,
+html[data-sidebar="collapsed"] .app-sidebar .unassigned-pill,
+html[data-sidebar="collapsed"] .app-sidebar .side-tile-text {
+  display: none !important;
+}
+
+/* A section heading becomes a hairline divider. */
+html[data-sidebar="collapsed"] .app-sidebar .side-section {
+  @apply mx-2 my-3 h-px overflow-hidden bg-base-300 p-0 text-[0px];
+}
+
+/* The Inbox count rides the icon's corner instead of the (hidden) label's end. */
+html[data-sidebar="collapsed"] .app-sidebar .side-link .badge {
+  @apply absolute right-0.5 top-0.5 ml-0 h-4 min-w-4 px-1 text-[0.625rem];
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .side-tile {
+  @apply justify-center px-0;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .sidebar-toggle-icon {
+  @apply rotate-0;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .sidebar-foot {
+  @apply flex-col;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .sidebar-foot > .dropdown {
+  @apply w-full flex-none;
+}
+
+/*
+  With its submenu hidden, a parent is the only place left to show that one of
+  its pages is open, so it takes the active look (as .side-link-active) while
+  any of its sub-items is active -- including the Inbox account Alpine shades.
+*/
+html[data-sidebar="collapsed"] .app-sidebar .side-row:has(~ .side-sub .side-link-active) {
+  @apply bg-primary/10;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .side-row:has(~ .side-sub .side-link-active) > .side-link {
+  @apply font-medium text-primary;
+}
+
+html[data-sidebar="collapsed"] .app-sidebar .side-row:has(~ .side-sub .side-link-active) > .side-link::before {
+  content: '';
+  @apply absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary;
+}
+
+/*
   Quiet table rows (restyle plan Phase 3).
 
   Replaces daisyUI's `table-zebra`. Banding every other row draws the eye to an

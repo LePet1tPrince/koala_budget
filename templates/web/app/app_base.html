@@ -39,15 +39,37 @@
     {% vite_react_refresh %}
     {% vite_asset 'assets/javascript/onboarding/task-rail-app.jsx' %}
   {% endif %}
+  {% comment %}
+    The sidebar's width and collapsed state are per-browser (localStorage) and
+    applied here, before the <aside> is parsed, so a reload never flashes the
+    default width. assets/javascript/common/sidebar.js handles changes; the
+    limits must match its MIN_WIDTH/MAX_WIDTH.
+  {% endcomment %}
+  <script>
+    (function () {
+      try {
+        var root = document.documentElement;
+        var width = parseInt(localStorage.getItem('koala.sidebar.width'), 10);
+        if (width >= 200 && width <= 420) root.style.setProperty('--sidebar-w', width + 'px');
+        if (localStorage.getItem('koala.sidebar.collapsed') === '1') root.dataset.sidebar = 'collapsed';
+      } catch (e) {}
+    })();
+  </script>
+  {% vite_asset 'assets/javascript/common/sidebar.js' %}
   <div class="flex min-h-screen">
     {% comment %}
  shrink-0 matters: without it the flex row lets a wide table squeeze the
        sidebar, so the nav visibly changed width from page to page.
     {% endcomment %}
-    <aside class="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col p-3 lg:flex">
+    <aside class="app-sidebar sticky top-0 hidden h-screen shrink-0 flex-col p-3 lg:flex" data-sidebar-root>
       {% block sidebar-nav %}
         {% include "web/components/app_nav.html" %}
       {% endblock %}
+      <div class="sidebar-resizer" data-sidebar-resizer tabindex="0" role="separator" aria-orientation="vertical"
+           aria-valuemin="200" aria-valuemax="420" aria-valuenow="248"
+           aria-label="{% translate 'Resize sidebar' %}"
+           title="{% translate 'Drag to resize · double-click to reset' %}"
+           data-testid="sidebar-resizer"></div>
     </aside>
     <main class="min-w-0 flex-1 px-4 pb-24 pt-5 lg:px-7 lg:pb-8 lg:pt-6">
       <div class="mx-auto w-full max-w-[1180px]">
