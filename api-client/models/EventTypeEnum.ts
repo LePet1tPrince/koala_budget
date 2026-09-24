@@ -37,6 +37,8 @@
  * * `team_member_removed` - Team Member Removed
  * * `goal_funds_assigned` - Goal Funds Assigned
  * * `goal_funds_withdrawn` - Goal Funds Withdrawn
+ * * `goal_closed` - Goal Closed
+ * * `goal_covered_budget` - Budget Covered From Goal
  * * `onboarding_started` - Onboarding Started
  * * `onboarding_phase_completed` - Onboarding Phase Completed
  * * `onboarding_completed` - Onboarding Questionnaire Completed
@@ -87,6 +89,8 @@ export const EventTypeEnum = {
     TeamMemberRemoved: 'team_member_removed',
     GoalFundsAssigned: 'goal_funds_assigned',
     GoalFundsWithdrawn: 'goal_funds_withdrawn',
+    GoalClosed: 'goal_closed',
+    GoalCoveredBudget: 'goal_covered_budget',
     OnboardingStarted: 'onboarding_started',
     OnboardingPhaseCompleted: 'onboarding_phase_completed',
     OnboardingCompleted: 'onboarding_completed',

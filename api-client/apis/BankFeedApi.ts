@@ -150,8 +150,8 @@ export interface BankFeedFeedListRequest {
 }
 
 export interface BankFeedFeedUpdateRequest {
-    id: number;
     bookSlug: string;
+    id: number;
     teamSlug: string;
     manualTransaction: ManualTransaction;
 }
@@ -162,8 +162,8 @@ export interface BankFeedSampleCsvRequest {
 }
 
 export interface BankFeedSimilarCategoriesRequest {
-    ids: string;
     bookSlug: string;
+    ids: string;
     teamSlug: string;
 }
 
@@ -226,7 +226,7 @@ export interface BankFeedUploadValidateDatesRequest {
 export class BankFeedApi extends runtime.BaseAPI {
 
     /**
-     * Return all account groups for the team, for use in account creation.
+     * Return all account groups for the book, for use in account creation.
      */
     async bankFeedAccountGroupsRaw(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedAccountGroupList>> {
         if (requestParameters['bookSlug'] == null) {
@@ -259,7 +259,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/account_groups/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/account_groups/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -269,7 +269,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Return all account groups for the team, for use in account creation.
+     * Return all account groups for the book, for use in account creation.
      */
     async bankFeedAccountGroups(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedAccountGroupList> {
         const response = await this.bankFeedAccountGroupsRaw(requestParameters, initOverrides);
@@ -315,7 +315,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_archive/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_archive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -371,7 +371,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_delete/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_delete/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -431,7 +431,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_duplicate/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_duplicate/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -481,7 +481,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_edit/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_edit/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
@@ -537,7 +537,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unarchive/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unarchive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -593,7 +593,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unreconcile/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unreconcile/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -640,7 +640,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/category_suggestions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/category_suggestions/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -696,7 +696,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/create_account/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/create_account/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -748,7 +748,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/feed_accounts/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/feed_accounts/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -804,7 +804,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -860,7 +860,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -881,17 +881,17 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Update an existing bank transaction and its associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
      */
     async bankFeedFeedUpdateRaw(requestParameters: BankFeedFeedUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling bankFeedFeedUpdate().'
-            );
-        }
-
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
                 'Required parameter "bookSlug" was null or undefined when calling bankFeedFeedUpdate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling bankFeedFeedUpdate().'
             );
         }
 
@@ -923,7 +923,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'PUT',
             headers: headerParameters,
             query: queryParameters,
@@ -942,7 +942,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the team\'s books are ones the user knowingly imported.
+     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the book\'s books are ones the user knowingly imported.
      */
     async bankFeedSampleCsvRaw(requestParameters: BankFeedSampleCsvRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
         if (requestParameters['bookSlug'] == null) {
@@ -971,7 +971,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/sample_csv/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/sample_csv/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -985,7 +985,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the team\'s books are ones the user knowingly imported.
+     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the book\'s books are ones the user knowingly imported.
      */
     async bankFeedSampleCsv(requestParameters: BankFeedSampleCsvRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
         const response = await this.bankFeedSampleCsvRaw(requestParameters, initOverrides);
@@ -996,17 +996,17 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Suggest categories for uncategorized transactions from how similar ones were categorized before — matching on payee, on description, or on descriptions that share most of their wording.  Returns a flat list ranked per transaction (strongest match first), each item carrying the count behind it so the UI can show why it is suggested.
      */
     async bankFeedSimilarCategoriesRaw(requestParameters: BankFeedSimilarCategoriesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SimilarCategorySuggestion>>> {
-        if (requestParameters['ids'] == null) {
-            throw new runtime.RequiredError(
-                'ids',
-                'Required parameter "ids" was null or undefined when calling bankFeedSimilarCategories().'
-            );
-        }
-
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
                 'Required parameter "bookSlug" was null or undefined when calling bankFeedSimilarCategories().'
+            );
+        }
+
+        if (requestParameters['ids'] == null) {
+            throw new runtime.RequiredError(
+                'ids',
+                'Required parameter "ids" was null or undefined when calling bankFeedSimilarCategories().'
             );
         }
 
@@ -1033,7 +1033,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/similar_categories/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/similar_categories/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -1089,7 +1089,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/categorize/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/categorize/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1145,7 +1145,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/dismiss/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/dismiss/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1201,7 +1201,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/resolve/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/resolve/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1248,7 +1248,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -1304,7 +1304,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_confirm/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_confirm/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1372,7 +1372,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_parse/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_parse/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1452,7 +1452,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_preview/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_preview/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1532,7 +1532,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_validate_dates/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_validate_dates/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,

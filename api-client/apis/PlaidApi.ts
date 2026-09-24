@@ -59,8 +59,8 @@ export interface ImportedTransactionsListRequest {
 }
 
 export interface ImportedTransactionsRetrieveRequest {
-    id: number;
     bookSlug: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -71,15 +71,15 @@ export interface PlaidAccountsListRequest {
 }
 
 export interface PlaidAccountsPartialUpdateRequest {
-    id: number;
     bookSlug: string;
+    id: number;
     teamSlug: string;
     patchedPlaidAccount?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'>;
 }
 
 export interface PlaidAccountsRetrieveRequest {
-    id: number;
     bookSlug: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -101,14 +101,14 @@ export interface PlaidItemsListRequest {
 }
 
 export interface PlaidItemsRetrieveRequest {
-    id: number;
     bookSlug: string;
+    id: number;
     teamSlug: string;
 }
 
 export interface PlaidItemsSyncRequest {
-    id: number;
     bookSlug: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -151,7 +151,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/transactions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/transactions/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -172,17 +172,17 @@ export class PlaidApi extends runtime.BaseAPI {
      * ViewSet for PlaidTransaction model (read-only).
      */
     async importedTransactionsRetrieveRaw(requestParameters: ImportedTransactionsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidTransaction>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling importedTransactionsRetrieve().'
-            );
-        }
-
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
                 'Required parameter "bookSlug" was null or undefined when calling importedTransactionsRetrieve().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling importedTransactionsRetrieve().'
             );
         }
 
@@ -205,7 +205,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/transactions/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/transactions/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -256,7 +256,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -277,17 +277,17 @@ export class PlaidApi extends runtime.BaseAPI {
      * ViewSet for PlaidAccount model. Allows updating the \'account\' field to map Plaid accounts to ledger accounts.
      */
     async plaidAccountsPartialUpdateRaw(requestParameters: PlaidAccountsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidAccount>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling plaidAccountsPartialUpdate().'
-            );
-        }
-
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
                 'Required parameter "bookSlug" was null or undefined when calling plaidAccountsPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidAccountsPartialUpdate().'
             );
         }
 
@@ -312,7 +312,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
@@ -334,17 +334,17 @@ export class PlaidApi extends runtime.BaseAPI {
      * ViewSet for PlaidAccount model. Allows updating the \'account\' field to map Plaid accounts to ledger accounts.
      */
     async plaidAccountsRetrieveRaw(requestParameters: PlaidAccountsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidAccount>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling plaidAccountsRetrieve().'
-            );
-        }
-
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
                 'Required parameter "bookSlug" was null or undefined when calling plaidAccountsRetrieve().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidAccountsRetrieve().'
             );
         }
 
@@ -367,7 +367,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -414,7 +414,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/link-token/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/link-token/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -470,7 +470,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/exchange-token/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/exchange-token/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -522,7 +522,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/items/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -543,17 +543,17 @@ export class PlaidApi extends runtime.BaseAPI {
      * ViewSet for PlaidItem model (read-only).
      */
     async plaidItemsRetrieveRaw(requestParameters: PlaidItemsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidItem>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling plaidItemsRetrieve().'
-            );
-        }
-
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
                 'Required parameter "bookSlug" was null or undefined when calling plaidItemsRetrieve().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidItemsRetrieve().'
             );
         }
 
@@ -576,7 +576,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -597,17 +597,17 @@ export class PlaidApi extends runtime.BaseAPI {
      * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Validates that all accounts are mapped before syncing.
      */
     async plaidItemsSyncRaw(requestParameters: PlaidItemsSyncRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidItemsSync200Response>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling plaidItemsSync().'
-            );
-        }
-
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
                 'Required parameter "bookSlug" was null or undefined when calling plaidItemsSync().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidItemsSync().'
             );
         }
 
@@ -630,7 +630,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/sync/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/sync/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
