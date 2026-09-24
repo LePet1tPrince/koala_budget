@@ -99,7 +99,8 @@ def team_home(request, team_slug):
     income_ytd = report_service.get_income_statement_data(month.replace(month=1, day=1), today)
 
     goals_qs = Goal.objects.filter(team=team).active().with_progress(month)
-    amount_to_reach_goals = sum((max(goal.remaining, Decimal("0")) for goal in goals_qs), Decimal("0"))
+    # What open goals still ask for: target − allocated (a funded goal asks for nothing).
+    amount_to_reach_goals = sum((goal.to_fund for goal in goals_qs), Decimal("0"))
 
     first_entry_date = (
         JournalEntry.objects.filter(team=team)

@@ -3,6 +3,7 @@ import Combobox from '../../common/Combobox';
 import DateField from '../../common/DateField';
 import Modal from '../../common/Modal';
 import { buildCategoryOptions } from '../../common/categoryOptions';
+import { goalOverspendHint } from '../../common/accountKind';
 import { parseAmount, round2 } from '../../common/amount';
 import { formatDateForInput } from '../utils';
 import SplitEditor, { MIN_LEGS } from './SplitEditor';
@@ -100,8 +101,8 @@ const EditTransactionModal = ({
 
   // Create options array for category Autocomplete (grouped by account type)
   const categoryOptions = useMemo(() => {
-    return buildCategoryOptions(allAccounts);
-  }, [allAccounts]);
+    return buildCategoryOptions(allAccounts, { keep: transaction?.category ? [transaction.category] : [] });
+  }, [allAccounts, transaction]);
 
   // Payee names for the free-text autocomplete
   const payeeOptions = useMemo(() => allPayees.map((p) => p.name), [allPayees]);
@@ -206,6 +207,18 @@ const EditTransactionModal = ({
     () => round2((parseAmount(outflow) ?? 0) - (parseAmount(inflow) ?? 0)),
     [inflow, outflow],
   );
+
+  // "Car will go to −$1,500 — that's fine, it's carried". The goal's `left`
+  // already includes this transaction's own spend when it is already on the
+  // goal, so only the change counts.
+  const goalHint = useMemo(() => {
+    if (!category?.account) return null;
+    let spend = total;
+    if (!isCreateMode && transaction?.category?.id === category.id) {
+      spend -= round2((parseAmount(transaction.outflow) ?? 0) - (parseAmount(transaction.inflow) ?? 0));
+    }
+    return goalOverspendHint(category.account, spend);
+  }, [category, total, isCreateMode, transaction]);
 
   const legSum = useMemo(
     () => round2((splits ?? []).reduce((acc, leg) => acc + (parseAmount(leg.amount) ?? 0), 0)),
@@ -490,6 +503,7 @@ const EditTransactionModal = ({
                 helperText={
                   (categorySuggested && gettext('Suggested from how this payee was last categorized'))
                   || (!canEditCategory && !isCreateMode && gettext('Category cannot be edited for this transaction'))
+                  || goalHint
                   || ''
                 }
                 testId="transaction-category"

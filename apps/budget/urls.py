@@ -14,6 +14,7 @@ urlpatterns = [
     path("", views.budget_month_view, name="budget_home"),
     path("autofill/", views.budget_autofill_view, name="budget_autofill"),
     path("save-amount/", views.budget_save_amount, name="budget_save_amount"),
+    path("cover-from-goal/", views.budget_cover_from_goal, name="budget_cover_from_goal"),
     path("grid/", views.budget_grid_view, name="budget_grid"),
     path("grid/save/", views.budget_grid_save, name="budget_grid_save"),
     path("api/unassigned/", views.unassigned_api, name="api_unassigned"),
@@ -27,4 +28,5 @@ urlpatterns = [
     path("goals/<int:pk>/assign-available/", views.goal_assign_available, name="goal_assign_available"),
     path("goals/<int:pk>/withdraw/", views.goal_withdraw, name="goal_withdraw"),
     path("goals/<int:pk>/complete/", views.goal_complete_view, name="goal_complete"),
+    path("goals/<int:pk>/close/", views.goal_close_view, name="goal_close"),
 ]

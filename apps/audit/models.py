@@ -34,6 +34,8 @@ class AuditEvent(models.Model):
     TEAM_MEMBER_REMOVED = "team_member_removed"
     GOAL_FUNDS_ASSIGNED = "goal_funds_assigned"
     GOAL_FUNDS_WITHDRAWN = "goal_funds_withdrawn"
+    GOAL_CLOSED = "goal_closed"
+    GOAL_COVERED_BUDGET = "goal_covered_budget"
     ONBOARDING_STARTED = "onboarding_started"
     ONBOARDING_PHASE_COMPLETED = "onboarding_phase_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
@@ -78,6 +80,8 @@ class AuditEvent(models.Model):
         (TEAM_MEMBER_REMOVED, "Team Member Removed"),
         (GOAL_FUNDS_ASSIGNED, "Goal Funds Assigned"),
         (GOAL_FUNDS_WITHDRAWN, "Goal Funds Withdrawn"),
+        (GOAL_CLOSED, "Goal Closed"),
+        (GOAL_COVERED_BUDGET, "Budget Covered From Goal"),
         (ONBOARDING_STARTED, "Onboarding Started"),
         (ONBOARDING_PHASE_COMPLETED, "Onboarding Phase Completed"),
         (ONBOARDING_COMPLETED, "Onboarding Questionnaire Completed"),

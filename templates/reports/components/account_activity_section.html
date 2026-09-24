@@ -6,7 +6,7 @@
 <!-- Budget vs Actual chart for income/expense accounts (collapsible, open by default) -->
 <div class="collapse collapse-arrow bg-base-100 shadow-lg mb-4" data-testid="account-budget-chart-panel">
   <input type="checkbox" checked aria-label="{% translate 'Toggle budget chart' %}" />
-  <div class="collapse-title font-medium">{% translate "Budget vs Actual" %}</div>
+  <div class="collapse-title font-medium">{% if budget_chart_data.account_type == "goal" %}{% translate "Allocated vs Spent" %}{% else %}{% translate "Budget vs Actual" %}{% endif %}</div>
   <div class="collapse-content">
     <div class="h-64 md:h-72">
       <canvas id="account-budget-chart" class="w-full h-full"></canvas>

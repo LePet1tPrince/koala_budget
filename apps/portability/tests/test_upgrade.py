@@ -28,6 +28,11 @@ class UpgradeChainTests(SimpleTestCase):
         # would refuse every export made before the bump.
         self.assertEqual(sorted(upgrade.CHAIN), list(range(1, FORMAT_VERSION)))
 
+    def test_v2_goals_arrive_open(self):
+        tables = {"accounts": [{"goal_name": "Car"}], "journal_rows": [], "budget_rows": [], "reconciliations": []}
+        result = upgrade.upgrade_to_current(tables, from_version=2)
+        self.assertIsNone(result["accounts"][0]["goal_closed_at"])
+
     def test_v1_gains_an_empty_statement_table_and_unlinked_lines(self):
         tables = {"accounts": [], "journal_rows": [{"entry_id": 1}], "budget_rows": [], "reconciliations": []}
         result = upgrade.upgrade_to_current(tables, from_version=1)

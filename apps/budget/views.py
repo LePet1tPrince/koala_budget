@@ -3,19 +3,20 @@ import math
 from collections import defaultdict
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from urllib.parse import urlencode
 
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Case, IntegerField, Sum, Value, When
+from django.db.models import Case, IntegerField, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.models import Account
-from apps.accounts.serializers import SimpleAccountSerializer
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.teams.decorators import login_and_team_required
@@ -23,7 +24,7 @@ from apps.web.templatetags.currency_tags import currency
 
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Budget, Goal, GoalAllocation
-from .services import BudgetService, GoalService, NetWorthService
+from .services import BudgetService, GoalCloseError, GoalService, NetWorthService, picker_accounts_data
 from .unassigned import OVER_ASSIGNED_LABEL, UNASSIGNED_LABEL, compute_unassigned, pill_context
 
 
@@ -223,12 +224,7 @@ def budget_month_view(request, team_slug):
     # Every account type is a valid "Move to..." target in the Actual popup (the
     # client groups them by type); moving onto a feed account makes it a transfer.
     # System accounts (reconciliation adjustments) are bookkeeping, not destinations.
-    all_accounts = (
-        Account.for_team.filter(account_group__isnull=False, is_system=False)
-        .select_related("account_group")
-        .order_by("name")
-    )
-    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
+    all_accounts_data = picker_accounts_data(request.team)
 
     # API URLs for React
     api_urls = {
@@ -254,6 +250,12 @@ def budget_month_view(request, team_slug):
             "api_urls": api_urls,
             "team_slug": team_slug,
             "save_amount_url": f"/a/{team_slug}/budget/save-amount/",
+            "cover_url": reverse("budget:budget_cover_from_goal", args=[team_slug]),
+            # Goals an overspent category can be covered from (emergency fund, ...).
+            "cover_goals": [
+                {"id": goal.pk, "name": goal.name, "left": f"{goal.left:.2f}"}
+                for goal in GoalService(request.team).get_goals_with_progress(month)
+            ],
         },
     )
 
@@ -665,9 +667,11 @@ def goals_list_view(request, team_slug):
     """List all goals with progress for the selected month."""
     month = _month_from_request(request)
     style = _goals_style(request)
+    show_closed = request.GET.get("show") == "closed"
     service = GoalService(request.team)
-    summary = service.get_goal_summary(month)
-    goals = list(summary["goals"])
+    summary = service.get_goal_summary(month, closed=show_closed)
+    goals = summary["goals"]
+    closed_count = Goal.objects.filter(team=request.team, is_archived=False, closed_at__isnull=False).count()
 
     # Every allocation for these goals in one query; used for streaks and pace
     amounts_by_goal = defaultdict(dict)
@@ -682,9 +686,11 @@ def goals_list_view(request, team_slug):
     big_month = False
     for goal in goals:
         amounts = amounts_by_goal.get(goal.pk, {})
-        saved = goal.total_saved or Decimal("0")
-        remaining = max(goal.target_amount - saved, Decimal("0"))
+        saved = goal.allocated
+        remaining = goal.to_fund
         pct = goal.progress_percentage
+        # The spent part of the fill, drawn hatched: spending doesn't slide the bar back.
+        spent_pct = min(max(float(goal.spent / goal.target_amount * 100), 0), pct) if goal.target_amount > 0 else 0
 
         saved_months = {m for m, amt in amounts.items() if amt > 0}
         streak = _goal_streak(saved_months, month)
@@ -726,7 +732,16 @@ def goals_list_view(request, team_slug):
                 "needed_per_month": needed_per_month,
                 "projected_date": projected_date,
                 "behind_pace": behind_pace,
-                "funded": goal.is_complete or (goal.target_amount > 0 and saved >= goal.target_amount),
+                "funded": goal.is_funded,
+                "spent": goal.spent,
+                "spent_this_month": goal.spent_this_month,
+                "left": goal.left,
+                "cover_amount": max(-goal.left, Decimal("0")),
+                "spent_pct": spent_pct,
+                "state": goal.state,
+                "state_label": goal.state_label,
+                "closed": goal.is_closed,
+                "spending_url": _goal_spending_url(goal, team_slug),
                 "milestones": [25, 50, 75, 100],
             }
         )
@@ -818,8 +833,24 @@ def goals_list_view(request, team_slug):
             "goals_props": goals_props,
             "prev_month": month - relativedelta(months=1),
             "next_month": month + relativedelta(months=1),
+            "show_closed": show_closed,
+            "closed_count": closed_count,
         },
     )
+
+
+def _goal_spending_url(goal, team_slug):
+    """The Transactions page filtered to the goal's account (its spending)."""
+    if not goal.account_id:
+        return None
+    base = reverse("journal:transactions_home", args=[team_slug])
+    return f"{base}?{urlencode({'f_debit_account': f'a:{goal.account_id}'})}"
+
+
+def _goal_numbers(goal, month):
+    """(allocated, spent) for `goal` as of the end of `month`."""
+    numbers = Goal.objects.filter(pk=goal.pk).with_progress(month).values("allocated", "spent").get()
+    return numbers["allocated"], numbers["spent"]
 
 
 @login_and_team_required
@@ -840,8 +871,12 @@ def goal_assign_available(request, team_slug, pk):
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
-    if goal.is_archived or goal.is_complete:
+    if goal.is_archived or goal.is_closed:
         return JsonResponse({"error": "This goal is no longer active."}, status=400)
+    # A funded goal stops asking for money (no quick-assign), but an explicit
+    # amount still goes in -- that's how an overspent goal is covered or paid back.
+    if goal.is_complete and payload.get("amount") is None:
+        return JsonResponse({"error": "This goal is already fully funded."}, status=400)
 
     month = _parse_month(payload.get("month"))
 
@@ -850,7 +885,7 @@ def goal_assign_available(request, team_slug, pk):
             GoalAllocation.objects.select_for_update().filter(team=request.team, goal=goal, month=month).first()
         )
         month_amount = allocation.amount if allocation else Decimal("0")
-        old_saved = goal.allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        old_saved, spent = _goal_numbers(goal, month)
         remaining = goal.target_amount - old_saved
         available = NetWorthService(request.team).get_net_worth_card_data(month)["available"]
 
@@ -904,6 +939,8 @@ def goal_assign_available(request, team_slug, pk):
             "this_month": float(month_amount + amount),
             "new_available": float(available - amount),
             "completed": new_saved >= goal.target_amount and goal.target_amount > 0,
+            "spent": float(spent),
+            "left": float(new_saved - spent),
         }
     )
 
@@ -914,9 +951,10 @@ def goal_withdraw(request, team_slug, pk):
     """Take funds back out of a goal (JSON endpoint for the goals page).
 
     Body: {"month": "YYYY-MM-DD", "amount": "123.45"}. Without "amount",
-    withdraws everything the goal has saved. The withdrawal is recorded against
+    withdraws everything the goal has left. The withdrawal is recorded against
     the given month's allocation (which may go negative), so past months'
-    contribution history is never rewritten.
+    contribution history is never rewritten. Money already spent from the goal
+    can't be withdrawn: the cap is left (allocated − spent), not allocated.
     """
     goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
 
@@ -927,9 +965,11 @@ def goal_withdraw(request, team_slug, pk):
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
-    # Complete goals stay withdrawable — that's how a finished goal is cashed out
+    # Funded goals stay withdrawable — that's how a finished goal is cashed out
     if goal.is_archived:
         return JsonResponse({"error": "This goal is archived."}, status=400)
+    if goal.is_closed:
+        return JsonResponse({"error": "This goal is closed."}, status=400)
 
     month = _parse_month(payload.get("month"))
 
@@ -938,15 +978,16 @@ def goal_withdraw(request, team_slug, pk):
             GoalAllocation.objects.select_for_update().filter(team=request.team, goal=goal, month=month).first()
         )
         month_amount = allocation.amount if allocation else Decimal("0")
-        old_saved = goal.allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        old_saved, spent = _goal_numbers(goal, month)
+        left = old_saved - spent
         available = NetWorthService(request.team).get_net_worth_card_data(month)["available"]
 
-        if old_saved <= 0:
-            return JsonResponse({"error": "Nothing saved to withdraw."}, status=400)
+        if left <= 0:
+            return JsonResponse({"error": "Nothing left in this goal to withdraw."}, status=400)
 
         raw_amount = payload.get("amount")
         if raw_amount is None:
-            amount = old_saved
+            amount = left
         else:
             try:
                 amount = Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -954,9 +995,9 @@ def goal_withdraw(request, team_slug, pk):
                 return JsonResponse({"error": "Invalid amount."}, status=400)
             if not amount.is_finite() or amount <= 0 or amount > GRID_MAX_AMOUNT:
                 return JsonResponse({"error": "Invalid amount."}, status=400)
-            if amount > old_saved:
+            if amount > left:
                 return JsonResponse(
-                    {"error": f"This goal only has ${old_saved:,.2f} saved."},
+                    {"error": f"This goal only has ${left:,.2f} left."},
                     status=400,
                 )
 
@@ -995,6 +1036,8 @@ def goal_withdraw(request, team_slug, pk):
             "this_month": float(month_amount - amount),
             "new_available": float(available + amount),
             "funded": new_saved >= goal.target_amount and goal.target_amount > 0,
+            "spent": float(spent),
+            "left": float(new_saved - spent),
         }
     )
 
@@ -1040,6 +1083,8 @@ def goal_detail_view(request, team_slug, pk):
             "page_title": f"{goal.name} | {request.team}",
             "goal": goal,
             "allocations": allocations,
+            "spending": GoalService(request.team).spending_lines(goal, limit=50),
+            "spending_url": _goal_spending_url(goal, team_slug),
         },
     )
 
@@ -1077,7 +1122,16 @@ def goal_delete_view(request, team_slug, pk):
     goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
 
     if request.method == "POST":
-        # Soft delete by archiving
+        # Archiving hides a goal. An open goal is closed first, which releases
+        # anything left in it -- a hidden goal must not keep holding money.
+        if not goal.is_closed:
+            try:
+                result = GoalService(request.team).close(goal, _month_from_request(request))
+            except GoalCloseError as e:
+                messages.error(request, str(e))
+                return redirect("budget:goal_detail", team_slug=team_slug, pk=pk)
+            goal.refresh_from_db()
+            _log_goal_closed(request, goal, result, via="archive")
         goal.is_archived = True
         goal.save()
         messages.success(request, _("Goal archived successfully."))
@@ -1122,12 +1176,136 @@ def goal_allocation_update_view(request, team_slug, pk):
 
 @login_and_team_required
 def goal_complete_view(request, team_slug, pk):
-    """Mark a goal as complete."""
+    """Mark a goal as funded: it stops asking for money but keeps its claim."""
     goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
 
     if request.method == "POST":
         goal.is_complete = True
         goal.save()
-        messages.success(request, _("Congratulations! Goal marked as complete."))
+        messages.success(request, _("Congratulations! Goal marked as funded."))
 
     return redirect("budget:goal_detail", team_slug=team_slug, pk=pk)
+
+
+def _log_goal_closed(request, goal, result, via):
+    log_event(
+        AuditEvent.GOAL_CLOSED,
+        request=request,
+        metadata={
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "released": str(result["released"]),
+            "covered": str(result["covered"]),
+            "via": via,
+        },
+    )
+
+
+def _next_url(request, default):
+    """A same-site `next` from the form, or `default`."""
+    from django.utils.http import url_has_allowed_host_and_scheme
+
+    candidate = request.POST.get("next") or ""
+    if candidate and url_has_allowed_host_and_scheme(candidate, allowed_hosts={request.get_host()}):
+        return candidate
+    return default
+
+
+@login_and_team_required
+@require_POST
+def goal_close_view(request, team_slug, pk):
+    """
+    Close a goal (form post). Anything left is released back to Unassigned; a
+    negative goal is covered from Unassigned first when `cover` is sent, and
+    otherwise refused (it can stay open and be paid back instead).
+    """
+    goal = get_object_or_404(Goal.objects.filter(team=request.team, is_archived=False), pk=pk)
+    month = _parse_month(request.POST.get("month")) if request.POST.get("month") else _month_from_request(request)
+    back = _next_url(request, reverse("budget:goals_list", args=[team_slug]))
+    try:
+        result = GoalService(request.team).close(goal, month, cover=bool(request.POST.get("cover")))
+    except GoalCloseError as e:
+        messages.error(request, str(e))
+        return redirect(back)
+
+    _log_goal_closed(request, goal, result, via="close")
+    if result["released"]:
+        messages.success(
+            request,
+            _("%(name)s closed. %(amount)s went back to your unassigned money.")
+            % {"name": goal.name, "amount": currency(result["released"])},
+        )
+    elif result["covered"]:
+        messages.success(
+            request,
+            _("%(name)s closed. %(amount)s covered its overspending.")
+            % {"name": goal.name, "amount": currency(result["covered"])},
+        )
+    else:
+        messages.success(request, _("%(name)s closed.") % {"name": goal.name})
+    return redirect(back)
+
+
+@login_and_team_required
+@require_POST
+def budget_cover_from_goal(request, team_slug):
+    """
+    Cover an overspent budget row from a goal (docs/goals-envelopes-plan.md §4.4).
+
+    Body: {"category_id": int, "goal_id": int, "month": "YYYY-MM-DD", "amount": "123.45"}.
+    One transaction: the goal gives up `amount` (a negative allocation this month)
+    and the category's budget for the month rises by the same amount, so
+    Unassigned doesn't move. Returns every figure the budget page shows, like
+    `budget_save_amount`. The goal may go negative -- overspending is carried.
+    """
+    try:
+        payload = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+        return JsonResponse({"error": _("Invalid request body.")}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": _("Invalid request body.")}, status=400)
+
+    try:
+        category_id = int(payload.get("category_id"))
+        goal_id = int(payload.get("goal_id"))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": _("Pick a category and a goal.")}, status=400)
+    category = _budget_categories(request.team).filter(pk=category_id, account_group__account_type="expense").first()
+    if category is None:
+        return JsonResponse({"error": _("Unknown budget category.")}, status=400)
+    goal = Goal.objects.filter(team=request.team, pk=goal_id, is_archived=False, closed_at__isnull=True).first()
+    if goal is None:
+        return JsonResponse({"error": _("Unknown goal.")}, status=400)
+
+    month = parse_date(str(payload.get("month") or ""))
+    if month is None:
+        return JsonResponse({"error": _("Invalid month.")}, status=400)
+    month = month.replace(day=1)
+
+    amount = parse_budget_amount(payload.get("amount"))
+    if amount is None or amount <= 0 or amount > GRID_MAX_AMOUNT:
+        return JsonResponse({"error": _("Enter an amount greater than zero.")}, status=400)
+
+    budget = GoalService(request.team).cover_from_goal(goal, category, month, amount)
+
+    log_event(
+        AuditEvent.GOAL_COVERED_BUDGET,
+        request=request,
+        metadata={
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "category_id": category.pk,
+            "category_name": category.name,
+            "month": month.isoformat(),
+            "amount": str(amount),
+        },
+    )
+    return JsonResponse(
+        {
+            "covered": True,
+            "category_id": category.pk,
+            "amount": f"{budget.budget_amount:.2f}",
+            "goal_left": f"{GoalService(request.team).left(goal, month):.2f}",
+            "cells": _budget_cells(_budget_figures(request.team, month)),
+        }
+    )

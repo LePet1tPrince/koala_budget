@@ -22,6 +22,7 @@ TOP_LEVEL_KEYS = {
     "biggest",
     "cat_txns",
     "net_worth",
+    "goal_spending",
     "insights",
     "notes",
 }

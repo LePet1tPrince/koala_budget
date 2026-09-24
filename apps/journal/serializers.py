@@ -9,6 +9,7 @@ from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import (
     Account,
     Payee,
@@ -238,6 +239,18 @@ class SimpleLineSerializer(serializers.Serializer):
             self.fields["account"].queryset = Account.for_team.all()
             self.fields["category"].queryset = Account.for_team.all()
             self.fields["payee"].queryset = Payee.for_team.all()
+
+    def validate_category(self, value):
+        keep_ids = set()
+        if self.instance is not None:
+            sibling = self._get_sibling_line(self.instance)
+            if sibling is not None:
+                keep_ids.add(sibling.account_id)
+        try:
+            assert_category_allowed(value, keep_ids=keep_ids)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e)) from None
+        return value
 
     def validate(self, data):
         """Validate that exactly one of inflow or outflow is non-zero."""

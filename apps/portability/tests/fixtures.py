@@ -47,6 +47,7 @@ def account(account_id: int, name: str, account_type: str, group_name: str, **ov
         "goal_is_complete": None,
         "goal_is_archived": None,
         "goal_archived_at": None,
+        "goal_closed_at": None,
         "goal_order": None,
     }
     row.update(overrides)

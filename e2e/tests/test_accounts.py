@@ -53,9 +53,12 @@ def test_accounts_board_empty_state(authenticated_page: Page, live_server, team)
     accounts.goto_home(team.slug)
 
     assert accounts.get_row_count() == 0
-    # All five flow-type sections render, each with a "new group" affordance
-    assert authenticated_page.locator("[data-testid='account-type-section']").count() == 5
+    # Six sections: the equity type is shown as Goals and Equity. Five offer a
+    # "new group"; Goals offers "New goal" instead, since the Goals page makes
+    # a goal's account (a group added there would hold plain equity).
+    assert authenticated_page.locator("[data-testid='account-type-section']").count() == 6
     assert authenticated_page.locator("[data-testid='add-group-btn']").count() == 5
+    assert authenticated_page.locator("[data-testid='add-goal-section-link']").count() == 1
 
 
 @pytest.mark.django_db(transaction=True)

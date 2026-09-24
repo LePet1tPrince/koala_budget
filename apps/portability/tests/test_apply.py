@@ -22,7 +22,7 @@ from apps.accounts.models import Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.splits import is_split
-from apps.budget.models import Budget
+from apps.budget.models import Budget, Goal
 from apps.journal.models import JournalEntry, JournalLine
 from apps.portability.services import apply, export, read, write
 from apps.portability.services.schema import UNCATEGORIZED_STATUS, DocumentError
@@ -214,6 +214,25 @@ class RoundTripTests(TestCase):
         types = [e.event_type for e in events]
         self.assertIn(AuditEvent.DATA_WIPED, types)
         self.assertIn(AuditEvent.DATA_IMPORTED, types)
+
+
+class GoalLifecycleRoundTripTests(TestCase):
+    """A closed goal travels closed, and every imported goal has its equity account."""
+
+    def test_closed_goal_survives_and_every_goal_has_an_account(self):
+        from django.utils import timezone
+
+        source_team, _user, _handles = build_db_fixture_team("Closed Source", "closed-source")
+        dest_team, dest_user = make_team("Closed Destination", "closed-destination")
+        closed_at = timezone.now().replace(microsecond=0)
+        Goal.objects.filter(team=source_team, name="New Deck").update(closed_at=closed_at)
+
+        apply.apply_archive(dest_team, export_bytes(source_team), user=dest_user)
+
+        goal = Goal.objects.get(team=dest_team, name="New Deck")
+        self.assertEqual(goal.closed_at, closed_at)
+        self.assertFalse(Goal.objects.filter(team=dest_team, account__isnull=True).exists())
+        self.assertFalse(goal.account.account_group.is_system)
 
 
 class ImportIntoNonEmptyTeamTests(TestCase):

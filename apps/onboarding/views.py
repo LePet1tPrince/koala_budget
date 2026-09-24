@@ -24,7 +24,6 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
-from apps.accounts.models import ACCOUNT_TYPE_EQUITY, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.budget.models import Goal
@@ -198,10 +197,7 @@ def _create_first_goal(team, answers: dict):
     """
     Create the goal the user named, so the Goals page is not empty on first visit.
 
-    `Goal.save()` auto-creates the backing equity account, but falls back to *any*
-    equity group when there is no "Goals" one -- which on a freshly generated chart
-    of accounts is the system "Equity Adjustments" group. Ensuring the group first
-    keeps a user's goal out of a system group.
+    `Goal.save()` auto-creates the backing equity account in a non-system "Goals" group.
     """
     question = next((q for q in QUESTION_CATALOG if q.kind == GOAL), None)
     if question is None:
@@ -210,12 +206,6 @@ def _create_first_goal(team, answers: dict):
     goal = answers.get(question.id)
     if not isinstance(goal, dict) or not goal.get("name"):
         return
-
-    AccountGroup.objects.get_or_create(
-        team=team,
-        name="Goals",
-        defaults={"account_type": ACCOUNT_TYPE_EQUITY, "description": "Savings goals"},
-    )
 
     target_date = None
     if raw_date := goal.get("target_date"):

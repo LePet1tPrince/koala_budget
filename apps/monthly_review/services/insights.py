@@ -442,6 +442,24 @@ def _step7_saving(review) -> list:
                 delta=Decimal(str(rate_delta)),
             )
         )
+
+    # Spending from a goal is planned spending paid from money set aside: shown,
+    # never flagged as overspending.
+    for spend in review.get("goal_spending", ()):
+        if spend["amount"] <= 0:
+            continue
+        if spend["months_funded"] > 1:
+            title = _("%(amount)s from %(goal)s — funded over %(months)d months.") % {
+                "amount": _money(spend["amount"]),
+                "goal": spend["name"],
+                "months": spend["months_funded"],
+            }
+        else:
+            title = _("%(amount)s spent from %(goal)s, money you'd set aside for it.") % {
+                "amount": _money(spend["amount"]),
+                "goal": spend["name"],
+            }
+        out.append(Insight(kind="goal_spending", severity="info", step=7, title=title, metric=spend["amount"]))
     return out
 
 

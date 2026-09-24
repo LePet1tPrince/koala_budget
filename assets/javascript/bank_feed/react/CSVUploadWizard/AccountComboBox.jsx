@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../../../common/Icon';
+import { accountKind, pickableAccounts } from '../../../common/accountKind';
 
 const ACCOUNT_TYPE_LABELS = {
   asset: gettext('Assets'),
@@ -10,9 +11,10 @@ const ACCOUNT_TYPE_LABELS = {
   income: gettext('Income'),
   expense: gettext('Expenses'),
   goal: gettext('Goals'),
+  equity: gettext('Equity'),
 };
 
-const TYPE_ORDER = ['asset', 'liability', 'income', 'expense', 'goal'];
+const TYPE_ORDER = ['asset', 'liability', 'income', 'expense', 'goal', 'equity'];
 
 /**
  * AccountComboBox - Searchable dropdown for selecting an account.
@@ -94,12 +96,12 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
   const groupedAccounts = useMemo(() => {
     const term = search.toLowerCase();
     const filtered = term
-      ? allAccounts.filter((a) => a.name.toLowerCase().includes(term))
-      : allAccounts;
+      ? pickableAccounts(allAccounts).filter((a) => a.name.toLowerCase().includes(term))
+      : pickableAccounts(allAccounts);
 
     const groups = {};
     filtered.forEach((account) => {
-      const type = account.account_type || 'other';
+      const type = (account.account_type && accountKind(account)) || 'other';
       if (!groups[type]) groups[type] = [];
       groups[type].push(account);
     });

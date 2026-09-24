@@ -29,6 +29,11 @@ class ReportsPage(BasePage):
     # Reports home queries
     # ------------------------------------------------------------------
 
+    def goal_spending_rows(self) -> list[str]:
+        """The goal names listed under Goal spending on the income statement."""
+        rows = self.page.locator("[data-testid='goal-spending-table'] tr.row-account td:first-child")
+        return [rows.nth(i).inner_text().strip() for i in range(rows.count())]
+
     def has_income_statement_link(self) -> bool:
         return self.page.locator("[data-testid='report-link-income-statement']").is_visible()
 

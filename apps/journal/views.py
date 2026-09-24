@@ -14,6 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import Account
 from apps.audit.models import AuditLog
 from apps.audit.serializers import AuditLogSerializer
@@ -261,6 +262,10 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
             )
 
         new_category = get_object_or_404(Account.objects.filter(team=self.request.team), id=new_category_id)
+        try:
+            assert_category_allowed(new_category, keep_ids={line.account_id})
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # A line moved onto an account the entry already posts to on the *other*
         # side (e.g. the bank account the money came through) cancels itself out.
@@ -509,5 +514,27 @@ def transactions_home(request, team_slug):
             "page_title": _("Transactions | {team}").format(team=request.team),
             "api_urls": api_urls,
             "team_slug": team_slug,
+            "initial_filters": _initial_account_filters(request),
         },
     )
+
+
+def _initial_account_filters(request):
+    """
+    `?f_debit_account=a:12` / `?f_credit_account=a:12` from a link (e.g. a goal's
+    "see its spending"), as the page's opening column filters with their labels.
+    Only single-account tokens are accepted, and only the team's own accounts.
+    """
+    filters = {}
+    for column in ("debit_account", "credit_account"):
+        entries = []
+        for raw in request.GET.getlist(f"f_{column}"):
+            prefix, _sep, rest = raw.partition(":")
+            if prefix != "a" or not rest.isdigit():
+                continue
+            account = Account.objects.filter(team=request.team, pk=int(rest)).only("name").first()
+            if account is not None:
+                entries.append({"value": raw, "label": account.name})
+        if entries:
+            filters[column] = entries
+    return filters

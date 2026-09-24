@@ -49,6 +49,7 @@ function init() {
     .filter(Boolean);
 
   rows.forEach((row, index) => wire(row, index));
+  wireCoverFromGoal();
 
   // -------------------------------------------------------------------------
   // Row state
@@ -229,6 +230,111 @@ function init() {
       el.classList.toggle('text-error', cell.tone === 'neg');
       el.classList.toggle('text-success', cell.tone === 'pos');
       flash(el);
+    });
+    refreshCoverButtons();
+  }
+
+  // -------------------------------------------------------------------------
+  // Cover an overspent row from a goal
+  // -------------------------------------------------------------------------
+
+  function parseMoney(text) {
+    const n = parseFloat(String(text).replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function fmtMoney(n) {
+    const abs = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${n < 0 ? '-' : ''}$${abs}`;
+  }
+
+  // The button only makes sense while the row is overspent, which a save can change.
+  function refreshCoverButtons() {
+    document.querySelectorAll('[data-cover-from-goal]').forEach((btn) => {
+      const cell = cells.get(`row:${btn.dataset.categoryId}:available`);
+      if (cell) btn.hidden = parseMoney(cell.textContent) >= 0;
+    });
+  }
+
+  function wireCoverFromGoal() {
+    const dialog = document.querySelector('[data-cover-dialog]');
+    const url = document.querySelector('[data-cover-url]')?.dataset.coverUrl;
+    const goalsEl = document.getElementById('cover-goals');
+    if (!dialog || !url || !goalsEl) return;
+    const goals = JSON.parse(goalsEl.textContent);
+    const form = dialog.querySelector('[data-cover-form]');
+    const select = form.querySelector('select[name="goal_id"]');
+    const amountInput = form.querySelector('input[name="amount"]');
+    const error = dialog.querySelector('[data-cover-error]');
+    const intro = dialog.querySelector('[data-cover-intro]');
+    let current = null;
+
+    const fillGoals = () => {
+      select.replaceChildren(
+        ...goals.map((goal) => {
+          const option = document.createElement('option');
+          option.value = goal.id;
+          option.textContent = `${goal.name} · ${fmtMoney(parseFloat(goal.left))} left`;
+          return option;
+        })
+      );
+      // Start on the goal holding the most.
+      const richest = goals.reduce((a, b) => (parseFloat(b.left) > parseFloat(a.left) ? b : a), goals[0]);
+      if (richest) select.value = String(richest.id);
+    };
+
+    document.querySelectorAll('[data-cover-from-goal]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const cell = cells.get(`row:${btn.dataset.categoryId}:available`);
+        const shortfall = cell ? -parseMoney(cell.textContent) : 0;
+        current = btn;
+        fillGoals();
+        amountInput.value = shortfall > 0 ? shortfall.toFixed(2) : '';
+        intro.textContent = `${btn.dataset.categoryName} is ${fmtMoney(-shortfall)}.`;
+        error.hidden = true;
+        dialog.showModal();
+        amountInput.select();
+      });
+    });
+    dialog.querySelector('[data-cover-cancel]').addEventListener('click', () => dialog.close());
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!current) return;
+      let response;
+      let payload = {};
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': Cookies.get('csrftoken') || '' },
+          body: JSON.stringify({
+            category_id: Number(current.dataset.categoryId),
+            goal_id: Number(select.value),
+            month: current.dataset.month,
+            amount: amountInput.value,
+          }),
+        });
+        payload = await response.json().catch(() => ({}));
+      } catch {
+        response = null;
+      }
+      if (!response || !response.ok) {
+        error.textContent = payload.error || 'Could not cover that from the goal.';
+        error.hidden = false;
+        return;
+      }
+      const goal = goals.find((g) => String(g.id) === select.value);
+      if (goal) goal.left = payload.goal_left;
+      // The row's budget changed: show it, and keep the autosave baseline in step.
+      const row = rows.find((r) => String(r.categoryId) === current.dataset.categoryId);
+      if (row) {
+        row.saved = payload.amount;
+        row.input.value = payload.amount;
+      }
+      painted = ++ticket;
+      paint(payload.cells);
+      dialog.close();
+      announce(`${current.dataset.categoryName} covered from ${goal ? goal.name : 'the goal'}.`);
     });
   }
 

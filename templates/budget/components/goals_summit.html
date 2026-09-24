@@ -54,6 +54,19 @@ pace/projection numbers, context-aware quick-assign.
     z-index: 1;
   }
   .is-funded .thermo-bulb { background: var(--color-success); color: var(--color-success-content); }
+  /* The spent part of the fill: still funded, but already used. */
+  .thermo-spent {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      color-mix(in oklab, var(--color-base-100) 55%, transparent) 0 4px,
+      transparent 4px 8px
+    );
+    border-top: 1px solid color-mix(in oklab, var(--color-base-content) 30%, transparent);
+  }
   .withdrawing { animation: withdraw-dip 0.9s ease; }
   @keyframes withdraw-dip {
     0%, 100% { transform: translateY(0); filter: none; }
@@ -71,6 +84,11 @@ pace/projection numbers, context-aware quick-assign.
   <div class="stat">
     <div class="stat-title">{% translate "Total Saved" %}</div>
     <div class="stat-value text-primary" data-saved-display>{{ summary.total_saved|currency }}</div>
+    {% if summary.total_spent %}
+      <div class="stat-desc">
+        {% blocktranslate trimmed with spent=summary.total_spent|currency left=summary.total_left|currency %}{{ spent }} spent · {{ left }} left{% endblocktranslate %}
+      </div>
+    {% endif %}
   </div>
   <div class="stat">
     <div class="stat-title">{% translate "Total Target" %}</div>
@@ -90,6 +108,7 @@ pace/projection numbers, context-aware quick-assign.
        data-goal-card
        data-remaining="{{ item.remaining }}"
        data-saved="{{ item.saved }}"
+       data-left="{{ item.left }}"
        data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug pk=item.goal.pk %}"
        data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug pk=item.goal.pk %}"
        data-testid="goal-card">
@@ -98,7 +117,14 @@ pace/projection numbers, context-aware quick-assign.
         <h2 class="card-title">
           <a href="{% url 'budget:goal_detail' team_slug=request.team.slug pk=item.goal.pk %}" class="link link-hover">{{ item.goal.name }}</a>
         </h2>
-        <span class="badge badge-success gap-1" data-funded-badge {% if not item.funded %}hidden{% endif %}>✓ {% translate "Funded" %}</span>
+        <div class="flex gap-1 shrink-0" data-testid="goal-state" data-state="{{ item.state }}">
+          {% if item.state == 'spending' %}
+            <span class="badge badge-info">{{ item.state_label }}</span>
+          {% else %}
+            <span class="badge badge-ghost" data-saving-pill {% if item.funded %}hidden{% endif %}>{% translate "Saving" %}</span>
+            <span class="badge badge-success gap-1" data-funded-badge {% if not item.funded %}hidden{% endif %}>✓ {% translate "Funded" %}</span>
+          {% endif %}
+        </div>
       </div>
 
       <div class="flex gap-5 items-center mt-2">
@@ -108,6 +134,9 @@ pace/projection numbers, context-aware quick-assign.
             <div class="thermo-tick" style="bottom: 50%"></div>
             <div class="thermo-tick" style="bottom: 75%"></div>
             <div class="thermo-fill" data-fill data-pct="{{ item.pct|floatformat:1 }}" style="height: {{ item.pct|floatformat:1 }}%"></div>
+            {% if item.spent_pct %}
+              <div class="thermo-spent" style="height: {{ item.spent_pct|floatformat:1 }}%" title="{% translate 'Spent from this goal' %}"></div>
+            {% endif %}
           </div>
           <div class="thermo-bulb">$</div>
         </div>
@@ -118,6 +147,14 @@ pace/projection numbers, context-aware quick-assign.
             <span class="font-mono font-semibold text-success" data-num="saved">{{ item.saved|currency }}</span>
             <span class="text-base-content/70">{% translate "of" %} {{ item.goal.target_amount|currency }}</span>
           </div>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-3 mt-2 text-sm" data-testid="goal-numbers">
+            <dt class="text-base-content/70">{% translate "Allocated" %}</dt>
+            <dd class="font-mono text-right">{{ item.saved|currency }}</dd>
+            <dt class="text-base-content/70">{% translate "Spent" %}</dt>
+            <dd class="font-mono text-right" data-testid="goal-spent">{{ item.spent|currency }}</dd>
+            <dt class="text-base-content/70">{% translate "Left" %}</dt>
+            <dd class="font-mono text-right font-semibold" data-testid="goal-left"><span data-num="left" class="{% if item.left < 0 %}text-error{% endif %}">{{ item.left|currency }}</span>{% if item.left < 0 %} <span class="font-sans font-normal text-xs" data-carried>{% translate "carried" %}</span>{% endif %}</dd>
+          </dl>
           <div class="text-sm text-base-content/70 mt-2">
             {% translate "To go:" %} <span class="font-mono" data-num="remaining">{{ item.remaining|currency }}</span>
           </div>
@@ -143,6 +180,25 @@ pace/projection numbers, context-aware quick-assign.
           </div>
         </div>
       </div>
+
+      {% if item.left < 0 %}
+        <div class="rounded-box bg-error/10 text-sm mt-3 p-3 flex flex-col gap-2" data-testid="goal-negative">
+          <p>
+            <span class="font-mono font-semibold text-error">{{ item.left|currency }}</span> · {% translate "carried" %}.
+            <span class="text-base-content/70">{% translate "Spending went past what this goal held." %}</span>
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="btn btn-xs btn-error" data-cover data-amount="{{ item.cover_amount }}"
+                    data-testid="goal-cover-btn">{% blocktranslate trimmed with amount=item.cover_amount|currency %}Cover {{ amount }}{% endblocktranslate %}</button>
+            <button type="button" class="btn btn-xs btn-ghost" data-pay-back data-testid="goal-pay-back-btn">{% translate "Keep paying back" %}</button>
+          </div>
+        </div>
+      {% endif %}
+      {% if item.spent and item.spending_url %}
+        <a href="{{ item.spending_url }}" class="link link-hover text-xs text-base-content/70 mt-2" data-testid="goal-spending-link">
+          {% blocktranslate trimmed with amount=item.spent_this_month|currency %}See its spending ({{ amount }} this month){% endblocktranslate %}
+        </a>
+      {% endif %}
 
       <div class="card-actions flex-col gap-2 mt-4">
         <button type="button" class="btn btn-primary btn-sm w-full"
@@ -174,18 +230,19 @@ pace/projection numbers, context-aware quick-assign.
                    class="input input-bordered input-sm join-item w-full font-mono" data-withdraw-input>
             <button type="button" class="btn btn-outline btn-error btn-sm join-item"
                     data-withdraw-btn data-testid="withdraw-btn"
-                    {% if item.saved <= 0 %}disabled{% endif %}>{% translate "Withdraw" %}</button>
+                    {% if item.left <= 0 %}disabled{% endif %}>{% translate "Withdraw" %}</button>
           </div>
           <button type="button" class="btn btn-outline btn-error btn-sm w-full"
                   data-withdraw-all data-label-all="{% translate 'Withdraw all' %}"
                   data-testid="withdraw-all-btn"
-                  {% if item.saved <= 0 %}disabled{% endif %}>
-            <span data-withdraw-all-label>{% translate "Withdraw all" %} ({{ item.saved|currency }})</span>
+                  {% if item.left <= 0 %}disabled{% endif %}>
+            <span data-withdraw-all-label>{% translate "Withdraw all" %} ({% if item.left > 0 %}{{ item.left|currency }}{% else %}$0.00{% endif %})</span>
           </button>
           <p class="text-xs text-base-content/70">
             {% blocktranslate trimmed with label=net_worth_card.label %}Withdrawn money returns to {{ label }}. It's recorded against this month, so past months' history stays intact.{% endblocktranslate %}
           </p>
         </div>
+        {% include "budget/components/goal_close_form.html" %}
         <noscript>
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}

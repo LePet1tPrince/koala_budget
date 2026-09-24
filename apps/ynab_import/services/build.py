@@ -56,6 +56,10 @@ EQUITY_ACCOUNT = "Reconciliation Adjustments"
 # Account numbers follow the project convention and double as display order.
 NUMBER_BASE = {ASSET: 1000, LIABILITY: 2000, EQUITY_TYPE: 3000, INCOME_TYPE: 4000, EXPENSE_TYPE: 5000}
 
+# Goal accounts live in a non-system group of their own, never in the system
+# "Equity Adjustments" group the reconciliation offset sits in.
+GROUP_GOALS = "Goals"
+
 # D10: hidden categories keep their own group, ordered after every live one, so the
 # board's Type -> Group -> Account ordering parks them at the bottom of the section
 # instead of interleaving finished categories with current ones.
@@ -133,6 +137,12 @@ class PlannedGoal:
     name: str
     target_amount: Decimal
     allocations: tuple[tuple[date, Decimal], ...]
+    # The goal's own equity account, planned with the rest of the chart so spending
+    # from the savings category can post to it.
+    account: tuple[str, str] | None = None
+    # A savings category spent out entirely (the house was bought) arrives closed,
+    # with its history, rather than being skipped.
+    closed: bool = False
 
 
 @dataclass
@@ -380,11 +390,13 @@ def build(analysis: Analysis, choices: Choices | None = None) -> ImportPlan:
     )
 
     entries, openings, allocations, consumed = _build_entries(analysis, resolver)
-    goals, spent_goals = _build_goals(analysis, choices, allocations)
-    budgets, budget_stats = _build_budgets(analysis, choices, categories, entries, income)
+    goals, spent_goals = _build_goals(analysis, choices, allocations, categories)
+    # Goal categories never get a `Budget`: what was assigned to them became goal allocations.
+    budget_categories = {key: account for key, account in categories.items() if not resolver.is_goal_category(*key)}
+    budgets, budget_stats = _build_budgets(analysis, choices, budget_categories, entries, income)
 
     notes.extend(resolver.notes)
-    notes.extend(_notes(analysis, goals, spent_goals, budget_stats, resolver))
+    notes.extend(_notes(analysis, choices, goals, spent_goals, budget_stats, resolver))
     plan = ImportPlan(
         groups=sorted(chart.groups.values(), key=lambda g: (g.account_type, g.sort_order, g.name)),
         accounts=sorted(chart.accounts.values(), key=lambda a: (a.account_type, a.sort_order, a.name)),
@@ -436,9 +448,9 @@ def _build_categories(analysis: Analysis, choices: Choices, chart: _Chart) -> di
     """
     An expense account per spending category, in the Plan's own order.
 
-    A goal category gets one too when the register spends against it: the money left
-    a real account and needs an expense to land in, while its *assignments* become
-    goal allocations rather than a budget.
+    A goal category gets the goal's own equity account instead: spending from a
+    savings category is spending from the goal (docs/goals-envelopes-plan.md §4.7),
+    and its *assignments* become goal allocations rather than a budget.
     """
     keys: dict[tuple[str, str], tuple[str, str]] = {}
     for facts in analysis.categories:
@@ -446,7 +458,14 @@ def _build_categories(analysis: Analysis, choices: Choices, chart: _Chart) -> di
         kind = choice.kind if choice else facts.kind
         if kind == KIND_INVESTMENT:
             continue
-        if kind == KIND_GOAL and facts.plain_rows == 0:
+        if kind == KIND_GOAL:
+            keys[(facts.group, facts.name)] = chart.account(
+                f"Goal: {_goal_name(facts, choice)}",
+                EQUITY_TYPE,
+                chart.group(GROUP_GOALS, EQUITY_TYPE, sort_order=10),
+                sort_order=NUMBER_BASE[EQUITY_TYPE] + 100 + facts.order * 10,
+                distinct=True,
+            )
             continue
 
         group = chart.group(
@@ -819,7 +838,11 @@ def _description(row: RegisterRow) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _build_goals(analysis: Analysis, choices: Choices, allocations) -> tuple[list[PlannedGoal], int]:
+def _goal_name(facts, choice) -> str:
+    return (choice.name if choice else facts.name)[:200]
+
+
+def _build_goals(analysis: Analysis, choices: Choices, allocations, categories) -> tuple[list[PlannedGoal], int]:
     """
     A goal per savings category, funded month by month from its categorised transfers.
 
@@ -830,9 +853,10 @@ def _build_goals(analysis: Analysis, choices: Choices, allocations) -> tuple[lis
     raised.
 
     A category whose transfers net to nothing or less is one the user saved into and
-    then spent: the house was bought, the trip was taken. Importing it as a goal with
-    a negative balance would put "$20,464 still to save" on the dashboard for money
-    that was saved and then deliberately spent, so it is left out and counted instead.
+    then spent: the house was bought, the trip was taken. It arrives as a *closed*
+    goal with its allocations and spending history -- open, it would put "$20,464
+    still to save" on the dashboard for money deliberately spent. Its target is what
+    was ever put in.
     """
     goals = []
     spent = 0
@@ -848,15 +872,20 @@ def _build_goals(analysis: Analysis, choices: Choices, allocations) -> tuple[lis
             if (group, name) == (facts.group, facts.name) and amount != ZERO
         )
         saved = sum((amount for _, amount in months), ZERO)
-        if saved <= ZERO:
+        closed = saved <= ZERO
+        if closed:
             spent += 1
-            continue
+            target = sum((amount for _, amount in months if amount > ZERO), ZERO)
+        else:
+            target = saved
 
         goals.append(
             PlannedGoal(
-                name=(choice.name if choice else facts.name)[:200],
-                target_amount=saved.quantize(CENT),
+                name=_goal_name(facts, choice),
+                target_amount=target.quantize(CENT),
                 allocations=tuple((month, amount.quantize(CENT)) for month, amount in months),
+                account=categories.get((facts.group, facts.name)),
+                closed=closed,
             )
         )
     return goals, spent
@@ -926,7 +955,9 @@ def _build_budgets(analysis, choices, categories, entries, income):
 # ---------------------------------------------------------------------------
 
 
-def _notes(analysis: Analysis, goals, spent_goals: int, budget_stats: dict, resolver: _Resolver) -> list[str]:
+def _notes(
+    analysis: Analysis, choices: Choices, goals, spent_goals: int, budget_stats: dict, resolver: _Resolver
+) -> list[str]:
     """
     What the import decided on the user's behalf, in their words.
 
@@ -944,9 +975,10 @@ def _notes(analysis: Analysis, goals, spent_goals: int, budget_stats: dict, reso
             "what you see in YNAB."
         )
 
-    if goals:
+    open_goals = [goal for goal in goals if not goal.closed]
+    if open_goals:
         notes.append(
-            f"{len(goals)} savings categor(ies) became goals, with their target set to what you have already "
+            f"{len(open_goals)} savings categor(ies) became goals, with their target set to what you have already "
             "saved. Raise the target on any goal you are still saving for -- a goal that has met its target "
             "cannot be funded again until you do."
         )
@@ -954,19 +986,22 @@ def _notes(analysis: Analysis, goals, spent_goals: int, budget_stats: dict, reso
     if spent_goals:
         notes.append(
             f"{spent_goals} savings categor(ies) had as much taken back out of them as was ever put in -- money you "
-            "saved and then spent -- so they were not brought over as goals. Every one of those transfers is still "
-            "in your transaction history."
+            "saved and then spent -- so they arrive as closed goals, with their savings and spending history."
         )
 
+    goal_names = {goal.name for goal in goals}
     spent_from_goals = [
-        facts for facts in analysis.categories if facts.plain_rows and any(goal.name in (facts.name,) for goal in goals)
+        facts
+        for facts in analysis.categories
+        if facts.plain_rows
+        and _goal_name(facts, choices.categories.get(category_key(facts.group, facts.name))) in goal_names
     ]
     if spent_from_goals:
         notes.append(
-            f"{len(spent_from_goals)} savings categor(ies) were also spent from directly. That spending imports as "
-            "a category of the same name, with no budget of its own -- the money you assigned to it became the "
-            "goal. If you would rather budget for it month to month, set it to a spending category on the Savings "
-            "step instead of a goal."
+            f"{len(spent_from_goals)} savings categor(ies) were also spent from directly. That spending comes out "
+            "of the goal, the way a purchase you saved for should: it lowers what the goal has left and shows under "
+            "Goal spending on the income statement. If you would rather budget for it month to month, set it to a "
+            "spending category on the Savings step instead of a goal."
         )
 
     if resolver.dropped_transfer_categories:

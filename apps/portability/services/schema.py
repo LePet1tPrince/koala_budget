@@ -38,7 +38,8 @@ FORMAT = "koala-budget-export"
 # 2: statements (`reconciliations.csv`, and `reconciliation_id` on journal
 # lines). A version-1 archive still imports -- see `upgrade.py` -- with no
 # statements, since it never had any to carry.
-FORMAT_VERSION = 2
+# 3: `goal_closed_at` on accounts.csv (goals as envelopes: a goal can be closed).
+FORMAT_VERSION = 3
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
@@ -51,7 +52,7 @@ DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE, RECONCILIATIONS_FILE)
 #: is read without them and `upgrade.py` fills them in, so adding a file or a
 #: column is not a reason to refuse every export made before it.
 FILES_ADDED_IN = {RECONCILIATIONS_FILE: 2}
-COLUMNS_ADDED_IN = {(JOURNAL_FILE, "reconciliation_id"): 2}
+COLUMNS_ADDED_IN = {(JOURNAL_FILE, "reconciliation_id"): 2, (ACCOUNTS_FILE, "goal_closed_at"): 3}
 
 # journal.csv's `status` column carries every `JournalEntry.status` value plus
 # this one, file-level sentinel for a pending bank-feed row that belongs to no
@@ -425,6 +426,7 @@ GOAL = FieldMap(
         "is_complete": ColumnSpec("goal_is_complete", KIND_BOOL),
         "is_archived": ColumnSpec("goal_is_archived", KIND_BOOL),
         "archived_at": ColumnSpec("goal_archived_at", KIND_DATETIME),
+        "closed_at": ColumnSpec("goal_closed_at", KIND_DATETIME),
         "order": ColumnSpec("goal_order", KIND_INT),
     },
     omitted={
@@ -461,6 +463,7 @@ ACCOUNTS_COLUMNS = (
     Column("goal_is_complete", KIND_BOOL),
     Column("goal_is_archived", KIND_BOOL),
     Column("goal_archived_at", KIND_DATETIME),
+    Column("goal_closed_at", KIND_DATETIME),
     Column("goal_order", KIND_INT),
 )
 

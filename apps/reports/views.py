@@ -152,15 +152,30 @@ def income_statement(request, team_slug):
                 for group_data in report_data["expense_groups"]
             ],
             "net_profit": float(report_data["net_profit"]),
+            "goal_spending": float(report_data["goal_spending"]["total"]),
         }
 
-    # Spending-by-group-over-time chart, only meaningful with a period breakdown
+    # Spending-by-group-over-time chart, only meaningful with a period breakdown.
+    # Operating spending by default; `?goals=1` adds goal spending as its own
+    # series (URL-driven so the choice survives the period dropdown and can be linked).
+    include_goals = request.GET.get("goals") == "1"
+    goal_spending = report_data["goal_spending"]
     trend_chart_data = None
-    if period and report_data["periods"] and report_data["expense_groups"]:
-        trend_chart_data = {
-            "labels": report_data["period_labels"],
-            "expense_groups": _fold_group_series(report_data["expense_groups"], len(report_data["periods"])),
-        }
+    if period and report_data["periods"] and (report_data["expense_groups"] or goal_spending["items"]):
+        series = _fold_group_series(report_data["expense_groups"], len(report_data["periods"]))
+        if include_goals and goal_spending["items"]:
+            series.append({"name": str(_("Goal spending")), "values": [float(a) for a in goal_spending["per_period"]]})
+        trend_chart_data = {"labels": report_data["period_labels"], "expense_groups": series}
+
+    goals_toggle_params = request.GET.copy()
+    goals_toggle_params["tab"] = "trends"
+    if include_goals:
+        goals_toggle_params.pop("goals", None)
+    else:
+        goals_toggle_params["goals"] = "1"
+    initial_tab = request.GET.get("tab") if request.GET.get("tab") in ("statement", "flow", "trends") else "statement"
+    if initial_tab == "trends" and not trend_chart_data:
+        initial_tab = "statement"
 
     return render(
         request,
@@ -171,6 +186,10 @@ def income_statement(request, team_slug):
             "report_data": report_data,
             "sankey_data": sankey_data,
             "trend_chart_data": trend_chart_data,
+            "include_goal_spending": include_goals,
+            "has_goal_spending": bool(goal_spending["items"]),
+            "goals_toggle_qs": goals_toggle_params.urlencode(),
+            "initial_tab": initial_tab,
             "savings_rate": savings_rate,
             "period": period,
             "total_view_qs": total_view_qs,
@@ -458,25 +477,32 @@ def cash_flow(request, team_slug):
     start_date, end_date = _parse_month_range(request)
     data = service.get_income_statement_data(start_date, end_date, period="month")
 
+    # Goal spending is money out too, shown as its own series; Net is after it.
+    goal_spending = data["goal_spending"]
+    has_goal_spending = bool(goal_spending["items"])
     months = []
     for i, bucket in enumerate(data["periods"]):
         income = data["total_income_per_period"][i]
         expenses = data["total_expenses_per_period"][i]
+        goals = goal_spending["per_period"][i]
         months.append(
             {
                 "date": bucket,
                 "label": data["period_labels"][i],
                 "income": income,
                 "expenses": expenses,
-                "net": income - expenses,
+                "goal_spending": goals,
+                "net": income - expenses - goals,
             }
         )
 
+    net = data["net_after_goal_spending"]
     stats = {
         "total_income": data["total_income"],
         "total_expenses": data["total_expenses"],
-        "net": data["net_profit"],
-        "avg_net": data["net_profit"] / len(months) if months else Decimal("0"),
+        "total_goal_spending": goal_spending["total"],
+        "net": net,
+        "avg_net": net / len(months) if months else Decimal("0"),
         "num_months": len(months),
     }
     chart_data = None
@@ -485,7 +511,8 @@ def cash_flow(request, team_slug):
             "labels": data["period_labels"],
             "income": [float(a) for a in data["total_income_per_period"]],
             "expenses": [float(a) for a in data["total_expenses_per_period"]],
-            "net": [float(a) for a in data["net_profit_per_period"]],
+            "goal_spending": [float(a) for a in goal_spending["per_period"]] if has_goal_spending else None,
+            "net": [float(a) for a in data["net_after_goal_spending_per_period"]],
         }
 
     return render(
@@ -496,6 +523,7 @@ def cash_flow(request, team_slug):
             "page_title": _("Cash Flow"),
             "months": months,
             "stats": stats,
+            "has_goal_spending": has_goal_spending,
             "chart_data": chart_data,
             "start_date": start_date,
             "end_date": end_date,
@@ -510,6 +538,7 @@ def budget_vs_actual(request, team_slug):
     """
     from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
     from apps.budget.models import Budget
+    from apps.budget.services import GoalService
     from apps.monthly_review.services.budget import build_section
 
     month = date.today().replace(day=1)
@@ -530,6 +559,7 @@ def budget_vs_actual(request, team_slug):
     income_budgets = [b for b in budgets if b.category.account_group.account_type == ACCOUNT_TYPE_INCOME]
     expense_groups, expense_totals = build_section(data["expenses"], expense_budgets, spending=True)
     income_groups, income_totals = build_section(data["income"], income_budgets, spending=False)
+    goal_rows, goal_totals = GoalService(request.team).month_rows(month)
 
     return render(
         request,
@@ -544,6 +574,8 @@ def budget_vs_actual(request, team_slug):
             "expense_totals": expense_totals,
             "income_groups": income_groups,
             "income_totals": income_totals,
+            "goal_rows": goal_rows,
+            "goal_totals": goal_totals,
         },
     )
 
@@ -589,14 +621,27 @@ def dollar_map(request, team_slug):
 @login_and_team_required
 def goal_progress(request, team_slug):
     """
-    Goal Progress report: cumulative savings per goal over time, with a projected
-    path to each goal's target.
+    Goal Progress report: cumulative allocations per goal over time, with a
+    projected path to each goal's target, and what was spent from each goal.
     """
-    from django.db.models import Sum
+    from django.db.models import F, Sum
+    from django.db.models.functions import TruncMonth
 
     from apps.budget.models import Goal, GoalAllocation
+    from apps.journal.models import JournalLine, counted_entries
 
-    goals = list(Goal.objects.filter(team=request.team, is_archived=False).with_progress())
+    goals = list(Goal.objects.filter(team=request.team).active().with_progress())
+
+    spent = {}  # account id -> {month: Decimal}
+    for row in (
+        JournalLine.objects.filter(team=request.team, account__goal__in=goals)
+        .filter(counted_entries("journal_entry__"))
+        .annotate(month=TruncMonth("journal_entry__entry_date"))
+        .values("account_id", "month")
+        .annotate(total=Sum(F("dr_amount") - F("cr_amount")))
+    ):
+        month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
+        spent.setdefault(row["account_id"], {})[month] = row["total"]
 
     allocation_rows = (
         GoalAllocation.objects.filter(team=request.team, goal__in=goals)
@@ -611,7 +656,9 @@ def goal_progress(request, team_slug):
     today_month = date.today().replace(day=1)
 
     # Month axis: earliest allocation through the latest of (today, last allocation, latest target date)
-    all_months = [m for goal_months in allocations.values() for m in goal_months]
+    all_months = [m for goal_months in allocations.values() for m in goal_months] + [
+        m for goal_months in spent.values() for m in goal_months
+    ]
     axis_start = min(all_months, default=today_month)
     axis_end = max([today_month, *all_months, *[g.target_date.replace(day=1) for g in goals if g.target_date]])
     months = []
@@ -644,7 +691,20 @@ def goal_progress(request, team_slug):
                 projection[month_index[anchor_month]] = float(running)
                 projection[month_index[target_month]] = float(goal.target_amount)
 
-        chart_goals.append({"name": goal.name, "actual": actual, "projection": projection})
+        # Cumulative spending from the goal, only for goals that have any.
+        goal_spent = spent.get(goal.account_id, {})
+        spent_series = None
+        if goal_spent:
+            spent_series = []
+            running_spent = Decimal("0")
+            spent_started = False
+            for month in months:
+                if month in goal_spent:
+                    spent_started = True
+                running_spent += goal_spent.get(month, Decimal("0"))
+                spent_series.append(float(running_spent) if spent_started and month <= today_month else None)
+
+        chart_goals.append({"name": goal.name, "actual": actual, "projection": projection, "spent": spent_series})
 
     chart_data = None
     if goals and months:
@@ -652,9 +712,9 @@ def goal_progress(request, team_slug):
 
     # Table rows with the pace needed to hit each target on time
     goal_rows = []
-    totals = {"saved": Decimal("0"), "target": Decimal("0")}
+    totals = {"saved": Decimal("0"), "target": Decimal("0"), "spent": Decimal("0"), "left": Decimal("0")}
     for goal in goals:
-        saved = goal.total_saved or Decimal("0")
+        saved = goal.allocated
         remaining = goal.target_amount - saved
         months_left = None
         needed_per_month = None
@@ -666,11 +726,15 @@ def goal_progress(request, team_slug):
             {
                 "goal": goal,
                 "saved": saved,
+                "spent": goal.spent,
+                "left": goal.left,
                 "remaining": remaining,
                 "months_left": months_left,
                 "needed_per_month": needed_per_month,
             }
         )
+        totals["spent"] += goal.spent
+        totals["left"] += goal.left
         totals["saved"] += saved
         totals["target"] += goal.target_amount
 

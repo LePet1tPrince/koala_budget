@@ -175,7 +175,9 @@
           <li>
             <div class="flex justify-between text-sm mb-1">
               <a href="{{ goal.get_absolute_url }}" class="link link-hover font-medium">{{ goal.name }}</a>
-              <span class="text-base-content/70">{{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}</span>
+              <span class="text-base-content/70">
+                {{ goal.allocated|currency }} / {{ goal.target_amount|currency }}{% if goal.spent %} · {% blocktranslate trimmed with left=goal.left|currency %}{{ left }} left{% endblocktranslate %}{% endif %}
+              </span>
             </div>
             <progress class="progress progress-accent w-full" value="{{ goal.progress_percentage }}" max="100"></progress>
           </li>

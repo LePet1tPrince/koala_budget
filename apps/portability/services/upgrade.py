@@ -30,8 +30,15 @@ def upgrade_1_to_2(tables: dict) -> dict:
     return tables
 
 
+def upgrade_2_to_3(tables: dict) -> dict:
+    """Version 3 added `goal_closed_at`. Before it, no goal could be closed."""
+    for row in tables["accounts"]:
+        row.setdefault("goal_closed_at", None)
+    return tables
+
+
 # {from_version: fn(tables) -> tables at from_version + 1}
-CHAIN: dict[int, Callable[[dict], dict]] = {1: upgrade_1_to_2}
+CHAIN: dict[int, Callable[[dict], dict]] = {1: upgrade_1_to_2, 2: upgrade_2_to_3}
 
 
 def check_path(from_version: int) -> None:
