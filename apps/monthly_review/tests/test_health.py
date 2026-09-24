@@ -7,10 +7,8 @@ from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EQUITY, Accoun
 from apps.bank_feed.models import BankTransaction
 from apps.journal.models import JournalEntry, JournalLine
 from apps.monthly_review.services.health import (
-    BALANCE_GAP,
     NO_TRANSACTIONS,
     STALE_ACCOUNT,
-    STATEMENT_DUE,
     UNCATEGORIZED,
     UNRECONCILED,
     account_health,
@@ -122,32 +120,28 @@ class AccountHealthTests(TestCase):
         self.assertEqual(kinds[UNRECONCILED]["count"], 1)
         self.assertNotIn(UNCATEGORIZED, kinds)
 
-    def test_balance_gap_flag_without_bank_feed_activity(self):
+    def test_earlier_months_unreconciled_backlog_raises_no_flag(self):
         account = self._account("Chequing")
         other = Account.objects.create(team=self.team, name="Misc", account_group=self.equity_group)
-        # A manual journal entry not tied to any bank transaction still moves the
-        # balance without moving the reconciled balance.
+        # An unreconciled entry from an earlier month opens a gap as of month end,
+        # but it is not this month's problem: no flag.
         entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2026, 8, 3), description="Manual", status="posted"
+            team=self.team, entry_date=date(2026, 7, 3), description="Manual", status="posted"
         )
         JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=Decimal("50"))
         JournalLine.objects.create(team=self.team, journal_entry=entry, account=other, cr_amount=Decimal("50"))
 
-        # Give the account a transaction this month so no_transactions doesn't fire.
-        BankTransaction.objects.create(
-            team=self.team,
-            account=account,
-            amount=Decimal("1.00"),
-            posted_date=date(2026, 8, 5),
-            description="Unrelated",
-            journal_entry=None,
+        # A clean transaction this month, so no other flag fires either.
+        txn = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("1.00"), posted_date=date(2026, 8, 25), description="x"
         )
+        self._categorize(txn, other, reconciled=True)
 
         health = account_health(self.team, self.month)
         row = health["accounts"][0]
-        kinds = {f["kind"]: f for f in row["flags"]}
-        self.assertIn(BALANCE_GAP, kinds)
-        self.assertEqual(kinds[BALANCE_GAP]["gap"], Decimal("50"))
+        self.assertEqual(row["balance_gap"], Decimal("50"))
+        self.assertEqual(row["flags"], [])
+        self.assertTrue(health["all_clear"])
 
     def test_all_clear(self):
         account = self._account("Chequing")
@@ -251,60 +245,61 @@ class AccountHealthTests(TestCase):
         self.assertEqual(september_row["uncategorized_count"], 1)
         self.assertEqual(september_row["unreconciled_count"], 1)
 
-
-class StatementDueTests(TestCase):
-    """The monthly review points at the reconcile page when a statement is overdue."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.team = Team.objects.create(name="Due Team", slug="due-team")
-        group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.account = Account.objects.create(team=cls.team, name="Chequing", account_group=group, has_feed=True)
-        cls.month = date(2026, 8, 1)
-
-    def _row(self, posted):
+    def test_counts_cover_only_the_month_and_unreconciled_never_exceeds_transactions(self):
+        account = self._account("Chequing")
+        category = Account.objects.create(team=self.team, name="Groceries", account_group=self.equity_group)
+        # Backlog: unreconciled in July -- not August's transactions.
+        for day in (2, 9, 16):
+            july = BankTransaction.objects.create(
+                team=self.team, account=account, amount=Decimal("5.00"), posted_date=date(2026, 7, day), description="J"
+            )
+            self._categorize(july, category)
+        august = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("5.00"), posted_date=date(2026, 8, 4), description="A"
+        )
+        self._categorize(august, category)
         BankTransaction.objects.create(
-            team=self.team, account=self.account, amount=Decimal("1.00"), posted_date=posted, description="x"
+            team=self.team, account=account, amount=Decimal("5.00"), posted_date=date(2026, 8, 6), description="New"
+        )  # uncategorized: a transaction, not an unreconciled one
+        # A manual entry with no feed row still counts.
+        manual = JournalEntry.objects.create(
+            team=self.team, entry_date=date(2026, 8, 8), description="Manual", status="posted"
         )
-
-    def _kinds(self):
-        return [f["kind"] for f in account_health(self.team, self.month)["accounts"][0]["flags"]]
-
-    def test_an_account_with_a_month_of_history_and_no_statement_is_due(self):
-        self._row(date(2026, 7, 1))
-        self._row(date(2026, 8, 20))
-        self.assertIn(STATEMENT_DUE, self._kinds())
-
-    def test_a_recent_statement_is_not_due(self):
-        from apps.reconciliation.models import Reconciliation
-
-        self._row(date(2026, 7, 1))
-        self._row(date(2026, 8, 20))
-        Reconciliation.objects.create(
-            team=self.team,
-            account=self.account,
-            statement_date=date(2026, 7, 31),
-            statement_balance=Decimal("0"),
-            status=Reconciliation.STATUS_COMPLETED,
+        JournalLine.objects.create(
+            team=self.team, journal_entry=manual, account=account, dr_amount=Decimal("1"), is_reconciled=True
         )
-        self.assertNotIn(STATEMENT_DUE, self._kinds())
+        JournalLine.objects.create(team=self.team, journal_entry=manual, account=category, cr_amount=Decimal("1"))
 
-    def test_the_flag_links_to_the_reconcile_page(self):
-        self._row(date(2026, 6, 1))
-        self._row(date(2026, 8, 20))
-        flag = next(f for f in account_health(self.team, self.month)["flags"] if f["kind"] == STATEMENT_DUE)
-        self.assertIn(f"/reconcile/{self.account.pk}/", flag["url"])
+        row = account_health(self.team, self.month)["accounts"][0]
+        self.assertEqual(row["transaction_count"], 3)
+        self.assertEqual(row["unreconciled_count"], 1)
 
-    def test_a_statement_after_the_reviewed_month_does_not_count(self):
-        from apps.reconciliation.models import Reconciliation
-
-        self._row(date(2026, 6, 1))
-        self._row(date(2026, 8, 20))
-        Reconciliation.objects.create(
-            team=self.team,
-            account=self.account,
-            statement_date=date(2026, 9, 30),
-            statement_balance=Decimal("0"),
-            status=Reconciliation.STATUS_COMPLETED,
+    def test_balance_change_is_movement_within_the_month(self):
+        account = self._account("Chequing")
+        category = Account.objects.create(team=self.team, name="Groceries", account_group=self.equity_group)
+        july = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("100.00"), posted_date=date(2026, 7, 15), description="Jul"
         )
-        self.assertIn(STATEMENT_DUE, self._kinds())
+        self._categorize(july, category, reconciled=True)
+        august = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("30.00"), posted_date=date(2026, 8, 10), description="Aug"
+        )
+        self._categorize(august, category, reconciled=True)
+
+        row = account_health(self.team, self.month)["accounts"][0]
+        # July's $100 spend sets the opening balance at -100; August's own $30
+        # spend is the only thing that happened in the reviewed month, so
+        # balance_change must read -30 regardless of what came before it.
+        self.assertEqual(row["balance"], Decimal("-130.00"))
+        self.assertEqual(row["balance_change"], Decimal("-30.00"))
+        self.assertEqual(row["account_type"], ACCOUNT_TYPE_ASSET)
+        self.assertIsNone(row["institution"])
+
+    def test_institution_name_is_reported(self):
+        from apps.accounts.models import Institution
+
+        account = self._account("Chequing")
+        account.institution = Institution.objects.create(team=self.team, name="Maple Bank")
+        account.save()
+        row = account_health(self.team, self.month)["accounts"][0]
+        self.assertEqual(row["institution"], "Maple Bank")
