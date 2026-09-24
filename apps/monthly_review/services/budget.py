@@ -83,7 +83,7 @@ def _month_bounds(month):
     return start, end
 
 
-def budget_breakdown(team, month) -> dict:
+def budget_breakdown(book, month) -> dict:
     """
     Every budgeted/spent category for `month`, grouped in budget-page order
     (income sections first), with the overspent-vs-over-assigned split.
@@ -104,23 +104,23 @@ def budget_breakdown(team, month) -> dict:
           "over_assigned": [ same shape, ...],
         }
     """
-    categories = list(_budget_categories(team))
+    categories = list(_budget_categories(book))
     category_ids = [c.pk for c in categories]
     month_start, month_end = _month_bounds(month)
     prev_month = _prev_month(month_start)
 
-    service = BudgetService(team)
+    service = BudgetService(book)
     this_actuals = service.get_actuals_by_category(month_start)
     prev_actuals = service.get_actuals_by_category(prev_month)
     available_map = service.get_available_by_category(month_start, categories)
     budgets = dict(
-        Budget.objects.filter(team=team, month=month_start, category_id__in=category_ids).values_list(
+        Budget.objects.filter(book=book, month=month_start, category_id__in=category_ids).values_list(
             "category_id", "budget_amount"
         )
     )
     counts = dict(
         JournalLine.objects.filter(
-            team=team,
+            book=book,
             account_id__in=category_ids,
             journal_entry__entry_date__range=(month_start, month_end),
         )

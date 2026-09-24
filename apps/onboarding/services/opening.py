@@ -42,7 +42,7 @@ class OpeningRow:
     amount: Decimal
 
 
-def balance_accounts(team) -> list[Account]:
+def balance_accounts(book) -> list[Account]:
     """
     The accounts worth asking about: the things a user owns or owes.
 
@@ -51,7 +51,7 @@ def balance_accounts(team) -> list[Account]:
     """
     return list(
         Account.objects.filter(
-            team=team,
+            book=book,
             account_group__account_type__in=(ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY),
             is_system=False,
         )
@@ -60,30 +60,30 @@ def balance_accounts(team) -> list[Account]:
     )
 
 
-def _offset_account(team) -> Account:
+def _offset_account(book) -> Account:
     account = Account.objects.filter(
-        team=team,
+        book=book,
         is_system=True,
         account_group__account_type=ACCOUNT_TYPE_EQUITY,
     ).first()
     if account is None:
-        raise OpeningBalanceError(_("This team has no equity account to balance opening entries against."))
+        raise OpeningBalanceError(_("This book has no equity account to balance opening entries against."))
     return account
 
 
-def parse_rows(team, raw) -> list[OpeningRow]:
+def parse_rows(book, raw) -> list[OpeningRow]:
     """
     Read the submitted rows, keeping only the ones that say something.
 
     A blank or zero amount is how the user skips an account, so it yields no row
-    rather than an entry for nothing. Accounts outside the team, or of a type that
+    rather than an entry for nothing. Accounts outside the book, or of a type that
     cannot hold an opening balance, are rejected rather than ignored -- silently
     dropping them would leave the user believing they had set a balance.
     """
     if not isinstance(raw, list):
         return []
 
-    allowed = {a.id: a for a in balance_accounts(team)}
+    allowed = {a.id: a for a in balance_accounts(book)}
     rows: list[OpeningRow] = []
 
     for item in raw:
@@ -118,7 +118,7 @@ def parse_rows(team, raw) -> list[OpeningRow]:
 
 
 @transaction.atomic
-def create_opening_balances(team, rows: list[OpeningRow], as_of: date) -> list[JournalEntry]:
+def create_opening_balances(book, rows: list[OpeningRow], as_of: date) -> list[JournalEntry]:
     """
     One balanced entry per account.
 
@@ -128,7 +128,7 @@ def create_opening_balances(team, rows: list[OpeningRow], as_of: date) -> list[J
     if not rows:
         return []
 
-    offset = _offset_account(team)
+    offset = _offset_account(book)
     entries = []
 
     for row in rows:
@@ -143,7 +143,7 @@ def create_opening_balances(team, rows: list[OpeningRow], as_of: date) -> list[J
             is_asset, amount = not is_asset, -amount
 
         entry = JournalEntry.objects.create(
-            team=team,
+            book=book,
             entry_date=as_of,
             description=f"{OPENING_DESCRIPTION} — {row.account.name}",
             source=JournalEntry.SOURCE_MANUAL,
@@ -151,14 +151,14 @@ def create_opening_balances(team, rows: list[OpeningRow], as_of: date) -> list[J
         )
 
         JournalLine.objects.create(
-            team=team,
+            book=book,
             journal_entry=entry,
             account=row.account,
             dr_amount=amount if is_asset else Decimal("0"),
             cr_amount=Decimal("0") if is_asset else amount,
         )
         JournalLine.objects.create(
-            team=team,
+            book=book,
             journal_entry=entry,
             account=offset,
             dr_amount=Decimal("0") if is_asset else amount,
@@ -170,7 +170,7 @@ def create_opening_balances(team, rows: list[OpeningRow], as_of: date) -> list[J
     return entries
 
 
-def existing_opening_balances(team) -> set[int]:
+def existing_opening_balances(book) -> set[int]:
     """
     Account ids that already carry an opening-balance entry.
 
@@ -179,7 +179,7 @@ def existing_opening_balances(team) -> set[int]:
     """
     return set(
         JournalLine.objects.filter(
-            team=team,
+            book=book,
             journal_entry__description__startswith=str(OPENING_DESCRIPTION),
             # The equity offset carries a line on every one of these entries. Without
             # this filter it would report as "already has an opening balance", which

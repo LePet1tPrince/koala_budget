@@ -3,9 +3,9 @@
 from django.db.utils import IntegrityError
 from django.test import TestCase
 
+from apps.books.context import set_current_book
 from apps.onboarding.models import OnboardingState
 from apps.onboarding.questions import CATALOG_VERSION, active_phases
-from apps.teams.context import set_current_team
 from apps.teams.models import Team
 
 
@@ -13,9 +13,10 @@ class OnboardingStateTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Stateful", slug="stateful")
+        cls.book = cls.team.default_book
 
     def test_defaults(self):
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
 
         self.assertEqual(state.phase, OnboardingState.PHASE_WELCOME)
         self.assertEqual(state.answers, {})
@@ -25,13 +26,13 @@ class OnboardingStateTest(TestCase):
 
     def test_one_row_per_team(self):
         """Team-scoped, not user-scoped -- a second member must not re-onboard."""
-        OnboardingState.objects.create(team=self.team)
+        OnboardingState.objects.create(book=self.book)
 
         with self.assertRaises(IntegrityError):
-            OnboardingState.objects.create(team=self.team)
+            OnboardingState.objects.create(book=self.book)
 
     def test_start_moves_to_the_first_question_phase(self):
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
         state.start()
 
         self.assertEqual(state.phase, OnboardingState.PHASE_QUESTIONS)
@@ -40,7 +41,7 @@ class OnboardingStateTest(TestCase):
 
     def test_start_does_not_reset_the_clock(self):
         """Resuming is not starting again; the funnel measures from the first visit."""
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
         state.start()
         first = state.started_at
 
@@ -52,7 +53,7 @@ class OnboardingStateTest(TestCase):
         `is_finished` means "past the takeover", not "done with the walkthrough":
         the guided tasks still lie ahead, and the rail keys off the phase.
         """
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
         state.complete()
 
         self.assertTrue(state.is_finished)
@@ -60,7 +61,7 @@ class OnboardingStateTest(TestCase):
         self.assertTrue(state.shows_tasks)
 
     def test_finishing_the_tasks_ends_the_walkthrough(self):
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
         state.complete()
         state.finish_tasks()
 
@@ -69,7 +70,7 @@ class OnboardingStateTest(TestCase):
 
     def test_skipping_ends_it_outright(self):
         """Someone who skipped the questionnaire is not shown a task rail either."""
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
         state.skip()
 
         self.assertTrue(state.is_finished)
@@ -77,21 +78,21 @@ class OnboardingStateTest(TestCase):
         self.assertFalse(state.shows_tasks)
 
     def test_mark_task_is_idempotent(self):
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
         state.mark_task("import")
         state.mark_task("import")
 
         self.assertEqual(state.tasks_done, ["import"])
 
     def test_mark_task_preserves_order(self):
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
         state.mark_task("import")
         state.mark_task("categorize")
 
         self.assertEqual(state.tasks_done, ["import", "categorize"])
 
     def test_answers_round_trip_through_the_database(self):
-        state = OnboardingState.objects.create(team=self.team, answers={"savings": ["tfsa", "rrsp"], "housing": "rent"})
+        state = OnboardingState.objects.create(book=self.book, answers={"savings": ["tfsa", "rrsp"], "housing": "rent"})
         state.refresh_from_db()
 
         self.assertEqual(state.answers["savings"], ["tfsa", "rrsp"])
@@ -104,16 +105,18 @@ class TeamScopingTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Mine", slug="mine")
+        cls.book = cls.team.default_book
         cls.other = Team.objects.create(name="Theirs", slug="theirs")
-        OnboardingState.objects.create(team=cls.team)
-        OnboardingState.objects.create(team=cls.other)
+        cls.other_book = cls.other.default_book
+        OnboardingState.objects.create(book=cls.book)
+        OnboardingState.objects.create(book=cls.other_book)
 
     def test_for_team_filters_to_the_current_team(self):
-        set_current_team(self.team)
+        set_current_book(self.book)
         try:
-            states = list(OnboardingState.for_team.all())
+            states = list(OnboardingState.for_book.all())
         finally:
-            set_current_team(None)
+            set_current_book(None)
 
         self.assertEqual(len(states), 1)
-        self.assertEqual(states[0].team, self.team)
+        self.assertEqual(states[0].book, self.book)

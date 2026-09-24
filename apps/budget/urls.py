@@ -8,7 +8,7 @@ from . import views
 
 app_name = "budget"
 
-# URL patterns (all budget URLs are team-based, mounted at /a/<team_slug>/budget/)
+# URL patterns (all budget URLs are book-based, mounted at /a/<team_slug>/<book_slug>/budget/)
 urlpatterns = [
     # Budget views
     path("", views.budget_month_view, name="budget_home"),

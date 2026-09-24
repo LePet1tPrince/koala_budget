@@ -77,111 +77,133 @@ import {
 } from '../models/index';
 
 export interface BankFeedAccountGroupsRequest {
+    bookSlug: string;
     teamSlug: string;
     page?: number;
 }
 
 export interface BankFeedBatchArchiveRequest {
+    bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
 }
 
 export interface BankFeedBatchDeleteRequest {
+    bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
 }
 
 export interface BankFeedBatchDuplicateRequest {
+    bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
     page?: number;
 }
 
 export interface BankFeedBatchEditRequest {
+    bookSlug: string;
     teamSlug: string;
     patchedBatchEditRequest?: PatchedBatchEditRequest;
 }
 
 export interface BankFeedBatchUnarchiveRequest {
+    bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
 }
 
 export interface BankFeedBatchUnreconcileRequest {
+    bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
 }
 
 export interface BankFeedCategorySuggestionsRequest {
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface BankFeedCreateAccountRequest {
+    bookSlug: string;
     teamSlug: string;
     bankFeedRow: BankFeedRow;
 }
 
 export interface BankFeedFeedAccountsRequest {
+    bookSlug: string;
     teamSlug: string;
     page?: number;
 }
 
 export interface BankFeedFeedCreateRequest {
+    bookSlug: string;
     teamSlug: string;
     manualTransaction: ManualTransaction;
 }
 
 export interface BankFeedFeedListRequest {
+    bookSlug: string;
     teamSlug: string;
     account?: number;
     page?: number;
 }
 
 export interface BankFeedFeedUpdateRequest {
+    bookSlug: string;
     id: number;
     teamSlug: string;
     manualTransaction: ManualTransaction;
 }
 
 export interface BankFeedSampleCsvRequest {
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface BankFeedSimilarCategoriesRequest {
+    bookSlug: string;
     ids: string;
     teamSlug: string;
 }
 
 export interface BankFeedTransactionsCategorizeRequest {
+    bookSlug: string;
     teamSlug: string;
     categorizeTransactionsRequest: CategorizeTransactionsRequest;
 }
 
 export interface BankFeedTransferDismissRequest {
+    bookSlug: string;
     teamSlug: string;
     transferDismissRequest: TransferDismissRequest;
 }
 
 export interface BankFeedTransferResolveRequest {
+    bookSlug: string;
     teamSlug: string;
     transferResolveRequest: TransferResolveRequest;
 }
 
 export interface BankFeedTransferSuggestionsRequest {
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface BankFeedUploadConfirmRequest {
+    bookSlug: string;
     teamSlug: string;
     uploadConfirmRequest: UploadConfirmRequest;
 }
 
 export interface BankFeedUploadParseRequest {
+    bookSlug: string;
     teamSlug: string;
     file?: Blob;
 }
 
 export interface BankFeedUploadPreviewRequest {
+    bookSlug: string;
     teamSlug: string;
     file?: Blob;
     accountId?: number;
@@ -190,6 +212,7 @@ export interface BankFeedUploadPreviewRequest {
 }
 
 export interface BankFeedUploadValidateDatesRequest {
+    bookSlug: string;
     teamSlug: string;
     file?: Blob;
     dateColumn?: number;
@@ -203,9 +226,16 @@ export interface BankFeedUploadValidateDatesRequest {
 export class BankFeedApi extends runtime.BaseAPI {
 
     /**
-     * Return all account groups for the team, for use in account creation.
+     * Return all account groups for the book, for use in account creation.
      */
     async bankFeedAccountGroupsRaw(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedAccountGroupList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedAccountGroups().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -229,7 +259,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/account_groups/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/account_groups/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -239,7 +269,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Return all account groups for the team, for use in account creation.
+     * Return all account groups for the book, for use in account creation.
      */
     async bankFeedAccountGroups(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedAccountGroupList> {
         const response = await this.bankFeedAccountGroupsRaw(requestParameters, initOverrides);
@@ -250,6 +280,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Batch archive multiple bank transactions. Sets is_archived=True on BankTransaction.
      */
     async bankFeedBatchArchiveRaw(requestParameters: BankFeedBatchArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchArchive().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -278,7 +315,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_archive/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_archive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -299,6 +336,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Permanently delete multiple archived bank transactions. Also deletes any linked journal entries.
      */
     async bankFeedBatchDeleteRaw(requestParameters: BankFeedBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchDelete().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -327,7 +371,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_delete/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_delete/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -348,6 +392,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries.
      */
     async bankFeedBatchDuplicateRaw(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchDuplicate().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -380,7 +431,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_duplicate/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_duplicate/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -402,6 +453,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Bulk edit multiple bank transactions. Only fields that are provided (non-null) are updated. Supports: category_id, account_id (move), payee, description, date.
      */
     async bankFeedBatchEditRaw(requestParameters: BankFeedBatchEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchEdit().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -423,7 +481,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_edit/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_edit/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
@@ -444,6 +502,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Batch unarchive multiple bank transactions. Sets is_archived=False on BankTransaction.
      */
     async bankFeedBatchUnarchiveRaw(requestParameters: BankFeedBatchUnarchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchUnarchive().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -472,7 +537,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_unarchive/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unarchive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -493,6 +558,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Batch unreconcile multiple bank transactions. Sets is_reconciled=False on the JournalLine for the bank account side.
      */
     async bankFeedBatchUnreconcileRaw(requestParameters: BankFeedBatchUnreconcileRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchUnreconcile().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -521,7 +593,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/batch_unreconcile/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unreconcile/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -542,6 +614,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Suggest a category per merchant based on the most recent categorization. Used to pre-fill the category when editing an uncategorized transaction.
      */
     async bankFeedCategorySuggestionsRaw(requestParameters: BankFeedCategorySuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CategorySuggestion>>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedCategorySuggestions().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -561,7 +640,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/category_suggestions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/category_suggestions/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -582,6 +661,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Create a new account for use in the CSV upload category mapping step. Body: name (str), account_group_id (int)
      */
     async bankFeedCreateAccountRaw(requestParameters: BankFeedCreateAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleAccount>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedCreateAccount().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -610,7 +696,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/create_account/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/create_account/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -632,6 +718,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Return feed accounts with up-to-date balances and review counts.
      */
     async bankFeedFeedAccountsRaw(requestParameters: BankFeedFeedAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedFeedAccountList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedFeedAccounts().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -655,7 +748,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/feed_accounts/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/feed_accounts/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -676,6 +769,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Create a new manual bank transaction with associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
      */
     async bankFeedFeedCreateRaw(requestParameters: BankFeedFeedCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedFeedCreate().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -704,7 +804,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -726,6 +826,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional) - page: Page number (optional)
      */
     async bankFeedFeedListRaw(requestParameters: BankFeedFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedFeedList().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -753,7 +860,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -774,6 +881,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Update an existing bank transaction and its associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
      */
     async bankFeedFeedUpdateRaw(requestParameters: BankFeedFeedUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedFeedUpdate().'
+            );
+        }
+
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -809,7 +923,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'PUT',
             headers: headerParameters,
             query: queryParameters,
@@ -828,9 +942,16 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the team\'s books are ones the user knowingly imported.
+     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the book\'s books are ones the user knowingly imported.
      */
     async bankFeedSampleCsvRaw(requestParameters: BankFeedSampleCsvRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedSampleCsv().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -850,7 +971,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/sample_csv/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/sample_csv/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -864,7 +985,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the team\'s books are ones the user knowingly imported.
+     * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the book\'s books are ones the user knowingly imported.
      */
     async bankFeedSampleCsv(requestParameters: BankFeedSampleCsvRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
         const response = await this.bankFeedSampleCsvRaw(requestParameters, initOverrides);
@@ -875,6 +996,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Suggest categories for uncategorized transactions from how similar ones were categorized before — matching on payee, on description, or on descriptions that share most of their wording.  Returns a flat list ranked per transaction (strongest match first), each item carrying the count behind it so the UI can show why it is suggested.
      */
     async bankFeedSimilarCategoriesRaw(requestParameters: BankFeedSimilarCategoriesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SimilarCategorySuggestion>>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedSimilarCategories().'
+            );
+        }
+
         if (requestParameters['ids'] == null) {
             throw new runtime.RequiredError(
                 'ids',
@@ -905,7 +1033,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/similar_categories/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/similar_categories/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -926,6 +1054,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Categorize one or more bank transactions. Creates journal entries linking the bank account to the category account.  Body: - rows: List of transaction objects with \'id\' field - category_id: ID of the category account
      */
     async bankFeedTransactionsCategorizeRaw(requestParameters: BankFeedTransactionsCategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedTransactionsCategorize().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -954,7 +1089,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/categorize/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/categorize/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -975,6 +1110,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Dismiss a suggested pair as \'not a duplicate\' so it stops being suggested.
      */
     async bankFeedTransferDismissRaw(requestParameters: BankFeedTransferDismissRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedTransferDismiss().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -1003,7 +1145,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/transfers/dismiss/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/dismiss/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1024,6 +1166,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Resolve a duplicate transfer: archive one leg, keep the other.  Archiving the duplicate leg also voids its journal entry (if categorized) so the movement stops double-counting. The kept leg is left untouched for the user to categorize as a transfer. Reconciled legs are refused.
      */
     async bankFeedTransferResolveRaw(requestParameters: BankFeedTransferResolveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedTransferResolve().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -1052,7 +1201,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/transfers/resolve/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/resolve/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1073,6 +1222,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * List likely-duplicate transfer pairs (a transfer reported by both banks).  Each pair shows both legs so the user can archive the duplicate, archive the other side, or dismiss the suggestion. Read-only; nothing is changed.
      */
     async bankFeedTransferSuggestionsRaw(requestParameters: BankFeedTransferSuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TransferSuggestion>>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedTransferSuggestions().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -1092,7 +1248,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/transfers/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -1113,6 +1269,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Create BankTransaction records from confirmed transactions. Used in step 4 of the upload wizard.  Request: account_id, transactions list, skip_duplicates flag Response: created_count, skipped_count, error_count
      */
     async bankFeedUploadConfirmRaw(requestParameters: BankFeedUploadConfirmRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadConfirmResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedUploadConfirm().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -1141,7 +1304,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/upload_confirm/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_confirm/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1163,6 +1326,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Parse an uploaded CSV/Excel file and return headers + sample rows. Used in step 1 of the upload wizard.  Request: multipart/form-data with \'file\' field Response: headers, sample_rows, total_rows
      */
     async bankFeedUploadParseRaw(requestParameters: BankFeedUploadParseRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadParseResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedUploadParse().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -1202,7 +1372,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/upload_parse/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_parse/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1224,6 +1394,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Apply column mapping to uploaded file and return parsed transactions. Used in step 2-3 of the upload wizard.  Request: multipart/form-data with file and mapping data Response: parsed transactions, unmapped categories, error count, duplicate count
      */
     async bankFeedUploadPreviewRaw(requestParameters: BankFeedUploadPreviewRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadPreviewResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedUploadPreview().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -1275,7 +1452,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/upload_preview/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_preview/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1297,6 +1474,13 @@ export class BankFeedApi extends runtime.BaseAPI {
      * Check every row\'s date cell against the chosen date format.  Used by the column-mapping step of the upload wizard to warn about rows that would be rejected, before the user walks the rest of the wizard.  Request: multipart/form-data with file, date_column, date_format, has_headers Response: total_rows, invalid_count, invalid_samples, suggested_format
      */
     async bankFeedUploadValidateDatesRaw(requestParameters: BankFeedUploadValidateDatesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadValidateDatesResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedUploadValidateDates().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -1348,7 +1532,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/upload_validate_dates/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/upload_validate_dates/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,

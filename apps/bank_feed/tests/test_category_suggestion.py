@@ -24,24 +24,25 @@ class SuggestAccountForCategoryTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Suggest Team", slug="suggest-team")
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.book = cls.team.default_book
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
 
         cls.interest_income = Account.objects.create(
-            team=cls.team, name="Interest Income", account_group=cls.income_group
+            book=cls.book, name="Interest Income", account_group=cls.income_group
         )
         cls.interest_expense = Account.objects.create(
-            team=cls.team, name="Interest Expense", account_group=cls.expense_group
+            book=cls.book, name="Interest Expense", account_group=cls.expense_group
         )
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.restaurants = Account.objects.create(team=cls.team, name="Restaurants", account_group=cls.expense_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.restaurants = Account.objects.create(book=cls.book, name="Restaurants", account_group=cls.expense_group)
 
     @property
     def accounts(self):
-        return list(Account.objects.filter(team=self.team).select_related("account_group"))
+        return list(Account.objects.filter(book=self.book).select_related("account_group"))
 
     def test_exact_name_match(self):
         result = suggest_account_for_category("Groceries", self.accounts)

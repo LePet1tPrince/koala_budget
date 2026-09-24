@@ -1,5 +1,5 @@
 """
-Gathering a team's books into the row dicts `write.py` serialises (§7 Phase 2).
+Gathering a set of books into the row dicts `write.py` serialises (§7 Phase 2).
 
 Everything here is a handful of `select_related`/`prefetch_related` queries and
 some dict-building -- no judgement calls. Every judgement was made in
@@ -52,40 +52,40 @@ def _not_void(**extra):
     return JournalLine.objects.filter(**extra).exclude(journal_entry__status=JournalEntry.STATUS_VOID)
 
 
-def build_row_count(team) -> int:
+def build_row_count(book) -> int:
     """
     The row count `EXPORT_MAX_ROWS` guards, without building anything. Cheap:
     three `count()` queries, no row construction.
     """
-    accounts = Account.objects.filter(team=team).count()
+    accounts = Account.objects.filter(book=book).count()
     journal = (
-        JournalLine.objects.filter(team=team).count()
-        + BankTransaction.objects.filter(team=team, journal_entry__isnull=True).count()
+        JournalLine.objects.filter(book=book).count()
+        + BankTransaction.objects.filter(book=book, journal_entry__isnull=True).count()
     )
-    budget = Budget.objects.filter(team=team).count() + GoalAllocation.objects.filter(team=team).count()
+    budget = Budget.objects.filter(book=book).count() + GoalAllocation.objects.filter(book=book).count()
     return accounts + journal + budget
 
 
-def build_archive(team) -> tuple[list[dict], list[dict], list[dict]]:
+def build_archive(book) -> tuple[list[dict], list[dict], list[dict]]:
     """
     `(accounts, journal_rows, budget_rows)` -- ready for
     `write.build_archive_bytes`. Raises `ExportError` over `EXPORT_MAX_ROWS`.
     """
-    total_rows = build_row_count(team)
+    total_rows = build_row_count(book)
     if total_rows > EXPORT_MAX_ROWS:
         raise ExportError(
-            f"This team has {total_rows:,} rows to export, more than the {EXPORT_MAX_ROWS:,} this export "
+            f"This book has {total_rows:,} rows to export, more than the {EXPORT_MAX_ROWS:,} this export "
             "supports. Contact support -- this is a real limit worth raising, not a wall."
         )
 
-    accounts = _build_accounts(team)
-    journal = _build_journal_rows(team)
-    budget = _build_budget_rows(team)
-    _assert_every_feed_row_travels(team, journal)
+    accounts = _build_accounts(book)
+    journal = _build_journal_rows(book)
+    budget = _build_budget_rows(book)
+    _assert_every_feed_row_travels(book, journal)
     return accounts, journal, budget
 
 
-def _assert_every_feed_row_travels(team, journal_rows: list[dict]) -> None:
+def _assert_every_feed_row_travels(book, journal_rows: list[dict]) -> None:
     """
     Exactly as many feed rows in the file as in the database, checked before
     the file is written.
@@ -104,19 +104,19 @@ def _assert_every_feed_row_travels(team, journal_rows: list[dict]) -> None:
     importer's gate is never produced in the first place.
     """
     in_file = sum(1 for row in journal_rows if row["feed_source"] is not None)
-    in_db = BankTransaction.objects.filter(team=team).count()
+    in_db = BankTransaction.objects.filter(book=book).count()
     if in_file != in_db:
         raise ExportError(
-            f"This export is inconsistent and has not been written: the team has {in_db:,} bank feed row(s) "
+            f"This export is inconsistent and has not been written: the book has {in_db:,} bank feed row(s) "
             f"but the file would carry {in_file:,}. This is a bug in the exporter, not something you did -- "
             "please report it."
         )
 
 
-def _build_accounts(team) -> list[dict]:
+def _build_accounts(book) -> list[dict]:
     """One row per account, with its group, institution and goal folded in (§2.1)."""
     accounts = (
-        Account.objects.filter(team=team)
+        Account.objects.filter(book=book)
         .select_related("account_group", "institution", "goal")
         .order_by(*Account._meta.ordering)
     )
@@ -132,7 +132,7 @@ def _build_accounts(team) -> list[dict]:
     ]
 
 
-def _place_feed_rows(team) -> tuple[dict[tuple[int, int], BankTransaction], list[BankTransaction]]:
+def _place_feed_rows(book) -> tuple[dict[tuple[int, int], BankTransaction], list[BankTransaction]]:
     """
     Decide where every categorized feed row goes: `(lookup, unplaceable)`.
 
@@ -165,16 +165,16 @@ def _place_feed_rows(team) -> tuple[dict[tuple[int, int], BankTransaction], list
     than done quietly.
     """
     line_accounts: set[tuple[int, int]] = set(
-        JournalLine.objects.filter(team=team).values_list("journal_entry_id", "account_id")
+        JournalLine.objects.filter(book=book).values_list("journal_entry_id", "account_id")
     )
 
     lookup: dict[tuple[int, int], BankTransaction] = {}
     unplaceable: list[BankTransaction] = []
 
     # Ordered by id so which of two colliding rows keeps the line is stable
-    # across exports of the same team, rather than query-order dependent.
+    # across exports of the same book, rather than query-order dependent.
     rows = (
-        BankTransaction.objects.filter(team=team, journal_entry__isnull=False).select_related("account").order_by("id")
+        BankTransaction.objects.filter(book=book, journal_entry__isnull=False).select_related("account").order_by("id")
     )
     for bank_tx in rows:
         key = (bank_tx.journal_entry_id, bank_tx.account_id)
@@ -185,15 +185,15 @@ def _place_feed_rows(team) -> tuple[dict[tuple[int, int], BankTransaction], list
     return lookup, unplaceable
 
 
-def _build_journal_rows(team) -> list[dict]:
+def _build_journal_rows(book) -> list[dict]:
     """
     One row per journal line, then one per feed row that rides on no line
     (§2.4) -- the uncategorized ones, plus any the ledger could not place.
     """
-    feed_lookup, unplaceable = _place_feed_rows(team)
+    feed_lookup, unplaceable = _place_feed_rows(book)
 
     lines = (
-        JournalLine.objects.filter(team=team)
+        JournalLine.objects.filter(book=book)
         .select_related("journal_entry", "journal_entry__payee", "account")
         .order_by("journal_entry__entry_date", "journal_entry_id", "id")
     )
@@ -230,7 +230,7 @@ def _build_journal_rows(team) -> list[dict]:
     # Entry-level and line-level columns are genuinely absent here, which is
     # what passing None for those two maps records.
     uncategorized = list(
-        BankTransaction.objects.filter(team=team, journal_entry__isnull=True).select_related("account")
+        BankTransaction.objects.filter(book=book, journal_entry__isnull=True).select_related("account")
     )
     for bank_tx in uncategorized + unplaceable:
         row = schema.build_row(
@@ -247,23 +247,23 @@ def _build_journal_rows(team) -> list[dict]:
     return rows
 
 
-def build_reconciliation_rows(team) -> list[dict]:
+def build_reconciliation_rows(book) -> list[dict]:
     """
     One row per statement (`reconciliations.csv`), drafts and undone ones
     included -- a draft's ticks and an undone statement's links both ride on
     the journal lines, and would dangle without their row.
     """
-    statements = Reconciliation.objects.filter(team=team).order_by("account_id", "statement_date", "id")
+    statements = Reconciliation.objects.filter(book=book).order_by("account_id", "statement_date", "id")
     return [
         schema.build_row((schema.RECONCILIATION, rec), columns=schema.RECONCILIATIONS_COLUMNS) for rec in statements
     ]
 
 
-def _build_budget_rows(team) -> list[dict]:
+def _build_budget_rows(book) -> list[dict]:
     """One row per monthly amount -- a `Budget` or a `GoalAllocation`, told apart by `kind` (§2.1)."""
     rows = []
 
-    budgets = Budget.objects.filter(team=team).select_related("category").order_by("month", "category__name")
+    budgets = Budget.objects.filter(book=book).select_related("category").order_by("month", "category__name")
     for budget in budgets:
         row = schema.build_row((schema.BUDGET, budget), columns=schema.BUDGET_COLUMNS)
         row["kind"] = KIND_BUDGET
@@ -271,7 +271,7 @@ def _build_budget_rows(team) -> list[dict]:
         rows.append(row)
 
     allocations = (
-        GoalAllocation.objects.filter(team=team).select_related("goal", "goal__account").order_by("month", "goal__name")
+        GoalAllocation.objects.filter(book=book).select_related("goal", "goal__account").order_by("month", "goal__name")
     )
     for allocation in allocations:
         row = schema.build_row((schema.GOAL_ALLOCATION, allocation), columns=schema.BUDGET_COLUMNS)
@@ -282,13 +282,13 @@ def _build_budget_rows(team) -> list[dict]:
     return rows
 
 
-def build_checks(team) -> dict:
+def build_checks(book) -> dict:
     """
     The integrity gate's data (§6), computed **from the database** -- never
     from the rows this same module just built, or the check would only prove
     the exporter agrees with itself.
     """
-    non_void_lines = _not_void(team=team).select_related("account", "account__account_group")
+    non_void_lines = _not_void(book=book).select_related("account", "account__account_group")
 
     trial_dr = ZERO
     trial_cr = ZERO
@@ -304,40 +304,40 @@ def build_checks(team) -> dict:
             net_worth += dr - cr
 
     budget_totals: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    for budget in Budget.objects.filter(team=team):
+    for budget in Budget.objects.filter(book=book):
         budget_totals[budget.month.isoformat()] += budget.budget_amount
 
     goal_totals: dict[int, Decimal] = defaultdict(lambda: ZERO)
-    for allocation in GoalAllocation.objects.filter(team=team).select_related("goal"):
+    for allocation in GoalAllocation.objects.filter(book=book).select_related("goal"):
         if allocation.goal.account_id:
             goal_totals[allocation.goal.account_id] += allocation.amount
 
-    date_bounds = JournalEntry.objects.filter(team=team).aggregate(first=Min("entry_date"), last=Max("entry_date"))
+    date_bounds = JournalEntry.objects.filter(book=book).aggregate(first=Min("entry_date"), last=Max("entry_date"))
 
-    statements = Reconciliation.objects.filter(team=team)
+    statements = Reconciliation.objects.filter(book=book)
     statement_counts = {
         "total": statements.count(),
         "completed": statements.filter(status=Reconciliation.STATUS_COMPLETED).count(),
-        "reconciled_lines": JournalLine.objects.filter(team=team, is_reconciled=True).count(),
+        "reconciled_lines": JournalLine.objects.filter(book=book, is_reconciled=True).count(),
     }
 
-    accounts_count = Account.objects.filter(team=team).count()
-    entries_count = JournalEntry.objects.filter(team=team).count()
-    goals_count = Account.objects.filter(team=team, goal__isnull=False).count()
+    accounts_count = Account.objects.filter(book=book).count()
+    entries_count = JournalEntry.objects.filter(book=book).count()
+    goals_count = Account.objects.filter(book=book, goal__isnull=False).count()
 
     # `uncategorized` counts what the *file* will hold as uncategorized, which
     # is every row with no entry plus every row no line could carry -- still
     # derived from the database (both are database queries), not read back off
     # the rows just built, so the check cannot degrade into the exporter
     # agreeing with itself.
-    _placed, unplaceable = _place_feed_rows(team)
+    _placed, unplaceable = _place_feed_rows(book)
     feed_counts = {
-        "total": BankTransaction.objects.filter(team=team).count(),
+        "total": BankTransaction.objects.filter(book=book).count(),
         "uncategorized": (
-            BankTransaction.objects.filter(team=team, journal_entry__isnull=True).count() + len(unplaceable)
+            BankTransaction.objects.filter(book=book, journal_entry__isnull=True).count() + len(unplaceable)
         ),
-        "archived": BankTransaction.objects.filter(team=team, is_archived=True).count(),
-        "mirror": BankTransaction.objects.filter(team=team, is_transfer_mirror=True).count(),
+        "archived": BankTransaction.objects.filter(book=book, is_archived=True).count(),
+        "mirror": BankTransaction.objects.filter(book=book, is_transfer_mirror=True).count(),
     }
 
     return {
@@ -362,26 +362,26 @@ def build_checks(team) -> dict:
     }
 
 
-def build_omitted(team) -> dict:
+def build_omitted(book) -> dict:
     """
     What did not make it into the file, and why (§2.3, §2.4) -- shown in the
     export summary so a loss is a stated fact, not a surprise discovered
     later.
     """
-    empty_account_groups = AccountGroup.objects.filter(team=team, accounts__isnull=True).count()
-    unused_institutions = Institution.objects.filter(team=team, accounts__isnull=True).count()
+    empty_account_groups = AccountGroup.objects.filter(book=book, accounts__isnull=True).count()
+    unused_institutions = Institution.objects.filter(book=book, accounts__isnull=True).count()
 
     used_payee_ids = set(
-        JournalEntry.objects.filter(team=team, payee__isnull=False).values_list("payee_id", flat=True).distinct()
+        JournalEntry.objects.filter(book=book, payee__isnull=False).values_list("payee_id", flat=True).distinct()
     )
-    unused_payees = Payee.objects.filter(team=team).exclude(id__in=used_payee_ids).count()
+    unused_payees = Payee.objects.filter(book=book).exclude(id__in=used_payee_ids).count()
 
-    dismissed_transfer_pairs = TransferMatchDismissal.objects.filter(team=team).count()
+    dismissed_transfer_pairs = TransferMatchDismissal.objects.filter(book=book).count()
 
     # Not a row that was dropped -- the row travels -- but a *link* that could
     # not be carried, which is the same kind of stated loss. See
     # `_place_feed_rows` for when this is non-zero.
-    _placed, unplaceable = _place_feed_rows(team)
+    _placed, unplaceable = _place_feed_rows(book)
 
     return {
         "empty_account_groups": empty_account_groups,

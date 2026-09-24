@@ -10,8 +10,8 @@
   user menu at the bottom of the sidebar rather than here — they are not
   product navigation and were taking prime space above the fold.
 {% endcomment %}
-{% if nav_team %}
-  <a href="{% url 'web_team:home' nav_team.slug %}"
+{% if nav_team and nav_book %}
+  <a href="{% url 'web_book:home' nav_team.slug nav_book.slug %}"
      class="side-link {% if active_tab == 'dashboard' %}side-link-active{% endif %}">
     {% icon "home" class="inline-block shrink-0 w-4 h-4" %}
     <span class="side-label">{% translate "Home" %}</span>
@@ -29,7 +29,7 @@
        @feed-account-selected.window="current = $event.detail.id"
        class="flex flex-col">
     <div class="side-row">
-      <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug %}"
+      <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug nav_book.slug %}"
          {% if active_tab == 'bank-feed' %}:class="{ 'side-link-active': current === null }"{% endif %}
          class="side-link flex-1 {% if active_tab == 'bank-feed' and not nav_feed_account_id %}side-link-active{% endif %}">
         {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
@@ -52,7 +52,7 @@
         {% for institution in nav_feed_institutions %}
           <div class="side-sublabel">{% if institution.name %}{{ institution.name }}{% else %}{% translate "Other" %}{% endif %}</div>
           {% for account in institution.accounts %}
-            <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug %}?account={{ account.id }}"
+            <a href="{% url 'bank_feed:bank_feed_home' nav_team.slug nav_book.slug %}?account={{ account.id }}"
                {% if active_tab == 'bank-feed' %}:class="{ 'side-link-active': current === {{ account.id }} }"{% endif %}
                class="side-link side-link-sub {% if active_tab == 'bank-feed' and nav_feed_account_id == account.id %}side-link-active{% endif %}"
                data-testid="nav-inbox-account-{{ account.id }}">
@@ -74,7 +74,7 @@
     {% endif %}
   </div>
 
-  <a href="{% url 'journal:transactions_home' nav_team.slug %}"
+  <a href="{% url 'journal:transactions_home' nav_team.slug nav_book.slug %}"
      class="side-link {% if active_tab == 'transactions' %}side-link-active{% endif %}">
     {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
     <span class="side-label">{% translate "Transactions" %}</span>
@@ -83,7 +83,7 @@
   {# Budget: expands to Goals. #}
   <div x-data="{ open: {% if active_tab == 'budget' or active_tab == 'goals' %}true{% else %}false{% endif %} }" class="flex flex-col">
     <div class="side-row">
-      <a href="{% url 'budget:budget_home' nav_team.slug %}"
+      <a href="{% url 'budget:budget_home' nav_team.slug nav_book.slug %}"
          class="side-link flex-1 {% if active_tab == 'budget' %}side-link-active{% endif %}" data-testid="nav-budget">
         {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
         <span class="side-label">{% translate "Budget" %}</span>
@@ -96,7 +96,7 @@
       </button>
     </div>
     <div x-show="open" x-cloak class="side-sub flex flex-col gap-0.5">
-      <a href="{% url 'budget:goals_list' nav_team.slug %}"
+      <a href="{% url 'budget:goals_list' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if active_tab == 'goals' %}side-link-active{% endif %}" data-testid="nav-goals">
         {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Goals" %}
@@ -107,7 +107,7 @@
   {# Reports: expands to every report page, in the order the Reports page lists them. The current page's sub-item is shaded, not the parent. #}
   <div x-data="{ open: {% if active_tab == 'reports' or active_tab == 'monthly-review' %}true{% else %}false{% endif %} }" class="flex flex-col">
     <div class="side-row">
-      <a href="{% url 'reports:reports_home' nav_team.slug %}"
+      <a href="{% url 'reports:reports_home' nav_team.slug nav_book.slug %}"
          class="side-link flex-1 {% if active_tab == 'reports' and not nav_item %}side-link-active{% endif %}">
         {% icon "chart-bar" class="inline-block shrink-0 w-4 h-4" %}
         <span class="side-label">{% translate "Reports" %}</span>
@@ -120,47 +120,47 @@
       </button>
     </div>
     <div x-show="open" x-cloak class="side-sub flex flex-col gap-0.5">
-      <a href="{% url 'monthly_review:home' nav_team.slug %}"
+      <a href="{% url 'monthly_review:home' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'monthly-review' %}side-link-active{% endif %}" data-testid="nav-monthly-review">
         {% icon "calendar" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Monthly Review" %}
       </a>
-      <a href="{% url 'reports:dollar_map' nav_team.slug %}"
+      <a href="{% url 'reports:dollar_map' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'report-dollar-map' %}side-link-active{% endif %}" data-testid="nav-report-dollar-map">
         {% icon "coins" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Dollar Map" %}
       </a>
-      <a href="{% url 'reconciliation:hub' nav_team.slug %}"
+      <a href="{% url 'reconciliation:hub' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'report-reconciliation' %}side-link-active{% endif %}" data-testid="nav-report-reconciliation">
         {% icon "scale-balanced" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Reconciliation" %}
       </a>
-      <a href="{% url 'reports:income_statement' nav_team.slug %}"
+      <a href="{% url 'reports:income_statement' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'report-income-statement' %}side-link-active{% endif %}" data-testid="nav-report-income-statement">
         {% icon "chart-bar" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Income Statement" %}
       </a>
-      <a href="{% url 'reports:balance_sheet' nav_team.slug %}"
+      <a href="{% url 'reports:balance_sheet' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'report-balance-sheet' %}side-link-active{% endif %}" data-testid="nav-report-balance-sheet">
         {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Balance Sheet" %}
       </a>
-      <a href="{% url 'reports:net_worth_trend' nav_team.slug %}"
+      <a href="{% url 'reports:net_worth_trend' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'report-net-worth-trend' %}side-link-active{% endif %}" data-testid="nav-report-net-worth-trend">
         {% icon "chart-line" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Net Worth Trend" %}
       </a>
-      <a href="{% url 'reports:cash_flow' nav_team.slug %}"
+      <a href="{% url 'reports:cash_flow' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'report-cash-flow' %}side-link-active{% endif %}" data-testid="nav-report-cash-flow">
         {% icon "exchange" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Cash Flow" %}
       </a>
-      <a href="{% url 'reports:budget_vs_actual' nav_team.slug %}"
+      <a href="{% url 'reports:budget_vs_actual' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'report-budget-vs-actual' %}side-link-active{% endif %}" data-testid="nav-report-budget-vs-actual">
         {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Budget vs Actual" %}
       </a>
-      <a href="{% url 'reports:goal_progress' nav_team.slug %}"
+      <a href="{% url 'reports:goal_progress' nav_team.slug nav_book.slug %}"
          class="side-link side-link-sub {% if nav_item == 'report-goal-progress' %}side-link-active{% endif %}" data-testid="nav-report-goal-progress">
         {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Goal Progress" %}
@@ -181,7 +181,7 @@
     {# Accounts: expands to the chart-of-accounts management pages. #}
     <div x-data="{ open: {% if active_tab == 'accounts' %}true{% else %}false{% endif %} }" class="flex flex-col">
       <div class="side-row">
-        <a href="{% url 'accounts:accounts_home' nav_team.slug %}"
+        <a href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
            class="side-link flex-1 {% if active_tab == 'accounts' and not nav_item %}side-link-active{% endif %}">
           {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
           <span class="side-label">{% translate "Accounts" %}</span>
@@ -194,22 +194,22 @@
         </button>
       </div>
       <div x-show="open" x-cloak class="side-sub flex flex-col gap-0.5">
-        <a href="{% url 'accounts:accounts_home' nav_team.slug %}"
+        <a href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
            class="side-link side-link-sub {% if nav_item == 'accounts-list' %}side-link-active{% endif %}" data-testid="nav-accounts-list">
           {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Accounts" %}
         </a>
-        <a href="{% url 'accounts:accountgroup_list' nav_team.slug %}"
+        <a href="{% url 'accounts:accountgroup_list' nav_team.slug nav_book.slug %}"
            class="side-link side-link-sub {% if nav_item == 'accounts-groups' %}side-link-active{% endif %}" data-testid="nav-accounts-groups">
           {% icon "layer-group" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Groups" %}
         </a>
-        <a href="{% url 'accounts:payee_list' nav_team.slug %}"
+        <a href="{% url 'accounts:payee_list' nav_team.slug nav_book.slug %}"
            class="side-link side-link-sub {% if nav_item == 'accounts-payees' %}side-link-active{% endif %}" data-testid="nav-accounts-payees">
           {% icon "users" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Payees" %}
         </a>
-        <a href="{% url 'accounts:institution_list' nav_team.slug %}"
+        <a href="{% url 'accounts:institution_list' nav_team.slug nav_book.slug %}"
            class="side-link side-link-sub {% if nav_item == 'accounts-institutions' %}side-link-active{% endif %}" data-testid="nav-accounts-institutions">
           {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Institutions" %}

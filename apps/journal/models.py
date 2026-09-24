@@ -7,8 +7,8 @@ from django.db.models import Q, Sum
 from django.urls import reverse
 from django.utils.dateparse import parse_date
 
+from apps.books.models import BaseBookModel
 from apps.budget.models import Budget
-from apps.teams.models import BaseTeamModel
 
 
 def counted_entries(path=""):
@@ -30,7 +30,7 @@ def counted_entries(path=""):
     return ~Q(**{f"{path}status": JournalEntry.STATUS_VOID}) & ~Q(**{f"{path}id__in": archived_entry_ids})
 
 
-class JournalEntry(BaseTeamModel):
+class JournalEntry(BaseBookModel):
     """
     Journal Entry model for double-entry bookkeeping.
     Each entry must have balanced debits and credits across its journal lines.
@@ -94,7 +94,7 @@ class JournalEntry(BaseTeamModel):
         return f"JE-{self.id} - {self.entry_date} - {self.description[:50]}"
 
     def get_absolute_url(self):
-        return reverse("journal:journalentry_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("journal:journalentry_detail", args=[*self.book.url_args, self.pk])
 
     def clean(self):
         """Validate that debits equal credits."""
@@ -146,7 +146,7 @@ class JournalLineQuerySet(models.QuerySet):
         return self.bulk_create(lines, batch_size=batch_size)
 
 
-class JournalLine(BaseTeamModel):
+class JournalLine(BaseBookModel):
     """
     Journal Line model representing individual debit/credit lines in a journal entry.
     Each line must have either a debit or credit amount (not both).
@@ -256,7 +256,7 @@ class JournalLine(BaseTeamModel):
         month_start = entry_date.replace(day=1)
 
         return Budget.objects.filter(
-            team=self.team,
+            book=self.book,
             category=self.account,
             month=month_start,
         ).first()

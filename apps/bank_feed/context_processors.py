@@ -1,5 +1,5 @@
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, Account
-from apps.teams.helpers import get_nav_team
+from apps.books.helpers import nav_book_for_member
 
 from .models import BankTransaction
 
@@ -16,11 +16,11 @@ def nav_feed_accounts(request):
     sub-item is shaded on first paint; the feed updates it as the user switches
     accounts in the page.
     """
-    team = get_nav_team(request)
-    if not team or not request.user.is_authenticated:
+    book = nav_book_for_member(request)
+    if not book:
         return {}
     feed_accounts = (
-        Account.objects.filter(team=team, has_feed=True)
+        Account.objects.filter(book=book, has_feed=True)
         .with_balance()
         .select_related("account_group", "institution")
         .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
@@ -42,20 +42,19 @@ def nav_feed_accounts(request):
 
 def inbox_count(request):
     """
-    Number of uncategorized bank transactions for the current team.
+    Number of uncategorized bank transactions in the current set of books.
 
     Powers the badge on the "Inbox" navigation item so users can see at a
     glance how many transactions are waiting for review. It follows the nav
-    team rather than `request.team`, so the badge does not blink out on the
-    account pages where the nav itself has no team of its own.
+    book rather than `request.book`, so the badge does not blink out on the
+    team and account pages, where the URL names no book of its own.
     """
-    # request.team is a SimpleLazyObject that may wrap None; truthiness unwraps it
-    team = get_nav_team(request)
-    if not team or not request.user.is_authenticated:
+    book = nav_book_for_member(request)
+    if not book:
         return {}
     return {
         "inbox_count": BankTransaction.objects.filter(
-            team=team,
+            book=book,
             journal_entry__isnull=True,
             is_archived=False,
         ).count()

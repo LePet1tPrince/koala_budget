@@ -13,7 +13,7 @@
     {% endif %}
     <div class="flex gap-2">
       <input type="submit" class="btn btn-primary" value="{% translate 'Save' %}" data-testid="save-btn">
-      <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="btn btn-outline" data-testid="cancel-btn">{% translate "Cancel" %}</a>
+      <a href="{% url 'accounts:accounts_home' request.team.slug request.book.slug %}" class="btn btn-outline" data-testid="cancel-btn">{% translate "Cancel" %}</a>
     </div>
   </form>
 </section>

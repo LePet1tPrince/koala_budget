@@ -73,8 +73,9 @@ class SampleCsvImportTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Sample Team", slug="sample-team")
-        group = AccountGroup.objects.create(team=cls.team, name="Bank Accounts", account_type="asset")
-        cls.account = Account.objects.create(team=cls.team, name="Chequing Account", account_group=group, has_feed=True)
+        cls.book = cls.team.default_book
+        group = AccountGroup.objects.create(book=cls.book, name="Bank Accounts", account_type="asset")
+        cls.account = Account.objects.create(book=cls.book, name="Chequing Account", account_group=group, has_feed=True)
 
     def _preview(self, today=None):
         upload = SimpleUploadedFile("sample.csv", build_sample_csv(today).encode(), content_type="text/csv")
@@ -83,7 +84,7 @@ class SampleCsvImportTest(TestCase):
             filename="sample.csv",
             column_mapping={"date": 0, "description": 1, "inflow": 2, "outflow": 3, "has_headers": True},
             category_mappings={},
-            team=self.team,
+            book=self.book,
             account_id=self.account.id,
             date_format="%Y-%m-%d",
         )
@@ -121,16 +122,18 @@ class SampleCsvEndpointTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Endpoint Team", slug="endpoint-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="member", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.other_team = Team.objects.create(name="Other Team", slug="other-team")
+        cls.other_book = cls.other_team.default_book
         cls.outsider = CustomUser.objects.create_user(username="outsider", password="pass")
         cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
 
     def setUp(self):
         self.client = APIClient()
-        self.url = f"/a/{self.team.slug}/bankfeed/api/feed/sample_csv/"
+        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/sample_csv/"
 
     def test_downloads_as_an_attachment(self):
         self.client.force_authenticate(user=self.user)
@@ -161,9 +164,10 @@ class SampleCsvEndToEndTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="E2E Team", slug="e2e-team")
-        assets = AccountGroup.objects.create(team=cls.team, name="Bank Accounts", account_type="asset")
+        cls.book = cls.team.default_book
+        assets = AccountGroup.objects.create(book=cls.book, name="Bank Accounts", account_type="asset")
         cls.account = Account.objects.create(
-            team=cls.team, name="Chequing Account", account_group=assets, has_feed=True
+            book=cls.book, name="Chequing Account", account_group=assets, has_feed=True
         )
 
     def test_import_creates_every_row_and_nets_positive(self):
@@ -175,7 +179,7 @@ class SampleCsvEndToEndTest(TestCase):
             filename="sample.csv",
             column_mapping={"date": 0, "description": 1, "inflow": 2, "outflow": 3, "has_headers": True},
             category_mappings={},
-            team=self.team,
+            book=self.book,
             account_id=self.account.id,
             date_format="%Y-%m-%d",
         )
@@ -191,7 +195,7 @@ class SampleCsvEndToEndTest(TestCase):
                 }
                 for t in preview.transactions
             ],
-            team=self.team,
+            book=self.book,
             account_id=self.account.id,
             skip_duplicates=False,
         )
@@ -201,7 +205,7 @@ class SampleCsvEndToEndTest(TestCase):
 
         # Plaid convention: positive = money out. A negative total means the
         # account took in more than it spent, which is what makes net worth rise.
-        net = BankTransaction.objects.filter(team=self.team).aggregate(total=Sum("amount"))["total"]
+        net = BankTransaction.objects.filter(book=self.book).aggregate(total=Sum("amount"))["total"]
         self.assertLess(net, Decimal("0"))
 
     def test_rows_land_uncategorized(self):
@@ -213,7 +217,7 @@ class SampleCsvEndToEndTest(TestCase):
             filename="sample.csv",
             column_mapping={"date": 0, "description": 1, "inflow": 2, "outflow": 3, "has_headers": True},
             category_mappings={},
-            team=self.team,
+            book=self.book,
             account_id=self.account.id,
             date_format="%Y-%m-%d",
         )

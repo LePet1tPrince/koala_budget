@@ -22,17 +22,17 @@ from apps.teams.roles import ROLE_MEMBER
 from .db_fixtures import build_db_fixture_team, make_team
 
 
-def _export_file(team) -> SimpleUploadedFile:
+def _export_file(book) -> SimpleUploadedFile:
     from apps.portability.services import export, write
 
-    accounts, journal_rows, budget_rows = export.build_archive(team)
+    accounts, journal_rows, budget_rows = export.build_archive(book)
     data = write.build_archive_bytes(
         accounts=accounts,
         journal=journal_rows,
         budget=budget_rows,
-        source={"team_name": team.name},
-        checks=export.build_checks(team),
-        omitted=export.build_omitted(team),
+        source={"team_name": book.name},
+        checks=export.build_checks(book),
+        omitted=export.build_omitted(book),
     )
     return SimpleUploadedFile("export.zip", data, content_type="application/zip")
 
@@ -41,12 +41,13 @@ class ExportViewTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.admin, cls.handles = build_db_fixture_team("Export Team", "export-team")
+        cls.book = cls.team.default_book
 
     def setUp(self):
         self.client.force_login(self.admin)
 
     def test_export_downloads_a_valid_zip(self):
-        response = self.client.get(reverse("portability:export", args=[self.team.slug]))
+        response = self.client.get(reverse("portability:export", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/zip")
         self.assertTrue(response["Content-Length"])
@@ -59,7 +60,7 @@ class ExportViewTests(TestCase):
     def test_a_plain_member_can_export_their_own_team(self):
         member = self._add_member()
         self.client.force_login(member)
-        response = self.client.get(reverse("portability:export", args=[self.team.slug]))
+        response = self.client.get(reverse("portability:export", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
 
     def _add_member(self):
@@ -74,21 +75,23 @@ class UploadApplyStatusFlowTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.source_team, cls.source_user, cls.handles = build_db_fixture_team("View Src", "view-src")
+        cls.source_book = cls.source_team.default_book
         cls.dest_team, cls.dest_admin = make_team("View Dst", "view-dst")
+        cls.dest_book = cls.dest_team.default_book
 
     def setUp(self):
         self.client.force_login(self.dest_admin)
 
     def url(self, name, **kwargs):
-        return reverse(f"portability:{name}", args=[self.dest_team.slug], **kwargs)
+        return reverse(f"portability:{name}", args=[self.dest_team.slug, self.dest_book.slug], **kwargs)
 
     def test_home_page_loads(self):
         response = self.client.get(self.url("home"))
         self.assertEqual(response.status_code, 200)
 
     def test_upload_returns_a_file_summary_and_writes_nothing(self):
-        before = DataImport.objects.filter(team=self.dest_team).count()
-        response = self.client.post(self.url("api_upload"), {"file": _export_file(self.source_team)})
+        before = DataImport.objects.filter(book=self.dest_book).count()
+        response = self.client.post(self.url("api_upload"), {"file": _export_file(self.source_book)})
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("import_id", payload)
@@ -96,7 +99,7 @@ class UploadApplyStatusFlowTests(TestCase):
         self.assertIn("checks", payload["destination"])
         # A DataImport row is created to hold the bytes for the apply step,
         # but nothing about the team's own books is written yet.
-        self.assertEqual(DataImport.objects.filter(team=self.dest_team).count(), before + 1)
+        self.assertEqual(DataImport.objects.filter(book=self.dest_book).count(), before + 1)
 
     def test_upload_rejects_a_non_export_file(self):
         junk = SimpleUploadedFile("notes.txt", b"not an export", content_type="text/plain")
@@ -104,11 +107,11 @@ class UploadApplyStatusFlowTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("error", response.json())
 
-    def test_apply_refuses_a_wrong_team_name(self):
-        upload = self.client.post(self.url("api_upload"), {"file": _export_file(self.source_team)}).json()
+    def test_apply_refuses_a_wrong_book_name(self):
+        upload = self.client.post(self.url("api_upload"), {"file": _export_file(self.source_book)}).json()
         response = self.client.post(
             self.url("api_apply"),
-            data={"import_id": upload["import_id"], "team_name": "not the team name"},
+            data={"import_id": upload["import_id"], "book_name": "not the book name"},
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
@@ -119,10 +122,10 @@ class UploadApplyStatusFlowTests(TestCase):
     @patch("apps.portability.services.progress.ProgressChannel.close", lambda self: None)
     @patch("celery_progress.backend.ProgressRecorder.set_progress", lambda self, *a, **k: None)
     def test_apply_with_the_correct_name_runs_the_import(self):
-        upload = self.client.post(self.url("api_upload"), {"file": _export_file(self.source_team)}).json()
+        upload = self.client.post(self.url("api_upload"), {"file": _export_file(self.source_book)}).json()
         response = self.client.post(
             self.url("api_apply"),
-            data={"import_id": upload["import_id"], "team_name": self.dest_team.name},
+            data={"import_id": upload["import_id"], "book_name": self.dest_book.name},
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
@@ -147,6 +150,7 @@ class GuardTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.admin, cls.handles = build_db_fixture_team("Guarded", "guarded")
+        cls.book = cls.team.default_book
         from apps.users.models import CustomUser
 
         cls.member = CustomUser.objects.create_user(username="guard-member", password="pass")
@@ -156,32 +160,36 @@ class GuardTests(TestCase):
         self.client.force_login(self.member)
 
     def test_home_refuses_a_plain_member(self):
-        response = self.client.get(reverse("portability:home", args=[self.team.slug]))
+        response = self.client.get(reverse("portability:home", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 404)  # team_admin_required treats it as not-found
 
     def test_upload_refuses_a_plain_member(self):
         response = self.client.post(
-            reverse("portability:api_upload", args=[self.team.slug]), {"file": _export_file(self.team)}
+            reverse("portability:api_upload", args=[self.team.slug, self.book.slug]), {"file": _export_file(self.book)}
         )
         self.assertEqual(response.status_code, 404)
 
     def test_apply_refuses_a_plain_member(self):
         response = self.client.post(
-            reverse("portability:api_apply", args=[self.team.slug]),
-            data={"import_id": 1, "team_name": self.team.name},
+            reverse("portability:api_apply", args=[self.team.slug, self.book.slug]),
+            data={"import_id": 1, "book_name": self.book.name},
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 404)
 
     def test_status_refuses_a_plain_member(self):
-        response = self.client.get(f"{reverse('portability:api_status', args=[self.team.slug])}?import_id=1")
+        response = self.client.get(
+            f"{reverse('portability:api_status', args=[self.team.slug, self.book.slug])}?import_id=1"
+        )
         self.assertEqual(response.status_code, 404)
 
     def test_safety_export_refuses_a_plain_member(self):
-        response = self.client.get(f"{reverse('portability:api_safety_export', args=[self.team.slug])}?import_id=1")
+        response = self.client.get(
+            f"{reverse('portability:api_safety_export', args=[self.team.slug, self.book.slug])}?import_id=1"
+        )
         self.assertEqual(response.status_code, 404)
 
     def test_a_logged_out_user_is_redirected_to_login(self):
         self.client.logout()
-        response = self.client.get(reverse("portability:home", args=[self.team.slug]))
+        response = self.client.get(reverse("portability:home", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 302)

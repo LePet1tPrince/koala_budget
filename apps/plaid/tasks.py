@@ -14,7 +14,7 @@ from django.utils import timezone
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
-from apps.teams.context import set_current_team
+from apps.books.context import set_current_book, unset_current_book
 
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .services import sync_transactions
@@ -45,13 +45,15 @@ def sync_plaid_transactions(plaid_item_id: int):
     """
     logger.info("Starting Plaid sync for item %s", plaid_item_id)
     plaid_item = None
+    context_token = None
     try:
-        plaid_item = PlaidItem.objects.select_related("team").get(id=plaid_item_id)
+        plaid_item = PlaidItem.objects.select_related("book__team").get(id=plaid_item_id)
 
-        # Set team context for the task
-        set_current_team(plaid_item.team)
+        # The item's book is the task's tenant. Unset in `finally`: a Celery worker
+        # runs the next task in the same context, which must not inherit this one.
+        context_token = set_current_book(plaid_item.book)
 
-        log_event(AuditEvent.PLAID_SYNC_STARTED, team=plaid_item.team, metadata={"plaid_item_id": plaid_item_id})
+        log_event(AuditEvent.PLAID_SYNC_STARTED, book=plaid_item.book, metadata={"plaid_item_id": plaid_item_id})
 
         # Get the cursor for incremental sync
         cursor = plaid_item.cursor
@@ -94,7 +96,7 @@ def sync_plaid_transactions(plaid_item_id: int):
 
         log_event(
             AuditEvent.PLAID_SYNC_COMPLETED,
-            team=plaid_item.team,
+            book=plaid_item.book,
             metadata={
                 "plaid_item_id": plaid_item_id,
                 "added": total_added,
@@ -116,10 +118,13 @@ def sync_plaid_transactions(plaid_item_id: int):
         logger.exception("Plaid sync failed for item %s", plaid_item_id)
         log_event(
             AuditEvent.PLAID_SYNC_FAILED,
-            team=plaid_item.team if plaid_item else None,
+            book=plaid_item.book if plaid_item else None,
             metadata={"plaid_item_id": plaid_item_id, "error": str(e)},
         )
         raise
+    finally:
+        if context_token is not None:
+            unset_current_book(context_token)
 
 
 @transaction.atomic
@@ -144,7 +149,7 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
 
     # Create bank transaction
     bank_transaction = BankTransaction.objects.create(
-        team=plaid_item.team,
+        book=plaid_item.book,
         account=plaid_account.account,
         amount=tx_data["amount"],
         posted_date=tx_data["date"],
@@ -156,7 +161,7 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
 
     # Create plaid transaction
     PlaidTransaction.objects.create(
-        team=plaid_item.team,
+        book=plaid_item.book,
         plaid_transaction_id=tx_data["transaction_id"],
         bank_transaction=bank_transaction,
         plaid_account=plaid_account,
@@ -186,7 +191,7 @@ def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
     try:
         plaid_tx = PlaidTransaction.objects.select_related("bank_transaction").get(
             plaid_transaction_id=tx_data["transaction_id"],
-            team=plaid_item.team,
+            book=plaid_item.book,
         )
 
         # Only update if not yet categorized (journal_entry is null)
@@ -228,7 +233,7 @@ def process_removed_transaction(plaid_item: PlaidItem, tx_data: dict):
     try:
         plaid_tx = PlaidTransaction.objects.select_related("bank_transaction").get(
             plaid_transaction_id=tx_data["transaction_id"],
-            team=plaid_item.team,
+            book=plaid_item.book,
         )
 
         # Only delete if not yet categorized (journal_entry is null)

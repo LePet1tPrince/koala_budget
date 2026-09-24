@@ -22,6 +22,7 @@ class SubscriptionGatingTests(TestCase):
     def setUpTestData(cls):
         cls.user = CustomUser.objects.create(username="richard@example.com")
         cls.team = Team.objects.create(name="Royals", slug="royals")
+        cls.book = cls.team.default_book
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
     @patch("apps.teams.models.Team.has_active_subscription", return_value=True)

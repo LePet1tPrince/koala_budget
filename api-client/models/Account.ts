@@ -74,7 +74,7 @@ export interface Account {
      */
     readonly balance: string;
     /**
-     * 
+     * Same as `balance` now that archived entries count nowhere; kept for API compatibility.
      * @type {string}
      * @memberof Account
      */

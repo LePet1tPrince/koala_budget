@@ -21,6 +21,7 @@ from apps.onboarding.services.review import (
 ANSWERS = {
     "income_sources": ["employment"],
     "household_shape": ["solo"],
+    "budget_future_income": "no",
     "housing": ["rent"],
     "kids": ["no"],
     "transport": ["transit"],

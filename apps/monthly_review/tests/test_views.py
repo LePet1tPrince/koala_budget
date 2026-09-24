@@ -18,27 +18,28 @@ class MonthlyReviewViewTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Review Home Team", slug="review-home-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="member", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Pay", account_type=ACCOUNT_TYPE_INCOME)
-        cls.chequing = Account.objects.create(team=cls.team, name="Chequing", account_group=cls.asset_group)
-        cls.salary = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Pay", account_type=ACCOUNT_TYPE_INCOME)
+        cls.chequing = Account.objects.create(book=cls.book, name="Chequing", account_group=cls.asset_group)
+        cls.salary = Account.objects.create(book=cls.book, name="Salary", account_group=cls.income_group)
 
         entry = JournalEntry.objects.create(
-            team=cls.team, entry_date=date(2026, 8, 10), description="pay", status=JournalEntry.STATUS_POSTED
+            book=cls.book, entry_date=date(2026, 8, 10), description="pay", status=JournalEntry.STATUS_POSTED
         )
-        JournalLine.objects.create(team=cls.team, journal_entry=entry, account=cls.chequing, dr_amount=Decimal("1000"))
-        JournalLine.objects.create(team=cls.team, journal_entry=entry, account=cls.salary, cr_amount=Decimal("1000"))
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.chequing, dr_amount=Decimal("1000"))
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.salary, cr_amount=Decimal("1000"))
 
     def setUp(self):
         self.client.force_login(self.user)
-        self.home_url = reverse("monthly_review:home", args=[self.team.slug])
-        self.step_url = reverse("monthly_review:api_step", args=[self.team.slug])
-        self.complete_url = reverse("monthly_review:api_complete", args=[self.team.slug])
-        self.dismiss_url = reverse("monthly_review:api_dismiss", args=[self.team.slug])
-        self.export_url = reverse("monthly_review:export", args=[self.team.slug])
+        self.home_url = reverse("monthly_review:home", args=[self.team.slug, self.book.slug])
+        self.step_url = reverse("monthly_review:api_step", args=[self.team.slug, self.book.slug])
+        self.complete_url = reverse("monthly_review:api_complete", args=[self.team.slug, self.book.slug])
+        self.dismiss_url = reverse("monthly_review:api_dismiss", args=[self.team.slug, self.book.slug])
+        self.export_url = reverse("monthly_review:export", args=[self.team.slug, self.book.slug])
 
     def post_json(self, url, payload=None):
         return self.client.post(
@@ -51,12 +52,12 @@ class MonthlyReviewViewTestCase(TestCase):
 
 class MonthlyReviewHomeTests(MonthlyReviewViewTestCase):
     def test_happy_path_renders_and_creates_state(self):
-        self.assertFalse(MonthlyReviewState.objects.filter(team=self.team).exists())
+        self.assertFalse(MonthlyReviewState.objects.filter(book=self.book).exists())
 
         response = self.client.get(self.home_url, {"month": "2026-08"})
 
         self.assertEqual(response.status_code, 200)
-        state = MonthlyReviewState.objects.get(team=self.team, month=date(2026, 8, 1))
+        state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertIsNotNone(state.started_at)
         self.assertTrue(
             AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.MONTHLY_REVIEW_STARTED).exists()
@@ -70,7 +71,7 @@ class MonthlyReviewHomeTests(MonthlyReviewViewTestCase):
         response = self.client.get(self.home_url)
         self.assertEqual(response.status_code, 200)
         # Some MonthlyReviewState row was created for the default month.
-        self.assertTrue(MonthlyReviewState.objects.filter(team=self.team).exists())
+        self.assertTrue(MonthlyReviewState.objects.filter(book=self.book).exists())
 
     def test_month_before_first_activity_is_empty_state_not_404(self):
         response = self.client.get(self.home_url, {"month": "2020-01"})
@@ -99,8 +100,8 @@ class MonthlyReviewHomeTests(MonthlyReviewViewTestCase):
         self.assertContains(later_response, "2026-09-01")
 
         # Each month keeps its own state row.
-        self.assertTrue(MonthlyReviewState.objects.filter(team=self.team, month=date(2026, 8, 1)).exists())
-        self.assertTrue(MonthlyReviewState.objects.filter(team=self.team, month=date(2026, 9, 1)).exists())
+        self.assertTrue(MonthlyReviewState.objects.filter(book=self.book, month=date(2026, 8, 1)).exists())
+        self.assertTrue(MonthlyReviewState.objects.filter(book=self.book, month=date(2026, 9, 1)).exists())
 
     def test_non_member_gets_404(self):
         outsider = CustomUser.objects.create_user(username="outsider", password="pass")
@@ -113,7 +114,7 @@ class ApiStepTests(MonthlyReviewViewTestCase):
     def test_records_step_and_logs_event(self):
         response = self.post_json(self.step_url, {"month": "2026-08-01", "step": 3})
         self.assertEqual(response.status_code, 200)
-        state = MonthlyReviewState.objects.get(team=self.team, month=date(2026, 8, 1))
+        state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertEqual(state.step, 3)
         self.assertIn(3, state.steps_seen)
         self.assertTrue(
@@ -122,7 +123,7 @@ class ApiStepTests(MonthlyReviewViewTestCase):
 
     def test_baseline_change_is_logged(self):
         self.post_json(self.step_url, {"month": "2026-08-01", "baseline": "6m"})
-        state = MonthlyReviewState.objects.get(team=self.team, month=date(2026, 8, 1))
+        state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertEqual(state.baseline, "6m")
         self.assertTrue(
             AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.MONTHLY_REVIEW_BASELINE_CHANGED).exists()
@@ -139,7 +140,7 @@ class ApiCompleteTests(MonthlyReviewViewTestCase):
     def test_marks_month_reviewed_and_returns_recap(self):
         response = self.post_json(self.complete_url, {"month": "2026-08-01"})
         self.assertEqual(response.status_code, 200)
-        state = MonthlyReviewState.objects.get(team=self.team, month=date(2026, 8, 1))
+        state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertTrue(state.is_finished)
         payload = response.json()
         self.assertIn("current", payload)
@@ -158,7 +159,7 @@ class ApiDismissTests(MonthlyReviewViewTestCase):
     def test_dismisses_and_logs_event(self):
         response = self.post_json(self.dismiss_url, {"month": "2026-08-01"})
         self.assertEqual(response.status_code, 200)
-        state = MonthlyReviewState.objects.get(team=self.team, month=date(2026, 8, 1))
+        state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertTrue(state.is_finished)
         self.assertTrue(
             AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.MONTHLY_REVIEW_DISMISSED).exists()

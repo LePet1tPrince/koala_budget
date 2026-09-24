@@ -3,6 +3,8 @@ from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from apps.books.helpers import ensure_default_book
+
 from .helpers import create_default_team_for_user, get_open_invitations_for_user
 from .invitations import get_invitation_id_from_request, process_invitation
 from .models import Invitation, Team
@@ -46,4 +48,4 @@ def bootstrap_team_on_create(sender, instance, created, **kwargs):
         # the generated one on completion, this stock one if the user skips.
         return
 
-    apply_template(team=instance, template=PERSONAL_BUDGET_TEMPLATE)
+    apply_template(book=ensure_default_book(instance), template=PERSONAL_BUDGET_TEMPLATE)

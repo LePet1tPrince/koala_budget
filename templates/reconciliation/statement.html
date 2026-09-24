@@ -23,7 +23,7 @@
       </p>
     </div>
     <div class="flex gap-2">
-      <a href="{% url 'reconciliation:account' request.team.slug statement.account.id %}" class="btn btn-ghost btn-sm">{% translate "Back to account" %}</a>
+      <a href="{% url 'reconciliation:account' request.team.slug request.book.slug statement.account.id %}" class="btn btn-ghost btn-sm">{% translate "Back to account" %}</a>
       <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">{% translate "Print" %}</button>
     </div>
   </div>
@@ -89,7 +89,7 @@
   </div>
 
   {% if statement.status == "completed" %}
-    <form method="post" action="{% url 'reconciliation:statement_undo' request.team.slug statement.id %}" class="mt-6"
+    <form method="post" action="{% url 'reconciliation:statement_undo' request.team.slug request.book.slug statement.id %}" class="mt-6"
           onsubmit="return confirm('{% translate "Undo this reconciliation? Its transactions become unreconciled and any adjustment is voided." %}')">
       {% csrf_token %}
       <button type="submit" class="btn btn-outline btn-warning btn-sm" data-testid="statement-undo">{% translate "Undo reconciliation" %}</button>

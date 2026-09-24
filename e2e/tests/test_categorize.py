@@ -39,7 +39,7 @@ def categorize_fixture(team):
 def test_empty_search_highlights_nothing(requires_vite, authenticated_page: Page, live_server, categorize_fixture):
     """Nothing is highlighted until the user types, so a stray Enter categorizes nothing."""
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(categorize_fixture["account"].team.slug)
+    categorize.goto(categorize_fixture["account"].book)
 
     assert categorize.active_row_name() is None
     assert not categorize.has_keyboard_hint()
@@ -53,7 +53,7 @@ def test_empty_search_highlights_nothing(requires_vite, authenticated_page: Page
 def test_typing_highlights_the_first_match(requires_vite, authenticated_page: Page, live_server, categorize_fixture):
     """Typing points the highlight at the top match, so Enter takes it without arrowing."""
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(categorize_fixture["account"].team.slug)
+    categorize.goto(categorize_fixture["account"].book)
 
     categorize.search("zed dining")
 
@@ -65,7 +65,7 @@ def test_typing_highlights_the_first_match(requires_vite, authenticated_page: Pa
 def test_arrow_keys_walk_the_list(requires_vite, authenticated_page: Page, live_server, categorize_fixture):
     """Down moves to the next row, up moves back, and the ends wrap."""
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(categorize_fixture["account"].team.slug)
+    categorize.goto(categorize_fixture["account"].book)
 
     categorize.search("zed")
     assert categorize.active_row_name() == "Zed Coffee"
@@ -91,7 +91,7 @@ def test_enter_categorizes_the_highlighted_row(
 ):
     """Enter on the highlighted row categorizes the card without touching the mouse."""
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
 
     categorize.search("zed")
     categorize.press("ArrowDown")
@@ -115,7 +115,7 @@ def test_escape_clears_the_search_without_leaving(
 ):
     """Escape backs out of the search first; categorize mode is only left from an empty box."""
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
 
     categorize.search("zed dining")
     categorize.press("Escape")
@@ -136,7 +136,7 @@ def test_suggestions_name_the_transactions_behind_them(
         feed_transaction(team, account, category=groceries, merchant_name="Blue Bottle", description="HISTORY")
 
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
     categorize.wait_for_suggestions()
 
     assert categorize.suggestion_notes() == ["2 transactions with this payee were categorized as this"]
@@ -148,7 +148,7 @@ def test_payee_and_description_are_editable_on_the_card(
 ):
     """The card at the top of the stack shows the bank's payee/description in editable fields."""
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
 
     assert categorize.current_card_title() == "Blue Bottle"
     assert categorize.current_card_description() == "UNCATEGORIZED ROW"
@@ -166,7 +166,7 @@ def test_edits_are_saved_with_the_categorization(
     row = categorize_fixture["row"]
 
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
 
     categorize.edit_payee("Blue Bottle Coffee")
     categorize.edit_description("Morning coffee")
@@ -197,7 +197,7 @@ def test_revert_puts_the_banks_wording_back(
 ):
     """Revert drops the draft, leaving the card as the bank reported it."""
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
 
     categorize.edit_payee("Something else")
     categorize.edit_description("Something else entirely")
@@ -216,7 +216,7 @@ def test_escape_in_an_edited_field_stays_in_categorize_mode(
 ):
     """Escape backs out of the edit, never out of the queue — losing your place mid-word is worse."""
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
 
     categorize.description_field.fill("Half-typed")
     categorize.description_field.press("Escape")
@@ -232,7 +232,7 @@ def test_a_draft_survives_a_skip(requires_vite, authenticated_page: Page, live_s
     feed_transaction(team, account, description="SECOND ROW", merchant_name="Other Merchant")
 
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
 
     categorize.edit_payee("Renamed while passing through")
 

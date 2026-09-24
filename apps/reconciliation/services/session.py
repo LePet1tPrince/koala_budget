@@ -76,7 +76,7 @@ def start(account, statement_date: date, statement_balance: Decimal, user, prese
         try:
             with transaction.atomic():
                 draft = Reconciliation.objects.create(
-                    team=account.team,
+                    book=account.book,
                     account=account,
                     statement_date=statement_date,
                     statement_balance=to_ledger(account, statement_balance),
@@ -89,7 +89,7 @@ def start(account, statement_date: date, statement_balance: Decimal, user, prese
             log_event(
                 AuditEvent.RECONCILIATION_STARTED,
                 request=request,
-                team=account.team,
+                book=account.book,
                 metadata={"account": account.id, "statement_date": statement_date.isoformat()},
             )
     if preselect_line_ids:
@@ -188,7 +188,7 @@ def finish(draft, user, *, adjust: bool = False, expected_difference=None, reque
     log_event(
         AuditEvent.RECONCILIATION_COMPLETED,
         request=request,
-        team=draft.team,
+        book=draft.book,
         metadata={
             "reconciliation": draft.id,
             "account": account.id,
@@ -241,7 +241,7 @@ def undo(reconciliation, user, *, request=None) -> Reconciliation:
     log_event(
         AuditEvent.RECONCILIATION_UNDONE,
         request=request,
-        team=reconciliation.team,
+        book=reconciliation.book,
         metadata={
             "reconciliation": reconciliation.id,
             "account": reconciliation.account_id,

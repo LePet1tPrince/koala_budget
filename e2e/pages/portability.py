@@ -4,14 +4,14 @@ from .base import BasePage
 
 
 class PortabilityPage(BasePage):
-    def path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/data/"
+    def path(self, book) -> str:
+        return f"{book.base_url}data/"
 
-    def goto_home(self, team_slug: str):
-        self.goto(self.path(team_slug), wait_for="[data-testid='export-button']")
+    def goto_home(self, book):
+        self.goto(self.path(book), wait_for="[data-testid='export-button']")
 
-    def export_url(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/data/export/"
+    def export_url(self, book) -> str:
+        return f"{book.base_url}data/export/"
 
     # ------------------------------------------------------------------
     # Import
@@ -30,8 +30,8 @@ class PortabilityPage(BasePage):
         self.page.locator("[data-testid='upload-input']").set_input_files(path)
         self.page.wait_for_selector("[data-testid='confirm-step']", timeout=15_000)
 
-    def confirm(self, team_name: str):
-        self.page.locator("[data-testid='confirm-team-name-input']").fill(team_name)
+    def confirm(self, book_name: str):
+        self.page.locator("[data-testid='confirm-team-name-input']").fill(book_name)
         self.page.locator("[data-testid='confirm-apply-button']").click()
 
     def wait_for_done(self, timeout: int = 30_000):

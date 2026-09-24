@@ -40,7 +40,7 @@ def tiny_export(tmp_path):
 @pytest.fixture
 def import_page(authenticated_page: Page, live_server, team) -> YnabImportPage:
     page = YnabImportPage(authenticated_page, live_server.url)
-    page.goto_import(team.slug)
+    page.goto_import(team.default_book)
     return page
 
 
@@ -56,10 +56,10 @@ def test_wizard_walks_from_files_to_imported_books(import_page, tiny_export, tea
     assert import_page.succeeded(), import_page.page.content()[:2000]
 
     # The books, not the screen: what the user leaves with is a ledger.
-    assert JournalEntry.objects.filter(team=team).count() == 7  # 5 transactions + 2 opening balances
-    assert Account.objects.filter(team=team, name="Chequing").exists()
-    assert Budget.objects.filter(team=team).exists()
-    assert Goal.objects.filter(team=team, name="House").exists()
+    assert JournalEntry.objects.filter(book=team.default_book).count() == 7  # 5 transactions + 2 opening balances
+    assert Account.objects.filter(book=team.default_book, name="Chequing").exists()
+    assert Budget.objects.filter(book=team.default_book).exists()
+    assert Goal.objects.filter(book=team.default_book, name="House").exists()
 
 
 @pytest.mark.django_db
@@ -74,7 +74,7 @@ def test_the_inferred_account_types_are_shown_and_can_be_changed(import_page, ti
     import_page.continue_to_preview()
     import_page.apply()
 
-    account = Account.objects.get(team=team, name="Savings")
+    account = Account.objects.get(book=team.default_book, name="Savings")
     assert account.account_group.account_type == "liability"
 
 
@@ -85,9 +85,9 @@ def test_an_account_can_be_left_behind(import_page, tiny_export, team, requires_
     import_page.continue_to_preview()
     import_page.apply()
 
-    assert not Account.objects.filter(team=team, name="Savings").exists()
+    assert not Account.objects.filter(book=team.default_book, name="Savings").exists()
     # The transfer to it still balances -- it posts against the equity offset.
-    assert all(entry.is_balanced for entry in JournalEntry.objects.filter(team=team))
+    assert all(entry.is_balanced for entry in JournalEntry.objects.filter(book=team.default_book))
 
 
 @pytest.mark.django_db
@@ -102,7 +102,7 @@ def test_income_payees_become_income_accounts(import_page, tiny_export, team, re
     import_page.continue_to_preview()
     import_page.apply()
 
-    assert Account.objects.filter(team=team, name="Day job", account_group__account_type="income").exists()
+    assert Account.objects.filter(book=team.default_book, name="Day job", account_group__account_type="income").exists()
 
 
 @pytest.mark.django_db
@@ -119,8 +119,8 @@ def test_a_savings_category_can_be_imported_as_a_spending_category(import_page, 
     import_page.continue_to_preview()
     import_page.apply()
 
-    assert not Goal.objects.filter(team=team, name="House").exists()
-    assert Account.objects.filter(team=team, name="House", account_group__account_type="expense").exists()
+    assert not Goal.objects.filter(book=team.default_book, name="House").exists()
+    assert Account.objects.filter(book=team.default_book, name="House", account_group__account_type="expense").exists()
 
 
 @pytest.mark.django_db
@@ -145,9 +145,9 @@ def test_a_team_that_already_has_books_is_told_why_not(import_page, team, requir
     """
     JournalEntryFactory(team=team)
 
-    import_page.goto_import(team.slug)
+    import_page.goto_import(team.default_book)
     assert import_page.is_blocked()
-    assert "empty team" in import_page.page.locator("[data-testid='ynab-blocked']").inner_text()
+    assert "create a new set of books" in import_page.page.locator("[data-testid='ynab-blocked']").inner_text()
 
 
 @pytest.mark.django_db
@@ -159,7 +159,7 @@ def test_the_reconciliation_is_shown_before_anything_is_written(import_page, tin
     assert "Every transaction reached the right category" in text
     assert "Every account ends on the balance YNAB shows" in text
     # Nothing is written until the last screen.
-    assert not JournalEntry.objects.filter(team=team).exists()
+    assert not JournalEntry.objects.filter(book=team.default_book).exists()
 
 
 @pytest.mark.django_db
@@ -176,7 +176,7 @@ def test_reopening_the_page_after_an_import_shows_the_result(import_page, tiny_e
     assert import_page.succeeded()
 
     # A fresh page load, as though the tab had been closed and reopened.
-    import_page.goto_import(team.slug)
+    import_page.goto_import(team.default_book)
 
     assert import_page.showing() == "ynab-done"
     assert "Your budget is in" in import_page.result_text()
@@ -194,14 +194,14 @@ def test_a_failed_import_is_waiting_when_the_user_comes_back(import_page, team, 
     from apps.ynab_import.models import YnabImport
 
     YnabImport.objects.create(
-        team=team,
+        book=team.default_book,
         status=YnabImport.STATUS_FAILED,
         started_at=timezone.now(),
         finished_at=timezone.now(),
         error="The import stopped before it finished.",
     )
 
-    import_page.goto_import(team.slug)
+    import_page.goto_import(team.default_book)
     assert import_page.showing() == "ynab-failed"
     assert "stopped before it finished" in import_page.page.locator("[data-testid='ynab-failed']").inner_text()
 
@@ -239,13 +239,13 @@ def test_a_real_five_year_export_imports_and_reconciles(import_page, team, requi
     assert "Your budget is in" in result
     assert "$292,472.98" in result
 
-    assert JournalEntry.objects.filter(team=team).count() == 6636
+    assert JournalEntry.objects.filter(book=team.default_book).count() == 6636
     # No `Budget` rows on goal categories (56 of the old 1,872 were on them).
-    assert Budget.objects.filter(team=team).count() == 1816
+    assert Budget.objects.filter(book=team.default_book).count() == 1816
     # Three open goals, plus `House` -- spent out, so it arrives closed with its history.
-    assert Goal.objects.filter(team=team).count() == 4
-    assert Goal.objects.filter(team=team, closed_at__isnull=True).count() == 3
+    assert Goal.objects.filter(book=team.default_book).count() == 4
+    assert Goal.objects.filter(book=team.default_book, closed_at__isnull=True).count() == 3
 
     import_page.go_to_dashboard()
-    import_page.page.wait_for_url(f"**/a/{team.slug}/", timeout=30_000, wait_until="domcontentloaded")
+    import_page.page.wait_for_url(f"**{team.default_book.base_url}", timeout=30_000, wait_until="domcontentloaded")
     assert "$292,472.98" in import_page.page.locator("body").inner_text()

@@ -46,9 +46,9 @@ class AccountForm(forms.ModelForm):
     field_order = ["name", "account_type", "account_group", "institution", "has_feed"]
 
     def __init__(self, *args, **kwargs):
-        team = kwargs.pop("team", None)
+        book = kwargs.pop("book", None)
         is_create = kwargs.pop("is_create", False)
-        self.team = team
+        self.book = book
         super().__init__(*args, **kwargs)
 
         # If editing an existing account, set the account_type from the account_group
@@ -66,18 +66,18 @@ class AccountForm(forms.ModelForm):
         self.fields["institution"].required = False
         self.fields["institution"].empty_label = "---------"
 
-        # Filter account_group and institution querysets to the current team
-        if team:
+        # Filter account_group and institution querysets to the current book
+        if book:
             if account_type_value:
                 # Filter account groups by the selected account type
-                self.fields["account_group"].queryset = AccountGroup.for_team.filter(account_type=account_type_value)
+                self.fields["account_group"].queryset = AccountGroup.for_book.filter(account_type=account_type_value)
             else:
                 # Show all account groups (grouped by type in the label)
-                self.fields["account_group"].queryset = AccountGroup.for_team.all()
+                self.fields["account_group"].queryset = AccountGroup.for_book.all()
                 # Update help text to guide user
                 self.fields["account_group"].help_text = _("Select an account type first for filtered options")
 
-            self.fields["institution"].queryset = Institution.for_team.all()
+            self.fields["institution"].queryset = Institution.for_book.all()
 
         # Institution is only relevant for asset and liability accounts.
         # In create mode the unbound form keeps the field so the template can render
@@ -108,8 +108,8 @@ class AccountForm(forms.ModelForm):
                 }
             )
 
-        if name and self.team and account_type:
-            qs = Account.objects.filter(team=self.team, name=name, account_group__account_type=account_type)
+        if name and self.book and account_type:
+            qs = Account.objects.filter(book=self.book, name=name, account_group__account_type=account_type)
             if self.instance and self.instance.pk:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():

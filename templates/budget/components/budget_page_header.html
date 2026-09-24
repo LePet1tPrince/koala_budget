@@ -32,7 +32,7 @@ Flags: show_grid_link (Budget page), goals_header (Goals page: style picker + Ne
     </div>
   </noscript>
   {% if show_grid_link %}
-    <a href="{% url 'budget:budget_grid' team_slug=request.team.slug %}?start={{ month|date:'Y' }}-01-01"
+    <a href="{% url 'budget:budget_grid' team_slug=request.team.slug book_slug=request.book.slug %}?start={{ month|date:'Y' }}-01-01"
        class="btn btn-outline btn-sm" data-testid="budget-grid-link">
       {% translate "Edit Multiple Months" %}
     </a>
@@ -65,7 +65,7 @@ Flags: show_grid_link (Budget page), goals_header (Goals page: style picker + Ne
         {% endfor %}
       </ul>
     </div>
-    <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-primary btn-sm" data-testid="new-goal-btn">
+    <a href="{% url 'budget:goal_create' team_slug=request.team.slug book_slug=request.book.slug %}" class="btn btn-primary btn-sm" data-testid="new-goal-btn">
       + {% translate "New Goal" %}
     </a>
   {% endif %}

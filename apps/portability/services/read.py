@@ -6,7 +6,7 @@ database access, and nothing here writes anything. It is deliberately strict:
 a file that will not parse, or does not describe a set of books that balances,
 raises `DocumentError` with a message written to be shown to the user
 directly, rather than being coerced into something plausible. Phase 3's
-`apply.py` calls this before touching a team's data (§6's "parse and validate
+`apply.py` calls this before touching a book's data (§6's "parse and validate
 first, wipe second, write third"), and the wizard's preview screen calls it
 before anything is queued.
 

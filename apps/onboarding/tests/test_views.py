@@ -28,16 +28,17 @@ class OnboardingViewTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Fresh Team", slug="fresh-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="member", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
     def setUp(self):
         self.client.force_login(self.user)
-        self.home_url = reverse("onboarding:home", args=[self.team.slug])
-        self.answers_url = reverse("onboarding:api_answers", args=[self.team.slug])
-        self.complete_url = reverse("onboarding:api_complete", args=[self.team.slug])
-        self.skip_url = reverse("onboarding:api_skip", args=[self.team.slug])
-        self.preview_url = reverse("onboarding:api_preview_coa", args=[self.team.slug])
+        self.home_url = reverse("onboarding:home", args=[self.team.slug, self.book.slug])
+        self.answers_url = reverse("onboarding:api_answers", args=[self.team.slug, self.book.slug])
+        self.complete_url = reverse("onboarding:api_complete", args=[self.team.slug, self.book.slug])
+        self.skip_url = reverse("onboarding:api_skip", args=[self.team.slug, self.book.slug])
+        self.preview_url = reverse("onboarding:api_preview_coa", args=[self.team.slug, self.book.slug])
 
     def post_json(self, url, payload=None):
         return self.client.post(
@@ -50,12 +51,12 @@ class OnboardingViewTestCase(TestCase):
 
 class TakeoverPageTest(OnboardingViewTestCase):
     def test_renders_and_creates_state_lazily(self):
-        self.assertFalse(OnboardingState.objects.filter(team=self.team).exists())
+        self.assertFalse(OnboardingState.objects.filter(book=self.book).exists())
 
         response = self.client.get(self.home_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(OnboardingState.objects.filter(team=self.team).exists())
+        self.assertTrue(OnboardingState.objects.filter(book=self.book).exists())
 
     def test_props_carry_the_catalog(self):
         response = self.client.get(self.home_url)
@@ -74,12 +75,12 @@ class TakeoverPageTest(OnboardingViewTestCase):
                     self.assertEqual(set(option), {"value", "label", "help_text", "catch_all"})
 
     def test_finished_team_is_sent_home(self):
-        state = OnboardingState.objects.create(team=self.team)
+        state = OnboardingState.objects.create(book=self.book)
         state.complete()
         state.save()
 
         response = self.client.get(self.home_url)
-        self.assertRedirects(response, reverse("web_team:home", args=[self.team.slug]))
+        self.assertRedirects(response, reverse("web_book:home", args=[self.team.slug, self.book.slug]))
 
     def test_requires_login(self):
         self.client.logout()
@@ -92,7 +93,7 @@ class SaveAnswersTest(OnboardingViewTestCase):
         response = self.post_json(self.answers_url, {"answers": {"housing": "rent"}})
 
         self.assertEqual(response.status_code, 200)
-        state = OnboardingState.objects.get(team=self.team)
+        state = OnboardingState.objects.get(book=self.book)
         self.assertEqual(state.answers["housing"], ["rent"])
 
     def test_answers_merge_rather_than_replace(self):
@@ -100,19 +101,19 @@ class SaveAnswersTest(OnboardingViewTestCase):
         self.post_json(self.answers_url, {"answers": {"housing": "rent"}})
         self.post_json(self.answers_url, {"answers": {"kids": "yes"}})
 
-        state = OnboardingState.objects.get(team=self.team)
+        state = OnboardingState.objects.get(book=self.book)
         self.assertEqual(state.answers["housing"], ["rent"])
         self.assertEqual(state.answers["kids"], ["yes"])
 
     def test_unknown_question_is_dropped(self):
         self.post_json(self.answers_url, {"answers": {"not_a_question": "yes"}})
 
-        self.assertEqual(OnboardingState.objects.get(team=self.team).answers, {})
+        self.assertEqual(OnboardingState.objects.get(book=self.book).answers, {})
 
     def test_unknown_option_is_dropped(self):
         self.post_json(self.answers_url, {"answers": {"housing": "houseboat"}})
 
-        self.assertEqual(OnboardingState.objects.get(team=self.team).answers, {})
+        self.assertEqual(OnboardingState.objects.get(book=self.book).answers, {})
 
     def test_malformed_body_is_tolerated(self):
         response = self.client.post(self.answers_url, data="not json", content_type="application/json")
@@ -134,8 +135,8 @@ class CompleteTest(OnboardingViewTestCase):
         response = self.post_json(self.complete_url, {"answers": _answer_everything()})
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(Account.objects.filter(team=self.team, name="Mortgage").exists())
-        self.assertTrue(OnboardingState.objects.get(team=self.team).completed_at)
+        self.assertTrue(Account.objects.filter(book=self.book, name="Mortgage").exists())
+        self.assertTrue(OnboardingState.objects.get(book=self.book).completed_at)
 
     def test_only_the_answered_accounts_are_created(self):
         self.post_json(
@@ -144,6 +145,7 @@ class CompleteTest(OnboardingViewTestCase):
                 "answers": {
                     "income_sources": ["employment"],
                     "household_shape": "solo",
+                    "budget_future_income": "no",
                     "housing": "rent",
                     "kids": "no",
                     "transport": ["transit"],
@@ -154,7 +156,7 @@ class CompleteTest(OnboardingViewTestCase):
             },
         )
 
-        names = set(Account.objects.filter(team=self.team).values_list("name", flat=True))
+        names = set(Account.objects.filter(book=self.book).values_list("name", flat=True))
         self.assertIn("Rent", names)
         self.assertNotIn("Mortgage", names)
         self.assertNotIn("Vehicle", names)
@@ -164,23 +166,23 @@ class CompleteTest(OnboardingViewTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertTrue(response.json()["unanswered_required"])
-        self.assertFalse(Account.objects.filter(team=self.team).exists())
-        self.assertFalse(OnboardingState.objects.get(team=self.team).is_finished)
+        self.assertFalse(Account.objects.filter(book=self.book).exists())
+        self.assertFalse(OnboardingState.objects.get(book=self.book).is_finished)
 
     def test_is_idempotent(self):
         """A double submit must not double the chart of accounts."""
         answers = _answer_everything()
         self.post_json(self.complete_url, {"answers": answers})
-        before = Account.objects.filter(team=self.team).count()
+        before = Account.objects.filter(book=self.book).count()
 
         self.post_json(self.complete_url, {"answers": answers})
-        self.assertEqual(Account.objects.filter(team=self.team).count(), before)
+        self.assertEqual(Account.objects.filter(book=self.book).count(), before)
 
     def test_creates_the_first_goal_when_named(self):
         answers = {**_answer_everything(), "first_goal": {"name": "Emergency fund", "target_amount": "5000"}}
         self.post_json(self.complete_url, {"answers": answers})
 
-        goal = Goal.objects.get(team=self.team)
+        goal = Goal.objects.get(book=self.book)
         self.assertEqual(goal.name, "Emergency fund")
         self.assertEqual(goal.target_amount, Decimal("5000.00"))
 
@@ -189,14 +191,14 @@ class CompleteTest(OnboardingViewTestCase):
         answers = {**_answer_everything(), "first_goal": {"name": "New bike", "target_amount": "900"}}
         self.post_json(self.complete_url, {"answers": answers})
 
-        goal = Goal.objects.get(team=self.team)
+        goal = Goal.objects.get(book=self.book)
         self.assertFalse(goal.account.account_group.is_system)
 
     def test_a_blank_goal_name_creates_nothing(self):
         answers = {**_answer_everything(), "first_goal": {"name": "  ", "target_amount": "100"}}
         self.post_json(self.complete_url, {"answers": answers})
 
-        self.assertFalse(Goal.objects.filter(team=self.team).exists())
+        self.assertFalse(Goal.objects.filter(book=self.book).exists())
 
 
 class SkipTest(OnboardingViewTestCase):
@@ -204,15 +206,15 @@ class SkipTest(OnboardingViewTestCase):
         """Skipping must not leave a team with no accounts to work in."""
         self.post_json(self.skip_url)
 
-        self.assertTrue(Account.objects.filter(team=self.team).exists())
-        self.assertTrue(OnboardingState.objects.get(team=self.team).skipped_at)
+        self.assertTrue(Account.objects.filter(book=self.book).exists())
+        self.assertTrue(OnboardingState.objects.get(book=self.book).skipped_at)
 
     def test_a_plain_form_post_redirects_rather_than_returning_json(self):
         """The no-JS fallback posts a form; landing on raw JSON would be a dead end."""
         response = self.client.post(self.skip_url)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], reverse("web_team:home", args=[self.team.slug]))
+        self.assertEqual(response["Location"], reverse("web_book:home", args=[self.team.slug, self.book.slug]))
 
     def test_skipping_twice_is_harmless(self):
         self.post_json(self.skip_url)
@@ -229,6 +231,7 @@ class PermissionTest(OnboardingViewTestCase):
         super().setUpTestData()
         cls.outsider = CustomUser.objects.create_user(username="outsider", password="pass")
         cls.other_team = Team.objects.create(name="Other", slug="other-fresh")
+        cls.other_book = cls.other_team.default_book
         cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
 
     def test_non_member_cannot_view(self):
@@ -240,37 +243,38 @@ class PermissionTest(OnboardingViewTestCase):
         response = self.post_json(self.complete_url, {"answers": _answer_everything()})
 
         self.assertNotEqual(response.status_code, 200)
-        self.assertFalse(Account.objects.filter(team=self.team).exists())
+        self.assertFalse(Account.objects.filter(book=self.book).exists())
 
     def test_non_member_cannot_skip(self):
         self.client.force_login(self.outsider)
         self.post_json(self.skip_url)
 
-        self.assertFalse(OnboardingState.objects.filter(team=self.team, skipped_at__isnull=False).exists())
+        self.assertFalse(OnboardingState.objects.filter(book=self.book, skipped_at__isnull=False).exists())
 
 
 class TeamHomeRedirectTest(OnboardingViewTestCase):
     @override_settings(ONBOARDING_ENABLED=True)
     def test_unonboarded_team_is_redirected(self):
-        response = self.client.get(reverse("web_team:home", args=[self.team.slug]))
+        response = self.client.get(reverse("web_book:home", args=[self.team.slug, self.book.slug]))
         self.assertRedirects(response, self.home_url)
 
     @override_settings(ONBOARDING_ENABLED=True)
     def test_finished_team_reaches_the_dashboard(self):
         self.post_json(self.skip_url)
 
-        response = self.client.get(reverse("web_team:home", args=[self.team.slug]))
+        response = self.client.get(reverse("web_book:home", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
 
     @override_settings(ONBOARDING_ENABLED=False)
     def test_disabling_onboarding_leaves_the_dashboard_alone(self):
-        response = self.client.get(reverse("web_team:home", args=[self.team.slug]))
+        response = self.client.get(reverse("web_book:home", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
 
 
 VALID_ANSWERS = {
     "income_sources": ["employment"],
     "household_shape": "solo",
+    "budget_future_income": "no",
     "housing": "rent",
     "kids": "no",
     "transport": ["transit"],
@@ -286,8 +290,8 @@ class PreviewCoaTest(OnboardingViewTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["sections"])
-        self.assertFalse(Account.objects.filter(team=self.team).exists())
-        self.assertFalse(OnboardingState.objects.get(team=self.team).is_finished)
+        self.assertFalse(Account.objects.filter(book=self.book).exists())
+        self.assertFalse(OnboardingState.objects.get(book=self.book).is_finished)
 
     def test_reflects_the_answers(self):
         response = self.post_json(self.preview_url, {"answers": VALID_ANSWERS})
@@ -335,7 +339,7 @@ class CompleteWithEditsTest(OnboardingViewTestCase):
             },
         )
 
-        names = set(Account.objects.filter(team=self.team).values_list("name", flat=True))
+        names = set(Account.objects.filter(book=self.book).values_list("name", flat=True))
         self.assertNotIn("Tenant Insurance", names)
         self.assertNotIn("Groceries", names)
         self.assertIn("Food & Drink", names)
@@ -349,8 +353,8 @@ class CompleteWithEditsTest(OnboardingViewTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertFalse(Account.objects.filter(team=self.team).exists())
-        self.assertFalse(OnboardingState.objects.get(team=self.team).is_finished)
+        self.assertFalse(Account.objects.filter(book=self.book).exists())
+        self.assertFalse(OnboardingState.objects.get(book=self.book).is_finished)
 
     def test_the_system_account_survives_a_removal_attempt(self):
         response = self.post_json(
@@ -359,7 +363,7 @@ class CompleteWithEditsTest(OnboardingViewTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertFalse(Account.objects.filter(team=self.team).exists())
+        self.assertFalse(Account.objects.filter(book=self.book).exists())
 
     def test_an_account_cannot_be_smuggled_into_the_system_group(self):
         """
@@ -374,11 +378,11 @@ class CompleteWithEditsTest(OnboardingViewTestCase):
             },
         )
 
-        sneaky = Account.objects.filter(team=self.team, name="Sneaky").first()
+        sneaky = Account.objects.filter(book=self.book, name="Sneaky").first()
         if sneaky is not None:
             self.assertFalse(sneaky.is_system)
 
     def test_malformed_edits_fall_back_to_the_unedited_chart(self):
         self.post_json(self.complete_url, {"answers": VALID_ANSWERS, "edits": "not an object"})
 
-        self.assertTrue(Account.objects.filter(team=self.team, name="Rent").exists())
+        self.assertTrue(Account.objects.filter(book=self.book, name="Rent").exists())

@@ -1,5 +1,5 @@
 """
-Writing an `ImportPlan` to a team's books.
+Writing an `ImportPlan` to a set of books.
 
 One `transaction.atomic` block: an import that half-worked is worse than one that
 did not run, because the failure is invisible -- the user sees accounts and some
@@ -16,7 +16,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
-from apps.accounts.models import Account, AccountGroup, Institution, Payee
+from apps.accounts.models import ACCOUNT_TYPE_INCOME, Account, AccountGroup, Institution, Payee
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
@@ -56,48 +56,48 @@ class ApplyResult:
         }
 
 
-def can_import(team) -> bool:
+def can_import(book) -> bool:
     """
     A YNAB import is a whole set of books, not an addition to one.
 
-    Merging it into a team that already has transactions would double history
+    Merging it into a book that already has transactions would double history
     wherever the two overlap and leave no way to tell which copy is which -- so a
-    team with any live entry is refused, and told to start a fresh team or clear
+    book with any live entry is refused, and told to start a fresh book or clear
     this one.
     """
-    return not JournalEntry.objects.filter(team=team).exclude(status=JournalEntry.STATUS_VOID).exists()
+    return not JournalEntry.objects.filter(book=book).exclude(status=JournalEntry.STATUS_VOID).exists()
 
 
 @transaction.atomic
-def apply_plan(team, plan: ImportPlan, user=None, on_progress=None) -> ApplyResult:
+def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResult:
     """Write the plan. Nothing here is conditional on anything the plan did not decide."""
-    if not can_import(team):
+    if not can_import(book):
         raise ApplyError(
-            "This team already has transactions. A YNAB import brings a whole set of books, so it needs an "
-            "empty team -- create a new team, or delete the existing transactions first."
+            "This set of books already has transactions. A YNAB import brings a whole set of books, so it needs an "
+            "empty one -- create a new set of books, or delete the existing transactions first."
         )
 
     report = on_progress or (lambda *_: None)
 
     report(5, "Creating your accounts")
-    groups = _create_groups(team, plan)
-    institutions = _create_institutions(team, plan)
-    accounts = _create_accounts(team, plan, groups, institutions)
+    groups = _create_groups(book, plan)
+    institutions = _create_institutions(book, plan)
+    accounts = _create_accounts(book, plan, groups, institutions)
 
     report(15, "Creating your payees")
-    payees = _create_payees(team, plan)
+    payees = _create_payees(book, plan)
 
     report(25, "Creating your budgets")
-    budgets = _create_budgets(team, plan, accounts)
+    budgets = _create_budgets(book, plan, accounts)
 
     report(40, "Importing your transactions")
-    entries, lines = _create_entries(team, plan, accounts, payees, budgets, report)
+    entries, lines = _create_entries(book, plan, accounts, payees, budgets, report)
 
     report(85, "Setting your savings goals")
-    goals = _create_goals(team, plan, accounts)
+    goals = _create_goals(book, plan, accounts)
 
     report(92, "Recording your opening balances")
-    openings = _create_openings(team, plan, accounts)
+    openings = _create_openings(book, plan, accounts)
 
     report(98, "Checking the numbers")
     return ApplyResult(
@@ -111,16 +111,16 @@ def apply_plan(team, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
     )
 
 
-def _create_groups(team, plan: ImportPlan) -> dict[str, AccountGroup]:
+def _create_groups(book, plan: ImportPlan) -> dict[str, AccountGroup]:
     """
-    `get_or_create` rather than `bulk_create`: a team can arrive here with the stock
+    `get_or_create` rather than `bulk_create`: a book can arrive here with the stock
     chart already applied (onboarding skipped, then the user found their export), and
-    `AccountGroup` is unique on name per team.
+    `AccountGroup` is unique on name per book.
     """
     groups = {}
     for spec in plan.groups:
         group, _created = AccountGroup.objects.get_or_create(
-            team=team,
+            book=book,
             name=spec.name,
             defaults={
                 "account_type": spec.account_type,
@@ -133,13 +133,13 @@ def _create_groups(team, plan: ImportPlan) -> dict[str, AccountGroup]:
     return groups
 
 
-def _create_institutions(team, plan: ImportPlan) -> dict[str, Institution]:
+def _create_institutions(book, plan: ImportPlan) -> dict[str, Institution]:
     return {
-        name: Institution.objects.get_or_create(team=team, name=name)[0] for name in plan.institutions if name.strip()
+        name: Institution.objects.get_or_create(book=book, name=name)[0] for name in plan.institutions if name.strip()
     }
 
 
-def _create_accounts(team, plan: ImportPlan, groups, institutions) -> dict[tuple[str, str], Account]:
+def _create_accounts(book, plan: ImportPlan, groups, institutions) -> dict[tuple[str, str], Account]:
     """
     One `Account` per planned account, keyed the way the plan refers to them.
 
@@ -149,7 +149,7 @@ def _create_accounts(team, plan: ImportPlan, groups, institutions) -> dict[tuple
     """
     existing = {
         (account.account_group.account_type, account.name): account
-        for account in Account.objects.filter(team=team).select_related("account_group")
+        for account in Account.objects.filter(book=book).select_related("account_group")
     }
 
     to_create = []
@@ -158,7 +158,7 @@ def _create_accounts(team, plan: ImportPlan, groups, institutions) -> dict[tuple
             continue
         to_create.append(
             Account(
-                team=team,
+                book=book,
                 name=spec.name,
                 account_group=groups[spec.group],
                 institution=institutions.get(spec.institution),
@@ -171,51 +171,56 @@ def _create_accounts(team, plan: ImportPlan, groups, institutions) -> dict[tuple
 
     return {
         (account.account_group.account_type, account.name): account
-        for account in Account.objects.filter(team=team).select_related("account_group")
+        for account in Account.objects.filter(book=book).select_related("account_group")
     }
 
 
-def _create_payees(team, plan: ImportPlan) -> dict[str, Payee]:
+def _create_payees(book, plan: ImportPlan) -> dict[str, Payee]:
     """
     A YNAB export names over a thousand payees; they go in one statement.
 
-    `ignore_conflicts` because the team may already carry some of them, and because
+    `ignore_conflicts` because the book may already carry some of them, and because
     the payee list is the one part of this import that is safe to be relaxed about.
     """
     Payee.objects.bulk_create(
-        [Payee(team=team, name=name) for name in plan.payees],
+        [Payee(book=book, name=name) for name in plan.payees],
         batch_size=BATCH_SIZE,
         ignore_conflicts=True,
     )
-    return {payee.name: payee for payee in Payee.objects.filter(team=team)}
+    return {payee.name: payee for payee in Payee.objects.filter(book=book)}
 
 
-def _create_budgets(team, plan: ImportPlan, accounts) -> dict[tuple[int, object], Budget]:
+def _create_budgets(book, plan: ImportPlan, accounts) -> dict[tuple[int, object], Budget]:
     """
     Budgets before transactions, because `JournalLine.budget` points at them.
 
-    Deduplicated on the way in: `Budget` is unique per team, month and category, and
+    Deduplicated on the way in: `Budget` is unique per book, month and category, and
     two YNAB categories that the user merged into one account would otherwise collide
     at the database rather than here.
     """
+    # A book that doesn't budget income before it arrives gets no income budgets
+    # (D1's back-fill exists only to zero an income envelope it won't show).
+    skip_income = not book.budget_future_income
     seen = {}
     for spec in plan.budgets:
         account = accounts.get(spec.category)
         if account is None:
             continue
+        if skip_income and account.account_group.account_type == ACCOUNT_TYPE_INCOME:
+            continue
         seen.setdefault((account.id, spec.month), spec.amount)
 
     Budget.objects.bulk_create(
         [
-            Budget(team=team, category_id=account_id, month=month, budget_amount=amount)
+            Budget(book=book, category_id=account_id, month=month, budget_amount=amount)
             for (account_id, month), amount in seen.items()
         ],
         batch_size=BATCH_SIZE,
     )
-    return {(budget.category_id, budget.month): budget for budget in Budget.objects.filter(team=team)}
+    return {(budget.category_id, budget.month): budget for budget in Budget.objects.filter(book=book)}
 
 
-def _create_entries(team, plan: ImportPlan, accounts, payees, budgets, report) -> tuple[int, int]:
+def _create_entries(book, plan: ImportPlan, accounts, payees, budgets, report) -> tuple[int, int]:
     """
     The transactions themselves, in batches of entries-then-their-lines.
 
@@ -234,7 +239,7 @@ def _create_entries(team, plan: ImportPlan, accounts, payees, budgets, report) -
         entries = JournalEntry.objects.bulk_create(
             [
                 JournalEntry(
-                    team=team,
+                    book=book,
                     entry_date=spec.entry_date,
                     description=spec.description,
                     payee=payees.get(spec.payee) if spec.payee else None,
@@ -253,7 +258,7 @@ def _create_entries(team, plan: ImportPlan, accounts, payees, budgets, report) -
             for line in spec.lines:
                 lines.append(
                     JournalLine(
-                        team=team,
+                        book=book,
                         journal_entry=entry,
                         account=accounts[line.account],
                         dr_amount=line.dr,
@@ -272,7 +277,7 @@ def _create_entries(team, plan: ImportPlan, accounts, payees, budgets, report) -
     return total_entries, total_lines
 
 
-def _create_goals(team, plan: ImportPlan, accounts) -> int:
+def _create_goals(book, plan: ImportPlan, accounts) -> int:
     """
     A goal per savings category, funded month by month.
 
@@ -282,10 +287,10 @@ def _create_goals(team, plan: ImportPlan, accounts) -> int:
     """
     created = 0
     for spec in plan.goals:
-        if Goal.objects.filter(team=team, name=spec.name).exists():
+        if Goal.objects.filter(book=book, name=spec.name).exists():
             continue
         goal = Goal.objects.create(
-            team=team,
+            book=book,
             name=spec.name,
             target_amount=spec.target_amount,
             description="Imported from YNAB",
@@ -295,14 +300,14 @@ def _create_goals(team, plan: ImportPlan, accounts) -> int:
             closed_at=timezone.now() if spec.closed else None,
         )
         GoalAllocation.objects.bulk_create(
-            [GoalAllocation(team=team, goal=goal, month=month, amount=amount) for month, amount in spec.allocations],
+            [GoalAllocation(book=book, goal=goal, month=month, amount=amount) for month, amount in spec.allocations],
             batch_size=BATCH_SIZE,
         )
         created += 1
     return created
 
 
-def _create_openings(team, plan: ImportPlan, accounts) -> int:
+def _create_openings(book, plan: ImportPlan, accounts) -> int:
     """
     The `Starting Balance` rows, through the same code the onboarding step uses.
 
@@ -320,21 +325,21 @@ def _create_openings(team, plan: ImportPlan, accounts) -> int:
 
     created = 0
     for as_of, rows in sorted(by_date.items()):
-        created += len(create_opening_balances(team, rows, as_of=as_of))
+        created += len(create_opening_balances(book, rows, as_of=as_of))
     return created
 
 
-def equity_account(team) -> Account | None:
-    return Account.objects.filter(team=team, is_system=True, account_group__account_type=EQUITY_TYPE).first()
+def equity_account(book) -> Account | None:
+    return Account.objects.filter(book=book, is_system=True, account_group__account_type=EQUITY_TYPE).first()
 
 
-def net_worth_of(team) -> Decimal:
+def net_worth_of(book) -> Decimal:
     """Assets minus liabilities, the same sum the dashboard runs."""
     from django.db.models import Sum
 
     totals = (
         JournalLine.objects.filter(
-            team=team,
+            book=book,
             account__account_group__account_type__in=(ASSET, "liability"),
         )
         .filter(counted_entries("journal_entry__"))

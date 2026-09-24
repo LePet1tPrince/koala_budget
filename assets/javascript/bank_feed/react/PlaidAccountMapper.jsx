@@ -10,14 +10,14 @@ import Icon from '../../common/Icon';
  * to an existing ledger account in their chart of accounts.
  *
  * Props:
- * - teamSlug: The team slug for API calls
+ * - book: The current set of books (common/book.js), for API calls
  * - plaidAccounts: Array of newly created Plaid accounts
  * - ledgerAccounts: Array of all available ledger accounts
  * - plaidClient: The Plaid API client
  * - onComplete: Callback when mapping is complete
  * - onCancel: Callback when user cancels
  */
-const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, plaidClient, onComplete, onCancel }) => {
+const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, onComplete, onCancel }) => {
   const [mappings, setMappings] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -53,7 +53,7 @@ const PlaidAccountMapper = ({ teamSlug, plaidAccounts, ledgerAccounts, plaidClie
       // Update each Plaid account with its mapped ledger account
       const updatePromises = Object.entries(mappings).map(async ([plaidAccountId, ledgerAccountId]) => {
         return plaidClient.plaidAccountsPartialUpdate({
-          teamSlug: teamSlug,
+          ...book.params,
           id: parseInt(plaidAccountId, 10),
           patchedPlaidAccount: {
             account: parseInt(ledgerAccountId, 10),

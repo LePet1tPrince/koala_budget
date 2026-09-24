@@ -25,11 +25,11 @@ def sample_export_paths() -> list[str]:
 
 
 class YnabImportPage(BasePage):
-    def path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/ynab-import/"
+    def path(self, book) -> str:
+        return f"{book.base_url}ynab-import/"
 
-    def goto_import(self, team_slug: str):
-        self.goto(self.path(team_slug), wait_for="[data-testid='ynab-steps'], [data-testid='ynab-blocked']")
+    def goto_import(self, book):
+        self.goto(self.path(book), wait_for="[data-testid='ynab-steps'], [data-testid='ynab-blocked']")
 
     # ------------------------------------------------------------------
     # Step 1 -- the files

@@ -114,7 +114,7 @@ def sync_transfer(edited_tx):
     if counterpart_account is not None and is_transfer_target(counterpart_account):
         if counterpart_tx is None:
             counterpart_tx = BankTransaction(
-                team=edited_tx.team,
+                book=edited_tx.book,
                 journal_entry=entry,
                 is_transfer_mirror=True,
                 source=BankTransaction.SOURCE_SYSTEM,

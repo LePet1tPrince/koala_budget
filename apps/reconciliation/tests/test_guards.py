@@ -111,7 +111,7 @@ class MoveAndRedateTests(ReconciliationTestCase):
 
     def _statement(self):
         return Reconciliation.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             statement_date=date(2026, 8, 31),
             statement_balance=Decimal("-40.00"),

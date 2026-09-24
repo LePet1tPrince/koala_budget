@@ -115,7 +115,7 @@ class FlatValues:
     def annotations(self, column) -> dict:
         return dict(column.annotations)
 
-    def filter_q(self, column, raw_values, team):
+    def filter_q(self, column, raw_values, book):
         if column.parse is None:
             values = list(raw_values)
         else:
@@ -126,7 +126,7 @@ class FlatValues:
             return None
         return Q(**{f"{column.field}__in": values})
 
-    def facets(self, column, queryset, query, team) -> dict:
+    def facets(self, column, queryset, query, book) -> dict:
         rows = queryset
         if query:
             rows = rows.filter(**{f"{column.field}__icontains": query})
@@ -174,7 +174,7 @@ class DateTree:
     def annotations(self, column) -> dict:
         return dict(column.annotations)
 
-    def filter_q(self, column, raw_values, team):
+    def filter_q(self, column, raw_values, book):
         combined = Q()
         for raw in raw_values:
             if self.YEAR.match(raw):
@@ -190,7 +190,7 @@ class DateTree:
                 combined |= Q(**{column.field: exact})
         return combined or None
 
-    def facets(self, column, queryset, query, team) -> dict:
+    def facets(self, column, queryset, query, book) -> dict:
         grouped = queryset.order_by().values(column.field).annotate(count=Count("pk", distinct=True))
 
         years: dict[int, dict] = {}
@@ -255,7 +255,7 @@ class AccountTree:
     def annotations(self, column) -> dict:
         return {**column.annotations, self.id_field: Subquery(self.line.values("account_id")[:1])}
 
-    def filter_q(self, column, raw_values, team):
+    def filter_q(self, column, raw_values, book):
         account_ids, group_ids, types = [], [], []
         for raw in raw_values:
             prefix, _, rest = raw.partition(":")
@@ -268,7 +268,7 @@ class AccountTree:
             elif prefix == "t" and rest in _ACCOUNT_TYPE_LABELS:
                 types.append(rest)
 
-        scoped = Account.objects.filter(team=team)
+        scoped = Account.objects.filter(book=book)
         combined = Q()
         if account_ids:
             combined |= Q(**{f"{self.id_field}__in": account_ids})
@@ -278,7 +278,7 @@ class AccountTree:
             combined |= Q(**{f"{self.id_field}__in": scoped.filter(account_group__account_type__in=types).values("pk")})
         return combined or None
 
-    def facets(self, column, queryset, query, team) -> dict:
+    def facets(self, column, queryset, query, book) -> dict:
         counts = dict(
             queryset.order_by().values_list(self.id_field).annotate(count=Count("pk", distinct=True)).order_by()
         )
@@ -287,7 +287,7 @@ class AccountTree:
             return {"values": [], "truncated": False}
 
         accounts = (
-            Account.objects.filter(team=team, pk__in=list(counts))
+            Account.objects.filter(book=book, pk__in=list(counts))
             .select_related("account_group")
             .order_by(*Account._meta.ordering)
         )
@@ -429,7 +429,7 @@ def annotations_for(params, *, facet_column: str | None = None) -> dict:
     return annotations
 
 
-def apply_column_filters(queryset, params, team, *, exclude: str | None = None):
+def apply_column_filters(queryset, params, book, *, exclude: str | None = None):
     """
     Narrow ``queryset`` by every column filter in ``params``.
 
@@ -443,7 +443,7 @@ def apply_column_filters(queryset, params, team, *, exclude: str | None = None):
         raw_values = params.getlist(_param(key))
         if not raw_values:
             continue
-        condition = column.values.filter_q(column, raw_values, team)
+        condition = column.values.filter_q(column, raw_values, book)
         if condition is not None:
             queryset = queryset.filter(condition)
     return queryset
@@ -465,7 +465,7 @@ def apply_ordering(queryset, params):
     return queryset.order_by(f"{prefix}{column.field}", "-entry_date", "-pk")
 
 
-def facet_values(queryset, column: Column, team, *, query: str = "") -> dict:
+def facet_values(queryset, column: Column, book, *, query: str = "") -> dict:
     """
     The values of ``column`` on offer across ``queryset``, with row counts.
 
@@ -474,5 +474,5 @@ def facet_values(queryset, column: Column, team, *, query: str = "") -> dict:
     actually show.  Hierarchical columns come back as nested ``children``; a
     branch's count is the total of its leaves.
     """
-    payload = column.values.facets(column, queryset, query, team)
+    payload = column.values.facets(column, queryset, query, book)
     return {"column": column.key, "hierarchical": column.values.hierarchical, **payload}

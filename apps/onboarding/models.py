@@ -1,18 +1,18 @@
 from django.db import models
 from django.utils import timezone
 
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel
 
 from .questions import CATALOG_VERSION, active_phases
 
 
-class OnboardingState(BaseTeamModel):
+class OnboardingState(BaseBookModel):
     """
-    One row per team, tracking where that team is in the guided walkthrough.
+    One row per set of books, tracking where that book is in the guided walkthrough.
 
-    Team-scoped rather than user-scoped: the walkthrough sets up the team's books,
+    Book-scoped rather than user-scoped: the walkthrough sets up one set of books,
     so a second member joining an already-onboarded team should not be asked to
-    set them up again.
+    set them up again -- while a team's second, new book is onboarded on its own.
 
     Nothing financial lives here. The answers are the *input* that generated the
     chart of accounts; the accounts themselves are ordinary `Account` rows, and
@@ -60,24 +60,24 @@ class OnboardingState(BaseTeamModel):
     skipped_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = ["team"]
+        unique_together = ["book"]
 
     def __str__(self):
-        return f"Onboarding for {self.team} ({self.phase})"
+        return f"Onboarding for {self.book} ({self.phase})"
 
     @property
     def is_finished(self) -> bool:
         """
         Past the takeover, either way -- completed or deliberately skipped.
 
-        Not the same as "done with the walkthrough": a team that has finished the
+        Not the same as "done with the walkthrough": a book that has finished the
         questionnaire still has the guided tasks ahead of it. See `shows_tasks`.
         """
         return bool(self.completed_at or self.skipped_at)
 
     @property
     def shows_tasks(self) -> bool:
-        """Whether the guided task rail belongs on screen for this team."""
+        """Whether the guided task rail belongs on screen for this book."""
         return self.phase == self.PHASE_TASKS
 
     def mark_seen(self):
@@ -101,7 +101,7 @@ class OnboardingState(BaseTeamModel):
         """
         The questionnaire is answered and the books are built.
 
-        `completed_at` is what stops `team_home` redirecting back into the
+        `completed_at` is what stops the book home redirecting back into the
         takeover, but the walkthrough is not over: the phase moves to `tasks`,
         which is what keeps the guided task rail on screen while the user works
         through importing, categorizing and budgeting.

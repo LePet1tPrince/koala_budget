@@ -2,10 +2,10 @@ import contextlib
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from django.utils.translation import gettext_lazy as _
 
-from apps.teams.decorators import login_and_team_required
+from apps.books.decorators import login_and_book_required
 
 # Forms are no longer needed as we use React components with URL parameters
 from .exports import (
@@ -17,8 +17,8 @@ from .exports import (
 from .services import ReportService
 
 
-@login_and_team_required
-def reports_home(request, team_slug):
+@login_and_book_required
+def reports_home(request, team_slug, book_slug):
     """
     Reports home page with navigation to different reports.
     """
@@ -27,7 +27,7 @@ def reports_home(request, team_slug):
 
     last_reviewable_month = _prev_month(date.today().replace(day=1))
     reviewed = MonthlyReviewState.objects.filter(
-        team=request.team, month=last_reviewable_month, completed_at__isnull=False
+        book=request.book, month=last_reviewable_month, completed_at__isnull=False
     ).exists()
 
     return render(
@@ -76,12 +76,12 @@ def _fold_group_series(groups, num_periods, limit=CHART_SERIES_LIMIT):
     return series
 
 
-@login_and_team_required
-def income_statement(request, team_slug):
+@login_and_book_required
+def income_statement(request, team_slug, book_slug):
     """
     Income Statement (Profit & Loss) report view.
     """
-    service = ReportService(request.team)
+    service = ReportService(request.book)
 
     report_data = None
     start_date = None
@@ -200,14 +200,14 @@ def income_statement(request, team_slug):
     )
 
 
-@login_and_team_required
-def balance_sheet(request, team_slug):
+@login_and_book_required
+def balance_sheet(request, team_slug, book_slug):
     """
     Balance Sheet report view.
     """
     from urllib.parse import urlencode
 
-    service = ReportService(request.team)
+    service = ReportService(request.book)
 
     # Check for direct as_of_date parameter
     as_of_date_param = request.GET.get("as_of_date")
@@ -249,22 +249,22 @@ def balance_sheet(request, team_slug):
     )
 
 
-@login_and_team_required
-def account_activity(request, team_slug, account_id):
+@login_and_book_required
+def account_activity(request, team_slug, book_slug, account_id):
     """
     Account activity drill-down view showing detailed transactions for a specific account.
     """
     from apps.accounts.models import Account
 
-    service = ReportService(request.team)
+    service = ReportService(request.book)
 
     account = None
     report_data = None
     start_date = None
     end_date = None
 
-    with contextlib.suppress(Account.DoesNotExist):
-        account = Account.objects.get(team=request.team, pk=account_id)
+    # Another book's account is a 404 like any other object URL, not an empty page.
+    account = get_object_or_404(Account, book=request.book, pk=account_id)
 
     if account:
         # Check for direct start_date and end_date parameters
@@ -299,14 +299,14 @@ def account_activity(request, team_slug, account_id):
     if source == "budget":
         from django.urls import reverse
 
-        back_url = reverse("budget:budget_home", args=[team_slug])
+        back_url = reverse("budget:budget_home", args=[team_slug, book_slug])
         if start_date:
             back_url += f"?month={start_date.isoformat()}"
         back_label = _("Back to Budget")
     elif source == "balance_sheet":
         from django.urls import reverse
 
-        back_url = reverse("reports:balance_sheet", args=[team_slug])
+        back_url = reverse("reports:balance_sheet", args=[team_slug, book_slug])
         as_of_date_param = request.GET.get("as_of_date")
         if as_of_date_param:
             back_url += f"?as_of_date={as_of_date_param}"
@@ -314,7 +314,7 @@ def account_activity(request, team_slug, account_id):
     else:
         from django.urls import reverse
 
-        back_url = reverse("reports:income_statement", args=[team_slug])
+        back_url = reverse("reports:income_statement", args=[team_slug, book_slug])
         # Forward date params to income statement
         query_params = request.GET.copy()
         query_params.pop("source", None)
@@ -373,12 +373,12 @@ def _parse_month_range(request):
     return date(today.year - 1, today.month, 1), today
 
 
-@login_and_team_required
-def net_worth_trend(request, team_slug):
+@login_and_book_required
+def net_worth_trend(request, team_slug, book_slug):
     """
     Net Worth Trend report view.
     """
-    service = ReportService(request.team)
+    service = ReportService(request.book)
 
     report_data = None
     start_date = None
@@ -468,12 +468,12 @@ def net_worth_trend(request, team_slug):
     )
 
 
-@login_and_team_required
-def cash_flow(request, team_slug):
+@login_and_book_required
+def cash_flow(request, team_slug, book_slug):
     """
     Cash Flow report: money in vs money out per month with the net kept.
     """
-    service = ReportService(request.team)
+    service = ReportService(request.book)
     start_date, end_date = _parse_month_range(request)
     data = service.get_income_statement_data(start_date, end_date, period="month")
 
@@ -531,8 +531,8 @@ def cash_flow(request, team_slug):
     )
 
 
-@login_and_team_required
-def budget_vs_actual(request, team_slug):
+@login_and_book_required
+def budget_vs_actual(request, team_slug, book_slug):
     """
     Budget vs Actual report: per-category meters for a single month, grouped by account group.
     """
@@ -549,17 +549,22 @@ def budget_vs_actual(request, team_slug):
             month = date(year, month_num, 1)
     month_end = (month + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
-    service = ReportService(request.team)
+    service = ReportService(request.book)
     data = service.get_income_statement_data(month, month_end)
-    budgets = Budget.objects.filter(team=request.team, month=month).select_related(
+    budgets = Budget.objects.filter(book=request.book, month=month).select_related(
         "category", "category__account_group"
     )
 
     expense_budgets = [b for b in budgets if b.category.account_group.account_type == ACCOUNT_TYPE_EXPENSE]
     income_budgets = [b for b in budgets if b.category.account_group.account_type == ACCOUNT_TYPE_INCOME]
     expense_groups, expense_totals = build_section(data["expenses"], expense_budgets, spending=True)
-    income_groups, income_totals = build_section(data["income"], income_budgets, spending=False)
-    goal_rows, goal_totals = GoalService(request.team).month_rows(month)
+    # A book that doesn't budget income before it arrives has no income budgets to
+    # measure against, so the section goes (its old rows are kept, not shown).
+    if request.book.budget_future_income:
+        income_groups, income_totals = build_section(data["income"], income_budgets, spending=False)
+    else:
+        income_groups, income_totals = [], None
+    goal_rows, goal_totals = GoalService(request.book).month_rows(month)
 
     return render(
         request,
@@ -580,8 +585,8 @@ def budget_vs_actual(request, team_slug):
     )
 
 
-@login_and_team_required
-def dollar_map(request, team_slug):
+@login_and_book_required
+def dollar_map(request, team_slug, book_slug):
     """
     Dollar Map: where every dollar of net worth is going for one month — goals,
     budget envelopes and what is still unassigned (docs/unassigned-plan.md §3).
@@ -595,7 +600,7 @@ def dollar_map(request, team_slug):
             year, month_num = map(int, month_param.split("-")[:2])
             month = date(year, month_num, 1)
 
-    unassigned = compute_unassigned(request.team, month, detail=True)
+    unassigned = compute_unassigned(request.book, month, detail=True)
     detail = unassigned.detail
     envelopes = sorted(detail["envelopes"], key=lambda e: -e["amount"])
 
@@ -618,8 +623,8 @@ def dollar_map(request, team_slug):
     )
 
 
-@login_and_team_required
-def goal_progress(request, team_slug):
+@login_and_book_required
+def goal_progress(request, team_slug, book_slug):
     """
     Goal Progress report: cumulative allocations per goal over time, with a
     projected path to each goal's target, and what was spent from each goal.
@@ -630,11 +635,11 @@ def goal_progress(request, team_slug):
     from apps.budget.models import Goal, GoalAllocation
     from apps.journal.models import JournalLine, counted_entries
 
-    goals = list(Goal.objects.filter(team=request.team).active().with_progress())
+    goals = list(Goal.objects.filter(book=request.book).active().with_progress())
 
     spent = {}  # account id -> {month: Decimal}
     for row in (
-        JournalLine.objects.filter(team=request.team, account__goal__in=goals)
+        JournalLine.objects.filter(book=request.book, account__goal__in=goals)
         .filter(counted_entries("journal_entry__"))
         .annotate(month=TruncMonth("journal_entry__entry_date"))
         .values("account_id", "month")
@@ -644,7 +649,7 @@ def goal_progress(request, team_slug):
         spent.setdefault(row["account_id"], {})[month] = row["total"]
 
     allocation_rows = (
-        GoalAllocation.objects.filter(team=request.team, goal__in=goals)
+        GoalAllocation.objects.filter(book=request.book, goal__in=goals)
         .values("goal_id", "month")
         .annotate(total=Sum("amount"))
         .order_by("month")
@@ -774,42 +779,42 @@ def _parse_date_range(request):
     return start_date, end_date
 
 
-@login_and_team_required
-def export_income_statement(request, team_slug):
+@login_and_book_required
+def export_income_statement(request, team_slug, book_slug):
     """Export income statement as CSV."""
     start_date, end_date = _parse_date_range(request)
-    return export_income_statement_csv(request.team, start_date, end_date)
+    return export_income_statement_csv(request.book, start_date, end_date)
 
 
-@login_and_team_required
-def export_balance_sheet(request, team_slug):
+@login_and_book_required
+def export_balance_sheet(request, team_slug, book_slug):
     """Export balance sheet as CSV."""
     as_of_date_param = request.GET.get("as_of_date")
     try:
         as_of_date = datetime.strptime(as_of_date_param, "%Y-%m-%d").date() if as_of_date_param else date.today()
     except ValueError:
         as_of_date = date.today()
-    return export_balance_sheet_csv(request.team, as_of_date)
+    return export_balance_sheet_csv(request.book, as_of_date)
 
 
-@login_and_team_required
-def export_account_activity_view(request, team_slug, account_id):
+@login_and_book_required
+def export_account_activity_view(request, team_slug, book_slug, account_id):
     """Export account activity as CSV."""
     from apps.accounts.models import Account
 
     try:
-        account = Account.objects.get(team=request.team, pk=account_id)
+        account = Account.objects.get(book=request.book, pk=account_id)
     except Account.DoesNotExist as err:
         from django.http import Http404
 
         raise Http404("Account not found") from err
 
     start_date, end_date = _parse_date_range(request)
-    return export_account_activity_csv(request.team, account, start_date, end_date)
+    return export_account_activity_csv(request.book, account, start_date, end_date)
 
 
-@login_and_team_required
-def export_transactions(request, team_slug):
+@login_and_book_required
+def export_transactions(request, team_slug, book_slug):
     """Export all transactions as CSV."""
     start_date, end_date = _parse_date_range(request)
-    return export_transactions_csv(request.team, start_date, end_date)
+    return export_transactions_csv(request.book, start_date, end_date)

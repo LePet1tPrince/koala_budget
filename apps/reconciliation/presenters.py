@@ -71,7 +71,7 @@ def statement_payload(rec, intact=None) -> dict:
         "completed_by": _user_label(rec.completed_by),
         "undone_at": rec.undone_at.isoformat() if rec.undone_at else None,
         "intact": intact,
-        "url": reverse("reconciliation:statement", args=[account.team.slug, rec.id]),
+        "url": reverse("reconciliation:statement", args=[*account.book.url_args, rec.id]),
     }
     if rec.cleared_total is not None:
         payload["cleared_total"] = money(to_statement(account, rec.cleared_total))
@@ -83,7 +83,7 @@ def history_payload(account) -> list[dict]:
     recs = list(
         Reconciliation.objects.filter(account=account)
         .exclude(status=Reconciliation.STATUS_DRAFT)
-        .select_related("account", "account__team", "completed_by")
+        .select_related("account", "account__book__team", "completed_by")
     )
     intact = integrity.intact_map(recs)
     return [statement_payload(rec, intact.get(rec.id)) for rec in recs]
@@ -150,7 +150,7 @@ def _uncategorized(rec) -> tuple[dict, list]:
         "count": len(rows),
         "total": money(sum(amounts, Decimal("0"))),
         "rows": sample,
-        "categorize_url": reverse("bank_feed:categorize_mode", args=[account.team.slug]) + f"?account={account.id}",
+        "categorize_url": reverse("bank_feed:categorize_mode", args=account.book.url_args) + f"?account={account.id}",
     }
     return payload, diag_rows
 
@@ -261,11 +261,11 @@ def completed_payload(rec) -> dict:
     return payload
 
 
-def accounts_payload(team) -> list[dict]:
+def accounts_payload(book) -> list[dict]:
     """Every reconcilable account with its balances, last statement and open draft."""
     accounts = [
         account
-        for account in Account.objects.filter(team=team)
+        for account in Account.objects.filter(book=book)
         .select_related("account_group")
         .with_balance()
         .with_reconciled_balance()
@@ -273,14 +273,14 @@ def accounts_payload(team) -> list[dict]:
         if is_reconcilable(account)
     ]
     completed = {}
-    for rec in Reconciliation.objects.filter(team=team, status=Reconciliation.STATUS_COMPLETED).order_by(
+    for rec in Reconciliation.objects.filter(book=book, status=Reconciliation.STATUS_COMPLETED).order_by(
         "account_id", "-statement_date", "-id"
     ):
         completed.setdefault(rec.account_id, rec)
     intact = integrity.intact_map(list(completed.values()))
     drafts = {
         rec.account_id: rec
-        for rec in Reconciliation.objects.filter(team=team, status=Reconciliation.STATUS_DRAFT).select_related(
+        for rec in Reconciliation.objects.filter(book=book, status=Reconciliation.STATUS_DRAFT).select_related(
             "account"
         )
     }
@@ -299,7 +299,7 @@ def accounts_payload(team) -> list[dict]:
                 "reconciled_balance": money(to_statement(account, account._reconciled_balance)),
                 "last_statement": statement_payload(last, intact.get(last.id)) if last else None,
                 "draft": statement_payload(draft) if draft else None,
-                "url": reverse("reconciliation:account", args=[team.slug, account.id]),
+                "url": reverse("reconciliation:account", args=[*book.url_args, account.id]),
             }
         )
     return result

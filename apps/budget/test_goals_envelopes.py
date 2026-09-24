@@ -14,9 +14,9 @@ from rest_framework.test import APIClient
 from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.models import OnboardingState
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -51,43 +51,44 @@ class GoalsFixture(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Envelope Team", slug="envelope-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="envelope@example.com", password="pass12345")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
-        OnboardingState.objects.create(team=cls.team, completed_at="2026-01-01T00:00:00Z", phase="done")
+        OnboardingState.objects.create(book=cls.book, completed_at="2026-01-01T00:00:00Z", phase="done")
 
-        asset = AccountGroup.objects.create(team=cls.team, name="Cash", account_type="asset")
+        asset = AccountGroup.objects.create(book=cls.book, name="Cash", account_type="asset")
         cls.system_equity_group = AccountGroup.objects.create(
-            team=cls.team, name="Equity Adjustments", account_type=ACCOUNT_TYPE_EQUITY, is_system=True
+            book=cls.book, name="Equity Adjustments", account_type=ACCOUNT_TYPE_EQUITY, is_system=True
         )
         cls.opening_group = AccountGroup.objects.create(
-            team=cls.team, name="Opening Balances", account_type=ACCOUNT_TYPE_EQUITY
+            book=cls.book, name="Opening Balances", account_type=ACCOUNT_TYPE_EQUITY
         )
-        expense = AccountGroup.objects.create(team=cls.team, name="Living", account_type="expense")
-        income = AccountGroup.objects.create(team=cls.team, name="Work", account_type="income")
-        cls.checking = Account.objects.create(team=cls.team, name="Checking", account_group=asset, has_feed=True)
+        expense = AccountGroup.objects.create(book=cls.book, name="Living", account_type="expense")
+        income = AccountGroup.objects.create(book=cls.book, name="Work", account_type="income")
+        cls.checking = Account.objects.create(book=cls.book, name="Checking", account_group=asset, has_feed=True)
         cls.system = Account.objects.create(
-            team=cls.team, name="Reconciliation Adjustments", account_group=cls.system_equity_group, is_system=True
+            book=cls.book, name="Reconciliation Adjustments", account_group=cls.system_equity_group, is_system=True
         )
-        cls.opening = Account.objects.create(team=cls.team, name="Opening Balance", account_group=cls.opening_group)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=expense)
-        cls.salary = Account.objects.create(team=cls.team, name="Salary", account_group=income)
+        cls.opening = Account.objects.create(book=cls.book, name="Opening Balance", account_group=cls.opening_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=expense)
+        cls.salary = Account.objects.create(book=cls.book, name="Salary", account_group=income)
 
         cls.post(date(2026, 8, 1), cls.checking, cls.opening, "20000")
-        Budget.objects.create(team=cls.team, month=SEPT, category=cls.groceries, budget_amount=Decimal("400"))
+        Budget.objects.create(book=cls.book, month=SEPT, category=cls.groceries, budget_amount=Decimal("400"))
         cls.car = Goal.objects.create(
-            team=cls.team, name="Car", target_amount=Decimal("20000"), target_date=date(2027, 2, 15)
+            book=cls.book, name="Car", target_amount=Decimal("20000"), target_date=date(2027, 2, 15)
         )
-        GoalAllocation.objects.create(team=cls.team, goal=cls.car, month=AUG, amount=Decimal("3000"))
-        GoalAllocation.objects.create(team=cls.team, goal=cls.car, month=SEPT, amount=Decimal("2000"))
+        GoalAllocation.objects.create(book=cls.book, goal=cls.car, month=AUG, amount=Decimal("3000"))
+        GoalAllocation.objects.create(book=cls.book, goal=cls.car, month=SEPT, amount=Decimal("2000"))
 
     def setUp(self):
         self.client.login(username="envelope@example.com", password="pass12345")
 
     @classmethod
     def post(cls, day, debit, credit, amount, status=JournalEntry.STATUS_POSTED):
-        entry = JournalEntry.objects.create(team=cls.team, entry_date=day, description="entry", status=status)
-        JournalLine.objects.create(team=cls.team, journal_entry=entry, account=debit, dr_amount=Decimal(amount))
-        JournalLine.objects.create(team=cls.team, journal_entry=entry, account=credit, cr_amount=Decimal(amount))
+        entry = JournalEntry.objects.create(book=cls.book, entry_date=day, description="entry", status=status)
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=debit, dr_amount=Decimal(amount))
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=credit, cr_amount=Decimal(amount))
         return entry
 
     def spend_from_car(self, day, amount):
@@ -103,7 +104,7 @@ class GoalsFixture(TestCase):
         )
 
     def unassigned(self, month=SEPT):
-        return compute_unassigned(self.team, month, today=TODAY).amount
+        return compute_unassigned(self.book, month, today=TODAY).amount
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +125,7 @@ class GoalMathsTest(GoalsFixture):
         self.assertEqual(self.numbers()["spent"], Decimal("1000"))
 
     def test_a_withdrawal_is_a_negative_allocation(self):
-        GoalAllocation.objects.create(team=self.team, goal=self.car, month=OCT, amount=Decimal("-500"))
+        GoalAllocation.objects.create(book=self.book, goal=self.car, month=OCT, amount=Decimal("-500"))
         self.assertEqual(self.numbers(OCT)["allocated"], Decimal("4500"))
 
     def test_void_and_archived_feed_entries_do_not_count(self):
@@ -132,7 +133,7 @@ class GoalMathsTest(GoalsFixture):
         self.post(date(2026, 9, 5), self.car.account, self.checking, "300", status=JournalEntry.STATUS_VOID)
         archived = self.spend_from_car(date(2026, 9, 5), "700")
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.checking,
             posted_date=date(2026, 9, 5),
             amount=Decimal("700"),
@@ -186,7 +187,7 @@ class UnassignedInvariantTest(GoalsFixture):
 
     def test_goals_term_is_sum_of_left_and_the_waterfall_adds_spending_back(self):
         self.spend_from_car(date(2026, 9, 5), "1200")
-        result = compute_unassigned(self.team, SEPT, today=TODAY, detail=True)
+        result = compute_unassigned(self.book, SEPT, today=TODAY, detail=True)
         self.assertEqual(result.goals_spent, Decimal("1200"))
         self.assertEqual(result.goals, Decimal("3800"))
         self.assertEqual(result.detail["goals"][0]["amount"], Decimal("3800"))
@@ -204,7 +205,7 @@ class UnassignedInvariantTest(GoalsFixture):
 
 class AssignWithdrawTest(GoalsFixture):
     def url(self, name):
-        return reverse(f"budget:{name}", args=[self.team.slug, self.car.pk])
+        return reverse(f"budget:{name}", args=[*self.book.url_args, self.car.pk])
 
     def test_withdraw_caps_at_left(self):
         self.spend_from_car(date(2026, 9, 5), "4500")
@@ -245,7 +246,7 @@ class AssignWithdrawTest(GoalsFixture):
 
     def test_dashboard_to_reach_all_goals_is_target_minus_allocated(self):
         self.spend_from_car(date(2026, 9, 5), "1000")
-        response = self.client.get(reverse("web_team:home", args=[self.team.slug]))
+        response = self.client.get(reverse("web_book:home", args=self.book.url_args))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["amount_to_reach_goals"], Decimal("15000"))
 
@@ -257,20 +258,21 @@ class AssignWithdrawTest(GoalsFixture):
 
 class GoalsGroupTest(GoalsFixture):
     def test_new_goal_account_avoids_the_system_group(self):
-        goal = Goal.objects.create(team=self.team, name="Trip", target_amount=Decimal("100"))
+        goal = Goal.objects.create(book=self.book, name="Trip", target_amount=Decimal("100"))
         self.assertFalse(goal.account.account_group.is_system)
         self.assertEqual(goal.account.account_group.name, GOALS_GROUP_NAME)
         self.assertEqual(goal.account.account_group.account_type, ACCOUNT_TYPE_EQUITY)
 
     def test_a_goals_group_of_another_type_does_not_capture_goal_accounts(self):
         team = Team.objects.create(name="Clash", slug="clash")
-        AccountGroup.objects.create(team=team, name=GOALS_GROUP_NAME, account_type="expense")
-        goal = Goal.objects.create(team=team, name="Trip", target_amount=Decimal("100"))
+        book = team.default_book
+        AccountGroup.objects.create(book=book, name=GOALS_GROUP_NAME, account_type="expense")
+        goal = Goal.objects.create(book=book, name="Trip", target_amount=Decimal("100"))
         self.assertEqual(goal.account.account_group.account_type, ACCOUNT_TYPE_EQUITY)
         self.assertFalse(goal.account.account_group.is_system)
 
     def test_migration_moves_goal_accounts_out_of_system_groups(self):
-        stray = Goal.objects.create(team=self.team, name="Stray", target_amount=Decimal("1"))
+        stray = Goal.objects.create(book=self.book, name="Stray", target_amount=Decimal("1"))
         Account.objects.filter(pk=stray.account_id).update(account_group=self.system_equity_group)
 
         from importlib import import_module
@@ -289,7 +291,7 @@ class GoalsGroupTest(GoalsFixture):
 class PickerAccountsTest(GoalsFixture):
     def test_system_accounts_are_left_out_and_goals_carry_left(self):
         self.spend_from_car(date(2026, 9, 5), "1000")
-        data = {row["id"]: row for row in picker_accounts_data(self.team, SEPT)}
+        data = {row["id"]: row for row in picker_accounts_data(self.book, SEPT)}
         self.assertNotIn(self.system.pk, data)
         self.assertTrue(data[self.car.account_id]["is_goal"])
         self.assertEqual(data[self.car.account_id]["goal_left"], "4000.00")
@@ -299,7 +301,7 @@ class PickerAccountsTest(GoalsFixture):
         self.assertFalse(data[self.opening.pk]["is_system"])
 
     def test_goal_left_by_account_only_covers_goal_accounts(self):
-        self.assertEqual(set(goal_left_by_account(self.team)), {self.car.account_id})
+        self.assertEqual(set(goal_left_by_account(self.book)), {self.car.account_id})
 
 
 class SystemCategoryRefusedTest(GoalsFixture):
@@ -308,9 +310,9 @@ class SystemCategoryRefusedTest(GoalsFixture):
     def setUp(self):
         self.api = APIClient()
         self.api.force_authenticate(user=self.user)
-        self.feed = f"/a/{self.team.slug}/bankfeed/api/feed/"
+        self.feed = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/"
         self.tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.checking,
             posted_date=date(2026, 9, 5),
             amount=Decimal("25"),
@@ -319,7 +321,7 @@ class SystemCategoryRefusedTest(GoalsFixture):
         )
 
     def call(self, method, url, data):
-        with current_team(self.team):
+        with current_book(self.book):
             return getattr(self.api, method)(url, data, format="json")
 
     def manual(self, **extra):
@@ -347,7 +349,7 @@ class SystemCategoryRefusedTest(GoalsFixture):
             "batch_edit": ("patch", f"{self.feed}batch_edit/", {"ids": [self.tx.pk], "category_id": self.system.pk}),
             "journal line": (
                 "post",
-                f"/a/{self.team.slug}/journal/api/lines/",
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/",
                 {
                     "date": "2026-09-05",
                     "account": self.checking.pk,
@@ -368,13 +370,13 @@ class SystemCategoryRefusedTest(GoalsFixture):
         line = entry.lines.get(account=self.groceries)
         response = self.call(
             "post",
-            f"/a/{self.team.slug}/journal/api/lines/{line.pk}/recategorize/",
+            f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/{line.pk}/recategorize/",
             {"new_category_id": self.system.pk},
         )
         self.assertEqual(response.status_code, 400)
 
     def test_a_transaction_already_on_the_system_account_can_be_resaved(self):
-        with current_team(self.team):
+        with current_book(self.book):
             self.api.post(
                 f"{self.feed}categorize/",
                 {"rows": [{"id": self.tx.pk}], "category_id": self.groceries.pk},
@@ -404,13 +406,13 @@ class GoalStatesTest(GoalsFixture):
         self.assertEqual(self.state(), STATE_FUNDED)
         self.spend_from_car(date(2026, 9, 5), "100")
         self.assertEqual(self.state(), STATE_SPENDING)
-        GoalService(self.team).close(self.car, SEPT)
+        GoalService(self.book).close(self.car, SEPT)
         self.assertEqual(self.state(), STATE_CLOSED)
 
     def test_close_releases_what_is_left(self):
         self.spend_from_car(date(2026, 9, 5), "1000")
         before = self.unassigned()
-        result = GoalService(self.team).close(self.car, SEPT)
+        result = GoalService(self.book).close(self.car, SEPT)
         self.assertEqual(result["released"], Decimal("4000"))
         self.assertEqual(self.numbers()["left"], Decimal("0"))
         self.assertEqual(self.unassigned(), before + Decimal("4000"))
@@ -420,30 +422,32 @@ class GoalStatesTest(GoalsFixture):
     def test_close_refuses_a_negative_goal_unless_covered(self):
         self.spend_from_car(date(2026, 9, 5), "6000")
         with self.assertRaises(GoalCloseError):
-            GoalService(self.team).close(self.car, SEPT)
+            GoalService(self.book).close(self.car, SEPT)
         self.car.refresh_from_db()
         self.assertIsNone(self.car.closed_at)
 
         before = self.unassigned()
-        result = GoalService(self.team).close(self.car, SEPT, cover=True)
+        result = GoalService(self.book).close(self.car, SEPT, cover=True)
         self.assertEqual(result["covered"], Decimal("1000"))
         self.assertEqual(self.numbers()["left"], Decimal("0"))
         self.assertEqual(self.unassigned(), before - Decimal("1000"))
 
     def test_close_view_is_audited_and_closed_goals_move_to_their_filter(self):
         response = self.client.post(
-            reverse("budget:goal_close", args=[self.team.slug, self.car.pk]), {"month": "2026-09-01"}
+            reverse("budget:goal_close", args=[*self.book.url_args, self.car.pk]), {"month": "2026-09-01"}
         )
         self.assertEqual(response.status_code, 302)
         self.assertTrue(AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.GOAL_CLOSED).exists())
 
-        page = self.client.get(reverse("budget:goals_list", args=[self.team.slug]) + "?month=2026-09-01")
+        page = self.client.get(reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-09-01")
         self.assertNotContains(page, 'data-testid="goal-card"')
-        closed = self.client.get(reverse("budget:goals_list", args=[self.team.slug]) + "?show=closed&month=2026-09-01")
+        closed = self.client.get(
+            reverse("budget:goals_list", args=self.book.url_args) + "?show=closed&month=2026-09-01"
+        )
         self.assertContains(closed, 'data-testid="closed-goal-row"')
 
     def test_close_opens_a_dialog_that_says_what_happens(self):
-        url = reverse("budget:goals_list", args=[self.team.slug]) + "?month=2026-09-01&style=summit"
+        url = reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-09-01&style=summit"
         page = self.client.get(url).content.decode()
         self.assertIn(f'id="goal-close-dialog-{self.car.pk}"', page)
         self.assertIn("goes back to your unassigned money", page)
@@ -457,18 +461,18 @@ class GoalStatesTest(GoalsFixture):
         self.assertIn("$1,000.00", page)
 
     def test_goal_detail_page_has_the_close_dialog(self):
-        page = self.client.get(reverse("budget:goal_detail", args=[self.team.slug, self.car.pk]))
+        page = self.client.get(reverse("budget:goal_detail", args=[*self.book.url_args, self.car.pk]))
         self.assertContains(page, 'data-testid="goal-close-dialog"')
 
     def test_close_view_refuses_negative_without_cover(self):
         self.spend_from_car(date(2026, 9, 5), "6000")
-        self.client.post(reverse("budget:goal_close", args=[self.team.slug, self.car.pk]), {"month": "2026-09-01"})
+        self.client.post(reverse("budget:goal_close", args=[*self.book.url_args, self.car.pk]), {"month": "2026-09-01"})
         self.car.refresh_from_db()
         self.assertIsNone(self.car.closed_at)
 
     def test_archiving_an_open_goal_closes_it_first(self):
         before = self.unassigned()
-        self.client.post(reverse("budget:goal_delete", args=[self.team.slug, self.car.pk]) + "?month=2026-09-01")
+        self.client.post(reverse("budget:goal_delete", args=[*self.book.url_args, self.car.pk]) + "?month=2026-09-01")
         self.car.refresh_from_db()
         self.assertTrue(self.car.is_archived)
         self.assertIsNotNone(self.car.closed_at)
@@ -477,20 +481,20 @@ class GoalStatesTest(GoalsFixture):
 
     def test_archiving_a_negative_goal_is_refused(self):
         self.spend_from_car(date(2026, 9, 5), "6000")
-        self.client.post(reverse("budget:goal_delete", args=[self.team.slug, self.car.pk]))
+        self.client.post(reverse("budget:goal_delete", args=[*self.book.url_args, self.car.pk]))
         self.car.refresh_from_db()
         self.assertFalse(self.car.is_archived)
 
     def test_goals_page_shows_allocated_spent_left_and_negative_carried(self):
         self.spend_from_car(date(2026, 9, 5), "6500")
-        page = self.client.get(reverse("budget:goals_list", args=[self.team.slug]) + "?month=2026-09-01&style=summit")
+        page = self.client.get(reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-09-01&style=summit")
         self.assertContains(page, 'data-testid="goal-negative"')
         self.assertContains(page, "-$1,500.00")
         self.assertContains(page, 'data-testid="goal-spending-link"')
 
     def test_goal_detail_lists_its_spending(self):
         self.spend_from_car(date(2026, 9, 5), "321")
-        page = self.client.get(reverse("budget:goal_detail", args=[self.team.slug, self.car.pk]))
+        page = self.client.get(reverse("budget:goal_detail", args=[*self.book.url_args, self.car.pk]))
         self.assertContains(page, 'data-testid="goal-spending-row"', count=1)
         self.assertContains(page, "$321.00")
 
@@ -506,11 +510,11 @@ class CoverOverspendingTest(GoalsFixture):
             **overrides,
         }
         return self.client.post(
-            reverse("budget:budget_cover", args=[self.team.slug]), body, content_type="application/json"
+            reverse("budget:budget_cover", args=self.book.url_args), body, content_type="application/json"
         )
 
     def groceries_budget(self):
-        return Budget.objects.get(team=self.team, category=self.groceries, month=SEPT).budget_amount
+        return Budget.objects.get(book=self.book, category=self.groceries, month=SEPT).budget_amount
 
     def test_from_a_goal_the_goal_gives_the_budget_gets_and_unassigned_is_unchanged(self):
         self.post(date(2026, 9, 5), self.groceries, self.checking, "550")  # 150 over budget
@@ -537,7 +541,7 @@ class CoverOverspendingTest(GoalsFixture):
         self.assertEqual(data["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
 
     def test_from_unassigned_creates_the_budget_row_when_there_is_none(self):
-        Budget.objects.filter(team=self.team, category=self.groceries).delete()
+        Budget.objects.filter(book=self.book, category=self.groceries).delete()
         response = self.cover(source="unassigned", amount="75")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(self.groceries_budget(), Decimal("75"))
@@ -548,8 +552,8 @@ class CoverOverspendingTest(GoalsFixture):
         self.assertEqual(response.json()["goal_left"], "-1000.00")
 
     def test_refusals(self):
-        closed = Goal.objects.create(team=self.team, name="Done", target_amount=Decimal("1"))
-        GoalService(self.team).close(closed, SEPT)
+        closed = Goal.objects.create(book=self.book, name="Done", target_amount=Decimal("1"))
+        GoalService(self.book).close(closed, SEPT)
         for name, overrides in {
             "income category": {"category_id": self.salary.pk},
             "closed goal": {"goal_id": closed.pk},
@@ -563,15 +567,15 @@ class CoverOverspendingTest(GoalsFixture):
 
     def test_budget_page_offers_cover_on_overspent_rows(self):
         self.post(date(2026, 9, 5), self.groceries, self.checking, "550")
-        page = self.client.get(reverse("budget:budget_home", args=[self.team.slug]) + "?month=2026-09-01")
+        page = self.client.get(reverse("budget:budget_home", args=self.book.url_args) + "?month=2026-09-01")
         self.assertContains(page, 'data-testid="cover-btn"')
         self.assertContains(page, 'data-testid="cover-source-unassigned"')
         self.assertContains(page, 'data-testid="cover-source-goal"')
 
     def test_cover_is_offered_without_any_goals(self):
-        Goal.objects.filter(team=self.team).delete()
+        Goal.objects.filter(book=self.book).delete()
         self.post(date(2026, 9, 5), self.groceries, self.checking, "550")
-        page = self.client.get(reverse("budget:budget_home", args=[self.team.slug]) + "?month=2026-09-01")
+        page = self.client.get(reverse("budget:budget_home", args=self.book.url_args) + "?month=2026-09-01")
         self.assertContains(page, 'data-testid="cover-btn"')
         self.assertContains(page, 'data-testid="cover-source-unassigned"')
         self.assertNotContains(page, 'data-testid="cover-source-goal"')
@@ -593,7 +597,7 @@ class GoalReportsTest(GoalsFixture):
     def test_income_statement_reports_goal_spending_below_the_operating_net(self):
         from apps.reports.services import ReportService
 
-        data = ReportService(self.team).get_income_statement_data(SEPT, date(2026, 9, 30), period="month")
+        data = ReportService(self.book).get_income_statement_data(SEPT, date(2026, 9, 30), period="month")
         self.assertEqual(data["net_profit"], Decimal("1800"))
         self.assertEqual(data["goal_spending"]["total"], Decimal("19400"))
         self.assertEqual([i["account"] for i in data["goal_spending"]["items"]], [self.car.account])
@@ -605,7 +609,7 @@ class GoalReportsTest(GoalsFixture):
     def test_plain_equity_is_not_goal_spending_and_stays_on_the_balance_sheet(self):
         from apps.reports.services import ReportService
 
-        service = ReportService(self.team)
+        service = ReportService(self.book)
         data = service.get_income_statement_data(date(2026, 8, 1), date(2026, 9, 30))
         self.assertNotIn(self.opening, [i["account"] for i in data["goal_spending"]["items"]])
         sheet = service.get_balance_sheet_data(date(2026, 9, 30))
@@ -615,20 +619,20 @@ class GoalReportsTest(GoalsFixture):
 
     def test_income_statement_page_and_csv(self):
         qs = "?start_date=2026-09-01&end_date=2026-09-30"
-        page = self.client.get(reverse("reports:income_statement", args=[self.team.slug]) + qs)
+        page = self.client.get(reverse("reports:income_statement", args=self.book.url_args) + qs)
         self.assertContains(page, 'data-testid="goal-spending-table"')
         self.assertContains(page, 'data-testid="net-after-goal-spending"')
         self.assertEqual(page.context["sankey_data"]["goal_spending"], 19400.0)
         # Savings rate reads the operating net.
         self.assertEqual(round(page.context["savings_rate"]), 30)
-        csv = self.client.get(reverse("reports:export_income_statement", args=[self.team.slug]) + qs)
+        csv = self.client.get(reverse("reports:export_income_statement", args=self.book.url_args) + qs)
         body = csv.content.decode()
         self.assertIn("GOAL SPENDING", body)
         self.assertIn("Net After Goal Spending,-17600.00", body)
 
     def test_spending_trends_toggle(self):
         base = (
-            reverse("reports:income_statement", args=[self.team.slug])
+            reverse("reports:income_statement", args=self.book.url_args)
             + "?start_date=2026-09-01&end_date=2026-09-30&view=monthly"
         )
         off = self.client.get(base)
@@ -639,13 +643,13 @@ class GoalReportsTest(GoalsFixture):
 
     def test_cash_flow_net_is_after_goal_spending(self):
         page = self.client.get(
-            reverse("reports:cash_flow", args=[self.team.slug]) + "?start_month=2026-09&end_month=2026-09"
+            reverse("reports:cash_flow", args=self.book.url_args) + "?start_month=2026-09&end_month=2026-09"
         )
         self.assertEqual(page.context["stats"]["net"], Decimal("-17600"))
         self.assertEqual(page.context["chart_data"]["goal_spending"], [19400.0])
 
     def test_budget_vs_actual_leads_with_goals(self):
-        page = self.client.get(reverse("reports:budget_vs_actual", args=[self.team.slug]) + "?month=2026-09")
+        page = self.client.get(reverse("reports:budget_vs_actual", args=self.book.url_args) + "?month=2026-09")
         row = page.context["goal_rows"][0]
         # Needed is measured from the start of the month: (20,000 − 3,000) over
         # Sept..Feb = 6 months, whatever was assigned in September.
@@ -658,7 +662,7 @@ class GoalReportsTest(GoalsFixture):
     def test_account_activity_reads_a_goal_like_an_expense(self):
         from apps.reports.services import ReportService
 
-        service = ReportService(self.team)
+        service = ReportService(self.book)
         activity = service.get_account_activity(self.car.account, SEPT, date(2026, 9, 30))
         self.assertFalse(activity["is_balance_account"])
         self.assertEqual(activity["total"], Decimal("19400"))
@@ -669,7 +673,7 @@ class GoalReportsTest(GoalsFixture):
         self.assertEqual(chart["available"], [-14400.0])
 
     def test_goal_progress_report_has_spent_and_left(self):
-        page = self.client.get(reverse("reports:goal_progress", args=[self.team.slug]))
+        page = self.client.get(reverse("reports:goal_progress", args=self.book.url_args))
         row = page.context["goal_rows"][0]
         self.assertEqual(
             (row["saved"], row["spent"], row["left"]), (Decimal("5000"), Decimal("19400"), Decimal("-14400"))
@@ -679,7 +683,7 @@ class GoalReportsTest(GoalsFixture):
     def test_monthly_review_goal_spending_card(self):
         from apps.monthly_review.services.review import build_review
 
-        review = build_review(self.team, SEPT)
+        review = build_review(self.book, SEPT)
         cards = [i for i in review["insights"] if i.kind == "goal_spending"]
         self.assertEqual(len(cards), 1)
         self.assertEqual(cards[0].severity, "info")
@@ -687,7 +691,7 @@ class GoalReportsTest(GoalsFixture):
         self.assertNotIn("Goal: Car", [row["name"] for row in review["net_worth"]["by_account"]])
 
     def test_accounts_board_shows_left_and_splits_goals_from_equity(self):
-        page = self.client.get(reverse("accounts:accounts_home", args=[self.team.slug]))
+        page = self.client.get(reverse("accounts:accounts_home", args=self.book.url_args))
         types = {section["key"]: section for section in page.context["manage_props"]["types"]}
         goal_rows = [a for g in types["goal"]["groups"] for a in g["accounts"]]
         self.assertEqual([a["balance"] for a in goal_rows if a["isGoal"]], ["-14400.00"])
@@ -702,5 +706,5 @@ class GoalActivityReportCommandTest(GoalsFixture):
         out = io.StringIO()
         call_command("goal_activity_report", "--team", self.team.slug, "--csv", stdout=out)
         lines = out.getvalue().strip().splitlines()
-        self.assertEqual(lines[0].split(",")[:4], ["team", "goal", "date", "amount"])
-        self.assertIn("envelope-team,Car,2026-09-05,123.45", lines[1])
+        self.assertEqual(lines[0].split(",")[:5], ["team", "book", "goal", "date", "amount"])
+        self.assertIn("envelope-team,personal,Car,2026-09-05,123.45", lines[1])

@@ -19,12 +19,13 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, T
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
+from apps.books.decorators import login_and_book_required
+from apps.books.helpers import book_display_name
+from apps.books.mixins import LoginAndBookRequiredMixin
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.services.opening import OPENING_DESCRIPTION
 from apps.reconciliation import presenters
 from apps.reconciliation.services.signs import is_reconcilable
-from apps.teams.decorators import login_and_team_required
-from apps.teams.mixins import LoginAndTeamRequiredMixin
 
 from .forms import AccountForm, AccountGroupForm, InstitutionForm, PayeeForm
 from .models import (
@@ -62,7 +63,7 @@ FEED_ACCOUNT_TYPES = (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY)
 SECTION_EQUITY = "equity"
 
 
-def _account_payload(account, team_slug, goal_left=None):
+def _account_payload(account, book, goal_left=None):
     """Account row shape shared by the accounts board props and the create API.
 
     A goal account shows what the goal has `left`, not its raw ledger balance:
@@ -77,11 +78,11 @@ def _account_payload(account, team_slug, goal_left=None):
         "hasFeed": account.has_feed,
         "isSystem": account.is_system,
         "url": account.get_absolute_url(),
-        "editUrl": reverse("accounts:account_update", args=[team_slug, account.pk]),
+        "editUrl": reverse("accounts:account_update", args=[*book.url_args, account.pk]),
     }
 
 
-def _group_payload(group, team_slug, accounts=None):
+def _group_payload(group, accounts=None):
     """Group card shape shared by the accounts board props and the create API."""
     return {
         "id": group.pk,
@@ -95,7 +96,7 @@ def _group_payload(group, team_slug, accounts=None):
 
 # Accounts Home View
 @method_decorator(ensure_csrf_cookie, name="dispatch")
-class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
+class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
     """Home page for accounts app: drag-and-drop chart-of-accounts board.
 
     ensure_csrf_cookie: the board POSTs JSON (reorder/create) with the
@@ -108,40 +109,39 @@ class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "accounts"
-        context["page_title"] = _("Accounts | {team}").format(team=self.request.team)
+        context["page_title"] = _("Accounts | {name}").format(name=book_display_name(self.request.book))
 
-        team = self.request.team
-        team_slug = team.slug
+        book = self.request.book
 
         from apps.budget.models import GOALS_GROUP_NAME
         from apps.budget.services import goal_left_by_account
 
-        goal_left = goal_left_by_account(team)
+        goal_left = goal_left_by_account(book)
         accounts_by_group = {}
         accounts = (
-            Account.objects.filter(team=team)
+            Account.objects.filter(book=book)
             .with_balance()
             .select_related("institution")
             .order_by("sort_order", "name")
         )
         for account in accounts:
             accounts_by_group.setdefault(account.account_group_id, []).append(
-                _account_payload(account, team_slug, goal_left.get(account.pk))
+                _account_payload(account, book, goal_left.get(account.pk))
             )
 
         # The equity type is stored as "goal" but also holds plain equity (opening
         # balances), so it is shown as two sections: groups holding goals, and the rest.
         sections = {account_type: [] for account_type in (*ACCOUNT_TYPE_ORDER, SECTION_EQUITY)}
-        for group in AccountGroup.objects.filter(team=team).order_by("sort_order", "name"):
+        for group in AccountGroup.objects.filter(book=book).order_by("sort_order", "name"):
             accounts_in_group = accounts_by_group.get(group.pk, [])
             key = group.account_type
             if key == ACCOUNT_TYPE_EQUITY and not (
                 any(a["isGoal"] for a in accounts_in_group) or (group.name == GOALS_GROUP_NAME and not group.is_system)
             ):
                 key = SECTION_EQUITY
-            sections[key].append(_group_payload(group, team_slug, accounts_in_group))
+            sections[key].append(_group_payload(group, accounts_in_group))
 
-        account_create_url = reverse("accounts:account_create", args=[team_slug])
+        account_create_url = reverse("accounts:account_create", args=book.url_args)
         types = [
             {
                 "key": account_type,
@@ -151,7 +151,7 @@ class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
             }
             for account_type in ACCOUNT_TYPE_ORDER
         ]
-        types[-1]["newGoalUrl"] = reverse("budget:goal_create", args=[team_slug])
+        types[-1]["newGoalUrl"] = reverse("budget:goal_create", args=book.url_args)
         types.append(
             {
                 "key": SECTION_EQUITY,
@@ -163,10 +163,10 @@ class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
         context["manage_props"] = {
             "types": types,
             "urls": {
-                "reorderAccounts": reverse("accounts:api_reorder_accounts", args=[team_slug]),
-                "reorderGroups": reverse("accounts:api_reorder_groups", args=[team_slug]),
-                "createAccount": reverse("accounts:api_create_account", args=[team_slug]),
-                "createGroup": reverse("accounts:api_create_group", args=[team_slug]),
+                "reorderAccounts": reverse("accounts:api_reorder_accounts", args=book.url_args),
+                "reorderGroups": reverse("accounts:api_reorder_groups", args=book.url_args),
+                "createAccount": reverse("accounts:api_create_account", args=book.url_args),
+                "createGroup": reverse("accounts:api_create_group", args=book.url_args),
                 "accountCreatePage": account_create_url,
             },
         }
@@ -174,7 +174,7 @@ class AccountsHomeView(LoginAndTeamRequiredMixin, TemplateView):
 
 
 # Account Group Views
-class AccountGroupViewMixin(LoginAndTeamRequiredMixin):
+class AccountGroupViewMixin(LoginAndBookRequiredMixin):
     """Mixin class for all AccountGroup views."""
 
     model = AccountGroup
@@ -182,7 +182,7 @@ class AccountGroupViewMixin(LoginAndTeamRequiredMixin):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "accounts"
-        context["page_title"] = _("Account Groups | {team}").format(team=self.request.team)
+        context["page_title"] = _("Account Groups | {name}").format(name=book_display_name(self.request.book))
         return context
 
 
@@ -198,7 +198,7 @@ class AccountGroupCreateView(AccountGroupViewMixin, CreateView):
     form_class = AccountGroupForm
 
     def form_valid(self, form):
-        form.instance.team = self.request.team
+        form.instance.book = self.request.book
         return super().form_valid(form)
 
 
@@ -227,11 +227,11 @@ class AccountGroupDeleteView(AccountGroupViewMixin, DeleteView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_success_url(self):
-        return reverse("accounts:accountgroup_list", args=[self.request.team.slug])
+        return reverse("accounts:accountgroup_list", args=self.request.book.url_args)
 
 
 # Account Views
-class AccountViewMixin(LoginAndTeamRequiredMixin):
+class AccountViewMixin(LoginAndBookRequiredMixin):
     """Mixin class for all Account views."""
 
     model = Account
@@ -239,7 +239,7 @@ class AccountViewMixin(LoginAndTeamRequiredMixin):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "accounts"
-        context["page_title"] = _("Accounts | {team}").format(team=self.request.team)
+        context["page_title"] = _("Accounts | {name}").format(name=book_display_name(self.request.book))
         return context
 
 
@@ -251,7 +251,7 @@ class AccountCreateView(AccountViewMixin, CreateView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["team"] = self.request.team
+        kwargs["book"] = self.request.book
         kwargs["is_create"] = True
         return kwargs
 
@@ -261,7 +261,7 @@ class AccountCreateView(AccountViewMixin, CreateView):
             {
                 "value": value,
                 "label": label,
-                "groups": list(AccountGroup.for_team.filter(account_type=value)),
+                "groups": list(AccountGroup.for_book.filter(account_type=value)),
             }
             for value, label in ACCOUNT_TYPE_CHOICES
         ]
@@ -271,7 +271,7 @@ class AccountCreateView(AccountViewMixin, CreateView):
         return context
 
     def form_valid(self, form):
-        form.instance.team = self.request.team
+        form.instance.book = self.request.book
         account_group = form.cleaned_data.get("account_group")
         if account_group:
             form.instance.has_feed = account_group.account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY)
@@ -287,7 +287,7 @@ class AccountCreateView(AccountViewMixin, CreateView):
             }
             if form.instance.institution_id:
                 params["institution"] = form.instance.institution_id
-            url = reverse("accounts:account_create", args=[self.request.team.slug])
+            url = reverse("accounts:account_create", args=self.request.book.url_args)
             return redirect(f"{url}?{urlencode(params)}")
 
         return response
@@ -316,7 +316,7 @@ class AccountDetailView(AccountViewMixin, DetailView):
             start_date = today.replace(month=1, day=1)
             end_date = today
 
-        service = ReportService(self.request.team)
+        service = ReportService(self.request.book)
         report_data = service.get_account_activity(self.object, start_date, end_date)
         context["report_data"] = report_data
         context["balance_chart_data"] = ReportService.build_balance_chart_data(report_data, start_date, end_date)
@@ -337,7 +337,7 @@ class AccountUpdateView(AccountViewMixin, UpdateView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["team"] = self.request.team
+        kwargs["book"] = self.request.book
         return kwargs
 
     def get_success_url(self):
@@ -366,7 +366,7 @@ class AccountDeleteView(AccountViewMixin, DeleteView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_success_url(self):
-        return reverse("accounts:accounts_home", args=[self.request.team.slug])
+        return reverse("accounts:accounts_home", args=self.request.book.url_args)
 
     def _blocking_journal_entries(self, account):
         """
@@ -374,7 +374,7 @@ class AccountDeleteView(AccountViewMixin, DeleteView):
         balance -- real activity the user needs to know about before it's gone.
 
         An opening balance entry is exactly the shape `create_opening_balances`
-        writes: two lines, one on this account and the other on the team's system
+        writes: two lines, one on this account and the other on the book's system
         equity offset. Anything else -- a categorized transaction, a transfer leg,
         a split -- blocks the delete rather than being silently discarded.
         """
@@ -431,7 +431,7 @@ class AccountDeleteView(AccountViewMixin, DeleteView):
 
 
 # Payee Views
-class PayeeViewMixin(LoginAndTeamRequiredMixin):
+class PayeeViewMixin(LoginAndBookRequiredMixin):
     """Mixin class for all Payee views."""
 
     model = Payee
@@ -439,7 +439,7 @@ class PayeeViewMixin(LoginAndTeamRequiredMixin):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "accounts"
-        context["page_title"] = _("Payees | {team}").format(team=self.request.team)
+        context["page_title"] = _("Payees | {name}").format(name=book_display_name(self.request.book))
         return context
 
 
@@ -455,7 +455,7 @@ class PayeeCreateView(PayeeViewMixin, CreateView):
     form_class = PayeeForm
 
     def form_valid(self, form):
-        form.instance.team = self.request.team
+        form.instance.book = self.request.book
         return super().form_valid(form)
 
 
@@ -475,11 +475,11 @@ class PayeeDeleteView(PayeeViewMixin, DeleteView):
     """Delete a payee."""
 
     def get_success_url(self):
-        return reverse("accounts:payee_list", args=[self.request.team.slug])
+        return reverse("accounts:payee_list", args=self.request.book.url_args)
 
 
 # Institution Views
-class InstitutionViewMixin(LoginAndTeamRequiredMixin):
+class InstitutionViewMixin(LoginAndBookRequiredMixin):
     """Mixin class for all Institution views."""
 
     model = Institution
@@ -487,7 +487,7 @@ class InstitutionViewMixin(LoginAndTeamRequiredMixin):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "accounts"
-        context["page_title"] = _("Institutions | {team}").format(team=self.request.team)
+        context["page_title"] = _("Institutions | {name}").format(name=book_display_name(self.request.book))
         return context
 
 
@@ -503,7 +503,7 @@ class InstitutionCreateView(InstitutionViewMixin, CreateView):
     form_class = InstitutionForm
 
     def form_valid(self, form):
-        form.instance.team = self.request.team
+        form.instance.book = self.request.book
         return super().form_valid(form)
 
 
@@ -523,7 +523,7 @@ class InstitutionDeleteView(InstitutionViewMixin, DeleteView):
     """Delete an institution."""
 
     def get_success_url(self):
-        return reverse("accounts:institution_list", args=[self.request.team.slug])
+        return reverse("accounts:institution_list", args=self.request.book.url_args)
 
 
 # =============================================================================
@@ -539,9 +539,9 @@ def _json_body(request):
     return payload if isinstance(payload, dict) else None
 
 
-@login_and_team_required
+@login_and_book_required
 @require_POST
-def api_reorder_accounts(request, team_slug):
+def api_reorder_accounts(request, team_slug, book_slug):
     """Persist account ordering (and group moves) from the board.
 
     Body: {"groups": [{"group_id": int, "account_ids": [int, ...]}, ...]}
@@ -564,12 +564,12 @@ def api_reorder_accounts(request, team_slug):
                 return JsonResponse({"error": _("An account appears more than once.")}, status=400)
             placements[account_id] = (entry.get("group_id"), position)
 
-    groups = {g.pk: g for g in AccountGroup.objects.filter(team=request.team, pk__in=group_ids)}
+    groups = {g.pk: g for g in AccountGroup.objects.filter(book=request.book, pk__in=group_ids)}
     if len(groups) != len(set(group_ids)):
         return JsonResponse({"error": _("Unknown account group.")}, status=400)
 
     accounts = {
-        a.pk: a for a in Account.objects.filter(team=request.team, pk__in=placements).select_related("account_group")
+        a.pk: a for a in Account.objects.filter(book=request.book, pk__in=placements).select_related("account_group")
     }
     if len(accounts) != len(placements):
         return JsonResponse({"error": _("Unknown account.")}, status=400)
@@ -599,9 +599,9 @@ def api_reorder_accounts(request, team_slug):
     return JsonResponse({"ok": True})
 
 
-@login_and_team_required
+@login_and_book_required
 @require_POST
-def api_reorder_groups(request, team_slug):
+def api_reorder_groups(request, team_slug, book_slug):
     """Persist account-group ordering within one account type.
 
     Body: {"account_type": str, "group_ids": [int, ...]}
@@ -616,7 +616,7 @@ def api_reorder_groups(request, team_slug):
 
     group_ids = payload["group_ids"]
     groups = {
-        g.pk: g for g in AccountGroup.objects.filter(team=request.team, account_type=account_type, pk__in=group_ids)
+        g.pk: g for g in AccountGroup.objects.filter(book=request.book, account_type=account_type, pk__in=group_ids)
     }
     if len(groups) != len(group_ids) or len(set(group_ids)) != len(group_ids):
         return JsonResponse({"error": _("Unknown account group.")}, status=400)
@@ -629,9 +629,9 @@ def api_reorder_groups(request, team_slug):
     return JsonResponse({"ok": True})
 
 
-@login_and_team_required
+@login_and_book_required
 @require_POST
-def api_create_account(request, team_slug):
+def api_create_account(request, team_slug, book_slug):
     """Create an account at the bottom of a group (board inline "+" form).
 
     Body: {"name": str, "group_id": int}
@@ -644,12 +644,12 @@ def api_create_account(request, team_slug):
     if not name or len(name) > 200:
         return JsonResponse({"error": _("Enter an account name (max 200 characters).")}, status=400)
 
-    group = AccountGroup.objects.filter(team=request.team, pk=payload.get("group_id")).first()
+    group = AccountGroup.objects.filter(book=request.book, pk=payload.get("group_id")).first()
     if group is None:
         return JsonResponse({"error": _("Unknown account group.")}, status=400)
 
     # Same uniqueness rule as AccountForm: name must be unique within the account type
-    if Account.objects.filter(team=request.team, name=name, account_group__account_type=group.account_type).exists():
+    if Account.objects.filter(book=request.book, name=name, account_group__account_type=group.account_type).exists():
         return JsonResponse(
             {
                 "error": _("An account named '%(name)s' already exists for account type '%(type)s'.")
@@ -659,20 +659,20 @@ def api_create_account(request, team_slug):
         )
 
     with transaction.atomic():
-        next_order = Account.objects.filter(team=request.team, account_group=group).aggregate(m=Max("sort_order"))["m"]
+        next_order = Account.objects.filter(book=request.book, account_group=group).aggregate(m=Max("sort_order"))["m"]
         account = Account.objects.create(
-            team=request.team,
+            book=request.book,
             name=name,
             account_group=group,
             has_feed=group.account_type in FEED_ACCOUNT_TYPES,
             sort_order=0 if next_order is None else next_order + 1,
         )
-    return JsonResponse({"account": _account_payload(account, team_slug)}, status=201)
+    return JsonResponse({"account": _account_payload(account, request.book)}, status=201)
 
 
-@login_and_team_required
+@login_and_book_required
 @require_POST
-def api_create_group(request, team_slug):
+def api_create_group(request, team_slug, book_slug):
     """Create an account group at the bottom of a type section (board inline "+" form).
 
     Body: {"name": str, "account_type": str}
@@ -689,17 +689,17 @@ def api_create_group(request, team_slug):
     if account_type not in dict(ACCOUNT_TYPE_CHOICES):
         return JsonResponse({"error": _("Invalid account type.")}, status=400)
 
-    if AccountGroup.objects.filter(team=request.team, name=name).exists():
+    if AccountGroup.objects.filter(book=request.book, name=name).exists():
         return JsonResponse({"error": _("A group named '%(name)s' already exists.") % {"name": name}}, status=400)
 
     with transaction.atomic():
-        next_order = AccountGroup.objects.filter(team=request.team, account_type=account_type).aggregate(
+        next_order = AccountGroup.objects.filter(book=request.book, account_type=account_type).aggregate(
             m=Max("sort_order")
         )["m"]
         group = AccountGroup.objects.create(
-            team=request.team,
+            book=request.book,
             name=name,
             account_type=account_type,
             sort_order=0 if next_order is None else next_order + 1,
         )
-    return JsonResponse({"group": _group_payload(group, team_slug)}, status=201)
+    return JsonResponse({"group": _group_payload(group)}, status=201)

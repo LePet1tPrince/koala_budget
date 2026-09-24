@@ -1,4 +1,4 @@
-"""URL configuration for the export/import page (all team-scoped)."""
+"""URL configuration for the export/import page (all book-scoped)."""
 
 from django.urls import path
 

@@ -69,20 +69,20 @@ const describeGroup = (group) => {
   return changes;
 };
 
-const TransactionHistory = ({ teamSlug, journalEntryId }) => {
+const TransactionHistory = ({ book, journalEntryId }) => {
   const [logs, setLogs] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!journalEntryId || !teamSlug) {
+    if (!journalEntryId || !book) {
       setLogs([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`/a/${teamSlug}/journal/api/journal-entries/${journalEntryId}/audit/`, {
+    fetch(`${book.base}journal/api/journal-entries/${journalEntryId}/audit/`, {
       credentials: 'include',
       headers: { Accept: 'application/json' },
     })
@@ -94,7 +94,7 @@ const TransactionHistory = ({ teamSlug, journalEntryId }) => {
       .catch((err) => { if (!cancelled) setError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [teamSlug, journalEntryId]);
+  }, [book, journalEntryId]);
 
   if (loading) {
     return (

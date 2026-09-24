@@ -83,8 +83,8 @@ def parse_legs(raw, keep_ids=()) -> list[tuple[Account, Decimal]]:
 
     Every rejection is a refusal rather than a silent drop: a leg the user
     entered that vanished without explanation is worse than an error they can
-    act on. Accounts are looked up through the team-scoped manager, so another
-    team's account is "not found" rather than a successful cross-tenant write.
+    act on. Accounts are looked up through the book-scoped manager, so another
+    book's account is "not found" rather than a successful cross-tenant write.
     A system account is refused unless its id is in `keep_ids` (already on the entry).
     """
     if not isinstance(raw, list):
@@ -100,7 +100,7 @@ def parse_legs(raw, keep_ids=()) -> list[tuple[Account, Decimal]]:
             raise SplitError(_("Split %(n)d is not valid.") % {"n": index})
 
         try:
-            account = Account.for_team.get(id=item.get("category"))
+            account = Account.for_book.get(id=item.get("category"))
         except (Account.DoesNotExist, TypeError, ValueError):
             raise SplitError(_("Split %(n)d: category not found.") % {"n": index}) from None
         try:
@@ -200,7 +200,7 @@ def apply_splits(bank_tx, legs, *, total):
         cr = -amount if amount < 0 else Decimal("0")
         if match is None:
             JournalLine.objects.create(
-                journal_entry=entry, team=bank_tx.team, account=account, dr_amount=dr, cr_amount=cr
+                journal_entry=entry, book=bank_tx.book, account=account, dr_amount=dr, cr_amount=cr
             )
         elif (match.dr_amount, match.cr_amount) != (dr, cr):
             match.dr_amount, match.cr_amount = dr, cr

@@ -13,8 +13,8 @@ from rest_framework.test import APIClient
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, Account, AccountGroup, Payee
 from apps.audit.models import AuditEvent, AuditLog
 from apps.audit.utils import set_current_user, snapshot_journal_line
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -24,19 +24,20 @@ class AuditLogSignalTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="auditor", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.dining = Account.objects.create(team=cls.team, name="Dining Out", account_group=cls.expense_group)
-        cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.dining = Account.objects.create(book=cls.book, name="Dining Out", account_group=cls.expense_group)
+        cls.payee = Payee.objects.create(book=cls.book, name="Test Store")
 
     def setUp(self):
         # Signals attribute records to the thread-local user; reset between tests.
@@ -46,7 +47,7 @@ class AuditLogSignalTests(TestCase):
         set_current_user(None)
 
     def test_journal_entry_create_logs_audit(self):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test entry")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test entry")
         logs = AuditLog.objects.filter(journal_entry_id=entry.pk, source_model="JournalEntry")
         self.assertEqual(logs.count(), 1)
         log = logs.first()
@@ -54,7 +55,7 @@ class AuditLogSignalTests(TestCase):
         self.assertEqual(log.changes["snapshot"]["description"], "Test entry")
 
     def test_journal_entry_update_logs_diff(self):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Original")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Original")
         entry.description = "Updated"
         entry.save()
 
@@ -66,13 +67,13 @@ class AuditLogSignalTests(TestCase):
         self.assertEqual(update_log.changes["description"]["after"], "Updated")
 
     def test_journal_entry_update_without_change_logs_nothing(self):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Same")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Same")
         AuditLog.objects.filter(journal_entry_id=entry.pk).delete()
         entry.save()  # no field changed
         self.assertEqual(AuditLog.objects.filter(journal_entry_id=entry.pk).count(), 0)
 
     def test_journal_entry_delete_logs_audit(self):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="To delete")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="To delete")
         entry_pk = entry.pk
         entry.delete()
         delete_log = AuditLog.objects.filter(
@@ -82,9 +83,9 @@ class AuditLogSignalTests(TestCase):
         self.assertEqual(delete_log.changes["snapshot"]["description"], "To delete")
 
     def test_journal_line_category_change_frozen_snapshot(self):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Expense")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Expense")
         line = JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.groceries, cr_amount=Decimal("50.00")
+            book=self.book, journal_entry=entry, account=self.groceries, cr_amount=Decimal("50.00")
         )
 
         # Re-categorize the line, then rename the *old* account.
@@ -103,7 +104,7 @@ class AuditLogSignalTests(TestCase):
 
     def test_signal_attributes_user(self):
         set_current_user(self.user)
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Attributed")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Attributed")
         log = AuditLog.objects.filter(journal_entry_id=entry.pk).first()
         self.assertEqual(log.user, self.user)
 
@@ -112,10 +113,12 @@ class AuditEventAPITests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Team One", slug="team-one")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="member1", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.other_team = Team.objects.create(name="Team Two", slug="team-two")
+        cls.other_book = cls.other_team.default_book
         cls.other_user = CustomUser.objects.create_user(username="member2", password="testpass123")
         cls.other_team.members.add(cls.other_user, through_defaults={"role": ROLE_ADMIN})
 
@@ -130,8 +133,8 @@ class AuditEventAPITests(TestCase):
 
     def test_team_isolation(self):
         self.client.force_authenticate(user=self.user)
-        with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/audit/api/events/")
+        with current_book(self.book):
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/audit/api/events/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         returned_ids = {row["id"] for row in response.data["results"]}
         self.assertIn(self.event.id, returned_ids)
@@ -140,16 +143,18 @@ class AuditEventAPITests(TestCase):
     def test_event_type_filter(self):
         AuditEvent.objects.create(team=self.team, user=self.user, event_type=AuditEvent.BULK_ARCHIVE)
         self.client.force_authenticate(user=self.user)
-        with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/audit/api/events/", {"event_type": AuditEvent.BULK_EDIT})
+        with current_book(self.book):
+            response = self.client.get(
+                f"/a/{self.team.slug}/{self.book.slug}/audit/api/events/", {"event_type": AuditEvent.BULK_EDIT}
+            )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         event_types = {row["event_type"] for row in response.data["results"]}
         self.assertEqual(event_types, {AuditEvent.BULK_EDIT})
 
     def test_non_member_cannot_access(self):
         self.client.force_authenticate(user=self.other_user)
-        with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/audit/api/events/")
+        with current_book(self.book):
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/audit/api/events/")
         self.assertIn(response.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
 
 
@@ -157,12 +162,13 @@ class JournalEntryAuditEndpointTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Audit Team", slug="audit-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="je-auditor", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
 
     def setUp(self):
         # Clear any thread-local user leaked from a prior test (audit signals read it).
@@ -171,12 +177,14 @@ class JournalEntryAuditEndpointTests(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_audit_endpoint_returns_history(self):
-        with current_team(self.team):
-            entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Original")
+        with current_book(self.book):
+            entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Original")
             entry.description = "Updated"
             entry.save()
 
-            response = self.client.get(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/audit/")
+            response = self.client.get(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/audit/"
+            )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         actions = [row["action"] for row in response.data]
@@ -192,16 +200,17 @@ class SnapshotAmountCoercionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Coercion Team", slug="coercion-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="coercion", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
 
     def test_snapshot_formats_string_amounts(self):
         """A str amount formats to 2dp instead of raising ValueError."""
@@ -225,15 +234,15 @@ class SnapshotAmountCoercionTests(TestCase):
 
     def test_saving_a_line_with_string_amounts_does_not_raise(self):
         """The regression: the post_save audit signal used to raise mid-save."""
-        with current_team(self.team):
+        with current_book(self.book):
             entry = JournalEntry.objects.create(
-                team=self.team, entry_date=date.today(), description="String amounts", status="posted"
+                book=self.book, entry_date=date.today(), description="String amounts", status="posted"
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount="1500.00", cr_amount="0.00"
+                book=self.book, journal_entry=entry, account=self.bank_account, dr_amount="1500.00", cr_amount="0.00"
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.groceries, dr_amount="0.00", cr_amount="1500.00"
+                book=self.book, journal_entry=entry, account=self.groceries, dr_amount="0.00", cr_amount="1500.00"
             )
 
         self.assertEqual(entry.lines.count(), 2)

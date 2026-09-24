@@ -1,0 +1,72 @@
+{% load i18n %}
+{% load team_tags %}
+{% load icons %}
+{% comment %}
+  The Team › Book switcher's menu, shared by the desktop sidebar and the mobile
+  dropdown: this team's sets of books (the open one ticked), then the other
+  teams (each opens its most recently used book), then creating a book and the
+  team's own settings.
+{% endcomment %}
+{% if nav_team %}
+{% if nav_books %}
+<li class="menu-title">
+  <span>{% translate "Sets of books" %}</span>
+</li>
+{% for item in nav_books %}
+<li>
+  <a href="{% url 'web_book:home' nav_team.slug item.slug %}" data-testid="book-switch-{{ item.slug }}"
+     {% if nav_book and item.pk == nav_book.pk %}class="menu-active" aria-current="true"{% endif %}>
+    {% if nav_book and item.pk == nav_book.pk %}
+      {% icon "check" class="inline-block shrink-0 w-4 h-4" %}
+    {% else %}
+      {% icon "book-open" class="inline-block shrink-0 w-4 h-4" %}
+    {% endif %}
+    <span class="truncate">{{ item.name }}</span>
+  </a>
+</li>
+{% endfor %}
+{% endif %}
+{% if request.user|is_admin_of:nav_team %}
+<li>
+  <a href="{% url 'books_team:create' nav_team.slug %}" data-testid="new-book-link">
+    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}
+    {% translate "New set of books" %}
+  </a>
+</li>
+{% endif %}
+{% if request.user|is_member_of:nav_team %}
+<li>
+  <a href="{% url 'single_team:manage_team' nav_team.slug %}">
+    {% icon "gear" class="inline-block shrink-0 w-4 h-4" %}
+    {% translate "Team Settings" %}
+  </a>
+</li>
+{% endif %}
+{% if other_teams %}
+<li class="menu-title">
+  <span>{% translate "Switch Team" %}</span>
+</li>
+{% for name, url in other_teams.items %}
+<li>
+  <a href="{{ url }}">{% icon "arrow-right" class="inline-block shrink-0 w-4 h-4" %}{{ name }}</a>
+</li>
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if request.user.is_authenticated %}
+<li class="menu-title">
+  <hr/>
+</li>
+<li>
+  <a href="{% url 'teams:manage_teams' %}new">
+    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}
+    {% translate "Add Team" %}
+  </a>
+  {% if user_pending_invitations %}
+  <a href="{% url 'teams:manage_teams' %}">
+    {% icon "envelope" class="inline-block shrink-0 w-4 h-4" %}
+    {% translate "Pending Invitations" %}
+  </a>
+  {% endif %}
+</li>
+{% endif %}

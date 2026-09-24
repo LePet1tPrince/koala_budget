@@ -3,7 +3,7 @@ Serialising rows to the zip/CSV archive (§3 of `docs/export-import-plan.md`).
 
 Pure: takes already-built row dicts (Python values, one dict per CSV row,
 keyed by column name) and returns bytes. Nothing here queries the database --
-that is Phase 2's `export.py`, which will gather rows from a team and call
+that is Phase 2's `export.py`, which will gather rows from a book and call
 `build_archive_bytes`. Kept separate so the round-trip test in Phase 1 can
 exercise the whole write -> read path without a database, and so `read.py`'s
 counterpart has something to be tested against before Phase 2 exists.

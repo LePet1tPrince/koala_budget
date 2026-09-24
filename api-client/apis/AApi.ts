@@ -29,18 +29,21 @@ import {
 } from '../models/index';
 
 export interface ABankfeedApiFeedPartialUpdateRequest {
+    bookSlug: string;
     id: number;
     teamSlug: string;
     patchedBankFeedRow?: PatchedBankFeedRow;
 }
 
 export interface AJournalApiJournalEntriesPostEntryCreateRequest {
+    bookSlug: string;
     id: number;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
 
 export interface AJournalApiJournalEntriesVoidEntryCreateRequest {
+    bookSlug: string;
     id: number;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
@@ -52,9 +55,16 @@ export interface AJournalApiJournalEntriesVoidEntryCreateRequest {
 export class AApi extends runtime.BaseAPI {
 
     /**
-     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
+     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
      */
     async aBankfeedApiFeedPartialUpdateRaw(requestParameters: ABankfeedApiFeedPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling aBankfeedApiFeedPartialUpdate().'
+            );
+        }
+
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -83,7 +93,7 @@ export class AApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/bankfeed/api/feed/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
@@ -94,7 +104,7 @@ export class AApi extends runtime.BaseAPI {
     }
 
     /**
-     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
+     * Unified bank feed API. Uses BankTransaction as the base unit, combining uncategorized BankTransactions (extended with PlaidTransaction data when applicable) and categorized BankTransactions showing category from linked JournalEntry.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
      */
     async aBankfeedApiFeedPartialUpdate(requestParameters: ABankfeedApiFeedPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BankFeedRow> {
         const response = await this.aBankfeedApiFeedPartialUpdateRaw(requestParameters, initOverrides);
@@ -105,6 +115,13 @@ export class AApi extends runtime.BaseAPI {
      * Post a draft journal entry (change status to posted). Only draft entries can be posted.
      */
     async aJournalApiJournalEntriesPostEntryCreateRaw(requestParameters: AJournalApiJournalEntriesPostEntryCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<JournalEntry>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling aJournalApiJournalEntriesPostEntryCreate().'
+            );
+        }
+
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -140,7 +157,7 @@ export class AApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/{id}/post_entry/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/{id}/post_entry/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -162,6 +179,13 @@ export class AApi extends runtime.BaseAPI {
      * Void a posted journal entry. Only posted entries can be voided.
      */
     async aJournalApiJournalEntriesVoidEntryCreateRaw(requestParameters: AJournalApiJournalEntriesVoidEntryCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<JournalEntry>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling aJournalApiJournalEntriesVoidEntryCreate().'
+            );
+        }
+
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -197,7 +221,7 @@ export class AApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/{id}/void_entry/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/{id}/void_entry/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,

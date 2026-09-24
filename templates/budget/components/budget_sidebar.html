@@ -63,7 +63,7 @@
         {% translate "Applies to the categories checked in the table. Uncheck any you want to leave alone." %}
       </p>
       <div class="flex flex-col gap-2">
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}" data-autofill-form>
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}" data-autofill-form>
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
           <input type="hidden" name="action" value="assigned_last_month">
@@ -72,7 +72,7 @@
           </button>
         </form>
 
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}" data-autofill-form>
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}" data-autofill-form>
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
           <input type="hidden" name="action" value="spent_last_month">
@@ -81,7 +81,7 @@
           </button>
         </form>
 
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}" data-autofill-form>
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}" data-autofill-form>
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
           <input type="hidden" name="action" value="assign_zero">
@@ -90,7 +90,7 @@
           </button>
         </form>
 
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug %}" data-autofill-form>
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}" data-autofill-form>
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
           <input type="hidden" name="action" value="reset_available_zero">

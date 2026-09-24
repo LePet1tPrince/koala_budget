@@ -1,10 +1,10 @@
 """
 The export/import page and its endpoints (§7 Phase 4).
 
-Every write endpoint is `@team_admin_required` (§4.4.3) -- exporting is
+Every write endpoint is `@book_admin_required` (§4.4.3) -- exporting is
 harmless for any member, but importing is the most destructive operation in
 the product, and the export button lives on the same page as the import
-button either way. The apply endpoint re-checks the typed team name
+button either way. The apply endpoint re-checks the typed book name
 server-side (§4.4.4): the confirmation the browser enforces is a courtesy,
 not the guard.
 """
@@ -28,8 +28,8 @@ from kombu.exceptions import OperationalError
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
+from apps.books.decorators import book_admin_required, login_and_book_required
 from apps.plaid.models import PlaidAccount
-from apps.teams.decorators import login_and_team_required, team_admin_required
 
 from .models import MAX_UPLOAD_BYTES, DataImport
 from .services import export, read, write
@@ -63,10 +63,15 @@ def json_errors(view):
     return wrapped
 
 
-def _archive_filename(team, *, suffix: str = "") -> str:
+def _archive_filename(book, *, suffix: str = "") -> str:
     today = timezone.localdate().isoformat()
     tail = f"-{suffix}" if suffix else ""
-    return f"koala-budget-{team.slug}-{today}{tail}.zip"
+    return f"koala-budget-{book.team.slug}-{book.slug}-{today}{tail}.zip"
+
+
+def _source(book) -> dict:
+    """Where an archive came from, for the manifest. Informational only; import never reads it back."""
+    return {"team_name": book.team.name, "book_name": book.name}
 
 
 def _archive_response(data: bytes, filename: str) -> HttpResponse:
@@ -76,44 +81,44 @@ def _archive_response(data: bytes, filename: str) -> HttpResponse:
     return response
 
 
-@login_and_team_required
-def export_view(request, team_slug):
+@login_and_book_required
+def export_view(request, team_slug, book_slug):
     """
-    Every member may export their own team's books (§9 open question --
-    answered here as yes, read-only, own team). Synchronous and built in
+    Every member may export a set of books of their own team (§9 open
+    question -- answered here as yes, read-only, own team). Synchronous and built in
     memory, with a real `Content-Length` (§3.6): a truncated download must be
     a transport error the browser reports, not a file that silently looks
     complete and is not.
     """
     try:
-        accounts, journal_rows, budget_rows = export.build_archive(request.team)
+        accounts, journal_rows, budget_rows = export.build_archive(request.book)
     except ExportError as error:
         return render(request, "portability/export_too_large.html", {"error": str(error)}, status=400)
 
-    checks = export.build_checks(request.team)
-    omitted = export.build_omitted(request.team)
+    checks = export.build_checks(request.book)
+    omitted = export.build_omitted(request.book)
     data = write.build_archive_bytes(
         accounts=accounts,
         journal=journal_rows,
         budget=budget_rows,
-        reconciliations=export.build_reconciliation_rows(request.team),
-        source={"team_name": request.team.name},
+        reconciliations=export.build_reconciliation_rows(request.book),
+        source=_source(request.book),
         checks=checks,
         omitted=omitted,
     )
 
     log_event(AuditEvent.DATA_EXPORTED, request=request, metadata={"counts": checks["counts"]})
 
-    return _archive_response(data, _archive_filename(request.team))
+    return _archive_response(data, _archive_filename(request.book))
 
 
 @ensure_csrf_cookie
-@team_admin_required
-def portability_home(request, team_slug):
+@book_admin_required
+def portability_home(request, team_slug, book_slug):
     """The page: an Export card and an Import card (§7 Phase 4)."""
-    uncategorized_count = BankTransaction.objects.filter(team=request.team, journal_entry__isnull=True).count()
+    uncategorized_count = BankTransaction.objects.filter(book=request.book, journal_entry__isnull=True).count()
     resume = (
-        DataImport.objects.filter(team=request.team, status__in=[DataImport.STATUS_UPLOADED, DataImport.STATUS_RUNNING])
+        DataImport.objects.filter(book=request.book, status__in=[DataImport.STATUS_UPLOADED, DataImport.STATUS_RUNNING])
         .order_by("-created_at")
         .first()
     )
@@ -126,22 +131,23 @@ def portability_home(request, team_slug):
             "settings_section": "data_transfer",
             "settings_page_title": _("Export & Import"),
             "settings_page_blurb": _(
-                "Download everything in this team's books, or replace them entirely with a Koala Budget export."
+                "Download everything in this set of books, or replace it entirely with a Koala Budget export."
             ),
             "page_title": _("Export & Import"),
             "portability_props": {
                 "teamSlug": team_slug,
                 "teamName": request.team.name,
+                "bookName": request.book.name,
                 "uncategorizedCount": uncategorized_count,
-                "bankFeedUrl": reverse("bank_feed:bank_feed_home", args=[team_slug]),
-                "homeUrl": reverse("web_team:home", args=[team_slug]),
+                "bankFeedUrl": reverse("bank_feed:bank_feed_home", args=[team_slug, book_slug]),
+                "homeUrl": reverse("web_book:home", args=[team_slug, book_slug]),
                 "resume": resume.as_dict() if resume else None,
                 "urls": {
-                    "export": reverse("portability:export", args=[team_slug]),
-                    "upload": reverse("portability:api_upload", args=[team_slug]),
-                    "apply": reverse("portability:api_apply", args=[team_slug]),
-                    "status": reverse("portability:api_status", args=[team_slug]),
-                    "safetyExport": reverse("portability:api_safety_export", args=[team_slug]),
+                    "export": reverse("portability:export", args=[team_slug, book_slug]),
+                    "upload": reverse("portability:api_upload", args=[team_slug, book_slug]),
+                    "apply": reverse("portability:api_apply", args=[team_slug, book_slug]),
+                    "status": reverse("portability:api_status", args=[team_slug, book_slug]),
+                    "safetyExport": reverse("portability:api_safety_export", args=[team_slug, book_slug]),
                 },
             },
         },
@@ -157,9 +163,9 @@ def _json_body(request) -> dict:
 
 
 @require_POST
-@team_admin_required
+@book_admin_required
 @json_errors
-def api_upload(request, team_slug):
+def api_upload(request, team_slug, book_slug):
     """
     Parse and validate the uploaded archive, and show what it will replace.
     Writes nothing -- the row this creates just remembers the bytes for the
@@ -178,7 +184,7 @@ def api_upload(request, team_slug):
     except DocumentError as error:
         return JsonResponse({"error": str(error)}, status=400)
 
-    record = DataImport.objects.create(team=request.team, created_by=request.user, archive=data)
+    record = DataImport.objects.create(book=request.book, created_by=request.user, archive=data)
 
     return JsonResponse(
         {
@@ -191,32 +197,35 @@ def api_upload(request, team_slug):
             },
             "destination": {
                 "team_name": request.team.name,
-                "checks": export.build_checks(request.team),
-                "has_plaid": PlaidAccount.objects.filter(team=request.team).exists(),
+                "book_name": request.book.name,
+                "checks": export.build_checks(request.book),
+                "has_plaid": PlaidAccount.objects.filter(book=request.book).exists(),
             },
         }
     )
 
 
 @require_POST
-@team_admin_required
+@book_admin_required
 @json_errors
-def api_apply(request, team_slug):
+def api_apply(request, team_slug, book_slug):
     """
-    Start the import. The typed team name is checked here, server-side --
+    Start the import. The typed book name is checked here, server-side --
     the confirmation dialog the browser shows is a courtesy, not the guard
     (§4.4.4).
     """
     body = _json_body(request)
-    record = DataImport.objects.filter(team=request.team, id=body.get("import_id")).first()
+    record = DataImport.objects.filter(book=request.book, id=body.get("import_id")).first()
     if record is None:
         return JsonResponse({"error": "That upload is no longer available. Start again."}, status=404)
     if record.status != DataImport.STATUS_UPLOADED:
         return JsonResponse({"import_id": record.id, **record.as_dict()})
 
-    typed_name = (body.get("team_name") or "").strip()
-    if typed_name != request.team.name:
-        return JsonResponse({"error": "Type the team name exactly to confirm."}, status=400)
+    # The book is what gets replaced, so its name -- not the team's -- is the one
+    # typed: in a team with several books, that is what says which one goes.
+    typed_name = (body.get("book_name") or "").strip()
+    if typed_name != request.book.name:
+        return JsonResponse({"error": "Type the name of this set of books exactly to confirm."}, status=400)
 
     try:
         async_result = run_data_import.delay(record.id)
@@ -233,11 +242,11 @@ def api_apply(request, team_slug):
     return JsonResponse({"import_id": record.id, "task_id": task_id, **record.as_dict()})
 
 
-@team_admin_required
+@book_admin_required
 @json_errors
-def api_status(request, team_slug):
+def api_status(request, team_slug, book_slug):
     """Where the import has got to. Modelled on the YNAB importer's own status endpoint -- same reasoning throughout."""
-    record = DataImport.objects.filter(team=request.team, id=request.GET.get("import_id")).first()
+    record = DataImport.objects.filter(book=request.book, id=request.GET.get("import_id")).first()
     if record is None:
         return JsonResponse({"error": "That import is no longer available."}, status=404)
 
@@ -272,13 +281,13 @@ def api_status(request, team_slug):
     return JsonResponse(payload)
 
 
-@team_admin_required
-def api_safety_export(request, team_slug):
+@book_admin_required
+def api_safety_export(request, team_slug, book_slug):
     """The pre-wipe copy, while `SAFETY_EXPORT_WINDOW` has not yet elapsed."""
-    record = DataImport.objects.filter(team=request.team, id=request.GET.get("import_id")).first()
+    record = DataImport.objects.filter(book=request.book, id=request.GET.get("import_id")).first()
     if record is None or not record.safety_archive_available:
         raise Http404
-    return _archive_response(bytes(record.safety_archive), _archive_filename(request.team, suffix="before-import"))
+    return _archive_response(bytes(record.safety_archive), _archive_filename(request.book, suffix="before-import"))
 
 
 def _live_progress(record) -> dict | None:

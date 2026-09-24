@@ -6,9 +6,9 @@ from django.urls import reverse
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
+from apps.books.context import current_book
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.onboarding.models import OnboardingState
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_MEMBER
 from apps.users.models import CustomUser
@@ -20,14 +20,15 @@ class TeamHomeDashboardTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_MEMBER})
         cls.other_user = CustomUser.objects.create_user(username="outsider@example.com", password="testpass123")
-        cls.url = reverse("web_team:home", kwargs={"team_slug": cls.team.slug})
+        cls.url = reverse("web_book:home", args=cls.book.url_args)
 
         # A team that reaches the dashboard has been through the guided walkthrough
         # -- without this, the onboarding redirect intercepts every request here.
-        onboarding = OnboardingState.objects.create(team=cls.team)
+        onboarding = OnboardingState.objects.create(book=cls.book)
         onboarding.complete()
         onboarding.save()
 
@@ -56,9 +57,9 @@ class TeamHomeDashboardTest(TestCase):
         self.assertIn("greeting", response.context)
 
     def test_dashboard_shows_goals(self):
-        with current_team(self.team):
-            goal = Goal.objects.create(team=self.team, name="Vacation", target_amount=Decimal("1000.00"))
-            GoalAllocation.objects.create(team=self.team, goal=goal, month=date(2026, 1, 1), amount=Decimal("250.00"))
+        with current_book(self.book):
+            goal = Goal.objects.create(book=self.book, name="Vacation", target_amount=Decimal("1000.00"))
+            GoalAllocation.objects.create(book=self.book, goal=goal, month=date(2026, 1, 1), amount=Decimal("250.00"))
         response = self.client.get(self.url)
         self.assertContains(response, "Vacation")
 
@@ -69,11 +70,11 @@ class TeamHomeDashboardTest(TestCase):
         self.assertIn("Timmy", response.context["greeting"])
 
     def test_amount_to_reach_all_goals_sums_remaining(self):
-        with current_team(self.team):
-            goal1 = Goal.objects.create(team=self.team, name="Vacation", target_amount=Decimal("1000.00"))
-            GoalAllocation.objects.create(team=self.team, goal=goal1, month=date(2026, 1, 1), amount=Decimal("250.00"))
-            goal2 = Goal.objects.create(team=self.team, name="Emergency Fund", target_amount=Decimal("500.00"))
-            GoalAllocation.objects.create(team=self.team, goal=goal2, month=date(2026, 1, 1), amount=Decimal("500.00"))
+        with current_book(self.book):
+            goal1 = Goal.objects.create(book=self.book, name="Vacation", target_amount=Decimal("1000.00"))
+            GoalAllocation.objects.create(book=self.book, goal=goal1, month=date(2026, 1, 1), amount=Decimal("250.00"))
+            goal2 = Goal.objects.create(book=self.book, name="Emergency Fund", target_amount=Decimal("500.00"))
+            GoalAllocation.objects.create(book=self.book, goal=goal2, month=date(2026, 1, 1), amount=Decimal("500.00"))
         response = self.client.get(self.url)
         # goal1 needs 750 more; goal2 is fully funded (0 remaining, clamped at 0)
         self.assertEqual(response.context["amount_to_reach_goals"], Decimal("750.00"))
@@ -90,11 +91,11 @@ class TeamHomeDashboardTest(TestCase):
         self.assertNotContains(response, "onboarding-checklist")
 
     def test_inbox_count_in_context(self):
-        with current_team(self.team):
-            group = AccountGroup.objects.create(team=self.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-            account = Account.objects.create(team=self.team, name="Checking", account_group=group)
+        with current_book(self.book):
+            group = AccountGroup.objects.create(book=self.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+            account = Account.objects.create(book=self.book, name="Checking", account_group=group)
             BankTransaction.objects.create(
-                team=self.team,
+                book=self.book,
                 account=account,
                 amount=Decimal("10.00"),
                 posted_date="2026-01-15",
@@ -105,23 +106,23 @@ class TeamHomeDashboardTest(TestCase):
         self.assertContains(response, "transaction to review")
 
     def test_onboarding_hidden_once_set_up(self):
-        with current_team(self.team):
-            group = AccountGroup.objects.create(team=self.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE)
-            account = Account.objects.create(team=self.team, name="Groceries", account_group=group)
-            asset_group = AccountGroup.objects.create(team=self.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-            bank = Account.objects.create(team=self.team, name="Checking", account_group=asset_group)
+        with current_book(self.book):
+            group = AccountGroup.objects.create(book=self.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE)
+            account = Account.objects.create(book=self.book, name="Groceries", account_group=group)
+            asset_group = AccountGroup.objects.create(book=self.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+            bank = Account.objects.create(book=self.book, name="Checking", account_group=asset_group)
             BankTransaction.objects.create(
-                team=self.team,
+                book=self.book,
                 account=bank,
                 amount=Decimal("10.00"),
                 posted_date="2026-01-15",
                 description="Coffee",
             )
-            Budget.objects.create(team=self.team, category=account, month="2026-01-01", budget_amount=Decimal("100.00"))
+            Budget.objects.create(book=self.book, category=account, month="2026-01-01", budget_amount=Decimal("100.00"))
 
         # A team that skipped the guide but has since set itself up has no use for
         # an offer to pick it back up.
-        onboarding = OnboardingState.objects.get(team=self.team)
+        onboarding = OnboardingState.objects.get(book=self.book)
         onboarding.skip()
         onboarding.save()
 

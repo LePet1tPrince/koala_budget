@@ -4,6 +4,7 @@ import json
 import zipfile
 
 from apps.accounts.models import Account, AccountGroup, Payee
+from apps.books.models import Book
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
@@ -48,11 +49,22 @@ def export_user_data(user):
             ),
         )
 
-        for team in teams:
-            prefix = f"team_{team.slug}"
+        # Every set of books of every team, one folder each: nothing is shared
+        # between two books, so their CSVs never merge.
+        books = Book.objects.filter(team__in=teams).select_related("team").order_by("team__slug", "sort_order", "name")
+        zf.writestr(
+            "books.csv",
+            _build_csv(
+                ["team_slug", "book_name", "book_slug", "is_archived"],
+                [[book.team.slug, book.name, book.slug, book.is_archived] for book in books],
+            ),
+        )
+
+        for book in books:
+            prefix = f"team_{book.team.slug}/{book.slug}"
 
             # Account groups
-            groups = AccountGroup.objects.filter(team=team)
+            groups = AccountGroup.objects.filter(book=book)
             zf.writestr(
                 f"{prefix}/account_groups.csv",
                 _build_csv(
@@ -62,7 +74,7 @@ def export_user_data(user):
             )
 
             # Accounts
-            accounts = Account.objects.filter(team=team).select_related("account_group")
+            accounts = Account.objects.filter(book=book).select_related("account_group")
             zf.writestr(
                 f"{prefix}/accounts.csv",
                 _build_csv(
@@ -72,7 +84,7 @@ def export_user_data(user):
             )
 
             # Payees
-            payees = Payee.objects.filter(team=team)
+            payees = Payee.objects.filter(book=book)
             zf.writestr(
                 f"{prefix}/payees.csv",
                 _build_csv(
@@ -82,7 +94,7 @@ def export_user_data(user):
             )
 
             # Journal entries
-            entries = JournalEntry.objects.filter(team=team).select_related("payee")
+            entries = JournalEntry.objects.filter(book=book).select_related("payee")
             zf.writestr(
                 f"{prefix}/journal_entries.csv",
                 _build_csv(
@@ -103,7 +115,7 @@ def export_user_data(user):
             )
 
             # Journal lines
-            lines = JournalLine.objects.filter(team=team).select_related("journal_entry", "account")
+            lines = JournalLine.objects.filter(book=book).select_related("journal_entry", "account")
             zf.writestr(
                 f"{prefix}/journal_lines.csv",
                 _build_csv(
@@ -124,7 +136,7 @@ def export_user_data(user):
             )
 
             # Budgets
-            budgets = Budget.objects.filter(team=team).select_related("category")
+            budgets = Budget.objects.filter(book=book).select_related("category")
             zf.writestr(
                 f"{prefix}/budgets.csv",
                 _build_csv(
@@ -134,7 +146,7 @@ def export_user_data(user):
             )
 
             # Goals
-            goals = Goal.objects.filter(team=team)
+            goals = Goal.objects.filter(book=book)
             zf.writestr(
                 f"{prefix}/goals.csv",
                 _build_csv(
@@ -154,7 +166,7 @@ def export_user_data(user):
             )
 
             # Goal allocations
-            allocations = GoalAllocation.objects.filter(team=team).select_related("goal")
+            allocations = GoalAllocation.objects.filter(book=book).select_related("goal")
             zf.writestr(
                 f"{prefix}/goal_allocations.csv",
                 _build_csv(
@@ -164,7 +176,7 @@ def export_user_data(user):
             )
 
             # Plaid items
-            plaid_items = PlaidItem.objects.filter(team=team)
+            plaid_items = PlaidItem.objects.filter(book=book)
             zf.writestr(
                 f"{prefix}/plaid_items.csv",
                 _build_csv(
@@ -174,7 +186,7 @@ def export_user_data(user):
             )
 
             # Plaid accounts
-            plaid_accounts = PlaidAccount.objects.filter(team=team).select_related("item")
+            plaid_accounts = PlaidAccount.objects.filter(book=book).select_related("item")
             zf.writestr(
                 f"{prefix}/plaid_accounts.csv",
                 _build_csv(
@@ -216,13 +228,13 @@ def delete_user_account(user):
         if not other_members.exists():
             # Last member — delete all team data in dependency order to
             # respect PROTECT foreign keys, then delete the team.
-            PlaidAccount.objects.filter(team=team).delete()
-            PlaidItem.objects.filter(team=team).delete()
-            JournalLine.objects.filter(team=team).delete()
-            JournalEntry.objects.filter(team=team).delete()
-            Account.objects.filter(team=team).delete()
-            AccountGroup.objects.filter(team=team).delete()
-            Payee.objects.filter(team=team).delete()
+            PlaidAccount.objects.filter(book__team=team).delete()
+            PlaidItem.objects.filter(book__team=team).delete()
+            JournalLine.objects.filter(book__team=team).delete()
+            JournalEntry.objects.filter(book__team=team).delete()
+            Account.objects.filter(book__team=team).delete()
+            AccountGroup.objects.filter(book__team=team).delete()
+            Payee.objects.filter(book__team=team).delete()
             team.delete()
         else:
             # Other members exist — never destroy their data. If this user was

@@ -15,23 +15,28 @@ def move_goal_accounts_out_of_system_groups(apps, schema_editor):
     Account = apps.get_model("accounts", "Account")
     AccountGroup = apps.get_model("accounts", "AccountGroup")
 
+    # The tenant column: `team_id` at this point in the migration history, `book_id`
+    # when a test re-runs this function against today's models.
+    scope = "book_id" if any(f.name == "book" for f in Account._meta.get_fields()) else "team_id"
+
     stray = Account.objects.filter(goal__isnull=False, account_group__is_system=True).select_related("account_group")
     groups = {}
     for account in stray:
-        team_id = account.team_id
-        if team_id not in groups:
-            group = AccountGroup.objects.filter(team_id=team_id, account_type=EQUITY, name="Goals", is_system=False).first()
+        tenant = {scope: getattr(account, scope)}
+        key = tenant[scope]
+        if key not in groups:
+            group = AccountGroup.objects.filter(**tenant, account_type=EQUITY, name="Goals", is_system=False).first()
             if group is None:
                 name = "Goals"
-                if AccountGroup.objects.filter(team_id=team_id, name=name).exists():
+                if AccountGroup.objects.filter(**tenant, name=name).exists():
                     name = "Savings Goals"
                 group = AccountGroup.objects.filter(
-                    team_id=team_id, account_type=EQUITY, name=name, is_system=False
+                    **tenant, account_type=EQUITY, name=name, is_system=False
                 ).first() or AccountGroup.objects.create(
-                    team_id=team_id, account_type=EQUITY, name=name, description="Savings goals"
+                    **tenant, account_type=EQUITY, name=name, description="Savings goals"
                 )
-            groups[team_id] = group
-        account.account_group = groups[team_id]
+            groups[key] = group
+        account.account_group = groups[key]
         account.save(update_fields=["account_group"])
 
 

@@ -21,7 +21,7 @@ def test_accounts_board_shows_existing_accounts(authenticated_page: Page, live_s
     AccountFactory(team=team, account_group=group, name="Savings Account")
 
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_home(team.slug)
+    accounts.goto_home(team.default_book)
 
     names = accounts.get_account_names()
     assert "Checking Account" in names
@@ -39,18 +39,18 @@ def test_create_account(authenticated_page: Page, live_server, team):
     accounts.create_account(
         name="Office Supplies",
         account_group_name=group.name,
-        team_slug=team.slug,
+        book=team.default_book,
     )
 
     # Should redirect back to accounts area after save
-    assert f"/a/{team.slug}/accounts/accounts" in authenticated_page.url
+    assert f"{team.default_book.base_url}accounts/accounts" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)
 def test_accounts_board_empty_state(authenticated_page: Page, live_server, team):
     """With no accounts, the board shows all type sections with add-group buttons."""
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_home(team.slug)
+    accounts.goto_home(team.default_book)
 
     assert accounts.get_row_count() == 0
     # Six sections: the equity type is shown as Goals and Equity. Five offer a
@@ -65,11 +65,11 @@ def test_accounts_board_empty_state(authenticated_page: Page, live_server, team)
 def test_cancel_create_account_returns_home(authenticated_page: Page, live_server, team):
     """Clicking Cancel on the create form takes the user back to the accounts home."""
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_create(team.slug)
+    accounts.goto_create(team.default_book)
     accounts.click_cancel()
 
-    authenticated_page.wait_for_url(f"**/a/{team.slug}/accounts/", timeout=5_000)
-    assert authenticated_page.url.rstrip("/").endswith(f"/a/{team.slug}/accounts")
+    authenticated_page.wait_for_url(f"**{team.default_book.base_url}accounts/", timeout=5_000)
+    assert authenticated_page.url.rstrip("/").endswith(f"{team.default_book.base_url}accounts")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -78,7 +78,7 @@ def test_add_account_inline_from_group(authenticated_page: Page, live_server, te
     AccountGroupFactory(team=team, name="Bank Accounts")
 
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_home(team.slug)
+    accounts.goto_home(team.default_book)
 
     authenticated_page.locator("[data-testid='add-account-btn']").first.click()
     authenticated_page.locator("input[placeholder='New account name']").fill("Inline Chequing")
@@ -92,7 +92,7 @@ def test_add_account_inline_from_group(authenticated_page: Page, live_server, te
 def test_add_group_inline_from_section(authenticated_page: Page, live_server, team):
     """The "+ New … group" button at the bottom of a section creates a group."""
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_home(team.slug)
+    accounts.goto_home(team.default_book)
 
     section = authenticated_page.locator("[data-testid='account-type-section'][data-account-type='asset']")
     section.locator("[data-testid='add-group-btn']").click()
@@ -111,7 +111,7 @@ def test_edit_account_form_prefills_name(authenticated_page: Page, live_server, 
 
     accounts = AccountsPage(authenticated_page, live_server.url)
     accounts.goto(
-        f"/a/{team.slug}/accounts/accounts/{account.pk}/update/",
+        f"{team.default_book.base_url}accounts/accounts/{account.pk}/update/",
         wait_for="[data-testid='account-form']",
     )
 

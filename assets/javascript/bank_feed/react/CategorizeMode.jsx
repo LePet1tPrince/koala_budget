@@ -951,7 +951,7 @@ function SimilarTransactionsModal({ pendingBatch, onConfirm, onSkip, onCancel })
 }
 
 export default function CategorizeMode({
-  teamSlug,
+  book,
   allAccounts,
   allAccountGroups,
   allPayees = [],
@@ -978,16 +978,16 @@ export default function CategorizeMode({
   const [cardHeight, setCardHeight] = useState(220);
   const topCardRef = useRef(null);
   const headers = getApiHeaders();
-  const uploadApi = useMemo(() => getUploadApiHelpers(teamSlug), [teamSlug]);
-  const batchApi = useMemo(() => getBatchOperationsApi(teamSlug), [teamSlug]);
-  const transactionApi = useMemo(() => getTransactionApi(teamSlug), [teamSlug]);
+  const uploadApi = useMemo(() => getUploadApiHelpers(book.base), [book]);
+  const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
+  const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
   const payeeOptions = useMemo(() => allPayees.map(p => p.name).filter(Boolean), [allPayees]);
 
   const fetchUncategorized = useCallback(async () => {
     setLoading(true);
     try {
       let allRows = [];
-      let url = `/a/${teamSlug}/bankfeed/api/feed/`;
+      let url = `${book.base}bankfeed/api/feed/`;
       while (url) {
         const resp = await fetch(url, { credentials: 'include', headers });
         const data = await resp.json();
@@ -1006,7 +1006,7 @@ export default function CategorizeMode({
     } finally {
       setLoading(false);
     }
-  }, [teamSlug]);
+  }, [book]);
 
   // Ask the server which categories were used on transactions similar to these.
   // An id that comes back with nothing is cached as an empty list, so a
@@ -1016,7 +1016,7 @@ export default function CategorizeMode({
     ids.forEach(id => { grouped[id] = []; });
     try {
       const resp = await fetch(
-        `/a/${teamSlug}/bankfeed/api/feed/similar_categories/?ids=${ids.join(',')}`,
+        `${book.base}bankfeed/api/feed/similar_categories/?ids=${ids.join(',')}`,
         { credentials: 'include', headers }
       );
       if (resp.ok) {
@@ -1034,7 +1034,7 @@ export default function CategorizeMode({
       setSuggestionsByTransaction(prev => ({ ...prev, ...grouped }));
       ids.forEach(id => suggestionsInFlight.current.delete(id));
     }
-  }, [teamSlug]);
+  }, [book]);
 
   // Only the cards about to be seen are looked up, so a queue of a thousand
   // transactions still costs one small request at a time.
@@ -1127,7 +1127,7 @@ export default function CategorizeMode({
         ),
         ...(plain.length
           ? [
-              fetch(`/a/${teamSlug}/bankfeed/api/feed/categorize/`, {
+              fetch(`${book.base}bankfeed/api/feed/categorize/`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: { ...headers, 'Content-Type': 'application/json' },
@@ -1151,7 +1151,7 @@ export default function CategorizeMode({
       setError(err.message || 'Could not categorize that transaction.');
       setIsExiting(false);
     }
-  }, [transactions, teamSlug, headers, drafts, batchApi, advanceQueue]);
+  }, [transactions, book, headers, drafts, batchApi, advanceQueue]);
 
   // Categorizing the top transaction: if other uncategorized transactions
   // share its home account and description, offer to categorize them the
@@ -1460,7 +1460,7 @@ export default function CategorizeMode({
         transaction={splitTransaction}
         allAccounts={localAccounts}
         allPayees={allPayees}
-        teamSlug={teamSlug}
+        book={book}
         onSave={handleSplitSave}
         mode="edit"
         startSplit

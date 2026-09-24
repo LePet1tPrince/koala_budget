@@ -1,6 +1,6 @@
 # Multiple sets of books per team
 
-Status: plan agreed (decisions D1–D7 confirmed), not started. Motivated by the "Let me budget with future income"
+Status: implemented (M1–M6). Decisions D1–D7 confirmed; see "Implementation notes" at the end for where the build differs from this plan. Motivated by the "Let me budget with future income"
 setting (`docs/unassigned-plan.md` §2, §6), which belongs to a set of books rather
 than to a team or a person.
 
@@ -338,3 +338,45 @@ Each milestone ships with the full test suite green.
   book covers "split this off" coarsely.
 - **UI wording.** "books" vs "set of books" in labels and headings. The code name is
   settled (`Book`, D1).
+
+## 12. Implementation notes
+
+Built in one change covering M1–M6. Where it differs from the text above:
+
+- **Milestones were not shipped separately.** The code went straight to the M6 end
+  state (no `team` column on book models). The migrations still follow M1 → M3 → M6
+  as separate steps (`books.0001`–`0003`, each app's `00NN_book` and
+  `00NN_book_required`), and they are reversible: the required step makes `team`
+  nullable before dropping it and refills it from the book on the way back.
+- **No waffle flag for "New set of books".** It was only there to hide a
+  half-converted app until M4 landed; M4 landed in the same change.
+- **`BaseTeamModel`, `TeamScopedManager` and `STRICT_TEAM_CONTEXT` remain** for the
+  Pegasus `teams_example.Player` demo only (§9's structural test expects exactly
+  that). `AccountTeamScopedManager` and `for_team` on financial models are gone.
+- **The legacy redirect is mounted before the book include**, not after: with the
+  book include first, `/a/{team}/budget/` resolves as a book called `budget` and a
+  later pattern never runs. The reserved-slug rule makes the order safe.
+- **Team-level `books/`** (`/a/{team}/books/`, list and create) was added; the slug is
+  reserved like every other first segment.
+- **Book settings are admin-only** (name/slug, budgeting, archive/delete) and so is
+  creating a book. Archived books stay reachable by URL (so they can be restored)
+  but leave the switcher and are never a default.
+- **Export & Import confirms with the book's name**, not the team's: it is the book
+  that gets replaced. Its manifest `source` carries both names.
+- **Loading an export finishes the book's onboarding**, as the YNAB import already
+  did, so a book started that way does not land in the questionnaire.
+- **The api-client was patched, not regenerated** (no Java/generator available in
+  the build environment); the patch follows the generator's own output shape.
+  `make build-api-client` should produce the same result.
+- **Found by the isolation suite and fixed:** `PlaidTransactionViewSet` always
+  returned a 500 (`select_related("journal_entry")`), `JournalEntrySerializer`
+  accepted another tenant's account and payee ids, and another book's account on
+  the activity page rendered an empty page instead of a 404.
+- **Merged with goals-as-envelopes** (develop #220/#222) and develop's friendly
+  team 404 (#223). The book migrations were renumbered to follow develop's
+  (`budget.0005_book`/`0006_book_required`, `audit.0011_book`); the new goal
+  close/cover endpoints are book URLs and sit in the isolation tables. A book slug
+  the team doesn't have is now a rendered 404 from the book decorator (or DRF
+  `NotFound`), not an `Http404` raised inside `BooksMiddleware`, for the reason
+  develop gave for teams: the raise skipped the view's decorator and showed
+  Django's technical page under DEBUG.

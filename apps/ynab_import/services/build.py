@@ -50,7 +50,7 @@ EQUITY_TYPE = "goal"  # KB's account-type code for equity
 
 # The offset every opening balance and reconciliation adjustment posts against.
 # Same name the onboarding template and `onboarding.services.opening` use, so a
-# YNAB-imported team behaves like any other from there on.
+# YNAB-imported book behaves like any other from there on.
 EQUITY_ACCOUNT = "Reconciliation Adjustments"
 
 # Account numbers follow the project convention and double as display order.
@@ -290,7 +290,7 @@ class _Chart:
     """
     The chart of accounts being assembled, with groups created on first use.
 
-    Two collision rules, both of them the app's own: a team cannot have two account
+    Two collision rules, both of them the app's own: a book cannot have two account
     groups with the same name (whatever their types), and an account name is unique
     within its type. Rather than fail on either, a colliding name is qualified --
     losing a category to a silent merge would be worse than an ugly name.
@@ -1021,7 +1021,7 @@ def _notes(
 
     notes.append(
         "Amounts were imported exactly as exported. A YNAB export carries no currency, so they are treated as "
-        "your team's currency."
+        "your currency."
     )
     return notes
 

@@ -18,8 +18,8 @@
   </div>
 
   {{ api_urls|json_script:'api-urls' }}
+  {{ request.book.base_url|json_script:'book-base' }}
   {{ initial_filters|json_script:'initial-filters' }}
-  {{ team_slug|json_script:'team-slug' }}
 {% endblock %}
 
 {% block page_js %}

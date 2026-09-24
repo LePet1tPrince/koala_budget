@@ -2,12 +2,35 @@
 {% load icons %}
 {% comment %}
   Desktop sidebar (restyle plan Phase 2). Stacked surfaces on the canvas:
-  Unassigned pill, nav panel, user menu. The team switcher card that used to
-  head it is gone -- Team settings and Add a team live in Settings. The user
-  menu holds the account-level actions and the theme toggle that used to sit
-  in the top navbar, which app pages no longer render above `lg`.
+  Team › Book switcher, Unassigned pill, nav panel, user menu. The user menu
+  holds the account-level actions and the theme toggle that used to sit in the
+  top navbar, which app pages no longer render above `lg`.
 {% endcomment %}
 <div class="flex h-full w-full flex-col gap-3">
+
+  {% comment %}
+    Team › Book switcher. The set of books is the main label -- it is what every
+    page below it is showing -- with its team underneath.
+  {% endcomment %}
+  <div class="dropdown w-full">
+    <div tabindex="0" role="button" class="side-tile" data-testid="team-switcher">
+      <span class="side-avatar">
+        {% if nav_team %}{{ nav_team.name|slice:":1"|upper }}{% else %}{{ request.user.get_display_name|slice:":1"|upper }}{% endif %}
+      </span>
+      <span class="side-tile-text min-w-0 flex-1">
+        <span class="block truncate text-sm font-medium leading-tight" data-testid="switcher-book-name">
+          {% if nav_book %}{{ nav_book.name }}{% elif nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+        </span>
+        <span class="block truncate text-xs leading-tight text-base-content/70" data-testid="switcher-team-name">
+          {% if nav_book %}{{ nav_team.name }}{% else %}{% translate "Workspace" %}{% endif %}
+        </span>
+      </span>
+      <span class="side-tile-text">{% icon "chevrons-up-down" class="inline-block shrink-0 w-3.5 h-3.5 text-base-content/40" %}</span>
+    </div>
+    <ul tabindex="0" class="dropdown-content menu z-20 mt-1 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+      {% include "web/components/team_nav_items.html" %}
+    </ul>
+  </div>
 
   {# Unassigned: the one figure every page answers to #}
   {% include "budget/components/unassigned_pill.html" %}
