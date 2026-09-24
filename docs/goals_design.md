@@ -1,5 +1,8 @@
 # Goals Feature Design (Adjusted for Project Patterns)
 
+> **Superseded in part:** goal spending, goal states and the reporting of spending from
+> goals are planned in `docs/goals-envelopes-plan.md`.
+
 > **Note:** This design has been adjusted to follow the existing project patterns in `apps/budget`.
 > All changes should be made in `apps/budget` (NOT the deprecated `apps/goals` app).
 
