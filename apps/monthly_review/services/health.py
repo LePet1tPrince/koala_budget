@@ -69,6 +69,7 @@ def account_health(team, month) -> dict:
               "balance_gap": Decimal,
               "balance_change": Decimal,       # this month's net movement (balance - opening balance)
               "account_type": str,             # "asset" | "liability"
+              "institution": str | None,       # institution name, None when unset
               "flags": [{"kind": str, ...}, ...],
           }, ...],
           "flags": [{"kind": str, "account": Account, ...}, ...],  # flattened
@@ -80,7 +81,7 @@ def account_health(team, month) -> dict:
 
     accounts = list(
         Account.objects.filter(team=team, has_feed=True, is_system=False)
-        .select_related("account_group")
+        .select_related("account_group", "institution")
         # As of month end: reviewing August must not flag what happened in September.
         .with_balance(as_of=month_end)
         .with_reconciled_balance(as_of=month_end)
@@ -237,6 +238,7 @@ def account_health(team, month) -> dict:
                 "balance_gap": balance_gap,
                 "balance_change": balance_change,
                 "account_type": account.account_group.account_type,
+                "institution": account.institution.name if account.institution else None,
                 "flags": flags,
             }
         )

@@ -3,7 +3,31 @@ import React from 'react';
 import Icon from '../../common/Icon';
 import { currency } from '../format';
 
-const ACCOUNT_TYPE_LABEL = { asset: 'Asset', liability: 'Liability' };
+const TYPE_ORDER = ['asset', 'liability'];
+const TYPE_HEADING = { asset: 'Assets', liability: 'Liabilities' };
+
+/**
+ * Institution → account type → accounts. Institutions A–Z with "No institution"
+ * last; assets before liabilities; accounts keep the server's (board) order.
+ */
+const groupAccounts = (accounts) => {
+  const byInstitution = new Map();
+  accounts.forEach((row) => {
+    const key = row.institution || '';
+    if (!byInstitution.has(key)) byInstitution.set(key, new Map());
+    const byType = byInstitution.get(key);
+    if (!byType.has(row.account_type)) byType.set(row.account_type, []);
+    byType.get(row.account_type).push(row);
+  });
+  return [...byInstitution.entries()]
+    .sort(([a], [b]) => (!a ? 1 : !b ? -1 : a.localeCompare(b)))
+    .map(([institution, byType]) => ({
+      institution,
+      types: [...byType.entries()]
+        .sort(([a], [b]) => TYPE_ORDER.indexOf(a) - TYPE_ORDER.indexOf(b))
+        .map(([type, rows]) => ({ type, rows })),
+    }));
+};
 
 /** Row background: red when the account had nothing to check, yellow for any other flag. */
 const rowClass = (flags) => {
@@ -49,25 +73,41 @@ const StepHealth = ({ review }) => {
           <thead>
             <tr>
               <th>Account</th>
-              <th>Type</th>
               <th className="text-right">Transactions</th>
               <th className="text-right">Unreconciled</th>
               <th className="text-right">Balance change</th>
             </tr>
           </thead>
           <tbody>
-            {accounts.map((row) => (
-              <tr key={row.account.id} className={rowClass(row.flags)} title={flagTitles(row.flags)}>
-                <td>{row.account.name}</td>
-                <td className="text-base-content/70">{ACCOUNT_TYPE_LABEL[row.account_type] || row.account_type}</td>
-                <td className="text-right">{row.transaction_count}</td>
-                <td className="text-right">{row.unreconciled_count}</td>
-                <td className="text-right">{currency(row.balance_change)}</td>
-              </tr>
+            {groupAccounts(accounts).map(({ institution, types }) => (
+              <React.Fragment key={institution || '__none__'}>
+                <tr className="bg-base-200/60" data-testid="health-institution-row">
+                  <td colSpan={4} className="font-semibold">
+                    {institution || 'No institution'}
+                  </td>
+                </tr>
+                {types.map(({ type, rows }) => (
+                  <React.Fragment key={type}>
+                    <tr>
+                      <td colSpan={4} className="pl-6 text-xs uppercase tracking-wide text-base-content/70">
+                        {TYPE_HEADING[type] || type}
+                      </td>
+                    </tr>
+                    {rows.map((row) => (
+                      <tr key={row.account.id} className={rowClass(row.flags)} title={flagTitles(row.flags)}>
+                        <td className="pl-10">{row.account.name}</td>
+                        <td className="text-right">{row.transaction_count}</td>
+                        <td className="text-right">{row.unreconciled_count}</td>
+                        <td className="text-right">{currency(row.balance_change)}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                ))}
+              </React.Fragment>
             ))}
             {!accounts.length && (
               <tr>
-                <td colSpan={5} className="text-center text-base-content/70 py-6">
+                <td colSpan={4} className="text-center text-base-content/70 py-6">
                   No feed accounts yet.
                 </td>
               </tr>

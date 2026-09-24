@@ -299,6 +299,16 @@ class AccountHealthTests(TestCase):
         self.assertEqual(row["balance"], Decimal("-130.00"))
         self.assertEqual(row["balance_change"], Decimal("-30.00"))
         self.assertEqual(row["account_type"], ACCOUNT_TYPE_ASSET)
+        self.assertIsNone(row["institution"])
+
+    def test_institution_name_is_reported(self):
+        from apps.accounts.models import Institution
+
+        account = self._account("Chequing")
+        account.institution = Institution.objects.create(team=self.team, name="Maple Bank")
+        account.save()
+        row = account_health(self.team, self.month)["accounts"][0]
+        self.assertEqual(row["institution"], "Maple Bank")
 
 
 class StatementDueTests(TestCase):
