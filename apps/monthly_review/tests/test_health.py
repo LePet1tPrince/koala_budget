@@ -269,6 +269,7 @@ class AccountHealthTests(TestCase):
         # balance_change must read -30 regardless of what came before it.
         self.assertEqual(row["balance"], Decimal("-130.00"))
         self.assertEqual(row["balance_change"], Decimal("-30.00"))
+        self.assertEqual(row["account_type"], ACCOUNT_TYPE_ASSET)
 
 
 class StatementDueTests(TestCase):

@@ -231,7 +231,7 @@ def account_health(team, month) -> dict:
                 "reconciled_balance": reconciled_balance,
                 "balance_gap": balance_gap,
                 "balance_change": balance_change,
-                "account_type": account.account_type,
+                "account_type": account.account_group.account_type,
                 "flags": flags,
             }
         )
