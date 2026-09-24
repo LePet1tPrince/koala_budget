@@ -3,6 +3,65 @@
 **Author:** Product Owner
 **Date:** 2026-09-21
 **Branch surveyed:** `claude/koala-feature-priority-report-f79194` (at `cfbb6c6`, 205 merged PRs)
+**Status updated:** 2026-09-24, against `develop` at `b941901` (PR #224). Items shipped since
+are ~~struck through~~ with ✅; partially shipped items are marked 🟡. See §0.
+
+---
+
+## 0. Status update — 2026-09-24
+
+Re-verified against the code, not the PR titles.
+
+### Done from this report
+
+| Item | Shipped in | Evidence |
+|---|---|---|
+| ✅ P1.1 Split transactions in the UI | #208 | `apps/bank_feed/services/splits.py`, `SplitEditor.jsx` in `EditTransactionModal`, split from categorize mode (`758ed94`); the five two-line assumptions fixed; Transactions page shows `Split (N)` and expands legs |
+| ✅ P1.3 Statement reconciliation flow | #215 | `apps/reconciliation/` — `Reconciliation` model, per-account workspace, finish/adjust, undo, drift detection, diagnose hints, guards on every write path |
+
+### Partially done
+
+| Item | State |
+|---|---|
+| 🟡 P1.2 Manual entry / edit / delete | **The report overstated this gap.** The bank feed has had an **Add** button (`LineTable.jsx:488`, create mode in `EditTransactionModal`), edit, and `batch_delete` since July, for any account with `has_feed` — a cash wallet with a feed can take cash spending, and splits can now be authored there. **Still missing:** the Transactions page is still read-only (no row edit/delete/add, `apps/journal/urls.py` has one page view), and there is no general-journal entry for accounts without a feed (adjustments, revaluations, equity moves). Remaining effort ≈ S/M, 3–4 days, reusing `EditTransactionModal` + `SplitEditor`. |
+| 🟡 P1.6 User preferences | A per-book **Budgeting** settings page shipped with Books (#224: `Book.budget_future_income`). Nothing user-level: no date format, timezone, fiscal-year start, default account, or notification opt-ins. |
+| 🟡 P3.1 Multi-currency | No currency field anywhere still. Books (#224) give an unplanned escape hatch: a separate set of books for USD accounts is fully isolated, so it never pollutes CAD totals. No consolidated view, no FX. |
+
+### Shipped since the report, not on it
+
+- **Data export / import** (#204) — whole book to a zip of CSVs and back, replace-only, verified before commit (`apps/portability/`).
+- **Multiple sets of books per team** (#224) — `Book` is now the money tenant; all financial models are `BaseBookModel`; URLs are `/a/{team}/{book}/…`.
+- **Goals as envelopes** (#218, `c49377f`, `99c3dbb`) — spending from goals, close/cover, goal-aware reports.
+- **Unassigned** (#218) — one `compute_unassigned()` feeding the sidebar pill, dashboard, and new Dollar Map report.
+- **Monthly review health table** (#221), budget "Move to…" picker (#216), account deletion modal (#217), feed rows-per-page (#213), collapsible nav (#212), E2E fixes (#210).
+
+### Corrections to the original text
+
+- P0.4 said there was no `apps/users/emails.py`. There is: a Pegasus **welcome email** (`apps/users/emails.py`, sent from `apps/users/signals.py`). Everything else in P0.4 is still absent — no alert emails, no preference/unsubscribe model, `DEFAULT_FROM_EMAIL` still a personal Gmail (`settings.py:411`).
+- The `STRICT_TEAM_CONTEXT` note in §2 is moot: the setting is now `STRICT_BOOK_CONTEXT = True` (`settings.py:690`).
+
+### Still open, unchanged (verified 2026-09-24)
+
+All seven **P0** items: Plaid token plaintext (`apps/plaid/models.py:19`), webhook unverified (`apps/plaid/views.py`), no `ITEM_LOGIN_REQUIRED` handling and the `ITEM`/`ERROR` webhook only logs, Link Bank still only in the zero-accounts state and the table's overflow menu, no trial/founding price in Stripe, no `/pricing` or `/vs/*` pages and undraw art still on the landing page, `/pegasus/` + `example/` routes still mounted and the AI Chat link still highlighted in `app_nav.html:44` over the weather/admin/employees agents.
+**P1:** 4 (rules), 5 (notifications), 7 (mobile — feed table still `table-fixed`). **P2:** all eleven. **P3:** 2–7.
+
+### Revised next priorities
+
+With splits and reconciliation done, P1's two "fight for it" items are closed. The
+remaining risk sits almost entirely in P0, which is untouched.
+
+1. **Plaid hardening — P0.1 + P0.2** (S, 2–4 days). Cheapest items left; one PR.
+2. **Retire the demo surface, minimal version — P0.7** (XS–S, ~1 day). Unmount `/pegasus/` and `example/`, drop the AI Chat nav link.
+3. **Plaid health + reconnect + discoverable Link — P0.3** (M, 4–6 days). Now the worst failure mode left against a reconciliation guarantee that the app can finally measure: a stale feed makes reconciliation fail for reasons the user cannot see.
+4. **Email + notification preferences — P0.4 with the consent half of P1.6** (M/L, 7–10 days). Precondition for P0.3's alert, trial emails, P1.5 and P2.9. Build the preference/unsubscribe model first (CASL).
+5. **Stripe offer + conversion pages — P0.5 + P0.6** (founder copy in parallel). Gate for the founding-member push.
+6. **Auto-categorization rules — P1.4** (M, 5–8 days). Now the top P1: the largest remaining weekly cost to the user.
+7. **Finish P1.2** (S/M, 3–4 days). Edit/delete/add on the Transactions page and non-feed journal entries, on the existing modal.
+
+Also: a short stabilisation pass. Books, goals-as-envelopes, Unassigned and
+reconciliation (~4 large, cross-cutting changes) merged within three days; run the full
+E2E suite against `develop` and a manual walkthrough of a YNAB-imported book before
+starting new feature work.
 
 ---
 
@@ -277,7 +336,7 @@ production attack surface we get nothing for.
 
 Seven items, **~35–50 dev-days**. The core loop works; these are the walls users hit.
 
-### P1.1 — Split transactions in the UI ⭐ *highest-value single item in this report*
+### ~~P1.1 — Split transactions in the UI~~ ✅ Done (#208)
 **Effort: M/L · 6–9 days · Complexity: Medium/High**
 
 The API already supports multi-line entries with balance validation
@@ -304,7 +363,7 @@ debit/credit subqueries. Audit that list before estimating firmly.
 
 ---
 
-### P1.2 — Manual transaction entry, edit and delete
+### P1.2 — Manual transaction entry, edit and delete 🟡 Partial (see §0)
 **Effort: M · 5–7 days · Complexity: Medium**
 
 `apps/journal/urls.py` exposes one page view — `transactions_home` — and
@@ -327,7 +386,7 @@ Transactions page cannot open.
 
 ---
 
-### P1.3 — Statement reconciliation flow
+### ~~P1.3 — Statement reconciliation flow~~ ✅ Done (#215)
 **Effort: M/L · 6–9 days · Complexity: Medium**
 
 `JournalLine.is_reconciled` exists and the bank feed can batch reconcile/unreconcile with
@@ -387,7 +446,7 @@ establish the patterns.
 
 ---
 
-### P1.6 — User preferences
+### P1.6 — User preferences 🟡 Partial (per-book Budgeting page only, #224)
 **Effort: S/M · 3–5 days · Complexity: Low**
 
 The settings shell shipped (#202) with Profile, Password, Team, Subscription, YNAB import
@@ -447,7 +506,7 @@ Ten items, **~55–80 dev-days**. Pick by channel, not by order.
 
 | # | Item | Effort | Why not now |
 |---|---|---|---|
-| P3.1 | **Multi-currency** | XL · 15–25 days · Very High | No currency field exists anywhere; `currency_tags.py` hardcodes `$`. Genuinely wanted by Canadians with USD accounts, and genuinely an architectural change touching every amount, every report, every aggregate, plus FX rate history and revaluation accounting. Do not start this until P0 and P1 are done — it can eat a quarter. Consider a scoped version: **display-only USD accounts excluded from CAD totals**, which is days not weeks, and buys most of the goodwill. |
+| P3.1 🟡 | **Multi-currency** (separate-book workaround exists, §0) | XL · 15–25 days · Very High | No currency field exists anywhere; `currency_tags.py` hardcodes `$`. Genuinely wanted by Canadians with USD accounts, and genuinely an architectural change touching every amount, every report, every aggregate, plus FX rate history and revaluation accounting. Do not start this until P0 and P1 are done — it can eat a quarter. Consider a scoped version: **display-only USD accounts excluded from CAD totals**, which is days not weeks, and buys most of the goodwill. |
 | P3.2 | **Goals: choose one of three styles** | S · 1 day · Low | `goals_summit` / `goals_koala` / `goals_arcade` all ship today as a deliberate review mechanism. Someone needs to *decide*, then delete two templates and their JS branches. Pure debt with a product decision attached — it is cheap, it is just not urgent. |
 | P3.3 | **PWA / offline** | M · 5–8 days · Medium | No manifest, no service worker. Revisit after P1.7 tells us whether phone usage is real. |
 | P3.4 | **Granular household permissions** (read-only partner) | M · 5–7 days · Medium | Teams has admin/member. No one has asked for finer grain yet. |
@@ -469,14 +528,14 @@ Ten items, **~55–80 dev-days**. Pick by channel, not by order.
 | **P0** | 6 | Pricing + comparison + security pages, real screenshots | M | 4–6 | Low |
 | **P0** | 7 | Retire the Pegasus demo surface | S/M | 2–4 | Medium |
 | | | **P0 subtotal** | | **22–33** | |
-| **P1** | 1 | ⭐ Split transactions in the UI | M/L | 6–9 | Medium/High |
-| **P1** | 2 | Manual transaction entry / edit / delete | M | 5–7 | Medium |
-| **P1** | 3 | Statement reconciliation flow | M/L | 6–9 | Medium |
+| **P1** | 1 | ~~Split transactions in the UI~~ ✅ | M/L | 6–9 | Medium/High |
+| **P1** | 2 | Manual transaction entry / edit / delete 🟡 (remaining: Transactions page + non-feed entries) | S/M | 3–4 | Medium |
+| **P1** | 3 | ~~Statement reconciliation flow~~ ✅ | M/L | 6–9 | Medium |
 | **P1** | 4 | Auto-categorization rules | M | 5–8 | Medium |
 | **P1** | 5 | In-app notification centre | M | 5–7 | Low/Medium |
-| **P1** | 6 | User preferences | S/M | 3–5 | Low |
+| **P1** | 6 | User preferences 🟡 | S/M | 3–5 | Low |
 | **P1** | 7 | Mobile experience pass | M | 5–8 | Medium |
-| | | **P1 subtotal** | | **35–53** | |
+| | | **P1 subtotal** (remaining) | | **~21–32** | |
 | **P2** | 1–11 | Growth and differentiation (table §6) | — | **55–80** | mixed |
 | **P3** | 1–7 | Watch list (table §7) | — | **38–60** | mixed |
 
@@ -513,12 +572,12 @@ keeps asking about net worth: **P2.3 investments**.
 
 ## 10. Risks and judgement calls I want on the record
 
-1. **Splits are the one item I would fight for.** If only a single P1 ships, make it
+1. ✅ *Resolved by #208.* **Splits are the one item I would fight for.** If only a single P1 ships, make it
    P1.1. We currently import financial structures we cannot author or edit, in the exact
    migration path that is our primary acquisition channel. Everything else on the P1 list
    is a wall users hit; this one is a wall we built and then sold tickets to.
 
-2. **The reconciliation guarantee is currently unfalsifiable.** P1.3 is the instrument
+2. ✅ *Resolved by #215.* **The reconciliation guarantee is currently unfalsifiable.** P1.3 is the instrument
    that makes the marketing claim honest in both directions. Until it ships, we have a
    refund promise with no way to demonstrate compliance — and the guarantee is load-bearing
    in the positioning.
