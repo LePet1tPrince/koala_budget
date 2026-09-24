@@ -14,25 +14,16 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.db.models import Count, Max, Min, Sum
-from django.urls import reverse
+from django.db.models import Count, Max, Sum
 
 from apps.accounts.models import Account
 from apps.bank_feed.models import BankTransaction
 from apps.journal.models import JournalLine, counted_entries
-from apps.reconciliation.models import Reconciliation
 
 NO_TRANSACTIONS = "no_transactions"
 STALE_ACCOUNT = "stale_account"
 UNCATEGORIZED = "uncategorized"
 UNRECONCILED = "unreconciled"
-BALANCE_GAP = "balance_gap"
-STATEMENT_DUE = "statement_due"
-
-#: A statement is due once the last one is this old at the end of the month...
-STATEMENT_DUE_DAYS = 45
-#: ...or, for an account never reconciled, once it has this much history.
-FIRST_STATEMENT_AFTER_DAYS = 30
 
 
 def _stale_days() -> int:
@@ -139,26 +130,7 @@ def account_health(team, month) -> dict:
         .annotate(latest=Max("posted_date"))
         .values_list("account_id", "latest")
     )
-    first_transaction_dates = dict(
-        BankTransaction.objects.filter(team=team, account_id__in=account_ids, is_archived=False)
-        .values("account_id")
-        .annotate(first=Min("posted_date"))
-        .values_list("account_id", "first")
-    )
     opening_balances = _opening_balances(team, account_ids, month_start)
-    last_statement_dates = dict(
-        # As of the month's end, like every other check here: reviewing July must
-        # not be satisfied by a statement reconciled in September.
-        Reconciliation.objects.filter(
-            team=team,
-            account_id__in=account_ids,
-            status=Reconciliation.STATUS_COMPLETED,
-            statement_date__lte=month_end,
-        )
-        .values("account_id")
-        .annotate(latest=Max("statement_date"))
-        .values_list("account_id", "latest")
-    )
 
     stale_days = _stale_days()
     result_accounts = []
@@ -197,32 +169,6 @@ def account_health(team, month) -> dict:
                     "account": account,
                     "count": unreconciled_count,
                     "gap": balance_gap,
-                }
-            )
-
-        if balance_gap != 0 and not any(f["kind"] == UNRECONCILED for f in flags):
-            # A gap can exist even with zero unreconciled *bank feed* transactions
-            # (e.g. a manual journal entry touching the account) -- surfaced on
-            # its own so it is never silently dropped.
-            flags.append({"kind": BALANCE_GAP, "account": account, "gap": balance_gap})
-
-        # The reconciliation guarantee only means something if statements are
-        # actually checked: flag an account whose last one is old, or one with a
-        # month of history that has never been reconciled.
-        last_statement = last_statement_dates.get(account.pk)
-        first_transaction = first_transaction_dates.get(account.pk)
-        if (last_statement and (month_end - last_statement).days > STATEMENT_DUE_DAYS) or (
-            last_statement is None
-            and first_transaction
-            and (month_end - first_transaction).days >= FIRST_STATEMENT_AFTER_DAYS
-        ):
-            flags.append(
-                {
-                    "kind": STATEMENT_DUE,
-                    "account": account,
-                    "last_statement_date": last_statement,
-                    "url": reverse("reconciliation:account", args=[team.slug, account.pk]),
-                    "hub_url": reverse("reconciliation:hub", args=[team.slug]),
                 }
             )
 
