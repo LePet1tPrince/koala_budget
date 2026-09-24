@@ -53,7 +53,7 @@ to assign (YNAB's term), Jobless dollars, Unclaimed.
 | Question | Decision |
 |---|---|
 | Do illiquid assets (house, RRSP, car) count? | **Yes, for now.** Unassigned is based on full net worth. A "Holdings" bucket that absorbs illiquid accounts is parked; revisit if it bites (see §4.4). |
-| Budget with income that hasn't arrived? | **A setting: "Let me budget with future income".** On: income is budgeted and counted before it lands (current behaviour). Off: income budgeting disappears entirely (income rows hidden from the budget page, grid and Budget vs Actual; income categories excluded from the envelope sum) and money becomes unassigned only once it lands. Open: team-level or profile-level (see §6). |
+| Budget with income that hasn't arrived? | **A setting: "Let me budget with future income".** On: income is budgeted and counted before it lands (current behaviour). Off: income budgeting disappears entirely (income rows hidden from the budget page, grid and Budget vs Actual; income categories excluded from the envelope sum) and money becomes unassigned only once it lands. **Decided: a setting on each set of books** — see `docs/books-plan.md`. |
 | Negative Unassigned | **An alarm on every screen.** The label changes to "Over-assigned", it renders in the error colour, and it stays that way until resolved. |
 | Overspent envelopes | **Carry the negative.** An overspent category (or goal) keeps its red negative balance into the next month. The user is never forced to cover it; covering is an offered action, not a requirement. (Deliberately unlike YNAB, which pulls overspending out of Ready to Assign.) Mathematically this means overspending does not move Unassigned — the shortfall stays visible on the envelope that caused it. |
 | Goals: equity accounts or something else? | **Stay equity accounts. No migration.** Almost every equity account is a goal; the one exception is the system reconciliation/opening-balance account (`is_system=True`), which is excluded wherever goals are enumerated. |
@@ -195,11 +195,8 @@ of flagging it as overspending.
 
 ## 6. Open questions
 
-- **Future-income setting: team or profile?** Budgets are team-scoped. A per-profile
-  setting would show two partners different numbers for the same budget, and hiding
-  income rows for one would hide shared data. Recommendation: a workspace setting in
-  the Settings hub; if it must be per-profile, it should only change which figure that
-  person sees.
+- ~~Future-income setting: team or profile?~~ Decided: per set of books, which
+  introduces multiple books per team (`docs/books-plan.md`).
 - **Default for new teams** — probably off (only budget money you have), possibly asked
   during onboarding.
 - **Final name.**
