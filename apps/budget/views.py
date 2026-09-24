@@ -250,8 +250,8 @@ def budget_month_view(request, team_slug):
             "api_urls": api_urls,
             "team_slug": team_slug,
             "save_amount_url": f"/a/{team_slug}/budget/save-amount/",
-            "cover_url": reverse("budget:budget_cover_from_goal", args=[team_slug]),
-            # Goals an overspent category can be covered from (emergency fund, ...).
+            "cover_url": reverse("budget:budget_cover", args=[team_slug]),
+            # Goals an overspent category can be covered from (emergency fund, ...), besides Unassigned.
             "cover_goals": [
                 {"id": goal.pk, "name": goal.name, "left": f"{goal.left:.2f}"}
                 for goal in GoalService(request.team).get_goals_with_progress(month)
@@ -1246,17 +1246,27 @@ def goal_close_view(request, team_slug, pk):
     return redirect(back)
 
 
+COVER_FROM_UNASSIGNED = "unassigned"
+COVER_FROM_GOAL = "goal"
+
+
 @login_and_team_required
 @require_POST
-def budget_cover_from_goal(request, team_slug):
+def budget_cover(request, team_slug):
     """
-    Cover an overspent budget row from a goal (docs/goals-envelopes-plan.md §4.4).
+    Cover an overspent budget row (docs/goals-envelopes-plan.md §4.4).
 
-    Body: {"category_id": int, "goal_id": int, "month": "YYYY-MM-DD", "amount": "123.45"}.
-    One transaction: the goal gives up `amount` (a negative allocation this month)
-    and the category's budget for the month rises by the same amount, so
-    Unassigned doesn't move. Returns every figure the budget page shows, like
-    `budget_save_amount`. The goal may go negative -- overspending is carried.
+    Body: {"category_id": int, "month": "YYYY-MM-DD", "amount": "123.45",
+           "source": "unassigned" | "goal", "goal_id": int (with source "goal")}.
+
+    - From Unassigned: the category's budget for the month rises by `amount`, so
+      Unassigned falls by it -- the money that had no job gets this one.
+    - From a goal: the goal gives up `amount` (a negative allocation this month) and
+      the budget rises by the same, so Unassigned doesn't move. The goal may go
+      negative -- overspending is carried.
+
+    Either way it is one transaction, and the response carries every figure the
+    budget page shows, like `budget_save_amount`.
     """
     try:
         payload = json.loads(request.body)
@@ -1265,17 +1275,27 @@ def budget_cover_from_goal(request, team_slug):
     if not isinstance(payload, dict):
         return JsonResponse({"error": _("Invalid request body.")}, status=400)
 
+    source = payload.get("source") or (COVER_FROM_GOAL if payload.get("goal_id") else COVER_FROM_UNASSIGNED)
+    if source not in (COVER_FROM_UNASSIGNED, COVER_FROM_GOAL):
+        return JsonResponse({"error": _("Pick where the money comes from.")}, status=400)
+
     try:
         category_id = int(payload.get("category_id"))
-        goal_id = int(payload.get("goal_id"))
     except (TypeError, ValueError):
-        return JsonResponse({"error": _("Pick a category and a goal.")}, status=400)
+        return JsonResponse({"error": _("Unknown budget category.")}, status=400)
     category = _budget_categories(request.team).filter(pk=category_id, account_group__account_type="expense").first()
     if category is None:
         return JsonResponse({"error": _("Unknown budget category.")}, status=400)
-    goal = Goal.objects.filter(team=request.team, pk=goal_id, is_archived=False, closed_at__isnull=True).first()
-    if goal is None:
-        return JsonResponse({"error": _("Unknown goal.")}, status=400)
+
+    goal = None
+    if source == COVER_FROM_GOAL:
+        try:
+            goal_id = int(payload.get("goal_id"))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": _("Pick a goal.")}, status=400)
+        goal = Goal.objects.filter(team=request.team, pk=goal_id, is_archived=False, closed_at__isnull=True).first()
+        if goal is None:
+            return JsonResponse({"error": _("Unknown goal.")}, status=400)
 
     month = parse_date(str(payload.get("month") or ""))
     if month is None:
@@ -1286,26 +1306,30 @@ def budget_cover_from_goal(request, team_slug):
     if amount is None or amount <= 0 or amount > GRID_MAX_AMOUNT:
         return JsonResponse({"error": _("Enter an amount greater than zero.")}, status=400)
 
-    budget = GoalService(request.team).cover_from_goal(goal, category, month, amount)
+    if goal is None:
+        budget = BudgetService(request.team).raise_budget(category, month, amount)
+    else:
+        budget = GoalService(request.team).cover_from_goal(goal, category, month, amount)
+        log_event(
+            AuditEvent.GOAL_COVERED_BUDGET,
+            request=request,
+            metadata={
+                "goal_id": goal.pk,
+                "goal_name": goal.name,
+                "category_id": category.pk,
+                "category_name": category.name,
+                "month": month.isoformat(),
+                "amount": str(amount),
+            },
+        )
 
-    log_event(
-        AuditEvent.GOAL_COVERED_BUDGET,
-        request=request,
-        metadata={
-            "goal_id": goal.pk,
-            "goal_name": goal.name,
-            "category_id": category.pk,
-            "category_name": category.name,
-            "month": month.isoformat(),
-            "amount": str(amount),
-        },
-    )
     return JsonResponse(
         {
             "covered": True,
+            "source": source,
             "category_id": category.pk,
             "amount": f"{budget.budget_amount:.2f}",
-            "goal_left": f"{GoalService(request.team).left(goal, month):.2f}",
+            "goal_left": f"{GoalService(request.team).left(goal, month):.2f}" if goal else None,
             "cells": _budget_cells(_budget_figures(request.team, month)),
         }
     )

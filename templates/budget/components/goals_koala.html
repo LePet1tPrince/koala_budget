@@ -233,7 +233,7 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
             {% blocktranslate trimmed with label=net_worth_card.label %}The koala hands the money back to {{ label }} — this month's record shows the climb down, past months stay untouched.{% endblocktranslate %}
           </p>
         </div>
-        {% include "budget/components/goal_close_form.html" %}
+        {% include "budget/components/goal_close_form.html" with goal=item.goal %}
         <noscript>
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}

@@ -442,6 +442,24 @@ class GoalStatesTest(GoalsFixture):
         closed = self.client.get(reverse("budget:goals_list", args=[self.team.slug]) + "?show=closed&month=2026-09-01")
         self.assertContains(closed, 'data-testid="closed-goal-row"')
 
+    def test_close_opens_a_dialog_that_says_what_happens(self):
+        url = reverse("budget:goals_list", args=[self.team.slug]) + "?month=2026-09-01&style=summit"
+        page = self.client.get(url).content.decode()
+        self.assertIn(f'id="goal-close-dialog-{self.car.pk}"', page)
+        self.assertIn("goes back to your unassigned money", page)
+        self.assertIn("$5,000.00", page)
+
+        self.spend_from_car(date(2026, 9, 5), "6000")
+        page = self.client.get(url).content.decode()
+        # The negative case is the one shown, with the amount it takes to cover.
+        self.assertRegex(page, r'data-close-case="neg"\s*>\s*Spending went past')
+        self.assertIn('name="cover" value="1" data-close-cover >', page)
+        self.assertIn("$1,000.00", page)
+
+    def test_goal_detail_page_has_the_close_dialog(self):
+        page = self.client.get(reverse("budget:goal_detail", args=[self.team.slug, self.car.pk]))
+        self.assertContains(page, 'data-testid="goal-close-dialog"')
+
     def test_close_view_refuses_negative_without_cover(self):
         self.spend_from_car(date(2026, 9, 5), "6000")
         self.client.post(reverse("budget:goal_close", args=[self.team.slug, self.car.pk]), {"month": "2026-09-01"})
@@ -477,31 +495,52 @@ class GoalStatesTest(GoalsFixture):
         self.assertContains(page, "$321.00")
 
 
-class CoverFromGoalTest(GoalsFixture):
+class CoverOverspendingTest(GoalsFixture):
     def cover(self, **overrides):
         body = {
             "category_id": self.groceries.pk,
+            "source": "goal",
             "goal_id": self.car.pk,
             "month": "2026-09-01",
             "amount": "150",
             **overrides,
         }
         return self.client.post(
-            reverse("budget:budget_cover_from_goal", args=[self.team.slug]), body, content_type="application/json"
+            reverse("budget:budget_cover", args=[self.team.slug]), body, content_type="application/json"
         )
 
-    def test_goal_gives_budget_gets_unassigned_unchanged(self):
+    def groceries_budget(self):
+        return Budget.objects.get(team=self.team, category=self.groceries, month=SEPT).budget_amount
+
+    def test_from_a_goal_the_goal_gives_the_budget_gets_and_unassigned_is_unchanged(self):
         self.post(date(2026, 9, 5), self.groceries, self.checking, "550")  # 150 over budget
         before = self.unassigned()
         response = self.cover()
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(
-            Budget.objects.get(team=self.team, category=self.groceries, month=SEPT).budget_amount, Decimal("550")
-        )
+        self.assertEqual(self.groceries_budget(), Decimal("550"))
         self.assertEqual(self.numbers()["allocated"], Decimal("4850"))
         self.assertEqual(self.unassigned(), before)
         self.assertEqual(response.json()["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
         self.assertTrue(AuditEvent.objects.filter(event_type=AuditEvent.GOAL_COVERED_BUDGET).exists())
+
+    def test_from_unassigned_the_budget_rises_and_unassigned_falls(self):
+        self.post(date(2026, 9, 5), self.groceries, self.checking, "550")
+        before = self.unassigned()
+        response = self.cover(source="unassigned", goal_id=None)
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()
+        self.assertEqual(data["source"], "unassigned")
+        self.assertIsNone(data["goal_left"])
+        self.assertEqual(self.groceries_budget(), Decimal("550"))
+        self.assertEqual(self.numbers()["allocated"], Decimal("5000"))  # the goal is untouched
+        self.assertEqual(self.unassigned(), before - Decimal("150"))
+        self.assertEqual(data["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
+
+    def test_from_unassigned_creates_the_budget_row_when_there_is_none(self):
+        Budget.objects.filter(team=self.team, category=self.groceries).delete()
+        response = self.cover(source="unassigned", amount="75")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.groceries_budget(), Decimal("75"))
 
     def test_a_goal_can_go_negative_covering(self):
         response = self.cover(amount="6000")
@@ -514,6 +553,8 @@ class CoverFromGoalTest(GoalsFixture):
         for name, overrides in {
             "income category": {"category_id": self.salary.pk},
             "closed goal": {"goal_id": closed.pk},
+            "goal source without a goal": {"goal_id": None},
+            "unknown source": {"source": "savings"},
             "zero amount": {"amount": "0"},
             "bad amount": {"amount": "abc"},
         }.items():
@@ -523,8 +564,17 @@ class CoverFromGoalTest(GoalsFixture):
     def test_budget_page_offers_cover_on_overspent_rows(self):
         self.post(date(2026, 9, 5), self.groceries, self.checking, "550")
         page = self.client.get(reverse("budget:budget_home", args=[self.team.slug]) + "?month=2026-09-01")
-        self.assertContains(page, 'data-testid="cover-from-goal-btn"')
-        self.assertContains(page, 'id="cover-goals"')
+        self.assertContains(page, 'data-testid="cover-btn"')
+        self.assertContains(page, 'data-testid="cover-source-unassigned"')
+        self.assertContains(page, 'data-testid="cover-source-goal"')
+
+    def test_cover_is_offered_without_any_goals(self):
+        Goal.objects.filter(team=self.team).delete()
+        self.post(date(2026, 9, 5), self.groceries, self.checking, "550")
+        page = self.client.get(reverse("budget:budget_home", args=[self.team.slug]) + "?month=2026-09-01")
+        self.assertContains(page, 'data-testid="cover-btn"')
+        self.assertContains(page, 'data-testid="cover-source-unassigned"')
+        self.assertNotContains(page, 'data-testid="cover-source-goal"')
 
 
 # ---------------------------------------------------------------------------

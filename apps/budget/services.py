@@ -314,6 +314,20 @@ class BudgetService:
 
         return available, previous
 
+    @transaction.atomic
+    def raise_budget(self, category, month, amount):
+        """Add `amount` to the category's budget for `month` (creating the row), and return it.
+
+        Covering overspending from Unassigned is exactly this: the money gets a job,
+        so Unassigned falls by `amount` and the envelope rises by it.
+        """
+        budget, _created = Budget.objects.select_for_update().get_or_create(
+            team=self.team, category=category, month=month.replace(day=1), defaults={"budget_amount": Decimal("0")}
+        )
+        budget.budget_amount += amount
+        budget.save(update_fields=["budget_amount", "updated_at"])
+        return budget
+
     def build_budget_rows(self, month):
         """
         Build budget rows for API response.
@@ -546,12 +560,7 @@ class GoalService:
         """
         month = month.replace(day=1)
         self.add_to_allocation(goal, month, -amount)
-        budget, _created = Budget.objects.select_for_update().get_or_create(
-            team=self.team, category=category, month=month, defaults={"budget_amount": Decimal("0")}
-        )
-        budget.budget_amount += amount
-        budget.save(update_fields=["budget_amount", "updated_at"])
-        return budget
+        return BudgetService(self.team).raise_budget(category, month, amount)
 
 
 def goal_left_by_account(team, month=None):

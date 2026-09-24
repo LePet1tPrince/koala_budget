@@ -330,9 +330,12 @@ What the implementation decided where the plan was silent, and where it differs.
 - **Spending list / link**: a goal's card and detail page link to Transactions with
   `?f_debit_account=a:<id>`; the Transactions page now honours account filters passed in
   the URL (`journal.views._initial_account_filters`).
-- **Cover from goal** is `POST budget/cover-from-goal/`, returning the same `cells` payload
-  as `save-amount`, driven by a dialog in `budget_table.html` + `budget-autosave.js`.
-  Expense rows only.
+- **Cover overspending** is `POST budget/cover/`, from Unassigned (the budget rises, so
+  Unassigned falls) or from a goal (§4.4). It returns the same `cells` payload as
+  `save-amount`, driven by a dialog in `budget_table.html` + `budget-autosave.js` that
+  defaults to Unassigned. Expense rows only.
+- **Closing a goal** asks in a dialog showing Allocated / Spent / Left and what closing will
+  do, not a browser `confirm()`.
 - **Cash flow** draws goal spending as its own bar beside Money Out (not stacked on it).
 - **Portability** format is version 3 (`goal_closed_at` on `accounts.csv`;
   `upgrade.upgrade_2_to_3`).

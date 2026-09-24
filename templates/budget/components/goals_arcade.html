@@ -265,7 +265,7 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
             {% translate "CASHED-OUT COINS DROP BACK IN THE HOPPER. THIS MONTH TAKES THE HIT — HISTORY STANDS." %}
           </p>
         </div>
-        {% include "budget/components/goal_close_form.html" %}
+        {% include "budget/components/goal_close_form.html" with goal=item.goal %}
         <noscript>
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}

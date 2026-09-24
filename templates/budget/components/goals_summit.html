@@ -149,7 +149,7 @@ pace/projection numbers, context-aware quick-assign.
           </div>
           <dl class="grid grid-cols-[auto_1fr] gap-x-3 mt-2 text-sm" data-testid="goal-numbers">
             <dt class="text-base-content/70">{% translate "Allocated" %}</dt>
-            <dd class="font-mono text-right">{{ item.saved|currency }}</dd>
+            <dd class="font-mono text-right" data-num="allocated">{{ item.saved|currency }}</dd>
             <dt class="text-base-content/70">{% translate "Spent" %}</dt>
             <dd class="font-mono text-right" data-testid="goal-spent">{{ item.spent|currency }}</dd>
             <dt class="text-base-content/70">{% translate "Left" %}</dt>
@@ -242,7 +242,7 @@ pace/projection numbers, context-aware quick-assign.
             {% blocktranslate trimmed with label=net_worth_card.label %}Withdrawn money returns to {{ label }}. It's recorded against this month, so past months' history stays intact.{% endblocktranslate %}
           </p>
         </div>
-        {% include "budget/components/goal_close_form.html" %}
+        {% include "budget/components/goal_close_form.html" with goal=item.goal %}
         <noscript>
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}

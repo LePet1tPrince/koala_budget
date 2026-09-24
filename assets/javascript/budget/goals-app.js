@@ -238,6 +238,24 @@ function refreshAssignButtons() {
   });
 }
 
+// The close dialog is rendered once per card with every case in the markup; after an
+// in-place assign/withdraw/cover, show the case that now applies and its figures.
+function refreshCloseDialog(card, allocated, spent, left) {
+  const root = card.querySelector('[data-close-root]');
+  if (!root) return;
+  const kind = left > 0 ? 'pos' : left < 0 ? 'neg' : 'zero';
+  root.querySelectorAll('[data-close-case]').forEach((el) => {
+    el.hidden = !el.dataset.closeCase.split(' ').includes(kind);
+  });
+  const values = { allocated, spent, left, cover: Math.max(-left, 0) };
+  root.querySelectorAll('[data-close-num]').forEach((el) => {
+    el.textContent = fmt(values[el.dataset.closeNum]);
+  });
+  root.querySelectorAll('[data-close-num="left"]').forEach((el) => el.classList.toggle('text-error', left < 0));
+  const cover = root.querySelector('[data-close-cover]');
+  if (cover) cover.disabled = left >= 0;
+}
+
 function updateCard(card, data) {
   card.dataset.remaining = String(data.remaining);
   card.dataset.saved = String(data.new_saved);
@@ -245,7 +263,11 @@ function updateCard(card, data) {
   // Works in both directions: positive delta = assignment, negative = withdrawal
   const delta = data.new_saved - data.old_saved;
 
+  const allocatedEl = card.querySelector('[data-num="allocated"]');
+  if (allocatedEl) animateNumber(allocatedEl, data.old_saved, data.new_saved);
+
   if (data.left != null) {
+    refreshCloseDialog(card, data.new_saved, data.spent, data.left);
     card.dataset.left = String(data.left);
     const leftEl = card.querySelector('[data-num="left"]');
     if (leftEl) {
@@ -429,14 +451,6 @@ function init() {
         event.preventDefault();
         submitWithdraw();
       }
-    });
-  });
-
-  // Closing releases money back to Unassigned; ask first.
-  document.querySelectorAll('form[data-confirm]').forEach((form) => {
-    form.addEventListener('submit', (event) => {
-      // eslint-disable-next-line no-alert
-      if (!window.confirm(form.dataset.confirm)) event.preventDefault();
     });
   });
 

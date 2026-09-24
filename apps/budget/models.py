@@ -258,6 +258,11 @@ class Goal(BaseTeamModel):
         return max(self.target_amount - self.allocated_amount, ZERO)
 
     @property
+    def cover_amount(self):
+        """What covering a negative goal takes: how far below zero it is."""
+        return max(-self.left_amount, ZERO)
+
+    @property
     def is_closed(self):
         return self.closed_at is not None
 

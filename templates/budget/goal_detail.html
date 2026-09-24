@@ -28,15 +28,7 @@
         </form>
         {% endif %}
         {% if not goal.is_closed %}
-        <form method="post" action="{% url 'budget:goal_close' team_slug=request.team.slug pk=goal.pk %}" data-testid="goal-detail-close-form">
-          {% csrf_token %}
-          <input type="hidden" name="next" value="{{ request.get_full_path }}">
-          {% if goal.left < 0 %}<input type="hidden" name="cover" value="1">{% endif %}
-          <button type="submit" class="btn btn-outline btn-sm"
-                  title="{% if goal.left > 0 %}{% blocktranslate trimmed with amount=goal.left|currency %}The {{ amount }} left goes back to your unassigned money.{% endblocktranslate %}{% elif goal.left < 0 %}{% blocktranslate trimmed with amount=goal.left|currency %}Covers the {{ amount }} from your unassigned money first.{% endblocktranslate %}{% endif %}">
-            {% if goal.left < 0 %}{% translate "Cover and Close" %}{% else %}{% translate "Close" %}{% endif %}
-          </button>
-        </form>
+          {% include "budget/components/goal_close_form.html" with button_class="btn btn-outline btn-sm" %}
         {% endif %}
         <a href="{% url 'budget:goal_delete' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-outline btn-warning btn-sm">
           {% translate "Archive" %}
