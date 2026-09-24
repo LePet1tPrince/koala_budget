@@ -23,6 +23,7 @@ from e2e.pages.onboarding import DashboardOnboardingPage, OnboardingPage, TaskRa
 ANSWERS = {
     "income_sources": ["employment"],
     "household_shape": ["solo"],
+    "budget_future_income": ["no"],
     "housing": ["rent"],
     "kids": ["yes"],
     "transport": ["car_owned"],
@@ -44,11 +45,11 @@ def _categorize_something(team):
     from apps.bank_feed.models import BankTransaction
     from apps.journal.models import JournalEntry, JournalLine
 
-    bank = Account.objects.filter(team=team, has_feed=True).first()
-    category = Account.objects.filter(team=team, account_group__account_type="expense").first()
+    bank = Account.objects.filter(book=team.default_book, has_feed=True).first()
+    category = Account.objects.filter(book=team.default_book, account_group__account_type="expense").first()
 
     BankTransaction.objects.create(
-        team=team,
+        book=team.default_book,
         account=bank,
         posted_date=date.today(),
         amount=Decimal("42.00"),
@@ -56,13 +57,17 @@ def _categorize_something(team):
         source=BankTransaction.SOURCE_CSV,
     )
     entry = JournalEntry.objects.create(
-        team=team, entry_date=date.today(), description="LOBLAWS", status=JournalEntry.STATUS_POSTED
+        book=team.default_book, entry_date=date.today(), description="LOBLAWS", status=JournalEntry.STATUS_POSTED
     )
     JournalLine.objects.create(
-        team=team, journal_entry=entry, account=category, dr_amount=Decimal("42.00"), cr_amount=Decimal("0")
+        book=team.default_book,
+        journal_entry=entry,
+        account=category,
+        dr_amount=Decimal("42.00"),
+        cr_amount=Decimal("0"),
     )
     JournalLine.objects.create(
-        team=team, journal_entry=entry, account=bank, dr_amount=Decimal("0"), cr_amount=Decimal("42.00")
+        book=team.default_book, journal_entry=entry, account=bank, dr_amount=Decimal("0"), cr_amount=Decimal("42.00")
     )
 
 
@@ -80,7 +85,7 @@ def test_new_team_is_sent_to_the_walkthrough(onboarding_page: Page, unonboarded_
 @pytest.mark.django_db(transaction=True)
 def test_welcome_then_first_question(onboarding_page: Page, live_server, unonboarded_team, requires_vite):
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
 
     assert onboarding.is_welcome_visible()
 
@@ -92,7 +97,7 @@ def test_welcome_then_first_question(onboarding_page: Page, live_server, unonboa
 def test_a_required_question_blocks_continue(onboarding_page: Page, live_server, unonboarded_team, requires_vite):
     """The rule lives on the server too, but the button must not invite a dead click."""
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
 
     assert onboarding.continue_disabled()
@@ -105,17 +110,17 @@ def test_a_required_question_blocks_continue(onboarding_page: Page, live_server,
 def test_answers_survive_a_reload(onboarding_page: Page, live_server, unonboarded_team, requires_vite):
     """State is server-side, so closing the tab mid-flow does not start over."""
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.choose("employment")
     onboarding.click_continue()
     onboarding_page.wait_for_timeout(700)
 
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
 
     from apps.onboarding.models import OnboardingState
 
-    state = OnboardingState.objects.get(team=unonboarded_team)
+    state = OnboardingState.objects.get(book=unonboarded_team.default_book)
     assert state.answers.get("income_sources") == ["employment"]
     assert not onboarding.is_welcome_visible()
 
@@ -128,7 +133,7 @@ def test_answers_survive_a_reload(onboarding_page: Page, live_server, unonboarde
 @pytest.mark.django_db(transaction=True)
 def test_review_reflects_the_answers(onboarding_page: Page, live_server, unonboarded_team, requires_vite):
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
 
@@ -146,16 +151,16 @@ def test_removing_an_account_keeps_it_out_of_the_books(
     from apps.accounts.models import Account
 
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
 
     onboarding.remove_account("Tenant Insurance")
     assert "Tenant Insurance" not in onboarding.account_names()
 
-    onboarding.confirm_accounts(unonboarded_team.slug)
+    onboarding.confirm_accounts(unonboarded_team.default_book)
 
-    created = set(Account.objects.filter(team=unonboarded_team).values_list("name", flat=True))
+    created = set(Account.objects.filter(book=unonboarded_team.default_book).values_list("name", flat=True))
     assert "Tenant Insurance" not in created
     assert "Rent" in created
 
@@ -165,12 +170,12 @@ def test_completing_builds_the_chart_of_accounts(onboarding_page: Page, live_ser
     from apps.accounts.models import Account
 
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
-    onboarding.confirm_accounts(unonboarded_team.slug)
+    onboarding.confirm_accounts(unonboarded_team.default_book)
 
-    names = set(Account.objects.filter(team=unonboarded_team).values_list("name", flat=True))
+    names = set(Account.objects.filter(book=unonboarded_team.default_book).values_list("name", flat=True))
     assert "Rent" in names
     assert "Student Loan" in names
     assert "TFSA" in names
@@ -191,11 +196,13 @@ def test_skipping_still_leaves_a_usable_chart_of_accounts(
     from apps.accounts.models import Account
 
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.skip()
-    onboarding_page.wait_for_url(f"**/a/{unonboarded_team.slug}/", timeout=30_000, wait_until="domcontentloaded")
+    onboarding_page.wait_for_url(
+        f"**{unonboarded_team.default_book.base_url}", timeout=30_000, wait_until="domcontentloaded"
+    )
 
-    assert Account.objects.filter(team=unonboarded_team).exists()
+    assert Account.objects.filter(book=unonboarded_team.default_book).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -206,10 +213,10 @@ def test_skipping_still_leaves_a_usable_chart_of_accounts(
 @pytest.mark.django_db(transaction=True)
 def test_rail_gates_everything_behind_the_import(onboarding_page: Page, live_server, unonboarded_team, requires_vite):
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
-    onboarding.confirm_accounts(unonboarded_team.slug)
+    onboarding.confirm_accounts(unonboarded_team.default_book)
 
     rail = TaskRailPage(onboarding_page, live_server.url)
     rail.wait_for_rail()
@@ -227,15 +234,15 @@ def test_real_data_unlocks_the_rail(onboarding_page: Page, live_server, unonboar
     categorizing is what opens the rest.
     """
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
-    onboarding.confirm_accounts(unonboarded_team.slug)
+    onboarding.confirm_accounts(unonboarded_team.default_book)
 
     _categorize_something(unonboarded_team)
 
     dashboard = DashboardOnboardingPage(onboarding_page, live_server.url)
-    dashboard.goto_dashboard(unonboarded_team.slug)
+    dashboard.goto_dashboard(unonboarded_team.default_book)
 
     rail = TaskRailPage(onboarding_page, live_server.url)
     rail.wait_for_rail()
@@ -249,15 +256,17 @@ def test_real_data_unlocks_the_rail(onboarding_page: Page, live_server, unonboar
 @pytest.mark.django_db(transaction=True)
 def test_rail_persists_across_pages(onboarding_page: Page, live_server, unonboarded_team, requires_vite):
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
-    onboarding.confirm_accounts(unonboarded_team.slug)
+    onboarding.confirm_accounts(unonboarded_team.default_book)
 
     rail = TaskRailPage(onboarding_page, live_server.url)
     rail.wait_for_rail()
 
-    onboarding_page.goto(f"{live_server.url}/a/{unonboarded_team.slug}/budget/", wait_until="domcontentloaded")
+    onboarding_page.goto(
+        f"{live_server.url}{unonboarded_team.default_book.base_url}budget/", wait_until="domcontentloaded"
+    )
     rail.wait_for_rail()
     assert rail.is_visible()
 
@@ -274,28 +283,28 @@ def test_opening_balances_move_net_worth(onboarding_page: Page, live_server, uno
     from apps.budget.services import NetWorthService
 
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
-    onboarding.confirm_accounts(unonboarded_team.slug)
+    onboarding.confirm_accounts(unonboarded_team.default_book)
 
     _categorize_something(unonboarded_team)
 
     dashboard = DashboardOnboardingPage(onboarding_page, live_server.url)
-    dashboard.goto_dashboard(unonboarded_team.slug)
+    dashboard.goto_dashboard(unonboarded_team.default_book)
 
     rail = TaskRailPage(onboarding_page, live_server.url)
     rail.wait_for_rail()
     rail.open_task("net_worth")
     rail.wait_for_opening_balances()
 
-    chequing = Account.objects.get(team=unonboarded_team, name="Chequing Account")
+    chequing = Account.objects.get(book=unonboarded_team.default_book, name="Chequing Account")
     rail.fill_opening_balance(chequing.id, "2500")
     rail.save_opening_balances()
     rail.wait_for_reveal()
 
     month = date.today().replace(day=1)
-    net_worth = NetWorthService(unonboarded_team).get_net_worth(month)
+    net_worth = NetWorthService(unonboarded_team.default_book).get_net_worth(month)
     assert net_worth == Decimal("2458.00")  # 2500 opening, less the 42 categorized
     assert "2,458" in rail.revealed_net_worth()
 
@@ -309,10 +318,10 @@ def test_opening_balances_are_refused_before_categorizing(
     cannot help yet rather than anchoring a net worth against nothing.
     """
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
-    onboarding.confirm_accounts(unonboarded_team.slug)
+    onboarding.confirm_accounts(unonboarded_team.default_book)
 
     rail = TaskRailPage(onboarding_page, live_server.url)
     rail.wait_for_rail()
@@ -330,10 +339,10 @@ def test_opening_balances_are_refused_before_categorizing(
 @pytest.mark.django_db(transaction=True)
 def test_dismissing_the_rail_offers_a_way_back(onboarding_page: Page, live_server, unonboarded_team, requires_vite):
     onboarding = OnboardingPage(onboarding_page, live_server.url)
-    onboarding.goto_onboarding(unonboarded_team.slug)
+    onboarding.goto_onboarding(unonboarded_team.default_book)
     onboarding.start()
     onboarding.answer_all(ANSWERS)
-    onboarding.confirm_accounts(unonboarded_team.slug)
+    onboarding.confirm_accounts(unonboarded_team.default_book)
 
     rail = TaskRailPage(onboarding_page, live_server.url)
     rail.wait_for_rail()
@@ -341,7 +350,7 @@ def test_dismissing_the_rail_offers_a_way_back(onboarding_page: Page, live_serve
     onboarding_page.wait_for_timeout(800)
 
     dashboard = DashboardOnboardingPage(onboarding_page, live_server.url)
-    dashboard.goto_dashboard(unonboarded_team.slug)
+    dashboard.goto_dashboard(unonboarded_team.default_book)
 
     assert dashboard.has_resume_card()
     assert not dashboard.has_legacy_checklist()
@@ -355,7 +364,7 @@ def test_dismissing_the_rail_offers_a_way_back(onboarding_page: Page, live_serve
 def test_the_old_checklist_is_gone(authenticated_page: Page, live_server, team, requires_vite):
     """It duplicated the task rail with none of its gates."""
     dashboard = DashboardOnboardingPage(authenticated_page, live_server.url)
-    dashboard.goto_dashboard(team.slug)
+    dashboard.goto_dashboard(team.default_book)
 
     assert not dashboard.has_legacy_checklist()
 
@@ -379,7 +388,7 @@ def test_a_set_up_team_sees_neither_rail_nor_card(authenticated_page: Page, live
     bank = AccountFactory(team=team, account_group=assets)
     category = AccountFactory(team=team, account_group=expenses)
     BankTransaction.objects.create(
-        team=team,
+        book=team.default_book,
         account=bank,
         posted_date=date.today(),
         amount=Decimal("10.00"),
@@ -387,11 +396,11 @@ def test_a_set_up_team_sees_neither_rail_nor_card(authenticated_page: Page, live
         source=BankTransaction.SOURCE_CSV,
     )
     Budget.objects.create(
-        team=team, month=date.today().replace(day=1), category=category, budget_amount=Decimal("100.00")
+        book=team.default_book, month=date.today().replace(day=1), category=category, budget_amount=Decimal("100.00")
     )
 
     dashboard = DashboardOnboardingPage(authenticated_page, live_server.url)
-    dashboard.goto_dashboard(team.slug)
+    dashboard.goto_dashboard(team.default_book)
     authenticated_page.wait_for_timeout(1200)
 
     rail = TaskRailPage(authenticated_page, live_server.url)
@@ -405,6 +414,6 @@ def test_a_finished_but_empty_team_is_still_offered_the_nudge(
 ):
     """The other half of the same rule: gaps are what the card is for."""
     dashboard = DashboardOnboardingPage(authenticated_page, live_server.url)
-    dashboard.goto_dashboard(team.slug)
+    dashboard.goto_dashboard(team.default_book)
 
     assert dashboard.has_resume_card()

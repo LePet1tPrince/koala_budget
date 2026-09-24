@@ -37,7 +37,7 @@ class ChequingExampleTests(ReconciliationTestCase):
         # Opening: a Jul 31 statement at 3,904.11.
         self.july = self.entry(self.chequing, self.salary, "3904.11", on=date(2026, 7, 1), reconciled=True)
         self.previous = Reconciliation.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             statement_date=date(2026, 7, 31),
             statement_balance=D("3904.11"),
@@ -124,7 +124,7 @@ class ChequingExampleTests(ReconciliationTestCase):
     def test_only_one_draft_per_account_at_database_level(self):
         with self.assertRaises(IntegrityError), transaction.atomic():
             Reconciliation.objects.create(
-                team=self.team, account=self.chequing, statement_date=date(2026, 9, 30), statement_balance=D("0")
+                book=self.book, account=self.chequing, statement_date=date(2026, 9, 30), statement_balance=D("0")
             )
 
     def test_tick_through_ticks_by_date(self):

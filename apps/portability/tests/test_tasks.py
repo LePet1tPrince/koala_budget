@@ -39,15 +39,15 @@ from apps.portability.tasks import run_data_import
 from .db_fixtures import build_db_fixture_team, make_team
 
 
-def _export_bytes(team) -> bytes:
-    accounts, journal_rows, budget_rows = build_archive(team)
+def _export_bytes(book) -> bytes:
+    accounts, journal_rows, budget_rows = build_archive(book)
     return build_archive_bytes(
         accounts=accounts,
         journal=journal_rows,
         budget=budget_rows,
-        source={"team_name": team.name},
-        checks=build_checks(team),
-        omitted=build_omitted(team),
+        source={"team_name": book.name},
+        checks=build_checks(book),
+        omitted=build_omitted(book),
     )
 
 
@@ -57,8 +57,10 @@ def _export_bytes(team) -> bytes:
 class RunDataImportTests(TestCase):
     def test_a_successful_import_marks_the_row_done_and_clears_the_archive(self):
         source_team, _u, _h = build_db_fixture_team("Src", "task-src")
+        source_book = source_team.default_book
         dest_team, dest_user = make_team("Dst", "task-dst")
-        record = DataImport.objects.create(team=dest_team, created_by=dest_user, archive=_export_bytes(source_team))
+        dest_book = dest_team.default_book
+        record = DataImport.objects.create(book=dest_book, created_by=dest_user, archive=_export_bytes(source_book))
 
         run_data_import.delay(record.id)
 
@@ -67,12 +69,14 @@ class RunDataImportTests(TestCase):
         self.assertEqual(record.progress, 100)
         self.assertEqual(bytes(record.archive), b"")
         self.assertTrue(record.result)
-        self.assertTrue(Account.objects.filter(team=dest_team, name="Goal: New Deck").exists())
+        self.assertTrue(Account.objects.filter(book=dest_book, name="Goal: New Deck").exists())
 
     def test_the_safety_archive_is_saved_and_not_cleared(self):
         source_team, _u, _h = build_db_fixture_team("Src2", "task-src2")
+        source_book = source_team.default_book
         dest_team, dest_user, _h2 = build_db_fixture_team("Dst2", "task-dst2")
-        record = DataImport.objects.create(team=dest_team, created_by=dest_user, archive=_export_bytes(source_team))
+        dest_book = dest_team.default_book
+        record = DataImport.objects.create(book=dest_book, created_by=dest_user, archive=_export_bytes(source_book))
 
         run_data_import.delay(record.id)
 
@@ -82,21 +86,24 @@ class RunDataImportTests(TestCase):
 
     def test_a_malformed_archive_marks_the_row_failed_and_touches_nothing(self):
         dest_team, dest_user, _h = build_db_fixture_team("Dst3", "task-dst3")
-        original_count = Account.objects.filter(team=dest_team).count()
-        record = DataImport.objects.create(team=dest_team, created_by=dest_user, archive=b"not a zip")
+        dest_book = dest_team.default_book
+        original_count = Account.objects.filter(book=dest_book).count()
+        record = DataImport.objects.create(book=dest_book, created_by=dest_user, archive=b"not a zip")
 
         run_data_import.delay(record.id)
 
         record.refresh_from_db()
         self.assertEqual(record.status, DataImport.STATUS_FAILED)
         self.assertTrue(record.error)
-        self.assertEqual(Account.objects.filter(team=dest_team).count(), original_count)
+        self.assertEqual(Account.objects.filter(book=dest_book).count(), original_count)
 
     def test_already_running_import_is_not_picked_up_twice(self):
         source_team, _u, _h = build_db_fixture_team("Src4", "task-src4")
+        source_book = source_team.default_book
         dest_team, dest_user = make_team("Dst4", "task-dst4")
+        dest_book = dest_team.default_book
         record = DataImport.objects.create(
-            team=dest_team, created_by=dest_user, archive=_export_bytes(source_team), status=DataImport.STATUS_DONE
+            book=dest_book, created_by=dest_user, archive=_export_bytes(source_book), status=DataImport.STATUS_DONE
         )
 
         run_data_import.delay(record.id)
@@ -106,8 +113,10 @@ class RunDataImportTests(TestCase):
 
     def test_two_audit_events_are_logged_exactly_once(self):
         source_team, _u, _h = build_db_fixture_team("Src5", "task-src5")
+        source_book = source_team.default_book
         dest_team, dest_user = make_team("Dst5", "task-dst5")
-        record = DataImport.objects.create(team=dest_team, created_by=dest_user, archive=_export_bytes(source_team))
+        dest_book = dest_team.default_book
+        record = DataImport.objects.create(book=dest_book, created_by=dest_user, archive=_export_bytes(source_book))
 
         run_data_import.delay(record.id)
 

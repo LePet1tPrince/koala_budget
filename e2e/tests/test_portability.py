@@ -43,7 +43,7 @@ def test_export_then_import_into_a_second_team_matches_net_worth(
     # the dashboard check below into the onboarding takeover. The shared `team`
     # fixture does exactly this for the same reason; a second team made inside
     # a test needs it too.
-    dest_state = OnboardingState.objects.create(team=dest_team)
+    dest_state = OnboardingState.objects.create(book=dest_team.default_book)
     dest_state.complete()
     dest_state.finish_tasks()
     dest_state.save()
@@ -51,7 +51,7 @@ def test_export_then_import_into_a_second_team_matches_net_worth(
     portability = PortabilityPage(authenticated_page, live_server.url)
 
     # Export the source team.
-    portability.goto_home(source_team.slug)
+    portability.goto_home(source_team.default_book)
     with authenticated_page.expect_download() as download_info:
         authenticated_page.locator("[data-testid='export-button']").click()
     download = download_info.value
@@ -61,21 +61,21 @@ def test_export_then_import_into_a_second_team_matches_net_worth(
     # Read the source team's net worth off its own dashboard before touching
     # the destination, so the comparison is against what was actually shown,
     # not just what the export claims.
-    authenticated_page.goto(f"{live_server.url}/a/{source_team.slug}/")
+    authenticated_page.goto(f"{live_server.url}{source_team.default_book.base_url}")
     authenticated_page.wait_for_selector("[data-testid='metric-net-worth']")
     source_net_worth = authenticated_page.locator("[data-testid='metric-net-worth']").inner_text()
 
     # Import into the destination team.
-    portability.goto_home(dest_team.slug)
+    portability.goto_home(dest_team.default_book)
     portability.start_import()
     portability.upload_file(str(export_path))
-    portability.confirm(dest_team.name)
+    portability.confirm(dest_team.default_book.name)
     portability.wait_for_done()
 
     counts_text = portability.result_counts_text()
     assert "1" in counts_text  # one account carried across (at minimum)
 
-    authenticated_page.goto(f"{live_server.url}/a/{dest_team.slug}/")
+    authenticated_page.goto(f"{live_server.url}{dest_team.default_book.base_url}")
     authenticated_page.wait_for_selector("[data-testid='metric-net-worth']")
     dest_net_worth = authenticated_page.locator("[data-testid='metric-net-worth']").inner_text()
 

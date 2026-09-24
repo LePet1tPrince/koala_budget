@@ -14,7 +14,7 @@ import Icon from '../../common/Icon';
  * trigger plus a `modal` element to render (error alert + account mapper
  * dialog) so callers can supply their own trigger UI (button, menu item, …).
  */
-export const usePlaidLinkFlow = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
+export const usePlaidLinkFlow = ({ book, allAccounts, onSuccess, plaidClient }) => {
   const [linkToken, setLinkToken] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -29,7 +29,7 @@ export const usePlaidLinkFlow = ({ teamSlug, allAccounts, onSuccess, plaidClient
     setError(null);
     try {
       const data = await plaidClient.plaidCreateLinkToken({
-        teamSlug: teamSlug,
+        ...book.params,
       });
       setLinkToken(data.linkToken);
     } catch (err) {
@@ -48,7 +48,7 @@ export const usePlaidLinkFlow = ({ teamSlug, allAccounts, onSuccess, plaidClient
     setLoading(true);
     try {
       const data = await plaidClient.plaidExchangePublicToken({
-        teamSlug: teamSlug,
+        ...book.params,
         exchangePublicTokenRequest: {
           publicToken: public_token,
           institutionId: metadata.institution?.institution_id ?? null,
@@ -65,7 +65,7 @@ export const usePlaidLinkFlow = ({ teamSlug, allAccounts, onSuccess, plaidClient
     } finally {
       setLoading(false);
     }
-  }, [teamSlug, plaidClient]);
+  }, [book, plaidClient]);
 
   /**
    * Handle Plaid Link exit (user closed without completing)
@@ -127,7 +127,7 @@ export const usePlaidLinkFlow = ({ teamSlug, allAccounts, onSuccess, plaidClient
       {/* Account Mapper Modal */}
       {showMapper && (
         <PlaidAccountMapper
-          teamSlug={teamSlug}
+          book={book}
           plaidAccounts={newPlaidAccounts}
           ledgerAccounts={allAccounts}
           plaidClient={plaidClient}
@@ -153,8 +153,8 @@ export const usePlaidLinkFlow = ({ teamSlug, allAccounts, onSuccess, plaidClient
 /**
  * PlaidLinkButton - default button trigger built on usePlaidLinkFlow
  */
-const PlaidLinkButton = ({ teamSlug, allAccounts, onSuccess, plaidClient }) => {
-  const { handleClick, loading, modal } = usePlaidLinkFlow({ teamSlug, allAccounts, onSuccess, plaidClient });
+const PlaidLinkButton = ({ book, allAccounts, onSuccess, plaidClient }) => {
+  const { handleClick, loading, modal } = usePlaidLinkFlow({ book, allAccounts, onSuccess, plaidClient });
 
   return (
     <>

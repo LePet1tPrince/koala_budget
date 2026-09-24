@@ -24,10 +24,10 @@ OFFSET_GROUP_NAME = "Equity Adjustments"
 ADJUSTMENT_DESCRIPTION = "Reconciliation Adjustment"
 
 
-def offset_account(team) -> Account:
+def offset_account(book) -> Account:
     """The system equity account adjustments post against, created on first use."""
     account = Account.objects.filter(
-        team=team, name=OFFSET_ACCOUNT_NAME, account_group__account_type=ACCOUNT_TYPE_EQUITY
+        book=book, name=OFFSET_ACCOUNT_NAME, account_group__account_type=ACCOUNT_TYPE_EQUITY
     ).first()
     if account is not None:
         if not account.is_system:
@@ -35,13 +35,13 @@ def offset_account(team) -> Account:
             account.save(update_fields=["is_system"])
         return account
 
-    group = AccountGroup.objects.filter(team=team, name=OFFSET_GROUP_NAME).first()
+    group = AccountGroup.objects.filter(book=book, name=OFFSET_GROUP_NAME).first()
     if group is None:
         group = AccountGroup.objects.create(
-            team=team, name=OFFSET_GROUP_NAME, account_type=ACCOUNT_TYPE_EQUITY, is_system=True
+            book=book, name=OFFSET_GROUP_NAME, account_type=ACCOUNT_TYPE_EQUITY, is_system=True
         )
     return Account.objects.create(
-        team=team, name=OFFSET_ACCOUNT_NAME, account_group=group, has_feed=False, is_system=True
+        book=book, name=OFFSET_ACCOUNT_NAME, account_group=group, has_feed=False, is_system=True
     )
 
 
@@ -54,14 +54,14 @@ def create_adjustment(reconciliation, ledger_amount: Decimal) -> JournalEntry:
     to make that statement balance. A feed row is added only for an account that
     has a feed, so the adjustment is visible where the user reconciles from.
     """
-    team = reconciliation.team
+    book = reconciliation.book
     account = reconciliation.account
     date = reconciliation.statement_date
     amount = abs(ledger_amount)
     debit_account = ledger_amount > 0
 
     entry = JournalEntry.objects.create(
-        team=team,
+        book=book,
         entry_date=date,
         description=ADJUSTMENT_DESCRIPTION,
         source=JournalEntry.SOURCE_RECONCILIATION,
@@ -69,7 +69,7 @@ def create_adjustment(reconciliation, ledger_amount: Decimal) -> JournalEntry:
     )
     JournalLine.objects.create(
         journal_entry=entry,
-        team=team,
+        book=book,
         account=account,
         dr_amount=amount if debit_account else Decimal("0"),
         cr_amount=Decimal("0") if debit_account else amount,
@@ -78,14 +78,14 @@ def create_adjustment(reconciliation, ledger_amount: Decimal) -> JournalEntry:
     )
     JournalLine.objects.create(
         journal_entry=entry,
-        team=team,
-        account=offset_account(team),
+        book=book,
+        account=offset_account(book),
         dr_amount=Decimal("0") if debit_account else amount,
         cr_amount=amount if debit_account else Decimal("0"),
     )
     if account.has_feed:
         BankTransaction.objects.create(
-            team=team,
+            book=book,
             account=account,
             # Feed convention: positive is an outflow, i.e. a credit to the account.
             amount=-ledger_amount,

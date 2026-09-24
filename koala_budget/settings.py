@@ -96,6 +96,7 @@ PROJECT_APPS = [
     "apps.web",
     "apps.teams.apps.TeamConfig",
     "apps.teams_example.apps.TeamsExampleConfig",
+    "apps.books.apps.BooksConfig",
     "apps.chat",
     "apps.ai.apps.AiConfig",
     "apps.budget.apps.BudgetConfig",
@@ -131,6 +132,7 @@ MIDDLEWARE = [
     "apps.audit.middleware.AuditUserMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "apps.teams.middleware.TeamsMiddleware",
+    "apps.books.middleware.BooksMiddleware",
     "apps.web.middleware.locale.UserLocaleMiddleware",
     "apps.web.middleware.locale.UserTimezoneMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -184,6 +186,7 @@ TEMPLATES = [
                 "apps.web.context_processors.project_meta",
                 "apps.teams.context_processors.team",
                 "apps.teams.context_processors.user_teams",
+                "apps.books.context_processors.book",
                 "apps.bank_feed.context_processors.inbox_count",
                 "apps.bank_feed.context_processors.nav_feed_accounts",
                 "apps.budget.context_processors.unassigned_pill",
@@ -682,7 +685,9 @@ ONBOARDING_ENABLED = True
 # import wizard. Off switches the entry points, not the app: an import already
 # running is unaffected.
 YNAB_IMPORT_ENABLED = env.bool("YNAB_IMPORT_ENABLED", default=True)
-STRICT_TEAM_CONTEXT = True
+# A `for_book` query with no book in context raises rather than returning an
+# empty list (see `apps.books.models.BookScopedManager`).
+STRICT_BOOK_CONTEXT = True
 
 # Guided monthly review (see docs/monthly-review-plan.md). Tunables live next to
 # the logic that reads them, via getattr(settings, ...) -- these are the defaults.

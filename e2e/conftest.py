@@ -46,18 +46,43 @@ def team(user):
     """
     A team with the test user as admin, already past the guided walkthrough.
 
-    Without this, `team_home` redirects every test into the onboarding takeover:
-    a team with no `OnboardingState` is by definition un-onboarded. Marking it
-    complete matches the state of any team a test is actually about — tests for
-    the walkthrough itself use `unonboarded_team`.
+    Without this, the book home redirects every test into the onboarding
+    takeover: a book with no `OnboardingState` is by definition un-onboarded.
+    Marking its default book complete matches the state of any team a test is
+    actually about — tests for the walkthrough itself use `unonboarded_team`.
+
+    The book also budgets income before it arrives, as every book that predates
+    the setting does: the budget tests are about an Income section being there.
     """
     team = create_default_team_for_user(user)
+    book = team.default_book
+    book.budget_future_income = True
+    book.save()
 
-    state = OnboardingState.objects.create(team=team)
+    state = OnboardingState.objects.create(book=book)
     state.complete()
     state.finish_tasks()
     state.save()
     return team
+
+
+@pytest.fixture
+def book(team):
+    """The `team` fixture's default ("Personal") set of books."""
+    return team.default_book
+
+
+@pytest.fixture
+def second_book(team):
+    """A second, onboarded set of books in the same team, empty."""
+    from apps.books.helpers import create_book
+
+    other = create_book(team, "Business")
+    state = OnboardingState.objects.create(book=other)
+    state.complete()
+    state.finish_tasks()
+    state.save()
+    return other
 
 
 @pytest.fixture

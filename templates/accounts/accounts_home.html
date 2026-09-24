@@ -10,7 +10,7 @@
         {% translate "Drag accounts to reorder them or move them between groups — this order is used across reports and budgets." %}
       </p>
     </div>
-    <a href="{% url 'accounts:account_create' request.team.slug %}" class="btn btn-primary" data-testid="new-account-btn">
+    <a href="{% url 'accounts:account_create' request.team.slug request.book.slug %}" class="btn btn-primary" data-testid="new-account-btn">
       {% translate "New Account" %}
     </a>
   </div>

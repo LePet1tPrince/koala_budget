@@ -8,9 +8,9 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, Account, AccountGroup
+from apps.books.context import current_book
 from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services import session
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -116,17 +116,18 @@ class PermissionTests(ReconciliationTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.other_team = Team.objects.create(name="Other", slug="other-team")
+        cls.other_book = cls.other_team.default_book
         cls.outsider = CustomUser.objects.create_user(username="outsider", password="pass")
         cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
-        group = AccountGroup.objects.create(team=cls.other_team, name="Banks", account_type=ACCOUNT_TYPE_ASSET)
-        cls.foreign_account = Account.objects.create(team=cls.other_team, name="Theirs", account_group=group)
+        group = AccountGroup.objects.create(book=cls.other_book, name="Banks", account_type=ACCOUNT_TYPE_ASSET)
+        cls.foreign_account = Account.objects.create(book=cls.other_book, name="Theirs", account_group=group)
 
     def _draft(self):
         return session.start(self.chequing, date(2026, 8, 31), Decimal("0"), self.user)
 
     def test_anonymous_is_refused(self):
         client = APIClient()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = client.get(self.url(f"{API}accounts/"))
         self.assertIn(resp.status_code, (401, 403))
 
@@ -146,14 +147,14 @@ class PermissionTests(ReconciliationTestCase):
     def test_another_teams_line_cannot_be_ticked(self):
         draft = self._draft()
         foreign_group = self.foreign_account.account_group
-        other = Account.objects.create(team=self.other_team, name="Cat", account_group=foreign_group)
+        other = Account.objects.create(book=self.other_book, name="Cat", account_group=foreign_group)
         from apps.journal.models import JournalEntry, JournalLine
 
-        je = JournalEntry.objects.create(team=self.other_team, entry_date=date(2026, 8, 1), description="x")
+        je = JournalEntry.objects.create(book=self.other_book, entry_date=date(2026, 8, 1), description="x")
         line = JournalLine.objects.create(
-            journal_entry=je, team=self.other_team, account=self.foreign_account, dr_amount=Decimal("1")
+            journal_entry=je, book=self.other_book, account=self.foreign_account, dr_amount=Decimal("1")
         )
-        JournalLine.objects.create(journal_entry=je, team=self.other_team, account=other, cr_amount=Decimal("1"))
+        JournalLine.objects.create(journal_entry=je, book=self.other_book, account=other, cr_amount=Decimal("1"))
         resp = self.api("post", f"{API}{draft.id}/tick/", {"line_ids": [line.id], "ticked": True})
         self.assertEqual(resp.status_code, 400)
         line.refresh_from_db()
@@ -167,28 +168,30 @@ class PageTests(ReconciliationTestCase):
         self.web.force_login(self.user)
 
     def test_hub_renders(self):
-        resp = self.web.get(reverse("reconciliation:hub", args=[self.team.slug]))
+        resp = self.web.get(reverse("reconciliation:hub", args=[self.team.slug, self.book.slug]))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Chequing")
 
     def test_account_page_renders_with_props(self):
-        resp = self.web.get(reverse("reconciliation:account", args=[self.team.slug, self.card.id]) + "?lines=4,5")
+        resp = self.web.get(
+            reverse("reconciliation:account", args=[self.team.slug, self.book.slug, self.card.id]) + "?lines=4,5"
+        )
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'id="reconcile-props"')
         self.assertContains(resp, "preselect_line_ids")
 
     def test_income_account_page_is_a_404(self):
-        resp = self.web.get(reverse("reconciliation:account", args=[self.team.slug, self.salary.id]))
+        resp = self.web.get(reverse("reconciliation:account", args=[self.team.slug, self.book.slug, self.salary.id]))
         self.assertEqual(resp.status_code, 404)
 
     def test_statement_page_and_undo_form(self):
         line = self.entry(self.chequing, self.salary, "10.00")
         rec = session.start(self.chequing, date(2026, 8, 31), Decimal("10.00"), self.user, [line.id])
         session.finish(rec, self.user)
-        resp = self.web.get(reverse("reconciliation:statement", args=[self.team.slug, rec.id]))
+        resp = self.web.get(reverse("reconciliation:statement", args=[self.team.slug, self.book.slug, rec.id]))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Intact")
-        resp = self.web.post(reverse("reconciliation:statement_undo", args=[self.team.slug, rec.id]))
+        resp = self.web.post(reverse("reconciliation:statement_undo", args=[self.team.slug, self.book.slug, rec.id]))
         self.assertEqual(resp.status_code, 302)
         rec.refresh_from_db()
         self.assertEqual(rec.status, Reconciliation.STATUS_UNDONE)
@@ -197,5 +200,5 @@ class PageTests(ReconciliationTestCase):
         outsider = CustomUser.objects.create_user(username="nosy", password="pass")
         web = Client()
         web.force_login(outsider)
-        resp = web.get(reverse("reconciliation:hub", args=[self.team.slug]))
+        resp = web.get(reverse("reconciliation:hub", args=[self.team.slug, self.book.slug]))
         self.assertNotEqual(resp.status_code, 200)

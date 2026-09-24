@@ -117,13 +117,14 @@ class BankFeedViewSetUploadValidateDatesTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
     def setUp(self):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        self.url = f"/a/{self.team.slug}/bankfeed/api/feed/upload_validate_dates/"
+        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_validate_dates/"
 
     def _csv_file(self, content: str) -> SimpleUploadedFile:
         return SimpleUploadedFile("test.csv", content.encode(), content_type="text/csv")

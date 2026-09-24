@@ -5,7 +5,7 @@
   {% include "accounts/components/manage_tabs.html" with manage_tab="groups" %}
   <div class="flex justify-between items-center mb-4">
     <h3 class="text-xl mb-1">{% translate "Account Groups" %}</h3>
-    <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="btn btn-primary">
+    <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="btn btn-primary">
       {% translate "New Account Group" %}
     </a>
   </div>
@@ -27,7 +27,7 @@
               <td>{{ accountgroup.get_account_type_display }}</td>
               <td>{{ accountgroup.description|truncatewords:10 }}</td>
               <td>
-                <a href="{% url 'accounts:accountgroup_update' request.team.slug accountgroup.pk %}" class="btn btn-outline btn-sm">
+                <a href="{% url 'accounts:accountgroup_update' request.team.slug request.book.slug accountgroup.pk %}" class="btn btn-outline btn-sm">
                   {% translate "Edit" %}
                 </a>
               </td>
@@ -37,7 +37,7 @@
       </table>
     </div>
   {% else %}
-    <p class="text-base-content/70">{% translate "No account groups yet." %} <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <p class="text-base-content/70">{% translate "No account groups yet." %} <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
   {% endif %}
 </section>
 {% endblock %}

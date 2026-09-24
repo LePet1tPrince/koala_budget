@@ -17,8 +17,9 @@ class PlaidWebhookTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.item = PlaidItem.objects.create(
-            team=cls.team,
+            book=cls.book,
             plaid_item_id="item-abc",
             access_token="access-token",
             institution_name="Test Bank",

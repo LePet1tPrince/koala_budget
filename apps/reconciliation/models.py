@@ -16,10 +16,10 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel
 
 
-class Reconciliation(BaseTeamModel):
+class Reconciliation(BaseBookModel):
     STATUS_DRAFT = "draft"
     STATUS_COMPLETED = "completed"
     STATUS_UNDONE = "undone"

@@ -19,7 +19,7 @@ export function getJournalApiClient(serverBaseUrl) {
  * These use fetch with FormData since the generated api-client
  * doesn't handle multipart/form-data well.
  */
-export function getUploadApiHelpers(teamSlug) {
+export function getUploadApiHelpers(bookBase) {
   const headers = getApiHeaders();
 
   return {
@@ -29,7 +29,7 @@ export function getUploadApiHelpers(teamSlug) {
      * goes through this same wizard, so the rows the user ends up with are ones
      * they chose to import.
      */
-    sampleCsvUrl: `/a/${teamSlug}/bankfeed/api/feed/sample_csv/`,
+    sampleCsvUrl: `${bookBase}bankfeed/api/feed/sample_csv/`,
 
     /**
      * Parse an uploaded file and return headers + sample rows
@@ -38,7 +38,7 @@ export function getUploadApiHelpers(teamSlug) {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_parse/`, {
+      const response = await fetch(`${bookBase}bankfeed/api/feed/upload_parse/`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
@@ -66,7 +66,7 @@ export function getUploadApiHelpers(teamSlug) {
       formData.append('category_mappings', JSON.stringify(categoryMappings));
       if (dateFormat) formData.append('date_format', dateFormat);
 
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_preview/`, {
+      const response = await fetch(`${bookBase}bankfeed/api/feed/upload_preview/`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
@@ -94,7 +94,7 @@ export function getUploadApiHelpers(teamSlug) {
       formData.append('date_format', dateFormat);
       formData.append('has_headers', hasHeaders ? 'true' : 'false');
 
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_validate_dates/`, {
+      const response = await fetch(`${bookBase}bankfeed/api/feed/upload_validate_dates/`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
@@ -115,7 +115,7 @@ export function getUploadApiHelpers(teamSlug) {
      * Create a new account (for use during category mapping)
      */
     createAccount: async (name, accountGroupId) => {
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/create_account/`, {
+      const response = await fetch(`${bookBase}bankfeed/api/feed/create_account/`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -137,7 +137,7 @@ export function getUploadApiHelpers(teamSlug) {
      * Confirm and create transactions
      */
     uploadConfirm: async (accountId, transactions, skipDuplicates = true) => {
-      const response = await fetch(`/a/${teamSlug}/bankfeed/api/feed/upload_confirm/`, {
+      const response = await fetch(`${bookBase}bankfeed/api/feed/upload_confirm/`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -165,9 +165,9 @@ export function getUploadApiHelpers(teamSlug) {
  * Transaction API helpers for creating and updating transactions.
  * Uses fetch with JSON body.
  */
-export function getTransactionApi(teamSlug) {
+export function getTransactionApi(bookBase) {
   const headers = getApiHeaders();
-  const baseUrl = `/a/${teamSlug}/bankfeed/api/feed`;
+  const baseUrl = `${bookBase}bankfeed/api/feed`;
 
   return {
     /**
@@ -251,9 +251,9 @@ export function getTransactionApi(teamSlug) {
  * Batch operations API helpers for bulk transaction operations.
  * Uses fetch with JSON body for batch endpoints.
  */
-export function getBatchOperationsApi(teamSlug) {
+export function getBatchOperationsApi(bookBase) {
   const headers = getApiHeaders();
-  const baseUrl = `/a/${teamSlug}/bankfeed/api/feed`;
+  const baseUrl = `${bookBase}bankfeed/api/feed`;
 
   const fetchJson = async (endpoint, body, method = 'POST') => {
     const response = await fetch(`${baseUrl}/${endpoint}/`, {

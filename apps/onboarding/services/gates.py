@@ -1,9 +1,9 @@
 """
-Which guided tasks are open to a team, and why the closed ones are closed.
+Which guided tasks are open to a book, and why the closed ones are closed.
 
 Computed server-side and handed to the client, so the UI renders what the server
 says rather than deciding for itself. The gates are real: `api/opening-balances/`
-refuses a team with no journal entries whatever the UI shows.
+refuses a book with no journal entries whatever the UI shows.
 
 The two gating facts are deliberately different:
 
@@ -107,7 +107,7 @@ TASKS: tuple[Task, ...] = (
 
 
 @dataclass(frozen=True)
-class TeamFacts:
+class BookFacts:
     """The facts the gates depend on, fetched once rather than per task."""
 
     has_transactions: bool
@@ -115,21 +115,21 @@ class TeamFacts:
     has_budget: bool
 
 
-def team_facts(team) -> TeamFacts:
+def book_facts(book) -> BookFacts:
     from apps.bank_feed.models import BankTransaction
     from apps.budget.models import Budget
     from apps.journal.models import JournalEntry, counted_entries
 
-    return TeamFacts(
-        has_transactions=BankTransaction.objects.filter(team=team).exists(),
+    return BookFacts(
+        has_transactions=BankTransaction.objects.filter(book=book).exists(),
         # A voided entry is excluded everywhere else in the app, so it must not
         # count as "you have categorized something" here either.
-        has_entries=JournalEntry.objects.filter(team=team).filter(counted_entries()).exists(),
-        has_budget=Budget.objects.filter(team=team).exists(),
+        has_entries=JournalEntry.objects.filter(book=book).filter(counted_entries()).exists(),
+        has_budget=Budget.objects.filter(book=book).exists(),
     )
 
 
-def _is_satisfied(needs: str, facts: TeamFacts) -> bool:
+def _is_satisfied(needs: str, facts: BookFacts) -> bool:
     if needs == NEEDS_TRANSACTIONS:
         return facts.has_transactions
     if needs == NEEDS_ENTRIES:
@@ -137,7 +137,7 @@ def _is_satisfied(needs: str, facts: TeamFacts) -> bool:
     return True
 
 
-def _is_done(task: Task, facts: TeamFacts, tasks_done: list[str]) -> bool:
+def _is_done(task: Task, facts: BookFacts, tasks_done: list[str]) -> bool:
     # A task the user has been credited with stays done, even if the data that
     # proved it is later deleted -- being sent back through a step you finished
     # is worse than a checklist that is slightly out of date.
@@ -152,16 +152,16 @@ def _is_done(task: Task, facts: TeamFacts, tasks_done: list[str]) -> bool:
     }.get(task.slug, False)
 
 
-def task_state(team, tasks_done: list[str] | None = None, team_slug: str | None = None) -> list[dict]:
+def task_state(book, tasks_done: list[str] | None = None, url_args: tuple[str, str] | None = None) -> list[dict]:
     """
     Every guided task with its state, in order, plus the reason for any lock.
 
-    `team_slug` resolves each task's target URL. It is optional so the gate logic
+    `url_args` (the book's two slugs) resolve each task's target URL. It is optional so the gate logic
     stays testable without a URL conf.
     """
     from django.urls import reverse
 
-    facts = team_facts(team)
+    facts = book_facts(book)
     done = list(tasks_done or [])
 
     states = []
@@ -180,7 +180,7 @@ def task_state(team, tasks_done: list[str] | None = None, team_slug: str | None 
                 "blurb": str(task.blurb),
                 "state": state,
                 "reason": str(GATE_REASONS[task.needs]) if state == LOCKED else "",
-                "url": reverse(task.url_name, args=[team_slug]) if team_slug else "",
+                "url": reverse(task.url_name, args=url_args) if url_args else "",
                 "anchor": task.anchor,
                 "auto": task.auto_detected,
                 "dialog": task.dialog,
@@ -189,11 +189,11 @@ def task_state(team, tasks_done: list[str] | None = None, team_slug: str | None 
     return states
 
 
-def can_set_opening_balances(team) -> bool:
+def can_set_opening_balances(book) -> bool:
     """
     Opening balances wait for real categorized activity.
 
     Enforced by the endpoint, not only hidden in the UI -- see the module
     docstring.
     """
-    return team_facts(team).has_entries
+    return book_facts(book).has_entries

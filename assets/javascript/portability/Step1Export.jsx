@@ -55,7 +55,7 @@ const Step1Export = ({ exportUrl, uncategorizedCount, bankFeedUrl, onStartImport
           <h2 className="text-lg font-semibold">{gettext('Import into this team')}</h2>
           <p className="text-base-content/70 text-sm mt-1">
             {gettext(
-              'Loading a Koala Budget export here replaces everything currently in this team. There is no merge — this team’s existing accounts, transactions, budgets and goals are deleted first.',
+              'Loading a Koala Budget export here replaces everything currently in this set of books. There is no merge — its existing accounts, transactions, budgets and goals are deleted first. Other sets of books in the team are not touched.',
             )}
           </p>
         </div>

@@ -65,7 +65,7 @@
         {% empty %}
         <p class="text-base-content/70 text-sm">
           {% translate "No account groups of this type." %}
-          <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="link">{% translate "Create one" %}</a>.
+          <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="link">{% translate "Create one" %}</a>.
         </p>
         {% endfor %}
       </div>
@@ -96,7 +96,7 @@
               class="btn btn-outline" data-testid="save-and-create-another-btn">
         {% translate "Save and create another" %}
       </button>
-      <a href="{% url 'accounts:accounts_home' request.team.slug %}" class="btn btn-outline" data-testid="cancel-btn">{% translate "Cancel" %}</a>
+      <a href="{% url 'accounts:accounts_home' request.team.slug request.book.slug %}" class="btn btn-outline" data-testid="cancel-btn">{% translate "Cancel" %}</a>
     </div>
   </form>
 </section>

@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel
 
 ZERO = Decimal("0")
 
@@ -16,7 +16,7 @@ class BudgetQuerySet(models.QuerySet):
     pass
 
 
-class Budget(BaseTeamModel):
+class Budget(BaseBookModel):
     """
     Budget model for monthly budget planning.
     Automatically generates entries for income/expense accounts each month.
@@ -36,7 +36,7 @@ class Budget(BaseTeamModel):
     objects = BudgetQuerySet.as_manager()
 
     class Meta:
-        unique_together = ["team", "month", "category"]
+        unique_together = ["book", "month", "category"]
         ordering = ["-month", "category__name"]
 
     def __str__(self):
@@ -58,29 +58,29 @@ STATE_LABELS = {
 }
 
 
-def goals_group(team):
+def goals_group(book):
     """The non-system equity group goal accounts live in, created if missing.
 
     Never another equity group: on template and generated charts the lowest-id
     equity group is the system "Equity Adjustments" one.
     """
     group = AccountGroup.objects.filter(
-        team=team, account_type=ACCOUNT_TYPE_EQUITY, name=GOALS_GROUP_NAME, is_system=False
+        book=book, account_type=ACCOUNT_TYPE_EQUITY, name=GOALS_GROUP_NAME, is_system=False
     ).first()
     if group is not None:
         return group
-    # AccountGroup names are unique per team regardless of type, so a "Goals"
+    # AccountGroup names are unique per book regardless of type, so a "Goals"
     # group of another type (or a system one) pushes ours to another name.
     name = GOALS_GROUP_NAME
-    if AccountGroup.objects.filter(team=team, name=name).exists():
+    if AccountGroup.objects.filter(book=book, name=name).exists():
         name = "Savings Goals"
         existing = AccountGroup.objects.filter(
-            team=team, account_type=ACCOUNT_TYPE_EQUITY, name=name, is_system=False
+            book=book, account_type=ACCOUNT_TYPE_EQUITY, name=name, is_system=False
         ).first()
         if existing is not None:
             return existing
     return AccountGroup.objects.create(
-        team=team, account_type=ACCOUNT_TYPE_EQUITY, name=name, description="Savings goals"
+        book=book, account_type=ACCOUNT_TYPE_EQUITY, name=name, description="Savings goals"
     )
 
 
@@ -158,7 +158,7 @@ class GoalQuerySet(models.QuerySet):
         )
 
 
-class Goal(BaseTeamModel):
+class Goal(BaseBookModel):
     """
     A savings goal: a budget envelope that never resets.
 
@@ -207,7 +207,7 @@ class Goal(BaseTeamModel):
 
     class Meta:
         ordering = ["order", "target_date", "name"]
-        unique_together = ["team", "name"]
+        unique_together = ["book", "name"]
         # Use unique related_name to avoid conflict with deprecated apps.goals.Goal
         default_related_name = "budget_goals"
 
@@ -215,7 +215,7 @@ class Goal(BaseTeamModel):
         return self.name
 
     def get_absolute_url(self):
-        return reverse("budget:goal_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("budget:goal_detail", args=[*self.book.url_args, self.pk])
 
     def save(self, *args, **kwargs):
         """Override save to automatically create backing account for new goals."""
@@ -224,7 +224,7 @@ class Goal(BaseTeamModel):
                 # Created inside the same transaction so a failed goal save
                 # doesn't leave an orphaned account behind.
                 self.account = Account.objects.create(
-                    team=self.team, name=f"Goal: {self.name}", account_group=goals_group(self.team)
+                    book=self.book, name=f"Goal: {self.name}", account_group=goals_group(self.book)
                 )
                 super().save(*args, **kwargs)
             return
@@ -293,7 +293,7 @@ class Goal(BaseTeamModel):
         return 0
 
 
-class GoalAllocation(BaseTeamModel):
+class GoalAllocation(BaseBookModel):
     """
     Monthly allocation towards a goal.
     This represents how much is being saved toward the goal each month.
@@ -314,7 +314,7 @@ class GoalAllocation(BaseTeamModel):
     notes = models.TextField(blank=True, verbose_name=_("Notes"))
 
     class Meta:
-        unique_together = ["team", "goal", "month"]
+        unique_together = ["book", "goal", "month"]
         ordering = ["-month"]
         default_related_name = "budget_goal_allocations"
 

@@ -1,4 +1,4 @@
-"""URL configuration for the YNAB import wizard (all team-scoped)."""
+"""URL configuration for the YNAB import wizard (all book-scoped)."""
 
 from django.urls import path
 

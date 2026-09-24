@@ -4,14 +4,14 @@ from apps.accounts.models import Account, AccountGroup, Payee
 
 
 @transaction.atomic
-def apply_template(team, template):
+def apply_template(book, template):
     """
-    Apply a bootstrap template to a team.
+    Apply a bootstrap template to a set of books.
 
-    Creates the team's *structure* only -- account groups, accounts and payees.
+    Creates the book's *structure* only -- account groups, accounts and payees.
     A template may carry `sort_order` on groups and accounts to fix their display
     order; templates that omit it fall back to 0, leaving the alphabetical default.
-    Deliberately creates no transactions: a new team starts with an empty ledger
+    Deliberately creates no transactions: a new book starts with an empty ledger
     so the first numbers a user sees are their own.
 
     Safe to run multiple times (idempotent).
@@ -24,7 +24,7 @@ def apply_template(team, template):
     # -------------------------
     for g in template["account_groups"]:
         group, _ = AccountGroup.objects.get_or_create(
-            team=team,
+            book=book,
             name=g["name"],
             defaults={
                 "account_type": g["type"],
@@ -40,7 +40,7 @@ def apply_template(team, template):
     # -------------------------
     for a in template["accounts"]:
         Account.objects.get_or_create(
-            team=team,
+            book=book,
             name=a["name"],
             defaults={
                 "has_feed": a.get("has_feed", False),
@@ -55,6 +55,6 @@ def apply_template(team, template):
     # -------------------------
     for name in template.get("payees", []):
         Payee.objects.get_or_create(
-            team=team,
+            book=book,
             name=name,
         )

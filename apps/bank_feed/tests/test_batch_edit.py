@@ -18,7 +18,7 @@ from apps.accounts.models import (
     Payee,
 )
 from apps.bank_feed.models import BankTransaction
-from apps.teams.context import current_team
+from apps.books.context import current_book
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -30,36 +30,37 @@ class BatchEditTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
 
         cls.bank_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Checking",
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.bank_account2 = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Savings",
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.expense_category = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Groceries",
             account_group=cls.expense_group,
         )
         cls.income_category = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Salary",
             account_group=cls.income_group,
         )
@@ -67,11 +68,11 @@ class BatchEditTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        self.url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
+        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_edit/"
 
     def _create_tx(self, **kwargs):
         defaults = dict(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Test tx",
@@ -85,7 +86,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_category_creates_journal(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "category_id": self.expense_category.id},
@@ -100,7 +101,7 @@ class BatchEditTest(TestCase):
         """If transaction already has a journal, update the category line."""
         tx = self._create_tx()
         # First categorize
-        with current_team(self.team):
+        with current_book(self.book):
             self.client.patch(
                 self.url,
                 {"ids": [tx.id], "category_id": self.expense_category.id},
@@ -110,7 +111,7 @@ class BatchEditTest(TestCase):
         je_id = tx.journal_entry_id
 
         # Now re-categorize to income
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "category_id": self.income_category.id},
@@ -128,7 +129,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_move_account(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "account_id": self.bank_account2.id},
@@ -140,7 +141,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_move_rejects_non_feed_account(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "account_id": self.expense_category.id},
@@ -152,7 +153,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_payee(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "payee": "Walmart"},
@@ -166,7 +167,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_description(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "description": "New description"},
@@ -180,7 +181,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_date(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "date": "2024-06-15"},
@@ -194,7 +195,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_multiple_fields(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {
@@ -216,17 +217,17 @@ class BatchEditTest(TestCase):
     def test_batch_edit_blank_payee_clears_it(self):
         """A blank payee is how the caller clears one — and must not create a nameless Payee."""
         tx = self._create_tx(merchant_name="Walmart")
-        with current_team(self.team):
+        with current_book(self.book):
             self.client.patch(self.url, {"ids": [tx.id], "payee": "Walmart"}, format="json")
             resp = self.client.patch(self.url, {"ids": [tx.id], "payee": ""}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         tx.refresh_from_db()
         self.assertEqual(tx.merchant_name, "")
-        self.assertFalse(Payee.objects.filter(team=self.team, name="").exists())
+        self.assertFalse(Payee.objects.filter(book=self.book, name="").exists())
 
     def test_batch_edit_blank_payee_unsets_the_journal_payee(self):
         tx = self._create_tx(merchant_name="Walmart")
-        with current_team(self.team):
+        with current_book(self.book):
             self.client.patch(
                 self.url,
                 {"ids": [tx.id], "category_id": self.expense_category.id, "payee": "Walmart"},
@@ -244,7 +245,7 @@ class BatchEditTest(TestCase):
     def test_batch_edit_applies_category_and_details_together(self):
         """Categorize mode saves a card's payee/description edits with its category."""
         tx = self._create_tx(description="SQ *BLUE BOTTLE 4417", merchant_name="SQ *BLUE BOTTLE")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {
@@ -270,7 +271,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_leaves_unset_fields_unchanged(self):
         tx = self._create_tx(description="Original", merchant_name="OriginalPayee")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "payee": "NewPayee"},
@@ -287,7 +288,7 @@ class BatchEditTest(TestCase):
     def test_batch_edit_multiple_transactions(self):
         tx1 = self._create_tx(description="Tx 1")
         tx2 = self._create_tx(description="Tx 2")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx1.id, tx2.id], "description": "Batch updated"},
@@ -302,7 +303,7 @@ class BatchEditTest(TestCase):
     # ---- Validation ----
 
     def test_batch_edit_empty_ids_returns_400(self):
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": []},
@@ -314,7 +315,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_invalid_category_returns_404(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "category_id": 99999},
@@ -324,7 +325,7 @@ class BatchEditTest(TestCase):
 
     def test_batch_edit_invalid_account_returns_404(self):
         tx = self._create_tx()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.url,
                 {"ids": [tx.id], "account_id": 99999},
@@ -339,14 +340,15 @@ class RetrieveEndpointRemovedTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team-ret")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser2", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.bank_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Checking",
             account_group=cls.asset_group,
             has_feed=True,
@@ -358,14 +360,14 @@ class RetrieveEndpointRemovedTest(TestCase):
 
     def test_retrieve_returns_404_or_405(self):
         tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Test",
             amount=Decimal("10.00"),
             source=BankTransaction.SOURCE_CSV,
         )
-        with current_team(self.team):
-            resp = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/{tx.id}/")
+        with current_book(self.book):
+            resp = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/{tx.id}/")
         # Should return 405 Method Not Allowed since retrieve is removed
         self.assertIn(resp.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED])

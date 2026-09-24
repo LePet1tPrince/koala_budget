@@ -15,7 +15,7 @@
         {% endblocktranslate %}
       </p>
     </div>
-    <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm">{% translate "Back to Reports" %}</a>
+    <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm">{% translate "Back to Reports" %}</a>
   </div>
 
   {% if all_intact %}

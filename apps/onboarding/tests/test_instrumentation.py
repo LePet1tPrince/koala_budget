@@ -27,6 +27,7 @@ from apps.users.models import CustomUser
 ANSWERS = {
     "income_sources": ["employment"],
     "household_shape": "solo",
+    "budget_future_income": "no",
     "housing": "rent",
     "kids": "no",
     "transport": ["transit"],
@@ -40,16 +41,17 @@ class InstrumentationTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Tracked", slug="tracked")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="tracked-user", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
     def setUp(self):
         self.client.force_login(self.user)
-        self.home_url = reverse("onboarding:home", args=[self.team.slug])
-        self.answers_url = reverse("onboarding:api_answers", args=[self.team.slug])
-        self.complete_url = reverse("onboarding:api_complete", args=[self.team.slug])
-        self.skip_url = reverse("onboarding:api_skip", args=[self.team.slug])
-        self.task_url = reverse("onboarding:api_task", args=[self.team.slug])
+        self.home_url = reverse("onboarding:home", args=[self.team.slug, self.book.slug])
+        self.answers_url = reverse("onboarding:api_answers", args=[self.team.slug, self.book.slug])
+        self.complete_url = reverse("onboarding:api_complete", args=[self.team.slug, self.book.slug])
+        self.skip_url = reverse("onboarding:api_skip", args=[self.team.slug, self.book.slug])
+        self.task_url = reverse("onboarding:api_task", args=[self.team.slug, self.book.slug])
 
     def post_json(self, url, payload=None):
         return self.client.post(
@@ -112,18 +114,18 @@ class FunnelEventsTest(InstrumentationTestCase):
 class TaskEventsTest(InstrumentationTestCase):
     def setUp(self):
         super().setUp()
-        self.state = OnboardingState.objects.create(team=self.team)
+        self.state = OnboardingState.objects.create(book=self.book)
         self.state.complete()
         self.state.save()
 
-        group = AccountGroup.objects.create(team=self.team, name="Bank Accounts", account_type="asset")
-        self.account = Account.objects.create(team=self.team, name="Chequing", account_group=group, has_feed=True)
-        expenses = AccountGroup.objects.create(team=self.team, name="Regular", account_type="expense")
-        self.category = Account.objects.create(team=self.team, name="Groceries", account_group=expenses)
+        group = AccountGroup.objects.create(book=self.book, name="Bank Accounts", account_type="asset")
+        self.account = Account.objects.create(book=self.book, name="Chequing", account_group=group, has_feed=True)
+        expenses = AccountGroup.objects.create(book=self.book, name="Regular", account_type="expense")
+        self.category = Account.objects.create(book=self.book, name="Groceries", account_group=expenses)
 
     def do_the_work(self):
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.account,
             posted_date=date(2026, 9, 1),
             amount=Decimal("42"),
@@ -131,10 +133,10 @@ class TaskEventsTest(InstrumentationTestCase):
             source=BankTransaction.SOURCE_CSV,
         )
         JournalEntry.objects.create(
-            team=self.team, entry_date=date(2026, 9, 1), description="x", status=JournalEntry.STATUS_POSTED
+            book=self.book, entry_date=date(2026, 9, 1), description="x", status=JournalEntry.STATUS_POSTED
         )
         Budget.objects.create(
-            team=self.team, month=date(2026, 9, 1), category=self.category, budget_amount=Decimal("300")
+            book=self.book, month=date(2026, 9, 1), category=self.category, budget_amount=Decimal("300")
         )
 
     def test_a_completed_task_is_recorded(self):
@@ -181,7 +183,7 @@ class TaskEventsTest(InstrumentationTestCase):
 class ResumeTest(InstrumentationTestCase):
     def setUp(self):
         super().setUp()
-        self.state = OnboardingState.objects.create(team=self.team)
+        self.state = OnboardingState.objects.create(book=self.book)
         self.state.complete()
         self.state.finish_tasks()
         self.state.save()
@@ -190,7 +192,7 @@ class ResumeTest(InstrumentationTestCase):
         response = self.post_json(self.task_url, {"action": "resume"})
 
         self.assertTrue(response.json()["active"])
-        self.assertTrue(OnboardingState.objects.get(team=self.team).shows_tasks)
+        self.assertTrue(OnboardingState.objects.get(book=self.book).shows_tasks)
 
     def test_resuming_keeps_the_work_already_done(self):
         self.state.mark_task("report")
@@ -198,7 +200,7 @@ class ResumeTest(InstrumentationTestCase):
 
         self.post_json(self.task_url, {"action": "resume"})
 
-        self.assertIn("report", OnboardingState.objects.get(team=self.team).tasks_done)
+        self.assertIn("report", OnboardingState.objects.get(book=self.book).tasks_done)
 
 
 class ResumeCardTest(InstrumentationTestCase):
@@ -206,8 +208,8 @@ class ResumeCardTest(InstrumentationTestCase):
 
     def setUp(self):
         super().setUp()
-        self.dashboard = reverse("web_team:home", args=[self.team.slug])
-        self.state = OnboardingState.objects.create(team=self.team)
+        self.dashboard = reverse("web_book:home", args=[self.team.slug, self.book.slug])
+        self.state = OnboardingState.objects.create(book=self.book)
 
     def test_offered_to_a_team_that_skipped_and_still_has_gaps(self):
         self.state.skip()
@@ -226,19 +228,19 @@ class ResumeCardTest(InstrumentationTestCase):
         self.state.skip()
         self.state.save()
 
-        group = AccountGroup.objects.create(team=self.team, name="Bank", account_type="asset")
-        account = Account.objects.create(team=self.team, name="Chequing", account_group=group)
-        expenses = AccountGroup.objects.create(team=self.team, name="Regular", account_type="expense")
-        category = Account.objects.create(team=self.team, name="Groceries", account_group=expenses)
+        group = AccountGroup.objects.create(book=self.book, name="Bank", account_type="asset")
+        account = Account.objects.create(book=self.book, name="Chequing", account_group=group)
+        expenses = AccountGroup.objects.create(book=self.book, name="Regular", account_type="expense")
+        category = Account.objects.create(book=self.book, name="Groceries", account_group=expenses)
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=account,
             posted_date=date(2026, 9, 1),
             amount=Decimal("1"),
             description="x",
             source=BankTransaction.SOURCE_CSV,
         )
-        Budget.objects.create(team=self.team, month=date(2026, 9, 1), category=category, budget_amount=Decimal("1"))
+        Budget.objects.create(book=self.book, month=date(2026, 9, 1), category=category, budget_amount=Decimal("1"))
 
         self.assertFalse(self.client.get(self.dashboard).context["show_resume"])
 

@@ -74,7 +74,7 @@ export interface FeedAccount {
      */
     readonly balance: string;
     /**
-     * 
+     * Same as `balance` now that archived entries count nowhere; kept for API compatibility.
      * @type {string}
      * @memberof FeedAccount
      */

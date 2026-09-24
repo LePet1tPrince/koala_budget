@@ -60,7 +60,7 @@ def split_fixture(team):
 def test_split_row_shows_a_split_badge(requires_vite, authenticated_page: Page, live_server, split_fixture):
     """A split says so in the feed, rather than showing one leg as its category."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(split_fixture["team"].slug)
+    feed.goto(split_fixture["team"].default_book)
     feed.click_account_card(split_fixture["account"].id)
 
     assert feed.split_badge_text(split_fixture["split"].id) == "Split (2)"
@@ -70,7 +70,7 @@ def test_split_row_shows_a_split_badge(requires_vite, authenticated_page: Page, 
 @pytest.mark.django_db(transaction=True)
 def test_opening_a_split_shows_its_legs(requires_vite, authenticated_page: Page, live_server, split_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(split_fixture["team"].slug)
+    feed.goto(split_fixture["team"].default_book)
     feed.click_account_card(split_fixture["account"].id)
     feed.open_row(split_fixture["split"].id)
 
@@ -83,7 +83,7 @@ def test_opening_a_split_shows_its_legs(requires_vite, authenticated_page: Page,
 def test_unbalanced_split_cannot_be_saved(requires_vite, authenticated_page: Page, live_server, split_fixture):
     """The shortfall is named, and Save stays disabled until it is gone."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(split_fixture["team"].slug)
+    feed.goto(split_fixture["team"].default_book)
     feed.click_account_card(split_fixture["account"].id)
     feed.open_row(split_fixture["split"].id)
 
@@ -100,7 +100,7 @@ def test_unbalanced_split_cannot_be_saved(requires_vite, authenticated_page: Pag
 @pytest.mark.django_db(transaction=True)
 def test_reapportioning_a_split_saves(requires_vite, authenticated_page: Page, live_server, split_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(split_fixture["team"].slug)
+    feed.goto(split_fixture["team"].default_book)
     feed.click_account_card(split_fixture["account"].id)
     feed.open_row(split_fixture["split"].id)
 
@@ -118,7 +118,7 @@ def test_reapportioning_a_split_saves(requires_vite, authenticated_page: Page, l
 @pytest.mark.django_db(transaction=True)
 def test_adding_a_leg_to_a_split(requires_vite, authenticated_page: Page, live_server, split_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(split_fixture["team"].slug)
+    feed.goto(split_fixture["team"].default_book)
     feed.click_account_card(split_fixture["account"].id)
     feed.open_row(split_fixture["split"].id)
 
@@ -144,7 +144,7 @@ def test_splitting_an_uncategorized_transaction(requires_vite, authenticated_pag
     row = feed_transaction(team, account, description="CANADIAN TIRE", merchant_name="Canadian Tire")
 
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.slug)
+    feed.goto(team.default_book)
     feed.click_account_card(account.id)
     feed.open_row(row.id)
 
@@ -169,7 +169,7 @@ def test_splitting_an_uncategorized_transaction(requires_vite, authenticated_pag
 @pytest.mark.django_db(transaction=True)
 def test_remove_split_collapses_to_the_largest_leg(requires_vite, authenticated_page: Page, live_server, split_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(split_fixture["team"].slug)
+    feed.goto(split_fixture["team"].default_book)
     feed.click_account_card(split_fixture["account"].id)
     feed.open_row(split_fixture["split"].id)
 
@@ -189,7 +189,7 @@ def test_remove_split_collapses_to_the_largest_leg(requires_vite, authenticated_
 def test_a_split_cannot_be_reduced_below_two_legs(requires_vite, authenticated_page: Page, live_server, split_fixture):
     """Removing the second-to-last leg is blocked; Remove split is the way out."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(split_fixture["team"].slug)
+    feed.goto(split_fixture["team"].default_book)
     feed.click_account_card(split_fixture["account"].id)
     feed.open_row(split_fixture["split"].id)
 

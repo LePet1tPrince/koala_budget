@@ -81,7 +81,7 @@ const LineTable = ({
   allAccounts,
   allPayees = [],
   categorySuggestions = {},
-  teamSlug,
+  book,
   onAdd,
   onDelete,
   onEditTransaction,
@@ -111,7 +111,7 @@ const LineTable = ({
 
   // Plaid "Link Bank Account" flow, triggered from the dropdown menu below
   const { handleClick: handleLinkBankClick, loading: linkBankLoading, modal: linkBankModal } = usePlaidLinkFlow({
-    teamSlug,
+    book,
     allAccounts,
     onSuccess: onLinkSuccess,
     plaidClient,
@@ -694,7 +694,7 @@ const LineTable = ({
         allAccounts={allAccounts}
         allPayees={allPayees}
         categorySuggestions={categorySuggestions}
-        teamSlug={teamSlug}
+        book={book}
         onSave={handleEditSave}
         mode={modalMode}
       />

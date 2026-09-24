@@ -65,7 +65,7 @@ Context: goal (annotated by with_progress), month (optional), button_class (opti
           <span data-close-case="pos zero" {% if goal.left < 0 %}hidden{% endif %}>{% translate "Cancel" %}</span>
         </button>
       </form>
-      <form method="post" action="{% url 'budget:goal_close' team_slug=request.team.slug pk=goal.pk %}"
+      <form method="post" action="{% url 'budget:goal_close' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}"
             data-testid="goal-close-form">
         {% csrf_token %}
         {% if month %}<input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">{% endif %}

@@ -5,7 +5,7 @@
   {% include "accounts/components/manage_tabs.html" with manage_tab="payees" %}
   <div class="flex justify-between items-center mb-4">
     <h3 class="text-xl mb-1">{% translate "Payees" %}</h3>
-    <a href="{% url 'accounts:payee_create' request.team.slug %}" class="btn btn-primary">
+    <a href="{% url 'accounts:payee_create' request.team.slug request.book.slug %}" class="btn btn-primary">
       {% translate "New Payee" %}
     </a>
   </div>
@@ -23,7 +23,7 @@
             <tr>
               <td><a href="{{ payee.get_absolute_url }}" class="link">{{ payee.name }}</a></td>
               <td>
-                <a href="{% url 'accounts:payee_update' request.team.slug payee.pk %}" class="btn btn-outline btn-sm">
+                <a href="{% url 'accounts:payee_update' request.team.slug request.book.slug payee.pk %}" class="btn btn-outline btn-sm">
                   {% translate "Edit" %}
                 </a>
               </td>
@@ -33,7 +33,7 @@
       </table>
     </div>
   {% else %}
-    <p class="text-base-content/70">{% translate "No payees yet." %} <a href="{% url 'accounts:payee_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <p class="text-base-content/70">{% translate "No payees yet." %} <a href="{% url 'accounts:payee_create' request.team.slug request.book.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
   {% endif %}
 </section>
 {% endblock %}

@@ -4,11 +4,12 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import ActualTooltip from './react/ActualTooltip';
+import { readBook } from '../common/book';
 
 // Get data from Django template
 const allAccounts = JSON.parse(document.getElementById('all-accounts').textContent);
 const apiUrls = JSON.parse(document.getElementById('api-urls').textContent);
-const teamSlug = JSON.parse(document.getElementById('team-slug').textContent);
+const book = readBook();
 
 // Every root we have mounted, so they can be torn down again. Changing month
 // replaces the table without reloading the page (month-swap.js), and a root
@@ -46,7 +47,7 @@ function mount() {
         month={month}
         allAccounts={allAccounts}
         apiUrls={apiUrls}
-        teamSlug={teamSlug}
+        book={book}
       />
     );
   });

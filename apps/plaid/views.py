@@ -20,7 +20,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.teams.permissions import TeamModelAccessPermissions
+from apps.books.permissions import BookModelAccessPermissions
 
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .serializers import (
@@ -43,11 +43,11 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for PlaidItem model (read-only)."""
 
     serializer_class = PlaidItemSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     queryset = PlaidItem.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
-        return PlaidItem.for_team.all()
+        return PlaidItem.for_book.all()
 
     @extend_schema(
         operation_id="plaid_items_sync",
@@ -58,7 +58,7 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
         },  # noqa: E501
     )
     @action(detail=True, methods=["post"])
-    def sync(self, request, pk=None, team_slug=None):
+    def sync(self, request, pk=None, team_slug=None, book_slug=None):
         """
         Trigger transaction sync for this Plaid item.
         Starts a background Celery task to sync transactions from Plaid.
@@ -104,12 +104,12 @@ class PlaidAccountViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = PlaidAccountSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     http_method_names = ["get", "patch"]  # Only allow GET and PATCH
     queryset = PlaidAccount.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
-        return PlaidAccount.for_team.select_related("item", "account").all()
+        return PlaidAccount.for_book.select_related("item", "account").all()
 
 
 @extend_schema_view(
@@ -120,14 +120,14 @@ class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for PlaidTransaction model (read-only)."""
 
     serializer_class = PlaidTransactionSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     queryset = PlaidTransaction.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
-        return PlaidTransaction.objects.filter(team=self.request.team).select_related(
+        return PlaidTransaction.objects.filter(book=self.request.book).select_related(
             "plaid_account",
             "plaid_account__account",
-            "journal_entry",
+            "bank_transaction",
         )
 
 
@@ -141,8 +141,8 @@ class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     responses={200: {"type": "object", "properties": {"link_token": {"type": "string"}}}},
 )
 @api_view(["POST"])
-@permission_classes([TeamModelAccessPermissions])
-def create_link_token_view(request, team_slug=None):
+@permission_classes([BookModelAccessPermissions])
+def create_link_token_view(request, team_slug=None, book_slug=None):
     """
     Create a Plaid Link token for initializing Plaid Link.
     Returns a link_token that can be used to initialize Plaid Link in the frontend.
@@ -182,9 +182,9 @@ def create_link_token_view(request, team_slug=None):
     },
 )
 @api_view(["POST"])
-@permission_classes([TeamModelAccessPermissions])
+@permission_classes([BookModelAccessPermissions])
 @transaction.atomic
-def exchange_public_token_view(request, team_slug=None):
+def exchange_public_token_view(request, team_slug=None, book_slug=None):
     """
     Exchange a public token for an access token and create PlaidItem and PlaidAccount records.
     Body:
@@ -213,7 +213,7 @@ def exchange_public_token_view(request, team_slug=None):
 
         # Create PlaidItem
         plaid_item = PlaidItem.objects.create(
-            team=request.team,
+            book=request.book,
             plaid_item_id=item_id,
             access_token=access_token,
             institution_name=institution_name,
@@ -228,7 +228,7 @@ def exchange_public_token_view(request, team_slug=None):
             # For now, we'll create the PlaidAccount without linking to a ledger account
             # The user will need to map these manually in the UI
             plaid_account = PlaidAccount.objects.create(
-                team=request.team,
+                book=request.book,
                 plaid_account_id=account["account_id"],
                 item=plaid_item,
                 account=None,  # Will be set by user later

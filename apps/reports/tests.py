@@ -33,52 +33,56 @@ class ReportServiceTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Report Test Team", slug="report-test-team")
+        cls.book = cls.team.default_book
+        # These tests budget income before it arrives.
+        cls.book.budget_future_income = True
+        cls.book.save()
 
         # Create account groups
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
         cls.liability_group = AccountGroup.objects.create(
-            team=cls.team, name="Liabilities", account_type=ACCOUNT_TYPE_LIABILITY
+            book=cls.book, name="Liabilities", account_type=ACCOUNT_TYPE_LIABILITY
         )
-        cls.equity_group = AccountGroup.objects.create(team=cls.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.equity_group = AccountGroup.objects.create(book=cls.book, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
 
         # Create accounts
-        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
-        cls.liability_account = Account.objects.create(team=cls.team, name="Loans", account_group=cls.liability_group)
+        cls.asset_account = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group)
+        cls.liability_account = Account.objects.create(book=cls.book, name="Loans", account_group=cls.liability_group)
         cls.equity_account = Account.objects.create(
-            team=cls.team, name="Retained Earnings", account_group=cls.equity_group
+            book=cls.book, name="Retained Earnings", account_group=cls.equity_group
         )
-        cls.income_account = Account.objects.create(team=cls.team, name="Sales Revenue", account_group=cls.income_group)
+        cls.income_account = Account.objects.create(book=cls.book, name="Sales Revenue", account_group=cls.income_group)
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Operating Expenses", account_group=cls.expense_group
+            book=cls.book, name="Operating Expenses", account_group=cls.expense_group
         )
 
     def setUp(self):
-        self.service = ReportService(self.team)
+        self.service = ReportService(self.book)
 
     def test_income_statement_data_basic(self):
         """Test basic income statement data calculation."""
         # Create income transaction
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 12, 15), description="Sales revenue")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 12, 15), description="Sales revenue")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("1000.00")
         )
 
         # Create expense transaction
         entry2 = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2024, 12, 20), description="Operating expenses"
+            book=self.book, entry_date=date(2024, 12, 20), description="Operating expenses"
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.expense_account, dr_amount=Decimal("300.00")
+            book=self.book, journal_entry=entry2, account=self.expense_account, dr_amount=Decimal("300.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.asset_account, cr_amount=Decimal("300.00")
+            book=self.book, journal_entry=entry2, account=self.asset_account, cr_amount=Decimal("300.00")
         )
 
         start_date = date(2024, 12, 1)
@@ -95,22 +99,22 @@ class ReportServiceTest(TestCase):
         """Test basic balance sheet data calculation."""
         # Create asset transaction
         entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2024, 12, 15), description="Initial capital"
+            book=self.book, entry_date=date(2024, 12, 15), description="Initial capital"
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("5000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("5000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("5000.00")
+            book=self.book, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("5000.00")
         )
 
         # Create liability transaction
-        entry2 = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 12, 20), description="Loan taken")
+        entry2 = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 12, 20), description="Loan taken")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("2000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.liability_account, cr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry2, account=self.liability_account, cr_amount=Decimal("2000.00")
         )
 
         as_of_date = date(2024, 12, 31)
@@ -136,21 +140,21 @@ class ReportServiceTest(TestCase):
         """Test net worth trend data calculation by date range."""
         # Create transactions in different months
         # January transaction
-        entry1 = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 1, 15), description="Jan capital")
+        entry1 = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 1, 15), description="Jan capital")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry1, account=self.asset_account, dr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry1, account=self.asset_account, dr_amount=Decimal("1000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry1, account=self.equity_account, cr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry1, account=self.equity_account, cr_amount=Decimal("1000.00")
         )
 
         # February transaction
-        entry2 = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 2, 15), description="Feb loan")
+        entry2 = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 2, 15), description="Feb loan")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("500.00")
+            book=self.book, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("500.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.liability_account, cr_amount=Decimal("500.00")
+            book=self.book, journal_entry=entry2, account=self.liability_account, cr_amount=Decimal("500.00")
         )
 
         start_date = date(2024, 1, 1)
@@ -174,19 +178,19 @@ class ReportServiceTest(TestCase):
 
     def test_net_worth_trend_includes_opening_balances(self):
         """Activity before the range is carried in as the opening balance of the first month."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2023, 6, 15), description="Old capital")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2023, 6, 15), description="Old capital")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("2000.00")
         )
-        entry2 = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 3, 10), description="Mar loan")
+        entry2 = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 3, 10), description="Mar loan")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("300.00")
+            book=self.book, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("300.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.liability_account, cr_amount=Decimal("300.00")
+            book=self.book, journal_entry=entry2, account=self.liability_account, cr_amount=Decimal("300.00")
         )
 
         data = self.service.get_net_worth_trend_data_by_date_range(date(2024, 3, 1), date(2024, 4, 30))
@@ -202,21 +206,21 @@ class ReportServiceTest(TestCase):
 
     def test_net_worth_trend_excludes_voided_entries(self):
         """Voided journal entries don't move the trend balances."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 1, 15), description="Capital")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 1, 15), description="Capital")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("1000.00")
         )
         voided = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2024, 1, 20), description="Void", status=JournalEntry.STATUS_VOID
+            book=self.book, entry_date=date(2024, 1, 20), description="Void", status=JournalEntry.STATUS_VOID
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=voided, account=self.asset_account, dr_amount=Decimal("9999.00")
+            book=self.book, journal_entry=voided, account=self.asset_account, dr_amount=Decimal("9999.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=voided, account=self.equity_account, cr_amount=Decimal("9999.00")
+            book=self.book, journal_entry=voided, account=self.equity_account, cr_amount=Decimal("9999.00")
         )
 
         data = self.service.get_net_worth_trend_data_by_date_range(date(2024, 1, 1), date(2024, 1, 31))
@@ -240,17 +244,17 @@ class ReportServiceTest(TestCase):
 
     def test_income_statement_grouped_by_account_group(self):
         """Accounts are grouped by account group with per-group subtotals, sorted by group name."""
-        housing_group = AccountGroup.objects.create(team=self.team, name="Housing", account_type=ACCOUNT_TYPE_EXPENSE)
-        rent_account = Account.objects.create(team=self.team, name="Rent", account_group=housing_group)
-        utilities_account = Account.objects.create(team=self.team, name="Utilities", account_group=housing_group)
+        housing_group = AccountGroup.objects.create(book=self.book, name="Housing", account_type=ACCOUNT_TYPE_EXPENSE)
+        rent_account = Account.objects.create(book=self.book, name="Rent", account_group=housing_group)
+        utilities_account = Account.objects.create(book=self.book, name="Utilities", account_group=housing_group)
 
         def spend(account, amount, day):
             entry = JournalEntry.objects.create(
-                team=self.team, entry_date=date(2024, 12, day), description=f"Spend {account.name}"
+                book=self.book, entry_date=date(2024, 12, day), description=f"Spend {account.name}"
             )
-            JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=amount)
+            JournalLine.objects.create(book=self.book, journal_entry=entry, account=account, dr_amount=amount)
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=amount
+                book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=amount
             )
 
         spend(rent_account, Decimal("1200.00"), 1)
@@ -272,16 +276,16 @@ class ReportServiceTest(TestCase):
         self.assertEqual(data["total_expenses"], Decimal("1650.00"))
 
     def _record(self, account, amount, when, kind):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=when, description="tx")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=when, description="tx")
         if kind == "income":
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=amount
+                book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=amount
             )
-            JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, cr_amount=amount)
+            JournalLine.objects.create(book=self.book, journal_entry=entry, account=account, cr_amount=amount)
         else:
-            JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=amount)
+            JournalLine.objects.create(book=self.book, journal_entry=entry, account=account, dr_amount=amount)
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=amount
+                book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=amount
             )
 
     def test_income_statement_by_month(self):
@@ -332,12 +336,12 @@ class ReportServiceTest(TestCase):
 
     def test_income_statement_without_period_has_no_period_keys(self):
         """Default call keeps periods/per-period lists empty and items free of 'per_period'."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 12, 15), description="Sale")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 12, 15), description="Sale")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("100.00")
         )
 
         data = self.service.get_income_statement_data(date(2024, 12, 1), date(2024, 12, 31))
@@ -349,9 +353,9 @@ class ReportServiceTest(TestCase):
         self.assertNotIn("per_period", data["income_groups"][0])
 
     def _record_transfer(self, dr_account, cr_account, amount, entry_date, description=""):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=entry_date, description=description)
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=dr_account, dr_amount=amount)
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=cr_account, cr_amount=amount)
+        entry = JournalEntry.objects.create(book=self.book, entry_date=entry_date, description=description)
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=dr_account, dr_amount=amount)
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=cr_account, cr_amount=amount)
         return entry
 
     def test_account_activity_asset_running_balance(self):
@@ -401,13 +405,13 @@ class ReportServiceTest(TestCase):
         from apps.budget.models import Budget
 
         Budget.objects.create(
-            team=self.team, category=self.expense_account, month=date(2024, 5, 1), budget_amount=Decimal("100.00")
+            book=self.book, category=self.expense_account, month=date(2024, 5, 1), budget_amount=Decimal("100.00")
         )
         Budget.objects.create(
-            team=self.team, category=self.expense_account, month=date(2024, 6, 1), budget_amount=Decimal("100.00")
+            book=self.book, category=self.expense_account, month=date(2024, 6, 1), budget_amount=Decimal("100.00")
         )
         Budget.objects.create(
-            team=self.team, category=self.expense_account, month=date(2024, 7, 1), budget_amount=Decimal("150.00")
+            book=self.book, category=self.expense_account, month=date(2024, 7, 1), budget_amount=Decimal("150.00")
         )
         # May: spend 80 of 100 (rolls 20 into June); June: spend 120
         self._record_transfer(self.expense_account, self.asset_account, Decimal("80.00"), date(2024, 5, 10))
@@ -427,7 +431,7 @@ class ReportServiceTest(TestCase):
         from apps.budget.models import Budget
 
         Budget.objects.create(
-            team=self.team, category=self.income_account, month=date(2024, 6, 1), budget_amount=Decimal("1000.00")
+            book=self.book, category=self.income_account, month=date(2024, 6, 1), budget_amount=Decimal("1000.00")
         )
         self._record_transfer(self.asset_account, self.income_account, Decimal("1200.00"), date(2024, 6, 5))
 
@@ -467,12 +471,13 @@ class IncomeStatementDateParamsTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="IS Param Team", slug="is-param-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="isuser", email="is@example.com", password="testpass123")
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
-        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
-        cls.income_account = Account.objects.create(team=cls.team, name="Sales", account_group=cls.income_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.asset_account = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group)
+        cls.income_account = Account.objects.create(book=cls.book, name="Sales", account_group=cls.income_group)
 
     def setUp(self):
         self.client.login(username="isuser", password="testpass123")
@@ -480,15 +485,15 @@ class IncomeStatementDateParamsTest(TestCase):
     def test_date_params_parsed_correctly(self):
         """Test that start_date and end_date URL params are parsed and used."""
         # Create a transaction in the date range
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June sale")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="June sale")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("500.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("500.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("500.00")
+            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("500.00")
         )
 
-        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
         self.assertEqual(response.status_code, 200)
@@ -503,15 +508,15 @@ class IncomeStatementDateParamsTest(TestCase):
 
     def test_monthly_view_param(self):
         """?view=monthly turns on the per-month breakdown and renders month columns."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June sale")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="June sale")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("500.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("500.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("500.00")
+            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("500.00")
         )
 
-        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_date": "2024-05-01", "end_date": "2024-07-31", "view": "monthly"})
 
         self.assertEqual(response.status_code, 200)
@@ -530,7 +535,7 @@ class IncomeStatementDateParamsTest(TestCase):
 
     def test_quarterly_and_yearly_view_params(self):
         """?view=quarterly and ?view=yearly select the matching period."""
-        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
 
         response = self.client.get(url, {"start_date": "2024-01-01", "end_date": "2024-12-31", "view": "quarterly"})
         self.assertEqual(response.context["period"], "quarter")
@@ -545,7 +550,7 @@ class IncomeStatementDateParamsTest(TestCase):
 
     def test_no_params_defaults_to_current_month(self):
         """Test that no date params defaults to current month."""
-        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
 
         today = date.today()
@@ -555,7 +560,7 @@ class IncomeStatementDateParamsTest(TestCase):
 
     def test_invalid_date_params_fall_back_to_defaults(self):
         """Test that invalid date params fall back to current month defaults."""
-        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_date": "invalid", "end_date": "bad"})
 
         today = date.today()
@@ -570,29 +575,30 @@ class AccountActivityViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="AA View Team", slug="aa-view-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="aauser", email="aa@example.com", password="testpass123")
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.expense_group = AccountGroup.objects.create(team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
-        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
-        cls.expense_account = Account.objects.create(team=cls.team, name="Rent", account_group=cls.expense_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.expense_group = AccountGroup.objects.create(book=cls.book, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.asset_account = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(book=cls.book, name="Rent", account_group=cls.expense_group)
 
     def setUp(self):
         self.client.login(username="aauser", password="testpass123")
 
     def test_account_activity_renders_with_data(self):
         """Happy path: the drill-down renders transactions and totals for the account."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June rent")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="June rent")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
         )
 
         url = reverse(
             "reports:account_activity",
-            kwargs={"team_slug": self.team.slug, "account_id": self.expense_account.pk},
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "account_id": self.expense_account.pk},
         )
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
@@ -605,18 +611,18 @@ class AccountActivityViewTest(TestCase):
     def test_account_activity_shows_contra_account_and_source(self):
         """Each row surfaces the other side of the entry plus its source."""
         entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2024, 6, 15), description="June rent", source=JournalEntry.SOURCE_IMPORT
+            book=self.book, entry_date=date(2024, 6, 15), description="June rent", source=JournalEntry.SOURCE_IMPORT
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
         )
 
         url = reverse(
             "reports:account_activity",
-            kwargs={"team_slug": self.team.slug, "account_id": self.expense_account.pk},
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "account_id": self.expense_account.pk},
         )
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
@@ -627,24 +633,24 @@ class AccountActivityViewTest(TestCase):
 
     def test_account_activity_balance_account_shows_chart_and_running_balance(self):
         """Asset drill-down gets balance chart data, a starting-balance row, and a Balance column."""
-        prior = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 5, 10), description="Opening")
+        prior = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 5, 10), description="Opening")
         JournalLine.objects.create(
-            team=self.team, journal_entry=prior, account=self.asset_account, dr_amount=Decimal("500.00")
+            book=self.book, journal_entry=prior, account=self.asset_account, dr_amount=Decimal("500.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=prior, account=self.expense_account, cr_amount=Decimal("500.00")
+            book=self.book, journal_entry=prior, account=self.expense_account, cr_amount=Decimal("500.00")
         )
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June rent")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="June rent")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
         )
 
         url = reverse(
             "reports:account_activity",
-            kwargs={"team_slug": self.team.slug, "account_id": self.asset_account.pk},
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "account_id": self.asset_account.pk},
         )
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
@@ -666,19 +672,19 @@ class AccountActivityViewTest(TestCase):
         from apps.budget.models import Budget
 
         Budget.objects.create(
-            team=self.team, category=self.expense_account, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
+            book=self.book, category=self.expense_account, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
         )
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="June rent")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="June rent")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1200.00")
         )
 
         url = reverse(
             "reports:account_activity",
-            kwargs={"team_slug": self.team.slug, "account_id": self.expense_account.pk},
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "account_id": self.expense_account.pk},
         )
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
@@ -696,7 +702,7 @@ class AccountActivityViewTest(TestCase):
         """Balance-type drill-downs get the balance chart only."""
         url = reverse(
             "reports:account_activity",
-            kwargs={"team_slug": self.team.slug, "account_id": self.asset_account.pk},
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "account_id": self.asset_account.pk},
         )
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
@@ -705,27 +711,26 @@ class AccountActivityViewTest(TestCase):
         self.assertNotContains(response, "account-budget-chart")
 
     def test_account_activity_other_team_account(self):
-        """Permission: an account from another team is not exposed."""
+        """Permission: an account from another team's books is a 404, never exposed."""
         other_team = Team.objects.create(name="Other AA Team", slug="other-aa-team")
-        other_group = AccountGroup.objects.create(team=other_team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        other_account = Account.objects.create(team=other_team, name="Secret Cash", account_group=other_group)
+        other_book = other_team.default_book
+        other_group = AccountGroup.objects.create(book=other_book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        other_account = Account.objects.create(book=other_book, name="Secret Cash", account_group=other_group)
 
         url = reverse(
             "reports:account_activity",
-            kwargs={"team_slug": self.team.slug, "account_id": other_account.pk},
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "account_id": other_account.pk},
         )
         response = self.client.get(url)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.context["account"])
-        self.assertIsNone(response.context["report_data"])
-        self.assertNotContains(response, "Secret Cash")
+        self.assertEqual(response.status_code, 404)
+        self.assertNotContains(response, "Secret Cash", status_code=404)
 
     def test_account_activity_back_to_balance_sheet(self):
         """source=balance_sheet links back to the balance sheet with the as-of date."""
         url = reverse(
             "reports:account_activity",
-            kwargs={"team_slug": self.team.slug, "account_id": self.asset_account.pk},
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "account_id": self.asset_account.pk},
         )
         response = self.client.get(
             url,
@@ -739,7 +744,9 @@ class AccountActivityViewTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Back to Balance Sheet")
-        expected_back = reverse("reports:balance_sheet", args=[self.team.slug]) + "?as_of_date=2024-12-31"
+        expected_back = (
+            reverse("reports:balance_sheet", args=[self.team.slug, self.book.slug]) + "?as_of_date=2024-12-31"
+        )
         self.assertEqual(response.context["back_url"], expected_back)
 
 
@@ -749,13 +756,14 @@ class BalanceSheetDateParamsTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="BS Param Team", slug="bs-param-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="bsuser", email="bs@example.com", password="testpass123")
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.equity_group = AccountGroup.objects.create(team=cls.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
-        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.equity_group = AccountGroup.objects.create(book=cls.book, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
+        cls.asset_account = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group)
         cls.equity_account = Account.objects.create(
-            team=cls.team, name="Retained Earnings", account_group=cls.equity_group
+            book=cls.book, name="Retained Earnings", account_group=cls.equity_group
         )
 
     def setUp(self):
@@ -763,15 +771,15 @@ class BalanceSheetDateParamsTest(TestCase):
 
     def test_as_of_date_param_parsed_correctly(self):
         """Test that as_of_date URL param is parsed and used."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 12, 15), description="Capital")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 12, 15), description="Capital")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("1000.00")
         )
 
-        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"as_of_date": "2024-12-31"})
 
         self.assertEqual(response.status_code, 200)
@@ -786,27 +794,27 @@ class BalanceSheetDateParamsTest(TestCase):
 
     def test_debt_ratio_computed(self):
         """Liabilities as a percentage of assets is exposed for the summary strip."""
-        liability_group = AccountGroup.objects.create(team=self.team, name="Debts", account_type=ACCOUNT_TYPE_LIABILITY)
-        liability_account = Account.objects.create(team=self.team, name="Loan", account_group=liability_group)
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 12, 15), description="Loan")
+        liability_group = AccountGroup.objects.create(book=self.book, name="Debts", account_type=ACCOUNT_TYPE_LIABILITY)
+        liability_account = Account.objects.create(book=self.book, name="Loan", account_group=liability_group)
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 12, 15), description="Loan")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("1000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=liability_account, cr_amount=Decimal("250.00")
+            book=self.book, journal_entry=entry, account=liability_account, cr_amount=Decimal("250.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("750.00")
+            book=self.book, journal_entry=entry, account=self.equity_account, cr_amount=Decimal("750.00")
         )
 
-        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"as_of_date": "2024-12-31"})
 
         self.assertEqual(response.context["debt_ratio"], Decimal("25"))
 
     def test_no_params_defaults_to_today(self):
         """Test that no as_of_date param defaults to today."""
-        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
@@ -814,7 +822,7 @@ class BalanceSheetDateParamsTest(TestCase):
 
     def test_invalid_date_param_falls_back_to_today(self):
         """Test that invalid as_of_date param falls back to today."""
-        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"as_of_date": "not-a-date"})
 
         self.assertEqual(response.status_code, 200)
@@ -867,26 +875,27 @@ class ReportViewsTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="View Test Team", slug="view-test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", email="test@example.com", password="testpass123")
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
 
         # Create account groups and accounts for testing
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.asset_account = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group)
 
     def setUp(self):
         self.client.login(username="testuser", password="testpass123")
 
     def test_reports_home_view(self):
         """Test reports home view loads successfully."""
-        url = reverse("reports:reports_home", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:reports_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "reports/reports_home.html")
 
     def test_income_statement_view_get(self):
         """Test income statement view GET request."""
-        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "reports/income_statement.html")
@@ -897,7 +906,7 @@ class ReportViewsTest(TestCase):
 
     def test_balance_sheet_view_get(self):
         """Test balance sheet view GET request."""
-        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:balance_sheet", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "reports/balance_sheet.html")
@@ -906,7 +915,7 @@ class ReportViewsTest(TestCase):
 
     def test_net_worth_trend_view_get(self):
         """Test net worth trend view GET request."""
-        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "reports/net_worth_trend.html")
@@ -916,27 +925,27 @@ class ReportViewsTest(TestCase):
 
     def test_net_worth_trend_view_with_valid_params(self):
         """Test net worth trend view with valid date parameters."""
-        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_month": "2024-01", "end_month": "2024-12"})
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.context.get("report_data"))
 
     def test_net_worth_trend_stats_and_chart_data(self):
         """The view exposes summary stats, chart series, and month-over-month changes."""
-        income_group = AccountGroup.objects.create(team=self.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
-        income_account = Account.objects.create(team=self.team, name="Sales", account_group=income_group)
+        income_group = AccountGroup.objects.create(book=self.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        income_account = Account.objects.create(book=self.book, name="Sales", account_group=income_group)
         for month, amount in [(1, "1000.00"), (2, "500.00")]:
             entry = JournalEntry.objects.create(
-                team=self.team, entry_date=date(2024, month, 15), description=f"Sale {month}"
+                book=self.book, entry_date=date(2024, month, 15), description=f"Sale {month}"
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal(amount)
+                book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal(amount)
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=income_account, cr_amount=Decimal(amount)
+                book=self.book, journal_entry=entry, account=income_account, cr_amount=Decimal(amount)
             )
 
-        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_month": "2024-01", "end_month": "2024-02"})
 
         trend_stats = response.context["trend_stats"]
@@ -957,7 +966,7 @@ class ReportViewsTest(TestCase):
 
     def test_net_worth_trend_view_with_invalid_params(self):
         """Test net worth trend view with invalid date params falls back to defaults."""
-        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:net_worth_trend", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_month": "bad", "end_month": "data"})
         self.assertEqual(response.status_code, 200)
         # Falls back to defaults, still generates report data
@@ -970,21 +979,22 @@ class BalanceCompositionTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Comp Team", slug="comp-team")
-        cls.bank_group = AccountGroup.objects.create(team=cls.team, name="Banks", account_type=ACCOUNT_TYPE_ASSET)
+        cls.book = cls.team.default_book
+        cls.bank_group = AccountGroup.objects.create(book=cls.book, name="Banks", account_type=ACCOUNT_TYPE_ASSET)
         cls.invest_group = AccountGroup.objects.create(
-            team=cls.team, name="Investments", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Investments", account_type=ACCOUNT_TYPE_ASSET
         )
-        cls.card_group = AccountGroup.objects.create(team=cls.team, name="Cards", account_type=ACCOUNT_TYPE_LIABILITY)
-        cls.equity_group = AccountGroup.objects.create(team=cls.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
-        cls.bank = Account.objects.create(team=cls.team, name="Checking", account_group=cls.bank_group)
-        cls.invest = Account.objects.create(team=cls.team, name="Brokerage", account_group=cls.invest_group)
-        cls.card = Account.objects.create(team=cls.team, name="Visa", account_group=cls.card_group)
-        cls.equity = Account.objects.create(team=cls.team, name="Opening", account_group=cls.equity_group)
+        cls.card_group = AccountGroup.objects.create(book=cls.book, name="Cards", account_type=ACCOUNT_TYPE_LIABILITY)
+        cls.equity_group = AccountGroup.objects.create(book=cls.book, name="Equity", account_type=ACCOUNT_TYPE_EQUITY)
+        cls.bank = Account.objects.create(book=cls.book, name="Checking", account_group=cls.bank_group)
+        cls.invest = Account.objects.create(book=cls.book, name="Brokerage", account_group=cls.invest_group)
+        cls.card = Account.objects.create(book=cls.book, name="Visa", account_group=cls.card_group)
+        cls.equity = Account.objects.create(book=cls.book, name="Opening", account_group=cls.equity_group)
 
     def _entry(self, day, dr_account, cr_account, amount):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=day, description="t")
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=dr_account, dr_amount=amount)
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=cr_account, cr_amount=amount)
+        entry = JournalEntry.objects.create(book=self.book, entry_date=day, description="t")
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=dr_account, dr_amount=amount)
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=cr_account, cr_amount=amount)
 
     def test_composition_running_balances_per_group(self):
         # Opening balance before the range
@@ -995,7 +1005,7 @@ class BalanceCompositionTest(TestCase):
         # February: invest another 100
         self._entry(date(2024, 2, 5), self.invest, self.bank, Decimal("100.00"))
 
-        service = ReportService(self.team)
+        service = ReportService(self.book)
         data = service.get_balance_composition_data(date(2024, 1, 1), date(2024, 2, 29))
 
         self.assertEqual(data["labels"], ["2024-01-31", "2024-02-29"])
@@ -1010,7 +1020,7 @@ class BalanceCompositionTest(TestCase):
         self._entry(date(2024, 1, 10), self.bank, self.equity, Decimal("100.00"))
         self._entry(date(2024, 1, 12), self.invest, self.equity, Decimal("900.00"))
 
-        service = ReportService(self.team)
+        service = ReportService(self.book)
         data = service.get_balance_composition_data(date(2024, 1, 1), date(2024, 1, 31))
 
         self.assertEqual([s["name"] for s in data["asset_groups"]], ["Investments", "Banks"])
@@ -1023,37 +1033,38 @@ class CashFlowViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="CF Team", slug="cf-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="cfuser", email="cf@example.com", password="testpass123")
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
-        cls.income_account = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
-        cls.expense_account = Account.objects.create(team=cls.team, name="Rent", account_group=cls.expense_group)
+        cls.asset_account = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group)
+        cls.income_account = Account.objects.create(book=cls.book, name="Salary", account_group=cls.income_group)
+        cls.expense_account = Account.objects.create(book=cls.book, name="Rent", account_group=cls.expense_group)
 
     def setUp(self):
         self.client.login(username="cfuser", password="testpass123")
 
     def test_cash_flow_months_and_stats(self):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 1, 5), description="Pay")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 1, 5), description="Pay")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("3000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("3000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("3000.00")
+            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("3000.00")
         )
-        entry2 = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 2, 1), description="Rent")
+        entry2 = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 2, 1), description="Rent")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.expense_account, dr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry2, account=self.expense_account, dr_amount=Decimal("1000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.asset_account, cr_amount=Decimal("1000.00")
+            book=self.book, journal_entry=entry2, account=self.asset_account, cr_amount=Decimal("1000.00")
         )
 
-        url = reverse("reports:cash_flow", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:cash_flow", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_month": "2024-01", "end_month": "2024-02"})
 
         self.assertEqual(response.status_code, 200)
@@ -1075,7 +1086,7 @@ class CashFlowViewTest(TestCase):
 
     def test_cash_flow_requires_team_membership(self):
         self.client.logout()
-        url = reverse("reports:cash_flow", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:cash_flow", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertNotEqual(response.status_code, 200)
 
@@ -1088,32 +1099,33 @@ class BudgetVsActualViewTest(TestCase):
         from apps.budget.models import Budget
 
         cls.team = Team.objects.create(name="BVA Team", slug="bva-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="bvauser", email="bva@example.com", password="testpass123")
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.expense_group = AccountGroup.objects.create(team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
-        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
-        cls.rent = Account.objects.create(team=cls.team, name="Rent", account_group=cls.expense_group)
-        cls.food = Account.objects.create(team=cls.team, name="Food", account_group=cls.expense_group)
-        cls.fun = Account.objects.create(team=cls.team, name="Fun", account_group=cls.expense_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.expense_group = AccountGroup.objects.create(book=cls.book, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.asset_account = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group)
+        cls.rent = Account.objects.create(book=cls.book, name="Rent", account_group=cls.expense_group)
+        cls.food = Account.objects.create(book=cls.book, name="Food", account_group=cls.expense_group)
+        cls.fun = Account.objects.create(book=cls.book, name="Fun", account_group=cls.expense_group)
 
-        Budget.objects.create(team=cls.team, month=date(2024, 6, 1), category=cls.rent, budget_amount=Decimal("1500"))
-        Budget.objects.create(team=cls.team, month=date(2024, 6, 1), category=cls.food, budget_amount=Decimal("400"))
+        Budget.objects.create(book=cls.book, month=date(2024, 6, 1), category=cls.rent, budget_amount=Decimal("1500"))
+        Budget.objects.create(book=cls.book, month=date(2024, 6, 1), category=cls.food, budget_amount=Decimal("400"))
 
     def setUp(self):
         self.client.login(username="bvauser", password="testpass123")
 
     def _spend(self, account, amount, day):
-        entry = JournalEntry.objects.create(team=self.team, entry_date=day, description="spend")
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, dr_amount=amount)
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=amount)
+        entry = JournalEntry.objects.create(book=self.book, entry_date=day, description="spend")
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=account, dr_amount=amount)
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=amount)
 
     def test_budget_vs_actual_rows(self):
         self._spend(self.rent, Decimal("1500.00"), date(2024, 6, 1))  # exactly on budget
         self._spend(self.food, Decimal("500.00"), date(2024, 6, 10))  # over budget
         self._spend(self.fun, Decimal("50.00"), date(2024, 6, 15))  # unbudgeted
 
-        url = reverse("reports:budget_vs_actual", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:budget_vs_actual", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"month": "2024-06"})
 
         self.assertEqual(response.status_code, 200)
@@ -1135,7 +1147,7 @@ class BudgetVsActualViewTest(TestCase):
         self.assertEqual(totals["over_count"], 2)  # Food over, Fun unbudgeted-with-spend
 
     def test_budgeted_category_without_activity_still_listed(self):
-        url = reverse("reports:budget_vs_actual", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:budget_vs_actual", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"month": "2024-06"})
 
         rows = {row["account"].name: row for row in response.context["expense_groups"][0]["rows"]}
@@ -1149,6 +1161,7 @@ class GoalProgressViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="GP Team", slug="gp-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="gpuser", email="gp@example.com", password="testpass123")
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
 
@@ -1165,19 +1178,19 @@ class GoalProgressViewTest(TestCase):
             return date(total // 12, total % 12 + 1, 1)
 
         goal = Goal.objects.create(
-            team=self.team,
+            book=self.book,
             name="Vacation",
             target_amount=Decimal("1200.00"),
             target_date=add_months(today_month, 4),
         )
         GoalAllocation.objects.create(
-            team=self.team, goal=goal, month=add_months(today_month, -2), amount=Decimal("100")
+            book=self.book, goal=goal, month=add_months(today_month, -2), amount=Decimal("100")
         )
         GoalAllocation.objects.create(
-            team=self.team, goal=goal, month=add_months(today_month, -1), amount=Decimal("100")
+            book=self.book, goal=goal, month=add_months(today_month, -1), amount=Decimal("100")
         )
 
-        url = reverse("reports:goal_progress", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:goal_progress", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
@@ -1202,7 +1215,7 @@ class GoalProgressViewTest(TestCase):
         self.assertEqual(row["needed_per_month"], Decimal("250"))
 
     def test_goal_progress_no_goals(self):
-        url = reverse("reports:goal_progress", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:goal_progress", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["goal_rows"], [])
@@ -1215,23 +1228,24 @@ class IncomeStatementTrendChartTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Trend Team", slug="trend-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="tuser", email="t@example.com", password="testpass123")
         cls.team.membership_set.create(user=cls.user, role=ROLE_ADMIN)
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.expense_group = AccountGroup.objects.create(team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
-        cls.asset_account = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group)
-        cls.rent = Account.objects.create(team=cls.team, name="Rent", account_group=cls.expense_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.expense_group = AccountGroup.objects.create(book=cls.book, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.asset_account = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group)
+        cls.rent = Account.objects.create(book=cls.book, name="Rent", account_group=cls.expense_group)
 
     def setUp(self):
         self.client.login(username="tuser", password="testpass123")
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 1), description="rent")
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.rent, dr_amount=Decimal("1000"))
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 1), description="rent")
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=self.rent, dr_amount=Decimal("1000"))
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1000")
+            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("1000")
         )
 
     def test_trend_chart_data_with_monthly_view(self):
-        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_date": "2024-05-01", "end_date": "2024-07-31", "view": "monthly"})
 
         trend = response.context["trend_chart_data"]
@@ -1239,6 +1253,6 @@ class IncomeStatementTrendChartTest(TestCase):
         self.assertEqual(trend["expense_groups"], [{"name": "Living", "values": [0.0, 1000.0, 0.0]}])
 
     def test_no_trend_chart_data_without_period(self):
-        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug})
+        url = reverse("reports:income_statement", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
         self.assertIsNone(response.context["trend_chart_data"])

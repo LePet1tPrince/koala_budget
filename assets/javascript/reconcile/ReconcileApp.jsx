@@ -5,6 +5,7 @@ import { formatMoney } from '../common/amount';
 import { fireConfetti } from '../common/confetti';
 import EditTransactionModal from '../bank_feed/react/EditTransactionModal';
 import { getTransactionApi } from '../bank_feed/bank_feed.js';
+import { bookFromBase } from '../common/book';
 import History from './History';
 import StartForm from './StartForm';
 import Workspace from './Workspace';
@@ -141,7 +142,7 @@ const ReconcileApp = ({ props, api }) => {
 
   // "Add missing transaction" reuses the feed's own editor, then ticks what it made.
   const addMissing = async (data) => {
-    const row = await getTransactionApi(props.team_slug).createTransaction({ ...data, account: account.id });
+    const row = await getTransactionApi(props.book_base).createTransaction({ ...data, account: account.id });
     const payload = await load(draft.id);
     const line = payload.lines.find((l) => l.entry_id === row.journal_entry_id);
     if (line && !line.ticked) {
@@ -244,7 +245,7 @@ const ReconcileApp = ({ props, api }) => {
           mode="create"
           allAccounts={props.all_accounts}
           allPayees={props.all_payees}
-          teamSlug={props.team_slug}
+          book={bookFromBase(props.book_base)}
           onSave={addMissing}
         />
       )}

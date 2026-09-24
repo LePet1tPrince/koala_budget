@@ -30,14 +30,14 @@ def _stale_days() -> int:
     return getattr(settings, "MONTHLY_REVIEW_STALE_DAYS", 14)
 
 
-def _opening_balances(team, account_ids, before_date) -> dict:
+def _opening_balances(book, account_ids, before_date) -> dict:
     """Each account's balance from everything dated before `before_date` -- the
     starting point `balance_change` measures this month's movement against."""
     if not account_ids:
         return {}
     counted = counted_entries("journal_entry__")
     rows = (
-        JournalLine.objects.filter(team=team, account_id__in=account_ids, journal_entry__entry_date__lt=before_date)
+        JournalLine.objects.filter(book=book, account_id__in=account_ids, journal_entry__entry_date__lt=before_date)
         .filter(counted)
         .values("account_id")
         .annotate(dr=Sum("dr_amount"), cr=Sum("cr_amount"))
@@ -45,7 +45,7 @@ def _opening_balances(team, account_ids, before_date) -> dict:
     return {row["account_id"]: (row["dr"] or Decimal("0")) - (row["cr"] or Decimal("0")) for row in rows}
 
 
-def account_health(team, month) -> dict:
+def account_health(book, month) -> dict:
     """
     Returns:
         {
@@ -71,7 +71,7 @@ def account_health(team, month) -> dict:
     month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
     accounts = list(
-        Account.objects.filter(team=team, has_feed=True, is_system=False)
+        Account.objects.filter(book=book, has_feed=True, is_system=False)
         .select_related("account_group", "institution")
         # As of month end: reviewing August must not flag what happened in September.
         .with_balance(as_of=month_end)
@@ -84,7 +84,7 @@ def account_health(team, month) -> dict:
     # the same set `balance_change` sums. Unreconciled is a subset of it, so the
     # count can never exceed the transaction count.
     month_lines = JournalLine.objects.filter(
-        team=team, account_id__in=account_ids, journal_entry__entry_date__range=(month_start, month_end)
+        book=book, account_id__in=account_ids, journal_entry__entry_date__range=(month_start, month_end)
     ).filter(counted_entries("journal_entry__"))
     entry_counts = dict(
         month_lines.values("account_id")
@@ -100,7 +100,7 @@ def account_health(team, month) -> dict:
     # Uncategorized feed rows have no journal line yet but are still this month's transactions.
     uncategorized_this_month = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account_id__in=account_ids,
             journal_entry__isnull=True,
             is_archived=False,
@@ -112,7 +112,7 @@ def account_health(team, month) -> dict:
     )
     uncategorized_counts = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account_id__in=account_ids,
             journal_entry__isnull=True,
             is_archived=False,
@@ -124,13 +124,13 @@ def account_health(team, month) -> dict:
     )
     last_transaction_dates = dict(
         BankTransaction.objects.filter(
-            team=team, account_id__in=account_ids, is_archived=False, posted_date__lte=month_end
+            book=book, account_id__in=account_ids, is_archived=False, posted_date__lte=month_end
         )
         .values("account_id")
         .annotate(latest=Max("posted_date"))
         .values_list("account_id", "latest")
     )
-    opening_balances = _opening_balances(team, account_ids, month_start)
+    opening_balances = _opening_balances(book, account_ids, month_start)
 
     stale_days = _stale_days()
     result_accounts = []

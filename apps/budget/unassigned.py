@@ -90,16 +90,23 @@ class Unassigned:
         return OVER_ASSIGNED_LABEL if self.state == STATE_NEGATIVE else UNASSIGNED_LABEL
 
 
-def budget_categories(team):
+def budget_categories(book):
     """Income and expense accounts, with the group loaded for the type checks."""
     return list(
         Account.objects.filter(
-            team=team, account_group__account_type__in=(ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME)
+            book=book, account_group__account_type__in=(ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME)
         ).select_related("account_group")
     )
 
 
-def compute_unassigned(team, month: date, categories=None, today: date | None = None, detail=False) -> Unassigned:
+def compute_unassigned(
+    book,
+    month: date,
+    categories=None,
+    today: date | None = None,
+    detail=False,
+    future_income: bool | None = None,
+) -> Unassigned:
     """
     Unassigned as of the end of `month`.
 
@@ -107,6 +114,10 @@ def compute_unassigned(team, month: date, categories=None, today: date | None = 
     page); anything that isn't an income or expense account is ignored. With
     `detail=True` the result also carries the per-goal, per-envelope and per-income
     figures the Dollar Map report breaks the total down into.
+
+    `future_income` defaults to the book's own setting. With it off, income counts
+    only once it has landed, so `income_due` is zero; the budgeting settings page
+    passes the opposite of the setting to show what flipping it would do.
     """
     from apps.budget.models import Budget, Goal, GoalAllocation, month_after
     from apps.budget.services import BudgetService, NetWorthService
@@ -115,20 +126,23 @@ def compute_unassigned(team, month: date, categories=None, today: date | None = 
     month = month.replace(day=1)
     today = today or date.today()
     if categories is None:
-        categories = budget_categories(team)
+        categories = budget_categories(book)
     expense = [c for c in categories if c.account_group.account_type == ACCOUNT_TYPE_EXPENSE]
     income = [c for c in categories if c.account_group.account_type == ACCOUNT_TYPE_INCOME]
 
-    service = BudgetService(team)
+    service = BudgetService(book)
     available, previous = service.get_available_with_previous(month, expense)
+
+    if future_income is None:
+        future_income = book.budget_future_income
 
     # Income still to come: only this month's, and only while the month is running.
     income_due_by_account = {}
-    if income and month >= today.replace(day=1):
+    if future_income and income and month >= today.replace(day=1):
         income_ids = {c.pk for c in income}
         budgets = {
             b.category_id: b.budget_amount
-            for b in Budget.objects.filter(team=team, month=month, category_id__in=income_ids)
+            for b in Budget.objects.filter(book=book, month=month, category_id__in=income_ids)
         }
         actuals = service.get_actuals_by_category(month)
         for account in income:
@@ -136,13 +150,13 @@ def compute_unassigned(team, month: date, categories=None, today: date | None = 
             if due > 0:
                 income_due_by_account[account.pk] = due
 
-    goal_totals = GoalAllocation.objects.filter(team=team, goal__is_archived=False).aggregate(
+    goal_totals = GoalAllocation.objects.filter(book=book, goal__is_archived=False).aggregate(
         before=Sum("amount", filter=Q(month__lt=month), default=ZERO),
         this_month=Sum("amount", filter=Q(month__gte=month), default=ZERO),
     )
     spent = JournalLine.objects.filter(
         counted_entries("journal_entry__"),
-        team=team,
+        book=book,
         account__goal__isnull=False,
         account__goal__is_archived=False,
         journal_entry__entry_date__lt=month_after(month),
@@ -151,7 +165,7 @@ def compute_unassigned(team, month: date, categories=None, today: date | None = 
     rollover = sum(previous.values(), ZERO)
     result = Unassigned(
         month=month,
-        net_worth=NetWorthService(team).get_net_worth(month),
+        net_worth=NetWorthService(book).get_net_worth(month),
         income_due=sum(income_due_by_account.values(), ZERO),
         rollover=rollover,
         this_month=sum(available.values(), ZERO) - rollover,
@@ -165,7 +179,7 @@ def compute_unassigned(team, month: date, categories=None, today: date | None = 
     by_id = {c.pk: c for c in categories}
     goals = [
         g
-        for g in Goal.objects.filter(team=team, is_archived=False)
+        for g in Goal.objects.filter(book=book, is_archived=False)
         .with_progress(month)
         .order_by("order", "target_date", "name")
         if g.allocated or g.spent

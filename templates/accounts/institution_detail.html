@@ -5,10 +5,10 @@
   <div class="flex justify-between items-center mb-4">
     <h3 class="text-xl mb-1">{{ institution.name }}</h3>
     <div class="flex gap-2">
-      <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="btn btn-primary">
+      <a href="{% url 'accounts:institution_update' request.team.slug request.book.slug institution.pk %}" class="btn btn-primary">
         {% translate "Edit" %}
       </a>
-      <a href="{% url 'accounts:institution_delete' request.team.slug institution.pk %}" class="btn btn-outline btn-error">
+      <a href="{% url 'accounts:institution_delete' request.team.slug request.book.slug institution.pk %}" class="btn btn-outline btn-error">
         {% translate "Delete" %}
       </a>
     </div>

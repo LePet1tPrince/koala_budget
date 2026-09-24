@@ -8,7 +8,7 @@
 
   <div class="container mx-auto px-4 py-6">
     <div class="flex flex-wrap items-center gap-4 mb-4">
-      <a href="{% url 'budget:budget_home' team_slug=request.team.slug %}?month={{ start|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
+      <a href="{% url 'budget:budget_home' team_slug=request.team.slug book_slug=request.book.slug %}?month={{ start|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
         &larr; {% translate "Back to Budget" %}
       </a>
       <div>

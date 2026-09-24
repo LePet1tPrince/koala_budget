@@ -35,10 +35,10 @@ def goal_fixture(team):
     JournalLineFactory(team=team, journal_entry=entry, account=checking, dr_amount=Decimal("5000.00"))
     JournalLineFactory(team=team, journal_entry=entry, account=opening, cr_amount=Decimal("5000.00"))
 
-    goal = Goal.objects.create(team=team, name="Zed Car", target_amount=Decimal("3000.00"))
-    GoalAllocation.objects.create(team=team, goal=goal, month=month, amount=Decimal("1000.00"))
+    goal = Goal.objects.create(book=team.default_book, name="Zed Car", target_amount=Decimal("3000.00"))
+    GoalAllocation.objects.create(book=team.default_book, goal=goal, month=month, amount=Decimal("1000.00"))
     row = BankTransaction.objects.create(
-        team=team,
+        book=team.default_book,
         account=checking,
         posted_date=today,
         amount=Decimal("250.00"),
@@ -54,12 +54,12 @@ def test_categorizing_a_purchase_to_a_goal_spends_from_it(
     requires_vite, authenticated_page: Page, live_server, team, goal_fixture
 ):
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_goals(team.slug, style="summit")
+    budget.goto_goals(team.default_book, style="summit")
     assert budget.goal_spent("Zed Car") == "$0.00"
     pill_before = budget.unassigned_pill_value()
 
     categorize = CategorizePage(authenticated_page, live_server.url)
-    categorize.goto(team.slug)
+    categorize.goto(team.default_book)
     categorize.search("zed car")
     assert categorize.active_row_name() == "Goal: Zed Car"
     # The picker shows what the goal holds.
@@ -74,7 +74,7 @@ def test_categorizing_a_purchase_to_a_goal_spends_from_it(
         authenticated_page.wait_for_timeout(100)
     assert row.journal_entry.lines.filter(account=goal_fixture["goal"].account, dr_amount=Decimal("250.00")).exists()
 
-    budget.goto_goals(team.slug, style="summit")
+    budget.goto_goals(team.default_book, style="summit")
     assert budget.goal_spent("Zed Car") == "$250.00"
     assert budget.goal_left("Zed Car").startswith("$750.00")
     assert budget.goal_state("Zed Car") == "spending"
@@ -82,5 +82,5 @@ def test_categorizing_a_purchase_to_a_goal_spends_from_it(
     assert budget.unassigned_pill_value() == pill_before
 
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_income_statement(team.slug)
+    reports.goto_income_statement(team.default_book)
     assert reports.goal_spending_rows() == ["Zed Car"]

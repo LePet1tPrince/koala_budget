@@ -22,6 +22,7 @@ class SettingsHubTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.admin = CustomUser.objects.create_user(username="admin@example.com", password="testpass123")
         cls.team.members.add(cls.admin, through_defaults={"role": ROLE_ADMIN})
         cls.member = CustomUser.objects.create_user(username="member@example.com", password="testpass123")
@@ -75,16 +76,21 @@ class SettingsHubTest(TestCase):
         self.client.force_login(self.admin)
         request = self.client.get(self.url).wsgi_request
         nav = render_to_string("web/components/app_nav_menu_items.html", request=request)
-        for url_name in ("single_team:manage_team", "audit:audit_log", "subscriptions_team:subscription_details"):
-            with self.subTest(url_name=url_name):
-                self.assertNotIn(reverse(url_name, args=[self.team.slug]), nav)
-        self.assertIn(reverse("accounts:accounts_home", args=[self.team.slug]), nav)
+        for url in (
+            reverse("single_team:manage_team", args=[self.team.slug]),
+            reverse("audit:audit_log", args=self.book.url_args),
+            reverse("subscriptions_team:subscription_details", args=[self.team.slug]),
+        ):
+            with self.subTest(url=url):
+                self.assertNotIn(url, nav)
+        self.assertIn(reverse("accounts:accounts_home", args=[self.team.slug, self.book.slug]), nav)
 
 
 class SettingsSectionsTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.admin = CustomUser.objects.create_user(username="admin@example.com", password="testpass123")
         cls.team.members.add(cls.admin, through_defaults={"role": ROLE_ADMIN})
         cls.member = CustomUser.objects.create_user(username="member@example.com", password="testpass123")
@@ -98,7 +104,19 @@ class SettingsSectionsTest(TestCase):
     def test_admin_sees_every_section(self):
         self.assertEqual(
             self._sections(self.admin),
-            {"profile", "password", "team", "subscription", "import", "data_transfer", "audit"},
+            {
+                "profile",
+                "password",
+                "book",
+                "budgeting",
+                "data_transfer",
+                "import",
+                "audit",
+                "archive",
+                "team",
+                "books",
+                "subscription",
+            },
         )
 
     def test_member_is_not_offered_subscription(self):
@@ -122,6 +140,7 @@ class SettingsShellOnAccountPagesTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="user@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
@@ -149,9 +168,9 @@ class SettingsShellOnAccountPagesTest(TestCase):
         for url in (reverse("users:user_profile"), reverse("account_change_password")):
             with self.subTest(url=url):
                 response = self.client.get(url)
-                self.assertContains(response, reverse("web_team:home", args=[self.team.slug]))
-                self.assertContains(response, reverse("budget:budget_home", args=[self.team.slug]))
-                self.assertContains(response, reverse("accounts:accounts_home", args=[self.team.slug]))
+                self.assertContains(response, reverse("web_book:home", args=[self.team.slug, self.book.slug]))
+                self.assertContains(response, reverse("budget:budget_home", args=[self.team.slug, self.book.slug]))
+                self.assertContains(response, reverse("accounts:accounts_home", args=[self.team.slug, self.book.slug]))
                 # …and the switcher names the team rather than falling back to
                 # the user's own name.
                 self.assertContains(response, self.team.name)
@@ -163,15 +182,16 @@ class SettingsShellOnAccountPagesTest(TestCase):
         that is how someone ends up acting on the wrong books.
         """
         other = Team.objects.create(name="Other Team", slug="other-team")
+        other_book = other.default_book
         other.members.add(self.user, through_defaults={"role": ROLE_ADMIN})
         response = self.client.get(reverse("web_team:settings", kwargs={"team_slug": other.slug}))
-        self.assertContains(response, reverse("budget:budget_home", args=[other.slug]))
-        self.assertNotContains(response, reverse("budget:budget_home", args=[self.team.slug]))
+        self.assertContains(response, reverse("budget:budget_home", args=[other.slug, other_book.slug]))
+        self.assertNotContains(response, reverse("budget:budget_home", args=[self.team.slug, self.book.slug]))
 
     def test_an_account_page_follows_the_team_last_worked_in(self):
         self.client.get(reverse("web_team:home", kwargs={"team_slug": self.team.slug}))
         response = self.client.get(reverse("users:user_profile"))
-        self.assertContains(response, reverse("budget:budget_home", args=[self.team.slug]))
+        self.assertContains(response, reverse("budget:budget_home", args=[self.team.slug, self.book.slug]))
 
     def test_a_user_with_no_team_still_gets_the_account_sections(self):
         loner = CustomUser.objects.create_user(username="loner@example.com", password="testpass123")

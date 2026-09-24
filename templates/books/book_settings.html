@@ -1,0 +1,18 @@
+{% extends "web/settings/settings_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+{% block settings_content %}
+  <form method="post" class="app-card space-y-2" data-testid="book-settings-form">
+    {% csrf_token %}
+    {% render_text_input form.name %}
+    {% render_text_input form.slug %}
+    <p class="text-sm text-base-content/70">
+      {% blocktranslate trimmed %}
+        Renaming keeps the address, so links and bookmarks keep working.
+      {% endblocktranslate %}
+    </p>
+    <div class="pt-2">
+      <button type="submit" class="btn btn-primary" data-testid="book-settings-save">{% translate "Save" %}</button>
+    </div>
+  </form>
+{% endblock %}

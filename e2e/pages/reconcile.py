@@ -8,8 +8,8 @@ from .base import BasePage
 class ReconcilePage(BasePage):
     """The per-account page: start form, workspace, result, history."""
 
-    def goto(self, team_slug: str, account_id: int, query: str = ""):
-        super().goto(f"/a/{team_slug}/reconcile/{account_id}/{query}", wait_for="[data-testid='reconcile-title']")
+    def goto(self, book, account_id: int, query: str = ""):
+        super().goto(f"{book.base_url}reconcile/{account_id}/{query}", wait_for="[data-testid='reconcile-title']")
         # Either the start form or a resumed workspace.
         self.page.wait_for_selector(
             "[data-testid='reconcile-start-form'], [data-testid='reconcile-workspace']", timeout=15_000
@@ -59,8 +59,8 @@ class ReconcilePage(BasePage):
 
 
 class ReconcileHubPage(BasePage):
-    def goto(self, team_slug: str):
-        super().goto(f"/a/{team_slug}/reconcile/", wait_for="[data-testid='reconcile-hub']")
+    def goto(self, book):
+        super().goto(f"{book.base_url}reconcile/", wait_for="[data-testid='reconcile-hub']")
 
     def status_for(self, account_id: int) -> str:
         row = self.page.locator(f"[data-testid='reconcile-account-row'][data-account-id='{account_id}']")

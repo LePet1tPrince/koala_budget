@@ -17,8 +17,8 @@ from apps.accounts.models import (
     AccountGroup,
 )
 from apps.bank_feed.models import BankTransaction
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -31,30 +31,31 @@ class BankFeedViewSetCategorizeTest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
 
         cls.bank_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Checking",
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.expense_category = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Groceries",
             account_group=cls.expense_group,
         )
         cls.income_category = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Salary",
             account_group=cls.income_group,
         )
@@ -67,7 +68,7 @@ class BankFeedViewSetCategorizeTest(TestCase):
     def test_categorize_creates_journal_entry(self):
         """Test that categorize creates a JournalEntry with correct lines."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Grocery shopping",
@@ -75,9 +76,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {
                     "rows": [{"id": bank_tx.id}],
                     "category_id": self.expense_category.id,
@@ -96,7 +97,7 @@ class BankFeedViewSetCategorizeTest(TestCase):
     def test_categorize_links_transaction_to_journal(self):
         """Test that categorize sets bank_tx.journal_entry."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Test transaction",
@@ -104,9 +105,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {
                     "rows": [{"id": bank_tx.id}],
                     "category_id": self.expense_category.id,
@@ -121,7 +122,7 @@ class BankFeedViewSetCategorizeTest(TestCase):
     def test_categorize_handles_inflow_correctly(self):
         """Test that negative amount (inflow) creates correct journal entry."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Paycheck",
@@ -129,9 +130,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {
                     "rows": [{"id": bank_tx.id}],
                     "category_id": self.income_category.id,
@@ -152,7 +153,7 @@ class BankFeedViewSetCategorizeTest(TestCase):
     def test_categorize_handles_outflow_correctly(self):
         """Test that positive amount (outflow) creates correct journal entry."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Groceries",
@@ -160,9 +161,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {
                     "rows": [{"id": bank_tx.id}],
                     "category_id": self.expense_category.id,
@@ -183,7 +184,7 @@ class BankFeedViewSetCategorizeTest(TestCase):
     def test_categorize_multiple_transactions(self):
         """Test that batch categorization works for multiple transactions."""
         bank_tx1 = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Transaction 1",
@@ -191,7 +192,7 @@ class BankFeedViewSetCategorizeTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
         bank_tx2 = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Transaction 2",
@@ -199,9 +200,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {
                     "rows": [{"id": bank_tx1.id}, {"id": bank_tx2.id}],
                     "category_id": self.expense_category.id,
@@ -219,9 +220,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
 
     def test_categorize_missing_rows_returns_400(self):
         """Test that missing rows field returns 400."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {"category_id": self.expense_category.id},
                 format="json",
             )
@@ -232,7 +233,7 @@ class BankFeedViewSetCategorizeTest(TestCase):
     def test_categorize_missing_category_id_returns_400(self):
         """Test that missing category_id returns 400."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Test",
@@ -240,9 +241,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {"rows": [{"id": bank_tx.id}]},
                 format="json",
             )
@@ -253,7 +254,7 @@ class BankFeedViewSetCategorizeTest(TestCase):
     def test_categorize_invalid_category_returns_404(self):
         """Test that invalid category_id returns 404."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date.today(),
             description="Test",
@@ -261,9 +262,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {
                     "rows": [{"id": bank_tx.id}],
                     "category_id": 99999,
@@ -275,9 +276,9 @@ class BankFeedViewSetCategorizeTest(TestCase):
 
     def test_categorize_empty_rows_returns_400(self):
         """Test that categorizing with empty rows returns 400."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/categorize/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/",
                 {
                     "rows": [],
                     "category_id": self.expense_category.id,
