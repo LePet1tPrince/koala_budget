@@ -365,9 +365,7 @@ def match_category(category_name: str, team) -> Account | None:
 
     category_name = category_name.strip()
 
-    account = Account.objects.filter(team=team, name__iexact=category_name).first()
-
-    return account
+    return Account.objects.filter(team=team, name__iexact=category_name, is_system=False).first()
 
 
 # Tokens that carry no disambiguating signal when comparing category/account names.
@@ -788,7 +786,7 @@ def preview_transactions(
     # target account is excluded so we never suggest categorizing into itself.
     candidate_accounts = [
         account
-        for account in Account.objects.filter(team=team).select_related("account_group")
+        for account in Account.objects.filter(team=team, is_system=False).select_related("account_group")
         if account.id != account_id
     ]
 
@@ -922,9 +920,9 @@ def _auto_categorize_transaction(bank_tx, category_id: int, team):
     from apps.journal.models import JournalEntry, JournalLine
 
     try:
-        category_account = Account.objects.get(id=category_id, team=team)
+        category_account = Account.objects.get(id=category_id, team=team, is_system=False)
     except Account.DoesNotExist:
-        return  # Skip if category doesn't exist
+        return  # Skip if the category doesn't exist (or is a system account)
 
     # Create journal entry
     journal_entry = JournalEntry.objects.create(

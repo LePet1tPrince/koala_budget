@@ -18,6 +18,7 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Payee
 from apps.accounts.serializers import (
     AccountGroupSerializer,
@@ -26,6 +27,7 @@ from apps.accounts.serializers import (
 )
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
+from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services.guards import (
@@ -335,6 +337,10 @@ class BankFeedViewSet(
                 {"error": "Category account not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        try:
+            assert_category_allowed(category_account)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Resolve all transactions up front so a bad id can't partially apply the batch
         tx_ids = {row.get("id") for row in rows if row.get("id")}
@@ -502,6 +508,10 @@ class BankFeedViewSet(
                     {"error": "Category account not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            try:
+                assert_category_allowed(category_account)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
         inflow = data.get("inflow", Decimal("0")) or Decimal("0")
@@ -613,6 +623,13 @@ class BankFeedViewSet(
             )
 
         # Category is optional — clearing it de-categorizes the transaction.
+        # An account the entry already uses stays allowed even if it's a system
+        # one, so re-saving an adjustment untouched keeps working.
+        current_category_ids = (
+            {line.account_id for line in bank_tx.journal_entry.lines.all() if line.account_id != bank_tx.account_id}
+            if bank_tx.journal_entry_id
+            else set()
+        )
         category_account = None
         if data.get("category") is not None:
             try:
@@ -622,6 +639,10 @@ class BankFeedViewSet(
                     {"error": "Category account not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            try:
+                assert_category_allowed(category_account, keep_ids=current_category_ids)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Re-pointing (or clearing) the mirror leg's category would orphan the real
         # primary transaction; reject it (edit the original transaction instead).
@@ -660,7 +681,7 @@ class BankFeedViewSet(
         legs = None
         if data.get("splits") is not None:
             try:
-                legs = parse_legs(data["splits"])
+                legs = parse_legs(data["splits"], keep_ids=current_category_ids)
                 check_legs_total(legs, total=amount)
             except SplitError as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1264,6 +1285,10 @@ class BankFeedViewSet(
                     {"error": "Category account not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            try:
+                assert_category_allowed(category_account)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         target_account = None
         if account_id is not None:
@@ -1860,11 +1885,10 @@ def bank_feed_home(request, team_slug):
     accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data
 
     # Get all accounts, payees, and account groups for dropdowns
-    all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")
     all_payees = Payee.for_team.all().order_by("name")
     all_account_groups = AccountGroup.for_team.all().order_by("account_type", "name")
 
-    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
+    all_accounts_data = picker_accounts_data(request.team)
     all_payees_data = PayeeSerializer(all_payees, many=True).data
     all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
 
@@ -1896,11 +1920,10 @@ def categorize_mode(request, team_slug):
     """Categorize mode — gamified single-transaction categorization view."""
     from django.urls import reverse
 
-    all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")
     all_account_groups = AccountGroup.for_team.all().order_by("account_type", "name")
     all_payees = Payee.for_team.all().order_by("name")
 
-    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
+    all_accounts_data = picker_accounts_data(request.team)
     all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
     all_payees_data = PayeeSerializer(all_payees, many=True).data
 

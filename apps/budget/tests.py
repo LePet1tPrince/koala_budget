@@ -1184,13 +1184,13 @@ class GoalWithdrawTest(TestCase):
     def test_withdraw_more_than_saved_is_rejected(self):
         response = self.post_withdraw({"month": self.month, "amount": "800.01"})
         self.assertEqual(response.status_code, 400)
-        self.assertIn("only has $800.00 saved", response.json()["error"])
+        self.assertIn("only has $800.00 left", response.json()["error"])
 
     def test_withdraw_from_empty_goal_is_rejected(self):
         empty = Goal.objects.create(team=self.team, name="Withdraw Empty", target_amount=Decimal("100"))
         response = self.post_withdraw(goal=empty)
         self.assertEqual(response.status_code, 400)
-        self.assertIn("Nothing saved", response.json()["error"])
+        self.assertIn("Nothing left", response.json()["error"])
 
     def test_withdraw_rejects_invalid_amounts(self):
         for bad in ("abc", "-5", "0"):

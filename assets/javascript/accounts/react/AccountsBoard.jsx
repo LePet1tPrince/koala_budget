@@ -171,7 +171,10 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay }) {
           </div>
         )}
       </div>
-      <span className="font-mono text-sm shrink-0 tabular-nums">{formatCurrency(account.balance)}</span>
+      <span className="font-mono text-sm shrink-0 tabular-nums" data-testid="account-balance">
+        {formatCurrency(account.balance)}
+        {account.isGoal && <span className="ml-1 font-sans text-xs text-base-content/70">{gettext('left')}</span>}
+      </span>
     </div>
   );
 }
@@ -192,7 +195,7 @@ function SortableAccountRow({ account, groupId, accountType }) {
 // ---------------------------------------------------------------------------
 // Group card (sortable within its type section, droppable for accounts)
 // ---------------------------------------------------------------------------
-function GroupCard({ group, accountType, urls, onCreateAccount, isDropTarget, draggingAccount }) {
+function GroupCard({ group, accountType, serverType, newGoalUrl, urls, onCreateAccount, isDropTarget, draggingAccount }) {
   const [adding, setAdding] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: groupDndId(group.id),
@@ -200,7 +203,7 @@ function GroupCard({ group, accountType, urls, onCreateAccount, isDropTarget, dr
   });
 
   const subtotal = group.accounts.reduce((sum, a) => sum + parseFloat(a.balance || 0), 0);
-  const createPageUrl = `${urls.accountCreatePage}?account_type=${accountType}&account_group=${group.id}`;
+  const createPageUrl = `${urls.accountCreatePage}?account_type=${serverType}&account_group=${group.id}`;
 
   return (
     <div
@@ -255,7 +258,18 @@ function GroupCard({ group, accountType, urls, onCreateAccount, isDropTarget, dr
       </SortableContext>
 
       <div className="px-1.5 pb-1.5">
-        {adding ? (
+        {newGoalUrl ? (
+          // An account added here would be plain equity, not a goal: goals are
+          // created on the Goals page, which makes the account for them.
+          <a
+            href={newGoalUrl}
+            className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-transparent px-2 py-1.5 text-sm text-base-content/40 transition-colors hover:border-base-300 hover:bg-base-200 hover:text-base-content"
+            data-testid="add-goal-link"
+          >
+            <PlusIcon />
+            {gettext('New goal')}
+          </a>
+        ) : adding ? (
           <InlineCreateForm
             placeholder={gettext('New account name')}
             onSubmit={(name) => onCreateAccount(group.id, name)}
@@ -303,6 +317,8 @@ function TypeSection({ section, urls, onCreateAccount, onCreateGroup, dropTarget
               key={group.id}
               group={group}
               accountType={section.key}
+              serverType={section.accountType || section.key}
+              newGoalUrl={section.newGoalUrl}
               urls={urls}
               onCreateAccount={onCreateAccount}
               isDropTarget={dropTargetGroupId === group.id}
@@ -312,7 +328,17 @@ function TypeSection({ section, urls, onCreateAccount, onCreateGroup, dropTarget
         </div>
       </SortableContext>
       <div className="mt-3">
-        {adding ? (
+        {section.newGoalUrl ? (
+          // Goals are created on the Goals page, which makes their account.
+          <a
+            href={section.newGoalUrl}
+            className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-base-300 px-2 py-2.5 text-sm text-base-content/70 transition-colors hover:border-primary hover:text-primary hover:bg-primary/5"
+            data-testid="add-goal-section-link"
+          >
+            <PlusIcon />
+            {gettext('New goal')}
+          </a>
+        ) : adding ? (
           <div className="card bg-base-100 border border-base-300">
             <InlineCreateForm
               placeholder={gettext('New group name')}
@@ -498,7 +524,8 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
     setTypes(nextState);
 
     try {
-      await postJson(urls.reorderGroups, { account_type: activeData.accountType, group_ids: orderedIds });
+      const accountType = types.find((section) => section.key === activeData.accountType)?.accountType;
+      await postJson(urls.reorderGroups, { account_type: accountType || activeData.accountType, group_ids: orderedIds });
       showToast(gettext('Order saved'));
     } catch (e) {
       revert();
@@ -578,11 +605,12 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
     showToast(interpolate(gettext('Account "%s" created'), [data.account.name]));
   };
 
-  const createGroup = async (accountType, name) => {
+  const createGroup = async (sectionKey, name) => {
+    const accountType = types.find((section) => section.key === sectionKey)?.accountType || sectionKey;
     const data = await postJson(urls.createGroup, { name, account_type: accountType });
     setTypes((state) =>
       state.map((section) =>
-        section.key === accountType ? { ...section, groups: [...section.groups, data.group] } : section
+        section.key === sectionKey ? { ...section, groups: [...section.groups, data.group] } : section
       )
     );
     showToast(interpolate(gettext('Group "%s" created'), [data.group.name]));

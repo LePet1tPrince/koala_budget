@@ -1,7 +1,8 @@
 # Goals as envelopes
 
-Status: plan agreed, not started. Implements Phase 2 §4 of `docs/unassigned-plan.md` and
-the "goal spending tracking" that `docs/goals_design.md` left out of scope.
+Status: built (M1–M5), see §9 for what the build decided or changed. Implements Phase 2 §4
+of `docs/unassigned-plan.md` and the "goal spending tracking" that `docs/goals_design.md`
+left out of scope.
 
 ## 1. The idea
 
@@ -296,3 +297,60 @@ goal's spending list (§4.4) makes each one visible and re-categorizable in the 
 - No "move negative balance to a new goal" action for now (§1).
 - Goal spending stays off the balance sheet; opening-balance equity stays on (§4.5).
 - Spending Trends gets an "Include goal spending" toggle, off by default (§4.5).
+
+## 9. As built
+
+What the implementation decided where the plan was silent, and where it differs.
+
+- **Where the maths lives.** `GoalQuerySet.with_progress(month)` annotates `allocated`,
+  `spent`, `left`, `spent_this_month` (all scalar subqueries, so no GROUP BY fan-out) plus
+  the old `saved_previous`/`saved_this_month`/`total_saved`/`remaining`. `Goal` gains
+  `allocated_amount`/`spent_amount`/`left_amount`/`to_fund`/`is_funded`/`state` properties
+  that read the annotations (or query when absent). `compute_unassigned` gets
+  `goals_spent` from one aggregate over goal-account lines through month end.
+- **Archived goals** stay out of Unassigned, as before (both allocations and spending).
+  Archiving an open goal now closes it first, so nothing is hidden while still claimed; a
+  negative goal can't be archived until covered.
+- **`is_complete`** is labelled "Funded" everywhere. A funded goal refuses *quick*-assign
+  only; an explicit amount still goes in, because that is how a negative funded goal is
+  covered or paid back from its card.
+- **System accounts** are refused as a category by `apps/accounts/guards.py::
+  assert_category_allowed`, called from every category-accepting path. An account the
+  transaction *already* uses is allowed (`keep_ids`), so re-saving an existing adjustment
+  row works. The edit modal keeps a transaction's current category in its options for the
+  same reason.
+- **Pickers** read one helper, `apps.budget.services.picker_accounts_data(team)`
+  (`PickerAccountSerializer`: `is_goal`, `goal_left`). `SimpleAccountSerializer` exposes
+  `is_system` (and `api-client/models/SimpleAccount.ts` carries `isSystem`). The client-side
+  kind (`goal` vs `equity`) is `assets/javascript/common/accountKind.js::accountKind`.
+- **Accounts board**: equity-type groups holding a goal (or the non-system "Goals" group)
+  render under **Goals**, the rest under **Equity**. The Goals section offers "New goal"
+  (the Goals page makes the account) instead of an inline "Add account", which would have
+  created plain equity.
+- **Spending list / link**: a goal's card and detail page link to Transactions with
+  `?f_debit_account=a:<id>`; the Transactions page now honours account filters passed in
+  the URL (`journal.views._initial_account_filters`).
+- **Cover overspending** is `POST budget/cover/`, from Unassigned (the budget rises, so
+  Unassigned falls) or from a goal (§4.4). It returns the same `cells` payload as
+  `save-amount`, driven by a dialog in `budget_table.html` + `budget-autosave.js` that
+  defaults to Unassigned. Expense rows only.
+- **Closing a goal** asks in a dialog showing Allocated / Spent / Left and what closing will
+  do, not a browser `confirm()`.
+- **Cash flow** draws goal spending as its own bar beside Money Out (not stacked on it).
+- **Portability** format is version 3 (`goal_closed_at` on `accounts.csv`;
+  `upgrade.upgrade_2_to_3`).
+- **YNAB §4.7 verification**: the sample export's two goal categories that were also spent
+  from produced **56** `Budget` rows (of 1,872) under the old import. Goal categories now
+  get the goal's equity account (in a non-system "Goals" group) instead of an expense
+  account, and `_build_budgets` skips them: 1,816 rows. `House` arrives closed with its
+  allocations; the reconciliation gate still passes.
+- **Not built**: the overspend hint appears in the edit modal only (categorize mode
+  categorizes on click, so it shows the goal's balance in the picker instead); the user
+  data export (`apps/users/services.py`) does not carry `closed_at` -- that file is being
+  reworked by `docs/books-plan.md`.
+- **Books plan**: new code is team-scoped and every new query sits in a service function
+  (`GoalService`, `goal_left_by_account`, `picker_accounts_data`,
+  `ReportService.goal_account_ids`, `compute_unassigned`). New migrations are
+  `budget/0004_goal_closed_at_goals_group` and `audit/0010`; the books work adds
+  migrations to the same apps, so whichever lands second needs a merge migration.
+

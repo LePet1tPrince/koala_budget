@@ -31,6 +31,9 @@
       <div class="stat-figure text-success hidden sm:block">{% icon "piggy-bank" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Total Saved" %}</div>
       <div class="stat-value text-2xl text-success">{{ totals.saved|currency }}</div>
+      {% if totals.spent %}
+      <div class="stat-desc">{% blocktranslate trimmed with spent=totals.spent|currency left=totals.left|currency %}{{ spent }} spent · {{ left }} left{% endblocktranslate %}</div>
+      {% endif %}
     </div>
     <div class="stat py-3">
       <div class="stat-figure text-info hidden sm:block">{% icon "bullseye" class="inline-block shrink-0 w-5 h-5" %}</div>
@@ -58,7 +61,7 @@
   <div class="card bg-base-100 shadow-lg mb-4">
     <div class="card-body p-4">
       <h2 class="card-title text-base">{% translate "Saved over time" %}</h2>
-      <p class="text-xs text-base-content/70 -mt-1">{% translate "Solid lines show actual savings; dashed lines project the pace needed to hit each target on time." %}</p>
+      <p class="text-xs text-base-content/70 -mt-1">{% translate "Solid lines show what you've allocated; dashed lines project the pace needed to hit each target on time; dotted lines show what was spent from a goal." %}</p>
       <div class="w-full" style="height: 380px;">
         <canvas id="goal-progress-chart" class="w-full h-full"></canvas>
       </div>
@@ -81,7 +84,9 @@
           <thead>
             <tr>
               <th>{% translate "Goal" %}</th>
-              <th class="text-right">{% translate "Saved" %}</th>
+              <th class="text-right">{% translate "Allocated" %}</th>
+              <th class="text-right">{% translate "Spent" %}</th>
+              <th class="text-right">{% translate "Left" %}</th>
               <th class="text-right">{% translate "Target" %}</th>
               <th class="w-1/5">{% translate "Progress" %}</th>
               <th>{% translate "Target Date" %}</th>
@@ -94,10 +99,12 @@
               <td class="whitespace-nowrap">
                 <a href="{{ row.goal.get_absolute_url }}" class="link link-hover link-primary">{{ row.goal.name }}</a>
                 {% if row.goal.is_complete %}
-                <span class="badge badge-success badge-sm ml-1 align-middle">{% icon "check" class="inline-block shrink-0 w-4 h-4 mr-1" %}{% translate "Complete" %}</span>
+                <span class="badge badge-success badge-sm ml-1 align-middle">{% icon "check" class="inline-block shrink-0 w-4 h-4 mr-1" %}{% translate "Funded" %}</span>
                 {% endif %}
               </td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ row.saved|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap {% if not row.spent %}opacity-40{% endif %}">{{ row.spent|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap {% if row.left < 0 %}text-error{% endif %}">{{ row.left|currency }}</td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ row.goal.target_amount|currency }}</td>
               <td>
                 <div class="flex items-center gap-2">

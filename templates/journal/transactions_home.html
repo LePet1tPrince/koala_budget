@@ -18,6 +18,7 @@
   </div>
 
   {{ api_urls|json_script:'api-urls' }}
+  {{ initial_filters|json_script:'initial-filters' }}
   {{ team_slug|json_script:'team-slug' }}
 {% endblock %}
 

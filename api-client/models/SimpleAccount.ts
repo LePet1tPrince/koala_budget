@@ -62,6 +62,12 @@ export interface SimpleAccount {
      */
     hasFeed?: boolean;
     /**
+     * System accounts cannot be deleted by users
+     * @type {boolean}
+     * @memberof SimpleAccount
+     */
+    readonly isSystem: boolean;
+    /**
      * Set to true to archive this item
      * @type {boolean}
      * @memberof SimpleAccount
@@ -85,6 +91,7 @@ export function instanceOfSimpleAccount(value: object): value is SimpleAccount {
     if (!('accountGroupName' in value) || value['accountGroupName'] === undefined) return false;
     if (!('accountType' in value) || value['accountType'] === undefined) return false;
     if (!('institutionName' in value) || value['institutionName'] === undefined) return false;
+    if (!('isSystem' in value) || value['isSystem'] === undefined) return false;
     if (!('archivedAt' in value) || value['archivedAt'] === undefined) return false;
     return true;
 }
@@ -106,6 +113,7 @@ export function SimpleAccountFromJSONTyped(json: any, ignoreDiscriminator: boole
         'accountType': json['account_type'],
         'institutionName': json['institution_name'],
         'hasFeed': json['has_feed'] == null ? undefined : json['has_feed'],
+        'isSystem': json['is_system'],
         'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
         'archivedAt': (json['archived_at'] == null ? null : new Date(json['archived_at'])),
     };
@@ -115,7 +123,7 @@ export function SimpleAccountFromJSONTyped(json: any, ignoreDiscriminator: boole
       return SimpleAccountToJSONTyped(json, false);
   }
 
-  export function SimpleAccountToJSONTyped(value?: Omit<SimpleAccount, 'id'|'account_group_name'|'account_type'|'institution_name'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function SimpleAccountToJSONTyped(value?: Omit<SimpleAccount, 'id'|'account_group_name'|'account_type'|'institution_name'|'is_system'|'archived_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

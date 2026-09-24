@@ -240,8 +240,11 @@ def test_a_real_five_year_export_imports_and_reconciles(import_page, team, requi
     assert "$292,472.98" in result
 
     assert JournalEntry.objects.filter(team=team).count() == 6636
-    assert Budget.objects.filter(team=team).count() == 1872
-    assert Goal.objects.filter(team=team).count() == 3
+    # No `Budget` rows on goal categories (56 of the old 1,872 were on them).
+    assert Budget.objects.filter(team=team).count() == 1816
+    # Three open goals, plus `House` -- spent out, so it arrives closed with its history.
+    assert Goal.objects.filter(team=team).count() == 4
+    assert Goal.objects.filter(team=team, closed_at__isnull=True).count() == 3
 
     import_page.go_to_dashboard()
     import_page.page.wait_for_url(f"**/a/{team.slug}/", timeout=30_000, wait_until="domcontentloaded")

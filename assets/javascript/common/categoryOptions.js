@@ -1,28 +1,34 @@
+/* globals gettext */
 /**
  * Utility for generating grouped category options from accounts.
- * Groups accounts by type in order: Expense, Income, Transfers (Asset+Liability), Equity
+ * Groups accounts in order: Expense, Income, Transfers (Asset+Liability), Goals, Equity.
+ * System accounts are never offered.
  */
+import { accountKind, goalLeftLabel, pickableAccounts } from './accountKind';
 
 // Order of account type groups for display
-const GROUP_ORDER = ['expense', 'income', 'transfer', 'goal'];
+const GROUP_ORDER = ['expense', 'income', 'transfer', 'goal', 'equity'];
 
 // Map account types to display labels
 const GROUP_LABELS = {
-  expense: 'Expense',
-  income: 'Income',
-  transfer: 'Transfer',
-  goal: 'Goal',
+  expense: gettext('Expense'),
+  income: gettext('Income'),
+  transfer: gettext('Transfer'),
+  goal: gettext('Goals'),
+  equity: gettext('Equity'),
 };
 
 /**
- * Get the group key for an account type.
- * Assets and Liabilities are combined into 'transfer'.
+ * Get the group key for an account.
+ * Assets and Liabilities are combined into 'transfer'; the equity type splits
+ * into real goals and plain equity.
  */
-function getGroupKey(accountType) {
-  if (accountType === 'asset' || accountType === 'liability') {
+function getGroupKey(account) {
+  const kind = accountKind(account);
+  if (kind === 'asset' || kind === 'liability') {
     return 'transfer';
   }
-  return accountType;
+  return kind;
 }
 
 /**
@@ -32,17 +38,22 @@ function getGroupKey(accountType) {
  * @param {Object} options - Configuration options
  * @param {number} options.excludeId - Account ID to exclude from the list
  * @param {Array} options.filterTypes - Array of account types to include (e.g., ['expense', 'income'])
+ * @param {Array} options.keep - Accounts a transaction already uses, offered even when
+ *   the picker would hide them (a system category must survive an edit untouched)
  * @returns {Array} Array of option objects with groupLabel for Autocomplete groupBy
  */
 export function buildCategoryOptions(accounts, options = {}) {
-  const { excludeId, filterTypes } = options;
+  const { excludeId, filterTypes, keep = [] } = options;
 
   if (!Array.isArray(accounts)) {
     return [];
   }
 
+  const pickable = pickableAccounts(accounts);
+  const kept = keep.filter((account) => account && !pickable.some((a) => a.id === account.id));
+
   // Filter and map accounts
-  const filtered = accounts.filter((account) => {
+  const filtered = [...pickable, ...kept].filter((account) => {
     // Exclude by ID if specified
     if (excludeId !== undefined && account.id === excludeId) {
       return false;
@@ -61,17 +72,19 @@ export function buildCategoryOptions(accounts, options = {}) {
   const options_list = filtered.map((account) => {
     const accountType = account.account_type || account.accountType;
     const accountGroupName = account.account_group_name || account.accountGroupName || '';
-    const groupKey = getGroupKey(accountType);
+    const groupKey = getGroupKey(account);
     const groupLabel = GROUP_LABELS[groupKey] || accountType;
+    const left = goalLeftLabel(account);
 
     return {
       id: account.id,
-      label: `${accountGroupName} - ${account.name}`,
+      label: left ? `${account.name} · ${left}` : `${accountGroupName} - ${account.name}`,
       name: account.name,
       accountType: accountType,
       groupKey: groupKey,
       groupLabel: groupLabel,
       groupOrder: GROUP_ORDER.indexOf(groupKey),
+      account,
     };
   });
 

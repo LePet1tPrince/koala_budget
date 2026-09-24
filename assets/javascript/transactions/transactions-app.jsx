@@ -24,7 +24,11 @@ const TransactionsApp = () => {
   // The label rides along because a hierarchical column's value is a branch
   // token (`2025-03`, `g:12`) that nothing on the client could turn back into
   // "Mar 2025" or "Employment Income".
-  const [columnFilters, setColumnFilters] = useState({});
+  const [columnFilters, setColumnFilters] = useState(() => {
+    // A link can open the page already filtered (a goal's "see its spending").
+    const el = document.getElementById('initial-filters');
+    return el ? JSON.parse(el.textContent) : {};
+  });
   // { key, dir } or null for the API's default newest-first ordering.
   const [sort, setSort] = useState(null);
 

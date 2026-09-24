@@ -29,6 +29,8 @@ function colorFor(bar) {
       return p.goals;
     case 'goals_this_month':
       return p.goalsSoft;
+    case 'goals_spent':
+      return p.goalsSoft;
     case 'unassigned':
       return bar.value < 0 ? MONEY.out : MONEY.in;
     default:

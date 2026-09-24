@@ -236,13 +236,26 @@ class SampleBuildTest(SimpleTestCase):
         self.assertTrue(all(entry.balances for entry in self.plan.entries))
 
     def test_goals_from_the_savings_categories(self):
-        # `House` is missing on purpose: this budget saved for a house and then
-        # bought one, so as much came back out of that category as ever went in. A
-        # goal reading "$20,464 still to save" for money that was spent on purpose
-        # would be worse than no goal.
-        self.assertEqual({goal.name for goal in self.plan.goals}, {"Retirement", "RESP", "Emergency Fund"})
+        # `House` arrives closed: this budget saved for a house and then bought
+        # one, so as much came back out of that category as ever went in. Open, it
+        # would read "$20,464 still to save" for money that was spent on purpose.
+        self.assertEqual({goal.name for goal in self.plan.goals}, {"Retirement", "RESP", "Emergency Fund", "House"})
+        self.assertEqual({goal.name for goal in self.plan.goals if goal.closed}, {"House"})
         self.assertEqual(self.plan.stats["spent_goals"], 1)
         self.assertTrue(all(goal.target_amount > ZERO for goal in self.plan.goals))
+        self.assertTrue(all(goal.account and goal.account[0] == "goal" for goal in self.plan.goals))
+
+    def test_goal_categories_get_no_budget_rows(self):
+        goal_accounts = {goal.account for goal in self.plan.goals}
+        self.assertFalse([b for b in self.plan.budgets if b.category in goal_accounts])
+
+    def test_goal_accounts_sit_in_a_non_system_goals_group(self):
+        groups = {group.name: group for group in self.plan.groups}
+        accounts = {account.key: account for account in self.plan.accounts}
+        for goal in self.plan.goals:
+            group = groups[accounts[goal.account].group]
+            self.assertFalse(group.is_system)
+            self.assertEqual(group.name, "Goals")
 
     def test_reconciliation_passes(self):
         result = reconcile(self.analysis, self.plan)

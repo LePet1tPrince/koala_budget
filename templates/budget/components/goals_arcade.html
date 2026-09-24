@@ -170,6 +170,7 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
        data-goal-card
        data-remaining="{{ item.remaining }}"
        data-saved="{{ item.saved }}"
+       data-left="{{ item.left }}"
        data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug pk=item.goal.pk %}"
        data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug pk=item.goal.pk %}"
        data-testid="goal-card">
@@ -202,6 +203,12 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
             <span class="slot-readout" data-num="saved">{{ item.saved|currency }}</span>
             <span class="opacity-60">/ {{ item.goal.target_amount|currency }}</span>
           </div>
+          {% if item.spent %}
+            <div class="text-xs font-mono opacity-70 mt-1" data-testid="goal-numbers">
+              {% translate "Spent" %} {{ item.spent|currency }} ·
+              {% translate "Left" %} <span class="font-mono {% if item.left < 0 %}text-error{% endif %}" data-num="left">{{ item.left|currency }}</span>{% if item.left < 0 %}<span data-carried> · {% translate "carried" %}</span>{% endif %}
+            </div>
+          {% endif %}
           <div class="text-xs font-mono opacity-70 mt-2">
             {% translate "TO THE BELL:" %} <span data-num="remaining">{{ item.remaining|currency }}</span>
           </div>
@@ -246,18 +253,19 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
                    class="input input-bordered input-sm join-item w-full font-mono bg-black/40 border-amber-600 text-amber-200 placeholder:text-amber-200/40" data-withdraw-input>
             <button type="button" class="btn btn-outline btn-sm join-item border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-black"
                     data-withdraw-btn data-testid="withdraw-btn"
-                    {% if item.saved <= 0 %}disabled{% endif %}>{% translate "TAKE IT" %}</button>
+                    {% if item.left <= 0 %}disabled{% endif %}>{% translate "TAKE IT" %}</button>
           </div>
           <button type="button" class="btn btn-outline btn-sm w-full border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-black font-mono"
                   data-withdraw-all data-label-all="{% translate '🎰 CASH OUT EVERYTHING' %}"
                   data-testid="withdraw-all-btn"
-                  {% if item.saved <= 0 %}disabled{% endif %}>
-            <span data-withdraw-all-label>🎰 {% translate "CASH OUT EVERYTHING" %} ({{ item.saved|currency }})</span>
+                  {% if item.left <= 0 %}disabled{% endif %}>
+            <span data-withdraw-all-label>🎰 {% translate "CASH OUT EVERYTHING" %} ({% if item.left > 0 %}{{ item.left|currency }}{% else %}$0.00{% endif %})</span>
           </button>
           <p class="text-[0.65rem] font-mono opacity-50">
             {% translate "CASHED-OUT COINS DROP BACK IN THE HOPPER. THIS MONTH TAKES THE HIT — HISTORY STANDS." %}
           </p>
         </div>
+        {% include "budget/components/goal_close_form.html" with goal=item.goal %}
         <noscript>
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}

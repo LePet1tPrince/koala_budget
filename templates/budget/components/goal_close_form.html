@@ -1,0 +1,85 @@
+{% load i18n %}
+{% load currency_tags %}
+{% comment %}
+Close a goal (docs/goals-envelopes-plan.md §4.3): a button that opens a confirmation
+dialog holding the real form. Anything left goes back to Unassigned; a negative goal
+is covered from Unassigned first, or stays open to be paid back.
+
+All three cases (something left / nothing left / negative) are rendered, one shown:
+the goals page changes a goal's numbers in place, and goals-app.js re-picks the case
+and the figures from the `data-close-*` hooks without a reload.
+
+Context: goal (annotated by with_progress), month (optional), button_class (optional).
+{% endcomment %}
+<span class="contents" data-close-root>
+<button type="button" class="{{ button_class|default:'btn btn-ghost btn-xs w-full text-base-content/70' }}"
+        onclick="document.getElementById('goal-close-dialog-{{ goal.pk }}').showModal()"
+        data-testid="goal-close-btn">
+  <span data-close-case="neg" {% if goal.left >= 0 %}hidden{% endif %}>{% translate "Cover and close goal" %}</span>
+  <span data-close-case="pos zero" {% if goal.left < 0 %}hidden{% endif %}>{% translate "Close goal" %}</span>
+</button>
+
+<dialog id="goal-close-dialog-{{ goal.pk }}" class="modal" data-testid="goal-close-dialog">
+  <div class="modal-box max-w-md text-left">
+    <h3 class="font-bold text-lg">
+      {% blocktranslate trimmed with name=goal.name %}Close {{ name }}?{% endblocktranslate %}
+    </h3>
+
+    <dl class="grid grid-cols-3 gap-2 rounded-box border border-base-300 p-3 mt-4 text-sm">
+      <div>
+        <dt class="text-base-content/70">{% translate "Allocated" %}</dt>
+        <dd class="font-mono" data-close-num="allocated">{{ goal.allocated|currency }}</dd>
+      </div>
+      <div>
+        <dt class="text-base-content/70">{% translate "Spent" %}</dt>
+        <dd class="font-mono" data-close-num="spent">{{ goal.spent|currency }}</dd>
+      </div>
+      <div>
+        <dt class="text-base-content/70">{% translate "Left" %}</dt>
+        <dd class="font-mono font-semibold {% if goal.left < 0 %}text-error{% endif %}" data-close-num="left">{{ goal.left|currency }}</dd>
+      </div>
+    </dl>
+
+    <div class="mt-4" data-testid="goal-close-consequence">
+      <p data-close-case="pos" {% if goal.left <= 0 %}hidden{% endif %}>
+        {% translate "What's left in it goes back to your unassigned money:" %}
+        <strong class="font-mono" data-close-num="left">{{ goal.left|currency }}</strong>.
+      </p>
+      <p data-close-case="neg" {% if goal.left >= 0 %}hidden{% endif %}>
+        {% translate "Spending went past what this goal held. Closing covers it from your unassigned money:" %}
+        <strong class="font-mono" data-close-num="cover">{{ goal.cover_amount|currency }}</strong>.
+        {% translate "To pay it back over time instead, keep the goal open and keep assigning to it." %}
+      </p>
+      <p data-close-case="zero" {% if goal.left != 0 %}hidden{% endif %}>
+        {% translate "Nothing is left in it, so your unassigned money doesn't change." %}
+      </p>
+    </div>
+    <p class="text-sm text-base-content/70 mt-2">
+      {% translate "A closed goal keeps its history. You'll find it under the Closed filter on the Goals page." %}
+    </p>
+
+    <div class="modal-action">
+      <form method="dialog">
+        <button class="btn btn-ghost" data-testid="goal-close-cancel">
+          <span data-close-case="neg" {% if goal.left >= 0 %}hidden{% endif %}>{% translate "Keep it open" %}</span>
+          <span data-close-case="pos zero" {% if goal.left < 0 %}hidden{% endif %}>{% translate "Cancel" %}</span>
+        </button>
+      </form>
+      <form method="post" action="{% url 'budget:goal_close' team_slug=request.team.slug pk=goal.pk %}"
+            data-testid="goal-close-form">
+        {% csrf_token %}
+        {% if month %}<input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">{% endif %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <input type="hidden" name="cover" value="1" data-close-cover {% if goal.left >= 0 %}disabled{% endif %}>
+        <button type="submit" class="btn btn-primary" data-testid="goal-close-confirm">
+          <span data-close-case="neg" {% if goal.left >= 0 %}hidden{% endif %}>
+            {% translate "Cover and close" %} (<span data-close-num="cover">{{ goal.cover_amount|currency }}</span>)
+          </span>
+          <span data-close-case="pos zero" {% if goal.left < 0 %}hidden{% endif %}>{% translate "Close goal" %}</span>
+        </button>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>{% translate "close" %}</button></form>
+</dialog>
+</span>

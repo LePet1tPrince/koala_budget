@@ -40,6 +40,13 @@ def _rezip_with_manifest(data: bytes, manifest: dict) -> bytes:
     return buf.getvalue()
 
 
+def _drop_column(csv_bytes: bytes, column: str) -> bytes:
+    lines = csv_bytes.decode("utf-8-sig").splitlines()
+    drop = lines[0].split(",").index(column)
+    kept = [",".join(c for i, c in enumerate(line.split(",")) if i != drop) for line in lines]
+    return ("\r\n".join(kept) + "\r\n").encode("utf-8-sig")
+
+
 class StructuralErrorTests(SimpleTestCase):
     def test_not_a_zip_file_is_refused(self):
         with self.assertRaises(DocumentError):
@@ -130,7 +137,7 @@ class VersionTests(SimpleTestCase):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
             zf_out.writestr("manifest.json", json.dumps(manifest))
-            zf_out.writestr("accounts.csv", zf_in.read("accounts.csv"))
+            zf_out.writestr("accounts.csv", _drop_column(zf_in.read("accounts.csv"), "goal_closed_at"))
             zf_out.writestr("journal.csv", (journal_v1 + "\r\n").encode("utf-8-sig"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
 
