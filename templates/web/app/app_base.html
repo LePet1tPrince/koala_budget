@@ -26,6 +26,13 @@
  The script loads here rather than in `page_js`: child templates define their
      own `page_js` and would override it, on exactly the pages the rail is for.
   {% endcomment %}
+  {% comment %}
+ Keeps the Unassigned pill in the sidebar/top bar current after every write. In
+    the body for the same reason as the task rail below: child templates own page_js.
+  {% endcomment %}
+  {% if unassigned_pill %}
+    {% vite_asset 'assets/javascript/unassigned/unassigned-pill.js' %}
+  {% endif %}
   {% if onboarding_rail %}
     {{ onboarding_rail|json_script:'task-rail-props' }}
     <div id="task-rail-app"></div>

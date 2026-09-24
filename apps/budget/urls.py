@@ -16,6 +16,7 @@ urlpatterns = [
     path("save-amount/", views.budget_save_amount, name="budget_save_amount"),
     path("grid/", views.budget_grid_view, name="budget_grid"),
     path("grid/save/", views.budget_grid_save, name="budget_grid_save"),
+    path("api/unassigned/", views.unassigned_api, name="api_unassigned"),
     # Goal views
     path("goals/", views.goals_list_view, name="goals_list"),
     path("goals/new/", views.goal_create_view, name="goal_create"),

@@ -25,6 +25,15 @@
       </a>
     </li>
     <li>
+      <a href="{% url 'reports:dollar_map' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-dollar-map">
+        <div>
+          <div class="font-medium">{% translate "Dollar Map" %}</div>
+          <div class="text-sm text-base-content/70">{% translate "Where every dollar is going: goals, budget envelopes, and what still has no job." %}</div>
+        </div>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+      </a>
+    </li>
+    <li>
       <a href="{% url 'reconciliation:hub' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-reconciliation">
         <div>
           <div class="font-medium">{% translate "Reconciliation Status" %}</div>

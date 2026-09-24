@@ -186,6 +186,7 @@ TEMPLATES = [
                 "apps.teams.context_processors.user_teams",
                 "apps.bank_feed.context_processors.inbox_count",
                 "apps.bank_feed.context_processors.nav_feed_accounts",
+                "apps.budget.context_processors.unassigned_pill",
                 "apps.onboarding.context_processors.onboarding_rail",
                 # this line can be removed if not using google analytics
                 "apps.web.context_processors.google_analytics_id",

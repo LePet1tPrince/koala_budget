@@ -15,6 +15,7 @@ from apps.accounts.models import Account
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal
 from apps.budget.services import NetWorthService
+from apps.budget.unassigned import allocation_bar, compute_unassigned
 from apps.journal.models import JournalEntry, counted_entries
 from apps.monthly_review.models import MonthlyReviewState
 from apps.monthly_review.services.budget import _prev_month
@@ -119,6 +120,8 @@ def team_home(request, team_slug):
         .exists()
     )
 
+    unassigned = compute_unassigned(team, month, today=today, detail=True)
+
     chart_start = first_entry_date.replace(day=1) if first_entry_date else month
     trend_data = report_service.get_net_worth_trend_data_by_date_range(chart_start, today)
     net_worth_chart_data = None
@@ -137,7 +140,9 @@ def team_home(request, team_slug):
             "page_title": _("{team} Home").format(team=team),
             "greeting": _greeting_for(request.user, today),
             "month": month,
-            "net_worth_card": NetWorthService(team).get_net_worth_card_data(month),
+            "net_worth_card": NetWorthService.card_data(unassigned),
+            "unassigned": unassigned,
+            "unassigned_bar": allocation_bar(unassigned),
             "income_ytd": income_ytd,
             "amount_to_reach_goals": amount_to_reach_goals,
             "goals": goals_qs[:4],

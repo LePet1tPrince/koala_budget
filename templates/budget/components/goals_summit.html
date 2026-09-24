@@ -64,9 +64,9 @@ pace/projection numbers, context-aware quick-assign.
 <!-- Summary strip -->
 <div class="stats stats-vertical sm:stats-horizontal shadow mb-6 w-full" data-testid="goals-summary">
   <div class="stat">
-    <div class="stat-title">{% translate "Available to Assign" %}</div>
+    <div class="stat-title" data-unassigned-label>{{ net_worth_card.label }}</div>
     <div class="stat-value {% if available > 0 %}text-success{% elif available < 0 %}text-error{% endif %}" data-available-display>{{ available|currency }}</div>
-    <div class="stat-desc">{% translate "Unallocated money, ready for your goals" %}</div>
+    <div class="stat-desc">{% translate "Money with no job yet, ready for your goals" %}</div>
   </div>
   <div class="stat">
     <div class="stat-title">{% translate "Total Saved" %}</div>
@@ -183,7 +183,7 @@ pace/projection numbers, context-aware quick-assign.
             <span data-withdraw-all-label>{% translate "Withdraw all" %} ({{ item.saved|currency }})</span>
           </button>
           <p class="text-xs text-base-content/70">
-            {% translate "Withdrawn money returns to Available. It's recorded against this month, so past months' history stays intact." %}
+            {% blocktranslate trimmed with label=net_worth_card.label %}Withdrawn money returns to {{ label }}. It's recorded against this month, so past months' history stays intact.{% endblocktranslate %}
           </p>
         </div>
         <noscript>
