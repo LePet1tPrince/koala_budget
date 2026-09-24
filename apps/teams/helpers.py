@@ -2,7 +2,6 @@ from allauth.account.models import EmailAddress
 from django.contrib.auth.models import AnonymousUser
 from django.db.models import F
 from django.http import HttpRequest
-from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext as _
 
 from apps.users.models import CustomUser
@@ -29,7 +28,14 @@ def get_next_unique_team_slug(team_name: str) -> str:
 def get_team_for_request(request, view_kwargs) -> Team | None:
     team_slug = view_kwargs.get("team_slug", None)
     if team_slug:
-        return get_object_or_404(Team, slug=team_slug)
+        # Deliberately not `get_object_or_404`: this runs inside a `SimpleLazyObject`
+        # (see `TeamsMiddleware`), and middleware unwraps it eagerly, so raising Http404
+        # here would blow up before the view -- and its `login_and_team_required`/
+        # `team_admin_required` decorator -- ever runs, taking the request straight to
+        # Django's raw exception handling (the technical 404 page under DEBUG=True)
+        # instead of our friendly 404 template. A missing team is handled like "team
+        # exists but the user isn't a member" -- as `None`, checked by the decorators.
+        return Team.objects.filter(slug=team_slug).first()
 
     return None
 

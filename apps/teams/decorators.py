@@ -1,6 +1,7 @@
 from functools import wraps
 
-from django.http import Http404, HttpResponseRedirect
+from django.http import HttpResponseRedirect
+from django.shortcuts import render
 from django.urls import reverse
 
 from .roles import is_admin, is_member
@@ -23,8 +24,13 @@ def _get_decorated_function(view_func, permission_test_function):
 
         team = request.team  # set by middleware
         if not team or not permission_test_function(user, team):
-            # treat not having access to a team like a 404 to avoid accidentally leaking information
-            raise Http404
+            # Treat not having access to a team (or a team slug that doesn't exist at
+            # all) like a 404, to avoid accidentally leaking information. Rendered
+            # directly, rather than `raise Http404`, so the visitor always sees our
+            # friendly 404 page -- a bare `raise Http404` shows Django's raw technical
+            # 404 page whenever DEBUG=True (e.g. local dev), regardless of the custom
+            # 404.html template that's used in production.
+            return render(request, "404.html", status=404)
 
         return view_func(request, *args, **kwargs)
 
