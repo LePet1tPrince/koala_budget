@@ -10,6 +10,8 @@ const props = JSON.parse(document.getElementById('goals-props')?.textContent || 
 const root = document.querySelector('[data-goals-root]');
 const style = root?.dataset.style || 'summit';
 let available = props.available || 0;
+const unassignedLabel = props.unassignedLabel || 'Unassigned';
+const overAssignedLabel = props.overAssignedLabel || 'Over-assigned';
 let totalSaved = props.totalSaved || 0;
 let xp = props.xp || 0;
 
@@ -226,6 +228,10 @@ function refreshAssignButtons() {
     el.classList.toggle('text-success', available > 0);
     el.classList.toggle('text-error', available < 0);
   });
+  // The figure's own name flips to "Over-assigned" below zero.
+  document.querySelectorAll('[data-unassigned-label]').forEach((el) => {
+    el.textContent = available < 0 ? overAssignedLabel : unassignedLabel;
+  });
   document.querySelectorAll('[data-saved-display]').forEach((el) => {
     el.textContent = fmt(totalSaved);
   });
@@ -325,12 +331,12 @@ const CASH_OUT_SOUND = [[1319, 0, 0.08], [988, 0.08, 0.1], [659, 0.18, 0.25]];
 
 function withdrawMessage(data) {
   if (style === 'koala') {
-    return `🍂 −${fmt(data.withdrawn)} — the koala climbed down to ${Math.round(data.new_pct)}%. ${fmt(data.new_available)} back in Available.`;
+    return `🍂 −${fmt(data.withdrawn)} — the koala climbed down to ${Math.round(data.new_pct)}%. ${fmt(data.new_available)} back in ${unassignedLabel}.`;
   }
   if (style === 'arcade') {
     return `🎰 CASH OUT! −${fmt(data.withdrawn)} from ${data.goal_name} — ${fmt(data.new_available)} in the hopper.`;
   }
-  return `−${fmt(data.withdrawn)} from ${data.goal_name} — ${fmt(data.new_available)} back in Available.`;
+  return `−${fmt(data.withdrawn)} from ${data.goal_name} — ${fmt(data.new_available)} back in ${unassignedLabel}.`;
 }
 
 async function withdraw(card, amount) {

@@ -1,0 +1,40 @@
+{% load i18n %}
+{% comment %}
+  The Unassigned figure, on every app page (docs/unassigned-plan.md §3). Rendered by
+  the `unassigned_pill` context processor's lazy value and kept current by
+  assets/javascript/unassigned/unassigned-pill.js, which refreshes it after every
+  write and shows the change as a delta chip. The words for each state live in
+  data attributes so the script never hardcodes copy.
+
+  `compact` is the mobile top-bar variant: the figure only.
+{% endcomment %}
+{% if unassigned_pill and nav_team %}
+  <div class="unassigned-pill{% if compact %} unassigned-pill-compact{% endif %}"
+       data-unassigned-pill
+       data-state="{{ unassigned_pill.state }}"
+       data-raw="{{ unassigned_pill.raw }}"
+       data-month="{{ unassigned_pill.month }}"
+       data-url="{{ unassigned_url }}"
+       data-label-unassigned="{{ unassigned_labels.unassigned }}"
+       data-label-over-assigned="{{ unassigned_labels.over_assigned }}"
+       data-hint-positive="{% translate 'waiting for a job' %}"
+       data-hint-zero="{% translate 'Every dollar has a job' %}"
+       data-hint-negative="{% translate 'promised more than you have' %}"
+       data-testid="unassigned-pill{% if compact %}-compact{% endif %}">
+    <a href="{% url 'reports:dollar_map' nav_team.slug %}" class="unassigned-pill-main"
+       title="{% translate 'See where every dollar is going' %}">
+      <span class="unassigned-pill-label" data-unassigned-pill-label>{{ unassigned_pill.label }}</span>
+      <span class="unassigned-pill-value money" data-unassigned-pill-value>{{ unassigned_pill.display }}</span>
+    </a>
+    <span class="unassigned-delta" data-unassigned-delta hidden></span>
+    {% if not compact %}
+      <span class="unassigned-pill-hint">
+        <span data-unassigned-pill-hint>
+          {% if unassigned_pill.state == "negative" %}{% translate "promised more than you have" %}{% elif unassigned_pill.state == "zero" %}{% translate "Every dollar has a job" %}{% else %}{% translate "waiting for a job" %}{% endif %}
+        </span>
+        <a href="{% url 'budget:budget_home' nav_team.slug %}" class="unassigned-pill-action" data-unassigned-pill-action>{% translate "Budget" %}</a>
+      </span>
+    {% endif %}
+    <span class="sr-only" aria-live="polite" data-unassigned-live></span>
+  </div>
+{% endif %}

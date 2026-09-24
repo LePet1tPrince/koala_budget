@@ -18,6 +18,7 @@ urlpatterns = [
     path("cash-flow/", views.cash_flow, name="cash_flow"),
     path("budget-vs-actual/", views.budget_vs_actual, name="budget_vs_actual"),
     path("goal-progress/", views.goal_progress, name="goal_progress"),
+    path("dollar-map/", views.dollar_map, name="dollar_map"),
     # CSV exports
     path("export/income-statement/", views.export_income_statement, name="export_income_statement"),
     path("export/balance-sheet/", views.export_balance_sheet, name="export_balance_sheet"),

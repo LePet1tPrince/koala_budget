@@ -7,8 +7,38 @@
 
   <h1 class="text-2xl font-semibold" data-testid="dashboard-greeting">{{ greeting }}</h1>
 
+  {# Unassigned leads: every dollar should have a job (docs/unassigned-plan.md) #}
+  <section class="app-card mt-4" data-testid="metric-unassigned">
+    <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+      <div>
+        <div class="text-sm text-base-content/70">{{ unassigned.label }}</div>
+        <div class="money text-4xl font-semibold tracking-tight mt-1 {% if unassigned.state == 'negative' %}text-error{% elif unassigned.state == 'positive' %}text-success{% endif %}"
+             data-testid="metric-unassigned-value">
+          {{ unassigned.amount|currency }}
+        </div>
+        <p class="text-sm mt-1 {% if unassigned.state == 'negative' %}text-error{% else %}text-base-content/70{% endif %}">
+          {% if unassigned.state == 'negative' %}
+            {% translate "More is promised to envelopes and goals than you have." %}
+          {% elif unassigned.state == 'zero' %}
+            {% translate "Every dollar has a job." %}
+          {% else %}
+            {% translate "Money with no job yet. Give it one in your budget or a goal." %}
+          {% endif %}
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="{% url 'budget:budget_home' request.team.slug %}" class="btn btn-sm btn-outline">{% translate "Budget" %}</a>
+        <a href="{% url 'budget:goals_list' request.team.slug %}" class="btn btn-sm btn-outline">{% translate "Goals" %}</a>
+        <a href="{% url 'reports:dollar_map' request.team.slug %}" class="btn btn-sm btn-primary" data-testid="dashboard-dollar-map-link">{% translate "Where every dollar is going" %}</a>
+      </div>
+    </div>
+    <div class="mt-4">
+      {% include "budget/components/dollar_bar.html" with bar=unassigned_bar show_markers=False %}
+    </div>
+  </section>
+
   {# Headline metrics #}
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4" data-testid="dashboard-metrics">
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4" data-testid="dashboard-metrics">
     <section class="app-card" data-testid="metric-net-worth">
       <div class="text-sm text-base-content/70">{% translate "Net worth" %}</div>
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth_card.net_worth < 0 %}text-error{% endif %}">
@@ -21,13 +51,6 @@
         {{ income_ytd.net_profit|currency }}
       </div>
       <a href="{% url 'reports:income_statement' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View profit & loss" %}</a>
-    </section>
-    <section class="app-card" data-testid="metric-budget-available">
-      <div class="text-sm text-base-content/70">{% translate "Total budget available" %}</div>
-      <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth_card.spend < 0 %}text-error{% endif %}">
-        {{ net_worth_card.spend|currency }}
-      </div>
-      <a href="{% url 'budget:budget_home' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View budget" %}</a>
     </section>
     <section class="app-card" data-testid="metric-goals-remaining">
       <div class="text-sm text-base-content/70">{% translate "To reach all goals" %}</div>

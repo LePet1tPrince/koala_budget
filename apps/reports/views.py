@@ -549,6 +549,47 @@ def budget_vs_actual(request, team_slug):
 
 
 @login_and_team_required
+def dollar_map(request, team_slug):
+    """
+    Dollar Map: where every dollar of net worth is going for one month — goals,
+    budget envelopes and what is still unassigned (docs/unassigned-plan.md §3).
+    """
+    from apps.budget.unassigned import allocation_bar, compute_unassigned, waterfall
+
+    month = date.today().replace(day=1)
+    month_param = request.GET.get("month")
+    if month_param:
+        with contextlib.suppress(ValueError):
+            year, month_num = map(int, month_param.split("-")[:2])
+            month = date(year, month_num, 1)
+
+    unassigned = compute_unassigned(request.team, month, detail=True)
+    detail = unassigned.detail
+    envelopes = sorted(detail["envelopes"], key=lambda e: -e["amount"])
+
+    return render(
+        request,
+        "reports/dollar_map.html",
+        {
+            "active_tab": "reports",
+            "page_title": _("Dollar Map"),
+            "month": month,
+            "is_current_month": month == date.today().replace(day=1),
+            "prev_month": (month - timedelta(days=1)).replace(day=1),
+            "next_month": (month + timedelta(days=32)).replace(day=1),
+            "unassigned": unassigned,
+            "bar": allocation_bar(unassigned),
+            "goals": [g for g in detail["goals"] if g["amount"] > 0],
+            "envelopes": [e for e in envelopes if e["amount"] > 0],
+            "overspent": [e for e in reversed(envelopes) if e["amount"] < 0]
+            + [g for g in detail["goals"] if g["amount"] < 0],
+            "income_due": detail["income_due"],
+            "waterfall": waterfall(unassigned),
+        },
+    )
+
+
+@login_and_team_required
 def goal_progress(request, team_slug):
     """
     Goal Progress report: cumulative savings per goal over time, with a projected

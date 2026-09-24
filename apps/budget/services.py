@@ -261,15 +261,22 @@ class BudgetService:
         Uses bulk queries instead of per-category recursion.
         Returns a dictionary mapping account_id to available amount.
         """
+        return self.get_available_with_previous(month, categories)[0]
+
+    def get_available_with_previous(self, month, categories):
+        """
+        Available per category at the end of `month` and at the end of the month
+        before it, from the one pass `get_available_by_category` makes anyway.
+
+        The previous month's figure is what rolled over into `month`; the
+        Unassigned metric splits envelopes into "rolled over" and "this month" by it.
+        """
+        zeros = {cat.pk: Decimal("0") for cat in categories}
         first_month = self.get_first_activity_month()
 
-        if not first_month:
-            # No activity, return zeros
-            return {cat.pk: Decimal("0") for cat in categories}
-
-        # If requested month is before first activity, return zeros
-        if month < first_month:
-            return {cat.pk: Decimal("0") for cat in categories}
+        # No activity yet, or none by the requested month
+        if not first_month or month < first_month:
+            return zeros, dict(zeros)
 
         # Build a dict of account_type by category_id for fast lookup
         account_types = {cat.pk: cat.account_group.account_type for cat in categories}
@@ -279,11 +286,14 @@ class BudgetService:
         all_actuals = self.get_all_actuals_by_month_category(first_month, month)
 
         # Initialize available amounts
-        available = {cat.pk: Decimal("0") for cat in categories}
+        available = dict(zeros)
+        previous = dict(zeros)
 
         # Iterate from first_month to the requested month
         current_month = first_month
         while current_month <= month:
+            if current_month == month:
+                previous = dict(available)
             for cat in categories:
                 cat_id = cat.pk
                 budgeted = all_budgets.get((current_month, cat_id), Decimal("0"))
@@ -299,7 +309,7 @@ class BudgetService:
             # Move to next month
             current_month = current_month + relativedelta(months=1)
 
-        return available
+        return available, previous
 
     def build_budget_rows(self, month):
         """
@@ -428,56 +438,33 @@ class NetWorthService:
         # So dr - cr gives us: assets - liabilities = net worth
         return total_dr - total_cr
 
-    def get_total_saved_to_goals(self):
-        """
-        Get the total amount allocated to all active goals.
-        This represents money set aside for savings goals.
-        """
-        return GoalAllocation.objects.filter(
-            team=self.team,
-            goal__is_archived=False,
-        ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
-
-    def get_total_available_to_spend(self, month, categories=None):
-        """
-        Get the sum of all 'available' amounts across budget categories.
-        This represents money available to spend from the budget.
-        """
-        budget_service = BudgetService(self.team)
-
-        if categories is None:
-            categories = list(
-                Account.objects.filter(
-                    team=self.team,
-                    account_group__account_type__in=("expense", "income"),
-                ).select_related("account_group")
-            )
-
-        if not categories:
-            return Decimal("0")
-
-        available_map = budget_service.get_available_by_category(month, categories)
-        return sum(available_map.values())
-
     def get_net_worth_card_data(self, month, categories=None):
         """
-        Get all data needed for the NetWorthCard component.
+        Get all data needed for the NetWorthCard component: the terms of the
+        Unassigned sum (see `apps.budget.unassigned`) for `month`.
 
         Returns:
             dict with keys:
             - net_worth: Total assets minus liabilities
+            - income_due: Income budgeted this month and not yet received
+            - spend: Money in expense envelopes (unspent budget, rollover included)
             - save: Total allocated to goals
-            - spend: Total available in budget categories
-            - available: net_worth - save - spend (unallocated money)
+            - available: net_worth + income_due - spend - save (Unassigned)
+            - state / label: the Unassigned state and the words for it
         """
-        net_worth = self.get_net_worth(month)
-        save = self.get_total_saved_to_goals()
-        spend = self.get_total_available_to_spend(month, categories)
-        available = net_worth - save - spend
+        from .unassigned import compute_unassigned
 
+        return self.card_data(compute_unassigned(self.team, month, categories))
+
+    @staticmethod
+    def card_data(unassigned):
+        """The card dict for an already-computed `Unassigned`."""
         return {
-            "net_worth": net_worth,
-            "save": save,
-            "spend": spend,
-            "available": available,
+            "net_worth": unassigned.net_worth,
+            "income_due": unassigned.income_due,
+            "spend": unassigned.envelopes,
+            "save": unassigned.goals,
+            "available": unassigned.amount,
+            "state": unassigned.state,
+            "label": unassigned.label,
         }
