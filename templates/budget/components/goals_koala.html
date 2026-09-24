@@ -223,7 +223,7 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
             <span data-withdraw-all-label>🍂 {% translate "Back to the ground" %} ({{ item.saved|currency }})</span>
           </button>
           <p class="text-xs text-base-content/70">
-            {% translate "The koala hands the money back to Available — this month's record shows the climb down, past months stay untouched." %}
+            {% blocktranslate trimmed with label=net_worth_card.label %}The koala hands the money back to {{ label }} — this month's record shows the climb down, past months stay untouched.{% endblocktranslate %}
           </p>
         </div>
         <noscript>

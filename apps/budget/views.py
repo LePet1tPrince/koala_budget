@@ -12,7 +12,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.models import Account
 from apps.accounts.serializers import SimpleAccountSerializer
@@ -24,6 +24,7 @@ from apps.web.templatetags.currency_tags import currency
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Budget, Goal, GoalAllocation
 from .services import BudgetService, GoalService, NetWorthService
+from .unassigned import OVER_ASSIGNED_LABEL, UNASSIGNED_LABEL, compute_unassigned, pill_context
 
 
 def _parse_month(value):
@@ -172,9 +173,12 @@ def _budget_cells(figures):
 
     card = figures["net_worth_card"]
     put("networth:net_worth", card["net_worth"])
+    put("networth:income_due", card["income_due"])
     put("networth:spend", card["spend"])
     put("networth:save", card["save"])
     put("networth:available", card["available"], toned=True)
+    # The line's own name flips to "Over-assigned" when the figure goes negative.
+    cells["networth:label"] = {"value": str(card["label"]), "tone": ""}
 
     return cells
 
@@ -252,6 +256,14 @@ def budget_month_view(request, team_slug):
             "save_amount_url": f"/a/{team_slug}/budget/save-amount/",
         },
     )
+
+
+@login_and_team_required
+@require_GET
+def unassigned_api(request, team_slug):
+    """The Unassigned figure for the current month, for the sidebar pill to refresh
+    itself after any write (see assets/javascript/unassigned/unassigned-pill.js)."""
+    return JsonResponse(pill_context(compute_unassigned(request.team, date.today())))
 
 
 @login_and_team_required
@@ -777,6 +789,9 @@ def goals_list_view(request, team_slug):
         "style": style,
         "month": month.isoformat(),
         "available": float(available),
+        # The metric's name is still being decided; the toasts read it from here.
+        "unassignedLabel": str(UNASSIGNED_LABEL),
+        "overAssignedLabel": str(OVER_ASSIGNED_LABEL),
         "totalSaved": float(total_saved),
         "xp": int(total_saved),
         "levelStep": ARCADE_LEVEL_STEP,
