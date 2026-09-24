@@ -1,0 +1,26 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load icons %}
+{% comment %}
+No-JS fallback for the delete dialog on a group, payee or institution page.
+{% endcomment %}
+{% block app %}
+<section class="app-card max-w-2xl">
+  <a href="{{ cancel_url }}" class="btn btn-ghost btn-sm -ml-3 mb-1" data-back-link data-testid="back-link">
+    {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4" %}
+    {% blocktranslate with name=object.name %}Back to {{ name }}{% endblocktranslate %}
+  </a>
+  <h1 class="text-2xl font-semibold tracking-tight mb-3">{% blocktranslate with name=object.name %}Delete “{{ name }}”{% endblocktranslate %}</h1>
+  {% if blocked_reason %}
+    <p class="text-sm">{{ blocked_reason }}</p>
+    <a href="{{ cancel_url }}" class="btn mt-6">{% translate "OK" %}</a>
+  {% else %}
+    <p class="text-sm">{% translate "This can't be undone." %}</p>
+    <form method="post" class="flex gap-2 mt-6">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-error" data-testid="confirm-delete-btn">{% translate "Delete" %}</button>
+      <a href="{{ cancel_url }}" class="btn btn-ghost">{% translate "Cancel" %}</a>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

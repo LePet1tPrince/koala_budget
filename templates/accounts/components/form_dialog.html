@@ -1,0 +1,22 @@
+{% load i18n %}
+{% load form_tags %}
+{% comment %}
+A create/edit form in a <dialog>, opened by a `data-dialog="{{ dialog_id }}"` link
+whose href is the standalone form page (the no-JS path, and where a rejected
+submit lands to show its errors).
+Params: dialog_id, title, form, action, submit_label.
+{% endcomment %}
+<dialog id="{{ dialog_id }}" class="modal" data-testid="{{ dialog_id }}">
+  <div class="modal-box max-w-md">
+    <h3 class="text-lg font-semibold">{{ title }}</h3>
+    <form method="post" action="{{ action }}" class="mt-2">
+      {% csrf_token %}
+      {% render_form_fields form %}
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">{% translate "Cancel" %}</button>
+        <button type="submit" class="btn btn-primary" data-testid="{{ dialog_id }}-submit">{{ submit_label|default:_("Save") }}</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>{% translate "close" %}</button></form>
+</dialog>

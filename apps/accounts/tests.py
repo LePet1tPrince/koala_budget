@@ -1058,3 +1058,186 @@ class AccountsBoardApiTest(TestCase):
             )
         )
         self.assertEqual(names, ["Savings", "Checking"])
+
+
+class ManagementPagesTest(TestCase):
+    """Groups, payees and institutions pages: guarded deletes, duplicate names, detail content."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from .models import ACCOUNT_TYPE_LIABILITY, Institution
+
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
+        cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        cls.bank = Institution.objects.create(book=cls.book, name="TD")
+        cls.assets = AccountGroup.objects.create(book=cls.book, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        cls.cards = AccountGroup.objects.create(book=cls.book, name="Cards", account_type=ACCOUNT_TYPE_LIABILITY)
+        cls.food = AccountGroup.objects.create(book=cls.book, name="Food", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.chequing = Account.objects.create(
+            book=cls.book, name="Chequing", account_group=cls.assets, institution=cls.bank
+        )
+        cls.card = Account.objects.create(book=cls.book, name="Visa", account_group=cls.cards, institution=cls.bank)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.food)
+        cls.metro = Payee.objects.create(book=cls.book, name="Metro")
+        # $80 of groceries on the card: the card owes 80, the bank holds nothing
+        entry = JournalEntry.objects.create(
+            book=cls.book, entry_date=date(2026, 3, 5), payee=cls.metro, description="Food", status="posted"
+        )
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.groceries, dr_amount=Decimal("80"))
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.card, cr_amount=Decimal("80"))
+
+    def setUp(self):
+        self.client.login(username="testuser@example.com", password="testpass123")
+
+    def url(self, name, *args):
+        return reverse(f"accounts:{name}", args=[*self.book.url_args, *args])
+
+    def test_deleting_group_with_accounts_is_refused_not_500(self):
+        response = self.client.post(self.url("accountgroup_delete", self.assets.pk))
+        self.assertRedirects(response, self.assets.get_absolute_url(), fetch_redirect_response=False)
+        self.assertTrue(AccountGroup.objects.filter(pk=self.assets.pk).exists())
+
+    def test_deleting_payee_in_use_is_refused_not_500(self):
+        response = self.client.post(self.url("payee_delete", self.metro.pk))
+        self.assertRedirects(response, self.metro.get_absolute_url(), fetch_redirect_response=False)
+        self.assertTrue(Payee.objects.filter(pk=self.metro.pk).exists())
+
+    def test_deleting_unused_payee_goes_to_list(self):
+        unused = Payee.objects.create(book=self.book, name="Nobody")
+        response = self.client.post(self.url("payee_delete", unused.pk))
+        self.assertRedirects(response, self.url("payee_list"), fetch_redirect_response=False)
+        self.assertFalse(Payee.objects.filter(pk=unused.pk).exists())
+
+    def test_deleting_institution_unlinks_its_accounts(self):
+        self.client.post(self.url("institution_delete", self.bank.pk))
+        self.chequing.refresh_from_db()
+        self.assertIsNone(self.chequing.institution)
+
+    def test_duplicate_names_are_form_errors_not_500(self):
+        for name, data in (
+            ("payee_create", {"name": "Metro"}),
+            ("institution_create", {"name": "TD"}),
+            ("accountgroup_create", {"name": "Bank", "account_type": ACCOUNT_TYPE_ASSET, "description": ""}),
+        ):
+            with self.subTest(name):
+                response = self.client.post(self.url(name), data)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "already exists")
+
+    def test_renaming_to_own_name_is_allowed(self):
+        response = self.client.post(self.url("payee_update", self.metro.pk), {"name": "Metro"})
+        self.assertRedirects(response, self.metro.get_absolute_url(), fetch_redirect_response=False)
+
+    def test_group_type_is_locked_while_it_has_accounts(self):
+        self.client.post(
+            self.url("accountgroup_update", self.assets.pk),
+            {"name": "Bank", "account_type": ACCOUNT_TYPE_EXPENSE, "description": ""},
+        )
+        self.assets.refresh_from_db()
+        self.assertEqual(self.assets.account_type, ACCOUNT_TYPE_ASSET)
+
+    def test_institution_detail_nets_what_is_owed(self):
+        response = self.client.get(self.url("institution_detail", self.bank.pk))
+        rows = {row["account"].name: row["amount"] for row in response.context["rows"]}
+        self.assertEqual(rows["Visa"], Decimal("80"))  # owed, shown positive
+        self.assertEqual(response.context["net_balance"], Decimal("-80"))
+
+    def test_expense_group_shows_this_years_activity(self):
+        response = self.client.get(self.url("accountgroup_detail", self.food.pk))
+        self.assertEqual(response.context["amount_label"], "This year")
+
+    def test_payee_pages_show_usage_and_link_to_transactions(self):
+        response = self.client.get(self.url("payee_list"))
+        self.assertContains(response, "1 transaction")
+        response = self.client.get(self.url("payee_detail", self.metro.pk))
+        self.assertEqual(len(response.context["recent"]), 1)
+        self.assertEqual(response.context["recent"][0]["amount"], Decimal("80"))
+        self.assertIn("f_payee=Metro", response.context["transactions_url"])
+
+    def test_transactions_page_opens_filtered_by_payee(self):
+        url = reverse("journal:transactions_home", args=self.book.url_args)
+        response = self.client.get(url, {"f_payee": ["Metro", "Unknown"]})
+        self.assertEqual(response.context["initial_filters"], {"payee": [{"value": "Metro", "label": "Metro"}]})
+
+    def test_liability_balance_reads_as_owed(self):
+        response = self.client.get(self.card.get_absolute_url())
+        self.assertEqual(response.context["current_balance"]["label"], "Balance owed")
+        self.assertEqual(response.context["current_balance"]["amount"], Decimal("80"))
+
+    def test_sections_highlight_their_sidebar_item(self):
+        pages = (("accountgroup_list", "groups"), ("payee_list", "payees"), ("institution_list", "institutions"))
+        for name, section in pages:
+            with self.subTest(name):
+                self.assertEqual(self.client.get(self.url(name)).context["accounts_section"], section)
+
+
+class ReturnToNavigationTest(TestCase):
+    """A page opened with ?return_to links back there, through edit and cancel."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
+        cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        cls.group = AccountGroup.objects.create(book=cls.book, name="Food", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.account = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.group)
+        cls.report = reverse("reports:account_activity", args=[*cls.book.url_args, cls.account.pk]) + "?source=x"
+
+    def setUp(self):
+        self.client.login(username="testuser@example.com", password="testpass123")
+
+    def test_back_link_defaults_to_parent(self):
+        response = self.client.get(self.account.get_absolute_url())
+        self.assertEqual(response.context["back"]["url"], reverse("accounts:accounts_home", args=self.book.url_args))
+        self.assertEqual(response.context["back"]["label"], "Back to Accounts")
+
+    def test_back_link_returns_to_report(self):
+        response = self.client.get(self.account.get_absolute_url(), {"return_to": self.report})
+        self.assertEqual(response.context["back"], {"url": self.report, "label": "Back to Groceries report"})
+
+    def test_back_link_labels_group_page(self):
+        response = self.client.get(self.account.get_absolute_url(), {"return_to": self.group.get_absolute_url()})
+        self.assertEqual(response.context["back"]["label"], "Back to Food")
+
+    def test_off_site_return_to_is_ignored(self):
+        for bad in ("https://evil.example/", "//evil.example/", "javascript:alert(1)"):
+            with self.subTest(bad):
+                response = self.client.get(self.account.get_absolute_url(), {"return_to": bad})
+                self.assertEqual(response.context["back"]["label"], "Back to Accounts")
+
+    def test_edit_keeps_return_to_through_save(self):
+        url = reverse("accounts:account_update", args=[*self.book.url_args, self.account.pk])
+        response = self.client.post(
+            f"{url}?return_to={self.report}",
+            {"name": "Food shopping", "account_type": ACCOUNT_TYPE_EXPENSE, "account_group": self.group.pk},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response["Location"].startswith(self.account.get_absolute_url() + "?return_to="))
+
+    def test_edit_cancel_goes_to_detail_not_board(self):
+        url = reverse("accounts:account_update", args=[*self.book.url_args, self.account.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.context["cancel_url"], self.account.get_absolute_url())
+
+    def test_create_from_group_returns_to_group(self):
+        url = reverse("accounts:account_create", args=self.book.url_args)
+        group_url = self.group.get_absolute_url()
+        response = self.client.get(url, {"return_to": group_url})
+        self.assertEqual(response.context["cancel_url"], group_url)
+        response = self.client.post(
+            f"{url}?return_to={group_url}",
+            {"name": "Snacks", "account_type": ACCOUNT_TYPE_EXPENSE, "account_group": self.group.pk},
+        )
+        created = Account.objects.get(book=self.book, name="Snacks")
+        self.assertTrue(response["Location"].startswith(created.get_absolute_url() + "?return_to="))
+
+    def test_activity_links_carry_the_page_as_return_to(self):
+        other = Account.objects.create(book=self.book, name="Visa", account_group=self.group)
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date.today(), description="x", status="posted")
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=self.account, dr_amount=Decimal("5"))
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=other, cr_amount=Decimal("5"))
+        response = self.client.get(self.account.get_absolute_url())
+        self.assertContains(response, f'href="{other.get_absolute_url()}?return_to=')

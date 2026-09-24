@@ -1,0 +1,28 @@
+{% load i18n %}
+{% comment %}
+Delete confirmation in a <dialog>. When `blocked_reason` is set the delete is
+refused server-side too, so the dialog explains why instead of offering the button.
+Params: dialog_id, title, name, action, blocked_reason, note (optional consequence).
+{% endcomment %}
+<dialog id="{{ dialog_id }}" class="modal" data-testid="{{ dialog_id }}">
+  <div class="modal-box max-w-md">
+    <h3 class="text-lg font-semibold">{{ title }}</h3>
+    {% if blocked_reason %}
+      <p class="py-4 text-sm" data-testid="delete-blocked-reason">{{ blocked_reason }}</p>
+      <div class="modal-action">
+        <form method="dialog"><button class="btn">{% translate "OK" %}</button></form>
+      </div>
+    {% else %}
+      <p class="pt-4 text-sm">{% blocktranslate trimmed %}Delete “{{ name }}”? This can't be undone.{% endblocktranslate %}</p>
+      {% if note %}<p class="pt-2 text-sm text-base-content/70">{{ note }}</p>{% endif %}
+      <div class="modal-action">
+        <form method="dialog"><button class="btn btn-ghost">{% translate "Cancel" %}</button></form>
+        <form method="post" action="{{ action }}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-error" data-testid="confirm-delete-btn">{% translate "Delete" %}</button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>{% translate "close" %}</button></form>
+</dialog>

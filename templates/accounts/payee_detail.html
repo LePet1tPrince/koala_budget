@@ -1,27 +1,85 @@
-{% extends "web/app/app_base.html" %}
+{% extends "accounts/detail_base.html" %}
 {% load i18n %}
-{% block app %}
+{% load icons %}
+{% load currency_tags %}
+{% load account_nav %}
+{% block detail_title %}{{ payee.name }}{% endblock %}
+{% block detail_meta %}
+  {% if payee.transaction_count %}
+    <span>{% blocktranslate trimmed count counter=payee.transaction_count %}{{ counter }} transaction{% plural %}{{ counter }} transactions{% endblocktranslate %}</span>
+    <span aria-hidden="true">·</span>
+    <span>
+      {% if payee.first_used == payee.last_used %}
+        {{ payee.last_used|date:"M j, Y" }}
+      {% else %}
+        {% blocktranslate with first=payee.first_used|date:"M j, Y" last=payee.last_used|date:"M j, Y" trimmed %}{{ first }} – {{ last }}{% endblocktranslate %}
+      {% endif %}
+    </span>
+  {% else %}
+    <span>{% translate "Not used on any transaction yet" %}</span>
+  {% endif %}
+{% endblock %}
+{% block detail_actions %}
+  <a href="{{ edit_url }}" class="btn btn-outline btn-sm" data-dialog="edit-dialog" data-testid="edit-btn">
+    {% icon "pencil" class="inline-block shrink-0 w-4 h-4" %}{% translate "Rename" %}
+  </a>
+  <a href="{{ delete_url }}" class="btn btn-ghost btn-sm text-error" data-dialog="delete-dialog" data-testid="delete-btn">
+    {% icon "trash" class="inline-block shrink-0 w-4 h-4" %}{% translate "Delete" %}
+  </a>
+{% endblock %}
+{% block detail_body %}
+{% if recent %}
 <section class="app-card">
-  <div class="flex justify-between items-center mb-4">
-    <h3 class="text-xl mb-1">{{ payee.name }}</h3>
-    <div class="flex gap-2">
-      <a href="{% url 'accounts:payee_update' request.team.slug request.book.slug payee.pk %}" class="btn btn-primary">
-        {% translate "Edit" %}
-      </a>
-      <a href="{% url 'accounts:payee_delete' request.team.slug request.book.slug payee.pk %}" class="btn btn-outline btn-error">
-        {% translate "Delete" %}
-      </a>
-    </div>
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+    <h2 class="text-base font-semibold">{% translate "Recent transactions" %}</h2>
+    <a href="{{ transactions_url }}" class="btn btn-ghost btn-sm" data-testid="payee-transactions-link">
+      {% translate "See all in Transactions" %}
+      {% icon "arrow-right" class="inline-block shrink-0 w-4 h-4" %}
+    </a>
   </div>
-  <dl class="grid grid-cols-1 gap-4">
-    <div>
-      <dt class="font-semibold">{% translate "Name" %}</dt>
-      <dd>{{ payee.name }}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold">{% translate "Created" %}</dt>
-      <dd>{{ payee.created_at }}</dd>
-    </div>
-  </dl>
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-quiet w-full" data-testid="payee-transactions">
+      <thead>
+        <tr>
+          <th>{% translate "Date" %}</th>
+          <th>{% translate "Description" %}</th>
+          <th>{% translate "Category" %}</th>
+          <th class="hidden md:table-cell">{% translate "Account" %}</th>
+          <th class="text-right">{% translate "Amount" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in recent %}
+          <tr>
+            <td class="whitespace-nowrap">{{ item.entry.entry_date|date:"M j, Y" }}</td>
+            <td class="max-w-[16rem] truncate">{{ item.entry.description }}</td>
+            <td>
+              {% for account in item.categories %}
+                <a href="{% return_here account.url %}" class="link link-hover">{{ account.name }}</a>{% if not forloop.last %}, {% endif %}
+              {% empty %}<span class="text-base-content/40">&mdash;</span>{% endfor %}
+            </td>
+            <td class="hidden md:table-cell text-base-content/70">
+              {% for account in item.accounts %}
+                <a href="{% return_here account.url %}" class="link link-hover">{{ account.name }}</a>{% if not forloop.last %}, {% endif %}
+              {% empty %}&mdash;{% endfor %}
+            </td>
+            <td class="text-right money whitespace-nowrap">{{ item.amount|currency }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if payee.transaction_count > recent|length %}
+    <p class="mt-2 text-xs text-base-content/70">
+      {% blocktranslate trimmed with shown=recent|length total=payee.transaction_count %}Showing the latest {{ shown }} of {{ total }}.{% endblocktranslate %}
+    </p>
+  {% endif %}
 </section>
+{% endif %}
+{% endblock %}
+{% block dialogs %}
+  {% translate "Rename payee" as edit_title %}
+  {% include "accounts/components/form_dialog.html" with dialog_id="edit-dialog" title=edit_title form=edit_form action=edit_url %}
+  {% translate "Delete payee" as delete_title %}
+  {% include "accounts/components/delete_dialog.html" with dialog_id="delete-dialog" title=delete_title name=payee.name action=delete_url blocked_reason=blocked_reason %}
 {% endblock %}

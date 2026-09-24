@@ -752,3 +752,21 @@
     animation: none;
   }
 }
+
+/*
+  Chart-of-accounts lists (Groups, Payees, Institutions): one surface with
+  hairline dividers, each row a single link to the item's page -- no per-row
+  Edit buttons; editing lives on the item's page.
+*/
+.manage-list {
+  @apply bg-base-100 border border-base-300 rounded-box divide-y divide-base-300 overflow-hidden;
+}
+
+.manage-row {
+  @apply flex items-center gap-4 px-4 py-3 transition-colors outline-none
+    hover:bg-base-200/60 focus-visible:bg-base-200/60;
+}
+
+.manage-heading {
+  @apply mb-2 mt-6 first:mt-0 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
+}

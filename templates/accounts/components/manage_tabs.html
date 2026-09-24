@@ -1,8 +1,12 @@
 {% load i18n %}
-{# Tab row linking the chart-of-accounts management pages. Pass manage_tab as "accounts", "groups", "payees", or "institutions". #}
-<div role="tablist" class="tabs tabs-box mb-6 w-fit">
-  <a role="tab" class="tab{% if manage_tab == 'accounts' %} tab-active{% endif %}" href="{% url 'accounts:accounts_home' request.team.slug request.book.slug %}">{% translate "Accounts" %}</a>
-  <a role="tab" class="tab{% if manage_tab == 'groups' %} tab-active{% endif %}" href="{% url 'accounts:accountgroup_list' request.team.slug request.book.slug %}">{% translate "Groups" %}</a>
-  <a role="tab" class="tab{% if manage_tab == 'payees' %} tab-active{% endif %}" href="{% url 'accounts:payee_list' request.team.slug request.book.slug %}">{% translate "Payees" %}</a>
-  <a role="tab" class="tab{% if manage_tab == 'institutions' %} tab-active{% endif %}" href="{% url 'accounts:institution_list' request.team.slug request.book.slug %}">{% translate "Institutions" %}</a>
+{% comment %}
+Section switcher for the chart-of-accounts pages. The active tab comes from the
+view's `accounts_section` ("accounts", "groups", "payees" or "institutions") --
+the same value that highlights the matching sidebar item.
+{% endcomment %}
+<div role="tablist" class="tabs tabs-border -mx-1 mb-5 flex-nowrap overflow-x-auto border-b border-base-300 [&>.tab]:whitespace-nowrap" data-testid="manage-tabs">
+  <a role="tab" class="tab{% if accounts_section == 'accounts' %} tab-active{% endif %}" href="{% url 'accounts:accounts_home' request.team.slug request.book.slug %}"{% if accounts_section == 'accounts' %} aria-selected="true"{% endif %}>{% translate "Accounts" %}</a>
+  <a role="tab" class="tab{% if accounts_section == 'groups' %} tab-active{% endif %}" href="{% url 'accounts:accountgroup_list' request.team.slug request.book.slug %}"{% if accounts_section == 'groups' %} aria-selected="true"{% endif %}>{% translate "Groups" %}</a>
+  <a role="tab" class="tab{% if accounts_section == 'payees' %} tab-active{% endif %}" href="{% url 'accounts:payee_list' request.team.slug request.book.slug %}"{% if accounts_section == 'payees' %} aria-selected="true"{% endif %}>{% translate "Payees" %}</a>
+  <a role="tab" class="tab{% if accounts_section == 'institutions' %} tab-active{% endif %}" href="{% url 'accounts:institution_list' request.team.slug request.book.slug %}"{% if accounts_section == 'institutions' %} aria-selected="true"{% endif %}>{% translate "Institutions" %}</a>
 </div>
