@@ -239,6 +239,13 @@ class UnassignedViewsTest(UnassignedFixture):
         self.assertContains(response, "Groceries")
         self.assertEqual(response.context["waterfall"][-1]["key"], "unassigned")
 
+    def test_dollar_map_uses_the_shared_month_picker(self):
+        # The picker navigates with ?month=YYYY-MM-DD; the view must read that form too.
+        response = self.client.get(reverse("reports:dollar_map", args=[self.team.slug]), {"month": "2026-08-01"})
+        self.assertEqual(response.context["month"], AUG)
+        self.assertContains(response, 'id="budget-month-picker" data-month="2026-08-01"')
+        self.assertContains(response, "budget-month-picker-app")
+
     def test_dollar_map_ignores_a_malformed_month(self):
         response = self.client.get(reverse("reports:dollar_map", args=[self.team.slug]), {"month": "nope"})
         self.assertEqual(response.status_code, 200)

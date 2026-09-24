@@ -20,15 +20,8 @@
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div class="join">
-        <a href="?month={{ prev_month|date:'Y-m' }}" class="btn btn-outline btn-sm join-item" data-testid="dollar-map-prev-month" aria-label="{% translate 'Previous month' %}">
-          {% icon "chevron-left" class="inline-block shrink-0 w-4 h-4" %}
-        </a>
-        <a href="?" class="btn btn-outline btn-sm join-item">{% translate "This Month" %}</a>
-        <a href="?month={{ next_month|date:'Y-m' }}" class="btn btn-outline btn-sm join-item" data-testid="dollar-map-next-month" aria-label="{% translate 'Next month' %}">
-          {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4" %}
-        </a>
-      </div>
+      {# The shared month picker (budget/react/BudgetMonthPicker.jsx); it navigates via ?month= #}
+      <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}" data-testid="dollar-map-month-picker"></div>
       <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
         {% icon "pen-to-square" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Edit Budget" %}
@@ -187,6 +180,8 @@
 {% endblock %}
 
 {% block page_js %}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/budget/budget-month-picker-app.jsx' %}
 {{ waterfall|json_script:'dollar-map-data' }}
 {% vite_asset 'assets/javascript/reports/dollar-map-chart.js' %}
 {% endblock %}

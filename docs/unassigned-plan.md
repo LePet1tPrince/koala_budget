@@ -76,7 +76,7 @@ to assign (YNAB's term), Jobless dollars, Unclaimed.
 - **Budget and Goals pages.** The net-worth card now shows every term of the sum (net
   worth, income still due, in budget envelopes, in goals) and its bottom line carries
   the metric's name and state; the Goals page summary and its toasts use the name too.
-- **Dollar Map report** (`/a/{slug}/reports/dollar-map/`, `?month=YYYY-MM`):
+- **Dollar Map report** (`/a/{slug}/reports/dollar-map/`, `?month=YYYY-MM-DD`, picked with the shared `BudgetMonthPicker`):
   - a stats strip (net worth, in envelopes, in goals, unassigned);
   - the *allocation bar* — every claim on your money side by side (goals, budget
     envelopes, unassigned), with a marker at net worth and, when income is budgeted
