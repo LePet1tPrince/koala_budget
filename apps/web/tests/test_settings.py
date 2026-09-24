@@ -68,7 +68,6 @@ class SettingsHubTest(TestCase):
     def test_moved_pages_left_the_sidebars_manage_group(self):
         """
         Asserted against the nav include itself rather than the whole page:
-        Team is still linked from the team switcher (as "Team Settings"), and
         the hub and rail link to all three, so counting occurrences on the page
         would measure the wrong thing.
         """
@@ -79,6 +78,27 @@ class SettingsHubTest(TestCase):
             with self.subTest(url_name=url_name):
                 self.assertNotIn(reverse(url_name, args=[self.team.slug]), nav)
         self.assertIn(reverse("accounts:accounts_home", args=[self.team.slug]), nav)
+
+
+class TeamSwitcherRemovedTest(TestCase):
+    """The sidebar's team card is gone; Team settings and Add a team live in Settings."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.user = CustomUser.objects.create_user(username="admin@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+    def test_sidebar_has_no_team_switcher(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("web_team:settings", kwargs={"team_slug": self.team.slug}))
+        self.assertNotContains(response, 'data-testid="team-switcher"')
+
+    def test_settings_offers_add_a_team(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("web_team:settings", kwargs={"team_slug": self.team.slug}))
+        self.assertContains(response, 'data-testid="settings-card-add_team"')
+        self.assertContains(response, f'href="{reverse("teams:manage_teams")}new"')
 
 
 class SettingsSectionsTest(TestCase):
@@ -98,7 +118,7 @@ class SettingsSectionsTest(TestCase):
     def test_admin_sees_every_section(self):
         self.assertEqual(
             self._sections(self.admin),
-            {"profile", "password", "team", "subscription", "import", "data_transfer", "audit"},
+            {"profile", "password", "team", "subscription", "add_team", "import", "data_transfer", "audit"},
         )
 
     def test_member_is_not_offered_subscription(self):
@@ -152,9 +172,6 @@ class SettingsShellOnAccountPagesTest(TestCase):
                 self.assertContains(response, reverse("web_team:home", args=[self.team.slug]))
                 self.assertContains(response, reverse("budget:budget_home", args=[self.team.slug]))
                 self.assertContains(response, reverse("accounts:accounts_home", args=[self.team.slug]))
-                # …and the switcher names the team rather than falling back to
-                # the user's own name.
-                self.assertContains(response, self.team.name)
 
     def test_a_team_page_follows_its_own_team_not_the_default(self):
         """

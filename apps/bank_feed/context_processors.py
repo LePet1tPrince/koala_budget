@@ -8,13 +8,20 @@ def nav_feed_accounts(request):
     """
     Bank-feed accounts for the Inbox nav submenu, grouped by institution
     (accounts without one last, under "Other"). Each links straight to
-    `bank_feed_home?account=<id>` with that account pre-selected.
+    `bank_feed_home?account=<id>` with that account pre-selected, and shows its
+    balance in the same ledger sign as the feed's account cards (dr - cr, so a
+    credit card owing money reads negative).
+
+    `nav_feed_account_id` is the account the feed page opened on, so its
+    sub-item is shaded on first paint; the feed updates it as the user switches
+    accounts in the page.
     """
     team = get_nav_team(request)
     if not team or not request.user.is_authenticated:
         return {}
     feed_accounts = (
         Account.objects.filter(team=team, has_feed=True)
+        .with_balance()
         .select_related("account_group", "institution")
         .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
     )
@@ -24,7 +31,13 @@ def nav_feed_accounts(request):
         name = account.institution.name if account.institution else None
         groups.setdefault(name, []).append(account)
     ordered = sorted(groups.items(), key=lambda item: (item[0] is None, (item[0] or "").lower()))
-    return {"nav_feed_institutions": [{"name": name, "accounts": accounts} for name, accounts in ordered]}
+    selected = request.GET.get("account", "")
+    match = getattr(request, "resolver_match", None)
+    on_feed = match is not None and match.view_name == "bank_feed:bank_feed_home"
+    return {
+        "nav_feed_institutions": [{"name": name, "accounts": accounts} for name, accounts in ordered],
+        "nav_feed_account_id": int(selected) if on_feed and selected.isdigit() else None,
+    }
 
 
 def inbox_count(request):

@@ -182,6 +182,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.web.context_processors.project_meta",
+                "apps.web.context_processors.nav_item",
                 "apps.teams.context_processors.team",
                 "apps.teams.context_processors.user_teams",
                 "apps.bank_feed.context_processors.inbox_count",

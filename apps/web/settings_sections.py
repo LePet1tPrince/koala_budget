@@ -93,6 +93,18 @@ def sections_for(request) -> list[SettingsSection]:
                     group=GROUP_WORKSPACE,
                 )
             )
+        # The sidebar's team switcher card used to carry this; it is the one
+        # workspace action that is not about the current team.
+        sections.append(
+            SettingsSection(
+                key="add_team",
+                label=_("Add a team"),
+                blurb=_("Create another workspace with its own accounts, budget and members."),
+                icon="plus",
+                url=reverse("teams:manage_teams") + "new",
+                group=GROUP_WORKSPACE,
+            )
+        )
         sections += [
             SettingsSection(
                 key="import",

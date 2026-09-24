@@ -35,3 +35,49 @@ def google_analytics_id(request):
         }
     else:
         return {}
+
+
+# Sidebar sub-items, keyed by the view they point at. A view listed here shades
+# its sub-item rather than the parent (Reports, Accounts); a view that is not
+# listed leaves the parent's own `active_tab` shading in charge.
+NAV_ITEMS_BY_VIEW = {
+    "monthly_review:home": "monthly-review",
+    "reports:dollar_map": "report-dollar-map",
+    "reports:income_statement": "report-income-statement",
+    "reports:balance_sheet": "report-balance-sheet",
+    "reports:net_worth_trend": "report-net-worth-trend",
+    "reports:cash_flow": "report-cash-flow",
+    "reports:budget_vs_actual": "report-budget-vs-actual",
+    "reports:goal_progress": "report-goal-progress",
+    "accounts:accounts_home": "accounts-list",
+}
+
+# Whole families of views that belong to one sub-item (detail/create/edit pages).
+NAV_ITEMS_BY_PREFIX = (
+    ("reconciliation:", "report-reconciliation"),
+    ("accounts:account_", "accounts-list"),
+    ("accounts:accountgroup_", "accounts-groups"),
+    ("accounts:payee_", "accounts-payees"),
+    ("accounts:institution_", "accounts-institutions"),
+)
+
+
+def nav_item(request):
+    """
+    The sidebar sub-item for the current page, as `nav_item`, or "" when the
+    page has none. `active_tab` says which top-level section is open; this says
+    which of its sub-items to shade.
+    """
+    match = getattr(request, "resolver_match", None)
+    view_name = match.view_name if match else ""
+    item = NAV_ITEMS_BY_VIEW.get(view_name, "")
+    if not item:
+        item = next((key for prefix, key in NAV_ITEMS_BY_PREFIX if view_name.startswith(prefix)), "")
+    # The account drill-down names the page it was opened from; the budget page
+    # has no report sub-item, so that one shades nothing.
+    if view_name == "reports:account_activity":
+        item = {
+            "balance_sheet": "report-balance-sheet",
+            "budget": "",
+        }.get(request.GET.get("source"), "report-income-statement")
+    return {"nav_item": item}

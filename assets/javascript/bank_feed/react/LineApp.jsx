@@ -230,6 +230,23 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accounts]);
 
+  // Keep ?account= and the Inbox nav's shaded sub-item in step with the account
+  // on screen: the nav listens for this event, and the URL means a reload
+  // reopens the same account. Nothing is announced until an account is first
+  // selected: the initial null would strip the ?account= that the effect
+  // above has not yet read.
+  const announcedAccountRef = useRef(false);
+  useEffect(() => {
+    const id = selectedAccount?.id ?? null;
+    if (id === null && !announcedAccountRef.current) return;
+    announcedAccountRef.current = true;
+    const url = new URL(window.location.href);
+    if (id === null) url.searchParams.delete('account');
+    else url.searchParams.set('account', String(id));
+    window.history.replaceState(window.history.state, '', url);
+    window.dispatchEvent(new CustomEvent('feed-account-selected', { detail: { id } }));
+  }, [selectedAccount?.id]);
+
   /**
    * Refresh bank feed data from Plaid
    */
