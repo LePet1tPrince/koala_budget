@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.accounts.models import ACCOUNT_TYPE_INCOME, Account, AccountGroup, Institution, Payee
 from apps.budget.models import Budget, Goal, GoalAllocation
@@ -93,7 +94,7 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
     entries, lines = _create_entries(book, plan, accounts, payees, budgets, report)
 
     report(85, "Setting your savings goals")
-    goals = _create_goals(book, plan)
+    goals = _create_goals(book, plan, accounts)
 
     report(92, "Recording your opening balances")
     openings = _create_openings(book, plan, accounts)
@@ -276,13 +277,13 @@ def _create_entries(book, plan: ImportPlan, accounts, payees, budgets, report) -
     return total_entries, total_lines
 
 
-def _create_goals(book, plan: ImportPlan) -> int:
+def _create_goals(book, plan: ImportPlan, accounts) -> int:
     """
     A goal per savings category, funded month by month.
 
-    `Goal.save()` creates the backing equity account, so these go one at a time
-    rather than in bulk -- there are a handful of them, and skipping that would leave
-    every goal without the account the rest of the app expects it to have.
+    Each goal gets the equity account the plan made for it, which the savings
+    category's spending already posts to. Created one at a time: there are a
+    handful, and `Goal.save()` still backs any goal whose account is missing.
     """
     created = 0
     for spec in plan.goals:
@@ -293,10 +294,10 @@ def _create_goals(book, plan: ImportPlan) -> int:
             name=spec.name,
             target_amount=spec.target_amount,
             description="Imported from YNAB",
-            # Left incomplete deliberately: a complete goal drops out of
-            # `Goal.objects.active()` and reads as finished, when in fact the user is
-            # very likely still saving for it.
+            account=accounts.get(spec.account) if spec.account else None,
+            # Left not-funded deliberately: the user is very likely still saving for it.
             is_complete=False,
+            closed_at=timezone.now() if spec.closed else None,
         )
         GoalAllocation.objects.bulk_create(
             [GoalAllocation(book=book, goal=goal, month=month, amount=amount) for month, amount in spec.allocations],

@@ -4,7 +4,10 @@ from datetime import date
 from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
+from django.db import transaction
 from django.db.models import Sum
+from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
 from apps.budget.models import Budget, Goal, GoalAllocation
@@ -326,6 +329,20 @@ class BudgetService:
 
         return available, previous
 
+    @transaction.atomic
+    def raise_budget(self, category, month, amount):
+        """Add `amount` to the category's budget for `month` (creating the row), and return it.
+
+        Covering overspending from Unassigned is exactly this: the money gets a job,
+        so Unassigned falls by `amount` and the envelope rises by it.
+        """
+        budget, _created = Budget.objects.select_for_update().get_or_create(
+            book=self.book, category=category, month=month.replace(day=1), defaults={"budget_amount": Decimal("0")}
+        )
+        budget.budget_amount += amount
+        budget.save(update_fields=["budget_amount", "updated_at"])
+        return budget
+
     def build_budget_rows(self, month):
         """
         Build budget rows for API response.
@@ -371,36 +388,47 @@ class BudgetService:
         return rows
 
 
+class GoalCloseError(ValueError):
+    """A goal can't be closed as asked; the message says why and what to do."""
+
+
 class GoalService:
     """Service class for goal-related calculations and queries."""
 
     def __init__(self, book):
         self.book = book
 
-    def get_goals_with_progress(self, month=None, include_archived=False):
-        """Get all goals with progress annotations for a given month."""
+    def get_goals_with_progress(self, month=None, include_archived=False, closed=False):
+        """
+        Goals with their allocated/spent/left annotations as of `month`.
+
+        `closed`: False (default) for open goals only, True for closed ones only,
+        None for both.
+        """
         qs = Goal.objects.filter(book=self.book)
         if not include_archived:
             qs = qs.filter(is_archived=False)
+        if closed is not None:
+            qs = qs.filter(closed_at__isnull=not closed)
         return qs.with_progress(month).select_related("account")
 
     def get_total_saved(self):
-        """Get the total amount saved across all active goals."""
+        """Get the total amount allocated across all active goals."""
         return GoalAllocation.objects.filter(book=self.book, goal__is_archived=False).aggregate(total=Sum("amount"))[
             "total"
         ] or Decimal("0")
 
-    def get_goal_summary(self, month):
-        """Get summary data for the goals section of the budget page."""
-        goals = self.get_goals_with_progress(month)
-        total_target = goals.aggregate(total=Sum("target_amount"))["total"] or Decimal("0")
-        total_saved = goals.aggregate(total=Sum("total_saved"))["total"] or Decimal("0")
-
+    def get_goal_summary(self, month, closed=False):
+        """Get summary data for the goals page: the goals plus their totals."""
+        goals = list(self.get_goals_with_progress(month, closed=closed))
+        zero = Decimal("0")
         return {
             "goals": goals,
-            "total_target": total_target,
-            "total_saved": total_saved,
-            "goal_count": goals.count(),
+            "total_target": sum((g.target_amount for g in goals), zero),
+            "total_saved": sum((g.allocated for g in goals), zero),
+            "total_spent": sum((g.spent for g in goals), zero),
+            "total_left": sum((g.left for g in goals), zero),
+            "goal_count": len(goals),
         }
 
     def update_allocation(self, goal, month, amount):
@@ -410,6 +438,168 @@ class GoalService:
             book=self.book, goal=goal, month=month, defaults={"amount": amount}
         )
         return allocation
+
+    def add_to_allocation(self, goal, month, amount):
+        """Add `amount` (negative to take money out) to the month's allocation. Call inside a transaction."""
+        month = month.replace(day=1)
+        allocation = GoalAllocation.objects.select_for_update().filter(book=self.book, goal=goal, month=month).first()
+        current = allocation.amount if allocation else Decimal("0")
+        return self.update_allocation(goal, month, current + amount)
+
+    def left(self, goal, month):
+        return Goal.objects.filter(pk=goal.pk).with_progress(month).values_list("left", flat=True).get()
+
+    def month_rows(self, month):
+        """
+        Pay yourself first: one row per open goal for `month`, for Budget vs Actual.
+
+        - needed: the pace to hit the target date, (target − allocated before
+          this month) / months left including this one -- measured from the start
+          of the month so assigning doesn't shrink the bar you're filling. None
+          with no target date or once funded (`note` says which).
+        - assigned: this month's net allocation (the row's "actual").
+        - spent: spent from the goal this month, so a month you bought the car
+          reads as planned spending rather than a gap.
+        """
+        zero = Decimal("0")
+        month = month.replace(day=1)
+        rows = []
+        for goal in self.get_goals_with_progress(month):
+            before = goal.saved_previous
+            needed = None
+            note = ""
+            if goal.is_complete or (goal.target_amount > 0 and before >= goal.target_amount):
+                note = "funded"
+            elif not goal.target_date:
+                note = "no_target_date"
+            else:
+                target_month = goal.target_date.replace(day=1)
+                months_left = max((target_month.year - month.year) * 12 + target_month.month - month.month + 1, 1)
+                needed = ((goal.target_amount - before) / months_left).quantize(Decimal("0.01"))
+            assigned = goal.saved_this_month
+            pct = None
+            if needed:
+                pct = float(assigned / needed * 100)
+            rows.append(
+                {
+                    "goal": goal,
+                    "needed": needed,
+                    "note": note,
+                    "assigned": assigned,
+                    "spent": goal.spent_this_month,
+                    "left": goal.left,
+                    "pct": pct,
+                    "pct_capped": max(min(pct or (100 if note == "funded" else 0), 100), 0),
+                }
+            )
+        totals = {
+            "needed": sum((r["needed"] or zero for r in rows), zero),
+            "assigned": sum((r["assigned"] for r in rows), zero),
+            "spent": sum((r["spent"] for r in rows), zero),
+        }
+        return rows, totals
+
+    def spending_lines(self, goal, limit=None):
+        """
+        The goal account's counted journal lines, newest first: what was spent from
+        the goal (a refund is a negative amount). Each: date, payee, memo, counter
+        (the other side's account names), amount (dr − cr), entry_id.
+        """
+        if not goal.account_id:
+            return []
+        lines = (
+            _active_lines()
+            .filter(book=self.book, account_id=goal.account_id)
+            .select_related("journal_entry", "journal_entry__payee")
+            .prefetch_related("journal_entry__lines__account")
+            .order_by("-journal_entry__entry_date", "-journal_entry_id", "-pk")
+        )
+        if limit:
+            lines = lines[:limit]
+        return [
+            {
+                "date": line.journal_entry.entry_date,
+                "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
+                "memo": line.journal_entry.description,
+                "counter": ", ".join(
+                    other.account.name for other in line.journal_entry.lines.all() if other.pk != line.pk
+                ),
+                "amount": line.dr_amount - line.cr_amount,
+                "entry_id": line.journal_entry_id,
+            }
+            for line in lines
+        ]
+
+    @transaction.atomic
+    def close(self, goal, month, cover=False):
+        """
+        Close a goal (docs/goals-envelopes-plan.md §4.3).
+
+        Anything left is released back to Unassigned as a negative allocation this
+        month. A goal can't close negative: with `cover` the shortfall is covered
+        from Unassigned (a positive allocation) first; without it the close is
+        refused, since leaving it open (e.g. paying back a loan) is the other choice.
+
+        Returns {"released": Decimal, "covered": Decimal}.
+        """
+        goal = Goal.objects.select_for_update().get(pk=goal.pk)
+        if goal.closed_at is not None:
+            raise GoalCloseError(_("This goal is already closed."))
+        left = self.left(goal, month)
+        released = covered = Decimal("0")
+        if left < 0:
+            if not cover:
+                raise GoalCloseError(
+                    _(
+                        "%(name)s is %(amount)s. Cover it from your unassigned money to close it, "
+                        "or keep it open and keep paying it back."
+                    )
+                    % {"name": goal.name, "amount": f"−${-left:,.2f}"}
+                )
+            covered = -left
+            self.add_to_allocation(goal, month, covered)
+        elif left > 0:
+            released = left
+            self.add_to_allocation(goal, month, -released)
+        goal.closed_at = timezone.now()
+        goal.save(update_fields=["closed_at", "updated_at"])
+        return {"released": released, "covered": covered}
+
+    @transaction.atomic
+    def cover_from_goal(self, goal, category, month, amount):
+        """
+        Cover an overspent budget row from a goal: take `amount` out of the goal
+        (a negative allocation this month) and raise the category's budget for the
+        month by the same amount. Unassigned is unchanged -- the money just moves
+        from one job to another. This is how buffer goals (emergency fund) get used.
+        """
+        month = month.replace(day=1)
+        self.add_to_allocation(goal, month, -amount)
+        return BudgetService(self.book).raise_budget(category, month, amount)
+
+
+def goal_left_by_account(book, month=None):
+    """{goal account id: left} for every goal in the book (archived ones included)."""
+    return {
+        goal.account_id: goal.left
+        for goal in Goal.objects.filter(book=book, account__isnull=False).with_progress(month).only("account_id")
+    }
+
+
+def picker_accounts_data(book, month=None):
+    """
+    Accounts for a category picker, serialized: every account except system ones
+    (bookkeeping, never a category), with goal accounts marked and their balance
+    ("Car · $600 left").
+    """
+    from apps.accounts.serializers import PickerAccountSerializer
+
+    accounts = (
+        Account.objects.filter(book=book, is_system=False)
+        .select_related("account_group", "institution")
+        .order_by("name")
+    )
+    return PickerAccountSerializer(accounts, many=True, context={"goal_left": goal_left_by_account(book, month)}).data
 
 
 class NetWorthService:

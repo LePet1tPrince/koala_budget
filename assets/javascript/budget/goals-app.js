@@ -203,7 +203,8 @@ function updateXp(assigned) {
 function refreshAssignButtons() {
   document.querySelectorAll('[data-goal-card]').forEach((card) => {
     const remaining = parseFloat(card.dataset.remaining || '0');
-    const saved = parseFloat(card.dataset.saved || '0');
+    // Withdrawals are capped at what the goal has left (allocated − spent).
+    const left = parseFloat(card.dataset.left ?? card.dataset.saved ?? '0');
     const btn = card.querySelector('[data-assign-all]');
     if (btn) {
       const funded = card.classList.contains('is-funded') || remaining <= 0;
@@ -217,11 +218,11 @@ function refreshAssignButtons() {
     const withdrawAll = card.querySelector('[data-withdraw-all]');
     if (withdrawAll) {
       const labelEl = withdrawAll.querySelector('[data-withdraw-all-label]') || withdrawAll;
-      labelEl.textContent = `${withdrawAll.dataset.labelAll} (${fmt(Math.max(saved, 0))})`;
-      withdrawAll.disabled = saved <= 0;
+      labelEl.textContent = `${withdrawAll.dataset.labelAll} (${fmt(Math.max(left, 0))})`;
+      withdrawAll.disabled = left <= 0;
     }
     const withdrawBtn = card.querySelector('[data-withdraw-btn]');
-    if (withdrawBtn) withdrawBtn.disabled = saved <= 0;
+    if (withdrawBtn) withdrawBtn.disabled = left <= 0;
   });
   document.querySelectorAll('[data-available-display]').forEach((el) => {
     el.textContent = fmt(available);
@@ -237,12 +238,46 @@ function refreshAssignButtons() {
   });
 }
 
+// The close dialog is rendered once per card with every case in the markup; after an
+// in-place assign/withdraw/cover, show the case that now applies and its figures.
+function refreshCloseDialog(card, allocated, spent, left) {
+  const root = card.querySelector('[data-close-root]');
+  if (!root) return;
+  const kind = left > 0 ? 'pos' : left < 0 ? 'neg' : 'zero';
+  root.querySelectorAll('[data-close-case]').forEach((el) => {
+    el.hidden = !el.dataset.closeCase.split(' ').includes(kind);
+  });
+  const values = { allocated, spent, left, cover: Math.max(-left, 0) };
+  root.querySelectorAll('[data-close-num]').forEach((el) => {
+    el.textContent = fmt(values[el.dataset.closeNum]);
+  });
+  root.querySelectorAll('[data-close-num="left"]').forEach((el) => el.classList.toggle('text-error', left < 0));
+  const cover = root.querySelector('[data-close-cover]');
+  if (cover) cover.disabled = left >= 0;
+}
+
 function updateCard(card, data) {
   card.dataset.remaining = String(data.remaining);
   card.dataset.saved = String(data.new_saved);
 
   // Works in both directions: positive delta = assignment, negative = withdrawal
   const delta = data.new_saved - data.old_saved;
+
+  const allocatedEl = card.querySelector('[data-num="allocated"]');
+  if (allocatedEl) animateNumber(allocatedEl, data.old_saved, data.new_saved);
+
+  if (data.left != null) {
+    refreshCloseDialog(card, data.new_saved, data.spent, data.left);
+    card.dataset.left = String(data.left);
+    const leftEl = card.querySelector('[data-num="left"]');
+    if (leftEl) {
+      animateNumber(leftEl, data.left - delta, data.left);
+      leftEl.classList.toggle('text-error', data.left < 0);
+    }
+    card.querySelectorAll('[data-carried]').forEach((el) => {
+      el.hidden = data.left >= 0;
+    });
+  }
 
   animateNumber(card.querySelector('[data-num="saved"]'), data.old_saved, data.new_saved, {
     jitter: style === 'arcade',
@@ -277,6 +312,8 @@ function updateCard(card, data) {
   card.classList.toggle('is-funded', !!funded);
   const fundedBadge = card.querySelector('[data-funded-badge]');
   if (fundedBadge) fundedBadge.hidden = !funded;
+  const savingPill = card.querySelector('[data-saving-pill]');
+  if (savingPill) savingPill.hidden = !!funded;
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +362,9 @@ async function assign(card, amount) {
   toast(successMessage(data), 'success');
   const input = card.querySelector('[data-custom-input]');
   if (input) input.value = '';
+  // Covered: the goal is no longer carried negative.
+  if (data.left != null && data.left >= 0) card.querySelector('[data-testid="goal-negative"]')?.remove();
+  return data;
 }
 
 const CASH_OUT_SOUND = [[1319, 0, 0.08], [988, 0.08, 0.1], [659, 0.18, 0.25]];
@@ -380,6 +420,14 @@ function init() {
         submitCustom();
       }
     });
+
+    // A goal carried negative: cover it from Unassigned now, or keep paying it
+    // back month by month through the ordinary custom-amount box.
+    card.querySelector('[data-cover]')?.addEventListener('click', (event) => {
+      const amount = parseFloat(event.currentTarget.dataset.amount);
+      if (amount > 0) assign(card, amount);
+    });
+    card.querySelector('[data-pay-back]')?.addEventListener('click', () => customInput?.focus());
 
     const withdrawRow = card.querySelector('[data-withdraw-row]');
     card.querySelector('[data-withdraw-toggle]')?.addEventListener('click', () => {

@@ -1,7 +1,6 @@
 from functools import cache
 
 from django.db.models import Max
-from django.http import Http404
 from django.urls import URLResolver
 from django.utils.text import slugify
 
@@ -84,17 +83,17 @@ def get_book_for_request(request, view_kwargs) -> Book | None:
 
     A book of another team is a 404 even to someone who belongs to both: the team
     in the URL is the one access was checked against.
+
+    None rather than `Http404` when there is no such book, for the reason
+    `get_team_for_request` gives: this runs inside a lazy object the middleware
+    unwraps, so raising here would skip the view's decorator and its friendly 404
+    page. `login_and_book_required` and `BookAccessPermissions` turn None into the 404.
     """
     book_slug = view_kwargs.get("book_slug")
-    if not book_slug:
-        return None
     team = getattr(request, "team", None)
-    if not team:
-        raise Http404
-    try:
-        return Book.objects.select_related("team").get(team=team, slug=book_slug)
-    except Book.DoesNotExist:
-        raise Http404 from None
+    if not book_slug or not team:
+        return None
+    return Book.objects.select_related("team").filter(team=team, slug=book_slug).first()
 
 
 def remember_book(request, book: Book):

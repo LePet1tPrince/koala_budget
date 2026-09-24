@@ -384,6 +384,22 @@ def _net_worth_section(book, window_start, month, month_end, report_service, bas
     }
 
 
+def _goal_spending(book, month: date) -> list:
+    """
+    What was spent from goals this month: planned spending paid from money set
+    aside, never overspending. Each: name, amount, months_funded (months with a
+    positive allocation up to this one).
+    """
+    from apps.budget.models import Goal, GoalAllocation
+
+    rows = []
+    for goal in Goal.objects.filter(book=book).with_progress(month).exclude(spent_this_month=0):
+        months_funded = GoalAllocation.objects.filter(goal=goal, month__lte=month, amount__gt=0).count()
+        rows.append({"name": goal.name, "amount": goal.spent_this_month, "months_funded": months_funded})
+    rows.sort(key=lambda r: r["amount"], reverse=True)
+    return rows
+
+
 def build_review(book, month: date) -> dict:
     month = month.replace(day=1)
     month_start, month_end = _month_bounds(month)
@@ -420,6 +436,7 @@ def build_review(book, month: date) -> dict:
         "biggest": _biggest_transactions(book, month_start, month_end, limit=25),
         "cat_txns": _category_transactions(book, month_start, month_end, limit=_drill_limit()),
         "net_worth": _net_worth_section(book, window_start, month, month_end, report_service, baselines),
+        "goal_spending": _goal_spending(book, month),
         "notes": [
             _(
                 '"Saved" is the amount assigned to your savings goals this month -- it '

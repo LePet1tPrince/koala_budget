@@ -218,9 +218,30 @@ class SampleApplyTest(TestCase):
         self.assertEqual(self.plan.stats["zero_openings"], 8)
         self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 6623 + 13)
         self.assertEqual(JournalLine.objects.filter(book=self.book).count(), 13335 + 13 * 2)
-        self.assertEqual(Account.objects.filter(book=self.book).count(), 104 + 3)  # + one per goal
-        self.assertEqual(Budget.objects.filter(book=self.book).count(), 1872)
-        self.assertEqual(Goal.objects.filter(book=self.book).count(), 3)
+        # Every goal's account is planned with the chart (the four savings
+        # categories), replacing the two expense accounts spending used to land in.
+        self.assertEqual(Account.objects.filter(book=self.book).count(), 106)
+        # No `Budget` rows on goal categories: 56 of the old 1,872 were on them.
+        self.assertEqual(Budget.objects.filter(book=self.book).count(), 1816)
+        self.assertEqual(Goal.objects.filter(book=self.book).count(), 4)
+
+    def test_every_goal_has_its_account_outside_the_system_group(self):
+        goals = Goal.objects.filter(book=self.book).select_related("account__account_group")
+        self.assertTrue(goals.exists())
+        for goal in goals:
+            self.assertIsNotNone(goal.account, goal.name)
+            self.assertFalse(goal.account.account_group.is_system, goal.name)
+            self.assertEqual(goal.account.name, f"Goal: {goal.name}")
+
+    def test_spending_from_a_savings_category_lands_on_the_goal(self):
+        goal_lines = JournalLine.objects.filter(book=self.book, account__goal__isnull=False).count()
+        self.assertEqual(goal_lines, 24)
+        self.assertFalse(Budget.objects.filter(book=self.book, category__goal__isnull=False).exists())
+
+    def test_a_spent_out_savings_category_arrives_closed_with_its_history(self):
+        house = Goal.objects.get(book=self.book, name="House")
+        self.assertIsNotNone(house.closed_at)
+        self.assertTrue(house.allocations.exists())
 
     def test_every_entry_balances(self):
         totals = (

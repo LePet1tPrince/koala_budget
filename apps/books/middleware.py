@@ -1,4 +1,3 @@
-from django.http import Http404
 from django.utils.functional import SimpleLazyObject
 
 from .context import set_current_book, unset_current_book
@@ -7,14 +6,7 @@ from .helpers import get_book_for_request, last_book_for_team, remember_book
 
 def _get_book(request, view_kwargs):
     if not hasattr(request, "_cached_book"):
-        try:
-            book = get_book_for_request(request, view_kwargs)
-        except Http404:
-            # The first lookup (in `process_view`) raises and becomes the 404 page.
-            # Rendering that page runs the context processors, which read
-            # `request.book` again: from then on it is simply None.
-            request._cached_book = None
-            raise
+        book = get_book_for_request(request, view_kwargs)
         if book:
             remember_book(request, book)
         request._cached_book = book
@@ -50,7 +42,8 @@ class BooksMiddleware:
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         # The book named by `book_slug` within `request.team`; None on team-level
-        # and account pages. A slug that isn't one of this team's books is a 404.
+        # and account pages, and for a slug that isn't one of this team's books
+        # (which the book decorators and permissions answer with a 404).
         request.book = SimpleLazyObject(lambda: _get_book(request, view_kwargs))
 
         # `request.book`, or on a page without one, the book last opened in the

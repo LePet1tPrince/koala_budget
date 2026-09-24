@@ -1,10 +1,17 @@
 from rest_framework import permissions
+from rest_framework.exceptions import NotFound
 
 from apps.teams.permissions import _request_allowed_for_team, _view_for_members_edit_for_admins
 
 
 def _request_allowed_for_book(request) -> bool:
-    return _request_allowed_for_team(request) and bool(getattr(request, "book", None))
+    if not _request_allowed_for_team(request):
+        return False
+    if not getattr(request, "book", None):
+        # A member asking for a book their team doesn't have: a 404, as a missing
+        # book is everywhere else, not a 403 that says the URL means something.
+        raise NotFound
+    return True
 
 
 class BookAccessPermissions(permissions.BasePermission):

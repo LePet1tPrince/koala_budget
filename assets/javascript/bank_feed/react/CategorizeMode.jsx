@@ -7,8 +7,7 @@ import EditTransactionModal from './EditTransactionModal';
 import Combobox from '../../common/Combobox';
 import Icon from '../../common/Icon';
 import Modal from '../../common/Modal';
-
-const ACCOUNT_TYPE_ORDER = ['expense', 'income', 'asset', 'liability', 'goal'];
+import { accountKind, ACCOUNT_KIND_LABELS, goalLeftLabel, pickableAccounts } from '../../common/accountKind';
 
 // How many cards ahead of the current one to look up similar-transaction
 // suggestions for.
@@ -273,14 +272,6 @@ function TransactionCard({
   );
 }
 
-const ACCOUNT_TYPE_LABELS = {
-  expense: 'Expense',
-  income: 'Income',
-  asset: 'Asset',
-  liability: 'Liability',
-  goal: 'Goal',
-};
-
 function charSequenceMatch(text, query) {
   // Letters of the query appear in order in text, not necessarily adjacent.
   let ti = 0;
@@ -307,7 +298,7 @@ function matchScore(account, query) {
   if (!q) return 0;
 
   const name = (account.name || '').toLowerCase();
-  const secondary = [account.account_group_name, account.institution_name, ACCOUNT_TYPE_LABELS[account.account_type]]
+  const secondary = [account.account_group_name, account.institution_name, ACCOUNT_KIND_LABELS[accountKind(account)]]
     .filter(Boolean).join(' ').toLowerCase();
   const qWords = q.split(/\s+/).filter(Boolean);
 
@@ -420,6 +411,11 @@ function SuggestedCategories({ suggestions, accountsById, loading, activeKey, on
             <div className="flex-1 text-left min-w-0">
               <div className="font-bold truncate">{s.category_name}</div>
               <div className="text-xs text-base-content/70 truncate">{suggestionNote(s)}</div>
+              {accountsById[s.category_id] && goalLeftLabel(accountsById[s.category_id]) && (
+                <div className="text-xs text-base-content/70 truncate" data-testid="goal-left">
+                  {goalLeftLabel(accountsById[s.category_id])}
+                </div>
+              )}
             </div>
             {s.count != null && (
               <span className="badge badge-success badge-sm shrink-0">{s.count}×</span>
@@ -509,7 +505,7 @@ function AccountHierarchy({
     if (!activeTypes) return [];
     const names = new Set(
       allAccounts
-        .filter(a => activeTypes.includes(a.account_type) && a.institution_name)
+        .filter(a => activeTypes.includes(accountKind(a)) && a.institution_name)
         .map(a => a.institution_name)
     );
     return [...names].sort();
@@ -520,7 +516,7 @@ function AccountHierarchy({
   const filteredAccounts = useMemo(() => {
     const results = [];
     for (const a of allAccounts) {
-      if (activeTypes && !activeTypes.includes(a.account_type)) continue;
+      if (activeTypes && !activeTypes.includes(accountKind(a))) continue;
       if (filterGroupId && a.account_group !== filterGroupId) continue;
       if (filterInstitution && a.institution_name !== filterInstitution) continue;
       if (trimmedSearch) {
@@ -784,7 +780,13 @@ function AccountHierarchy({
                   <div className="flex-1 text-left min-w-0">
                     <div className="font-medium truncate">{account.name}</div>
                     <div className="text-xs text-base-content/40 flex gap-2">
-                      <span>{ACCOUNT_TYPE_LABELS[account.account_type] || account.account_type}</span>
+                      <span>{ACCOUNT_KIND_LABELS[accountKind(account)] || account.account_type}</span>
+                      {goalLeftLabel(account) && (
+                        <>
+                          <span>·</span>
+                          <span data-testid="goal-left">{goalLeftLabel(account)}</span>
+                        </>
+                      )}
                       {account.institution_name && (
                         <>
                           <span>·</span>
@@ -967,7 +969,7 @@ export default function CategorizeMode({
   const [skippedCount, setSkippedCount] = useState(0);
   const [suggestionsByTransaction, setSuggestionsByTransaction] = useState({});
   const suggestionsInFlight = useRef(new Set());
-  const [localAccounts, setLocalAccounts] = useState(allAccounts);
+  const [localAccounts, setLocalAccounts] = useState(() => pickableAccounts(allAccounts));
   const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
   const [pendingBatch, setPendingBatch] = useState(null); // { account, tx, matches } awaiting the similar-transactions modal
   const [splitModalOpen, setSplitModalOpen] = useState(false);

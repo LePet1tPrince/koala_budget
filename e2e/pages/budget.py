@@ -58,6 +58,21 @@ class BudgetPage(BasePage):
     def has_goals_empty_state(self) -> bool:
         return self.page.locator("[data-testid='goals-empty-state']").is_visible()
 
+    def goal_card(self, name: str):
+        return self.page.locator("[data-testid='goal-card']", has_text=name)
+
+    def goal_spent(self, name: str) -> str:
+        return self.goal_card(name).locator("[data-testid='goal-spent']").inner_text().strip()
+
+    def goal_left(self, name: str) -> str:
+        return self.goal_card(name).locator("[data-testid='goal-left']").inner_text().strip()
+
+    def goal_state(self, name: str) -> str:
+        return self.goal_card(name).locator("[data-testid='goal-state']").get_attribute("data-state")
+
+    def unassigned_pill_value(self) -> str:
+        return self.page.locator("[data-testid='unassigned-pill'] [data-unassigned-pill-value]").inner_text().strip()
+
     def assign_available(self, goal_index: int = 0):
         self.page.locator("[data-testid='assign-available-btn']").nth(goal_index).click()
 

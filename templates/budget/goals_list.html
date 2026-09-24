@@ -12,7 +12,9 @@
 
     {% include "budget/components/net_worth_card.html" %}
 
-    {% if style == 'koala' %}
+    {% if show_closed %}
+      {% include "budget/components/goals_closed.html" %}
+    {% elif style == 'koala' %}
       {% include "budget/components/goals_koala.html" %}
     {% elif style == 'arcade' %}
       {% include "budget/components/goals_arcade.html" %}

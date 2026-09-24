@@ -4,12 +4,13 @@ Access checks for views under `/a/{team}/{book}/`.
 A user may open a book iff they are a member of its team, with the role they
 have on the team. The team comes from the URL and the book is looked up inside
 it (`BooksMiddleware`), so the team decorators already enforce membership; these
-add only "404 if the URL names no book".
+add only "404 if the URL names no book of this team" -- rendered like the team
+decorators' 404, so it is the friendly page under DEBUG too.
 """
 
 from functools import wraps
 
-from django.http import Http404
+from django.shortcuts import render
 
 from apps.teams.decorators import login_and_team_required, team_admin_required
 
@@ -18,7 +19,7 @@ def _require_book(view_func):
     @wraps(view_func)
     def _inner(request, *args, **kwargs):
         if not getattr(request, "book", None):
-            raise Http404
+            return render(request, "404.html", status=404)
         return view_func(request, *args, **kwargs)
 
     return _inner

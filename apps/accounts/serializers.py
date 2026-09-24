@@ -96,10 +96,35 @@ class SimpleAccountSerializer(serializers.ModelSerializer):
             "account_type",
             "institution_name",
             "has_feed",
+            "is_system",
             "is_archived",
             "archived_at",
         ]
-        read_only_fields = ["account_group_name", "account_type", "institution_name", "archived_at"]
+        read_only_fields = ["account_group_name", "account_type", "institution_name", "is_system", "archived_at"]
+
+
+class PickerAccountSerializer(SimpleAccountSerializer):
+    """
+    An account as a category picker shows it: whether it backs a goal, and what the
+    goal has left.
+
+    The equity type is stored as "goal", so nothing may infer goal-ness from the
+    type; `is_goal` comes from the Goal relation, passed in as context
+    (`goal_left`: {account_id: left}) so a list costs no query per account.
+    """
+
+    is_goal = serializers.SerializerMethodField()
+    goal_left = serializers.SerializerMethodField()
+
+    class Meta(SimpleAccountSerializer.Meta):
+        fields = [*SimpleAccountSerializer.Meta.fields, "is_goal", "goal_left"]
+
+    def get_is_goal(self, obj) -> bool:
+        return obj.pk in self.context.get("goal_left", {})
+
+    def get_goal_left(self, obj) -> str | None:
+        left = self.context.get("goal_left", {}).get(obj.pk)
+        return None if left is None else f"{left:.2f}"
 
 
 class InstitutionSerializer(serializers.ModelSerializer):

@@ -25,7 +25,56 @@
   }
 </style>
 <div class="overflow-x-auto lg:overflow-x-visible bg-base-100 rounded-lg shadow"
-     id="budget-table-card" data-budget-save-url="{{ save_amount_url }}">
+     id="budget-table-card" data-budget-save-url="{{ save_amount_url }}" data-cover-url="{{ cover_url }}">
+  {{ cover_goals|json_script:'cover-goals' }}
+  <dialog class="modal" data-cover-dialog data-testid="cover-dialog">
+    <div class="modal-box max-w-md">
+      <h3 class="font-bold text-lg">{% translate "Cover overspending" %}</h3>
+      <p class="text-sm text-base-content/70 mt-1" data-cover-intro></p>
+      <form class="flex flex-col gap-4 mt-4" data-cover-form>
+        <fieldset class="flex flex-col gap-2">
+          <legend class="text-sm font-medium mb-2">{% translate "Take the money from" %}</legend>
+          <label class="flex items-center gap-3 rounded-box border border-base-300 p-3 cursor-pointer has-[input:checked]:border-primary has-[input:checked]:bg-primary/5">
+            <input type="radio" name="source" value="unassigned" class="radio radio-sm radio-primary" checked
+                   data-testid="cover-source-unassigned">
+            <span class="flex-1">
+              <span class="font-medium" data-unassigned-label-text>{% translate "Unassigned" %}</span>
+              <span class="block text-xs text-base-content/70">{% translate "Money with no job yet" %}</span>
+            </span>
+            <span class="font-mono text-sm" data-cover-unassigned></span>
+          </label>
+          {% if cover_goals %}
+          <label class="flex items-center gap-3 rounded-box border border-base-300 p-3 cursor-pointer has-[input:checked]:border-primary has-[input:checked]:bg-primary/5">
+            <input type="radio" name="source" value="goal" class="radio radio-sm radio-primary"
+                   data-testid="cover-source-goal">
+            <span class="flex-1 min-w-0">
+              <span class="font-medium">{% translate "A goal" %}</span>
+              <select class="select select-bordered select-sm w-full mt-1" name="goal_id" data-testid="cover-goal-select"></select>
+            </span>
+          </label>
+          {% endif %}
+        </fieldset>
+        <label class="form-control w-full">
+          <span class="label-text mb-1">{% translate "Amount" %}</span>
+          <input type="text" inputmode="decimal" class="input input-bordered w-full text-right font-mono" name="amount"
+                 data-testid="cover-amount" required>
+        </label>
+        <p class="text-xs text-base-content/70" data-cover-explain="unassigned">
+          {% translate "The category's budget rises by this amount, and your unassigned money falls by the same." %}
+        </p>
+        <p class="text-xs text-base-content/70" data-cover-explain="goal" hidden>
+          {% translate "The goal gives up this amount and the category's budget rises by the same, so your unassigned money doesn't change." %}
+        </p>
+        <p class="text-sm text-warning" data-cover-hint data-testid="cover-hint" hidden></p>
+        <p class="text-sm text-error" data-cover-error hidden></p>
+        <div class="modal-action mt-0">
+          <button type="button" class="btn btn-ghost btn-sm" data-cover-cancel>{% translate "Cancel" %}</button>
+          <button type="submit" class="btn btn-primary btn-sm" data-testid="cover-submit">{% translate "Cover" %}</button>
+        </div>
+      </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>{% translate "close" %}</button></form>
+  </dialog>
   <table class="table table-sm w-full" data-testid="budget-table">
     <thead>
       <tr>
@@ -119,6 +168,15 @@
                   {% translate "Save" %}
                 </button>
               </noscript>
+              {% if section.key == "expense" %}
+                {# Overspent: cover it from Unassigned, or from a goal (an emergency fund, say). #}
+                <button type="button" class="btn btn-ghost btn-xs whitespace-nowrap" data-cover
+                        data-category-id="{{ row.category.pk }}" data-category-name="{{ row.category.name }}"
+                        data-month="{{ month|date:'Y-m-d' }}" data-testid="cover-btn"
+                        {% if row.available >= 0 %}hidden{% endif %}>
+                  {% translate "Cover" %}
+                </button>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}

@@ -16,7 +16,7 @@ PRE_BOOKS = [
     ("books", None),
     ("accounts", "0008_add_sort_order"),
     ("journal", "0002_reconciliation"),
-    ("budget", "0003_alter_budget_options"),
+    ("budget", "0004_goal_closed_at_goals_group"),
     ("bank_feed", "0004_banktransaction_is_transfer_mirror"),
     ("plaid", "0003_plaiditem_last_synced_at"),
     ("reconciliation", "0001_initial"),
@@ -24,7 +24,7 @@ PRE_BOOKS = [
     ("onboarding", "0002_existing_teams_are_already_onboarded"),
     ("portability", "0001_initial"),
     ("ynab_import", "0002_ynabimport_started_at"),
-    ("audit", "0009_alter_auditevent_event_type"),
+    ("audit", "0010_alter_auditevent_event_type"),
 ]
 
 

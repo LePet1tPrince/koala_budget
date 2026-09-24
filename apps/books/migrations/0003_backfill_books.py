@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
         ("books", "0002_default_books"),
         ("accounts", "0009_book"),
         ("journal", "0003_book"),
-        ("budget", "0004_book"),
+        ("budget", "0005_book"),
         ("bank_feed", "0005_book"),
         ("plaid", "0004_book"),
         ("reconciliation", "0002_book"),
@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
         ("onboarding", "0003_book"),
         ("portability", "0002_book"),
         ("ynab_import", "0003_book"),
-        ("audit", "0010_book"),
+        ("audit", "0011_book"),
     ]
 
     operations = [

@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const incomeGroups = data.income_groups || [];
   const expenseGroups = data.expense_groups || [];
   const netProfit = data.net_profit || 0;
+  const goalSpending = data.goal_spending || 0;
 
   const flows = [];
 
@@ -55,6 +56,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Goal spending is paid from money set aside, not from this period's income:
+  // it enters from a "From goals" source and leaves to "Goal spending", so a
+  // month where it exceeds income still conserves flow and the net stays the
+  // operating figure.
+  if (goalSpending > 0) {
+    flows.push({from: 'From goals', to: 'Income', flow: goalSpending});
+    flows.push({from: 'Income', to: 'Goal spending', flow: goalSpending});
+  } else if (goalSpending < 0) {
+    flows.push({from: 'Goal spending', to: 'Income', flow: Math.abs(goalSpending)});
+    flows.push({from: 'Income', to: 'From goals', flow: Math.abs(goalSpending)});
+  }
+
   // Handle net profit / deficit
   if (netProfit > 0) {
     flows.push({from: 'Income', to: 'Savings', flow: netProfit});
@@ -74,10 +87,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const savingsColor = 'rgba(59, 130, 246, 0.6)';      // blue
   const deficitColor = 'rgba(251, 146, 60, 0.6)';      // orange
   const hubColor = 'rgba(107, 114, 128, 0.6)';         // gray
+  const goalColor = 'rgba(201, 133, 0, 0.6)';          // ochre, the goals colour elsewhere
 
   colorMap['Income'] = hubColor;
   colorMap['Savings'] = savingsColor;
   colorMap['Deficit'] = deficitColor;
+  colorMap['From goals'] = goalColor;
+  colorMap['Goal spending'] = goalColor;
   income.forEach(item => { colorMap[item.name] = incomeColor; });
   incomeGroups.forEach(group => { colorMap[group.name] = incomeGroupColor; });
   expenseGroups.forEach(group => { colorMap[group.name] = expenseGroupColor; });

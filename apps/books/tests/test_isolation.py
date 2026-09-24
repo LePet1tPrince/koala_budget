@@ -134,6 +134,7 @@ OBJECTS = {
     "budget:goal_assign_available": ("goal", "pk", "post"),
     "budget:goal_withdraw": ("goal", "pk", "post"),
     "budget:goal_complete": ("goal", "pk", "post"),
+    "budget:goal_close": ("goal", "pk", "post"),
     "reports:account_activity": ("account", "account_id", "get"),
     "reports:export_account_activity": ("account", "account_id", "get"),
     "plaid:plaid-item-detail": ("plaid_item", "pk", "get"),
@@ -165,6 +166,15 @@ WRITES = {
     "budget:budget_save_amount": lambda a, b: {"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"},
     "budget:budget_grid_save": lambda a, b: {
         "changes": [{"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"}]
+    },
+    # Book A's category covered from book B's goal: the goal is the row that must not move.
+    # (B's category from Unassigned is BudgetCoverIsolationTest's.)
+    "budget:budget_cover": lambda a, b: {
+        "category_id": a.groceries.id,
+        "month": "2026-03-01",
+        "amount": "10",
+        "source": "goal",
+        "goal_id": b.goal.id,
     },
     "monthly_review:api_step": lambda a, b: {"month": "2026-03-01", "step": 2},
     "monthly_review:api_complete": lambda a, b: {"month": "2026-03-01"},
@@ -389,6 +399,18 @@ class WriteIsolationTest(TwoBooksTestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(snapshot(self.b.book), before)
+
+
+class BudgetCoverIsolationTest(TwoBooksTestCase):
+    def test_a_book_b_category_cannot_be_covered(self):
+        before = snapshot(self.b.book)
+        response = self.client.post(
+            self.url("budget:budget_cover"),
+            data=json.dumps({"category_id": self.b.groceries.id, "month": "2026-03-01", "amount": "10"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(snapshot(self.b.book), before)
 
 

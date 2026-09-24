@@ -19,6 +19,7 @@
 
   {{ api_urls|json_script:'api-urls' }}
   {{ request.book.base_url|json_script:'book-base' }}
+  {{ initial_filters|json_script:'initial-filters' }}
 {% endblock %}
 
 {% block page_js %}

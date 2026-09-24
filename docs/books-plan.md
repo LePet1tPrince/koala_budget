@@ -372,3 +372,11 @@ Built in one change covering M1–M6. Where it differs from the text above:
   returned a 500 (`select_related("journal_entry")`), `JournalEntrySerializer`
   accepted another tenant's account and payee ids, and another book's account on
   the activity page rendered an empty page instead of a 404.
+- **Merged with goals-as-envelopes** (develop #220/#222) and develop's friendly
+  team 404 (#223). The book migrations were renumbered to follow develop's
+  (`budget.0005_book`/`0006_book_required`, `audit.0011_book`); the new goal
+  close/cover endpoints are book URLs and sit in the isolation tables. A book slug
+  the team doesn't have is now a rendered 404 from the book decorator (or DRF
+  `NotFound`), not an `Http404` raised inside `BooksMiddleware`, for the reason
+  develop gave for teams: the raise skipped the view's decorator and showed
+  Django's technical page under DEBUG.

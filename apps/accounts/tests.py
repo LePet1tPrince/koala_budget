@@ -316,7 +316,7 @@ class AccountsHomeViewTest(TestCase):
         url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         sections = response.context["manage_props"]["types"]
-        self.assertEqual([s["key"] for s in sections], ["asset", "liability", "income", "expense", "goal"])
+        self.assertEqual([s["key"] for s in sections], ["asset", "liability", "income", "expense", "goal", "equity"])
         by_key = {s["key"]: s for s in sections}
         asset_accounts = by_key[ACCOUNT_TYPE_ASSET]["groups"][0]["accounts"]
         self.assertEqual([a["name"] for a in asset_accounts], ["Checking"])

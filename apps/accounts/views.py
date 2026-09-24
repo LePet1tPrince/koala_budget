@@ -59,13 +59,21 @@ ACCOUNT_TYPE_SECTION_LABELS = {
 
 FEED_ACCOUNT_TYPES = (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY)
 
+# Display-only section for equity-type groups that hold no goal (opening balances).
+SECTION_EQUITY = "equity"
 
-def _account_payload(account, book):
-    """Account row shape shared by the accounts board props and the create API."""
+
+def _account_payload(account, book, goal_left=None):
+    """Account row shape shared by the accounts board props and the create API.
+
+    A goal account shows what the goal has `left`, not its raw ledger balance:
+    its ledger holds only the spending, while its claim is allocations − spending.
+    """
     return {
         "id": account.pk,
         "name": account.name,
-        "balance": str(account.balance),
+        "balance": str(goal_left if goal_left is not None else account.balance),
+        "isGoal": goal_left is not None,
         "institution": account.institution.name if account.institution else None,
         "hasFeed": account.has_feed,
         "isSystem": account.is_system,
@@ -105,6 +113,10 @@ class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
 
         book = self.request.book
 
+        from apps.budget.models import GOALS_GROUP_NAME
+        from apps.budget.services import goal_left_by_account
+
+        goal_left = goal_left_by_account(book)
         accounts_by_group = {}
         accounts = (
             Account.objects.filter(book=book)
@@ -113,22 +125,43 @@ class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
             .order_by("sort_order", "name")
         )
         for account in accounts:
-            accounts_by_group.setdefault(account.account_group_id, []).append(_account_payload(account, book))
+            accounts_by_group.setdefault(account.account_group_id, []).append(
+                _account_payload(account, book, goal_left.get(account.pk))
+            )
 
-        groups_by_type = {account_type: [] for account_type in ACCOUNT_TYPE_ORDER}
+        # The equity type is stored as "goal" but also holds plain equity (opening
+        # balances), so it is shown as two sections: groups holding goals, and the rest.
+        sections = {account_type: [] for account_type in (*ACCOUNT_TYPE_ORDER, SECTION_EQUITY)}
         for group in AccountGroup.objects.filter(book=book).order_by("sort_order", "name"):
-            groups_by_type[group.account_type].append(_group_payload(group, accounts_by_group.get(group.pk, [])))
+            accounts_in_group = accounts_by_group.get(group.pk, [])
+            key = group.account_type
+            if key == ACCOUNT_TYPE_EQUITY and not (
+                any(a["isGoal"] for a in accounts_in_group) or (group.name == GOALS_GROUP_NAME and not group.is_system)
+            ):
+                key = SECTION_EQUITY
+            sections[key].append(_group_payload(group, accounts_in_group))
 
         account_create_url = reverse("accounts:account_create", args=book.url_args)
+        types = [
+            {
+                "key": account_type,
+                "accountType": account_type,
+                "label": str(ACCOUNT_TYPE_SECTION_LABELS[account_type]),
+                "groups": sections[account_type],
+            }
+            for account_type in ACCOUNT_TYPE_ORDER
+        ]
+        types[-1]["newGoalUrl"] = reverse("budget:goal_create", args=book.url_args)
+        types.append(
+            {
+                "key": SECTION_EQUITY,
+                "accountType": ACCOUNT_TYPE_EQUITY,
+                "label": str(_("Equity")),
+                "groups": sections[SECTION_EQUITY],
+            }
+        )
         context["manage_props"] = {
-            "types": [
-                {
-                    "key": account_type,
-                    "label": str(ACCOUNT_TYPE_SECTION_LABELS[account_type]),
-                    "groups": groups_by_type[account_type],
-                }
-                for account_type in ACCOUNT_TYPE_ORDER
-            ],
+            "types": types,
             "urls": {
                 "reorderAccounts": reverse("accounts:api_reorder_accounts", args=book.url_args),
                 "reorderGroups": reverse("accounts:api_reorder_groups", args=book.url_args),

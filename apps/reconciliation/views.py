@@ -22,9 +22,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import Account, Payee
-from apps.accounts.serializers import PayeeSerializer, SimpleAccountSerializer
+from apps.accounts.serializers import PayeeSerializer
 from apps.books.decorators import login_and_book_required
 from apps.books.permissions import BookModelAccessPermissions
+from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalLine
 
 from . import presenters
@@ -271,12 +272,7 @@ def account_page(request, team_slug, book_slug, account_id):
         "book_base": request.book.base_url,
         # The "add a missing transaction" modal is the feed's own, so it needs the
         # feed's pickers -- only for an account that has a feed to add to.
-        "all_accounts": SimpleAccountSerializer(
-            Account.objects.filter(book=request.book).select_related("account_group", "institution").order_by("name"),
-            many=True,
-        ).data
-        if account.has_feed
-        else [],
+        "all_accounts": picker_accounts_data(request.book) if account.has_feed else [],
         "all_payees": PayeeSerializer(Payee.objects.filter(book=request.book).order_by("name"), many=True).data
         if account.has_feed
         else [],

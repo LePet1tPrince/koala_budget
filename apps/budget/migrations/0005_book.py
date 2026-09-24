@@ -3,7 +3,7 @@
 """
 Every budget row gains the set of books it belongs to. Nullable here, so the
 column can be added to a populated table; `books.0003_backfill_books` fills it
-from the row's team and `0005_book_required` makes it required and drops `team`.
+from the row's team and `0006_book_required` makes it required and drops `team`.
 """
 
 import django.db.models.deletion
@@ -13,7 +13,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("books", "0002_default_books"),
-        ("budget", "0003_alter_budget_options"),
+        ("budget", "0004_goal_closed_at_goals_group"),
     ]
 
     operations = [

@@ -49,6 +49,7 @@ function init() {
     .filter(Boolean);
 
   rows.forEach((row, index) => wire(row, index));
+  wireCover();
 
   // -------------------------------------------------------------------------
   // Row state
@@ -229,6 +230,168 @@ function init() {
       el.classList.toggle('text-error', cell.tone === 'neg');
       el.classList.toggle('text-success', cell.tone === 'pos');
       flash(el);
+    });
+    refreshCoverButtons();
+  }
+
+  // -------------------------------------------------------------------------
+  // Cover an overspent row: from Unassigned, or from a goal
+  // -------------------------------------------------------------------------
+
+  function parseMoney(text) {
+    const n = parseFloat(String(text).replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function fmtMoney(n) {
+    const abs = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${n < 0 ? '-' : ''}$${abs}`;
+  }
+
+  // The button only makes sense while the row is overspent, which a save can change.
+  function refreshCoverButtons() {
+    document.querySelectorAll('[data-cover]').forEach((btn) => {
+      const cell = cells.get(`row:${btn.dataset.categoryId}:available`);
+      if (cell) btn.hidden = parseMoney(cell.textContent) >= 0;
+    });
+  }
+
+  function wireCover() {
+    const dialog = document.querySelector('[data-cover-dialog]');
+    const url = document.querySelector('[data-cover-url]')?.dataset.coverUrl;
+    if (!dialog || !url) return;
+    const goalsEl = document.getElementById('cover-goals');
+    const goals = goalsEl ? JSON.parse(goalsEl.textContent) : [];
+    const form = dialog.querySelector('[data-cover-form]');
+    const select = form.querySelector('select[name="goal_id"]');
+    const goalRadio = form.querySelector('input[name="source"][value="goal"]');
+    const unassignedRadio = form.querySelector('input[name="source"][value="unassigned"]');
+    const amountInput = form.querySelector('input[name="amount"]');
+    const unassignedEl = dialog.querySelector('[data-cover-unassigned]');
+    const unassignedLabelEl = dialog.querySelector('[data-unassigned-label-text]');
+    const hint = dialog.querySelector('[data-cover-hint]');
+    const error = dialog.querySelector('[data-cover-error]');
+    const intro = dialog.querySelector('[data-cover-intro]');
+    let current = null;
+
+    // The page's own figures, so the dialog can't disagree with the card beside it.
+    const unassignedNow = () => parseMoney(cells.get('networth:available')?.textContent ?? '0');
+    const source = () => (goalRadio?.checked ? 'goal' : 'unassigned');
+    const selectedGoal = () => goals.find((g) => String(g.id) === select?.value);
+
+    const fillGoals = () => {
+      if (!select) return;
+      select.replaceChildren(
+        ...goals.map((goal) => {
+          const option = document.createElement('option');
+          option.value = goal.id;
+          option.textContent = `${goal.name} · ${fmtMoney(parseFloat(goal.left))} left`;
+          return option;
+        })
+      );
+      const richest = goals.reduce((a, b) => (parseFloat(b.left) > parseFloat(a.left) ? b : a), goals[0]);
+      if (richest) select.value = String(richest.id);
+    };
+
+    // Non-blocking: both are allowed, the user should just know what they mean.
+    const refreshHint = () => {
+      const amount = parseMoney(amountInput.value);
+      let message = '';
+      if (source() === 'unassigned') {
+        const after = unassignedNow() - amount;
+        if (amount > 0 && after < 0) message = `This leaves you over-assigned by ${fmtMoney(-after)}.`;
+      } else {
+        const goal = selectedGoal();
+        const after = goal ? parseFloat(goal.left) - amount : 0;
+        if (goal && amount > 0 && after < 0) {
+          message = `${goal.name} will go to ${fmtMoney(after)} — that's fine, it's carried.`;
+        }
+      }
+      hint.textContent = message;
+      hint.hidden = !message;
+      dialog.querySelectorAll('[data-cover-explain]').forEach((el) => {
+        el.hidden = el.dataset.coverExplain !== source();
+      });
+    };
+
+    form.addEventListener('change', refreshHint);
+    amountInput.addEventListener('input', refreshHint);
+    // Picking a goal means taking the money from a goal.
+    select?.addEventListener('focus', () => {
+      if (goalRadio) goalRadio.checked = true;
+      refreshHint();
+    });
+
+    document.querySelectorAll('[data-cover]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const cell = cells.get(`row:${btn.dataset.categoryId}:available`);
+        const shortfall = cell ? -parseMoney(cell.textContent) : 0;
+        current = btn;
+        fillGoals();
+        amountInput.value = shortfall > 0 ? shortfall.toFixed(2) : '';
+        intro.textContent = `${btn.dataset.categoryName} is ${fmtMoney(-shortfall)}.`;
+        const unassigned = unassignedNow();
+        unassignedEl.textContent = fmtMoney(unassigned);
+        unassignedEl.classList.toggle('text-error', unassigned < 0);
+        const label = cells.get('networth:label')?.textContent.trim();
+        if (label) unassignedLabelEl.textContent = label;
+        // Unassigned first, the way a budget is meant to absorb a surprise; a goal
+        // when Unassigned can't cover it and one of them can.
+        const coveringGoal = goals.find((g) => parseFloat(g.left) >= shortfall);
+        if (unassigned < shortfall && coveringGoal && goalRadio) {
+          goalRadio.checked = true;
+          select.value = String(coveringGoal.id);
+        } else {
+          unassignedRadio.checked = true;
+        }
+        error.hidden = true;
+        refreshHint();
+        dialog.showModal();
+        amountInput.select();
+      });
+    });
+    dialog.querySelector('[data-cover-cancel]').addEventListener('click', () => dialog.close());
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!current) return;
+      const from = source();
+      const body = {
+        category_id: Number(current.dataset.categoryId),
+        month: current.dataset.month,
+        amount: amountInput.value,
+        source: from,
+      };
+      if (from === 'goal') body.goal_id = Number(select.value);
+      let response;
+      let payload = {};
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': Cookies.get('csrftoken') || '' },
+          body: JSON.stringify(body),
+        });
+        payload = await response.json().catch(() => ({}));
+      } catch {
+        response = null;
+      }
+      if (!response || !response.ok) {
+        error.textContent = payload.error || 'Could not cover that.';
+        error.hidden = false;
+        return;
+      }
+      const goal = from === 'goal' ? selectedGoal() : null;
+      if (goal) goal.left = payload.goal_left;
+      // The row's budget changed: show it, and keep the autosave baseline in step.
+      const row = rows.find((r) => String(r.categoryId) === current.dataset.categoryId);
+      if (row) {
+        row.saved = payload.amount;
+        row.input.value = payload.amount;
+      }
+      painted = ++ticket;
+      paint(payload.cells);
+      dialog.close();
+      announce(`${current.dataset.categoryName} covered from ${goal ? goal.name : 'unassigned money'}.`);
     });
   }
 

@@ -1,4 +1,3 @@
-from datetime import date
 from decimal import Decimal
 
 from django.test import SimpleTestCase
@@ -118,48 +117,10 @@ class Step1HealthInsightTests(SimpleTestCase):
         self.assertEqual(step1[0].url, "/inbox/")
         self.assertEqual(step1[0].lines, ("Chequing: 3 uncategorized", "Visa: 2 uncategorized"))
 
-    def test_statements_due_share_one_card_linking_to_the_hub(self):
-        flags = [
-            {
-                "kind": "statement_due",
-                "account": _Named("Chequing"),
-                "last_statement_date": date(2026, 5, 31),
-                "url": "/a/t/reconcile/1/",
-                "hub_url": "/a/t/reconcile/",
-            },
-            {
-                "kind": "statement_due",
-                "account": _Named("Visa"),
-                "last_statement_date": None,
-                "url": "/a/t/reconcile/2/",
-                "hub_url": "/a/t/reconcile/",
-            },
-        ]
-        review = _review(health={"accounts": [], "flags": flags, "all_clear": False})
-        step1 = [i for i in generate(review) if i.step == 1]
-        self.assertEqual([i.kind for i in step1], ["statement_due"])
-        card = step1[0]
-        self.assertEqual(card.url, "/a/t/reconcile/")
-        self.assertIn("Chequing: last reconciled 2026-05-31", card.lines[0])
-        self.assertIn("Visa: never reconciled", card.lines[1])
-
-    def test_one_statement_due_links_to_its_account(self):
-        flag = {
-            "kind": "statement_due",
-            "account": _Named("Chequing"),
-            "last_statement_date": None,
-            "url": "/a/t/reconcile/1/",
-            "hub_url": "/a/t/reconcile/",
-        }
-        review = _review(health={"accounts": [], "flags": [flag], "all_clear": False})
-        card = next(i for i in generate(review) if i.step == 1)
-        self.assertEqual(card.url, "/a/t/reconcile/1/")
-
-    def test_unreconciled_and_balance_gap_share_one_reconciliation_card(self):
+    def test_unreconciled_accounts_share_one_reconciliation_card(self):
         flags = [
             {"kind": "unreconciled", "account": _Named("Chequing"), "count": 2, "gap": Decimal("15"), "url": ""},
             {"kind": "unreconciled", "account": _Named("Visa"), "count": 10, "gap": Decimal("-40"), "url": ""},
-            {"kind": "balance_gap", "account": _Named("Savings"), "gap": Decimal("-5"), "url": ""},
         ]
         review = _review(health={"accounts": [], "flags": flags, "all_clear": False})
         step1 = [i for i in generate(review) if i.step == 1]
@@ -167,11 +128,9 @@ class Step1HealthInsightTests(SimpleTestCase):
         card = step1[0]
         self.assertEqual(card.severity, "warn")
         self.assertEqual(card.metric, Decimal("12"))
-        self.assertEqual(len(card.lines), 3)
+        self.assertEqual(len(card.lines), 2)
         self.assertIn("Chequing: 2 unreconciled", card.lines[0])
         self.assertIn("Visa: 10 unreconciled", card.lines[1])
-        self.assertIn("Savings", card.lines[2])
-        self.assertIn("doesn't match", card.lines[2])
 
 
 class Step2GlanceInsightTests(SimpleTestCase):

@@ -15,7 +15,7 @@ from apps.books.migration_utils import fill_team_from_book
 class Migration(migrations.Migration):
     dependencies = [
         ("books", "0003_backfill_books"),
-        ("budget", "0004_book"),
+        ("budget", "0005_book"),
     ]
 
     operations = [

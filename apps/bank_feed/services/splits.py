@@ -26,6 +26,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 
+from apps.accounts.guards import SystemCategoryError, assert_category_allowed
 from apps.accounts.models import Account
 from apps.journal.models import JournalLine
 from apps.reconciliation.services.guards import assert_line_mutable, assert_line_removable
@@ -76,7 +77,7 @@ def split_legs(entry, bank_account):
     return [line for line in lines if line.account_id != bank_account_id]
 
 
-def parse_legs(raw) -> list[tuple[Account, Decimal]]:
+def parse_legs(raw, keep_ids=()) -> list[tuple[Account, Decimal]]:
     """
     Validate a client's `splits` payload into (account, signed amount) pairs.
 
@@ -84,6 +85,7 @@ def parse_legs(raw) -> list[tuple[Account, Decimal]]:
     entered that vanished without explanation is worse than an error they can
     act on. Accounts are looked up through the book-scoped manager, so another
     book's account is "not found" rather than a successful cross-tenant write.
+    A system account is refused unless its id is in `keep_ids` (already on the entry).
     """
     if not isinstance(raw, list):
         raise SplitError(_("Splits must be a list."))
@@ -101,6 +103,10 @@ def parse_legs(raw) -> list[tuple[Account, Decimal]]:
             account = Account.for_book.get(id=item.get("category"))
         except (Account.DoesNotExist, TypeError, ValueError):
             raise SplitError(_("Split %(n)d: category not found.") % {"n": index}) from None
+        try:
+            assert_category_allowed(account, keep_ids=keep_ids)
+        except SystemCategoryError as e:
+            raise SplitError(_("Split %(n)d: %(error)s") % {"n": index, "error": e}) from None
 
         try:
             amount = Decimal(str(item.get("amount"))).quantize(CENT)

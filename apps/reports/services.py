@@ -44,7 +44,17 @@ class ReportService:
                 'total_income_per_period': [Decimal, ...] (empty unless period given),
                 'total_expenses_per_period': [...],
                 'net_profit_per_period': [...],
+                'goal_spending': {'items': [...same item shape...], 'total': Decimal,
+                                  'per_period': [...]},
+                'net_after_goal_spending': Decimal,
+                'net_after_goal_spending_per_period': [...],
             }
+
+        `net_profit` is the operating net (income − expenses), the figure the
+        savings rate uses. Goal spending -- lines on a goal's account -- is its
+        own section below it, like capital spending: a real outflow, but planned
+        and paid from money set aside (docs/goals-envelopes-plan.md §4.5). Plain
+        equity accounts (opening balances) are not goal spending.
         """
         # Get all journal lines in the date range (voided entries don't count)
         journal_lines = (
@@ -57,9 +67,11 @@ class ReportService:
         )
 
         periods = self._period_range(start_date, end_date, period) if period else []
+        goal_account_ids = self.goal_account_ids()
 
         income_data = []
         expense_data = []
+        goal_data = []
         total_income = Decimal("0")
         total_expenses = Decimal("0")
 
@@ -76,10 +88,10 @@ class ReportService:
             # For expenses: debits increase expenses
             if account_type == ACCOUNT_TYPE_INCOME:
                 amount = line.cr_amount - line.dr_amount
-            elif account_type == ACCOUNT_TYPE_EXPENSE:
+            elif account_type == ACCOUNT_TYPE_EXPENSE or account.pk in goal_account_ids:
                 amount = line.dr_amount - line.cr_amount
             else:
-                continue  # Skip non-income/expense accounts
+                continue  # Skip balance-sheet accounts
 
             if account not in account_balances:
                 account_balances[account] = Decimal("0")
@@ -104,10 +116,15 @@ class ReportService:
                 elif account_type == ACCOUNT_TYPE_EXPENSE:
                     expense_data.append(item)
                     total_expenses += amount
+                else:
+                    goal_data.append(item)
 
         # Sort by the user's chart-of-accounts order
         income_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
         expense_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
+        goal_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
+        total_goal_spending = sum((item["amount"] for item in goal_data), Decimal("0"))
+        goal_spending_per_period = self._sum_periods(goal_data, len(periods)) if period else []
 
         net_profit = total_income - total_expenses
 
@@ -130,7 +147,22 @@ class ReportService:
             "total_income_per_period": total_income_per_period,
             "total_expenses_per_period": total_expenses_per_period,
             "net_profit_per_period": net_profit_per_period,
+            "goal_spending": {
+                "items": goal_data,
+                "total": total_goal_spending,
+                "per_period": goal_spending_per_period,
+            },
+            "net_after_goal_spending": net_profit - total_goal_spending,
+            "net_after_goal_spending_per_period": [
+                net - goal for net, goal in zip(net_profit_per_period, goal_spending_per_period, strict=True)
+            ],
         }
+
+    def goal_account_ids(self):
+        """Accounts a `Goal` points at. Never inferred from the type: the equity type is stored as "goal"."""
+        from apps.accounts.models import Account
+
+        return set(Account.objects.filter(book=self.book, goal__isnull=False).values_list("pk", flat=True))
 
     @staticmethod
     def _period_start(day, period):
@@ -226,6 +258,10 @@ class ReportService:
             .select_related("account", "account__account_group")
         )
 
+        # Goal accounts are left out: spending from a goal is reported on the
+        # income statement, not here. Plain equity (opening balances) stays.
+        goal_account_ids = self.goal_account_ids()
+
         asset_data = []
         liability_data = []
         equity_data = []
@@ -239,6 +275,8 @@ class ReportService:
         for line in journal_lines:
             account = line.account
             account_type = account.account_group.account_type
+            if account.pk in goal_account_ids:
+                continue
 
             # Calculate account balance based on account type
             # Assets: debit balances are positive (dr - cr)
@@ -391,6 +429,8 @@ class ReportService:
         from apps.budget.models import Budget
 
         account_type = account.account_group.account_type
+        if account.pk in self.goal_account_ids():
+            return self._goal_chart_data(account, start_date, end_date)
         if account_type not in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE):
             return None
         # Income isn't budgeted in a book that counts money only once it lands.
@@ -475,6 +515,65 @@ class ReportService:
             "account_type": account_type,
         }
 
+    def _goal_chart_data(self, account, start_date, end_date):
+        """
+        Allocated vs Spent per month for a goal account, with the running Left
+        line (allocated − spent, all time up to each month). Same shape as the
+        budget chart, so the same chart draws it.
+        """
+        from django.db.models import F, Sum
+        from django.db.models.functions import TruncMonth
+
+        from apps.budget.models import GoalAllocation
+
+        months = self._period_range(start_date, end_date, "month")
+        if not months:
+            return None
+        month_after_last = (months[-1] + timedelta(days=32)).replace(day=1)
+
+        allocated = {
+            row["month"]: row["total"]
+            for row in GoalAllocation.objects.filter(book=self.book, goal__account=account, month__lt=month_after_last)
+            .values("month")
+            .annotate(total=Sum("amount"))
+        }
+        spent = {
+            (row["month"].date() if hasattr(row["month"], "date") else row["month"]): row["total"]
+            for row in JournalLine.objects.filter(
+                book=self.book, account=account, journal_entry__entry_date__lt=month_after_last
+            )
+            .filter(counted_entries("journal_entry__"))
+            .annotate(month=TruncMonth("journal_entry__entry_date"))
+            .values("month")
+            .annotate(total=Sum(F("dr_amount") - F("cr_amount")))
+        }
+
+        first_month = min([months[0], *allocated, *spent])
+        displayed = set(months)
+        allocated_series, spent_series, left_series = [], [], []
+        left = Decimal("0")
+        current = first_month
+        while current < month_after_last:
+            month_allocated = allocated.get(current, Decimal("0"))
+            month_spent = spent.get(current, Decimal("0"))
+            left += month_allocated - month_spent
+            if current in displayed:
+                allocated_series.append(float(month_allocated))
+                spent_series.append(float(month_spent))
+                left_series.append(float(left))
+            month = current.month + 1
+            current = date(current.year + (month - 1) // 12, (month - 1) % 12 + 1, 1)
+
+        return {
+            "labels": [self._period_label(bucket, "month") for bucket in months],
+            "budgeted": allocated_series,
+            "actual": spent_series,
+            "available": left_series,
+            "account_type": "goal",
+            "title": "Allocated vs Spent",
+            "series_labels": {"budgeted": "Allocated", "actual": "Spent", "available": "Left"},
+        }
+
     @staticmethod
     def build_balance_chart_data(report_data, start_date, end_date):
         """
@@ -535,12 +634,20 @@ class ReportService:
         if start_date and end_date:
             queryset = queryset.filter(journal_entry__entry_date__range=(start_date, end_date))
 
-        # Determine account type for sign logic
+        # Determine account type for sign logic. A goal account is read like an
+        # expense (period totals of what was spent from it), not as a balance.
         account_type = account.account_group.account_type
-        is_balance_account = account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, ACCOUNT_TYPE_EQUITY)
+        is_goal = account.pk in self.goal_account_ids()
+        is_balance_account = not is_goal and account_type in (
+            ACCOUNT_TYPE_ASSET,
+            ACCOUNT_TYPE_LIABILITY,
+            ACCOUNT_TYPE_EQUITY,
+        )
 
         # Annotate signed amount based on account type
-        if account_type == ACCOUNT_TYPE_INCOME:
+        if is_goal:
+            signed_amount = F("dr_amount") - F("cr_amount")
+        elif account_type == ACCOUNT_TYPE_INCOME:
             # Income: credits increase income
             signed_amount = F("cr_amount") - F("dr_amount")
         elif account_type == ACCOUNT_TYPE_EXPENSE:
