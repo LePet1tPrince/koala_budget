@@ -18,8 +18,8 @@ from apps.accounts.models import (
     AccountGroup,
 )
 from apps.bank_feed.models import BankTransaction
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -32,24 +32,25 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
 
         cls.bank_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Checking",
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.groceries_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Groceries",
             account_group=cls.expense_group,
         )
@@ -68,9 +69,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Test transaction,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -90,9 +91,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n28/02/2025,Test transaction,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -114,9 +115,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Test transaction,not-a-number"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -135,9 +136,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Test transaction,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -155,9 +156,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Purchase,100.00\n2025-01-02,Refund,-25.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -175,9 +176,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Purchase,100.00\n2025-01-02,Refund,-25.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -194,9 +195,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Zero fee,0.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -212,9 +213,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,In,Out\n2025-01-01,Purchase,,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -233,9 +234,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Category,Amount\n2025-01-01,Payday,Salary,1000.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -256,7 +257,7 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         """Test that preview detects potential duplicates."""
         # Create existing transaction
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date(2025, 1, 1),
             description="Test transaction",
@@ -267,9 +268,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Test transaction,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -287,9 +288,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Category,Amount\n2025-01-01,Test,Groceries,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -307,9 +308,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Category,Amount\n2025-01-01,Test,UnknownCategory,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -333,9 +334,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         )
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -357,16 +358,16 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
     def test_upload_preview_suggests_account_for_unmapped_category(self):
         """A close-name account is offered as a suggestion for an unmapped category."""
         Account.objects.create(
-            team=self.team,
+            book=self.book,
             name="Restaurants",
             account_group=self.expense_group,
         )
         csv_content = "Date,Description,Category,Amount\n2025-01-01,Dinner,Restaurant,40.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -385,9 +386,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Inflow,Outflow\n2025-01-01,Deposit,100.00,\n2025-01-02,Purchase,,50.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -405,9 +406,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
 
     def test_upload_preview_no_file_returns_400(self):
         """Test that missing file returns 400."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "account_id": self.bank_account.id,
                     "column_mapping": json.dumps({"date": 0, "description": 1, "amount": 2}),
@@ -422,9 +423,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Test,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": 99999,
@@ -440,9 +441,9 @@ class BankFeedViewSetUploadPreviewTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Test,100.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_preview/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_preview/",
                 {
                     "file": csv_file,
                     "account_id": self.bank_account.id,
@@ -461,24 +462,25 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
 
         cls.bank_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Checking",
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.groceries_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Groceries",
             account_group=cls.expense_group,
         )
@@ -490,9 +492,9 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
 
     def test_upload_confirm_creates_bank_transactions(self):
         """Test that confirm creates BankTransaction records."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_confirm/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_confirm/",
                 {
                     "account_id": self.bank_account.id,
                     "transactions": [
@@ -506,13 +508,13 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["created_count"], 2)
-            self.assertEqual(BankTransaction.objects.filter(team=self.team).count(), 2)
+            self.assertEqual(BankTransaction.objects.filter(book=self.book).count(), 2)
 
     def test_upload_confirm_skips_duplicates(self):
         """Test that confirm skips duplicates when skip_duplicates=True."""
         # Create existing transaction
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date(2025, 1, 1),
             description="Existing transaction",
@@ -520,9 +522,9 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_confirm/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_confirm/",
                 {
                     "account_id": self.bank_account.id,
                     "transactions": [
@@ -542,7 +544,7 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
         """Test that confirm includes duplicates when skip_duplicates=False."""
         # Create existing transaction
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date(2025, 1, 1),
             description="Existing transaction",
@@ -550,9 +552,9 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_confirm/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_confirm/",
                 {
                     "account_id": self.bank_account.id,
                     "transactions": [
@@ -567,13 +569,13 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
             self.assertEqual(response.data["created_count"], 1)
             self.assertEqual(response.data["skipped_count"], 0)
             # Total should now be 2 (original + duplicate)
-            self.assertEqual(BankTransaction.objects.filter(team=self.team).count(), 2)
+            self.assertEqual(BankTransaction.objects.filter(book=self.book).count(), 2)
 
     def test_upload_confirm_auto_categorizes_with_category_id(self):
         """Test that confirm auto-categorizes transactions with category_id."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_confirm/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_confirm/",
                 {
                     "account_id": self.bank_account.id,
                     "transactions": [
@@ -599,9 +601,9 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
 
     def test_upload_confirm_returns_counts(self):
         """Test that confirm returns created_count, skipped_count, error_count."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_confirm/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_confirm/",
                 {
                     "account_id": self.bank_account.id,
                     "transactions": [
@@ -623,9 +625,9 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
 
     def test_upload_confirm_invalid_account_returns_404(self):
         """Test that invalid account returns 404."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_confirm/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_confirm/",
                 {
                     "account_id": 99999,
                     "transactions": [
@@ -639,10 +641,10 @@ class BankFeedViewSetUploadConfirmTest(TestCase):
 
     def test_upload_confirm_missing_required_fields_returns_400(self):
         """Test that missing required fields returns 400."""
-        with current_team(self.team):
+        with current_book(self.book):
             # Missing account_id
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_confirm/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_confirm/",
                 {
                     "transactions": [
                         {"date": "2025-01-01", "description": "Test", "payee": "", "amount": "100.00"},

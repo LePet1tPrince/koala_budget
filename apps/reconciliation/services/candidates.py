@@ -48,7 +48,7 @@ def candidate_lines(reconciliation):
     account, so this is belt and braces).
     """
     return (
-        JournalLine.objects.filter(team=reconciliation.team, account=reconciliation.account, is_reconciled=False)
+        JournalLine.objects.filter(book=reconciliation.book, account=reconciliation.account, is_reconciled=False)
         .filter(counted_entries("journal_entry__"))
         .exclude(Q(reconciliation__status=Reconciliation.STATUS_DRAFT) & ~Q(reconciliation_id=reconciliation.id))
     )
@@ -106,7 +106,7 @@ def summary(reconciliation) -> Summary:
 def uncategorized_rows(reconciliation):
     """Feed rows on or before the statement date with no journal entry: real money that cannot be ticked yet."""
     return BankTransaction.objects.filter(
-        team=reconciliation.team,
+        book=reconciliation.book,
         account=reconciliation.account,
         journal_entry__isnull=True,
         is_archived=False,

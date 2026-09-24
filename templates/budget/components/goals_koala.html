@@ -119,13 +119,13 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
        data-goal-card
        data-remaining="{{ item.remaining }}"
        data-saved="{{ item.saved }}"
-       data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug pk=item.goal.pk %}"
-       data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug pk=item.goal.pk %}"
+       data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}"
+       data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}"
        data-testid="goal-card">
     <div class="card-body">
       <div class="flex justify-between items-start gap-2">
         <h2 class="card-title">
-          <a href="{% url 'budget:goal_detail' team_slug=request.team.slug pk=item.goal.pk %}" class="link link-hover">{{ item.goal.name }}</a>
+          <a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="link link-hover">{{ item.goal.name }}</a>
         </h2>
         {% if item.streak >= 2 %}
           <span class="badge badge-warning gap-1">🔥 {{ item.streak }}</span>
@@ -227,7 +227,7 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
           </p>
         </div>
         <noscript>
-          <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">
+          <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}
             <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
             <input type="number" min="0" step="0.01" name="amount" value="{{ item.this_month }}"
@@ -246,7 +246,7 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
     <div class="text-6xl mb-2">🐨</div>
     <h2 class="card-title">{% translate "No trees to climb yet!" %}</h2>
     <p class="text-base-content/70">{% translate "Plant a goal and the koala will start climbing as you save." %}</p>
-    <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-success mt-4">🌱 {% translate "Plant your first goal" %}</a>
+    <a href="{% url 'budget:goal_create' team_slug=request.team.slug book_slug=request.book.slug %}" class="btn btn-success mt-4">🌱 {% translate "Plant your first goal" %}</a>
   </div>
 </div>
 {% endif %}

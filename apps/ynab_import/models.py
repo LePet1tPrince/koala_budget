@@ -7,7 +7,7 @@ The row exists for three reasons, in order of how much they cost to do without:
   cannot read a file out of the request that started it;
 * the wizard walks several screens before applying, and re-uploading a 1 MB CSV at
   every step to keep the server stateless is a worse trade than storing it once;
-* an import is a large, one-way change to a team's books, and what was imported
+* an import is a large, one-way change to a set of books, and what was imported
   should be answerable afterwards.
 
 The exports are held as text rather than files so a worker in another container
@@ -24,7 +24,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel
 
 # Refuse an upload larger than this. The sample export's register is 1.1 MB at
 # 7,572 rows; 20 MB is a budget many times bigger than any real one.
@@ -38,9 +38,9 @@ RESUME_WINDOW = timedelta(hours=24)
 
 
 class YnabImportQuerySet(models.QuerySet):
-    def resumable(self, team, now=None):
+    def resumable(self, book, now=None):
         """
-        The import worth showing when this team opens the import page.
+        The import worth showing when this book's import page is opened.
 
         Two cases, and they are the whole point of the row outliving the browser:
 
@@ -59,10 +59,10 @@ class YnabImportQuerySet(models.QuerySet):
             status__in=(self.model.STATUS_DONE, self.model.STATUS_FAILED),
             finished_at__gte=now - RESUME_WINDOW,
         )
-        return self.filter(team=team).filter(in_flight | recently_finished).order_by("-created_at").first()
+        return self.filter(book=book).filter(in_flight | recently_finished).order_by("-created_at").first()
 
 
-class YnabImport(BaseTeamModel):
+class YnabImport(BaseBookModel):
     STATUS_UPLOADED = "uploaded"
     STATUS_RUNNING = "running"
     STATUS_DONE = "done"
@@ -113,7 +113,7 @@ class YnabImport(BaseTeamModel):
         verbose_name_plural = "YNAB imports"
 
     def __str__(self):
-        return f"YNAB import for {self.team} ({self.status})"
+        return f"YNAB import for {self.book} ({self.status})"
 
     @property
     def is_finished(self) -> bool:

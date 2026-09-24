@@ -17,7 +17,7 @@
   <li>
     <details>
       <summary>
-        {% if nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+        {% if nav_book %}{{ nav_team.name }} › {{ nav_book.name }}{% elif nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
       </summary>
       <ul>
         {% include "web/components/team_nav_items.html" %}

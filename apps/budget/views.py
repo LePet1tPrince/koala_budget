@@ -18,12 +18,13 @@ from apps.accounts.models import Account
 from apps.accounts.serializers import SimpleAccountSerializer
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
-from apps.teams.decorators import login_and_team_required
+from apps.books.decorators import login_and_book_required
+from apps.books.helpers import book_display_name
 from apps.web.templatetags.currency_tags import currency
 
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Budget, Goal, GoalAllocation
-from .services import BudgetService, GoalService, NetWorthService
+from .services import BudgetService, GoalService, NetWorthService, budgeted_account_types
 from .unassigned import OVER_ASSIGNED_LABEL, UNASSIGNED_LABEL, compute_unassigned, pill_context
 
 
@@ -56,18 +57,18 @@ def _zero_totals():
     return {"budgeted": Decimal("0"), "actual": Decimal("0"), "available": Decimal("0")}
 
 
-def _budget_figures(team, month):
+def _budget_figures(book, month):
     """Every number the budget page shows for `month`, computed in one place.
 
     The month view renders these; the auto-save endpoint recomputes them and
     returns just the values (see `_budget_cells`), so saving an amount updates
     the page in place instead of reloading it.
     """
-    service = BudgetService(team)
-    categories = list(_budget_categories(team))
+    service = BudgetService(book)
+    categories = list(_budget_categories(book))
 
     # Rows are created lazily on first save; a category without one shows zero.
-    existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=team, month=month)}
+    existing_budgets = {b.category_id: b for b in Budget.objects.filter(book=book, month=month)}
     actuals_map = service.get_actuals_by_category(month)
     available_map = service.get_available_by_category(month, categories)
 
@@ -131,7 +132,7 @@ def _budget_figures(team, month):
             "activity_this_month": grand_totals["actual"],
             "available": grand_totals["available"],
         },
-        "net_worth_card": NetWorthService(team).get_net_worth_card_data(month, categories),
+        "net_worth_card": NetWorthService(book).get_net_worth_card_data(month, categories),
     }
 
 
@@ -183,8 +184,8 @@ def _budget_cells(figures):
     return cells
 
 
-@login_and_team_required
-def budget_month_view(request, team_slug):
+@login_and_book_required
+def budget_month_view(request, team_slug, book_slug):
     month = _month_from_request(request)
 
     if request.method == "POST":
@@ -192,16 +193,17 @@ def budget_month_view(request, team_slug):
         # saves through `budget_save_amount` instead and never navigates.
         # Budget rows are created lazily on first save (a GET must not write).
         # The form posts budget_id when a row already exists, category_id otherwise.
+        # Only the categories this book budgets: with future income off, an income
+        # row is refused here exactly as the JSON endpoints refuse it.
         budget_id = request.POST.get("budget_id")
         if budget_id:
-            budget = get_object_or_404(Budget, id=budget_id, team=request.team)
-        else:
-            category = get_object_or_404(
-                Account.objects.filter(team=request.team, account_group__account_type__in=("expense", "income")),
-                id=request.POST.get("category_id"),
+            budget = get_object_or_404(
+                Budget, id=budget_id, book=request.book, category__in=_budget_categories(request.book)
             )
+        else:
+            category = get_object_or_404(_budget_categories(request.book), id=request.POST.get("category_id"))
             budget, _created = Budget.objects.get_or_create(
-                team=request.team,
+                book=request.book,
                 category=category,
                 month=_parse_month(request.POST.get("budget_month")) if request.POST.get("budget_month") else month,
                 defaults={"budget_amount": 0},
@@ -215,16 +217,16 @@ def budget_month_view(request, team_slug):
                 _("%(category)s budget set to $%(amount)s.")
                 % {"category": budget.category.name, "amount": form.cleaned_data["budget_amount"]},
             )
-            return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
+            return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}")
         messages.error(request, _("Could not save budget amount: %(errors)s") % {"errors": form.errors.as_text()})
 
-    figures = _budget_figures(request.team, month)
+    figures = _budget_figures(request.book, month)
 
     # Every account type is a valid "Move to..." target in the Actual popup (the
     # client groups them by type); moving onto a feed account makes it a transfer.
     # System accounts (reconciliation adjustments) are bookkeeping, not destinations.
     all_accounts = (
-        Account.for_team.filter(account_group__isnull=False, is_system=False)
+        Account.for_book.filter(account_group__isnull=False, is_system=False)
         .select_related("account_group")
         .order_by("name")
     )
@@ -232,7 +234,7 @@ def budget_month_view(request, team_slug):
 
     # API URLs for React
     api_urls = {
-        "lines": f"/a/{team_slug}/journal/api/lines/",
+        "lines": f"/a/{team_slug}/{book_slug}/journal/api/lines/",
     }
 
     return render(
@@ -240,7 +242,7 @@ def budget_month_view(request, team_slug):
         "budget/budget_home.html",
         {
             "active_tab": "budget",
-            "page_title": f"Budget | {request.team}",
+            "page_title": f"Budget | {book_display_name(request.book)}",
             "month": month,
             "end_date": month + relativedelta(months=1, days=-1),
             "sections": figures["sections"],
@@ -252,23 +254,22 @@ def budget_month_view(request, team_slug):
             "next_month": month + relativedelta(months=1),
             "all_accounts": all_accounts_data,
             "api_urls": api_urls,
-            "team_slug": team_slug,
-            "save_amount_url": f"/a/{team_slug}/budget/save-amount/",
+            "save_amount_url": f"/a/{team_slug}/{book_slug}/budget/save-amount/",
         },
     )
 
 
-@login_and_team_required
+@login_and_book_required
 @require_GET
-def unassigned_api(request, team_slug):
+def unassigned_api(request, team_slug, book_slug):
     """The Unassigned figure for the current month, for the sidebar pill to refresh
     itself after any write (see assets/javascript/unassigned/unassigned-pill.js)."""
-    return JsonResponse(pill_context(compute_unassigned(request.team, date.today())))
+    return JsonResponse(pill_context(compute_unassigned(request.book, date.today())))
 
 
-@login_and_team_required
+@login_and_book_required
 @require_POST
-def budget_save_amount(request, team_slug):
+def budget_save_amount(request, team_slug, book_slug):
     """Save one budget amount and return every figure the page shows for that month.
 
     The budget table posts here on blur/Enter so the row, its subtotals, the
@@ -289,7 +290,7 @@ def budget_save_amount(request, team_slug):
         category_id = int(payload.get("category_id"))
     except (TypeError, ValueError):
         return JsonResponse({"error": _("Unknown budget category.")}, status=400)
-    category = _budget_categories(request.team).filter(pk=category_id).first()
+    category = _budget_categories(request.book).filter(pk=category_id).first()
     if category is None:
         return JsonResponse({"error": _("Unknown budget category.")}, status=400)
 
@@ -304,7 +305,7 @@ def budget_save_amount(request, team_slug):
 
     with transaction.atomic():
         budget, created = Budget.objects.select_for_update().get_or_create(
-            team=request.team,
+            book=request.book,
             category=category,
             month=month,
             defaults={"budget_amount": amount},
@@ -318,26 +319,26 @@ def budget_save_amount(request, team_slug):
             "saved": True,
             "category_id": category.pk,
             "amount": f"{amount:.2f}",
-            "cells": _budget_cells(_budget_figures(request.team, month)),
+            "cells": _budget_cells(_budget_figures(request.book, month)),
         }
     )
 
 
-@login_and_team_required
-def budget_autofill_view(request, team_slug):
+@login_and_book_required
+def budget_autofill_view(request, team_slug, book_slug):
     """Handle auto-fill budget actions from the sidebar."""
     if request.method != "POST":
-        return redirect("budget:budget_home", team_slug=team_slug)
+        return redirect("budget:budget_home", team_slug=team_slug, book_slug=book_slug)
 
     action = request.POST.get("action")
     month = _parse_month(request.POST.get("month"))
 
     prev_month = month - relativedelta(months=1)
-    service = BudgetService(request.team)
+    service = BudgetService(request.book)
 
     categories = list(
-        Account.for_team.filter(
-            account_group__account_type__in=("expense", "income"),
+        Account.for_book.filter(
+            account_group__account_type__in=budgeted_account_types(request.book),
         )
         .select_related("account_group")
         .order_by("account_group__name", "name")
@@ -351,13 +352,13 @@ def budget_autofill_view(request, team_slug):
         categories = [c for c in categories if str(c.pk) in selected_ids]
 
     # Ensure budgets exist for this month
-    existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
+    existing_budgets = {b.category_id: b for b in Budget.objects.filter(book=request.book, month=month)}
     missing_budgets = []
     for category in categories:
         if category.pk not in existing_budgets:
             missing_budgets.append(
                 Budget(
-                    team=request.team,
+                    book=request.book,
                     category=category,
                     month=month,
                     budget_amount=0,
@@ -365,11 +366,11 @@ def budget_autofill_view(request, team_slug):
             )
     if missing_budgets:
         Budget.objects.bulk_create(missing_budgets, ignore_conflicts=True)
-        existing_budgets = {b.category_id: b for b in Budget.objects.filter(team=request.team, month=month)}
+        existing_budgets = {b.category_id: b for b in Budget.objects.filter(book=request.book, month=month)}
 
     if action == "assigned_last_month":
         prev_budgets = {
-            b.category_id: b.budget_amount for b in Budget.objects.filter(team=request.team, month=prev_month)
+            b.category_id: b.budget_amount for b in Budget.objects.filter(book=request.book, month=prev_month)
         }
         updates = []
         for cat in categories:
@@ -394,7 +395,7 @@ def budget_autofill_view(request, team_slug):
 
     elif action == "assign_zero":
         category_pks = [cat.pk for cat in categories]
-        Budget.objects.filter(team=request.team, month=month, category_id__in=category_pks).update(
+        Budget.objects.filter(book=request.book, month=month, category_id__in=category_pks).update(
             budget_amount=Decimal("0")
         )
         messages.success(request, _("Budgets set to zero."))
@@ -420,7 +421,7 @@ def budget_autofill_view(request, team_slug):
         Budget.objects.bulk_update(updates, ["budget_amount"])
         messages.success(request, _("Budgets adjusted so all available amounts are zero."))
 
-    return redirect(f"/a/{team_slug}/budget/?month={month.isoformat()}")
+    return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}")
 
 
 # =============================================================================
@@ -432,11 +433,11 @@ GRID_DEFAULT_MONTHS = 12
 GRID_MAX_AMOUNT = MAX_BUDGET_AMOUNT
 
 
-def _budget_categories(team):
-    """Income/expense category accounts for a team, in budget-table display order:
-    income sections first, then expenses, each grouped alphabetically."""
+def _budget_categories(book):
+    """The categories a book budgets (see `budgeted_account_types`), in budget-table
+    display order: income sections first, then expenses, each grouped alphabetically."""
     return (
-        Account.objects.filter(team=team, account_group__account_type__in=("expense", "income"))
+        Account.objects.filter(book=book, account_group__account_type__in=budgeted_account_types(book))
         .select_related("account_group")
         .annotate(
             type_order=Case(
@@ -449,8 +450,8 @@ def _budget_categories(team):
     )
 
 
-@login_and_team_required
-def budget_grid_view(request, team_slug):
+@login_and_book_required
+def budget_grid_view(request, team_slug, book_slug):
     """Multi-month budget editor: one row per category, one column per month."""
     start_param = request.GET.get("start")
     # Default to January of the current year so the grid lines up with a typical Jan–Dec spreadsheet
@@ -464,10 +465,10 @@ def budget_grid_view(request, team_slug):
 
     months = [start + relativedelta(months=i) for i in range(num_months)]
 
-    categories = list(_budget_categories(request.team))
+    categories = list(_budget_categories(request.book))
 
     amounts = {}
-    for budget in Budget.objects.filter(team=request.team, month__gte=months[0], month__lte=months[-1]):
+    for budget in Budget.objects.filter(book=request.book, month__gte=months[0], month__lte=months[-1]):
         amounts.setdefault(budget.category_id, {})[budget.month.isoformat()] = str(budget.budget_amount)
 
     groups = []
@@ -490,8 +491,8 @@ def budget_grid_view(request, team_slug):
         "numMonths": num_months,
         "prevStart": (start - relativedelta(months=num_months)).isoformat(),
         "nextStart": (start + relativedelta(months=num_months)).isoformat(),
-        "saveUrl": f"/a/{team_slug}/budget/grid/save/",
-        "budgetUrl": f"/a/{team_slug}/budget/",
+        "saveUrl": f"/a/{team_slug}/{book_slug}/budget/grid/save/",
+        "budgetUrl": f"/a/{team_slug}/{book_slug}/budget/",
     }
 
     return render(
@@ -499,7 +500,7 @@ def budget_grid_view(request, team_slug):
         "budget/budget_grid.html",
         {
             "active_tab": "budget",
-            "page_title": f"Edit Budgets | {request.team}",
+            "page_title": f"Edit Budgets | {book_display_name(request.book)}",
             "grid_props": grid_props,
             "start": start,
             "end": months[-1],
@@ -507,9 +508,9 @@ def budget_grid_view(request, team_slug):
     )
 
 
-@login_and_team_required
+@login_and_book_required
 @require_POST
-def budget_grid_save(request, team_slug):
+def budget_grid_save(request, team_slug, book_slug):
     """Bulk upsert budget amounts from the grid editor.
 
     Body: {"changes": [{"category_id": int, "month": "YYYY-MM-DD", "amount": "123.45"}, ...]}
@@ -526,7 +527,7 @@ def budget_grid_save(request, team_slug):
         return JsonResponse({"error": "Too many changes in one request."}, status=400)
 
     category_ids = {c.get("category_id") for c in changes if isinstance(c, dict)}
-    valid_category_ids = set(_budget_categories(request.team).filter(pk__in=category_ids).values_list("pk", flat=True))
+    valid_category_ids = set(_budget_categories(request.book).filter(pk__in=category_ids).values_list("pk", flat=True))
 
     # Last write wins if the same cell appears twice
     merged = {}
@@ -559,7 +560,7 @@ def budget_grid_save(request, team_slug):
         existing = {
             (b.category_id, b.month): b
             for b in Budget.objects.select_for_update().filter(
-                team=request.team,
+                book=request.book,
                 category_id__in={cid for cid, _month in merged},
                 month__in={month for _cid, month in merged},
             )
@@ -574,7 +575,7 @@ def budget_grid_save(request, team_slug):
                     budget.budget_amount = amount
                     updates.append(budget)
             else:
-                creates.append(Budget(team=request.team, category_id=category_id, month=month, budget_amount=amount))
+                creates.append(Budget(book=request.book, category_id=category_id, month=month, budget_amount=amount))
         if updates:
             Budget.objects.bulk_update(updates, ["budget_amount"])
         if creates:
@@ -660,18 +661,18 @@ def _arcade_level(xp):
     }
 
 
-@login_and_team_required
-def goals_list_view(request, team_slug):
+@login_and_book_required
+def goals_list_view(request, team_slug, book_slug):
     """List all goals with progress for the selected month."""
     month = _month_from_request(request)
     style = _goals_style(request)
-    service = GoalService(request.team)
+    service = GoalService(request.book)
     summary = service.get_goal_summary(month)
     goals = list(summary["goals"])
 
     # Every allocation for these goals in one query; used for streaks and pace
     amounts_by_goal = defaultdict(dict)
-    for goal_id, alloc_month, amount in GoalAllocation.objects.filter(team=request.team, goal__in=goals).values_list(
+    for goal_id, alloc_month, amount in GoalAllocation.objects.filter(book=request.book, goal__in=goals).values_list(
         "goal_id", "month", "amount"
     ):
         amounts_by_goal[goal_id][alloc_month] = amount
@@ -732,14 +733,14 @@ def goals_list_view(request, team_slug):
         )
 
     # Get net worth card data
-    net_worth_service = NetWorthService(request.team)
+    net_worth_service = NetWorthService(request.book)
     net_worth_card = net_worth_service.get_net_worth_card_data(month)
     available = net_worth_card["available"]
 
     on_track_count = sum(1 for item in goal_items if item["funded"] or not item["behind_pace"])
 
     total_saved = summary["total_saved"]
-    has_completed_goal = Goal.objects.filter(team=request.team, is_complete=True).exists()
+    has_completed_goal = Goal.objects.filter(book=request.book, is_complete=True).exists()
     achievements = [
         {
             "key": "first_save",
@@ -803,7 +804,7 @@ def goals_list_view(request, team_slug):
         "budget/goals_list.html",
         {
             "active_tab": "goals",
-            "page_title": f"Goals | {request.team}",
+            "page_title": f"Goals | {book_display_name(request.book)}",
             "month": month,
             "style": style,
             "style_label": GOAL_STYLES[style],
@@ -822,16 +823,16 @@ def goals_list_view(request, team_slug):
     )
 
 
-@login_and_team_required
+@login_and_book_required
 @require_POST
-def goal_assign_available(request, team_slug, pk):
+def goal_assign_available(request, team_slug, book_slug, pk):
     """Assign funds to a goal for a month (JSON endpoint for the goals page).
 
     Body: {"month": "YYYY-MM-DD", "amount": "123.45"}. Without "amount", assigns
     all currently-available funds, capped at what the goal still needs. Amounts
     are *added* to the month's existing allocation.
     """
-    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+    goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
     try:
         payload = json.loads(request.body) if request.body else {}
@@ -847,12 +848,12 @@ def goal_assign_available(request, team_slug, pk):
 
     with transaction.atomic():
         allocation = (
-            GoalAllocation.objects.select_for_update().filter(team=request.team, goal=goal, month=month).first()
+            GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
         )
         month_amount = allocation.amount if allocation else Decimal("0")
         old_saved = goal.allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0")
         remaining = goal.target_amount - old_saved
-        available = NetWorthService(request.team).get_net_worth_card_data(month)["available"]
+        available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
 
         raw_amount = payload.get("amount")
         if raw_amount is None:
@@ -870,7 +871,7 @@ def goal_assign_available(request, team_slug, pk):
                 return JsonResponse({"error": "Invalid amount."}, status=400)
 
         amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        GoalService(request.team).update_allocation(goal, month, month_amount + amount)
+        GoalService(request.book).update_allocation(goal, month, month_amount + amount)
 
     new_saved = old_saved + amount
     if goal.target_amount > 0:
@@ -908,9 +909,9 @@ def goal_assign_available(request, team_slug, pk):
     )
 
 
-@login_and_team_required
+@login_and_book_required
 @require_POST
-def goal_withdraw(request, team_slug, pk):
+def goal_withdraw(request, team_slug, book_slug, pk):
     """Take funds back out of a goal (JSON endpoint for the goals page).
 
     Body: {"month": "YYYY-MM-DD", "amount": "123.45"}. Without "amount",
@@ -918,7 +919,7 @@ def goal_withdraw(request, team_slug, pk):
     the given month's allocation (which may go negative), so past months'
     contribution history is never rewritten.
     """
-    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+    goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
     try:
         payload = json.loads(request.body) if request.body else {}
@@ -935,11 +936,11 @@ def goal_withdraw(request, team_slug, pk):
 
     with transaction.atomic():
         allocation = (
-            GoalAllocation.objects.select_for_update().filter(team=request.team, goal=goal, month=month).first()
+            GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
         )
         month_amount = allocation.amount if allocation else Decimal("0")
         old_saved = goal.allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0")
-        available = NetWorthService(request.team).get_net_worth_card_data(month)["available"]
+        available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
 
         if old_saved <= 0:
             return JsonResponse({"error": "Nothing saved to withdraw."}, status=400)
@@ -961,7 +962,7 @@ def goal_withdraw(request, team_slug, pk):
                 )
 
         amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        GoalService(request.team).update_allocation(goal, month, month_amount - amount)
+        GoalService(request.book).update_allocation(goal, month, month_amount - amount)
 
     new_saved = old_saved - amount
     if goal.target_amount > 0:
@@ -999,17 +1000,17 @@ def goal_withdraw(request, team_slug, pk):
     )
 
 
-@login_and_team_required
-def goal_create_view(request, team_slug):
+@login_and_book_required
+def goal_create_view(request, team_slug, book_slug):
     """Create a new goal."""
     if request.method == "POST":
         form = GoalForm(request.POST)
         if form.is_valid():
             goal = form.save(commit=False)
-            goal.team = request.team
+            goal.book = request.book
             goal.save()
             messages.success(request, _("Goal created successfully."))
-            return redirect("budget:goals_list", team_slug=team_slug)
+            return redirect("budget:goals_list", team_slug=team_slug, book_slug=book_slug)
     else:
         form = GoalForm()
 
@@ -1018,17 +1019,17 @@ def goal_create_view(request, team_slug):
         "budget/goal_form.html",
         {
             "active_tab": "goals",
-            "page_title": f"New Goal | {request.team}",
+            "page_title": f"New Goal | {book_display_name(request.book)}",
             "form": form,
             "is_new": True,
         },
     )
 
 
-@login_and_team_required
-def goal_detail_view(request, team_slug, pk):
+@login_and_book_required
+def goal_detail_view(request, team_slug, book_slug, pk):
     """View a single goal with full details and allocation history."""
-    goal = get_object_or_404(Goal.objects.filter(team=request.team).with_progress(), pk=pk)
+    goal = get_object_or_404(Goal.objects.filter(book=request.book).with_progress(), pk=pk)
 
     allocations = goal.allocations.all()[:12]  # Last 12 months
 
@@ -1037,24 +1038,24 @@ def goal_detail_view(request, team_slug, pk):
         "budget/goal_detail.html",
         {
             "active_tab": "goals",
-            "page_title": f"{goal.name} | {request.team}",
+            "page_title": f"{goal.name} | {book_display_name(request.book)}",
             "goal": goal,
             "allocations": allocations,
         },
     )
 
 
-@login_and_team_required
-def goal_update_view(request, team_slug, pk):
+@login_and_book_required
+def goal_update_view(request, team_slug, book_slug, pk):
     """Update an existing goal."""
-    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+    goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
     if request.method == "POST":
         form = GoalForm(request.POST, instance=goal)
         if form.is_valid():
             form.save()
             messages.success(request, _("Goal updated successfully."))
-            return redirect("budget:goal_detail", team_slug=team_slug, pk=pk)
+            return redirect("budget:goal_detail", team_slug=team_slug, book_slug=book_slug, pk=pk)
     else:
         form = GoalForm(instance=goal)
 
@@ -1063,7 +1064,7 @@ def goal_update_view(request, team_slug, pk):
         "budget/goal_form.html",
         {
             "active_tab": "goals",
-            "page_title": f"Edit {goal.name} | {request.team}",
+            "page_title": f"Edit {goal.name} | {book_display_name(request.book)}",
             "form": form,
             "goal": goal,
             "is_new": False,
@@ -1071,33 +1072,33 @@ def goal_update_view(request, team_slug, pk):
     )
 
 
-@login_and_team_required
-def goal_delete_view(request, team_slug, pk):
+@login_and_book_required
+def goal_delete_view(request, team_slug, book_slug, pk):
     """Delete a goal (or archive it)."""
-    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+    goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
     if request.method == "POST":
         # Soft delete by archiving
         goal.is_archived = True
         goal.save()
         messages.success(request, _("Goal archived successfully."))
-        return redirect("budget:goals_list", team_slug=team_slug)
+        return redirect("budget:goals_list", team_slug=team_slug, book_slug=book_slug)
 
     return render(
         request,
         "budget/goal_confirm_delete.html",
         {
             "active_tab": "goals",
-            "page_title": f"Archive {goal.name} | {request.team}",
+            "page_title": f"Archive {goal.name} | {book_display_name(request.book)}",
             "goal": goal,
         },
     )
 
 
-@login_and_team_required
-def goal_allocation_update_view(request, team_slug, pk):
+@login_and_book_required
+def goal_allocation_update_view(request, team_slug, book_slug, pk):
     """Update a goal allocation for a specific month."""
-    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+    goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
     if request.method == "POST":
         amount = request.POST.get("amount", "0")
@@ -1109,25 +1110,25 @@ def goal_allocation_update_view(request, team_slug, pk):
             amount = Decimal("0")
         if amount < 0:
             messages.error(request, _("Allocation amount cannot be negative."))
-            return redirect(f"/a/{team_slug}/budget/goals/?month={month.isoformat()}")
+            return redirect(f"/a/{team_slug}/{book_slug}/budget/goals/?month={month.isoformat()}")
 
-        service = GoalService(request.team)
+        service = GoalService(request.book)
         service.update_allocation(goal, month, amount)
 
         # Return to goals list at the same month
-        return redirect(f"/a/{team_slug}/budget/goals/?month={month.isoformat()}")
+        return redirect(f"/a/{team_slug}/{book_slug}/budget/goals/?month={month.isoformat()}")
 
-    return redirect("budget:goals_list", team_slug=team_slug)
+    return redirect("budget:goals_list", team_slug=team_slug, book_slug=book_slug)
 
 
-@login_and_team_required
-def goal_complete_view(request, team_slug, pk):
+@login_and_book_required
+def goal_complete_view(request, team_slug, book_slug, pk):
     """Mark a goal as complete."""
-    goal = get_object_or_404(Goal.objects.filter(team=request.team), pk=pk)
+    goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
     if request.method == "POST":
         goal.is_complete = True
         goal.save()
         messages.success(request, _("Congratulations! Goal marked as complete."))
 
-    return redirect("budget:goal_detail", team_slug=team_slug, pk=pk)
+    return redirect("budget:goal_detail", team_slug=team_slug, book_slug=book_slug, pk=pk)

@@ -210,7 +210,7 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
         <div>
           <h2 className="text-xl font-semibold tracking-tight">{gettext('Import complete')}</h2>
           <p className="mt-1 text-base-content/70 text-sm">
-            {gettext('This team’s books now match the file you loaded.')}
+            {gettext('This set of books now matches the file you loaded.')}
           </p>
         </div>
       </div>
@@ -230,7 +230,7 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
           three pixels above it). */}
       {status.safety_archive_available && safetyLink && (
         <a href={safetyLink} className="link link-primary text-sm block w-fit" data-testid="safety-download-done">
-          {gettext('Download a copy of this team’s books from just before the import')}
+          {gettext('Download a copy of this set of books from just before the import')}
         </a>
       )}
 

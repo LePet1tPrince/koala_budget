@@ -8,7 +8,7 @@
 <section class="app-card">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
         {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
@@ -22,7 +22,7 @@
     <div class="flex flex-wrap items-center gap-2">
       {# The shared month picker (budget/react/BudgetMonthPicker.jsx); it navigates via ?month= #}
       <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}" data-testid="dollar-map-month-picker"></div>
-      <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
+      <a href="{% url 'budget:budget_home' request.team.slug request.book.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
         {% icon "pen-to-square" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Edit Budget" %}
       </a>
@@ -81,7 +81,7 @@
           </li>
         {% empty %}
           <li class="text-base-content/70">
-            {% url 'budget:goals_list' request.team.slug as goals_url %}
+            {% url 'budget:goals_list' request.team.slug request.book.slug as goals_url %}
             {% blocktranslate trimmed %}No goals yet. <a class="link link-primary" href="{{ goals_url }}">Set one up</a>.{% endblocktranslate %}
           </li>
         {% endfor %}

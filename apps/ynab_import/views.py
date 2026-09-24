@@ -25,7 +25,7 @@ from kombu.exceptions import OperationalError
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
-from apps.teams.decorators import login_and_team_required
+from apps.books.decorators import login_and_book_required
 
 from .models import MAX_UPLOAD_BYTES, YnabImport
 from .services.apply import can_import
@@ -70,7 +70,7 @@ def json_errors(view):
             return JsonResponse(
                 {
                     "error": (
-                        "The server could not complete that step. If this team was set up from a new "
+                        "The server could not complete that step. If this book was set up from a new "
                         "version of the app, its database may need migrating."
                     ),
                     "detail": detail,
@@ -82,8 +82,8 @@ def json_errors(view):
 
 
 @ensure_csrf_cookie
-@login_and_team_required
-def ynab_import_home(request, team_slug):
+@login_and_book_required
+def ynab_import_home(request, team_slug, book_slug):
     """
     The wizard.
 
@@ -94,10 +94,10 @@ def ynab_import_home(request, team_slug):
     this page has to be able to answer what happened while it was gone. An import
     still running, or one that finished or failed in the last day, is handed to the
     wizard so it opens on that rather than on an upload form (or, once the
-    transactions are in, on a "this team already has transactions" refusal that
+    transactions are in, on a "this book already has transactions" refusal that
     tells the user nothing about the import they ran).
     """
-    resume = YnabImport.objects.resumable(request.team)
+    resume = YnabImport.objects.resumable(request.book)
 
     return render(
         request,
@@ -113,18 +113,19 @@ def ynab_import_home(request, team_slug):
             "page_title": _("Import from YNAB"),
             "ynab_props": {
                 "teamSlug": team_slug,
-                "teamName": request.team.name,
-                "canImport": can_import(request.team),
+                "teamName": request.book.name,
+                "bookName": request.book.name,
+                "canImport": can_import(request.book),
                 "resume": resume.as_dict() if resume else None,
-                "homeUrl": reverse("web_team:home", args=[team_slug]),
-                "accountsUrl": reverse("accounts:accounts_home", args=[team_slug]),
-                "budgetUrl": reverse("budget:budget_home", args=[team_slug]),
-                "goalsUrl": reverse("budget:goals_list", args=[team_slug]),
+                "homeUrl": reverse("web_book:home", args=[team_slug, book_slug]),
+                "accountsUrl": reverse("accounts:accounts_home", args=[team_slug, book_slug]),
+                "budgetUrl": reverse("budget:budget_home", args=[team_slug, book_slug]),
+                "goalsUrl": reverse("budget:goals_list", args=[team_slug, book_slug]),
                 "urls": {
-                    "upload": reverse("ynab_import:api_upload", args=[team_slug]),
-                    "preview": reverse("ynab_import:api_preview", args=[team_slug]),
-                    "apply": reverse("ynab_import:api_apply", args=[team_slug]),
-                    "status": reverse("ynab_import:api_status", args=[team_slug]),
+                    "upload": reverse("ynab_import:api_upload", args=[team_slug, book_slug]),
+                    "preview": reverse("ynab_import:api_preview", args=[team_slug, book_slug]),
+                    "apply": reverse("ynab_import:api_apply", args=[team_slug, book_slug]),
+                    "status": reverse("ynab_import:api_status", args=[team_slug, book_slug]),
                 },
             },
         },
@@ -140,19 +141,19 @@ def _json_body(request) -> dict:
 
 
 def _record(request, body) -> YnabImport | None:
-    """The import this request is about, scoped to the team -- never by id alone."""
-    return YnabImport.objects.filter(team=request.team, id=body.get("import_id")).first()
+    """The import this request is about, scoped to the book -- never by id alone."""
+    return YnabImport.objects.filter(book=request.book, id=body.get("import_id")).first()
 
 
 @require_POST
-@login_and_team_required
+@login_and_book_required
 @json_errors
-def api_upload(request, team_slug):
+def api_upload(request, team_slug, book_slug):
     """
     Take both exports, work out which is which, and hand back what we found.
 
     The files are stored so the later screens and the Celery worker read the same
-    bytes; nothing is written to the team's books here.
+    bytes; nothing is written to the books here.
     """
     uploads = request.FILES.getlist("files")
     if len(uploads) < 2:
@@ -172,7 +173,7 @@ def api_upload(request, team_slug):
         return JsonResponse({"error": str(error)}, status=400)
 
     record = YnabImport.objects.create(
-        team=request.team,
+        book=request.book,
         created_by=request.user,
         register_csv=register_bytes.decode("utf-8", errors="replace"),
         plan_csv=plan_bytes.decode("utf-8", errors="replace"),
@@ -190,7 +191,7 @@ def api_upload(request, team_slug):
     return JsonResponse(
         {
             "import_id": record.id,
-            "can_import": can_import(request.team),
+            "can_import": can_import(request.book),
             **analysis_payload(analysis),
             **plan_payload(build(analysis)),
         }
@@ -198,9 +199,9 @@ def api_upload(request, team_slug):
 
 
 @require_POST
-@login_and_team_required
+@login_and_book_required
 @json_errors
-def api_preview(request, team_slug):
+def api_preview(request, team_slug, book_slug):
     """
     What the import will produce, given the answers so far.
 
@@ -231,9 +232,9 @@ def api_preview(request, team_slug):
 
 
 @require_POST
-@login_and_team_required
+@login_and_book_required
 @json_errors
-def api_apply(request, team_slug):
+def api_apply(request, team_slug, book_slug):
     """
     Start the import.
 
@@ -247,12 +248,13 @@ def api_apply(request, team_slug):
         return JsonResponse({"error": "That import is no longer available. Start again."}, status=404)
     if record.status != YnabImport.STATUS_UPLOADED:
         return JsonResponse({"import_id": record.id, **record.as_dict()})
-    if not can_import(request.team):
+    if not can_import(request.book):
         return JsonResponse(
             {
                 "error": (
-                    "This team already has transactions. A YNAB import brings a whole set of books, so it needs "
-                    "an empty team -- create a new team, or delete the existing transactions first."
+                    "This set of books already has transactions. A YNAB import brings a whole set of books, "
+                    "so it needs "
+                    "an empty one -- create a new set of books, or delete the existing transactions first."
                 )
             },
             status=409,
@@ -277,9 +279,9 @@ def api_apply(request, team_slug):
     return JsonResponse({"import_id": record.id, "task_id": task_id, **record.as_dict()})
 
 
-@login_and_team_required
+@login_and_book_required
 @json_errors
-def api_status(request, team_slug):
+def api_status(request, team_slug, book_slug):
     """
     Where the import has got to.
 
@@ -292,7 +294,7 @@ def api_status(request, team_slug):
     that marks the row failed, so the row says "running" forever. Without this the
     wizard sits at whatever it last saw, waiting for a worker that is not coming.
     """
-    record = YnabImport.objects.filter(team=request.team, id=request.GET.get("import_id")).first()
+    record = YnabImport.objects.filter(book=request.book, id=request.GET.get("import_id")).first()
     if record is None:
         return JsonResponse({"error": "That import is no longer available."}, status=404)
 

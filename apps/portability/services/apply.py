@@ -1,5 +1,5 @@
 """
-Applying an archive to a team: read, safety-export, wipe, write, verify
+Applying an archive to a book: read, safety-export, wipe, write, verify
 (§4.4, §6, §7 Phase 3 of `docs/export-import-plan.md`).
 
 One `transaction.atomic` block, in the order that ordering exists to enforce:
@@ -28,7 +28,7 @@ from apps.reconciliation.models import Reconciliation
 
 from . import export, read, schema, write
 from .schema import UNCATEGORIZED_STATUS
-from .wipe import WipeCounts, wipe_team
+from .wipe import WipeCounts, wipe_book
 
 ZERO = Decimal("0")
 
@@ -69,9 +69,9 @@ class ApplyResult:
         }
 
 
-def build_safety_archive(team) -> bytes:
+def build_safety_archive(book) -> bytes:
     """
-    A copy of `team`'s **own current** books, taken before anything about it
+    A copy of `book`'s **own current** books, taken before anything about it
     changes. This is the recovery path for "I imported the wrong file" (§4.4)
     -- it uses the exact same export path a user's own Export button does, so
     it is exactly as trustworthy as the feature it is insurance for.
@@ -86,25 +86,25 @@ def build_safety_archive(team) -> bytes:
     function is actually called, and it calls it, and saves the result,
     before opening the transaction `apply_archive` wraps.
     """
-    accounts, journal_rows, budget_rows = export.build_archive(team)
-    checks = export.build_checks(team)
-    omitted = export.build_omitted(team)
+    accounts, journal_rows, budget_rows = export.build_archive(book)
+    checks = export.build_checks(book)
+    omitted = export.build_omitted(book)
     return write.build_archive_bytes(
         accounts=accounts,
         journal=journal_rows,
         budget=budget_rows,
-        reconciliations=export.build_reconciliation_rows(team),
-        source={"team_name": team.name},
+        reconciliations=export.build_reconciliation_rows(book),
+        source={"team_name": book.team.name, "book_name": book.name},
         checks=checks,
         omitted=omitted,
     )
 
 
 @transaction.atomic
-def apply_archive(team, archive_bytes: bytes, *, user=None, on_progress=None) -> ApplyResult:
+def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) -> ApplyResult:
     """
-    Wipe `team` and write `archive_bytes` into it. One transaction: any
-    failure, including a failed check at the end, leaves `team` exactly as it
+    Wipe `book` and write `archive_bytes` into it. One transaction: any
+    failure, including a failed check at the end, leaves `book` exactly as it
     was (§6's "parse and validate first, wipe second, write third") -- and
     since the two `AuditEvent`s below are ordinary writes inside that same
     transaction, a failure rolls them back too, rather than leaving an audit
@@ -118,38 +118,38 @@ def apply_archive(team, archive_bytes: bytes, *, user=None, on_progress=None) ->
     report(5, "Reading the export")
     tables = read.read_archive(archive_bytes)  # raises DocumentError -- nothing written yet
 
-    report(15, "Clearing this team's existing books")
-    wipe_counts = wipe_team(team)
-    log_event(AuditEvent.DATA_WIPED, user=user, team=team, metadata={"counts": wipe_counts.as_dict()})
+    report(15, "Clearing out this set of books")
+    wipe_counts = wipe_book(book)
+    log_event(AuditEvent.DATA_WIPED, user=user, book=book, metadata={"counts": wipe_counts.as_dict()})
 
     report(25, "Writing accounts")
-    institution_by_name = _insert_institutions(team, tables.accounts)
-    payee_by_name = _insert_payees(team, tables.journal_rows)
-    group_by_name = _insert_account_groups(team, tables.accounts)
-    account_id_map = _insert_accounts(team, tables.accounts, institution_by_name, group_by_name)
+    institution_by_name = _insert_institutions(book, tables.accounts)
+    payee_by_name = _insert_payees(book, tables.journal_rows)
+    group_by_name = _insert_account_groups(book, tables.accounts)
+    account_id_map = _insert_accounts(book, tables.accounts, institution_by_name, group_by_name)
 
     report(40, "Writing goals")
-    goal_id_by_account_id = _insert_goals(team, tables.accounts, account_id_map)
+    goal_id_by_account_id = _insert_goals(book, tables.accounts, account_id_map)
 
     report(50, "Writing budgets")
-    _insert_budgets(team, tables.budget_rows, account_id_map)
-    _insert_goal_allocations(team, tables.budget_rows, account_id_map, goal_id_by_account_id)
+    _insert_budgets(book, tables.budget_rows, account_id_map)
+    _insert_goal_allocations(book, tables.budget_rows, account_id_map, goal_id_by_account_id)
 
     report(55, "Writing statements")
-    reconciliation_id_map = _insert_reconciliations(team, tables.reconciliations, account_id_map)
+    reconciliation_id_map = _insert_reconciliations(book, tables.reconciliations, account_id_map)
 
     report(60, "Writing the journal")
     entry_id_map, uncategorized_rows, lines_created = _insert_journal(
-        team, tables.journal_rows, account_id_map, payee_by_name, reconciliation_id_map
+        book, tables.journal_rows, account_id_map, payee_by_name, reconciliation_id_map
     )
 
     report(85, "Writing the bank feed")
     bank_transactions_created = _insert_bank_transactions(
-        team, tables.journal_rows, uncategorized_rows, account_id_map, entry_id_map
+        book, tables.journal_rows, uncategorized_rows, account_id_map, entry_id_map
     )
 
     report(95, "Checking the numbers")
-    _verify(tables, account_id_map, team)
+    _verify(tables, account_id_map, book)
 
     result = ApplyResult(
         wipe_counts=wipe_counts,
@@ -165,7 +165,7 @@ def apply_archive(team, archive_bytes: bytes, *, user=None, on_progress=None) ->
         bank_transactions=bank_transactions_created,
         reconciliations=len(reconciliation_id_map),
     )
-    log_event(AuditEvent.DATA_IMPORTED, user=user, team=team, metadata={"result": result.as_dict()})
+    log_event(AuditEvent.DATA_IMPORTED, user=user, book=book, metadata={"result": result.as_dict()})
     report(100, "Done")
     return result
 
@@ -185,11 +185,11 @@ def _first_by_key(rows, key):
     return order, seen
 
 
-def _insert_institutions(team, account_rows) -> dict[str, int]:
+def _insert_institutions(book, account_rows) -> dict[str, int]:
     order, by_name = _first_by_key(account_rows, lambda row: row["institution"])
     objs = [
         Institution(
-            team=team,
+            book=book,
             # NOT NULL, and the column is blank on every account with no
             # institution, so a name first seen on such a row decodes it None.
             is_archived=bool(by_name[name]["institution_is_archived"]),
@@ -201,24 +201,24 @@ def _insert_institutions(team, account_rows) -> dict[str, int]:
     return {obj.name: obj.id for obj in created}
 
 
-def _insert_payees(team, journal_rows) -> dict[str, int]:
+def _insert_payees(book, journal_rows) -> dict[str, int]:
     order, _by_name = _first_by_key(journal_rows, lambda row: row["payee"])
-    objs = [Payee(team=team, name=name) for name in order]
+    objs = [Payee(book=book, name=name) for name in order]
     created = Payee.objects.bulk_create(objs)
     return {obj.name: obj.id for obj in created}
 
 
-def _insert_account_groups(team, account_rows) -> dict[str, int]:
+def _insert_account_groups(book, account_rows) -> dict[str, int]:
     order, by_name = _first_by_key(account_rows, lambda row: row["group_name"])
-    objs = [AccountGroup(team=team, **schema.model_kwargs(schema.ACCOUNT_GROUP, by_name[name])) for name in order]
+    objs = [AccountGroup(book=book, **schema.model_kwargs(schema.ACCOUNT_GROUP, by_name[name])) for name in order]
     created = AccountGroup.objects.bulk_create(objs)
     return {obj.name: obj.id for obj in created}
 
 
-def _insert_accounts(team, account_rows, institution_by_name, group_by_name) -> dict[int, int]:
+def _insert_accounts(book, account_rows, institution_by_name, group_by_name) -> dict[int, int]:
     objs = [
         Account(
-            team=team,
+            book=book,
             account_group_id=group_by_name[row["group_name"]],
             institution_id=institution_by_name.get(row["institution"]) if row["institution"] else None,
             **schema.model_kwargs(schema.ACCOUNT, row, skip={"id"}),
@@ -232,7 +232,7 @@ def _insert_accounts(team, account_rows, institution_by_name, group_by_name) -> 
     return {row["account_id"]: obj.id for row, obj in zip(account_rows, created, strict=True)}
 
 
-def _insert_goals(team, account_rows, account_id_map) -> dict[int, int]:
+def _insert_goals(book, account_rows, account_id_map) -> dict[int, int]:
     """
     `{new_account_id: new_goal_id}`. Built with `bulk_create`, never
     `Goal.save()` -- that method creates its own backing `Account` when
@@ -242,7 +242,7 @@ def _insert_goals(team, account_rows, account_id_map) -> dict[int, int]:
     goal_rows = [row for row in account_rows if row["goal_name"] is not None]
     objs = [
         Goal(
-            team=team,
+            book=book,
             account_id=account_id_map[row["account_id"]],
             # Three NOT NULL columns that read.py does not require a goal row
             # to fill, the way _REQUIRED_WITH_FEED_SOURCE requires a feed
@@ -258,10 +258,10 @@ def _insert_goals(team, account_rows, account_id_map) -> dict[int, int]:
     return {obj.account_id: obj.id for obj in created}
 
 
-def _insert_budgets(team, budget_rows, account_id_map) -> None:
+def _insert_budgets(book, budget_rows, account_id_map) -> None:
     objs = [
         Budget(
-            team=team,
+            book=book,
             category_id=account_id_map[row["account_id"]],
             **schema.model_kwargs(schema.BUDGET, row, skip={"category"}),
         )
@@ -271,7 +271,7 @@ def _insert_budgets(team, budget_rows, account_id_map) -> None:
     Budget.objects.bulk_create(objs)
 
 
-def _insert_goal_allocations(team, budget_rows, account_id_map, goal_id_by_account_id) -> None:
+def _insert_goal_allocations(book, budget_rows, account_id_map, goal_id_by_account_id) -> None:
     objs = []
     for row in budget_rows:
         if row["kind"] != "goal":
@@ -279,7 +279,7 @@ def _insert_goal_allocations(team, budget_rows, account_id_map, goal_id_by_accou
         new_account_id = account_id_map[row["account_id"]]
         objs.append(
             GoalAllocation(
-                team=team,
+                book=book,
                 goal_id=goal_id_by_account_id[new_account_id],
                 **schema.model_kwargs(schema.GOAL_ALLOCATION, row, skip={"goal"}),
             )
@@ -287,11 +287,11 @@ def _insert_goal_allocations(team, budget_rows, account_id_map, goal_id_by_accou
     GoalAllocation.objects.bulk_create(objs)
 
 
-def _insert_reconciliations(team, rows, account_id_map) -> dict[int, int]:
+def _insert_reconciliations(book, rows, account_id_map) -> dict[int, int]:
     """`{file reconciliation_id: new id}`. Before the journal, whose lines point at these."""
     objs = [
         Reconciliation(
-            team=team,
+            book=book,
             account_id=account_id_map[row["account_id"]],
             adjustment_amount=row["adjustment_amount"] or Decimal("0"),
             **schema.model_kwargs(schema.RECONCILIATION, row, skip={"id", "account", "adjustment_amount"}),
@@ -303,7 +303,7 @@ def _insert_reconciliations(team, rows, account_id_map) -> dict[int, int]:
 
 
 def _insert_journal(
-    team, journal_rows, account_id_map, payee_by_name, reconciliation_id_map=None
+    book, journal_rows, account_id_map, payee_by_name, reconciliation_id_map=None
 ) -> tuple[dict[int, int], list[dict], int]:
     """`(entry_id_map, uncategorized_rows, lines_created)`."""
     entry_order: list[int] = []
@@ -323,7 +323,7 @@ def _insert_journal(
 
     entry_objs = [
         JournalEntry(
-            team=team,
+            book=book,
             payee_id=payee_by_name.get(entry_row_by_id[file_id]["payee"]),
             **schema.model_kwargs(schema.JOURNAL_ENTRY, entry_row_by_id[file_id], skip={"id", "payee"}),
         )
@@ -334,7 +334,7 @@ def _insert_journal(
 
     line_objs = [
         JournalLine(
-            team=team,
+            book=book,
             journal_entry_id=entry_id_map[file_id],
             account_id=account_id_map[row["account_id"]],
             reconciliation_id=(reconciliation_id_map or {}).get(row.get("reconciliation_id")),
@@ -348,13 +348,13 @@ def _insert_journal(
     # per line -- see JournalLine.save()'s own docstring on why that matters
     # at import volume, and bulk_create_for_import for why it is the shared
     # implementation rather than a second one that could drift from it.
-    budget_map = {(b.category_id, b.month): b.id for b in Budget.objects.filter(team=team)}
+    budget_map = {(b.category_id, b.month): b.id for b in Budget.objects.filter(book=book)}
     JournalLine.objects.bulk_create_for_import(line_objs, budget_map)
 
     return entry_id_map, uncategorized_rows, len(line_objs)
 
 
-def _insert_bank_transactions(team, journal_rows, uncategorized_rows, account_id_map, entry_id_map) -> int:
+def _insert_bank_transactions(book, journal_rows, uncategorized_rows, account_id_map, entry_id_map) -> int:
     """
     A straight insert, not a reconstruction: `feed_is_mirror` already says
     which leg is the mirror, so `transfer_mirror.sync_transfer` is never
@@ -367,7 +367,7 @@ def _insert_bank_transactions(team, journal_rows, uncategorized_rows, account_id
             continue
         objs.append(
             BankTransaction(
-                team=team,
+                book=book,
                 account_id=account_id_map[row["account_id"]],
                 journal_entry_id=entry_id_map[row["entry_id"]],
                 **schema.model_kwargs(schema.BANK_TRANSACTION, row),
@@ -376,7 +376,7 @@ def _insert_bank_transactions(team, journal_rows, uncategorized_rows, account_id
     for row in uncategorized_rows:
         objs.append(
             BankTransaction(
-                team=team,
+                book=book,
                 account_id=account_id_map[row["account_id"]],
                 journal_entry=None,
                 **schema.model_kwargs(schema.BANK_TRANSACTION, row),
@@ -389,7 +389,7 @@ def _insert_bank_transactions(team, journal_rows, uncategorized_rows, account_id
 # --- the integrity gate (§6) -------------------------------------------
 
 
-def _verify(tables: read.Tables, account_id_map: dict[int, int], team) -> None:
+def _verify(tables: read.Tables, account_id_map: dict[int, int], book) -> None:
     """
     Recompute `checks` from the destination and compare against what the file
     said before anything was deleted. Any mismatch raises -- which, inside
@@ -403,7 +403,7 @@ def _verify(tables: read.Tables, account_id_map: dict[int, int], team) -> None:
         # has nothing to verify against; nothing to compare is not a failure.
         return
 
-    actual = export.build_checks(team)
+    actual = export.build_checks(book)
 
     _require_equal("trial_balance", expected.get("trial_balance"), actual["trial_balance"])
     _require_equal("net_worth", expected.get("net_worth"), actual["net_worth"])

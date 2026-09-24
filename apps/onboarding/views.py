@@ -5,7 +5,7 @@ The takeover is a full-screen page at its own URL rather than a modal over the
 dashboard: the questionnaire is faster to answer without the app behind it, and a
 dedicated URL is what makes the flow resumable by simply navigating back to it.
 
-Every endpoint is team-scoped through `@login_and_team_required`, and the state is
+Every endpoint is book-scoped through `@login_and_book_required`, and the state is
 read and written server-side -- the client never decides what phase it is on.
 """
 
@@ -27,9 +27,9 @@ from django.views.decorators.http import require_POST
 from apps.accounts.models import ACCOUNT_TYPE_EQUITY, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
+from apps.books.decorators import login_and_book_required
 from apps.budget.models import Goal
 from apps.budget.services import NetWorthService
-from apps.teams.decorators import login_and_team_required
 from apps.teams.services.template_budget import PERSONAL_BUDGET_TEMPLATE
 from apps.teams.services.template_engine import apply_template
 
@@ -40,6 +40,7 @@ from .questions import (
     PHASE_LABELS,
     QUESTION_CATALOG,
     active_phases,
+    book_settings,
     catalog_payload,
 )
 from .services.builder import build_template, unanswered_required
@@ -54,13 +55,13 @@ from .services.opening import (
 from .services.review import ReviewError, apply_edits, grouped_for_review, parse_edits
 
 
-def get_or_create_state(team) -> OnboardingState:
+def get_or_create_state(book) -> OnboardingState:
     """
-    The state row is made on demand rather than by a signal on team creation, so
-    the signal stays cheap and teams that predate this feature are handled by the
+    The state row is made on demand rather than by a signal on book creation, so
+    the signal stays cheap and books that predate this feature are handled by the
     data migration rather than by a backfill here.
     """
-    state, _created = OnboardingState.objects.get_or_create(team=team)
+    state, _created = OnboardingState.objects.get_or_create(book=book)
     return state
 
 
@@ -78,13 +79,13 @@ def _state_payload(state: OnboardingState) -> dict:
 
 
 @ensure_csrf_cookie
-@login_and_team_required
-def onboarding_home(request, team_slug):
-    """The takeover. Finished teams are sent back to the dashboard."""
-    state = get_or_create_state(request.team)
+@login_and_book_required
+def onboarding_home(request, team_slug, book_slug):
+    """The takeover. Finished books are sent back to the dashboard."""
+    state = get_or_create_state(request.book)
 
     if state.is_finished:
-        return redirect("web_team:home", team_slug=team_slug)
+        return redirect("web_book:home", team_slug=team_slug, book_slug=book_slug)
 
     # Only record that they saw it. Advancing the phase here would skip the
     # welcome screen entirely -- the phase moves when the user begins answering.
@@ -101,24 +102,25 @@ def onboarding_home(request, team_slug):
             "onboarding_props": {
                 "teamSlug": team_slug,
                 "teamName": request.team.name,
+                "bookName": request.book.name,
                 "firstName": request.user.first_name,
                 "questions": catalog_payload(),
                 "phases": _phase_payload(),
                 "state": _state_payload(state),
-                "homeUrl": reverse("web_team:home", args=[team_slug]),
+                "homeUrl": reverse("web_book:home", args=[team_slug, book_slug]),
                 # The YNAB branch. An export answers every question in the catalog
                 # better than the user can, so it skips the questionnaire outright
                 # rather than asking them to answer it twice.
                 "ynabUrl": (
-                    reverse("ynab_import:home", args=[team_slug])
+                    reverse("ynab_import:home", args=[team_slug, book_slug])
                     if getattr(settings, "YNAB_IMPORT_ENABLED", False)
                     else ""
                 ),
                 "urls": {
-                    "answers": reverse("onboarding:api_answers", args=[team_slug]),
-                    "previewCoa": reverse("onboarding:api_preview_coa", args=[team_slug]),
-                    "complete": reverse("onboarding:api_complete", args=[team_slug]),
-                    "skip": reverse("onboarding:api_skip", args=[team_slug]),
+                    "answers": reverse("onboarding:api_answers", args=[team_slug, book_slug]),
+                    "previewCoa": reverse("onboarding:api_preview_coa", args=[team_slug, book_slug]),
+                    "complete": reverse("onboarding:api_complete", args=[team_slug, book_slug]),
+                    "skip": reverse("onboarding:api_skip", args=[team_slug, book_slug]),
                 },
             },
         },
@@ -194,7 +196,7 @@ def _clean_goal(value) -> dict | None:
     return goal
 
 
-def _create_first_goal(team, answers: dict):
+def _create_first_goal(book, answers: dict):
     """
     Create the goal the user named, so the Goals page is not empty on first visit.
 
@@ -212,7 +214,7 @@ def _create_first_goal(team, answers: dict):
         return
 
     AccountGroup.objects.get_or_create(
-        team=team,
+        book=book,
         name="Goals",
         defaults={"account_type": ACCOUNT_TYPE_EQUITY, "description": "Savings goals"},
     )
@@ -222,7 +224,7 @@ def _create_first_goal(team, answers: dict):
         target_date = parse_date(raw_date)
 
     Goal.objects.create(
-        team=team,
+        book=book,
         name=goal["name"],
         target_amount=Decimal(goal["target_amount"]) if goal.get("target_amount") else Decimal("0"),
         target_date=target_date,
@@ -230,15 +232,15 @@ def _create_first_goal(team, answers: dict):
 
 
 @require_POST
-@login_and_team_required
-def api_answers(request, team_slug):
+@login_and_book_required
+def api_answers(request, team_slug, book_slug):
     """
     Save answers and advance.
 
     Answers are merged rather than replaced, so a client that posts one phase at a
     time -- or the user stepping back and changing one -- never drops the rest.
     """
-    state = get_or_create_state(request.team)
+    state = get_or_create_state(request.book)
     if state.is_finished:
         return JsonResponse({"error": "Onboarding is already finished."}, status=409)
 
@@ -272,15 +274,15 @@ def api_answers(request, team_slug):
 
 
 @require_POST
-@login_and_team_required
-def api_preview_coa(request, team_slug):
+@login_and_book_required
+def api_preview_coa(request, team_slug, book_slug):
     """
     The chart of accounts these answers would produce, without writing anything.
 
     Built from the same `build_template` the apply step uses, so what the user
     reviews and what they get cannot drift apart.
     """
-    state = get_or_create_state(request.team)
+    state = get_or_create_state(request.book)
 
     body = _json_body(request)
     answers = {**state.answers, **_clean_answers(body.get("answers", {}))}
@@ -295,17 +297,17 @@ def api_preview_coa(request, team_slug):
 
 
 @require_POST
-@login_and_team_required
-def api_complete(request, team_slug):
+@login_and_book_required
+def api_complete(request, team_slug, book_slug):
     """
     Build the chart of accounts, apply the user's edits to it, and finish.
 
     Refuses while a required question is unanswered -- the client hides Continue
     in that case, but the rule lives here, not in the UI.
     """
-    state = get_or_create_state(request.team)
+    state = get_or_create_state(request.book)
     if state.is_finished:
-        return JsonResponse({"redirect": reverse("web_team:home", args=[team_slug])})
+        return JsonResponse({"redirect": reverse("web_book:home", args=[team_slug, book_slug])})
 
     body = _json_body(request)
     if answers := _clean_answers(body.get("answers", {})):
@@ -323,8 +325,12 @@ def api_complete(request, team_slug):
         return JsonResponse({"error": str(e)}, status=400)
 
     with transaction.atomic():
-        apply_template(team=request.team, template=template)
-        _create_first_goal(request.team, state.answers)
+        apply_template(book=request.book, template=template)
+        _create_first_goal(request.book, state.answers)
+        if settings_chosen := book_settings(state.answers):
+            for name, value in settings_chosen.items():
+                setattr(request.book, name, value)
+            request.book.save(update_fields=[*settings_chosen, "updated_at"])
         state.complete()
         state.save()
 
@@ -339,29 +345,29 @@ def api_complete(request, team_slug):
         },
     )
 
-    return JsonResponse({"redirect": reverse("web_team:home", args=[team_slug])})
+    return JsonResponse({"redirect": reverse("web_book:home", args=[team_slug, book_slug])})
 
 
-@login_and_team_required
-def api_tasks(request, team_slug):
+@login_and_book_required
+def api_tasks(request, team_slug, book_slug):
     """
     The guided tasks with their current state.
 
     Computed fresh on every call rather than cached: what unlocks a task is the
     user's own data changing, which happens on pages the rail is sitting over.
     """
-    state = get_or_create_state(request.team)
+    state = get_or_create_state(request.book)
     return JsonResponse(
         {
-            "tasks": task_state(request.team, state.tasks_done, team_slug=team_slug),
+            "tasks": task_state(request.book, state.tasks_done, url_args=request.book.url_args),
             "active": state.shows_tasks,
         }
     )
 
 
 @require_POST
-@login_and_team_required
-def api_task(request, team_slug):
+@login_and_book_required
+def api_task(request, team_slug, book_slug):
     """
     Record a guided task as done, or dismiss the rail entirely.
 
@@ -370,13 +376,15 @@ def api_task(request, team_slug):
     Accepting a claim for an auto-detected task would let a checklist say a user
     imported transactions when they did not.
     """
-    state = get_or_create_state(request.team)
+    state = get_or_create_state(request.book)
     body = _json_body(request)
 
     if body.get("action") == "resume":
         state.phase = OnboardingState.PHASE_TASKS
         state.save()
-        return JsonResponse({"active": True, "tasks": task_state(request.team, state.tasks_done, team_slug=team_slug)})
+        return JsonResponse(
+            {"active": True, "tasks": task_state(request.book, state.tasks_done, url_args=request.book.url_args)}
+        )
 
     if body.get("action") == "dismiss":
         state.finish_tasks()
@@ -386,7 +394,9 @@ def api_task(request, team_slug):
             request=request,
             metadata={"reason": "dismissed", "tasks_done": state.tasks_done},
         )
-        return JsonResponse({"active": False, "tasks": task_state(request.team, state.tasks_done, team_slug)})
+        return JsonResponse(
+            {"active": False, "tasks": task_state(request.book, state.tasks_done, url_args=request.book.url_args)}
+        )
 
     slug = body.get("slug")
     task = next((t for t in TASKS if t.slug == slug), None)
@@ -398,7 +408,7 @@ def api_task(request, team_slug):
     already_done = task.slug in state.tasks_done
     state.mark_task(task.slug)
 
-    tasks = task_state(request.team, state.tasks_done, team_slug=team_slug)
+    tasks = task_state(request.book, state.tasks_done, url_args=request.book.url_args)
     finished = all(t["state"] == DONE for t in tasks)
     if finished:
         state.finish_tasks()
@@ -420,35 +430,35 @@ def api_task(request, team_slug):
             "finished": finished,
             # Only computed when the walkthrough actually ends, so the ordinary
             # task POST stays a cheap write.
-            "summary": _finish_summary(request.team) if finished else None,
+            "summary": _finish_summary(request.book) if finished else None,
         }
     )
 
 
-def _finish_summary(team) -> dict:
+def _finish_summary(book) -> dict:
     """What the user built, for the finish card. Their own numbers, not a slogan."""
     from apps.accounts.models import Account
     from apps.bank_feed.models import BankTransaction
 
     return {
-        "accounts": Account.objects.filter(team=team, is_system=False).count(),
-        "transactions": BankTransaction.objects.filter(team=team).count(),
-        "net_worth": str(_net_worth(team)),
+        "accounts": Account.objects.filter(book=book, is_system=False).count(),
+        "transactions": BankTransaction.objects.filter(book=book).count(),
+        "net_worth": str(_net_worth(book)),
     }
 
 
-@login_and_team_required
-def api_opening_balances(request, team_slug):
+@login_and_book_required
+def api_opening_balances(request, team_slug, book_slug):
     """
-    GET: the accounts worth asking about, with the team's net worth right now.
+    GET: the accounts worth asking about, with the book's net worth right now.
     POST: record the balances and return the net worth after.
 
     The before/after pair is the point of the step: the user sees the number they
     have been looking at move to the one they recognise.
     """
-    team = request.team
+    book = request.book
 
-    if not can_set_opening_balances(team):
+    if not can_set_opening_balances(book):
         # Enforced here, not merely hidden in the UI. Opening balances before there
         # is any categorized activity would anchor a net worth the user has no way
         # to sanity-check against anything they have seen.
@@ -458,11 +468,11 @@ def api_opening_balances(request, team_slug):
         )
 
     if request.method != "POST":
-        already = existing_opening_balances(team)
+        already = existing_opening_balances(book)
         return JsonResponse(
             {
                 "allowed": True,
-                "net_worth": str(_net_worth(team)),
+                "net_worth": str(_net_worth(book)),
                 "accounts": [
                     {
                         "id": account.id,
@@ -471,37 +481,37 @@ def api_opening_balances(request, team_slug):
                         "type": account.account_group.account_type,
                         "has_opening_balance": account.id in already,
                     }
-                    for account in balance_accounts(team)
+                    for account in balance_accounts(book)
                 ],
             }
         )
 
     body = _json_body(request)
-    before = _net_worth(team)
+    before = _net_worth(book)
 
     try:
-        rows = parse_rows(team, body.get("rows", []))
-        skip_existing = existing_opening_balances(team)
+        rows = parse_rows(book, body.get("rows", []))
+        skip_existing = existing_opening_balances(book)
         rows = [r for r in rows if r.account.id not in skip_existing]
-        create_opening_balances(team, rows, as_of=_opening_date(body.get("as_of")))
+        create_opening_balances(book, rows, as_of=_opening_date(body.get("as_of")))
     except OpeningBalanceError as e:
         return JsonResponse({"error": str(e)}, status=400)
 
-    state = get_or_create_state(team)
+    state = get_or_create_state(book)
     state.mark_task("opening_balances")
     state.save()
 
     return JsonResponse(
         {
             "net_worth_before": str(before),
-            "net_worth": str(_net_worth(team)),
+            "net_worth": str(_net_worth(book)),
             "created": len(rows),
         }
     )
 
 
-def _net_worth(team) -> Decimal:
-    return NetWorthService(team).get_net_worth(timezone.now().date().replace(day=1))
+def _net_worth(book) -> Decimal:
+    return NetWorthService(book).get_net_worth(timezone.now().date().replace(day=1))
 
 
 def _opening_date(raw) -> date:
@@ -518,28 +528,28 @@ def _opening_date(raw) -> date:
 
 
 @require_POST
-@login_and_team_required
-def api_skip(request, team_slug):
+@login_and_book_required
+def api_skip(request, team_slug, book_slug):
     """
     Leave the flow without answering.
 
-    The team still needs books to work in, so the stock personal-budget template
+    The book still needs accounts to work in, so the stock personal-budget template
     is applied -- skipping onboarding must not leave someone with no accounts.
     """
-    state = get_or_create_state(request.team)
+    state = get_or_create_state(request.book)
     if state.is_finished:
-        return JsonResponse({"redirect": reverse("web_team:home", args=[team_slug])})
+        return JsonResponse({"redirect": reverse("web_book:home", args=[team_slug, book_slug])})
 
     phase_when_skipped = state.question_phase or state.phase
 
     with transaction.atomic():
-        apply_template(team=request.team, template=PERSONAL_BUDGET_TEMPLATE)
+        apply_template(book=request.book, template=PERSONAL_BUDGET_TEMPLATE)
         state.skip()
         state.save()
 
     log_event(AuditEvent.ONBOARDING_SKIPPED, request=request, metadata={"phase": phase_when_skipped})
 
-    return _redirect_or_json(request, reverse("web_team:home", args=[team_slug]))
+    return _redirect_or_json(request, reverse("web_book:home", args=[team_slug, book_slug]))
 
 
 def _redirect_or_json(request, url):

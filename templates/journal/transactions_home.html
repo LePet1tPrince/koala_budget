@@ -18,7 +18,7 @@
   </div>
 
   {{ api_urls|json_script:'api-urls' }}
-  {{ team_slug|json_script:'team-slug' }}
+  {{ request.book.base_url|json_script:'book-base' }}
 {% endblock %}
 
 {% block page_js %}

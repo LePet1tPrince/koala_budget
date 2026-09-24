@@ -12,7 +12,7 @@
         <p class="text-sm text-base-content/70">{% translate "The goal will be hidden but your allocation history will be preserved." %}</p>
 
         <div class="card-actions justify-end mt-4">
-          <a href="{% url 'budget:goal_detail' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-ghost">
+          <a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}" class="btn btn-ghost">
             {% translate "Cancel" %}
           </a>
           <form method="post">

@@ -69,7 +69,7 @@ const EditTransactionModal = ({
   allAccounts,
   allPayees = NO_PAYEES,
   categorySuggestions = NO_SUGGESTIONS,
-  teamSlug,
+  book,
   onSave,
   mode: modeProp,
   startSplit: startSplitOnOpen = false,
@@ -443,7 +443,7 @@ const EditTransactionModal = ({
       )}
 
       {onHistoryTab ? (
-        <TransactionHistory teamSlug={teamSlug} journalEntryId={journalEntryId} />
+        <TransactionHistory book={book} journalEntryId={journalEntryId} />
       ) : (
         <div className="flex flex-col gap-4">
           <DateField

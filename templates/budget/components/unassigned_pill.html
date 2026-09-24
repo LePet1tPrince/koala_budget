@@ -8,7 +8,7 @@
 
   `compact` is the mobile top-bar variant: the figure only.
 {% endcomment %}
-{% if unassigned_pill and nav_team %}
+{% if unassigned_pill and nav_book %}
   <div class="unassigned-pill{% if compact %} unassigned-pill-compact{% endif %}"
        data-unassigned-pill
        data-state="{{ unassigned_pill.state }}"
@@ -21,7 +21,7 @@
        data-hint-zero="{% translate 'Every dollar has a job' %}"
        data-hint-negative="{% translate 'promised more than you have' %}"
        data-testid="unassigned-pill{% if compact %}-compact{% endif %}">
-    <a href="{% url 'reports:dollar_map' nav_team.slug %}" class="unassigned-pill-main"
+    <a href="{% url 'reports:dollar_map' nav_team.slug nav_book.slug %}" class="unassigned-pill-main"
        title="{% translate 'See where every dollar is going' %}">
       <span class="unassigned-pill-label" data-unassigned-pill-label>{{ unassigned_pill.label }}</span>
       <span class="unassigned-pill-value money" data-unassigned-pill-value>{{ unassigned_pill.display }}</span>
@@ -32,7 +32,7 @@
         <span data-unassigned-pill-hint>
           {% if unassigned_pill.state == "negative" %}{% translate "promised more than you have" %}{% elif unassigned_pill.state == "zero" %}{% translate "Every dollar has a job" %}{% else %}{% translate "waiting for a job" %}{% endif %}
         </span>
-        <a href="{% url 'budget:budget_home' nav_team.slug %}" class="unassigned-pill-action" data-unassigned-pill-action>{% translate "Budget" %}</a>
+        <a href="{% url 'budget:budget_home' nav_team.slug nav_book.slug %}" class="unassigned-pill-action" data-unassigned-pill-action>{% translate "Budget" %}</a>
       </span>
     {% endif %}
     <span class="sr-only" aria-live="polite" data-unassigned-live></span>

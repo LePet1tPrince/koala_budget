@@ -20,7 +20,7 @@ const ActualTooltip = ({
   month,
   allAccounts,
   apiUrls,
-  teamSlug,
+  book,
 }) => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);

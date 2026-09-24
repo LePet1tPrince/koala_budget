@@ -40,7 +40,7 @@ const POLL_MS = 900;
 const APPLY_STEP = STEPS.findIndex((item) => item.key === 'apply');
 
 const YnabImportWizard = ({ props }) => {
-  const { api, canImport, resume, teamName, homeUrl, accountsUrl, budgetUrl, goalsUrl } = props;
+  const { api, canImport, resume, bookName, homeUrl, accountsUrl, budgetUrl, goalsUrl } = props;
 
   const [step, setStep] = useState(resume ? APPLY_STEP : 0);
   const [busy, setBusy] = useState(false);
@@ -147,8 +147,8 @@ const YnabImportWizard = ({ props }) => {
         <h1 className="text-xl font-semibold tracking-tight">{gettext('Import from YNAB')}</h1>
         <p className="text-base-content/70">
           {gettext(
-            '{team} already has transactions. A YNAB import brings a whole set of books, so it needs an empty team — create a new team for it, or delete the existing transactions first.',
-          ).replace('{team}', teamName)}
+            '{book} already has transactions. A YNAB import brings a whole set of books, so it needs an empty one — create a new set of books for it, or delete the existing transactions first.',
+          ).replace('{book}', bookName)}
         </p>
         <a href={homeUrl} className="btn btn-primary">
           {gettext('Back to my dashboard')}

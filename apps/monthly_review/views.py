@@ -27,8 +27,8 @@ from django.views.decorators.http import require_POST
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
+from apps.books.decorators import login_and_book_required
 from apps.journal.models import JournalEntry, counted_entries
-from apps.teams.decorators import login_and_team_required
 
 from .exports import export_monthly_review_csv
 from .models import MonthlyReviewState
@@ -92,15 +92,15 @@ def _json_safe(value):
     return value
 
 
-def _get_or_create_state(team, month) -> MonthlyReviewState:
-    state, _created = MonthlyReviewState.objects.get_or_create(team=team, month=month)
+def _get_or_create_state(book, month) -> MonthlyReviewState:
+    state, _created = MonthlyReviewState.objects.get_or_create(book=book, month=month)
     return state
 
 
-def _team_has_activity_by(team, month) -> bool:
-    """Whether the team had any (non-void) ledger activity on or before `month`."""
+def _book_has_activity_by(book, month) -> bool:
+    """Whether the book had any (non-void) ledger activity on or before `month`."""
     first_entry_date = (
-        JournalEntry.objects.filter(team=team)
+        JournalEntry.objects.filter(book=book)
         .filter(counted_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
@@ -110,10 +110,10 @@ def _team_has_activity_by(team, month) -> bool:
 
 
 @ensure_csrf_cookie
-@login_and_team_required
-def monthly_review_home(request, team_slug):
+@login_and_book_required
+def monthly_review_home(request, team_slug, book_slug):
     month = _month_from_request(request)
-    state = _get_or_create_state(request.team, month)
+    state = _get_or_create_state(request.book, month)
 
     if state.started_at is None:
         state.start()
@@ -126,11 +126,11 @@ def monthly_review_home(request, team_slug):
         "month": month,
         "prev_month": _prev_month(month),
         "next_month": _next_month(month),
-        "empty_state": not _team_has_activity_by(request.team, month),
+        "empty_state": not _book_has_activity_by(request.book, month),
     }
 
     if not context["empty_state"]:
-        review = build_review(request.team, month)
+        review = build_review(request.book, month)
         context["monthly_review_props"] = {
             "teamSlug": team_slug,
             "month": month.isoformat(),
@@ -142,11 +142,11 @@ def monthly_review_home(request, team_slug):
                 "isFinished": state.is_finished,
             },
             "urls": {
-                "step": reverse("monthly_review:api_step", args=[team_slug]),
-                "complete": reverse("monthly_review:api_complete", args=[team_slug]),
-                "dismiss": reverse("monthly_review:api_dismiss", args=[team_slug]),
-                "export": reverse("monthly_review:export", args=[team_slug]) + f"?month={month.isoformat()}",
-                "reportsHome": reverse("reports:reports_home", args=[team_slug]),
+                "step": reverse("monthly_review:api_step", args=[team_slug, book_slug]),
+                "complete": reverse("monthly_review:api_complete", args=[team_slug, book_slug]),
+                "dismiss": reverse("monthly_review:api_dismiss", args=[team_slug, book_slug]),
+                "export": reverse("monthly_review:export", args=[team_slug, book_slug]) + f"?month={month.isoformat()}",
+                "reportsHome": reverse("reports:reports_home", args=[team_slug, book_slug]),
             },
         }
 
@@ -154,11 +154,11 @@ def monthly_review_home(request, team_slug):
 
 
 @require_POST
-@login_and_team_required
-def api_step(request, team_slug):
+@login_and_book_required
+def api_step(request, team_slug, book_slug):
     body = _json_body(request)
     month = _parse_month(body.get("month")) or _default_month()
-    state = _get_or_create_state(request.team, month)
+    state = _get_or_create_state(request.book, month)
 
     if state.started_at is None:
         state.start()
@@ -187,11 +187,11 @@ def api_step(request, team_slug):
 
 
 @require_POST
-@login_and_team_required
-def api_complete(request, team_slug):
+@login_and_book_required
+def api_complete(request, team_slug, book_slug):
     body = _json_body(request)
     month = _parse_month(body.get("month")) or _default_month()
-    state = _get_or_create_state(request.team, month)
+    state = _get_or_create_state(request.book, month)
 
     if state.is_finished:
         return JsonResponse({"already_finished": True})
@@ -199,7 +199,7 @@ def api_complete(request, team_slug):
     state.complete()
     state.save()
 
-    review = build_review(request.team, month)
+    review = build_review(request.book, month)
     log_event(
         AuditEvent.MONTHLY_REVIEW_COMPLETED,
         request=request,
@@ -213,11 +213,11 @@ def api_complete(request, team_slug):
 
 
 @require_POST
-@login_and_team_required
-def api_dismiss(request, team_slug):
+@login_and_book_required
+def api_dismiss(request, team_slug, book_slug):
     body = _json_body(request)
     month = _parse_month(body.get("month")) or _default_month()
-    state = _get_or_create_state(request.team, month)
+    state = _get_or_create_state(request.book, month)
 
     if state.is_finished:
         return JsonResponse({"already_finished": True})
@@ -230,7 +230,7 @@ def api_dismiss(request, team_slug):
     return JsonResponse({"dismissed": True})
 
 
-@login_and_team_required
-def export_monthly_review(request, team_slug):
+@login_and_book_required
+def export_monthly_review(request, team_slug, book_slug):
     month = _parse_month(request.GET.get("month")) or _default_month()
-    return export_monthly_review_csv(request.team, month)
+    return export_monthly_review_csv(request.book, month)

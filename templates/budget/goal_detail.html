@@ -15,16 +15,16 @@
       </div>
 
       <div class="flex gap-2">
-        <a href="{% url 'budget:goal_update' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-outline btn-sm">
+        <a href="{% url 'budget:goal_update' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}" class="btn btn-outline btn-sm">
           {% translate "Edit" %}
         </a>
         {% if not goal.is_complete %}
-        <form method="post" action="{% url 'budget:goal_complete' team_slug=request.team.slug pk=goal.pk %}">
+        <form method="post" action="{% url 'budget:goal_complete' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}">
           {% csrf_token %}
           <button type="submit" class="btn btn-success btn-sm">{% translate "Mark Complete" %}</button>
         </form>
         {% endif %}
-        <a href="{% url 'budget:goal_delete' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-outline btn-warning btn-sm">
+        <a href="{% url 'budget:goal_delete' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}" class="btn btn-outline btn-warning btn-sm">
           {% translate "Archive" %}
         </a>
       </div>

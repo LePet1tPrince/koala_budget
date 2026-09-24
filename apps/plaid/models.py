@@ -5,10 +5,10 @@ Stores Plaid items, accounts, and imported transactions.
 
 from django.db import models
 
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel
 
 
-class PlaidItem(BaseTeamModel):
+class PlaidItem(BaseBookModel):
     """
     Represents a connected bank login (Plaid Item).
     Each item can have multiple accounts.
@@ -42,7 +42,7 @@ class PlaidItem(BaseTeamModel):
         return f"{self.institution_name} ({self.plaid_item_id})"
 
 
-class PlaidAccount(BaseTeamModel):
+class PlaidAccount(BaseBookModel):
     """
     Maps a Plaid account to a ledger Account.
     Each Plaid account feeds transactions into a specific ledger account.
@@ -97,7 +97,7 @@ class PlaidAccount(BaseTeamModel):
         return self.is_mapped
 
 
-class PlaidTransaction(BaseTeamModel):
+class PlaidTransaction(BaseBookModel):
     """
     This model add's extra context to the bank app's bank transactions just for plaid transactions.
 

@@ -56,6 +56,11 @@
  * * `reconciliation_started` - Reconciliation Started
  * * `reconciliation_completed` - Reconciliation Completed
  * * `reconciliation_undone` - Reconciliation Undone
+ * * `book_created` - Set of Books Created
+ * * `book_settings_changed` - Set of Books Settings Changed
+ * * `book_archived` - Set of Books Archived
+ * * `book_restored` - Set of Books Restored
+ * * `book_deleted` - Set of Books Deleted
  * @export
  */
 export const EventTypeEnum = {
@@ -100,7 +105,12 @@ export const EventTypeEnum = {
     DataImported: 'data_imported',
     ReconciliationStarted: 'reconciliation_started',
     ReconciliationCompleted: 'reconciliation_completed',
-    ReconciliationUndone: 'reconciliation_undone'
+    ReconciliationUndone: 'reconciliation_undone',
+    BookCreated: 'book_created',
+    BookSettingsChanged: 'book_settings_changed',
+    BookArchived: 'book_archived',
+    BookRestored: 'book_restored',
+    BookDeleted: 'book_deleted'
 } as const;
 export type EventTypeEnum = typeof EventTypeEnum[keyof typeof EventTypeEnum];
 

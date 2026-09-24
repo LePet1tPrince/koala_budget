@@ -35,60 +35,71 @@ import {
 } from '../models/index';
 
 export interface ReconciliationAccountsRequest {
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface ReconciliationDiscardRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface ReconciliationFinishRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     reconciliationFinish?: ReconciliationFinish;
 }
 
 export interface ReconciliationListRequest {
     account: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface ReconciliationRetrieveRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     includeLater?: boolean;
 }
 
 export interface ReconciliationStartRequest {
+    bookSlug: string;
     teamSlug: string;
     reconciliationStart: ReconciliationStart;
 }
 
 export interface ReconciliationTickRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     reconciliationTick: ReconciliationTick;
 }
 
 export interface ReconciliationTickThroughRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     reconciliationTickThrough: ReconciliationTickThrough;
 }
 
 export interface ReconciliationUndoRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface ReconciliationUntickAllRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface ReconciliationUpdateRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     patchedReconciliationUpdate?: PatchedReconciliationUpdate;
 }
@@ -99,9 +110,16 @@ export interface ReconciliationUpdateRequest {
 export class ReconciliationApi extends runtime.BaseAPI {
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationAccountsRaw(requestParameters: ReconciliationAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationAccounts().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -121,7 +139,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/accounts/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/accounts/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -131,7 +149,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationAccounts(requestParameters: ReconciliationAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationAccountsRaw(requestParameters, initOverrides);
@@ -139,13 +157,20 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationDiscardRaw(requestParameters: ReconciliationDiscardRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling reconciliationDiscard().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationDiscard().'
             );
         }
 
@@ -168,7 +193,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'DELETE',
             headers: headerParameters,
             query: queryParameters,
@@ -178,20 +203,27 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationDiscard(requestParameters: ReconciliationDiscardRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.reconciliationDiscardRaw(requestParameters, initOverrides);
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationFinishRaw(requestParameters: ReconciliationFinishRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling reconciliationFinish().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationFinish().'
             );
         }
 
@@ -216,7 +248,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/{id}/finish/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/{id}/finish/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -227,7 +259,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationFinish(requestParameters: ReconciliationFinishRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationFinishRaw(requestParameters, initOverrides);
@@ -235,13 +267,20 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationListRaw(requestParameters: ReconciliationListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         if (requestParameters['account'] == null) {
             throw new runtime.RequiredError(
                 'account',
                 'Required parameter "account" was null or undefined when calling reconciliationList().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationList().'
             );
         }
 
@@ -268,7 +307,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -278,7 +317,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationList(requestParameters: ReconciliationListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationListRaw(requestParameters, initOverrides);
@@ -286,13 +325,20 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationRetrieveRaw(requestParameters: ReconciliationRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling reconciliationRetrieve().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationRetrieve().'
             );
         }
 
@@ -319,7 +365,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -329,7 +375,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationRetrieve(requestParameters: ReconciliationRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationRetrieveRaw(requestParameters, initOverrides);
@@ -337,9 +383,16 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationStartRaw(requestParameters: ReconciliationStartRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationStart().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -368,7 +421,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -379,7 +432,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationStart(requestParameters: ReconciliationStartRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationStartRaw(requestParameters, initOverrides);
@@ -387,13 +440,20 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationTickRaw(requestParameters: ReconciliationTickRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling reconciliationTick().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationTick().'
             );
         }
 
@@ -425,7 +485,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/{id}/tick/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/{id}/tick/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -436,7 +496,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationTick(requestParameters: ReconciliationTickRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationTickRaw(requestParameters, initOverrides);
@@ -444,13 +504,20 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationTickThroughRaw(requestParameters: ReconciliationTickThroughRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling reconciliationTickThrough().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationTickThrough().'
             );
         }
 
@@ -482,7 +549,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/{id}/tick_through/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/{id}/tick_through/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -493,7 +560,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationTickThrough(requestParameters: ReconciliationTickThroughRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationTickThroughRaw(requestParameters, initOverrides);
@@ -501,13 +568,20 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationUndoRaw(requestParameters: ReconciliationUndoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling reconciliationUndo().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationUndo().'
             );
         }
 
@@ -530,7 +604,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/{id}/undo/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/{id}/undo/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -540,7 +614,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationUndo(requestParameters: ReconciliationUndoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationUndoRaw(requestParameters, initOverrides);
@@ -548,13 +622,20 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationUntickAllRaw(requestParameters: ReconciliationUntickAllRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling reconciliationUntickAll().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationUntickAll().'
             );
         }
 
@@ -577,7 +658,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/{id}/untick_all/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/{id}/untick_all/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -587,7 +668,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationUntickAll(requestParameters: ReconciliationUntickAllRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationUntickAllRaw(requestParameters, initOverrides);
@@ -595,13 +676,20 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationUpdateRaw(requestParameters: ReconciliationUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling reconciliationUpdate().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationUpdate().'
             );
         }
 
@@ -626,7 +714,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/reconcile/api/reconciliations/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
@@ -637,7 +725,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
     async reconciliationUpdate(requestParameters: ReconciliationUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationUpdateRaw(requestParameters, initOverrides);

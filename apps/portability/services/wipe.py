@@ -1,7 +1,7 @@
 """
-Deleting a team's books (§4.2, §4.3 of `docs/export-import-plan.md`).
+Deleting a set of books (§4.2, §4.3 of `docs/export-import-plan.md`).
 
-`wipe_team(team)` is the single most destructive operation in this feature,
+`wipe_book(book)` is the single most destructive operation in this feature,
 and it never runs on its own -- it is always called from inside `apply.py`'s
 one `transaction.atomic` block, alongside the safety export that makes it
 recoverable. No `@transaction.atomic` here on purpose: that decorator belongs
@@ -12,7 +12,7 @@ Two things this order exists to get right:
 
 1. **`PROTECT` and `CASCADE` decide almost the whole order for us.** Once
    `PlaidAccount` (which `PROTECT`s `Account`) is out of the way, a single
-   `Account.objects.filter(team=team).delete()` cascades `BankTransaction`,
+   `Account.objects.filter(book=book).delete()` cascades `BankTransaction`,
    `PlaidTransaction`, `TransferMatchDismissal`, `Budget`, `Goal` and
    `GoalAllocation` in one call -- Django's collector resolves that graph,
    and re-deriving its topological order by hand here would just be a second
@@ -76,26 +76,26 @@ class WipeCounts:
         }
 
 
-def wipe_team(team) -> WipeCounts:
-    """Delete every row this feature exports for `team`. See module docstring for the order."""
+def wipe_book(book) -> WipeCounts:
+    """Delete every row this feature exports for `book`. See module docstring for the order."""
     counts = WipeCounts()
 
     # Break the FK from feed rows to entries before the entries are
     # raw-deleted -- see point 2 above. A plain `.update()` fires no
     # post_save signal, so this costs nothing extra on the audit trail.
-    BankTransaction.objects.filter(team=team, journal_entry__isnull=False).update(journal_entry=None)
+    BankTransaction.objects.filter(book=book, journal_entry__isnull=False).update(journal_entry=None)
 
-    lines = JournalLine.objects.filter(team=team)
+    lines = JournalLine.objects.filter(book=book)
     counts.lines = lines._raw_delete(lines.db)
 
-    entries = JournalEntry.objects.filter(team=team)
+    entries = JournalEntry.objects.filter(book=book)
     counts.entries = entries._raw_delete(entries.db)
 
     # Releases the PROTECT that would otherwise block deleting Account below.
-    plaid_accounts = PlaidAccount.objects.filter(team=team)
+    plaid_accounts = PlaidAccount.objects.filter(book=book)
     counts.plaid_accounts = plaid_accounts.count()
     plaid_accounts.delete()
-    plaid_items = PlaidItem.objects.filter(team=team)
+    plaid_items = PlaidItem.objects.filter(book=book)
     counts.plaid_items = plaid_items.count()
     plaid_items.delete()
 
@@ -103,7 +103,7 @@ def wipe_team(team) -> WipeCounts:
     # TransferMatchDismissal), Budget, Goal (-> GoalAllocation), Reconciliation
     # (its lines are already gone, so nothing points back at it). The
     # collector's own breakdown is the "counted, not inferred" figure (§4.2).
-    _total, breakdown = Account.objects.filter(team=team).delete()
+    _total, breakdown = Account.objects.filter(book=book).delete()
     counts.accounts = breakdown.get("accounts.Account", 0)
     counts.bank_transactions = breakdown.get("bank_feed.BankTransaction", 0)
     counts.plaid_transactions = breakdown.get("plaid.PlaidTransaction", 0)
@@ -113,15 +113,15 @@ def wipe_team(team) -> WipeCounts:
     counts.goal_allocations = breakdown.get("budget.GoalAllocation", 0)
     counts.reconciliations = breakdown.get("reconciliation.Reconciliation", 0)
 
-    account_groups = AccountGroup.objects.filter(team=team)
+    account_groups = AccountGroup.objects.filter(book=book)
     counts.account_groups = account_groups.count()
     account_groups.delete()
 
-    payees = Payee.objects.filter(team=team)
+    payees = Payee.objects.filter(book=book)
     counts.payees = payees.count()
     payees.delete()
 
-    institutions = Institution.objects.filter(team=team)
+    institutions = Institution.objects.filter(book=book)
     counts.institutions = institutions.count()
     institutions.delete()
 

@@ -18,8 +18,8 @@ class ReportService:
     Service class for generating financial reports from journal data.
     """
 
-    def __init__(self, team):
-        self.team = team
+    def __init__(self, book):
+        self.book = book
 
     def get_income_statement_data(self, start_date, end_date, period=None):
         """
@@ -49,7 +49,7 @@ class ReportService:
         # Get all journal lines in the date range (voided entries don't count)
         journal_lines = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__range=(start_date, end_date),
             )
             .filter(counted_entries("journal_entry__"))
@@ -219,7 +219,7 @@ class ReportService:
         # Get all journal lines up to as_of_date (voided entries don't count)
         journal_lines = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__lte=as_of_date,
             )
             .filter(counted_entries("journal_entry__"))
@@ -307,7 +307,7 @@ class ReportService:
 
         monthly_deltas = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__lte=end_date,
                 account__account_group__account_type__in=[ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY],
             )
@@ -393,6 +393,9 @@ class ReportService:
         account_type = account.account_group.account_type
         if account_type not in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE):
             return None
+        # Income isn't budgeted in a book that counts money only once it lands.
+        if account_type == ACCOUNT_TYPE_INCOME and not self.book.budget_future_income:
+            return None
 
         months = self._period_range(start_date, end_date, "month")
         if not months:
@@ -401,13 +404,13 @@ class ReportService:
 
         # Available accumulates from the account's first budget/activity month.
         first_budget_month = (
-            Budget.objects.filter(team=self.team, category=account)
+            Budget.objects.filter(book=self.book, category=account)
             .order_by("month")
             .values_list("month", flat=True)
             .first()
         )
         first_activity_date = (
-            JournalLine.objects.filter(team=self.team, account=account)
+            JournalLine.objects.filter(book=self.book, account=account)
             .filter(counted_entries("journal_entry__"))
             .order_by("journal_entry__entry_date")
             .values_list("journal_entry__entry_date", flat=True)
@@ -422,7 +425,7 @@ class ReportService:
 
         budgets = dict(
             Budget.objects.filter(
-                team=self.team, category=account, month__gte=first_month, month__lt=month_after_last
+                book=self.book, category=account, month__gte=first_month, month__lt=month_after_last
             ).values_list("month", "budget_amount")
         )
 
@@ -434,7 +437,7 @@ class ReportService:
             row["month"]: row["total"]
             for row in (
                 JournalLine.objects.filter(
-                    team=self.team,
+                    book=self.book,
                     account=account,
                     journal_entry__entry_date__gte=first_month,
                     journal_entry__entry_date__lt=month_after_last,
@@ -520,7 +523,7 @@ class ReportService:
         # Build the queryset (voided entries don't count)
         queryset = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 account=account,
             )
             .filter(counted_entries("journal_entry__"))
@@ -560,7 +563,7 @@ class ReportService:
             starting_balance = Decimal("0")
             if start_date:
                 starting_balance = JournalLine.objects.filter(
-                    team=self.team,
+                    book=self.book,
                     account=account,
                     journal_entry__entry_date__lt=start_date,
                 ).filter(counted_entries("journal_entry__")).aggregate(balance=Sum(signed_amount))[
@@ -618,7 +621,7 @@ class ReportService:
 
         monthly_deltas = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__lte=end_date,
                 account__account_group__account_type__in=[ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY],
             )

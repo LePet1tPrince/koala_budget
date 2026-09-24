@@ -10,9 +10,9 @@ from django.db import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
 
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN, ROLE_MEMBER
 from apps.users.models import CustomUser
@@ -34,12 +34,13 @@ class AccountGroupModelTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
 
     def test_create_account_group(self):
         """Test creating an account group."""
-        with current_team(self.team):
+        with current_book(self.book):
             account_group = AccountGroup.objects.create(
-                team=self.team,
+                book=self.book,
                 name="Cash Accounts",
                 account_type=ACCOUNT_TYPE_ASSET,
                 description="Cash and equivalents",
@@ -50,24 +51,25 @@ class AccountGroupModelTest(TestCase):
 
     def test_account_group_ordering(self):
         """Test that account groups are ordered by name."""
-        with current_team(self.team):
-            AccountGroup.objects.create(team=self.team, name="Zebra", account_type=ACCOUNT_TYPE_ASSET)
-            AccountGroup.objects.create(team=self.team, name="Alpha", account_type=ACCOUNT_TYPE_ASSET)
-            groups = list(AccountGroup.for_team.all())
+        with current_book(self.book):
+            AccountGroup.objects.create(book=self.book, name="Zebra", account_type=ACCOUNT_TYPE_ASSET)
+            AccountGroup.objects.create(book=self.book, name="Alpha", account_type=ACCOUNT_TYPE_ASSET)
+            groups = list(AccountGroup.for_book.all())
             self.assertEqual(groups[0].name, "Alpha")
             self.assertEqual(groups[1].name, "Zebra")
 
     def test_account_group_unique_together(self):
         """Test that team and name must be unique together."""
-        AccountGroup.objects.create(team=self.team, name="Duplicate", account_type=ACCOUNT_TYPE_ASSET)
+        AccountGroup.objects.create(book=self.book, name="Duplicate", account_type=ACCOUNT_TYPE_ASSET)
         with self.assertRaises(IntegrityError):
-            AccountGroup.objects.create(team=self.team, name="Duplicate", account_type=ACCOUNT_TYPE_ASSET)
+            AccountGroup.objects.create(book=self.book, name="Duplicate", account_type=ACCOUNT_TYPE_ASSET)
 
     def test_get_absolute_url(self):
         """Test get_absolute_url method."""
-        account_group = AccountGroup.objects.create(team=self.team, name="Test", account_type=ACCOUNT_TYPE_ASSET)
+        account_group = AccountGroup.objects.create(book=self.book, name="Test", account_type=ACCOUNT_TYPE_ASSET)
         expected_url = reverse(
-            "accounts:accountgroup_detail", kwargs={"team_slug": self.team.slug, "pk": account_group.pk}
+            "accounts:accountgroup_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account_group.pk},
         )
         self.assertEqual(account_group.get_absolute_url(), expected_url)
 
@@ -78,35 +80,39 @@ class AccountModelTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.account_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
 
     def test_create_account(self):
         """Test creating an account."""
-        with current_team(self.team):
-            account = Account.objects.create(team=self.team, name="Checking Account", account_group=self.account_group)
+        with current_book(self.book):
+            account = Account.objects.create(book=self.book, name="Checking Account", account_group=self.account_group)
             self.assertEqual(account.name, "Checking Account")
             self.assertEqual(str(account), "Checking Account")
 
     def test_account_ordering(self):
         """Test that accounts are ordered by name."""
-        with current_team(self.team):
-            Account.objects.create(team=self.team, name="Zebra Account", account_group=self.account_group)
-            Account.objects.create(team=self.team, name="Alpha Account", account_group=self.account_group)
-            accounts = list(Account.for_team.all())
+        with current_book(self.book):
+            Account.objects.create(book=self.book, name="Zebra Account", account_group=self.account_group)
+            Account.objects.create(book=self.book, name="Alpha Account", account_group=self.account_group)
+            accounts = list(Account.for_book.all())
             self.assertEqual(accounts[0].name, "Alpha Account")
             self.assertEqual(accounts[1].name, "Zebra Account")
 
     def test_account_has_feed_default(self):
         """Test that has_feed defaults to False."""
-        account = Account.objects.create(team=self.team, name="Test Account", account_group=self.account_group)
+        account = Account.objects.create(book=self.book, name="Test Account", account_group=self.account_group)
         self.assertFalse(account.has_feed)
 
     def test_get_absolute_url(self):
         """Test get_absolute_url method."""
-        account = Account.objects.create(team=self.team, name="Test Account", account_group=self.account_group)
-        expected_url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        account = Account.objects.create(book=self.book, name="Test Account", account_group=self.account_group)
+        expected_url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         self.assertEqual(account.get_absolute_url(), expected_url)
 
 
@@ -116,33 +122,36 @@ class PayeeModelTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
 
     def test_create_payee(self):
         """Test creating a payee."""
-        with current_team(self.team):
-            payee = Payee.objects.create(team=self.team, name="Amazon")
+        with current_book(self.book):
+            payee = Payee.objects.create(book=self.book, name="Amazon")
             self.assertEqual(payee.name, "Amazon")
             self.assertEqual(str(payee), "Amazon")
 
     def test_payee_ordering(self):
         """Test that payees are ordered by name."""
-        with current_team(self.team):
-            Payee.objects.create(team=self.team, name="Zebra Corp")
-            Payee.objects.create(team=self.team, name="Alpha Inc")
-            payees = list(Payee.for_team.all())
+        with current_book(self.book):
+            Payee.objects.create(book=self.book, name="Zebra Corp")
+            Payee.objects.create(book=self.book, name="Alpha Inc")
+            payees = list(Payee.for_book.all())
             self.assertEqual(payees[0].name, "Alpha Inc")
             self.assertEqual(payees[1].name, "Zebra Corp")
 
     def test_payee_unique_together(self):
         """Test that team and name must be unique together."""
-        Payee.objects.create(team=self.team, name="Duplicate")
+        Payee.objects.create(book=self.book, name="Duplicate")
         with self.assertRaises(IntegrityError):
-            Payee.objects.create(team=self.team, name="Duplicate")
+            Payee.objects.create(book=self.book, name="Duplicate")
 
     def test_get_absolute_url(self):
         """Test get_absolute_url method."""
-        payee = Payee.objects.create(team=self.team, name="Test Payee")
-        expected_url = reverse("accounts:payee_detail", kwargs={"team_slug": self.team.slug, "pk": payee.pk})
+        payee = Payee.objects.create(book=self.book, name="Test Payee")
+        expected_url = reverse(
+            "accounts:payee_detail", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": payee.pk}
+        )
         self.assertEqual(payee.get_absolute_url(), expected_url)
 
 
@@ -152,6 +161,7 @@ class AccountGroupFormTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
 
     def test_valid_form(self):
         """Test form with valid data."""
@@ -173,8 +183,9 @@ class AccountFormTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.account_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
 
     def test_valid_form(self):
@@ -185,21 +196,21 @@ class AccountFormTest(TestCase):
             "account_group": self.account_group.pk,
             "has_feed": False,
         }
-        with current_team(self.team):
-            form = AccountForm(data=form_data, team=self.team)
+        with current_book(self.book):
+            form = AccountForm(data=form_data, book=self.book)
             self.assertTrue(form.is_valid())
 
     def test_missing_required_fields(self):
         """Test form with missing required fields."""
-        with current_team(self.team):
-            form = AccountForm(data={}, team=self.team)
+        with current_book(self.book):
+            form = AccountForm(data={}, book=self.book)
             self.assertFalse(form.is_valid())
             self.assertIn("name", form.errors)
 
     def test_account_type_mismatch(self):
         """Test form validation when account_group doesn't match account_type."""
         expense_group = AccountGroup.objects.create(
-            team=self.team, name="Expense Group", account_type=ACCOUNT_TYPE_EXPENSE
+            book=self.book, name="Expense Group", account_type=ACCOUNT_TYPE_EXPENSE
         )
         form_data = {
             "name": "Test Account",
@@ -207,8 +218,8 @@ class AccountFormTest(TestCase):
             "account_group": expense_group.pk,
             "has_feed": False,
         }
-        with current_team(self.team):
-            form = AccountForm(data=form_data, team=self.team)
+        with current_book(self.book):
+            form = AccountForm(data=form_data, book=self.book)
             self.assertFalse(form.is_valid())
             # The form filters account_group choices by account_type, so selecting a mismatched
             # group will result in an "invalid choice" error on the account_group field
@@ -217,15 +228,15 @@ class AccountFormTest(TestCase):
     def test_form_filters_account_groups_by_type(self):
         """Test that form filters account groups based on selected account_type."""
         expense_group = AccountGroup.objects.create(
-            team=self.team, name="Expense Group", account_type=ACCOUNT_TYPE_EXPENSE
+            book=self.book, name="Expense Group", account_type=ACCOUNT_TYPE_EXPENSE
         )
         form_data = {
             "name": "Test Account",
             "account_type": ACCOUNT_TYPE_ASSET,
             "account_group": self.account_group.pk,
         }
-        with current_team(self.team):
-            form = AccountForm(data=form_data, team=self.team)
+        with current_book(self.book):
+            form = AccountForm(data=form_data, book=self.book)
             # The queryset should only include asset account groups
             account_group_ids = list(form.fields["account_group"].queryset.values_list("pk", flat=True))
             self.assertIn(self.account_group.pk, account_group_ids)
@@ -233,8 +244,8 @@ class AccountFormTest(TestCase):
 
     def test_create_form_hides_has_feed(self):
         """Test that create form does not expose has_feed field."""
-        with current_team(self.team):
-            form = AccountForm(data={}, team=self.team, is_create=True)
+        with current_book(self.book):
+            form = AccountForm(data={}, book=self.book, is_create=True)
             self.assertNotIn("has_feed", form.fields)
 
     def test_create_form_hides_institution_for_expense(self):
@@ -244,8 +255,8 @@ class AccountFormTest(TestCase):
             "account_type": ACCOUNT_TYPE_EXPENSE,
             "account_group": self.account_group.pk,
         }
-        with current_team(self.team):
-            form = AccountForm(data=form_data, team=self.team, is_create=True)
+        with current_book(self.book):
+            form = AccountForm(data=form_data, book=self.book, is_create=True)
             self.assertNotIn("institution", form.fields)
 
 
@@ -271,6 +282,7 @@ class AccountsHomeViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_MEMBER})
 
@@ -280,28 +292,28 @@ class AccountsHomeViewTest(TestCase):
     def test_accounts_home_view_requires_login(self):
         """Test that accounts home view requires login."""
         self.client.logout()
-        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 302)  # Redirect to login
 
     def test_accounts_home_view_success(self):
         """Test accounts home view with authenticated user."""
-        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "accounts/accounts_home.html")
 
     def test_accounts_home_groups_accounts_by_type(self):
         """Board props group accounts by type, in balance-sheet order, with balances."""
-        with current_team(self.team):
-            asset_group = AccountGroup.objects.create(team=self.team, name="Cash", account_type=ACCOUNT_TYPE_ASSET)
+        with current_book(self.book):
+            asset_group = AccountGroup.objects.create(book=self.book, name="Cash", account_type=ACCOUNT_TYPE_ASSET)
             expense_group = AccountGroup.objects.create(
-                team=self.team, name="Spending", account_type=ACCOUNT_TYPE_EXPENSE
+                book=self.book, name="Spending", account_type=ACCOUNT_TYPE_EXPENSE
             )
-            Account.objects.create(team=self.team, name="Groceries", account_group=expense_group)
-            Account.objects.create(team=self.team, name="Checking", account_group=asset_group)
+            Account.objects.create(book=self.book, name="Groceries", account_group=expense_group)
+            Account.objects.create(book=self.book, name="Checking", account_group=asset_group)
 
-        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         sections = response.context["manage_props"]["types"]
         self.assertEqual([s["key"] for s in sections], ["asset", "liability", "income", "expense", "goal"])
@@ -317,6 +329,7 @@ class AccountGroupViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
@@ -325,42 +338,48 @@ class AccountGroupViewTest(TestCase):
 
     def test_account_group_list_view(self):
         """Test account group list view."""
-        with current_team(self.team):
-            AccountGroup.objects.create(team=self.team, name="Test Group", account_type=ACCOUNT_TYPE_ASSET)
+        with current_book(self.book):
+            AccountGroup.objects.create(book=self.book, name="Test Group", account_type=ACCOUNT_TYPE_ASSET)
 
-        url = reverse("accounts:accountgroup_list", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:accountgroup_list", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test Group")
 
     def test_account_group_create_view_get(self):
         """Test account group create view GET request."""
-        url = reverse("accounts:accountgroup_create", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:accountgroup_create", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.context["form"], AccountGroupForm)
 
     def test_account_group_create_view_post(self):
         """Test account group create view POST request."""
-        url = reverse("accounts:accountgroup_create", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:accountgroup_create", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         data = {"name": "New Group", "account_type": ACCOUNT_TYPE_ASSET, "description": "Test"}
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)  # Redirect after success
-        with current_team(self.team):
-            self.assertTrue(AccountGroup.for_team.filter(name="New Group").exists())
+        with current_book(self.book):
+            self.assertTrue(AccountGroup.for_book.filter(name="New Group").exists())
 
     def test_account_group_detail_view(self):
         """Test account group detail view."""
-        account_group = AccountGroup.objects.create(team=self.team, name="Test Group", account_type=ACCOUNT_TYPE_ASSET)
-        url = reverse("accounts:accountgroup_detail", kwargs={"team_slug": self.team.slug, "pk": account_group.pk})
+        account_group = AccountGroup.objects.create(book=self.book, name="Test Group", account_type=ACCOUNT_TYPE_ASSET)
+        url = reverse(
+            "accounts:accountgroup_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account_group.pk},
+        )
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["object"], account_group)
 
     def test_account_group_update_view(self):
         """Test account group update view."""
-        account_group = AccountGroup.objects.create(team=self.team, name="Old Name", account_type=ACCOUNT_TYPE_ASSET)
-        url = reverse("accounts:accountgroup_update", kwargs={"team_slug": self.team.slug, "pk": account_group.pk})
+        account_group = AccountGroup.objects.create(book=self.book, name="Old Name", account_type=ACCOUNT_TYPE_ASSET)
+        url = reverse(
+            "accounts:accountgroup_update",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account_group.pk},
+        )
         data = {"name": "New Name", "account_type": ACCOUNT_TYPE_ASSET, "description": "Updated"}
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)
@@ -369,12 +388,15 @@ class AccountGroupViewTest(TestCase):
 
     def test_account_group_delete_view(self):
         """Test account group delete view."""
-        account_group = AccountGroup.objects.create(team=self.team, name="To Delete", account_type=ACCOUNT_TYPE_ASSET)
-        url = reverse("accounts:accountgroup_delete", kwargs={"team_slug": self.team.slug, "pk": account_group.pk})
+        account_group = AccountGroup.objects.create(book=self.book, name="To Delete", account_type=ACCOUNT_TYPE_ASSET)
+        url = reverse(
+            "accounts:accountgroup_delete",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account_group.pk},
+        )
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)
-        with current_team(self.team):
-            self.assertFalse(AccountGroup.for_team.filter(pk=account_group.pk).exists())
+        with current_book(self.book):
+            self.assertFalse(AccountGroup.for_book.filter(pk=account_group.pk).exists())
 
 
 class AccountViewTest(TestCase):
@@ -383,10 +405,11 @@ class AccountViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.account_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
 
     def setUp(self):
@@ -394,10 +417,10 @@ class AccountViewTest(TestCase):
 
     def test_accounts_home_view(self):
         """Test the accounts home (board) view includes accounts in its props."""
-        with current_team(self.team):
-            Account.objects.create(team=self.team, name="Checking", account_group=self.account_group)
+        with current_book(self.book):
+            Account.objects.create(book=self.book, name="Checking", account_group=self.account_group)
 
-        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Checking")
@@ -407,14 +430,14 @@ class AccountViewTest(TestCase):
 
     def test_account_create_view_get(self):
         """Test account create view GET request."""
-        url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.context["form"], AccountForm)
 
     def test_account_create_view_post(self):
         """Test account create view POST request."""
-        url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         data = {
             "name": "New Account",
             "account_type": ACCOUNT_TYPE_ASSET,
@@ -422,40 +445,43 @@ class AccountViewTest(TestCase):
         }
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)
-        with current_team(self.team):
-            self.assertTrue(Account.for_team.filter(name="New Account").exists())
+        with current_book(self.book):
+            self.assertTrue(Account.for_book.filter(name="New Account").exists())
 
     def test_account_create_sets_has_feed_for_asset(self):
         """Test that creating an asset account automatically sets has_feed=True."""
-        url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         data = {
             "name": "Savings Account",
             "account_type": ACCOUNT_TYPE_ASSET,
             "account_group": self.account_group.pk,
         }
         self.client.post(url, data)
-        with current_team(self.team):
-            account = Account.for_team.get(name="Savings Account")
+        with current_book(self.book):
+            account = Account.for_book.get(name="Savings Account")
             self.assertTrue(account.has_feed)
 
     def test_account_create_sets_has_feed_false_for_expense(self):
         """Test that creating an expense account automatically sets has_feed=False."""
-        expense_group = AccountGroup.objects.create(team=self.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE)
-        url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug})
+        expense_group = AccountGroup.objects.create(book=self.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE)
+        url = reverse("accounts:account_create", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         data = {
             "name": "Office Supplies",
             "account_type": ACCOUNT_TYPE_EXPENSE,
             "account_group": expense_group.pk,
         }
         self.client.post(url, data)
-        with current_team(self.team):
-            account = Account.for_team.get(name="Office Supplies")
+        with current_book(self.book):
+            account = Account.for_book.get(name="Office Supplies")
             self.assertFalse(account.has_feed)
 
     def test_account_detail_view(self):
         """Test account detail view."""
-        account = Account.objects.create(team=self.team, name="Test Account", account_group=self.account_group)
-        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        account = Account.objects.create(book=self.book, name="Test Account", account_group=self.account_group)
+        url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["object"], account)
@@ -467,18 +493,21 @@ class AccountViewTest(TestCase):
 
         from apps.journal.models import JournalEntry, JournalLine
 
-        expense_group = AccountGroup.objects.create(team=self.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
-        account = Account.objects.create(team=self.team, name="Detail Cash", account_group=self.account_group)
-        expense = Account.objects.create(team=self.team, name="Detail Rent", account_group=expense_group)
+        expense_group = AccountGroup.objects.create(book=self.book, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        account = Account.objects.create(book=self.book, name="Detail Cash", account_group=self.account_group)
+        expense = Account.objects.create(book=self.book, name="Detail Rent", account_group=expense_group)
 
-        prior = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 5, 10), description="Opening")
-        JournalLine.objects.create(team=self.team, journal_entry=prior, account=account, dr_amount=Decimal("500.00"))
-        JournalLine.objects.create(team=self.team, journal_entry=prior, account=expense, cr_amount=Decimal("500.00"))
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="Rent")
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=account, cr_amount=Decimal("1200.00"))
+        prior = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 5, 10), description="Opening")
+        JournalLine.objects.create(book=self.book, journal_entry=prior, account=account, dr_amount=Decimal("500.00"))
+        JournalLine.objects.create(book=self.book, journal_entry=prior, account=expense, cr_amount=Decimal("500.00"))
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="Rent")
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=account, cr_amount=Decimal("1200.00"))
 
-        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
         self.assertEqual(response.status_code, 200)
@@ -501,17 +530,20 @@ class AccountViewTest(TestCase):
         from apps.budget.models import Budget
         from apps.journal.models import JournalEntry, JournalLine
 
-        expense_group = AccountGroup.objects.create(team=self.team, name="Bills", account_type=ACCOUNT_TYPE_EXPENSE)
-        asset = Account.objects.create(team=self.team, name="Chart Cash", account_group=self.account_group)
-        expense = Account.objects.create(team=self.team, name="Chart Rent", account_group=expense_group)
+        expense_group = AccountGroup.objects.create(book=self.book, name="Bills", account_type=ACCOUNT_TYPE_EXPENSE)
+        asset = Account.objects.create(book=self.book, name="Chart Cash", account_group=self.account_group)
+        expense = Account.objects.create(book=self.book, name="Chart Rent", account_group=expense_group)
         Budget.objects.create(
-            team=self.team, category=expense, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
+            book=self.book, category=expense, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
         )
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2024, 6, 15), description="Rent")
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=asset, cr_amount=Decimal("1200.00"))
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="Rent")
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=asset, cr_amount=Decimal("1200.00"))
 
-        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": expense.pk})
+        url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": expense.pk},
+        )
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
         self.assertEqual(response.status_code, 200)
@@ -527,8 +559,11 @@ class AccountViewTest(TestCase):
         """Without date params the activity section defaults to the current year."""
         from datetime import date
 
-        account = Account.objects.create(team=self.team, name="Default Range", account_group=self.account_group)
-        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        account = Account.objects.create(book=self.book, name="Default Range", account_group=self.account_group)
+        url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         response = self.client.get(url)
 
         today = date.today()
@@ -538,8 +573,11 @@ class AccountViewTest(TestCase):
 
     def test_account_update_view(self):
         """Test account update view."""
-        account = Account.objects.create(team=self.team, name="Old Name", account_group=self.account_group)
-        url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        account = Account.objects.create(book=self.book, name="Old Name", account_group=self.account_group)
+        url = reverse(
+            "accounts:account_update",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         data = {
             "name": "New Name",
             "account_type": ACCOUNT_TYPE_ASSET,
@@ -554,30 +592,45 @@ class AccountViewTest(TestCase):
 
     def test_account_delete_view(self):
         """Test account delete view."""
-        account = Account.objects.create(team=self.team, name="To Delete", account_group=self.account_group)
-        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        account = Account.objects.create(book=self.book, name="To Delete", account_group=self.account_group)
+        url = reverse(
+            "accounts:account_delete",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)
-        with current_team(self.team):
-            self.assertFalse(Account.for_team.filter(pk=account.pk).exists())
+        with current_book(self.book):
+            self.assertFalse(Account.for_book.filter(pk=account.pk).exists())
 
     def test_account_delete_view_get_redirects_to_detail(self):
         """Deletion is confirmed via a dialog on the detail page, not a separate page -- a GET bounces back to it."""
-        account = Account.objects.create(team=self.team, name="Still Here", account_group=self.account_group)
-        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        account = Account.objects.create(book=self.book, name="Still Here", account_group=self.account_group)
+        url = reverse(
+            "accounts:account_delete",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         response = self.client.get(url)
-        detail_url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        detail_url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         self.assertRedirects(response, detail_url, fetch_redirect_response=False)
         self.assertTrue(Account.objects.filter(pk=account.pk).exists())
 
     def test_account_detail_view_has_delete_confirmation_dialog(self):
         """The detail page carries its own delete-confirmation dialog rather than linking to a separate page."""
-        account = Account.objects.create(team=self.team, name="Has Dialog", account_group=self.account_group)
-        url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        account = Account.objects.create(book=self.book, name="Has Dialog", account_group=self.account_group)
+        url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         response = self.client.get(url)
         self.assertContains(response, 'id="delete-account-modal"')
         self.assertContains(response, 'id="delete-account-btn"')
-        delete_url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account.pk})
+        delete_url = reverse(
+            "accounts:account_delete",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
         self.assertContains(response, f'action="{delete_url}"')
 
 
@@ -587,6 +640,7 @@ class PayeeViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
@@ -595,42 +649,46 @@ class PayeeViewTest(TestCase):
 
     def test_payee_list_view(self):
         """Test payee list view."""
-        with current_team(self.team):
-            Payee.objects.create(team=self.team, name="Amazon")
+        with current_book(self.book):
+            Payee.objects.create(book=self.book, name="Amazon")
 
-        url = reverse("accounts:payee_list", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:payee_list", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Amazon")
 
     def test_payee_create_view_get(self):
         """Test payee create view GET request."""
-        url = reverse("accounts:payee_create", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:payee_create", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.context["form"], PayeeForm)
 
     def test_payee_create_view_post(self):
         """Test payee create view POST request."""
-        url = reverse("accounts:payee_create", kwargs={"team_slug": self.team.slug})
+        url = reverse("accounts:payee_create", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         data = {"name": "New Payee"}
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)
-        with current_team(self.team):
-            self.assertTrue(Payee.for_team.filter(name="New Payee").exists())
+        with current_book(self.book):
+            self.assertTrue(Payee.for_book.filter(name="New Payee").exists())
 
     def test_payee_detail_view(self):
         """Test payee detail view."""
-        payee = Payee.objects.create(team=self.team, name="Test Payee")
-        url = reverse("accounts:payee_detail", kwargs={"team_slug": self.team.slug, "pk": payee.pk})
+        payee = Payee.objects.create(book=self.book, name="Test Payee")
+        url = reverse(
+            "accounts:payee_detail", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": payee.pk}
+        )
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["object"], payee)
 
     def test_payee_update_view(self):
         """Test payee update view."""
-        payee = Payee.objects.create(team=self.team, name="Old Name")
-        url = reverse("accounts:payee_update", kwargs={"team_slug": self.team.slug, "pk": payee.pk})
+        payee = Payee.objects.create(book=self.book, name="Old Name")
+        url = reverse(
+            "accounts:payee_update", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": payee.pk}
+        )
         data = {"name": "New Name"}
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)
@@ -639,12 +697,14 @@ class PayeeViewTest(TestCase):
 
     def test_payee_delete_view(self):
         """Test payee delete view."""
-        payee = Payee.objects.create(team=self.team, name="To Delete")
-        url = reverse("accounts:payee_delete", kwargs={"team_slug": self.team.slug, "pk": payee.pk})
+        payee = Payee.objects.create(book=self.book, name="To Delete")
+        url = reverse(
+            "accounts:payee_delete", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": payee.pk}
+        )
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)
-        with current_team(self.team):
-            self.assertFalse(Payee.for_team.filter(pk=payee.pk).exists())
+        with current_book(self.book):
+            self.assertFalse(Payee.for_book.filter(pk=payee.pk).exists())
 
 
 class TeamIsolationTest(TestCase):
@@ -653,65 +713,67 @@ class TeamIsolationTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team1 = Team.objects.create(name="Team 1", slug="team-1")
+        cls.book1 = cls.team1.default_book
         cls.team2 = Team.objects.create(name="Team 2", slug="team-2")
+        cls.book2 = cls.team2.default_book
         cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
         cls.team1.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.team2.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
     def test_account_groups_isolated_by_team(self):
         """Test that account groups are isolated by team."""
-        with current_team(self.team1):
-            AccountGroup.objects.create(team=self.team1, name="Team 1 Group", account_type=ACCOUNT_TYPE_ASSET)
+        with current_book(self.book1):
+            AccountGroup.objects.create(book=self.book1, name="Team 1 Group", account_type=ACCOUNT_TYPE_ASSET)
 
-        with current_team(self.team2):
-            AccountGroup.objects.create(team=self.team2, name="Team 2 Group", account_type=ACCOUNT_TYPE_ASSET)
+        with current_book(self.book2):
+            AccountGroup.objects.create(book=self.book2, name="Team 2 Group", account_type=ACCOUNT_TYPE_ASSET)
 
-        with current_team(self.team1):
-            groups = list(AccountGroup.for_team.all())
+        with current_book(self.book1):
+            groups = list(AccountGroup.for_book.all())
             self.assertEqual(len(groups), 1)
             self.assertEqual(groups[0].name, "Team 1 Group")
 
-        with current_team(self.team2):
-            groups = list(AccountGroup.for_team.all())
+        with current_book(self.book2):
+            groups = list(AccountGroup.for_book.all())
             self.assertEqual(len(groups), 1)
             self.assertEqual(groups[0].name, "Team 2 Group")
 
     def test_accounts_isolated_by_team(self):
         """Test that accounts are isolated by team."""
-        group1 = AccountGroup.objects.create(team=self.team1, name="Group 1", account_type=ACCOUNT_TYPE_ASSET)
-        group2 = AccountGroup.objects.create(team=self.team2, name="Group 2", account_type=ACCOUNT_TYPE_ASSET)
+        group1 = AccountGroup.objects.create(book=self.book1, name="Group 1", account_type=ACCOUNT_TYPE_ASSET)
+        group2 = AccountGroup.objects.create(book=self.book2, name="Group 2", account_type=ACCOUNT_TYPE_ASSET)
 
-        with current_team(self.team1):
-            Account.objects.create(team=self.team1, name="Team 1 Account", account_group=group1)
+        with current_book(self.book1):
+            Account.objects.create(book=self.book1, name="Team 1 Account", account_group=group1)
 
-        with current_team(self.team2):
-            Account.objects.create(team=self.team2, name="Team 2 Account", account_group=group2)
+        with current_book(self.book2):
+            Account.objects.create(book=self.book2, name="Team 2 Account", account_group=group2)
 
-        with current_team(self.team1):
-            accounts = list(Account.for_team.all())
+        with current_book(self.book1):
+            accounts = list(Account.for_book.all())
             self.assertEqual(len(accounts), 1)
             self.assertEqual(accounts[0].name, "Team 1 Account")
 
-        with current_team(self.team2):
-            accounts = list(Account.for_team.all())
+        with current_book(self.book2):
+            accounts = list(Account.for_book.all())
             self.assertEqual(len(accounts), 1)
             self.assertEqual(accounts[0].name, "Team 2 Account")
 
     def test_payees_isolated_by_team(self):
         """Test that payees are isolated by team."""
-        with current_team(self.team1):
-            Payee.objects.create(team=self.team1, name="Team 1 Payee")
+        with current_book(self.book1):
+            Payee.objects.create(book=self.book1, name="Team 1 Payee")
 
-        with current_team(self.team2):
-            Payee.objects.create(team=self.team2, name="Team 2 Payee")
+        with current_book(self.book2):
+            Payee.objects.create(book=self.book2, name="Team 2 Payee")
 
-        with current_team(self.team1):
-            payees = list(Payee.for_team.all())
+        with current_book(self.book1):
+            payees = list(Payee.for_book.all())
             self.assertEqual(len(payees), 1)
             self.assertEqual(payees[0].name, "Team 1 Payee")
 
-        with current_team(self.team2):
-            payees = list(Payee.for_team.all())
+        with current_book(self.book2):
+            payees = list(Payee.for_book.all())
             self.assertEqual(len(payees), 1)
             self.assertEqual(payees[0].name, "Team 2 Payee")
 
@@ -722,19 +784,23 @@ class AccountRedirectTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.account_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
-        cls.account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.account_group)
+        cls.account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.account_group)
 
     def setUp(self):
         self.client.login(username="testuser@example.com", password="testpass123")
 
     def test_update_view_redirects_to_detail(self):
         """Saving an edit redirects to the account detail page."""
-        url = reverse("accounts:account_update", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        url = reverse(
+            "accounts:account_update",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": self.account.pk},
+        )
         data = {
             "name": "Checking",
             "account_type": ACCOUNT_TYPE_ASSET,
@@ -743,73 +809,86 @@ class AccountRedirectTest(TestCase):
         }
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)
-        detail_url = reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.account.pk})
+        detail_url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": self.account.pk},
+        )
         self.assertRedirects(response, detail_url, fetch_redirect_response=False)
 
     def test_delete_view_redirects_to_accounts_home(self):
         """Deleting an account redirects to the accounts home board."""
-        account_to_delete = Account.objects.create(team=self.team, name="To Delete", account_group=self.account_group)
-        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
+        account_to_delete = Account.objects.create(book=self.book, name="To Delete", account_group=self.account_group)
+        url = reverse(
+            "accounts:account_delete",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account_to_delete.pk},
+        )
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)
-        home_url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        home_url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         self.assertRedirects(response, home_url, fetch_redirect_response=False)
 
     def test_delete_view_removes_opening_balance_and_account(self):
         """An account whose only journal activity is its own opening balance can be deleted."""
         equity_group = AccountGroup.objects.create(
-            team=self.team, name="Equity", account_type=ACCOUNT_TYPE_EQUITY, is_system=True
+            book=self.book, name="Equity", account_type=ACCOUNT_TYPE_EQUITY, is_system=True
         )
         Account.objects.create(
-            team=self.team, name="Reconciliation Adjustments", account_group=equity_group, is_system=True
+            book=self.book, name="Reconciliation Adjustments", account_group=equity_group, is_system=True
         )
-        account_to_delete = Account.objects.create(team=self.team, name="Savings", account_group=self.account_group)
+        account_to_delete = Account.objects.create(book=self.book, name="Savings", account_group=self.account_group)
         create_opening_balances(
-            self.team, [OpeningRow(account=account_to_delete, amount=Decimal("100.00"))], date.today()
+            self.book, [OpeningRow(account=account_to_delete, amount=Decimal("100.00"))], date.today()
         )
         self.assertTrue(JournalLine.objects.filter(account=account_to_delete).exists())
 
-        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
+        url = reverse(
+            "accounts:account_delete",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account_to_delete.pk},
+        )
         response = self.client.post(url)
 
-        home_url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug})
+        home_url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         self.assertRedirects(response, home_url, fetch_redirect_response=False)
         self.assertFalse(Account.objects.filter(pk=account_to_delete.pk).exists())
         self.assertFalse(JournalLine.objects.filter(account_id=account_to_delete.pk).exists())
 
     def test_delete_view_blocks_account_with_real_transactions(self):
         """An account with a real (non-opening-balance) transaction cannot be deleted."""
-        account_to_delete = Account.objects.create(team=self.team, name="Savings", account_group=self.account_group)
+        account_to_delete = Account.objects.create(book=self.book, name="Savings", account_group=self.account_group)
         expense_group = AccountGroup.objects.create(
-            team=self.team, name="Groceries Group", account_type=ACCOUNT_TYPE_EXPENSE
+            book=self.book, name="Groceries Group", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        expense_account = Account.objects.create(team=self.team, name="Groceries", account_group=expense_group)
+        expense_account = Account.objects.create(book=self.book, name="Groceries", account_group=expense_group)
         entry = JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=date.today(),
             description="Grocery run",
             status=JournalEntry.STATUS_POSTED,
         )
         JournalLine.objects.create(
-            team=self.team,
+            book=self.book,
             journal_entry=entry,
             account=account_to_delete,
             dr_amount=Decimal("0"),
             cr_amount=Decimal("50.00"),
         )
         JournalLine.objects.create(
-            team=self.team,
+            book=self.book,
             journal_entry=entry,
             account=expense_account,
             dr_amount=Decimal("50.00"),
             cr_amount=Decimal("0"),
         )
 
-        url = reverse("accounts:account_delete", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk})
+        url = reverse(
+            "accounts:account_delete",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account_to_delete.pk},
+        )
         response = self.client.post(url, follow=True)
 
         detail_url = reverse(
-            "accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": account_to_delete.pk}
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account_to_delete.pk},
         )
         self.assertRedirects(response, detail_url)
         self.assertTrue(Account.objects.filter(pk=account_to_delete.pk).exists())
@@ -824,38 +903,40 @@ class AccountsBoardApiTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.other_team = Team.objects.create(name="Other Team", slug="other-team")
+        cls.other_book = cls.other_team.default_book
         cls.other_user = CustomUser.objects.create_user(username="other@example.com", password="testpass123")
         cls.other_team.members.add(cls.other_user, through_defaults={"role": ROLE_ADMIN})
 
         cls.bank_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET, sort_order=0
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET, sort_order=0
         )
         cls.invest_group = AccountGroup.objects.create(
-            team=cls.team, name="Investments", account_type=ACCOUNT_TYPE_ASSET, sort_order=1
+            book=cls.book, name="Investments", account_type=ACCOUNT_TYPE_ASSET, sort_order=1
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE, sort_order=0
+            book=cls.book, name="Living", account_type=ACCOUNT_TYPE_EXPENSE, sort_order=0
         )
         cls.checking = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.bank_group, sort_order=0
+            book=cls.book, name="Checking", account_group=cls.bank_group, sort_order=0
         )
-        cls.savings = Account.objects.create(team=cls.team, name="Savings", account_group=cls.bank_group, sort_order=1)
+        cls.savings = Account.objects.create(book=cls.book, name="Savings", account_group=cls.bank_group, sort_order=1)
         cls.groceries = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group, sort_order=0
+            book=cls.book, name="Groceries", account_group=cls.expense_group, sort_order=0
         )
         cls.other_group = AccountGroup.objects.create(
-            team=cls.other_team, name="Other Bank", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.other_book, name="Other Bank", account_type=ACCOUNT_TYPE_ASSET
         )
 
     def setUp(self):
         self.client.login(username="testuser@example.com", password="testpass123")
 
     def _post(self, url_name, payload):
-        url = reverse(f"accounts:{url_name}", kwargs={"team_slug": self.team.slug})
+        url = reverse(f"accounts:{url_name}", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         return self.client.post(url, payload, content_type="application/json")
 
     def test_reorder_accounts_within_group(self):
@@ -902,7 +983,9 @@ class AccountsBoardApiTest(TestCase):
 
     def test_reorder_requires_membership(self):
         self.client.login(username="other@example.com", password="testpass123")
-        url = reverse("accounts:api_reorder_accounts", kwargs={"team_slug": self.team.slug})
+        url = reverse(
+            "accounts:api_reorder_accounts", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug}
+        )
         response = self.client.post(
             url,
             {"groups": [{"group_id": self.bank_group.pk, "account_ids": [self.checking.pk]}]},
@@ -931,7 +1014,7 @@ class AccountsBoardApiTest(TestCase):
     def test_create_account_appends_to_group(self):
         response = self._post("api_create_account", {"name": "Chequing 2", "group_id": self.bank_group.pk})
         self.assertEqual(response.status_code, 201)
-        account = Account.objects.get(team=self.team, name="Chequing 2")
+        account = Account.objects.get(book=self.book, name="Chequing 2")
         self.assertEqual(account.account_group, self.bank_group)
         self.assertEqual(account.sort_order, 2)  # after Checking (0) and Savings (1)
         self.assertTrue(account.has_feed)  # asset accounts get a feed
@@ -940,7 +1023,7 @@ class AccountsBoardApiTest(TestCase):
     def test_create_expense_account_has_no_feed(self):
         response = self._post("api_create_account", {"name": "Utilities", "group_id": self.expense_group.pk})
         self.assertEqual(response.status_code, 201)
-        account = Account.objects.get(team=self.team, name="Utilities")
+        account = Account.objects.get(book=self.book, name="Utilities")
         self.assertFalse(account.has_feed)
 
     def test_create_account_duplicate_name_rejected(self):
@@ -951,7 +1034,7 @@ class AccountsBoardApiTest(TestCase):
     def test_create_group_appends_to_type(self):
         response = self._post("api_create_group", {"name": "Property", "account_type": ACCOUNT_TYPE_ASSET})
         self.assertEqual(response.status_code, 201)
-        group = AccountGroup.objects.get(team=self.team, name="Property")
+        group = AccountGroup.objects.get(book=self.book, name="Property")
         self.assertEqual(group.account_type, ACCOUNT_TYPE_ASSET)
         self.assertEqual(group.sort_order, 2)  # after Bank Accounts (0) and Investments (1)
 
@@ -970,7 +1053,7 @@ class AccountsBoardApiTest(TestCase):
             {"account_type": ACCOUNT_TYPE_ASSET, "group_ids": [self.invest_group.pk, self.bank_group.pk]},
         )
         names = list(
-            Account.objects.filter(team=self.team, account_group__account_type=ACCOUNT_TYPE_ASSET).values_list(
+            Account.objects.filter(book=self.book, account_group__account_type=ACCOUNT_TYPE_ASSET).values_list(
                 "name", flat=True
             )
         )

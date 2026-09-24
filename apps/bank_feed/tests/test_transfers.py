@@ -18,8 +18,8 @@ from apps.accounts.models import ACCOUNT_TYPE_ASSET, Account, AccountGroup
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.bank_feed.services.transfer_detection import find_transfer_candidates
 from apps.bank_feed.services.transfer_mirror import sync_transfer
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -29,20 +29,21 @@ class TransferTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.checking = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Checking", account_group=cls.asset_group, has_feed=True
         )
         cls.savings = Account.objects.create(
-            team=cls.team, name="Savings", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Savings", account_group=cls.asset_group, has_feed=True
         )
         cls.credit_card = Account.objects.create(
-            team=cls.team, name="Credit Card", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Credit Card", account_group=cls.asset_group, has_feed=True
         )
 
     def setUp(self):
@@ -54,7 +55,7 @@ class TransferTestBase(TestCase):
     def _tx(self, account, amount, posted_date=None, **kwargs):
         """Create a BankTransaction (Plaid convention: + = outflow, - = inflow)."""
         return BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=account,
             amount=Decimal(amount),
             posted_date=posted_date or date(2026, 6, 1),
@@ -66,7 +67,7 @@ class TransferTestBase(TestCase):
     def _categorize_as_transfer(self, bank_tx, category_account):
         """Mirror the view's transfer categorization: one balanced 2-line entry."""
         entry = JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=bank_tx.posted_date,
             description=bank_tx.description,
             source=JournalEntry.SOURCE_IMPORT,
@@ -77,14 +78,14 @@ class TransferTestBase(TestCase):
         if is_inflow:
             JournalLine.objects.create(
                 journal_entry=entry,
-                team=self.team,
+                book=self.book,
                 account=bank_tx.account,
                 dr_amount=amount,
                 cr_amount=Decimal("0"),
             )
             JournalLine.objects.create(
                 journal_entry=entry,
-                team=self.team,
+                book=self.book,
                 account=category_account,
                 dr_amount=Decimal("0"),
                 cr_amount=amount,
@@ -92,14 +93,14 @@ class TransferTestBase(TestCase):
         else:
             JournalLine.objects.create(
                 journal_entry=entry,
-                team=self.team,
+                book=self.book,
                 account=bank_tx.account,
                 dr_amount=Decimal("0"),
                 cr_amount=amount,
             )
             JournalLine.objects.create(
                 journal_entry=entry,
-                team=self.team,
+                book=self.book,
                 account=category_account,
                 dr_amount=amount,
                 cr_amount=Decimal("0"),
@@ -109,8 +110,8 @@ class TransferTestBase(TestCase):
         return entry
 
     def candidates(self):
-        with current_team(self.team):
-            return find_transfer_candidates(self.team)
+        with current_book(self.book):
+            return find_transfer_candidates(self.book)
 
 
 class TransferDetectionTest(TransferTestBase):
@@ -179,7 +180,7 @@ class TransferDetectionTest(TransferTestBase):
     def test_ignores_dismissed_pairs(self):
         out_tx = self._tx(self.checking, "100.00")
         in_tx = self._tx(self.savings, "-100.00")
-        TransferMatchDismissal.record(self.team, out_tx.id, in_tx.id)
+        TransferMatchDismissal.record(self.book, out_tx.id, in_tx.id)
         self.assertEqual(self.candidates(), [])
 
     def test_each_transaction_paired_once(self):
@@ -217,12 +218,12 @@ class TransferDetectionTest(TransferTestBase):
 class TransferSuggestionsEndpointTest(TransferTestBase):
     def setUp(self):
         super().setUp()
-        self.url = f"/a/{self.team.slug}/bankfeed/api/feed/transfers/"
+        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/transfers/"
 
     def test_lists_suggestions(self):
         self._tx(self.checking, "100.00")
         self._tx(self.savings, "-100.00")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(len(resp.data), 1)
@@ -236,7 +237,7 @@ class TransferSuggestionsEndpointTest(TransferTestBase):
     def test_requires_team_membership(self):
         other_user = CustomUser.objects.create_user(username="outsider", password="pass")
         self.client.force_authenticate(user=other_user)
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.get(self.url)
         self.assertIn(resp.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
 
@@ -244,7 +245,7 @@ class TransferSuggestionsEndpointTest(TransferTestBase):
 class TransferResolveEndpointTest(TransferTestBase):
     def setUp(self):
         super().setUp()
-        self.url = f"/a/{self.team.slug}/bankfeed/api/feed/transfers/resolve/"
+        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/transfers/resolve/"
 
     def test_resolve_removes_double_count(self):
         out_tx = self._tx(self.checking, "100.00")
@@ -258,7 +259,7 @@ class TransferResolveEndpointTest(TransferTestBase):
         self.assertEqual(self.checking.balance, Decimal("-200.00"))
         self.assertEqual(self.savings.balance, Decimal("200.00"))
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -274,7 +275,7 @@ class TransferResolveEndpointTest(TransferTestBase):
     def test_resolve_uncategorized_leg_just_archives(self):
         out_tx = self._tx(self.checking, "100.00")
         in_tx = self._tx(self.savings, "-100.00")  # uncategorized duplicate
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         in_tx.refresh_from_db()
@@ -288,7 +289,7 @@ class TransferResolveEndpointTest(TransferTestBase):
         line.is_reconciled = True
         line.save()
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         in_tx.refresh_from_db()
@@ -308,7 +309,7 @@ class TransferResolveEndpointTest(TransferTestBase):
         counterpart_line.is_reconciled = True
         counterpart_line.save()
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("reconciled", resp.json()["error"])
@@ -319,26 +320,27 @@ class TransferResolveEndpointTest(TransferTestBase):
 
     def test_archive_and_keep_must_differ(self):
         tx = self._tx(self.checking, "100.00")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"archive_id": tx.id, "keep_id": tx.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_missing_transaction_returns_404(self):
         tx = self._tx(self.checking, "100.00")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"archive_id": 999999, "keep_id": tx.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_cannot_resolve_other_teams_transactions(self):
         other_team = Team.objects.create(name="Other", slug="other")
+        other_book = other_team.default_book
         other_group = AccountGroup.objects.create(
-            team=other_team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=other_book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         other_account = Account.objects.create(
-            team=other_team, name="Checking", account_group=other_group, has_feed=True
+            book=other_book, name="Checking", account_group=other_group, has_feed=True
         )
         other_tx = BankTransaction.objects.create(
-            team=other_team,
+            book=other_book,
             account=other_account,
             amount=Decimal("100.00"),
             posted_date=date(2026, 6, 1),
@@ -346,7 +348,7 @@ class TransferResolveEndpointTest(TransferTestBase):
             source=BankTransaction.SOURCE_CSV,
         )
         keep = self._tx(self.checking, "100.00")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"archive_id": other_tx.id, "keep_id": keep.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         other_tx.refresh_from_db()
@@ -356,27 +358,27 @@ class TransferResolveEndpointTest(TransferTestBase):
 class TransferDismissEndpointTest(TransferTestBase):
     def setUp(self):
         super().setUp()
-        self.url = f"/a/{self.team.slug}/bankfeed/api/feed/transfers/dismiss/"
+        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/transfers/dismiss/"
 
     def test_dismiss_persists_and_hides_suggestion(self):
         out_tx = self._tx(self.checking, "100.00")
         in_tx = self._tx(self.savings, "-100.00")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"transaction_a": out_tx.id, "transaction_b": in_tx.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertTrue(TransferMatchDismissal.objects.filter(team=self.team).exists())
+        self.assertTrue(TransferMatchDismissal.objects.filter(book=self.book).exists())
         self.assertEqual(self.candidates(), [])
 
     def test_dismiss_is_idempotent_order_independent(self):
         out_tx = self._tx(self.checking, "100.00")
         in_tx = self._tx(self.savings, "-100.00")
-        with current_team(self.team):
+        with current_book(self.book):
             self.client.post(self.url, {"transaction_a": out_tx.id, "transaction_b": in_tx.id}, format="json")
             self.client.post(self.url, {"transaction_a": in_tx.id, "transaction_b": out_tx.id}, format="json")
-        self.assertEqual(TransferMatchDismissal.objects.filter(team=self.team).count(), 1)
+        self.assertEqual(TransferMatchDismissal.objects.filter(book=self.book).count(), 1)
 
     def test_dismiss_missing_transaction_returns_404(self):
         out_tx = self._tx(self.checking, "100.00")
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(self.url, {"transaction_a": out_tx.id, "transaction_b": 999999}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)

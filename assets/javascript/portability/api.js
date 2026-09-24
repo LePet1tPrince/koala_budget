@@ -39,7 +39,7 @@ export const getPortabilityApi = (urls) => ({
     form.append('file', file);
     return read(await fetch(urls.upload, { method: 'POST', headers: headers(), body: form }));
   },
-  apply: (importId, teamName) => post(urls.apply, { import_id: importId, team_name: teamName }),
+  apply: (importId, bookName) => post(urls.apply, { import_id: importId, book_name: bookName }),
   status: async (importId) =>
     read(await fetch(`${urls.status}?import_id=${encodeURIComponent(importId)}`, { headers: headers() })),
 });

@@ -25,21 +25,22 @@ class BudgetModelTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Budget Test Team", slug="budget-test-team")
+        cls.book = cls.team.default_book
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Model Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Model Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.income_group = AccountGroup.objects.create(
-            team=cls.team, name="Model Income", account_type=ACCOUNT_TYPE_INCOME
+            book=cls.book, name="Model Income", account_type=ACCOUNT_TYPE_INCOME
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Model Groceries", account_group=cls.expense_group
+            book=cls.book, name="Model Groceries", account_group=cls.expense_group
         )
-        cls.income_account = Account.objects.create(team=cls.team, name="Model Salary", account_group=cls.income_group)
+        cls.income_account = Account.objects.create(book=cls.book, name="Model Salary", account_group=cls.income_group)
 
     def test_create_budget(self):
         """Test creating a budget."""
         budget = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
@@ -51,7 +52,7 @@ class BudgetModelTest(TestCase):
     def test_budget_str(self):
         """Test string representation of budget."""
         budget = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
@@ -63,7 +64,7 @@ class BudgetModelTest(TestCase):
     def test_unique_together_constraint(self):
         """Test that budgets have unique team/month/category combinations."""
         Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
@@ -72,7 +73,7 @@ class BudgetModelTest(TestCase):
         # Should raise IntegrityError for duplicate
         with self.assertRaises(IntegrityError):
             Budget.objects.create(
-                team=self.team,
+                book=self.book,
                 month=date(2025, 12, 1),
                 category=self.expense_account,
                 budget_amount=Decimal("600.00"),
@@ -81,13 +82,13 @@ class BudgetModelTest(TestCase):
     def test_budget_ordering(self):
         """Test that budgets are ordered by month descending."""
         budget1 = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 11, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
         )
         budget2 = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("600.00"),
@@ -104,37 +105,38 @@ class BudgetServiceTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Service Test Team", slug="service-test-team")
+        cls.book = cls.team.default_book
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Service Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Service Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.income_group = AccountGroup.objects.create(
-            team=cls.team, name="Service Income", account_type=ACCOUNT_TYPE_INCOME
+            book=cls.book, name="Service Income", account_type=ACCOUNT_TYPE_INCOME
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Service Groceries", account_group=cls.expense_group
+            book=cls.book, name="Service Groceries", account_group=cls.expense_group
         )
         cls.income_account = Account.objects.create(
-            team=cls.team, name="Service Salary", account_group=cls.income_group
+            book=cls.book, name="Service Salary", account_group=cls.income_group
         )
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Service Assets", account_type="asset")
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Service Assets", account_type="asset")
         cls.asset_account = Account.objects.create(
-            team=cls.team, name="Service Checking", account_group=cls.asset_group
+            book=cls.book, name="Service Checking", account_group=cls.asset_group
         )
 
     def setUp(self):
-        self.service = BudgetService(self.team)
+        self.service = BudgetService(self.book)
 
     def test_actual_expense_account(self):
         """Test actual calculation for expense accounts (dr - cr)."""
         # Create journal entry: expense debit, asset credit
         entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 12, 15), description="Grocery purchase"
+            book=self.book, entry_date=date(2025, 12, 15), description="Grocery purchase"
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("100.00")
         )
 
         actual = self.service.actual(self.expense_account, date(2025, 12, 1))
@@ -143,12 +145,12 @@ class BudgetServiceTest(TestCase):
     def test_actual_income_account(self):
         """Test actual calculation for income accounts (cr - dr)."""
         # Create journal entry: asset debit, income credit
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 15), description="Salary payment")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 15), description="Salary payment")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("2000.00")
         )
 
         actual = self.service.actual(self.income_account, date(2025, 12, 1))
@@ -163,7 +165,7 @@ class BudgetServiceTest(TestCase):
         """Test available calculation for expense accounts (budget - actual)."""
         # Create budget
         Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
@@ -171,13 +173,13 @@ class BudgetServiceTest(TestCase):
 
         # Create transaction
         entry = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 12, 15), description="Grocery purchase"
+            book=self.book, entry_date=date(2025, 12, 15), description="Grocery purchase"
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("100.00")
         )
 
         available = self.service.available(self.expense_account, date(2025, 12, 1))
@@ -187,19 +189,19 @@ class BudgetServiceTest(TestCase):
         """Test available calculation for income accounts (actual - budget)."""
         # Create budget
         Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.income_account,
             budget_amount=Decimal("1500.00"),
         )
 
         # Create transaction
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 15), description="Salary payment")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 15), description="Salary payment")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("2000.00")
         )
 
         available = self.service.available(self.income_account, date(2025, 12, 1))
@@ -209,37 +211,37 @@ class BudgetServiceTest(TestCase):
         """Test available calculation rolls forward from previous months."""
         # November budget: $500, actual: $100, available: $400
         Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 11, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
         )
         entry_nov = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 11, 15), description="November expense"
+            book=self.book, entry_date=date(2025, 11, 15), description="November expense"
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry_nov, account=self.expense_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry_nov, account=self.expense_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry_nov, account=self.asset_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry_nov, account=self.asset_account, cr_amount=Decimal("100.00")
         )
 
         # December budget: $300, actual: $50
         # Available should be: 300 - 50 + 400 = 650
         Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("300.00"),
         )
         entry_dec = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 12, 15), description="December expense"
+            book=self.book, entry_date=date(2025, 12, 15), description="December expense"
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry_dec, account=self.expense_account, dr_amount=Decimal("50.00")
+            book=self.book, journal_entry=entry_dec, account=self.expense_account, dr_amount=Decimal("50.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry_dec, account=self.asset_account, cr_amount=Decimal("50.00")
+            book=self.book, journal_entry=entry_dec, account=self.asset_account, cr_amount=Decimal("50.00")
         )
 
         available = self.service.available(self.expense_account, date(2025, 12, 1))
@@ -249,23 +251,23 @@ class BudgetServiceTest(TestCase):
         """Test get_actuals_by_category returns correct values."""
         # Create transactions for both expense and income accounts
         entry1 = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 12, 15), description="Expense transaction"
+            book=self.book, entry_date=date(2025, 12, 15), description="Expense transaction"
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry1, account=self.expense_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry1, account=self.expense_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry1, account=self.asset_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry1, account=self.asset_account, cr_amount=Decimal("100.00")
         )
 
         entry2 = JournalEntry.objects.create(
-            team=self.team, entry_date=date(2025, 12, 15), description="Income transaction"
+            book=self.book, entry_date=date(2025, 12, 15), description="Income transaction"
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry2, account=self.asset_account, dr_amount=Decimal("2000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry2, account=self.income_account, cr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry2, account=self.income_account, cr_amount=Decimal("2000.00")
         )
 
         actuals = self.service.get_actuals_by_category(date(2025, 12, 1))
@@ -277,30 +279,30 @@ class BudgetServiceTest(TestCase):
         """Test build_budget_rows includes expense and income accounts."""
         # Create budgets and transactions
         Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
         )
         Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.income_account,
             budget_amount=Decimal("1500.00"),
         )
 
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 15), description="Transactions")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 15), description="Transactions")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.income_account, cr_amount=Decimal("2000.00")
+            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("2000.00")
         )
 
         rows = self.service.build_budget_rows(date(2025, 12, 1))
@@ -329,17 +331,18 @@ class BudgetAmountFormTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Form Test Team", slug="form-test-team")
+        cls.book = cls.team.default_book
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Form Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Form Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Form Groceries", account_group=cls.expense_group
+            book=cls.book, name="Form Groceries", account_group=cls.expense_group
         )
 
     def test_form_valid(self):
         """Test form validation with valid data."""
         budget = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
@@ -352,7 +355,7 @@ class BudgetAmountFormTest(TestCase):
     def test_form_decimal_input(self):
         """Test form handles decimal input correctly."""
         budget = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
@@ -366,7 +369,7 @@ class BudgetAmountFormTest(TestCase):
     def test_form_blank_input_converts_to_zero(self):
         """Test form converts blank input to 0."""
         budget = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
@@ -387,7 +390,7 @@ class BudgetAmountFormTest(TestCase):
     def test_form_field_not_required(self):
         """Test that budget_amount field is not required."""
         budget = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             month=date(2025, 12, 1),
             category=self.expense_account,
             budget_amount=Decimal("500.00"),
@@ -408,13 +411,14 @@ class BudgetMonthViewTest(TestCase):
         from apps.users.models import CustomUser
 
         cls.team = Team.objects.create(name="View Test Team", slug="view-test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="budgetuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="View Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="View Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="View Groceries", account_group=cls.expense_group
+            book=cls.book, name="View Groceries", account_group=cls.expense_group
         )
 
     def setUp(self):
@@ -422,14 +426,14 @@ class BudgetMonthViewTest(TestCase):
 
     def test_get_does_not_create_budget_rows(self):
         """Merely viewing a month must not insert Budget rows."""
-        response = self.client.get(f"/a/{self.team.slug}/budget/?month=2030-01-01")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2030-01-01")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Budget.objects.filter(team=self.team).count(), 0)
+        self.assertEqual(Budget.objects.filter(book=self.book).count(), 0)
 
     def test_post_creates_budget_lazily_for_category(self):
         """Saving an amount for a category without a Budget row creates it."""
         response = self.client.post(
-            f"/a/{self.team.slug}/budget/?month=2025-06-01",
+            f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01",
             {
                 "category_id": self.expense_account.pk,
                 "budget_month": "2025-06-01",
@@ -437,25 +441,25 @@ class BudgetMonthViewTest(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        budget = Budget.objects.get(team=self.team, category=self.expense_account, month=date(2025, 6, 1))
+        budget = Budget.objects.get(book=self.book, category=self.expense_account, month=date(2025, 6, 1))
         self.assertEqual(budget.budget_amount, Decimal("123.45"))
 
     def test_post_updates_existing_budget(self):
         """Saving an amount for an existing Budget row updates it in place."""
         budget = Budget.objects.create(
-            team=self.team,
+            book=self.book,
             category=self.expense_account,
             month=date(2025, 6, 1),
             budget_amount=Decimal("10.00"),
         )
         response = self.client.post(
-            f"/a/{self.team.slug}/budget/?month=2025-06-01",
+            f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01",
             {"budget_id": budget.pk, "budget_amount": "55.00"},
         )
         self.assertEqual(response.status_code, 302)
         budget.refresh_from_db()
         self.assertEqual(budget.budget_amount, Decimal("55.00"))
-        self.assertEqual(Budget.objects.filter(team=self.team).count(), 1)
+        self.assertEqual(Budget.objects.filter(book=self.book).count(), 1)
 
 
 class BudgetSaveAmountViewTest(TestCase):
@@ -471,27 +475,32 @@ class BudgetSaveAmountViewTest(TestCase):
         from apps.users.models import CustomUser
 
         cls.team = Team.objects.create(name="Save Amount Team", slug="save-amount-team")
+        cls.book = cls.team.default_book
+        # These tests budget income before it arrives.
+        cls.book.budget_future_income = True
+        cls.book.save()
         cls.other_team = Team.objects.create(name="Other Save Team", slug="other-save-team")
+        cls.other_book = cls.other_team.default_book
         cls.user = CustomUser.objects.create_user(username="saveuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Save Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Save Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.groceries = Account.objects.create(team=cls.team, name="Save Groceries", account_group=cls.expense_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Save Groceries", account_group=cls.expense_group)
         cls.income_group = AccountGroup.objects.create(
-            team=cls.team, name="Save Income", account_type=ACCOUNT_TYPE_INCOME
+            book=cls.book, name="Save Income", account_type=ACCOUNT_TYPE_INCOME
         )
-        cls.salary = Account.objects.create(team=cls.team, name="Save Salary", account_group=cls.income_group)
+        cls.salary = Account.objects.create(book=cls.book, name="Save Salary", account_group=cls.income_group)
 
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Save Assets", account_type="asset")
-        cls.checking = Account.objects.create(team=cls.team, name="Save Checking", account_group=cls.asset_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Save Assets", account_type="asset")
+        cls.checking = Account.objects.create(book=cls.book, name="Save Checking", account_group=cls.asset_group)
 
         cls.other_group = AccountGroup.objects.create(
-            team=cls.other_team, name="Foreign Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.other_book, name="Foreign Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.foreign_category = Account.objects.create(
-            team=cls.other_team, name="Foreign Rent", account_group=cls.other_group
+            book=cls.other_book, name="Foreign Rent", account_group=cls.other_group
         )
 
         cls.month = date(2025, 6, 1)
@@ -501,7 +510,7 @@ class BudgetSaveAmountViewTest(TestCase):
 
     def post(self, **payload):
         return self.client.post(
-            f"/a/{self.team.slug}/budget/save-amount/",
+            f"/a/{self.team.slug}/{self.book.slug}/budget/save-amount/",
             data=json.dumps(payload),
             content_type="application/json",
         )
@@ -509,18 +518,18 @@ class BudgetSaveAmountViewTest(TestCase):
     def test_creates_budget_row_lazily(self):
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="123.45")
         self.assertEqual(response.status_code, 200)
-        budget = Budget.objects.get(team=self.team, category=self.groceries, month=self.month)
+        budget = Budget.objects.get(book=self.book, category=self.groceries, month=self.month)
         self.assertEqual(budget.budget_amount, Decimal("123.45"))
 
     def test_updates_existing_budget_in_place(self):
         budget = Budget.objects.create(
-            team=self.team, category=self.groceries, month=self.month, budget_amount=Decimal("10.00")
+            book=self.book, category=self.groceries, month=self.month, budget_amount=Decimal("10.00")
         )
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="55")
         self.assertEqual(response.status_code, 200)
         budget.refresh_from_db()
         self.assertEqual(budget.budget_amount, Decimal("55.00"))
-        self.assertEqual(Budget.objects.filter(team=self.team).count(), 1)
+        self.assertEqual(Budget.objects.filter(book=self.book).count(), 1)
 
     def test_does_not_redirect(self):
         """The whole point: a save must not navigate, or the page scrolls back to the top."""
@@ -546,18 +555,18 @@ class BudgetSaveAmountViewTest(TestCase):
     def test_accepts_a_pasted_spreadsheet_amount(self):
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="$1,234.56")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Budget.objects.get(team=self.team, category=self.groceries).budget_amount, Decimal("1234.56"))
+        self.assertEqual(Budget.objects.get(book=self.book, category=self.groceries).budget_amount, Decimal("1234.56"))
 
     def test_blank_amount_clears_the_row_to_zero(self):
-        Budget.objects.create(team=self.team, category=self.groceries, month=self.month, budget_amount=Decimal("99.00"))
+        Budget.objects.create(book=self.book, category=self.groceries, month=self.month, budget_amount=Decimal("99.00"))
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Budget.objects.get(team=self.team, category=self.groceries).budget_amount, Decimal("0.00"))
+        self.assertEqual(Budget.objects.get(book=self.book, category=self.groceries).budget_amount, Decimal("0.00"))
 
     def test_rejects_a_non_numeric_amount(self):
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="abc")
         self.assertEqual(response.status_code, 400)
-        self.assertFalse(Budget.objects.filter(team=self.team).exists())
+        self.assertFalse(Budget.objects.filter(book=self.book).exists())
 
     def test_rejects_an_invalid_month(self):
         response = self.post(category_id=self.groceries.pk, month="not-a-date", amount="10")
@@ -567,7 +576,7 @@ class BudgetSaveAmountViewTest(TestCase):
         """Only income/expense accounts are budget categories."""
         response = self.post(category_id=self.checking.pk, month="2025-06-01", amount="10")
         self.assertEqual(response.status_code, 400)
-        self.assertFalse(Budget.objects.filter(team=self.team).exists())
+        self.assertFalse(Budget.objects.filter(book=self.book).exists())
 
     def test_rejects_another_teams_category(self):
         response = self.post(category_id=self.foreign_category.pk, month="2025-06-01", amount="10")
@@ -578,19 +587,19 @@ class BudgetSaveAmountViewTest(TestCase):
         self.client.logout()
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="10")
         self.assertIn(response.status_code, (302, 403, 404))
-        self.assertFalse(Budget.objects.filter(team=self.team).exists())
+        self.assertFalse(Budget.objects.filter(book=self.book).exists())
 
     def test_rejects_a_non_numeric_category_id(self):
         response = self.post(category_id="abc", month="2025-06-01", amount="10")
         self.assertEqual(response.status_code, 400)
 
     def test_rejects_get(self):
-        response = self.client.get(f"/a/{self.team.slug}/budget/save-amount/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/save-amount/")
         self.assertEqual(response.status_code, 405)
 
     def test_month_is_normalized_to_the_first(self):
         self.post(category_id=self.salary.pk, month="2025-06-17", amount="42")
-        self.assertTrue(Budget.objects.filter(team=self.team, category=self.salary, month=self.month).exists())
+        self.assertTrue(Budget.objects.filter(book=self.book, category=self.salary, month=self.month).exists())
 
 
 class BudgetAmountParsingTest(TestCase):
@@ -632,43 +641,44 @@ class BudgetAutofillViewTest(TestCase):
         from apps.users.models import CustomUser
 
         cls.team = Team.objects.create(name="Autofill Test Team", slug="autofill-test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="autofilluser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Autofill Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Autofill Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.groceries = Account.objects.create(
-            team=cls.team, name="Autofill Groceries", account_group=cls.expense_group
+            book=cls.book, name="Autofill Groceries", account_group=cls.expense_group
         )
-        cls.rent = Account.objects.create(team=cls.team, name="Autofill Rent", account_group=cls.expense_group)
+        cls.rent = Account.objects.create(book=cls.book, name="Autofill Rent", account_group=cls.expense_group)
 
     def setUp(self):
         self.client.login(username="autofilluser@example.com", password="testpass123")
         self.prev_month = date(2025, 5, 1)
         self.month = date(2025, 6, 1)
         Budget.objects.create(
-            team=self.team, category=self.groceries, month=self.prev_month, budget_amount=Decimal("100.00")
+            book=self.book, category=self.groceries, month=self.prev_month, budget_amount=Decimal("100.00")
         )
         Budget.objects.create(
-            team=self.team, category=self.rent, month=self.prev_month, budget_amount=Decimal("900.00")
+            book=self.book, category=self.rent, month=self.prev_month, budget_amount=Decimal("900.00")
         )
 
     def test_assigned_last_month_applies_to_all_when_not_filtered(self):
         """Without the 'filtered' marker (no-JS fallback), the action applies to every category."""
         response = self.client.post(
-            f"/a/{self.team.slug}/budget/autofill/",
+            f"/a/{self.team.slug}/{self.book.slug}/budget/autofill/",
             {"month": "2025-06-01", "action": "assigned_last_month"},
         )
         self.assertEqual(response.status_code, 302)
-        groceries_budget = Budget.objects.get(team=self.team, category=self.groceries, month=self.month)
-        rent_budget = Budget.objects.get(team=self.team, category=self.rent, month=self.month)
+        groceries_budget = Budget.objects.get(book=self.book, category=self.groceries, month=self.month)
+        rent_budget = Budget.objects.get(book=self.book, category=self.rent, month=self.month)
         self.assertEqual(groceries_budget.budget_amount, Decimal("100.00"))
         self.assertEqual(rent_budget.budget_amount, Decimal("900.00"))
 
     def test_assigned_last_month_respects_category_selection(self):
         """When filtered, only the selected category_ids are touched."""
         response = self.client.post(
-            f"/a/{self.team.slug}/budget/autofill/",
+            f"/a/{self.team.slug}/{self.book.slug}/budget/autofill/",
             {
                 "month": "2025-06-01",
                 "action": "assigned_last_month",
@@ -677,9 +687,9 @@ class BudgetAutofillViewTest(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        groceries_budget = Budget.objects.get(team=self.team, category=self.groceries, month=self.month)
+        groceries_budget = Budget.objects.get(book=self.book, category=self.groceries, month=self.month)
         self.assertEqual(groceries_budget.budget_amount, Decimal("100.00"))
-        self.assertFalse(Budget.objects.filter(team=self.team, category=self.rent, month=self.month).exists())
+        self.assertFalse(Budget.objects.filter(book=self.book, category=self.rent, month=self.month).exists())
 
 
 class BudgetGridViewTest(TestCase):
@@ -691,27 +701,32 @@ class BudgetGridViewTest(TestCase):
         from apps.users.models import CustomUser
 
         cls.team = Team.objects.create(name="Grid Test Team", slug="grid-test-team")
+        cls.book = cls.team.default_book
+        # These tests budget income before it arrives.
+        cls.book.budget_future_income = True
+        cls.book.save()
         cls.user = CustomUser.objects.create_user(username="griduser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Grid Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Grid Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.income_group = AccountGroup.objects.create(
-            team=cls.team, name="Grid Income", account_type=ACCOUNT_TYPE_INCOME
+            book=cls.book, name="Grid Income", account_type=ACCOUNT_TYPE_INCOME
         )
-        cls.groceries = Account.objects.create(team=cls.team, name="Grid Groceries", account_group=cls.expense_group)
-        cls.salary = Account.objects.create(team=cls.team, name="Grid Salary", account_group=cls.income_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Grid Groceries", account_group=cls.expense_group)
+        cls.salary = Account.objects.create(book=cls.book, name="Grid Salary", account_group=cls.income_group)
 
         # An account on another team, to verify cross-tenant writes are rejected
         cls.other_team = Team.objects.create(name="Grid Other Team", slug="grid-other-team")
+        cls.other_book = cls.other_team.default_book
         other_group = AccountGroup.objects.create(
-            team=cls.other_team, name="Other Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.other_book, name="Other Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.other_account = Account.objects.create(team=cls.other_team, name="Other Rent", account_group=other_group)
+        cls.other_account = Account.objects.create(book=cls.other_book, name="Other Rent", account_group=other_group)
 
-        cls.grid_url = f"/a/{cls.team.slug}/budget/grid/"
-        cls.save_url = f"/a/{cls.team.slug}/budget/grid/save/"
+        cls.grid_url = f"/a/{cls.team.slug}/{cls.book.slug}/budget/grid/"
+        cls.save_url = f"/a/{cls.team.slug}/{cls.book.slug}/budget/grid/save/"
 
     def setUp(self):
         self.client.login(username="griduser@example.com", password="testpass123")
@@ -723,7 +738,7 @@ class BudgetGridViewTest(TestCase):
 
     def test_grid_view_renders_with_existing_amounts(self):
         Budget.objects.create(
-            team=self.team, category=self.groceries, month=date(2026, 3, 1), budget_amount=Decimal("250.00")
+            book=self.book, category=self.groceries, month=date(2026, 3, 1), budget_amount=Decimal("250.00")
         )
         response = self.client.get(f"{self.grid_url}?start=2026-01-01")
         self.assertEqual(response.status_code, 200)
@@ -738,7 +753,7 @@ class BudgetGridViewTest(TestCase):
     def test_grid_view_does_not_create_budget_rows(self):
         response = self.client.get(f"{self.grid_url}?start=2031-01-01")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Budget.objects.filter(team=self.team).count(), 0)
+        self.assertEqual(Budget.objects.filter(book=self.book).count(), 0)
 
     def test_grid_view_excludes_other_teams_accounts(self):
         response = self.client.get(self.grid_url)
@@ -755,14 +770,14 @@ class BudgetGridViewTest(TestCase):
         self.assertEqual(response.status_code, 302)
 
     def test_grid_view_requires_team_membership(self):
-        response = self.client.get(f"/a/{self.other_team.slug}/budget/grid/")
+        response = self.client.get(f"/a/{self.other_team.slug}/{self.other_book.slug}/budget/grid/")
         self.assertEqual(response.status_code, 404)
 
     # ----------------------------------------------------------------- POST
 
     def test_save_creates_and_updates_budgets(self):
         existing = Budget.objects.create(
-            team=self.team, category=self.groceries, month=date(2026, 1, 1), budget_amount=Decimal("100.00")
+            book=self.book, category=self.groceries, month=date(2026, 1, 1), budget_amount=Decimal("100.00")
         )
         response = self.post_save(
             [
@@ -776,11 +791,11 @@ class BudgetGridViewTest(TestCase):
         existing.refresh_from_db()
         self.assertEqual(existing.budget_amount, Decimal("150.00"))
         self.assertEqual(
-            Budget.objects.get(team=self.team, category=self.groceries, month=date(2026, 2, 1)).budget_amount,
+            Budget.objects.get(book=self.book, category=self.groceries, month=date(2026, 2, 1)).budget_amount,
             Decimal("175.50"),
         )
         self.assertEqual(
-            Budget.objects.get(team=self.team, category=self.salary, month=date(2026, 1, 1)).budget_amount,
+            Budget.objects.get(book=self.book, category=self.salary, month=date(2026, 1, 1)).budget_amount,
             Decimal("4000.00"),
         )
 
@@ -821,7 +836,7 @@ class BudgetGridViewTest(TestCase):
     def test_save_normalizes_month_to_first_day(self):
         response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-15", "amount": "20"}])
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(Budget.objects.filter(team=self.team, category=self.groceries, month=date(2026, 1, 1)).exists())
+        self.assertTrue(Budget.objects.filter(book=self.book, category=self.groceries, month=date(2026, 1, 1)).exists())
 
     def test_save_last_write_wins_for_duplicate_cells(self):
         response = self.post_save(
@@ -833,7 +848,7 @@ class BudgetGridViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"saved": 1})
         self.assertEqual(
-            Budget.objects.get(team=self.team, category=self.groceries, month=date(2026, 1, 1)).budget_amount,
+            Budget.objects.get(book=self.book, category=self.groceries, month=date(2026, 1, 1)).budget_amount,
             Decimal("30.00"),
         )
 
@@ -843,7 +858,7 @@ class BudgetGridViewTest(TestCase):
 
     def test_save_requires_team_membership(self):
         response = self.client.post(
-            f"/a/{self.other_team.slug}/budget/grid/save/",
+            f"/a/{self.other_team.slug}/{self.other_book.slug}/budget/grid/save/",
             {"changes": []},
             content_type="application/json",
         )
@@ -859,28 +874,32 @@ class BudgetSectionOrderingTest(TestCase):
         from apps.users.models import CustomUser
 
         cls.team = Team.objects.create(name="Order Test Team", slug="order-test-team")
+        cls.book = cls.team.default_book
+        # These tests budget income before it arrives.
+        cls.book.budget_future_income = True
+        cls.book.save()
         cls.user = CustomUser.objects.create_user(username="orderuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         # "Alpha Expenses" sorts before "Zeta Income" alphabetically, so these
         # verify the income-before-expense ordering is deliberate
         expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Alpha Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Alpha Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        income_group = AccountGroup.objects.create(team=cls.team, name="Zeta Income", account_type=ACCOUNT_TYPE_INCOME)
-        cls.expense_account = Account.objects.create(team=cls.team, name="Order Rent", account_group=expense_group)
-        cls.income_account = Account.objects.create(team=cls.team, name="Order Salary", account_group=income_group)
+        income_group = AccountGroup.objects.create(book=cls.book, name="Zeta Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.expense_account = Account.objects.create(book=cls.book, name="Order Rent", account_group=expense_group)
+        cls.income_account = Account.objects.create(book=cls.book, name="Order Salary", account_group=income_group)
 
     def setUp(self):
         self.client.login(username="orderuser@example.com", password="testpass123")
 
     def test_month_view_sections_income_first_with_totals(self):
         Budget.objects.create(
-            team=self.team, category=self.income_account, month=date(2026, 5, 1), budget_amount=Decimal("4000.00")
+            book=self.book, category=self.income_account, month=date(2026, 5, 1), budget_amount=Decimal("4000.00")
         )
         Budget.objects.create(
-            team=self.team, category=self.expense_account, month=date(2026, 5, 1), budget_amount=Decimal("1500.00")
+            book=self.book, category=self.expense_account, month=date(2026, 5, 1), budget_amount=Decimal("1500.00")
         )
-        response = self.client.get(f"/a/{self.team.slug}/budget/?month=2026-05-01")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2026-05-01")
         self.assertEqual(response.status_code, 200)
         income_section, expense_section = response.context["sections"]
         self.assertEqual(income_section["key"], "income")
@@ -891,7 +910,7 @@ class BudgetSectionOrderingTest(TestCase):
         self.assertEqual(expense_section["totals"]["budgeted"], Decimal("1500.00"))
 
     def test_grid_view_groups_income_first(self):
-        response = self.client.get(f"/a/{self.team.slug}/budget/grid/?start=2026-01-01")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/grid/?start=2026-01-01")
         groups = response.context["grid_props"]["groups"]
         self.assertEqual([g["type"] for g in groups], ["income", "expense"])
         self.assertEqual(groups[0]["name"], "Zeta Income")
@@ -906,28 +925,30 @@ class GoalAssignAvailableTest(TestCase):
         from apps.users.models import CustomUser
 
         cls.team = Team.objects.create(name="Assign Test Team", slug="assign-test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="assignuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.other_team = Team.objects.create(name="Assign Other Team", slug="assign-other-team")
+        cls.other_book = cls.other_team.default_book
         cls.outsider = CustomUser.objects.create_user(username="assignoutsider@example.com", password="testpass123")
         cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
 
         # Net worth of 2000 from an opening-balance entry (asset dr / equity cr) so
         # nothing lands in budget-category availability
-        asset_group = AccountGroup.objects.create(team=cls.team, name="Assign Assets", account_type="asset")
-        equity_group = AccountGroup.objects.create(team=cls.team, name="Assign Equity", account_type="equity")
-        cls.checking = Account.objects.create(team=cls.team, name="Assign Checking", account_group=asset_group)
-        cls.opening = Account.objects.create(team=cls.team, name="Assign Opening", account_group=equity_group)
-        entry = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 1, 5), description="Opening")
+        asset_group = AccountGroup.objects.create(book=cls.book, name="Assign Assets", account_type="asset")
+        equity_group = AccountGroup.objects.create(book=cls.book, name="Assign Equity", account_type="equity")
+        cls.checking = Account.objects.create(book=cls.book, name="Assign Checking", account_group=asset_group)
+        cls.opening = Account.objects.create(book=cls.book, name="Assign Opening", account_group=equity_group)
+        entry = JournalEntry.objects.create(book=cls.book, entry_date=date(2026, 1, 5), description="Opening")
         JournalLine.objects.create(
-            team=cls.team, journal_entry=entry, account=cls.checking, dr_amount=Decimal("2000.00")
+            book=cls.book, journal_entry=entry, account=cls.checking, dr_amount=Decimal("2000.00")
         )
         JournalLine.objects.create(
-            team=cls.team, journal_entry=entry, account=cls.opening, cr_amount=Decimal("2000.00")
+            book=cls.book, journal_entry=entry, account=cls.opening, cr_amount=Decimal("2000.00")
         )
 
-        cls.goal = Goal.objects.create(team=cls.team, name="Assign Trip", target_amount=Decimal("5000.00"))
+        cls.goal = Goal.objects.create(book=cls.book, name="Assign Trip", target_amount=Decimal("5000.00"))
         cls.month = "2026-02-01"
 
     def setUp(self):
@@ -935,7 +956,7 @@ class GoalAssignAvailableTest(TestCase):
 
     def assign_url(self, goal=None):
         goal = goal or self.goal
-        return f"/a/{self.team.slug}/budget/goals/{goal.pk}/assign-available/"
+        return f"/a/{self.team.slug}/{self.book.slug}/budget/goals/{goal.pk}/assign-available/"
 
     def post_assign(self, body=None, goal=None):
         return self.client.post(self.assign_url(goal), body or {"month": self.month}, content_type="application/json")
@@ -949,11 +970,11 @@ class GoalAssignAvailableTest(TestCase):
         self.assertEqual(data["new_pct"], 40.0)
         self.assertEqual(data["new_available"], 0.0)
         self.assertFalse(data["completed"])
-        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1))
+        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 2, 1))
         self.assertEqual(allocation.amount, Decimal("2000.00"))
 
     def test_quick_assign_clamps_to_goal_remaining(self):
-        small = Goal.objects.create(team=self.team, name="Assign Small", target_amount=Decimal("500.00"))
+        small = Goal.objects.create(book=self.book, name="Assign Small", target_amount=Decimal("500.00"))
         response = self.post_assign(goal=small)
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -962,34 +983,34 @@ class GoalAssignAvailableTest(TestCase):
         self.assertEqual(data["new_available"], 1500.0)
 
     def test_quick_assign_adds_to_existing_month_allocation(self):
-        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2026, 2, 1), amount=Decimal("300"))
+        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=date(2026, 2, 1), amount=Decimal("300"))
         response = self.post_assign()
         self.assertEqual(response.status_code, 200)
         data = response.json()
         # 300 already saved leaves available = 2000 - 300 = 1700
         self.assertEqual(data["assigned"], 1700.0)
         self.assertEqual(data["this_month"], 2000.0)
-        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1))
+        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 2, 1))
         self.assertEqual(allocation.amount, Decimal("2000.00"))
 
     def test_quick_assign_rejects_when_nothing_available(self):
-        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2026, 1, 1), amount=Decimal("2000"))
+        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=date(2026, 1, 1), amount=Decimal("2000"))
         response = self.post_assign()
         self.assertEqual(response.status_code, 400)
         self.assertIn("available", response.json()["error"].lower())
 
     def test_quick_assign_rejects_fully_funded_goal(self):
-        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2026, 1, 1), amount=Decimal("5000"))
+        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=date(2026, 1, 1), amount=Decimal("5000"))
         response = self.post_assign()
         self.assertEqual(response.status_code, 400)
         self.assertIn("fully funded", response.json()["error"])
 
     def test_quick_assign_rejects_archived_and_complete_goals(self):
         archived = Goal.objects.create(
-            team=self.team, name="Assign Archived", target_amount=Decimal("100"), is_archived=True
+            book=self.book, name="Assign Archived", target_amount=Decimal("100"), is_archived=True
         )
         complete = Goal.objects.create(
-            team=self.team, name="Assign Complete", target_amount=Decimal("100"), is_complete=True
+            book=self.book, name="Assign Complete", target_amount=Decimal("100"), is_complete=True
         )
         self.assertEqual(self.post_assign(goal=archived).status_code, 400)
         self.assertEqual(self.post_assign(goal=complete).status_code, 400)
@@ -999,7 +1020,7 @@ class GoalAssignAvailableTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["assigned"], 123.45)
         response = self.post_assign({"month": self.month, "amount": "100"})
-        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1))
+        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 2, 1))
         self.assertEqual(allocation.amount, Decimal("223.45"))
 
     def test_custom_amount_rejects_invalid_values(self):
@@ -1007,14 +1028,14 @@ class GoalAssignAvailableTest(TestCase):
             body = {"month": self.month, "amount": bad}
             response = self.post_assign(body)
             self.assertEqual(response.status_code, 400, bad)
-        self.assertFalse(GoalAllocation.objects.filter(team=self.team).exists())
+        self.assertFalse(GoalAllocation.objects.filter(book=self.book).exists())
 
     def test_assign_logs_audit_event(self):
         from apps.audit.models import AuditEvent
 
         self.post_assign()
         event = AuditEvent.objects.get(event_type=AuditEvent.GOAL_FUNDS_ASSIGNED)
-        self.assertEqual(event.team, self.team)
+        self.assertEqual(event.book, self.book)
         self.assertEqual(event.metadata["goal_id"], self.goal.pk)
         self.assertEqual(event.metadata["amount"], "2000.00")
 
@@ -1043,14 +1064,15 @@ class GoalsListViewTest(TestCase):
         from apps.users.models import CustomUser
 
         cls.team = Team.objects.create(name="Goals Page Team", slug="goals-page-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="goalspage@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.goal = Goal.objects.create(
-            team=cls.team, name="Page Trip", target_amount=Decimal("1000.00"), target_date=date(2026, 12, 1)
+            book=cls.book, name="Page Trip", target_amount=Decimal("1000.00"), target_date=date(2026, 12, 1)
         )
-        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("100"))
-        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("150"))
-        cls.url = f"/a/{cls.team.slug}/budget/goals/"
+        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("100"))
+        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("150"))
+        cls.url = f"/a/{cls.team.slug}/{cls.book.slug}/budget/goals/"
 
     def setUp(self):
         self.client.login(username="goalspage@example.com", password="testpass123")
@@ -1081,12 +1103,12 @@ class GoalsListViewTest(TestCase):
         self.assertIsNotNone(item["needed_per_month"])
 
     def test_month_is_remembered_across_budget_and_goals(self):
-        self.client.get(f"/a/{self.team.slug}/budget/?month=2026-03-01")
+        self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2026-03-01")
         response = self.client.get(self.url)
         self.assertEqual(response.context["month"], date(2026, 3, 1))
         response = self.client.get(f"{self.url}?month=2026-05-01")
         self.assertEqual(response.context["month"], date(2026, 5, 1))
-        response = self.client.get(f"/a/{self.team.slug}/budget/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/")
         self.assertEqual(response.context["month"], date(2026, 5, 1))
 
 
@@ -1099,31 +1121,33 @@ class GoalWithdrawTest(TestCase):
         from apps.users.models import CustomUser
 
         cls.team = Team.objects.create(name="Withdraw Test Team", slug="withdraw-test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="withdrawuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.other_team = Team.objects.create(name="Withdraw Other Team", slug="withdraw-other-team")
+        cls.other_book = cls.other_team.default_book
         cls.outsider = CustomUser.objects.create_user(username="withdrawoutsider@example.com", password="testpass123")
         cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
 
         # Net worth of 2000 (asset dr / equity cr) so `available` starts positive
-        asset_group = AccountGroup.objects.create(team=cls.team, name="Withdraw Assets", account_type="asset")
-        equity_group = AccountGroup.objects.create(team=cls.team, name="Withdraw Equity", account_type="equity")
-        cls.checking = Account.objects.create(team=cls.team, name="Withdraw Checking", account_group=asset_group)
-        cls.opening = Account.objects.create(team=cls.team, name="Withdraw Opening", account_group=equity_group)
-        entry = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 1, 5), description="Opening")
+        asset_group = AccountGroup.objects.create(book=cls.book, name="Withdraw Assets", account_type="asset")
+        equity_group = AccountGroup.objects.create(book=cls.book, name="Withdraw Equity", account_type="equity")
+        cls.checking = Account.objects.create(book=cls.book, name="Withdraw Checking", account_group=asset_group)
+        cls.opening = Account.objects.create(book=cls.book, name="Withdraw Opening", account_group=equity_group)
+        entry = JournalEntry.objects.create(book=cls.book, entry_date=date(2026, 1, 5), description="Opening")
         JournalLine.objects.create(
-            team=cls.team, journal_entry=entry, account=cls.checking, dr_amount=Decimal("2000.00")
+            book=cls.book, journal_entry=entry, account=cls.checking, dr_amount=Decimal("2000.00")
         )
         JournalLine.objects.create(
-            team=cls.team, journal_entry=entry, account=cls.opening, cr_amount=Decimal("2000.00")
+            book=cls.book, journal_entry=entry, account=cls.opening, cr_amount=Decimal("2000.00")
         )
 
-        cls.goal = Goal.objects.create(team=cls.team, name="Withdraw Trip", target_amount=Decimal("5000.00"))
+        cls.goal = Goal.objects.create(book=cls.book, name="Withdraw Trip", target_amount=Decimal("5000.00"))
         # Saved 700 across two prior months + 100 in the selected month = 800 total
-        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("300"))
-        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("400"))
-        GoalAllocation.objects.create(team=cls.team, goal=cls.goal, month=date(2026, 3, 1), amount=Decimal("100"))
+        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("300"))
+        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("400"))
+        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 3, 1), amount=Decimal("100"))
         cls.month = "2026-03-01"
 
     def setUp(self):
@@ -1131,7 +1155,7 @@ class GoalWithdrawTest(TestCase):
 
     def withdraw_url(self, goal=None):
         goal = goal or self.goal
-        return f"/a/{self.team.slug}/budget/goals/{goal.pk}/withdraw/"
+        return f"/a/{self.team.slug}/{self.book.slug}/budget/goals/{goal.pk}/withdraw/"
 
     def post_withdraw(self, body=None, goal=None):
         return self.client.post(self.withdraw_url(goal), body or {"month": self.month}, content_type="application/json")
@@ -1146,22 +1170,22 @@ class GoalWithdrawTest(TestCase):
         self.assertEqual(data["this_month"], 50.0)
         # available was 2000 - 800 = 1200; withdrawing 50 frees it back up
         self.assertEqual(data["new_available"], 1250.0)
-        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 3, 1))
         self.assertEqual(allocation.amount, Decimal("50.00"))
 
     def test_withdraw_beyond_this_month_goes_negative_and_keeps_history(self):
         response = self.post_withdraw({"month": self.month, "amount": "500"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["this_month"], -400.0)
-        this_month = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        this_month = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 3, 1))
         self.assertEqual(this_month.amount, Decimal("-400.00"))
         # Prior months untouched
         self.assertEqual(
-            GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 1, 1)).amount,
+            GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 1, 1)).amount,
             Decimal("300.00"),
         )
         self.assertEqual(
-            GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 2, 1)).amount,
+            GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 2, 1)).amount,
             Decimal("400.00"),
         )
 
@@ -1172,13 +1196,13 @@ class GoalWithdrawTest(TestCase):
         self.assertEqual(data["withdrawn"], 800.0)
         self.assertEqual(data["new_saved"], 0.0)
         self.assertEqual(data["new_available"], 2000.0)
-        this_month = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 3, 1))
+        this_month = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 3, 1))
         self.assertEqual(this_month.amount, Decimal("-700.00"))
 
     def test_withdraw_creates_negative_allocation_in_untouched_month(self):
         response = self.post_withdraw({"month": "2026-04-01", "amount": "100"})
         self.assertEqual(response.status_code, 200)
-        allocation = GoalAllocation.objects.get(team=self.team, goal=self.goal, month=date(2026, 4, 1))
+        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 4, 1))
         self.assertEqual(allocation.amount, Decimal("-100.00"))
 
     def test_withdraw_more_than_saved_is_rejected(self):
@@ -1187,7 +1211,7 @@ class GoalWithdrawTest(TestCase):
         self.assertIn("only has $800.00 saved", response.json()["error"])
 
     def test_withdraw_from_empty_goal_is_rejected(self):
-        empty = Goal.objects.create(team=self.team, name="Withdraw Empty", target_amount=Decimal("100"))
+        empty = Goal.objects.create(book=self.book, name="Withdraw Empty", target_amount=Decimal("100"))
         response = self.post_withdraw(goal=empty)
         self.assertEqual(response.status_code, 400)
         self.assertIn("Nothing saved", response.json()["error"])
@@ -1211,7 +1235,7 @@ class GoalWithdrawTest(TestCase):
         self.assertIn("archived", response.json()["error"])
 
     def test_withdraw_unfunds_a_funded_goal(self):
-        GoalAllocation.objects.create(team=self.team, goal=self.goal, month=date(2025, 12, 1), amount=Decimal("4200"))
+        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=date(2025, 12, 1), amount=Decimal("4200"))
         response = self.post_withdraw({"month": self.month, "amount": "1000"})
         data = response.json()
         self.assertEqual(data["old_pct"], 100.0)
@@ -1223,7 +1247,7 @@ class GoalWithdrawTest(TestCase):
 
         self.post_withdraw({"month": self.month, "amount": "25"})
         event = AuditEvent.objects.get(event_type=AuditEvent.GOAL_FUNDS_WITHDRAWN)
-        self.assertEqual(event.team, self.team)
+        self.assertEqual(event.book, self.book)
         self.assertEqual(event.metadata["amount"], "25.00")
         self.assertFalse(event.metadata["withdraw_all"])
 

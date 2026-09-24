@@ -356,7 +356,7 @@ def parse_file(file: BinaryIO, filename: str) -> ParseResult:
         )
 
 
-def match_category(category_name: str, team) -> Account | None:
+def match_category(category_name: str, book) -> Account | None:
     """
     Match a category name to an existing Account by name (case-insensitive).
     """
@@ -365,7 +365,7 @@ def match_category(category_name: str, team) -> Account | None:
 
     category_name = category_name.strip()
 
-    account = Account.objects.filter(team=team, name__iexact=category_name).first()
+    account = Account.objects.filter(book=book, name__iexact=category_name).first()
 
     return account
 
@@ -587,7 +587,7 @@ def preview_transactions(
     filename: str,
     column_mapping: dict,
     category_mappings: dict,
-    team,
+    book,
     account_id: int,
     date_format: str | None = None,
 ) -> PreviewResult:
@@ -610,7 +610,7 @@ def preview_transactions(
                 "invert_amounts": False,  # flip the sign of a single amount column
             }
         category_mappings: Dict mapping category names to account IDs
-        team: The team object
+        book: The book object
         account_id: The bank account ID being uploaded to
 
     Returns:
@@ -731,7 +731,7 @@ def preview_transactions(
                 matched_category_id = category_mappings[category_name]
             else:
                 # Try to auto-match
-                matched_account = match_category(category_name, team)
+                matched_account = match_category(category_name, book)
                 if matched_account:
                     matched_category_id = matched_account.id
                 else:
@@ -753,7 +753,7 @@ def preview_transactions(
         is_duplicate = False
         if parsed_date and amount is not None:
             existing = BankTransaction.objects.filter(
-                team=team,
+                book=book,
                 account_id=account_id,
                 posted_date=parsed_date,
                 amount=amount,
@@ -788,7 +788,7 @@ def preview_transactions(
     # target account is excluded so we never suggest categorizing into itself.
     candidate_accounts = [
         account
-        for account in Account.objects.filter(team=team).select_related("account_group")
+        for account in Account.objects.filter(book=book).select_related("account_group")
         if account.id != account_id
     ]
 
@@ -822,7 +822,7 @@ def preview_transactions(
 
 def create_transactions(
     transactions: list[dict],
-    team,
+    book,
     account_id: int,
     skip_duplicates: bool = True,
 ) -> dict:
@@ -832,7 +832,7 @@ def create_transactions(
     Args:
         transactions: List of transaction dicts with keys:
             date, description, payee, category_id, amount, skip (optional)
-        team: The team object
+        book: The book object
         account_id: The bank account ID
         skip_duplicates: Whether to skip potential duplicates
 
@@ -845,7 +845,7 @@ def create_transactions(
 
     log_event(
         AuditEvent.CSV_UPLOAD_STARTED,
-        team=team,
+        book=book,
         metadata={"account_id": account_id, "rows": len(transactions)},
     )
 
@@ -868,7 +868,7 @@ def create_transactions(
             # Check for duplicates if skip_duplicates is True
             if skip_duplicates:
                 existing = BankTransaction.objects.filter(
-                    team=team,
+                    book=book,
                     account_id=account_id,
                     posted_date=tx_data["date"],
                     amount=tx_data["amount"],
@@ -881,7 +881,7 @@ def create_transactions(
 
             # Create the BankTransaction
             bank_tx = BankTransaction.objects.create(
-                team=team,
+                book=book,
                 account_id=account_id,
                 posted_date=tx_data["date"],
                 description=tx_data.get("description") or "",
@@ -895,14 +895,14 @@ def create_transactions(
 
             # Auto-categorize if category_id is provided
             if tx_data.get("category_id"):
-                _auto_categorize_transaction(bank_tx, tx_data["category_id"], team)
+                _auto_categorize_transaction(bank_tx, tx_data["category_id"], book)
     except Exception as e:
-        log_event(AuditEvent.CSV_UPLOAD_FAILED, team=team, metadata={"account_id": account_id, "error": str(e)})
+        log_event(AuditEvent.CSV_UPLOAD_FAILED, book=book, metadata={"account_id": account_id, "error": str(e)})
         raise
 
     log_event(
         AuditEvent.CSV_UPLOAD_COMPLETED,
-        team=team,
+        book=book,
         metadata={"account_id": account_id, "transactions_created": created_count},
     )
 
@@ -913,7 +913,7 @@ def create_transactions(
     }
 
 
-def _auto_categorize_transaction(bank_tx, category_id: int, team):
+def _auto_categorize_transaction(bank_tx, category_id: int, book):
     """
     Auto-categorize a bank transaction by creating a journal entry.
     Reuses the logic from BankFeedViewSet._create_journal_from_bank_transaction.
@@ -922,13 +922,13 @@ def _auto_categorize_transaction(bank_tx, category_id: int, team):
     from apps.journal.models import JournalEntry, JournalLine
 
     try:
-        category_account = Account.objects.get(id=category_id, team=team)
+        category_account = Account.objects.get(id=category_id, book=book)
     except Account.DoesNotExist:
         return  # Skip if category doesn't exist
 
     # Create journal entry
     journal_entry = JournalEntry.objects.create(
-        team=team,
+        book=book,
         entry_date=bank_tx.posted_date,
         description=bank_tx.description,
         source=bank_tx.journal_source,
@@ -944,14 +944,14 @@ def _auto_categorize_transaction(bank_tx, category_id: int, team):
         # Money coming in: debit bank account, credit category
         JournalLine.objects.create(
             journal_entry=journal_entry,
-            team=team,
+            book=book,
             account=bank_tx.account,
             dr_amount=amount,
             cr_amount=Decimal("0"),
         )
         JournalLine.objects.create(
             journal_entry=journal_entry,
-            team=team,
+            book=book,
             account=category_account,
             dr_amount=Decimal("0"),
             cr_amount=amount,
@@ -960,14 +960,14 @@ def _auto_categorize_transaction(bank_tx, category_id: int, team):
         # Money going out: credit bank account, debit category
         JournalLine.objects.create(
             journal_entry=journal_entry,
-            team=team,
+            book=book,
             account=bank_tx.account,
             dr_amount=Decimal("0"),
             cr_amount=amount,
         )
         JournalLine.objects.create(
             journal_entry=journal_entry,
-            team=team,
+            book=book,
             account=category_account,
             dr_amount=amount,
             cr_amount=Decimal("0"),

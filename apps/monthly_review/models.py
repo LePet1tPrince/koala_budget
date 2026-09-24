@@ -1,12 +1,12 @@
 from django.db import models
 from django.utils import timezone
 
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel
 
 
-class MonthlyReviewState(BaseTeamModel):
+class MonthlyReviewState(BaseBookModel):
     """
-    One row per team per month, tracking progress through the guided monthly
+    One row per book per month, tracking progress through the guided monthly
     review walkthrough for that month.
 
     Figures are never stored here -- the review always recomputes from the
@@ -25,11 +25,11 @@ class MonthlyReviewState(BaseTeamModel):
     dismissed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = ["team", "month"]
+        unique_together = ["book", "month"]
         ordering = ["-month"]
 
     def __str__(self):
-        return f"Monthly review for {self.team} — {self.month:%Y-%m}"
+        return f"Monthly review for {self.book} — {self.month:%Y-%m}"
 
     def save(self, *args, **kwargs):
         self.month = self.month.replace(day=1)

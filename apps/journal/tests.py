@@ -20,7 +20,7 @@ from apps.accounts.models import (
     AccountGroup,
     Payee,
 )
-from apps.teams.context import current_team
+from apps.books.context import current_book
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN, ROLE_MEMBER
 from apps.users.models import CustomUser
@@ -34,20 +34,21 @@ class JournalEntryModelTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.payee = Payee.objects.create(book=cls.book, name="Test Store")
 
     def test_create_journal_entry(self):
         """Test creating a journal entry."""
         entry = JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=date(2025, 12, 17),
             description="Test entry",
             payee=self.payee,
@@ -59,77 +60,77 @@ class JournalEntryModelTest(TestCase):
 
     def test_journal_entry_ordering(self):
         """Test that journal entries are ordered by entry_date descending."""
-        with current_team(self.team):
-            entry1 = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 15), description="First")
-            entry2 = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Second")
-            entries = list(JournalEntry.for_team.all())
+        with current_book(self.book):
+            entry1 = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 15), description="First")
+            entry2 = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Second")
+            entries = list(JournalEntry.for_book.all())
             self.assertEqual(entries[0], entry2)
             self.assertEqual(entries[1], entry1)
 
     def test_journal_entry_str(self):
         """Test string representation of journal entry."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test entry")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test entry")
         self.assertIn("JE-", str(entry))
         self.assertIn("2025-12-17", str(entry))
         self.assertIn("Test entry", str(entry))
 
     def test_total_debits_property(self):
         """Test total_debits property."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
         )
         self.assertEqual(entry.total_debits, Decimal("100.00"))
 
     def test_total_credits_property(self):
         """Test total_credits property."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
         )
         self.assertEqual(entry.total_credits, Decimal("100.00"))
 
     def test_is_balanced_property(self):
         """Test is_balanced property."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test")
         # Unbalanced entry
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
         )
         self.assertFalse(entry.is_balanced)
 
         # Add balancing line
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
         )
         self.assertTrue(entry.is_balanced)
 
     def test_clean_validation_balanced(self):
         """Test clean method validates balanced entries."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
         )
         # Should not raise
         entry.clean()
 
     def test_clean_validation_unbalanced(self):
         """Test clean method raises error for unbalanced entries."""
-        entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test")
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+            book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("50.00")
+            book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("50.00")
         )
         with self.assertRaises(ValidationError):
             entry.clean()
@@ -141,16 +142,17 @@ class JournalLineModelTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.entry = JournalEntry.objects.create(team=cls.team, entry_date=date(2025, 12, 17), description="Test")
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.entry = JournalEntry.objects.create(book=cls.book, entry_date=date(2025, 12, 17), description="Test")
 
     def test_create_journal_line(self):
         """Test creating a journal line."""
         line = JournalLine.objects.create(
-            team=self.team,
+            book=self.book,
             journal_entry=self.entry,
             account=self.bank_account,
             dr_amount=Decimal("100.00"),
@@ -164,7 +166,7 @@ class JournalLineModelTest(TestCase):
     def test_journal_line_str(self):
         """Test string representation of journal line."""
         line = JournalLine.objects.create(
-            team=self.team,
+            book=self.book,
             journal_entry=self.entry,
             account=self.bank_account,
             dr_amount=Decimal("100.00"),
@@ -176,7 +178,7 @@ class JournalLineModelTest(TestCase):
     def test_amount_property_debit(self):
         """Test amount property returns debit amount."""
         line = JournalLine.objects.create(
-            team=self.team,
+            book=self.book,
             journal_entry=self.entry,
             account=self.bank_account,
             dr_amount=Decimal("100.00"),
@@ -186,7 +188,7 @@ class JournalLineModelTest(TestCase):
     def test_amount_property_credit(self):
         """Test amount property returns credit amount."""
         line = JournalLine.objects.create(
-            team=self.team,
+            book=self.book,
             journal_entry=self.entry,
             account=self.bank_account,
             cr_amount=Decimal("100.00"),
@@ -196,7 +198,7 @@ class JournalLineModelTest(TestCase):
     def test_clean_validation_both_amounts(self):
         """Test clean method raises error when both debit and credit are set."""
         line = JournalLine(
-            team=self.team,
+            book=self.book,
             journal_entry=self.entry,
             account=self.bank_account,
             dr_amount=Decimal("100.00"),
@@ -208,7 +210,7 @@ class JournalLineModelTest(TestCase):
     def test_clean_validation_no_amounts(self):
         """Test clean method raises error when neither debit nor credit is set."""
         line = JournalLine(
-            team=self.team,
+            book=self.book,
             journal_entry=self.entry,
             account=self.bank_account,
             dr_amount=Decimal("0.00"),
@@ -220,7 +222,7 @@ class JournalLineModelTest(TestCase):
     def test_clean_validation_negative_amounts(self):
         """Test clean method raises error for negative amounts."""
         line = JournalLine(
-            team=self.team,
+            book=self.book,
             journal_entry=self.entry,
             account=self.bank_account,
             dr_amount=Decimal("-100.00"),
@@ -237,6 +239,7 @@ class SimpleLineAPITest(TestCase):
         """Set up test data for all tests."""
         # Create team
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
 
         # Create user and add to team
         cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
@@ -244,20 +247,20 @@ class SimpleLineAPITest(TestCase):
 
         # Create account groups
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
 
         # Create accounts
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking Account", account_group=cls.asset_group)
-        cls.groceries_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.salary_account = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking Account", account_group=cls.asset_group)
+        cls.groceries_account = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.salary_account = Account.objects.create(book=cls.book, name="Salary", account_group=cls.income_group)
 
         # Create payee
-        cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
+        cls.payee = Payee.objects.create(book=cls.book, name="Test Store")
 
     def setUp(self):
         """Set up for each test."""
@@ -266,7 +269,7 @@ class SimpleLineAPITest(TestCase):
 
     def test_create_expense_transaction(self):
         """Test creating a simple expense transaction."""
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "date": "2025-12-17",
                 "account": self.bank_account.pk,
@@ -277,7 +280,7 @@ class SimpleLineAPITest(TestCase):
                 "payee": self.payee.id,
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/lines/", data, format="json")
+            response = self.client.post(f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/", data, format="json")
 
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.assertEqual(JournalEntry.objects.count(), 1)
@@ -303,7 +306,7 @@ class SimpleLineAPITest(TestCase):
 
     def test_create_income_transaction(self):
         """Test creating a simple income transaction."""
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "date": "2025-12-17",
                 "account": self.bank_account.pk,
@@ -313,7 +316,7 @@ class SimpleLineAPITest(TestCase):
                 "description": "Monthly salary",
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/lines/", data, format="json")
+            response = self.client.post(f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/", data, format="json")
 
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -332,7 +335,7 @@ class SimpleLineAPITest(TestCase):
 
     def test_create_transaction_with_no_category(self):
         """Test creating a transaction with no category returns 400."""
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "date": "2025-12-17",
                 "account": self.bank_account.pk,
@@ -342,34 +345,34 @@ class SimpleLineAPITest(TestCase):
                 "description": "Monthly salary",
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/lines/", data, format="json")
+            response = self.client.post(f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/", data, format="json")
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_list_lines(self):
         """Test listing simple lines."""
-        with current_team(self.team):
+        with current_book(self.book):
             # Create a transaction first
             journal_entry = JournalEntry.objects.create(
-                team=self.team, entry_date="2025-12-17", description="Test transaction"
+                book=self.book, entry_date="2025-12-17", description="Test transaction"
             )
 
             JournalLine.objects.create(
-                team=self.team,
+                book=self.book,
                 journal_entry=journal_entry,
                 account=self.groceries_account,
                 dr_amount=Decimal("50.00"),
                 cr_amount=Decimal("0.00"),
             )
             JournalLine.objects.create(
-                team=self.team,
+                book=self.book,
                 journal_entry=journal_entry,
                 account=self.bank_account,
                 dr_amount=Decimal("0.00"),
                 cr_amount=Decimal("50.00"),
             )
 
-            response = self.client.get(f"/a/{self.team.slug}/journal/api/lines/")
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             # Response is paginated, so check the results key
@@ -377,21 +380,21 @@ class SimpleLineAPITest(TestCase):
 
     def test_update_line(self):
         """Test updating a simple line."""
-        with current_team(self.team):
+        with current_book(self.book):
             # Create a transaction
             journal_entry = JournalEntry.objects.create(
-                team=self.team, entry_date="2025-12-17", description="Old description"
+                book=self.book, entry_date="2025-12-17", description="Old description"
             )
 
             bank_line = JournalLine.objects.create(
-                team=self.team,
+                book=self.book,
                 journal_entry=journal_entry,
                 account=self.bank_account,
                 dr_amount=Decimal("0.00"),
                 cr_amount=Decimal("50.00"),
             )
             JournalLine.objects.create(
-                team=self.team,
+                book=self.book,
                 journal_entry=journal_entry,
                 account=self.groceries_account,
                 dr_amount=Decimal("50.00"),
@@ -408,7 +411,9 @@ class SimpleLineAPITest(TestCase):
                 "description": "Updated description",
             }
 
-            response = self.client.put(f"/a/{self.team.slug}/journal/api/lines/{bank_line.id}/", data, format="json")
+            response = self.client.put(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/{bank_line.id}/", data, format="json"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -423,28 +428,28 @@ class SimpleLineAPITest(TestCase):
 
     def test_delete_line(self):
         """Test deleting a line deletes the entire journal entry."""
-        with current_team(self.team):
+        with current_book(self.book):
             # Create a transaction
             journal_entry = JournalEntry.objects.create(
-                team=self.team, entry_date="2025-12-17", description="To be deleted"
+                book=self.book, entry_date="2025-12-17", description="To be deleted"
             )
 
             bank_line = JournalLine.objects.create(
-                team=self.team,
+                book=self.book,
                 journal_entry=journal_entry,
                 account=self.bank_account,
                 dr_amount=Decimal("0.00"),
                 cr_amount=Decimal("50.00"),
             )
             JournalLine.objects.create(
-                team=self.team,
+                book=self.book,
                 journal_entry=journal_entry,
                 account=self.groceries_account,
                 dr_amount=Decimal("50.00"),
                 cr_amount=Decimal("0.00"),
             )
 
-            response = self.client.delete(f"/a/{self.team.slug}/journal/api/lines/{bank_line.id}/")
+            response = self.client.delete(f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/{bank_line.id}/")
 
             self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
             self.assertEqual(JournalEntry.objects.count(), 0)
@@ -452,7 +457,7 @@ class SimpleLineAPITest(TestCase):
 
     def test_validation_both_inflow_outflow(self):
         """Test validation error when both inflow and outflow are provided."""
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "date": "2025-12-17",
                 "account": self.bank_account.pk,
@@ -462,13 +467,13 @@ class SimpleLineAPITest(TestCase):
                 "description": "Invalid",
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/lines/", data, format="json")
+            response = self.client.post(f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/", data, format="json")
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_validation_no_inflow_outflow(self):
         """Test validation error when neither inflow nor outflow is provided."""
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "date": "2025-12-17",
                 "account": self.bank_account.pk,
@@ -478,7 +483,7 @@ class SimpleLineAPITest(TestCase):
                 "description": "Invalid",
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/lines/", data, format="json")
+            response = self.client.post(f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/", data, format="json")
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -490,21 +495,22 @@ class JournalEntryAPITest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         # Create account groups
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
 
         # Create accounts
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.payee = Payee.objects.create(team=cls.team, name="Test Store")
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.payee = Payee.objects.create(book=cls.book, name="Test Store")
 
     def setUp(self):
         """Set up for each test."""
@@ -513,7 +519,7 @@ class JournalEntryAPITest(TestCase):
 
     def test_create_journal_entry(self):
         """Test creating a journal entry via API."""
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "entry_date": "2025-12-17",
                 "description": "Test entry",
@@ -524,7 +530,9 @@ class JournalEntryAPITest(TestCase):
                 ],
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/", data, format="json")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/", data, format="json"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.assertEqual(JournalEntry.objects.count(), 1)
@@ -536,32 +544,32 @@ class JournalEntryAPITest(TestCase):
 
     def test_list_journal_entries(self):
         """Test listing journal entries."""
-        with current_team(self.team):
-            entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test entry")
+        with current_book(self.book):
+            entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test entry")
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
             )
 
-            response = self.client.get(f"/a/{self.team.slug}/journal/api/journal-entries/")
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data["results"]), 1)
 
     def test_retrieve_journal_entry(self):
         """Test retrieving a single journal entry."""
-        with current_team(self.team):
-            entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test entry")
+        with current_book(self.book):
+            entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test entry")
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
             )
 
-            response = self.client.get(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/")
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["description"], "Test entry")
@@ -569,15 +577,15 @@ class JournalEntryAPITest(TestCase):
 
     def test_update_journal_entry(self):
         """Test updating a journal entry."""
-        with current_team(self.team):
+        with current_book(self.book):
             entry = JournalEntry.objects.create(
-                team=self.team, entry_date=date(2025, 12, 17), description="Old description"
+                book=self.book, entry_date=date(2025, 12, 17), description="Old description"
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
             )
 
             data = {
@@ -590,7 +598,7 @@ class JournalEntryAPITest(TestCase):
             }
 
             response = self.client.put(
-                f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/", data, format="json"
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/", data, format="json"
             )
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -601,39 +609,43 @@ class JournalEntryAPITest(TestCase):
 
     def test_delete_journal_entry(self):
         """Test deleting a journal entry."""
-        with current_team(self.team):
+        with current_book(self.book):
             entry = JournalEntry.objects.create(
-                team=self.team, entry_date=date(2025, 12, 17), description="To be deleted"
+                book=self.book, entry_date=date(2025, 12, 17), description="To be deleted"
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
             )
 
-            response = self.client.delete(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/")
+            response = self.client.delete(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
             self.assertEqual(JournalEntry.objects.count(), 0)
 
     def test_post_entry_action(self):
         """Test posting a draft journal entry."""
-        with current_team(self.team):
+        with current_book(self.book):
             entry = JournalEntry.objects.create(
-                team=self.team,
+                book=self.book,
                 entry_date=date(2025, 12, 17),
                 description="Test entry",
                 status=JournalEntry.STATUS_DRAFT,
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
             )
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/post_entry/")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/post_entry/"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -642,46 +654,52 @@ class JournalEntryAPITest(TestCase):
 
     def test_post_entry_action_not_draft(self):
         """Test posting a non-draft entry returns error."""
-        with current_team(self.team):
+        with current_book(self.book):
             entry = JournalEntry.objects.create(
-                team=self.team,
+                book=self.book,
                 entry_date=date(2025, 12, 17),
                 description="Test entry",
                 status=JournalEntry.STATUS_POSTED,
             )
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/post_entry/")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/post_entry/"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_post_entry_action_unbalanced(self):
         """Test posting an unbalanced entry returns error."""
-        with current_team(self.team):
+        with current_book(self.book):
             entry = JournalEntry.objects.create(
-                team=self.team,
+                book=self.book,
                 entry_date=date(2025, 12, 17),
                 description="Test entry",
                 status=JournalEntry.STATUS_DRAFT,
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
             )
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/post_entry/")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/post_entry/"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_void_entry_action(self):
         """Test voiding a posted journal entry."""
-        with current_team(self.team):
+        with current_book(self.book):
             entry = JournalEntry.objects.create(
-                team=self.team,
+                book=self.book,
                 entry_date=date(2025, 12, 17),
                 description="Test entry",
                 status=JournalEntry.STATUS_POSTED,
             )
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/void_entry/")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/void_entry/"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -690,21 +708,23 @@ class JournalEntryAPITest(TestCase):
 
     def test_void_entry_action_not_posted(self):
         """Test voiding a non-posted entry returns error."""
-        with current_team(self.team):
+        with current_book(self.book):
             entry = JournalEntry.objects.create(
-                team=self.team,
+                book=self.book,
                 entry_date=date(2025, 12, 17),
                 description="Test entry",
                 status=JournalEntry.STATUS_DRAFT,
             )
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/void_entry/")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/void_entry/"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_validation_unbalanced_entry(self):
         """Test validation error for unbalanced entry."""
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "entry_date": "2025-12-17",
                 "description": "Unbalanced entry",
@@ -714,13 +734,15 @@ class JournalEntryAPITest(TestCase):
                 ],
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/", data, format="json")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/", data, format="json"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_validation_less_than_two_lines(self):
         """Test validation error for entry with less than 2 lines."""
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "entry_date": "2025-12-17",
                 "description": "Single line entry",
@@ -729,7 +751,9 @@ class JournalEntryAPITest(TestCase):
                 ],
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/", data, format="json")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/", data, format="json"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -741,28 +765,29 @@ class TransactionAPITest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
 
-        with current_team(cls.team):
+        with current_book(cls.book):
             for i in range(150):
                 entry = JournalEntry.objects.create(
-                    team=cls.team, entry_date=date(2025, 1, 1) + timedelta(days=i), description=f"Entry {i}"
+                    book=cls.book, entry_date=date(2025, 1, 1) + timedelta(days=i), description=f"Entry {i}"
                 )
                 JournalLine.objects.create(
-                    team=cls.team, journal_entry=entry, account=cls.bank_account, dr_amount=Decimal("10.00")
+                    book=cls.book, journal_entry=entry, account=cls.bank_account, dr_amount=Decimal("10.00")
                 )
                 JournalLine.objects.create(
-                    team=cls.team, journal_entry=entry, account=cls.expense_account, cr_amount=Decimal("10.00")
+                    book=cls.book, journal_entry=entry, account=cls.expense_account, cr_amount=Decimal("10.00")
                 )
 
     def setUp(self):
@@ -772,7 +797,7 @@ class TransactionAPITest(TestCase):
 
     def test_page_size_exceeds_old_default(self):
         """The transactions endpoint should paginate above DRF's global default of 100."""
-        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 150)
@@ -781,7 +806,7 @@ class TransactionAPITest(TestCase):
 
     def test_all_entries_reachable_by_following_pagination(self):
         """Every entry, including the oldest, must be reachable via the paginated results."""
-        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/")
 
         descriptions = {row["description"] for row in response.data["results"]}
         self.assertIn("Entry 0", descriptions)
@@ -795,46 +820,47 @@ class TransactionSearchFilterAPITest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.coffee_account = Account.objects.create(team=cls.team, name="Coffee Shops", account_group=cls.expense_group)
-        cls.old_payee = Payee.objects.create(team=cls.team, name="Very Old Payee Inc")
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.coffee_account = Account.objects.create(book=cls.book, name="Coffee Shops", account_group=cls.expense_group)
+        cls.old_payee = Payee.objects.create(book=cls.book, name="Very Old Payee Inc")
 
-        with current_team(cls.team):
+        with current_book(cls.book):
             # 250 recent, generic entries -- newest-first pagination puts the
             # oldest 50 of these on page 2 (page size 200).
             for i in range(250):
                 entry = JournalEntry.objects.create(
-                    team=cls.team,
+                    book=cls.book,
                     entry_date=date(2024, 1, 1) + timedelta(days=i),
                     description=f"Entry {i}",
                 )
                 JournalLine.objects.create(
-                    team=cls.team, journal_entry=entry, account=cls.bank_account, dr_amount=Decimal("10.00")
+                    book=cls.book, journal_entry=entry, account=cls.bank_account, dr_amount=Decimal("10.00")
                 )
                 JournalLine.objects.create(
-                    team=cls.team, journal_entry=entry, account=cls.expense_account, cr_amount=Decimal("10.00")
+                    book=cls.book, journal_entry=entry, account=cls.expense_account, cr_amount=Decimal("10.00")
                 )
 
             # A single, much older, distinctive entry that only shows up on
             # page 2 of the unfiltered newest-first list.
             cls.old_entry = JournalEntry.objects.create(
-                team=cls.team, entry_date=date(2020, 1, 1), payee=cls.old_payee, description="Ancient purchase"
+                book=cls.book, entry_date=date(2020, 1, 1), payee=cls.old_payee, description="Ancient purchase"
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.old_entry, account=cls.coffee_account, dr_amount=Decimal("42.42")
+                book=cls.book, journal_entry=cls.old_entry, account=cls.coffee_account, dr_amount=Decimal("42.42")
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.old_entry, account=cls.bank_account, cr_amount=Decimal("42.42")
+                book=cls.book, journal_entry=cls.old_entry, account=cls.bank_account, cr_amount=Decimal("42.42")
             )
 
     def setUp(self):
@@ -844,7 +870,9 @@ class TransactionSearchFilterAPITest(TestCase):
 
     def test_search_finds_entry_beyond_first_page_by_payee(self):
         """A payee-name search must reach entries outside the first page of results."""
-        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/", {"search": "Very Old"})
+        response = self.client.get(
+            f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/", {"search": "Very Old"}
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 1)
@@ -852,21 +880,27 @@ class TransactionSearchFilterAPITest(TestCase):
 
     def test_search_matches_account_name(self):
         """Search should match against either side's account name."""
-        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/", {"search": "Coffee"})
+        response = self.client.get(
+            f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/", {"search": "Coffee"}
+        )
 
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], self.old_entry.pk)
 
     def test_search_matches_description(self):
         """Search should match the entry description."""
-        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/", {"search": "Ancient"})
+        response = self.client.get(
+            f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/", {"search": "Ancient"}
+        )
 
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], self.old_entry.pk)
 
     def test_search_matches_amount(self):
         """Search should match the transaction amount."""
-        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/", {"search": "42.42"})
+        response = self.client.get(
+            f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/", {"search": "42.42"}
+        )
 
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], self.old_entry.pk)
@@ -874,7 +908,7 @@ class TransactionSearchFilterAPITest(TestCase):
     def test_date_range_filters_entries(self):
         """Date range filtering should narrow results to entries in range."""
         response = self.client.get(
-            f"/a/{self.team.slug}/journal/api/transactions/",
+            f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/",
             {"start_date": "2020-01-01", "end_date": "2020-01-01"},
         )
 
@@ -884,7 +918,7 @@ class TransactionSearchFilterAPITest(TestCase):
     def test_search_and_date_range_combine(self):
         """Search and date range filters should apply together (AND)."""
         response = self.client.get(
-            f"/a/{self.team.slug}/journal/api/transactions/",
+            f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/",
             {"search": "Entry", "start_date": "2024-01-01", "end_date": "2024-01-03"},
         )
 
@@ -903,29 +937,30 @@ class TransactionZeroAmountAPITest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
         cls.expense_account = Account.objects.create(
-            team=cls.team, name="Miscellaneous", account_group=cls.expense_group
+            book=cls.book, name="Miscellaneous", account_group=cls.expense_group
         )
 
-        with current_team(cls.team):
+        with current_book(cls.book):
             cls.entry = JournalEntry.objects.create(
-                team=cls.team, entry_date=date(2025, 1, 1), description="Zero-dollar memo transaction"
+                book=cls.book, entry_date=date(2025, 1, 1), description="Zero-dollar memo transaction"
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.entry, account=cls.bank_account, dr_amount=Decimal("0")
+                book=cls.book, journal_entry=cls.entry, account=cls.bank_account, dr_amount=Decimal("0")
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.entry, account=cls.expense_account, cr_amount=Decimal("0")
+                book=cls.book, journal_entry=cls.entry, account=cls.expense_account, cr_amount=Decimal("0")
             )
 
     def setUp(self):
@@ -934,7 +969,7 @@ class TransactionZeroAmountAPITest(TestCase):
 
     def test_zero_amount_entry_still_reports_both_accounts(self):
         """Both accounts should be named even though neither line's amount is > 0."""
-        response = self.client.get(f"/a/{self.team.slug}/journal/api/transactions/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/")
 
         self.assertEqual(response.data["count"], 1)
         row = response.data["results"][0]
@@ -956,55 +991,56 @@ class TransactionSplitAPITest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Split Team", slug="split-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="splituser", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
-        cls.chequing = Account.objects.create(team=cls.team, name="Chequing", account_group=cls.asset_group)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.household = Account.objects.create(team=cls.team, name="Household Goods", account_group=cls.expense_group)
-        cls.salary = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.chequing = Account.objects.create(book=cls.book, name="Chequing", account_group=cls.asset_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.household = Account.objects.create(book=cls.book, name="Household Goods", account_group=cls.expense_group)
+        cls.salary = Account.objects.create(book=cls.book, name="Salary", account_group=cls.income_group)
 
-        with current_team(cls.team):
+        with current_book(cls.book):
             # An outflow split: one credit line, two debit legs.
-            cls.split = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 9, 14), description="Costco")
+            cls.split = JournalEntry.objects.create(book=cls.book, entry_date=date(2026, 9, 14), description="Costco")
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.split, account=cls.chequing, cr_amount=Decimal("210.40")
+                book=cls.book, journal_entry=cls.split, account=cls.chequing, cr_amount=Decimal("210.40")
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.split, account=cls.groceries, dr_amount=Decimal("160.00")
+                book=cls.book, journal_entry=cls.split, account=cls.groceries, dr_amount=Decimal("160.00")
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.split, account=cls.household, dr_amount=Decimal("50.40")
+                book=cls.book, journal_entry=cls.split, account=cls.household, dr_amount=Decimal("50.40")
             )
 
             # An inflow split: one debit line, two credit legs.
             cls.inflow_split = JournalEntry.objects.create(
-                team=cls.team, entry_date=date(2026, 9, 15), description="Paycheque"
+                book=cls.book, entry_date=date(2026, 9, 15), description="Paycheque"
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.inflow_split, account=cls.chequing, dr_amount=Decimal("2000.00")
+                book=cls.book, journal_entry=cls.inflow_split, account=cls.chequing, dr_amount=Decimal("2000.00")
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.inflow_split, account=cls.salary, cr_amount=Decimal("1800.00")
+                book=cls.book, journal_entry=cls.inflow_split, account=cls.salary, cr_amount=Decimal("1800.00")
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.inflow_split, account=cls.groceries, cr_amount=Decimal("200.00")
+                book=cls.book, journal_entry=cls.inflow_split, account=cls.groceries, cr_amount=Decimal("200.00")
             )
 
             # An ordinary two-line entry, to prove nothing about it changed.
-            cls.plain = JournalEntry.objects.create(team=cls.team, entry_date=date(2026, 9, 16), description="Coffee")
+            cls.plain = JournalEntry.objects.create(book=cls.book, entry_date=date(2026, 9, 16), description="Coffee")
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.plain, account=cls.chequing, cr_amount=Decimal("5.00")
+                book=cls.book, journal_entry=cls.plain, account=cls.chequing, cr_amount=Decimal("5.00")
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=cls.plain, account=cls.groceries, dr_amount=Decimal("5.00")
+                book=cls.book, journal_entry=cls.plain, account=cls.groceries, dr_amount=Decimal("5.00")
             )
 
     def setUp(self):
@@ -1012,7 +1048,7 @@ class TransactionSplitAPITest(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def url(self):
-        return f"/a/{self.team.slug}/journal/api/transactions/"
+        return f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/"
 
     def row_for(self, response, entry):
         return next(row for row in response.data["results"] if row["id"] == entry.id)
@@ -1083,6 +1119,7 @@ class JournalPermissionsTest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.admin_user = CustomUser.objects.create_user(username="admin", password="testpass123")
         cls.member_user = CustomUser.objects.create_user(username="member", password="testpass123")
         cls.other_user = CustomUser.objects.create_user(username="other", password="testpass123")
@@ -1092,15 +1129,15 @@ class JournalPermissionsTest(TestCase):
 
         # Create account groups
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
 
         # Create accounts
-        cls.bank_account = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.expense_account = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.bank_account = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.expense_account = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
 
     def setUp(self):
         """Set up for each test."""
@@ -1110,7 +1147,7 @@ class JournalPermissionsTest(TestCase):
         """Test that team members can create journal entries."""
         self.client.force_authenticate(user=self.member_user)
 
-        with current_team(self.team):
+        with current_book(self.book):
             data = {
                 "entry_date": "2025-12-17",
                 "description": "Test entry",
@@ -1120,7 +1157,9 @@ class JournalPermissionsTest(TestCase):
                 ],
             }
 
-            response = self.client.post(f"/a/{self.team.slug}/journal/api/journal-entries/", data, format="json")
+            response = self.client.post(
+                f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/", data, format="json"
+            )
 
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -1128,16 +1167,16 @@ class JournalPermissionsTest(TestCase):
         """Test that team members can view journal entries."""
         self.client.force_authenticate(user=self.member_user)
 
-        with current_team(self.team):
-            entry = JournalEntry.objects.create(team=self.team, entry_date=date(2025, 12, 17), description="Test entry")
+        with current_book(self.book):
+            entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 17), description="Test entry")
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.bank_account, dr_amount=Decimal("100.00")
             )
             JournalLine.objects.create(
-                team=self.team, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
+                book=self.book, journal_entry=entry, account=self.expense_account, cr_amount=Decimal("100.00")
             )
 
-            response = self.client.get(f"/a/{self.team.slug}/journal/api/journal-entries/{entry.id}/")
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/journal/api/journal-entries/{entry.id}/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -1154,37 +1193,38 @@ class TransactionColumnFilterAPITest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.treats_group = AccountGroup.objects.create(team=cls.team, name="Treats", account_type=ACCOUNT_TYPE_EXPENSE)
-        cls.checking = Account.objects.create(team=cls.team, name="Checking", account_group=cls.asset_group)
-        cls.savings = Account.objects.create(team=cls.team, name="Savings", account_group=cls.asset_group)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.coffee = Account.objects.create(team=cls.team, name="Coffee", account_group=cls.treats_group)
+        cls.treats_group = AccountGroup.objects.create(book=cls.book, name="Treats", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.checking = Account.objects.create(book=cls.book, name="Checking", account_group=cls.asset_group)
+        cls.savings = Account.objects.create(book=cls.book, name="Savings", account_group=cls.asset_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.coffee = Account.objects.create(book=cls.book, name="Coffee", account_group=cls.treats_group)
 
-        cls.amazon = Payee.objects.create(team=cls.team, name="Amazon")
-        cls.costco = Payee.objects.create(team=cls.team, name="Costco")
+        cls.amazon = Payee.objects.create(book=cls.book, name="Amazon")
+        cls.costco = Payee.objects.create(book=cls.book, name="Costco")
 
         def entry(day, payee, debit, credit, amount, description, **kwargs):
             je = JournalEntry.objects.create(
-                team=cls.team,
+                book=cls.book,
                 entry_date=date(2025, 3, day),
                 payee=payee,
                 description=description,
                 **kwargs,
             )
-            JournalLine.objects.create(team=cls.team, journal_entry=je, account=debit, dr_amount=Decimal(amount))
-            JournalLine.objects.create(team=cls.team, journal_entry=je, account=credit, cr_amount=Decimal(amount))
+            JournalLine.objects.create(book=cls.book, journal_entry=je, account=debit, dr_amount=Decimal(amount))
+            JournalLine.objects.create(book=cls.book, journal_entry=je, account=credit, cr_amount=Decimal(amount))
             return je
 
-        with current_team(cls.team):
+        with current_book(cls.book):
             cls.a = entry(1, cls.amazon, cls.groceries, cls.checking, "25.00", "Weekly shop")
             cls.b = entry(2, cls.costco, cls.groceries, cls.checking, "10.00", "Milk")
             cls.c = entry(3, cls.amazon, cls.coffee, cls.savings, "5.00", "Beans")
@@ -1197,7 +1237,7 @@ class TransactionColumnFilterAPITest(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def url(self, path=""):
-        return f"/a/{self.team.slug}/journal/api/transactions/{path}"
+        return f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/{path}"
 
     def ids(self, response):
         return [row["id"] for row in response.data["results"]]
@@ -1373,35 +1413,36 @@ class TransactionHierarchicalFilterAPITest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.bank_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.employment_group = AccountGroup.objects.create(
-            team=cls.team, name="Employment Income", account_type=ACCOUNT_TYPE_INCOME
+            book=cls.book, name="Employment Income", account_type=ACCOUNT_TYPE_INCOME
         )
         cls.side_group = AccountGroup.objects.create(
-            team=cls.team, name="Side Income", account_type=ACCOUNT_TYPE_INCOME
+            book=cls.book, name="Side Income", account_type=ACCOUNT_TYPE_INCOME
         )
-        cls.living_group = AccountGroup.objects.create(team=cls.team, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.living_group = AccountGroup.objects.create(book=cls.book, name="Living", account_type=ACCOUNT_TYPE_EXPENSE)
 
-        cls.checking = Account.objects.create(team=cls.team, name="Checking", account_group=cls.bank_group)
-        cls.paycheck = Account.objects.create(team=cls.team, name="Viv's paycheck", account_group=cls.employment_group)
-        cls.bonus = Account.objects.create(team=cls.team, name="Bonus", account_group=cls.employment_group)
-        cls.freelance = Account.objects.create(team=cls.team, name="Freelance", account_group=cls.side_group)
-        cls.rent = Account.objects.create(team=cls.team, name="Rent", account_group=cls.living_group)
+        cls.checking = Account.objects.create(book=cls.book, name="Checking", account_group=cls.bank_group)
+        cls.paycheck = Account.objects.create(book=cls.book, name="Viv's paycheck", account_group=cls.employment_group)
+        cls.bonus = Account.objects.create(book=cls.book, name="Bonus", account_group=cls.employment_group)
+        cls.freelance = Account.objects.create(book=cls.book, name="Freelance", account_group=cls.side_group)
+        cls.rent = Account.objects.create(book=cls.book, name="Rent", account_group=cls.living_group)
 
         def entry(entry_date, debit, credit, amount):
             je = JournalEntry.objects.create(
-                team=cls.team, entry_date=entry_date, description=f"{credit.name} {entry_date}"
+                book=cls.book, entry_date=entry_date, description=f"{credit.name} {entry_date}"
             )
-            JournalLine.objects.create(team=cls.team, journal_entry=je, account=debit, dr_amount=Decimal(amount))
-            JournalLine.objects.create(team=cls.team, journal_entry=je, account=credit, cr_amount=Decimal(amount))
+            JournalLine.objects.create(book=cls.book, journal_entry=je, account=debit, dr_amount=Decimal(amount))
+            JournalLine.objects.create(book=cls.book, journal_entry=je, account=credit, cr_amount=Decimal(amount))
             return je
 
-        with current_team(cls.team):
+        with current_book(cls.book):
             # Credit side carries the income/expense account, debit the bank,
             # so both account columns have something worth nesting.
             cls.jan_pay = entry(date(2024, 1, 15), cls.checking, cls.paycheck, "2000.00")
@@ -1415,7 +1456,7 @@ class TransactionHierarchicalFilterAPITest(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def url(self, path=""):
-        return f"/a/{self.team.slug}/journal/api/transactions/{path}"
+        return f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/{path}"
 
     def ids(self, response):
         return [row["id"] for row in response.data["results"]]
@@ -1544,7 +1585,8 @@ class TransactionHierarchicalFilterAPITest(TestCase):
 
     def test_another_teams_group_token_matches_nothing(self):
         other_team = Team.objects.create(name="Other", slug="other-team")
-        other_group = AccountGroup.objects.create(team=other_team, name="Theirs", account_type=ACCOUNT_TYPE_INCOME)
+        other_book = other_team.default_book
+        other_group = AccountGroup.objects.create(book=other_book, name="Theirs", account_type=ACCOUNT_TYPE_INCOME)
 
         response = self.client.get(self.url(), {"f_credit_account": f"g:{other_group.pk}"})
 
@@ -1569,26 +1611,27 @@ class ArchivedAndVoidedEntriesExcludedTest(TestCase):
         from apps.bank_feed.models import BankTransaction
 
         cls.team = Team.objects.create(name="Counted Team", slug="counted-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="counted", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
-        asset_group = AccountGroup.objects.create(team=cls.team, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
-        expense_group = AccountGroup.objects.create(team=cls.team, name="Spend", account_type=ACCOUNT_TYPE_EXPENSE)
-        cls.bank = Account.objects.create(team=cls.team, name="Checking", account_group=asset_group, has_feed=True)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=expense_group)
+        asset_group = AccountGroup.objects.create(book=cls.book, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        expense_group = AccountGroup.objects.create(book=cls.book, name="Spend", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.bank = Account.objects.create(book=cls.book, name="Checking", account_group=asset_group, has_feed=True)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=expense_group)
         cls.day = date(2026, 8, 10)
 
         def spend(amount, description, *, status_=JournalEntry.STATUS_POSTED, archived=False):
             entry = JournalEntry.objects.create(
-                team=cls.team, entry_date=cls.day, description=description, status=status_
+                book=cls.book, entry_date=cls.day, description=description, status=status_
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=entry, account=cls.groceries, dr_amount=Decimal(amount)
+                book=cls.book, journal_entry=entry, account=cls.groceries, dr_amount=Decimal(amount)
             )
             JournalLine.objects.create(
-                team=cls.team, journal_entry=entry, account=cls.bank, cr_amount=Decimal(amount), is_reconciled=True
+                book=cls.book, journal_entry=entry, account=cls.bank, cr_amount=Decimal(amount), is_reconciled=True
             )
             BankTransaction.objects.create(
-                team=cls.team,
+                book=cls.book,
                 account=cls.bank,
                 amount=Decimal(amount),
                 posted_date=cls.day,
@@ -1610,7 +1653,7 @@ class ArchivedAndVoidedEntriesExcludedTest(TestCase):
     def test_reports(self):
         from apps.reports.services import ReportService
 
-        service = ReportService(self.team)
+        service = ReportService(self.book)
         income_statement = service.get_income_statement_data(date(2026, 8, 1), date(2026, 8, 31))
         self.assertEqual(income_statement["total_expenses"], Decimal("10.00"))
         self.assertEqual(service.get_balance_sheet_data(date(2026, 8, 31))["net_worth"], Decimal("-10.00"))
@@ -1618,13 +1661,13 @@ class ArchivedAndVoidedEntriesExcludedTest(TestCase):
     def test_budget_actual_and_net_worth(self):
         from apps.budget.services import BudgetService, NetWorthService
 
-        self.assertEqual(BudgetService(self.team).actual(self.groceries, date(2026, 8, 1)), Decimal("10.00"))
-        self.assertEqual(NetWorthService(self.team).get_net_worth(date(2026, 8, 1)), Decimal("-10.00"))
+        self.assertEqual(BudgetService(self.book).actual(self.groceries, date(2026, 8, 1)), Decimal("10.00"))
+        self.assertEqual(NetWorthService(self.book).get_net_worth(date(2026, 8, 1)), Decimal("-10.00"))
 
     def test_transactions_ledger(self):
         client = APIClient()
         client.force_authenticate(user=self.user)
-        response = client.get(f"/a/{self.team.slug}/journal/api/transactions/")
+        response = client.get(f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual([row["description"] for row in response.data["results"]], ["Kept"])
 
@@ -1635,34 +1678,36 @@ class RecategorizeLineAPITest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Recat Team", slug="recat-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="recat", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
-        asset_group = AccountGroup.objects.create(team=cls.team, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
-        liability_group = AccountGroup.objects.create(team=cls.team, name="Cards", account_type=ACCOUNT_TYPE_LIABILITY)
-        expense_group = AccountGroup.objects.create(team=cls.team, name="Spend", account_type=ACCOUNT_TYPE_EXPENSE)
-        cls.checking = Account.objects.create(team=cls.team, name="Checking", account_group=asset_group, has_feed=True)
-        cls.savings = Account.objects.create(team=cls.team, name="Cash Box", account_group=asset_group)
-        cls.card = Account.objects.create(team=cls.team, name="Visa", account_group=liability_group, has_feed=True)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=expense_group)
+        asset_group = AccountGroup.objects.create(book=cls.book, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        liability_group = AccountGroup.objects.create(book=cls.book, name="Cards", account_type=ACCOUNT_TYPE_LIABILITY)
+        expense_group = AccountGroup.objects.create(book=cls.book, name="Spend", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.checking = Account.objects.create(book=cls.book, name="Checking", account_group=asset_group, has_feed=True)
+        cls.savings = Account.objects.create(book=cls.book, name="Cash Box", account_group=asset_group)
+        cls.card = Account.objects.create(book=cls.book, name="Visa", account_group=liability_group, has_feed=True)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=expense_group)
 
         other_team = Team.objects.create(name="Other", slug="other-recat")
-        other_group = AccountGroup.objects.create(team=other_team, name="X", account_type=ACCOUNT_TYPE_EXPENSE)
-        cls.foreign = Account.objects.create(team=other_team, name="Foreign", account_group=other_group)
+        other_book = other_team.default_book
+        other_group = AccountGroup.objects.create(book=other_book, name="X", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.foreign = Account.objects.create(book=other_book, name="Foreign", account_group=other_group)
 
     def setUp(self):
         from apps.bank_feed.models import BankTransaction
 
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        self.entry = JournalEntry.objects.create(team=self.team, entry_date=date(2026, 9, 1), description="Paid")
+        self.entry = JournalEntry.objects.create(book=self.book, entry_date=date(2026, 9, 1), description="Paid")
         self.expense_line = JournalLine.objects.create(
-            team=self.team, journal_entry=self.entry, account=self.groceries, dr_amount=Decimal("40.00")
+            book=self.book, journal_entry=self.entry, account=self.groceries, dr_amount=Decimal("40.00")
         )
         JournalLine.objects.create(
-            team=self.team, journal_entry=self.entry, account=self.checking, cr_amount=Decimal("40.00")
+            book=self.book, journal_entry=self.entry, account=self.checking, cr_amount=Decimal("40.00")
         )
         self.bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.checking,
             journal_entry=self.entry,
             amount=Decimal("40.00"),
@@ -1671,7 +1716,7 @@ class RecategorizeLineAPITest(TestCase):
         )
 
     def _move(self, account_id):
-        url = f"/a/{self.team.slug}/journal/api/lines/{self.expense_line.pk}/recategorize/"
+        url = f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/{self.expense_line.pk}/recategorize/"
         return self.client.post(url, {"new_category_id": account_id}, format="json")
 
     def test_move_to_asset_account(self):

@@ -16,7 +16,7 @@ from apps.accounts.models import (
     AccountGroup,
 )
 from apps.bank_feed.models import BankTransaction
-from apps.teams.context import current_team
+from apps.books.context import current_book
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -30,49 +30,51 @@ class BankFeedViewSetListTest(TestCase):
         """Set up test data for all tests."""
         # Team and user
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         # Other team for isolation tests
         cls.other_team = Team.objects.create(name="Other Team", slug="other-team")
+        cls.other_book = cls.other_team.default_book
         cls.other_user = CustomUser.objects.create_user(username="otheruser", password="pass")
         cls.other_team.members.add(cls.other_user, through_defaults={"role": ROLE_ADMIN})
 
         # Account groups
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
 
         # Other team's account group
         cls.other_asset_group = AccountGroup.objects.create(
-            team=cls.other_team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.other_book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
 
         # Accounts
         cls.bank_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Checking",
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.bank_account2 = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Savings",
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.category_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Groceries",
             account_group=cls.expense_group,
         )
 
         # Other team's account
         cls.other_bank_account = Account.objects.create(
-            team=cls.other_team,
+            book=cls.other_book,
             name="Other Checking",
             account_group=cls.other_asset_group,
             has_feed=True,
@@ -80,7 +82,7 @@ class BankFeedViewSetListTest(TestCase):
 
         # Sample bank transactions
         cls.bank_tx1 = BankTransaction.objects.create(
-            team=cls.team,
+            book=cls.book,
             account=cls.bank_account,
             posted_date=date.today(),
             description="Test transaction 1",
@@ -88,7 +90,7 @@ class BankFeedViewSetListTest(TestCase):
             source=BankTransaction.SOURCE_CSV,
         )
         cls.bank_tx2 = BankTransaction.objects.create(
-            team=cls.team,
+            book=cls.book,
             account=cls.bank_account2,
             posted_date=date.today(),
             description="Test transaction 2",
@@ -98,7 +100,7 @@ class BankFeedViewSetListTest(TestCase):
 
         # Other team's transaction
         cls.other_bank_tx = BankTransaction.objects.create(
-            team=cls.other_team,
+            book=cls.other_book,
             account=cls.other_bank_account,
             posted_date=date.today(),
             description="Other team transaction",
@@ -113,8 +115,8 @@ class BankFeedViewSetListTest(TestCase):
 
     def test_list_returns_all_team_transactions(self):
         """Test that list returns all bank transactions for the team."""
-        with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/")
+        with current_book(self.book):
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["count"], 2)
@@ -124,9 +126,9 @@ class BankFeedViewSetListTest(TestCase):
 
     def test_list_filters_by_account(self):
         """Test that list filters by account when account parameter is provided."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.get(
-                f"/a/{self.team.slug}/bankfeed/api/feed/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/",
                 {"account": self.bank_account.id},
             )
 
@@ -138,12 +140,13 @@ class BankFeedViewSetListTest(TestCase):
         """Test that list returns empty results when no transactions exist."""
         # Create a new team with no transactions
         empty_team = Team.objects.create(name="Empty Team", slug="empty-team")
+        empty_book = empty_team.default_book
         empty_user = CustomUser.objects.create_user(username="emptyuser", password="pass")
         empty_team.members.add(empty_user, through_defaults={"role": ROLE_ADMIN})
 
         self.client.force_authenticate(user=empty_user)
-        with current_team(empty_team):
-            response = self.client.get(f"/a/{empty_team.slug}/bankfeed/api/feed/")
+        with current_book(empty_book):
+            response = self.client.get(f"/a/{empty_team.slug}/{empty_book.slug}/bankfeed/api/feed/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["count"], 0)
@@ -156,7 +159,7 @@ class BankFeedViewSetListTest(TestCase):
         view level, so anonymous requests must not see any team data.
         """
         self.client.force_authenticate(user=None)
-        response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/")
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -164,14 +167,14 @@ class BankFeedViewSetListTest(TestCase):
         """Users who are not members of the team must not see its feed."""
         outsider = CustomUser.objects.create_user(username="outsider", password="pass")
         self.client.force_authenticate(user=outsider)
-        response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/")
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_list_only_shows_own_team_transactions(self):
         """Test that users can only see their own team's transactions."""
-        with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/")
+        with current_book(self.book):
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             # Should not include other team's transaction

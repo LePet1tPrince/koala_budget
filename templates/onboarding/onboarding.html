@@ -32,7 +32,7 @@
             chart of accounts instead.
           {% endblocktranslate %}
         </p>
-        <form method="post" action="{% url 'onboarding:api_skip' request.team.slug %}" class="mt-5">
+        <form method="post" action="{% url 'onboarding:api_skip' request.team.slug request.book.slug %}" class="mt-5">
           {% csrf_token %}
           <button type="submit" class="btn btn-primary">{% translate "Skip setup" %}</button>
         </form>

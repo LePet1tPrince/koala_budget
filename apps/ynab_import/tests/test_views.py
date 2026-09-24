@@ -39,12 +39,13 @@ class WizardTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user = make_team("Wizard", "wizard")
+        cls.book = cls.team.default_book
 
     def setUp(self):
         self.client.force_login(self.user)
 
     def url(self, name):
-        return reverse(f"ynab_import:{name}", args=[self.team.slug])
+        return reverse(f"ynab_import:{name}", args=[self.team.slug, self.book.slug])
 
     def upload(self):
         response = self.client.post(self.url("api_upload"), {"files": upload_files()})
@@ -61,9 +62,9 @@ class WizardTest(TestCase):
         self.assertEqual({a["name"] for a in payload["accounts"]}, {"Chequing", "Savings", "Visa"})
         self.assertEqual(payload["summary"]["entries"], 5)  # plus the two opening balances
         self.assertTrue(payload["can_import"])
-        self.assertTrue(YnabImport.objects.filter(team=self.team, id=payload["import_id"]).exists())
+        self.assertTrue(YnabImport.objects.filter(book=self.book, id=payload["import_id"]).exists())
         # Nothing is written to the books by looking at a file.
-        self.assertFalse(JournalEntry.objects.filter(team=self.team).exists())
+        self.assertFalse(JournalEntry.objects.filter(book=self.book).exists())
 
     def test_upload_needs_both_files(self):
         response = self.client.post(self.url("api_upload"), {"files": [upload_files()[0]]})
@@ -100,7 +101,7 @@ class WizardTest(TestCase):
             content_type="application/json",
         )
         self.assertTrue(response.json()["reconciliation"]["passed"])
-        self.assertFalse(JournalEntry.objects.filter(team=self.team).exists())
+        self.assertFalse(JournalEntry.objects.filter(book=self.book).exists())
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
     def test_apply_imports_the_books(self):
@@ -116,7 +117,7 @@ class WizardTest(TestCase):
         self.assertEqual(status["status"], "done")
         self.assertEqual(status["result"]["created"]["entries"], 5)
         self.assertTrue(status["result"]["reconciliation"]["passed"])
-        self.assertEqual(JournalEntry.objects.filter(team=self.team).count(), 5 + 2)
+        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 5 + 2)
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
     def test_the_stored_export_is_cleared_once_it_is_in_the_ledger(self):
@@ -135,9 +136,9 @@ class WizardTest(TestCase):
         payload = self.upload()
         body = json.dumps({"import_id": payload["import_id"]})
         self.client.post(self.url("api_apply"), data=body, content_type="application/json")
-        before = JournalEntry.objects.filter(team=self.team).count()
+        before = JournalEntry.objects.filter(book=self.book).count()
         self.client.post(self.url("api_apply"), data=body, content_type="application/json")
-        self.assertEqual(JournalEntry.objects.filter(team=self.team).count(), before)
+        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), before)
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
     def test_a_team_that_already_has_transactions_is_refused(self):
@@ -168,7 +169,7 @@ class WizardTest(TestCase):
             data=json.dumps({"import_id": payload["import_id"]}),
             content_type="application/json",
         )
-        state = OnboardingState.objects.get(team=self.team)
+        state = OnboardingState.objects.get(book=self.book)
         self.assertEqual(state.phase, OnboardingState.PHASE_TASKS)
         self.assertTrue(state.is_finished)
         self.assertEqual(set(state.tasks_done), {"import", "categorize", "budget"})
@@ -191,13 +192,15 @@ class TeamScopingTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user = make_team("Mine", "mine")
+        cls.book = cls.team.default_book
         cls.other_team, cls.other_user = make_team("Theirs", "theirs")
-        cls.record = YnabImport.objects.create(team=cls.other_team, register_csv=TINY_REGISTER, plan_csv=TINY_PLAN)
+        cls.other_book = cls.other_team.default_book
+        cls.record = YnabImport.objects.create(book=cls.other_book, register_csv=TINY_REGISTER, plan_csv=TINY_PLAN)
 
     def test_another_teams_import_is_not_reachable(self):
         self.client.force_login(self.user)
         response = self.client.post(
-            reverse("ynab_import:api_preview", args=[self.team.slug]),
+            reverse("ynab_import:api_preview", args=[self.team.slug, self.book.slug]),
             data=json.dumps({"import_id": self.record.id}),
             content_type="application/json",
         )
@@ -205,11 +208,11 @@ class TeamScopingTest(TestCase):
 
     def test_a_non_member_cannot_open_the_wizard(self):
         self.client.force_login(self.user)
-        response = self.client.get(reverse("ynab_import:home", args=[self.other_team.slug]))
+        response = self.client.get(reverse("ynab_import:home", args=[self.other_team.slug, self.other_book.slug]))
         self.assertIn(response.status_code, (403, 404, 302))
 
     def test_anonymous_users_are_sent_to_log_in(self):
-        response = self.client.get(reverse("ynab_import:home", args=[self.team.slug]))
+        response = self.client.get(reverse("ynab_import:home", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 302)
         self.assertIn("login", response.url)
 
@@ -227,12 +230,13 @@ class UnexpectedErrorTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user = make_team("Broken", "broken")
+        cls.book = cls.team.default_book
 
     def setUp(self):
         self.client.force_login(self.user)
 
     def test_a_crash_answers_json_the_wizard_can_read(self):
-        url = reverse("ynab_import:api_upload", args=[self.team.slug])
+        url = reverse("ynab_import:api_upload", args=[self.team.slug, self.book.slug])
         with patch("apps.ynab_import.views.YnabImport.objects.create", side_effect=ProgrammingError("no such table")):
             response = self.client.post(url, {"files": upload_files()})
 
@@ -241,7 +245,7 @@ class UnexpectedErrorTest(TestCase):
 
     @override_settings(DEBUG=True)
     def test_in_debug_the_reason_itself_reaches_the_browser(self):
-        url = reverse("ynab_import:api_upload", args=[self.team.slug])
+        url = reverse("ynab_import:api_upload", args=[self.team.slug, self.book.slug])
         with patch("apps.ynab_import.views.YnabImport.objects.create", side_effect=ProgrammingError("no such table")):
             response = self.client.post(url, {"files": upload_files()})
 
@@ -261,13 +265,14 @@ class ProgressChannelTest(TransactionTestCase):
 
     def setUp(self):
         self.team, self.user = make_team("Progress", "progress")
-        self.record = YnabImport.objects.create(team=self.team, register_csv="x", plan_csv="y")
+        self.book = self.team.default_book
+        self.record = YnabImport.objects.create(book=self.book, register_csv="x", plan_csv="y")
 
     def count_payees_from_another_connection(self) -> int:
         connection = connections.create_connection(DEFAULT_DB_ALIAS)
         try:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT count(*) FROM accounts_payee WHERE team_id = %s", [self.team.id])
+                cursor.execute("SELECT count(*) FROM accounts_payee WHERE book_id = %s", [self.book.id])
                 return cursor.fetchone()[0]
         finally:
             connection.close()
@@ -290,7 +295,7 @@ class ProgressChannelTest(TransactionTestCase):
             with transaction.atomic():
                 # Stand in for the import: a write in this transaction, invisible to
                 # anyone else until it commits...
-                Payee.objects.create(team=self.team, name="Mid-import payee")
+                Payee.objects.create(book=self.book, name="Mid-import payee")
                 # ...while the progress written through the channel is not.
                 channel.report(42, "Importing your transactions")
                 progress, step = self.read_progress_from_another_connection()
@@ -336,11 +341,12 @@ class StatusReportingTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user = make_team("Status", "status")
+        cls.book = cls.team.default_book
 
     def setUp(self):
         self.client.force_login(self.user)
         self.record = YnabImport.objects.create(
-            team=self.team,
+            book=self.book,
             register_csv=TINY_REGISTER,
             plan_csv=TINY_PLAN,
             status=YnabImport.STATUS_RUNNING,
@@ -350,7 +356,7 @@ class StatusReportingTest(TestCase):
         )
 
     def status(self) -> dict:
-        url = reverse("ynab_import:api_status", args=[self.team.slug])
+        url = reverse("ynab_import:api_status", args=[self.team.slug, self.book.slug])
         return self.client.get(f"{url}?import_id={self.record.id}").json()
 
     def live(self, **info):
@@ -413,15 +419,16 @@ class ResumeTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user = make_team("Resume", "resume")
+        cls.book = cls.team.default_book
 
     def setUp(self):
         self.client.force_login(self.user)
 
     def record(self, **fields) -> YnabImport:
-        return YnabImport.objects.create(team=self.team, register_csv=TINY_REGISTER, plan_csv=TINY_PLAN, **fields)
+        return YnabImport.objects.create(book=self.book, register_csv=TINY_REGISTER, plan_csv=TINY_PLAN, **fields)
 
     def resume(self):
-        response = self.client.get(reverse("ynab_import:home", args=[self.team.slug]))
+        response = self.client.get(reverse("ynab_import:home", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
         return response.context["ynab_props"]["resume"]
 
@@ -493,10 +500,11 @@ class DashboardYnabStateTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user = make_team("Dash", "dash")
+        cls.book = cls.team.default_book
         # Past the walkthrough, as anyone returning from an import is -- otherwise
         # the dashboard redirects into the onboarding takeover and there is no page
         # to read.
-        state = OnboardingState.objects.create(team=cls.team)
+        state = OnboardingState.objects.create(book=cls.book)
         state.complete()
         state.finish_tasks()
         state.save()
@@ -505,20 +513,20 @@ class DashboardYnabStateTest(TestCase):
         self.client.force_login(self.user)
 
     def home(self):
-        return self.client.get(reverse("web_team:home", args=[self.team.slug]))
+        return self.client.get(reverse("web_book:home", args=[self.team.slug, self.book.slug]))
 
     def test_nothing_is_said_when_there_is_no_import(self):
         self.assertEqual(self.home().context["ynab_state"], "")
 
     def test_a_running_import_is_named(self):
-        YnabImport.objects.create(team=self.team, status=YnabImport.STATUS_RUNNING, task_id="task-1")
+        YnabImport.objects.create(book=self.book, status=YnabImport.STATUS_RUNNING, task_id="task-1")
         response = self.home()
         self.assertEqual(response.context["ynab_state"], "running")
         self.assertContains(response, "ynab-import-running")
 
     def test_a_failed_import_is_named(self):
         YnabImport.objects.create(
-            team=self.team,
+            book=self.book,
             status=YnabImport.STATUS_FAILED,
             finished_at=timezone.now(),
             error="The import stopped before it finished.",
@@ -529,5 +537,5 @@ class DashboardYnabStateTest(TestCase):
 
     def test_a_successful_import_needs_no_mention(self):
         # The numbers all over the dashboard are the mention.
-        YnabImport.objects.create(team=self.team, status=YnabImport.STATUS_DONE, finished_at=timezone.now())
+        YnabImport.objects.create(book=self.book, status=YnabImport.STATUS_DONE, finished_at=timezone.now())
         self.assertEqual(self.home().context["ynab_state"], "")

@@ -57,10 +57,11 @@ const SummaryColumn = ({ title, checks, tone, testId }) => (
  * sits right beside what is arriving, in the same shape, before the one
  * input that actually confirms anything.
  */
-const Step3Confirm = ({ api, importId, teamName, file, destination, onApplyStarted, onError, onCancel }) => {
+const Step3Confirm = ({ api, importId, bookName, file, destination, onApplyStarted, onError, onCancel }) => {
   const [typedName, setTypedName] = useState('');
   const [busy, setBusy] = useState(false);
-  const nameMatches = typedName === teamName;
+  // The book is what gets replaced, so its name is what is typed.
+  const nameMatches = typedName === bookName;
   const omitted = file.omitted || {};
   // Unlinked feed rows are reported separately: unlike the other entries here
   // they are not things left behind, they are rows that arrive needing a
@@ -145,7 +146,7 @@ const Step3Confirm = ({ api, importId, teamName, file, destination, onApplyStart
       <div className="border-t border-base-300 pt-5 space-y-3">
         <label className="form-control" htmlFor="confirm-team-name">
           <span className="label-text text-sm">
-            {gettext('Type this team’s name — {name} — to confirm.').replace('{name}', teamName)}
+            {gettext('Type the name of this set of books — {name} — to confirm.').replace('{name}', bookName)}
           </span>
           <input
             id="confirm-team-name"
@@ -169,7 +170,7 @@ const Step3Confirm = ({ api, importId, teamName, file, destination, onApplyStart
             disabled={!nameMatches || busy}
             data-testid="confirm-apply-button"
           >
-            {busy ? <Spinner size="sm" /> : gettext('Delete and replace this team’s books')}
+            {busy ? <Spinner size="sm" /> : gettext('Delete and replace this set of books')}
           </button>
         </div>
       </div>

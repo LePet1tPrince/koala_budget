@@ -15,11 +15,11 @@ class BankTransactionAdmin(admin.ModelAdmin):
         "amount",
         "source",
         "is_categorized",
-        "team",
+        "book",
         "created_at",
     ]
 
-    list_filter = ["source", "team", "posted_date"]
+    list_filter = ["source", "book", "posted_date"]
     search_fields = [
         "description",
         "merchant_name",
@@ -32,7 +32,7 @@ class BankTransactionAdmin(admin.ModelAdmin):
         "is_categorized",
     ]
 
-    autocomplete_fields = ["team", "journal_entry"]
+    autocomplete_fields = ["book", "journal_entry"]
 
     date_hierarchy = "posted_date"
 
@@ -42,7 +42,7 @@ class BankTransactionAdmin(admin.ModelAdmin):
         "description",
         "amount",
         "source",
-        "team",
+        "book",
         "journal_entry",  # ✅ now editable
         "is_categorized",
         "is_archived",

@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 @shared_task(bind=True)
 def run_ynab_import(self, import_id: int):
-    record = YnabImport.objects.select_related("team", "created_by").filter(id=import_id).first()
+    record = YnabImport.objects.select_related("book", "created_by").filter(id=import_id).first()
     if record is None:
         logger.warning("YNAB import %s no longer exists", import_id)
         return None
@@ -69,7 +69,7 @@ def run_ynab_import(self, import_id: int):
         analysis = analyse_record(record)
         choices = parse_choices(analysis, record.choices)
         plan = build(analysis, choices)
-        result = apply_plan(record.team, plan, user=record.created_by, on_progress=report)
+        result = apply_plan(record.book, plan, user=record.created_by, on_progress=report)
         checks = reconcile(analysis, plan)
     except (ApplyError, BuildError) as error:
         channel.close()
@@ -111,7 +111,7 @@ def run_ynab_import(self, import_id: int):
     log_event(
         AuditEvent.YNAB_IMPORT,
         user=record.created_by,
-        team=record.team,
+        book=record.book,
         metadata={
             "created": result.as_dict(),
             "first_date": plan.stats.get("first_date"),
@@ -137,14 +137,14 @@ def _finish_onboarding(record: YnabImport):
 
     So the takeover is finished rather than waited for: the phase moves straight to
     the guided tasks, with the ones the import has evidently done already ticked. A
-    team that has been through onboarding already is left alone.
+    book that has been through onboarding already is left alone.
     """
     if not getattr(settings, "ONBOARDING_ENABLED", False):
         return
 
     from apps.onboarding.models import OnboardingState
 
-    state, _created = OnboardingState.objects.get_or_create(team=record.team)
+    state, _created = OnboardingState.objects.get_or_create(book=record.book)
     if state.is_finished:
         return
 
@@ -156,6 +156,6 @@ def _finish_onboarding(record: YnabImport):
     log_event(
         AuditEvent.ONBOARDING_COMPLETED,
         user=record.created_by,
-        team=record.team,
+        book=record.book,
         metadata={"via": "ynab_import", "accounts": record.result.get("created", {}).get("accounts")},
     )

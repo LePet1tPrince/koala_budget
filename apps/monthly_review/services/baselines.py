@@ -2,17 +2,17 @@
 The comparison-window machinery for the guided monthly review.
 
 Pure arithmetic over an already-assembled monthly matrix -- no database access,
-so this is fully unit-testable without a team, ledger, or fixtures. `review.py`
+so this is fully unit-testable without a book, ledger, or fixtures. `review.py`
 does the querying and hands this module one dict; this module slices it five
-ways (or fewer, if the team's history is short) and never looks at the database
+ways (or fewer, if the book's history is short) and never looks at the database
 itself.
 
 Non-negotiable rules (see docs/monthly-review-plan.md §3):
 - A baseline never includes the month under review.
-- A baseline is clamped to the team's first month of activity -- never averaged
+- A baseline is clamped to the book's first month of activity -- never averaged
   over months that predate any data.
 - 1m is literally last month, not an average of one thing pretending to be one.
-- A team with zero prior months gets no baselines at all.
+- A book with zero prior months gets no baselines at all.
 """
 
 from dataclasses import dataclass, field
@@ -23,7 +23,7 @@ from django.utils.formats import date_format
 
 METRICS = ("income", "spend", "net", "saved")
 
-# The "all time" baseline: every month from the team's first activity up to the
+# The "all time" baseline: every month from the book's first activity up to the
 # month before the one under review.
 ALL_TIME = "all"
 
@@ -42,13 +42,13 @@ DEFAULT_BASELINE_ID = "3m"
 @dataclass
 class MonthlyMatrix:
     """
-    Per-month figures for one team, spanning the reviewed month and however
+    Per-month figures for one book, spanning the reviewed month and however
     many months of history precede it (up to 12).
 
     All month-keyed dicts use `date` objects normalized to the first of the
     month. A month with no activity is expected to be present with zero
     values, not absent -- `first_month` is what tells baselines.py where the
-    team's real history starts.
+    book's real history starts.
     """
 
     months: list  # ascending, oldest first, including the reviewed month
@@ -83,7 +83,7 @@ def clamp_window(month: date, months, first_month: date | None) -> list:
     never reaching earlier than `first_month`. `months=ALL_TIME` means no limit.
 
     Returns [] when there is no room at all -- either no history exists, or
-    the month under review is the team's first month (or earlier).
+    the month under review is the book's first month (or earlier).
     """
     if first_month is None:
         return []

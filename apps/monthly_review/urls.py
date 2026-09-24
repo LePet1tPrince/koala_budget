@@ -1,4 +1,4 @@
-"""URL configuration for the guided monthly review (team-scoped)."""
+"""URL configuration for the guided monthly review (book-scoped)."""
 
 from django.urls import path
 

@@ -37,7 +37,7 @@ def _stale_days() -> int:
     return getattr(settings, "MONTHLY_REVIEW_STALE_DAYS", 14)
 
 
-def account_health(team, month) -> dict:
+def account_health(book, month) -> dict:
     """
     Returns:
         {
@@ -60,7 +60,7 @@ def account_health(team, month) -> dict:
     month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
     accounts = list(
-        Account.objects.filter(team=team, has_feed=True, is_system=False)
+        Account.objects.filter(book=book, has_feed=True, is_system=False)
         .select_related("account_group")
         # As of month end: reviewing August must not flag what happened in September.
         .with_balance(as_of=month_end)
@@ -71,7 +71,7 @@ def account_health(team, month) -> dict:
 
     this_month_counts = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account_id__in=account_ids,
             is_archived=False,
             posted_date__range=(month_start, month_end),
@@ -82,7 +82,7 @@ def account_health(team, month) -> dict:
     )
     uncategorized_counts = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account_id__in=account_ids,
             journal_entry__isnull=True,
             is_archived=False,
@@ -94,7 +94,7 @@ def account_health(team, month) -> dict:
     )
     unreconciled_counts = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account_id__in=account_ids,
             is_archived=False,
             posted_date__lte=month_end,
@@ -108,14 +108,14 @@ def account_health(team, month) -> dict:
     )
     last_transaction_dates = dict(
         BankTransaction.objects.filter(
-            team=team, account_id__in=account_ids, is_archived=False, posted_date__lte=month_end
+            book=book, account_id__in=account_ids, is_archived=False, posted_date__lte=month_end
         )
         .values("account_id")
         .annotate(latest=Max("posted_date"))
         .values_list("account_id", "latest")
     )
     first_transaction_dates = dict(
-        BankTransaction.objects.filter(team=team, account_id__in=account_ids, is_archived=False)
+        BankTransaction.objects.filter(book=book, account_id__in=account_ids, is_archived=False)
         .values("account_id")
         .annotate(first=Min("posted_date"))
         .values_list("account_id", "first")
@@ -124,7 +124,7 @@ def account_health(team, month) -> dict:
         # As of the month's end, like every other check here: reviewing July must
         # not be satisfied by a statement reconciled in September.
         Reconciliation.objects.filter(
-            team=team,
+            book=book,
             account_id__in=account_ids,
             status=Reconciliation.STATUS_COMPLETED,
             statement_date__lte=month_end,
@@ -194,8 +194,8 @@ def account_health(team, month) -> dict:
                     "kind": STATEMENT_DUE,
                     "account": account,
                     "last_statement_date": last_statement,
-                    "url": reverse("reconciliation:account", args=[team.slug, account.pk]),
-                    "hub_url": reverse("reconciliation:hub", args=[team.slug]),
+                    "url": reverse("reconciliation:account", args=[*book.url_args, account.pk]),
+                    "hub_url": reverse("reconciliation:hub", args=book.url_args),
                 }
             )
 

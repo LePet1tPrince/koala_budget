@@ -327,7 +327,7 @@ _TIMESTAMP = "re-derived as import time, not carried (§2.6)"
 #
 # One row per Account. AccountGroup, Institution and Goal are folded in as
 # columns on that row rather than given files of their own (§2.1) -- each is
-# either unique-by-name within the team (AccountGroup, Institution) or backed
+# either unique-by-name within the book (AccountGroup, Institution) or backed
 # one-to-one by the account itself (Goal), so nothing about them needs its own
 # handle.
 
@@ -343,7 +343,7 @@ ACCOUNT = FieldMap(
         "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
     },
     omitted={
-        "team": _TENANT,
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "account_group": "denormalised onto this row via the ACCOUNT_GROUP field map, not carried as a raw id",
@@ -363,8 +363,8 @@ ACCOUNT_GROUP = FieldMap(
         "archived_at": ColumnSpec("group_archived_at", KIND_DATETIME),
     },
     omitted={
-        "id": "AccountGroup is unique per (team, name); no separate handle is needed (§2.2)",
-        "team": _TENANT,
+        "id": "AccountGroup is unique per (book, name); no separate handle is needed (§2.2)",
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
     },
@@ -378,8 +378,8 @@ INSTITUTION = FieldMap(
         "archived_at": ColumnSpec("institution_archived_at", KIND_DATETIME),
     },
     omitted={
-        "id": "Institution is unique per (team, name); no separate handle is needed (§2.2)",
-        "team": _TENANT,
+        "id": "Institution is unique per (book, name); no separate handle is needed (§2.2)",
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
     },
@@ -398,8 +398,8 @@ PAYEE = FieldMap(
         "name": ColumnSpec("payee", KIND_STR_OR_NONE, writes=False),
     },
     omitted={
-        "id": "Payee is unique per (team, name); no separate handle is needed (§2.2)",
-        "team": _TENANT,
+        "id": "Payee is unique per (book, name); no separate handle is needed (§2.2)",
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "is_archived": "not surfaced anywhere in the product; repeating it on every line naming this payee costs a "
@@ -429,7 +429,7 @@ GOAL = FieldMap(
     },
     omitted={
         "id": "a goal has no handle of its own; it is identified by the account it backs (§2.1)",
-        "team": _TENANT,
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "account": "implicit -- a goal's columns live on its own backing account's row, by construction (§2.1)",
@@ -488,7 +488,7 @@ JOURNAL_ENTRY = FieldMap(
         "archived_at": ColumnSpec("entry_archived_at", KIND_DATETIME),
     },
     omitted={
-        "team": _TENANT,
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
     },
@@ -510,7 +510,7 @@ JOURNAL_LINE = FieldMap(
     },
     omitted={
         "id": "no cross-reference needs a line handle; line order is preserved positionally (§2.6)",
-        "team": _TENANT,
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "journal_entry": "same value as JournalEntry.id, carried once as entry_id",
@@ -556,7 +556,7 @@ BANK_TRANSACTION = FieldMap(
     omitted={
         "id": "a feed row has no handle of its own; it is identified by the line it belongs to, or by being an "
         "uncategorized row (§2.4)",
-        "team": _TENANT,
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "raw": "the original bank payload is diagnostic only, not part of the books (§2.4)",
@@ -610,7 +610,7 @@ BUDGET = FieldMap(
     omitted={
         "id": "no cross-reference needs a handle; a budget row is identified by (kind=budget, account_id, month), "
         "which is already unique (Budget.Meta.unique_together)",
-        "team": _TENANT,
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
     },
@@ -631,7 +631,7 @@ GOAL_ALLOCATION = FieldMap(
     omitted={
         "id": "no cross-reference needs a handle; identified by (kind=goal, account_id, month), which is already "
         "unique (GoalAllocation.Meta.unique_together)",
-        "team": _TENANT,
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
     },
@@ -671,7 +671,7 @@ RECONCILIATION = FieldMap(
         "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
     },
     omitted={
-        "team": _TENANT,
+        "book": _TENANT,
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "started_by": "a user of one instance is not a user of another; the books do not carry people",

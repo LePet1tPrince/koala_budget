@@ -66,7 +66,7 @@
   <!-- Header: title, date range picker, and actions on one row -->
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
         {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
@@ -95,7 +95,7 @@
           </ul>
         </div>
       </div>
-      <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
+      <a href="{% url 'reports:export_income_statement' request.team.slug request.book.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
         {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Export CSV" %}
       </a>
@@ -197,7 +197,7 @@
                 </tr>
                 {% for item in group_data.accounts %}
                 <tr x-show="sec.income && grp.g{{ group_data.group.pk }}" class="row-account">
-                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
+                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug request.book.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
                   {% if period %}{% for amount in item.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
@@ -236,7 +236,7 @@
                 </tr>
                 {% for item in group_data.accounts %}
                 <tr x-show="sec.expenses && grp.g{{ group_data.group.pk }}" class="row-account">
-                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
+                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug request.book.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
                   {% if period %}{% for amount in item.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}

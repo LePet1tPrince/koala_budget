@@ -47,9 +47,11 @@ class SubscriptionTests(TestCase):
         cls.user_without_sub = CustomUser.objects.create(username="robin@example.com")
 
         cls.team_with_sub = Team.objects.create(name="Royals", slug="royals")
+        cls.book_with_sub = cls.team_with_sub.default_book
         cls.team_with_sub.members.add(cls.user_with_sub, through_defaults={"role": ROLE_ADMIN})
 
         cls.team_without_sub = Team.objects.create(name="Bandits", slug="bandits")
+        cls.book_without_sub = cls.team_without_sub.default_book
         cls.team_without_sub.members.add(cls.user_without_sub, through_defaults={"role": ROLE_ADMIN})
 
         cls.subscription = create_subscription_for_team(cls.team_with_sub, MOCK_ACTIVE_PRODUCTS[0], metered=True)

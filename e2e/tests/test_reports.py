@@ -28,7 +28,7 @@ from e2e.pages.reports import ReportsPage
 def test_reports_home_shows_all_report_links(authenticated_page: Page, live_server, team):
     """The reports home page shows links to all three main reports."""
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_home(team.slug)
+    reports.goto_home(team.default_book)
 
     assert reports.has_income_statement_link()
     assert reports.has_balance_sheet_link()
@@ -39,10 +39,10 @@ def test_reports_home_shows_all_report_links(authenticated_page: Page, live_serv
 def test_income_statement_link_navigates_to_report(authenticated_page: Page, live_server, team):
     """Clicking 'View Report' on the Income Statement card navigates to the report."""
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_home(team.slug)
+    reports.goto_home(team.default_book)
     reports.click_income_statement()
 
-    assert f"/a/{team.slug}/reports/income-statement/" in authenticated_page.url
+    assert f"{team.default_book.base_url}reports/income-statement/" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)
@@ -58,7 +58,7 @@ def test_income_statement_shows_summary_with_data(authenticated_page: Page, live
     JournalLineFactory(team=team, journal_entry=entry, account=expense_acct, dr_amount="2000.00")
 
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_income_statement(team.slug)
+    reports.goto_income_statement(team.default_book)
 
     assert reports.has_summary()
     assert reports.has_income_table()
@@ -69,7 +69,7 @@ def test_income_statement_shows_summary_with_data(authenticated_page: Page, live
 def test_income_statement_export_csv_button_present(authenticated_page: Page, live_server, team):
     """The Export CSV button is always visible on the income statement page."""
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_income_statement(team.slug)
+    reports.goto_income_statement(team.default_book)
 
     assert reports.has_export_btn()
 
@@ -78,8 +78,8 @@ def test_income_statement_export_csv_button_present(authenticated_page: Page, li
 def test_reports_home_navigates_to_balance_sheet(authenticated_page: Page, live_server, team):
     """The balance sheet link navigates to the balance sheet page."""
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_home(team.slug)
+    reports.goto_home(team.default_book)
     authenticated_page.locator("[data-testid='report-link-balance-sheet']").click()
 
-    authenticated_page.wait_for_url(f"**/a/{team.slug}/reports/balance-sheet/", timeout=10_000)
-    assert f"/a/{team.slug}/reports/balance-sheet/" in authenticated_page.url
+    authenticated_page.wait_for_url(f"**{team.default_book.base_url}reports/balance-sheet/", timeout=10_000)
+    assert f"{team.default_book.base_url}reports/balance-sheet/" in authenticated_page.url

@@ -8,11 +8,11 @@
     <h3 class="text-xl mb-1">{{ account.name }}</h3>
     <div class="flex gap-2">
       {% if reconcilable %}
-        <a href="{% url 'reconciliation:account' request.team.slug account.pk %}" class="btn btn-outline" data-testid="account-reconcile-btn">
+        <a href="{% url 'reconciliation:account' request.team.slug request.book.slug account.pk %}" class="btn btn-outline" data-testid="account-reconcile-btn">
           {% translate "Reconcile" %}
         </a>
       {% endif %}
-      <a href="{% url 'accounts:account_update' request.team.slug account.pk %}" class="btn btn-primary">
+      <a href="{% url 'accounts:account_update' request.team.slug request.book.slug account.pk %}" class="btn btn-primary">
         {% translate "Edit" %}
       </a>
       <button type="button" id="delete-account-btn" class="btn btn-outline btn-error" data-testid="delete-account-btn">
@@ -56,7 +56,7 @@
 <section class="app-card" data-testid="account-statements">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-2">
     <h3 class="text-xl mb-1">{% translate "Statements" %}</h3>
-    <a href="{% url 'reconciliation:account' request.team.slug account.pk %}" class="link link-primary text-sm">{% translate "Reconcile a statement" %}</a>
+    <a href="{% url 'reconciliation:account' request.team.slug request.book.slug account.pk %}" class="link link-primary text-sm">{% translate "Reconcile a statement" %}</a>
   </div>
   {% if statements %}
     <table class="table table-sm table-quiet">
@@ -120,7 +120,7 @@
       <form method="dialog">
         <button class="btn">{% translate "Cancel" %}</button>
       </form>
-      <form method="post" action="{% url 'accounts:account_delete' request.team.slug account.pk %}">
+      <form method="post" action="{% url 'accounts:account_delete' request.team.slug request.book.slug account.pk %}">
         {% csrf_token %}
         <button type="submit" class="btn btn-outline btn-error" data-testid="confirm-delete-btn">
           {% translate "Delete" %}

@@ -96,7 +96,7 @@ EQUITY_ADJUSTMENTS = GroupSpec(
 
 
 # ---------------------------------------------------------------------------
-# The base set -- every team gets these regardless of how they answer
+# The base set -- every book gets these regardless of how they answer
 # ---------------------------------------------------------------------------
 
 BASE_GRANT = Grant(

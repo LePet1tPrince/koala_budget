@@ -6,9 +6,24 @@ from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 from django.db.models import Sum
 
-from apps.accounts.models import Account
+from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalLine, counted_entries
+
+
+def budgeted_account_types(book) -> tuple[str, ...]:
+    """
+    The category types a book budgets. Expenses always; income only while the
+    book budgets income before it arrives (`Book.budget_future_income`).
+
+    With the setting off, income categories leave the budget page, the grid and
+    the monthly review, and the save endpoints refuse them -- the one place that
+    decides is here. Their existing `Budget` rows are kept, ignored, so turning
+    the setting back on restores them.
+    """
+    if book.budget_future_income:
+        return (ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME)
+    return (ACCOUNT_TYPE_EXPENSE,)
 
 
 def _active_lines():
@@ -17,8 +32,8 @@ def _active_lines():
 
 
 class BudgetService:
-    def __init__(self, team):
-        self.team = team
+    def __init__(self, book):
+        self.book = book
 
     def month_bounds(self, month: date):
         """Return start and end dates for a given month."""
@@ -49,7 +64,7 @@ class BudgetService:
         qs = (
             _active_lines()
             .filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
                 account=category,
@@ -67,7 +82,7 @@ class BudgetService:
         Get the budgeted amount for a category in a given month.
         Returns 0 if no budget exists.
         """
-        budget = Budget.objects.filter(team=self.team, category=category, month=month).first()
+        budget = Budget.objects.filter(book=self.book, category=category, month=month).first()
         return budget.budget_amount if budget else Decimal("0")
 
     def available(self, category, month):
@@ -81,10 +96,10 @@ class BudgetService:
         prev_month = month - relativedelta(months=1)
 
         # Base case: check if there are any budgets or transactions for this category
-        first_budget = Budget.objects.filter(team=self.team, category=category).order_by("month").first()
+        first_budget = Budget.objects.filter(book=self.book, category=category).order_by("month").first()
 
         first_txn = (
-            JournalLine.objects.filter(team=self.team, account=category).order_by("journal_entry__entry_date").first()
+            JournalLine.objects.filter(book=self.book, account=category).order_by("journal_entry__entry_date").first()
         )
 
         # Determine the earliest month we need to consider
@@ -129,7 +144,7 @@ class BudgetService:
         expense_qs = (
             _active_lines()
             .filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
                 account__account_group__account_type="expense",
@@ -142,7 +157,7 @@ class BudgetService:
         income_qs = (
             _active_lines()
             .filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__gte=start,
                 journal_entry__entry_date__lt=end,
                 account__account_group__account_type="income",
@@ -168,20 +183,20 @@ class BudgetService:
         return {
             b.category_id: b
             for b in Budget.objects.filter(
-                team=self.team,
+                book=self.book,
                 month=month,
             )
         }
 
     def get_first_activity_month(self):
         """
-        Get the earliest month with any budget or transaction for the team.
+        Get the earliest month with any budget or transaction for the book.
         Returns None if no activity exists.
         """
-        first_budget = Budget.objects.filter(team=self.team).order_by("month").values_list("month", flat=True).first()
+        first_budget = Budget.objects.filter(book=self.book).order_by("month").values_list("month", flat=True).first()
 
         first_txn_date = (
-            JournalLine.objects.filter(team=self.team)
+            JournalLine.objects.filter(book=self.book)
             .order_by("journal_entry__entry_date")
             .values_list("journal_entry__entry_date", flat=True)
             .first()
@@ -202,7 +217,7 @@ class BudgetService:
         Returns dict: {(month, category_id): budget_amount}
         """
         budgets = Budget.objects.filter(
-            team=self.team,
+            book=self.book,
             month__gte=start_month,
             month__lte=end_month,
         ).values("month", "category_id", "budget_amount")
@@ -221,7 +236,7 @@ class BudgetService:
         expense_qs = (
             _active_lines()
             .filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__gte=start_month,
                 journal_entry__entry_date__lt=end_month + relativedelta(months=1),
                 account__account_group__account_type="expense",
@@ -235,7 +250,7 @@ class BudgetService:
         income_qs = (
             _active_lines()
             .filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__gte=start_month,
                 journal_entry__entry_date__lt=end_month + relativedelta(months=1),
                 account__account_group__account_type="income",
@@ -318,7 +333,7 @@ class BudgetService:
         """
         accounts = (
             Account.objects.filter(
-                team=self.team,
+                book=self.book,
                 account_group__account_type__in=("expense", "income"),
             )
             .select_related("account_group")
@@ -359,19 +374,19 @@ class BudgetService:
 class GoalService:
     """Service class for goal-related calculations and queries."""
 
-    def __init__(self, team):
-        self.team = team
+    def __init__(self, book):
+        self.book = book
 
     def get_goals_with_progress(self, month=None, include_archived=False):
         """Get all goals with progress annotations for a given month."""
-        qs = Goal.objects.filter(team=self.team)
+        qs = Goal.objects.filter(book=self.book)
         if not include_archived:
             qs = qs.filter(is_archived=False)
         return qs.with_progress(month).select_related("account")
 
     def get_total_saved(self):
         """Get the total amount saved across all active goals."""
-        return GoalAllocation.objects.filter(team=self.team, goal__is_archived=False).aggregate(total=Sum("amount"))[
+        return GoalAllocation.objects.filter(book=self.book, goal__is_archived=False).aggregate(total=Sum("amount"))[
             "total"
         ] or Decimal("0")
 
@@ -392,7 +407,7 @@ class GoalService:
         """Create or update a goal allocation for a specific month."""
         month = month.replace(day=1)
         allocation, created = GoalAllocation.objects.update_or_create(
-            team=self.team, goal=goal, month=month, defaults={"amount": amount}
+            book=self.book, goal=goal, month=month, defaults={"amount": amount}
         )
         return allocation
 
@@ -400,8 +415,8 @@ class GoalService:
 class NetWorthService:
     """Service class for net worth and financial summary calculations."""
 
-    def __init__(self, team):
-        self.team = team
+    def __init__(self, book):
+        self.book = book
 
     def get_net_worth(self, month):
         """
@@ -419,7 +434,7 @@ class NetWorthService:
         result = (
             _active_lines()
             .filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__lt=end_date,
                 account__account_group__account_type__in=["asset", "liability"],
             )
@@ -454,7 +469,7 @@ class NetWorthService:
         """
         from .unassigned import compute_unassigned
 
-        return self.card_data(compute_unassigned(self.team, month, categories))
+        return self.card_data(compute_unassigned(self.book, month, categories))
 
     @staticmethod
     def card_data(unassigned):

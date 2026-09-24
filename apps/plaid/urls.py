@@ -15,7 +15,7 @@ router.register(r"items", views.PlaidItemViewSet, basename="plaid-item")
 router.register(r"accounts", views.PlaidAccountViewSet, basename="plaid-account")
 router.register(r"transactions", views.PlaidTransactionViewSet, basename="imported-transaction")
 
-# URL patterns (all plaid URLs are team-based)
+# URL patterns (all plaid URLs are book-based)
 urlpatterns = [
     path("api/", include(router.urls)),
     path("api/link-token/", views.create_link_token_view, name="create-link-token"),

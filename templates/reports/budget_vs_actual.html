@@ -37,7 +37,7 @@
   <!-- Header: title, month navigation, and actions on one row -->
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
         {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
@@ -54,7 +54,7 @@
           {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4" %}
         </a>
       </div>
-      <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
+      <a href="{% url 'budget:budget_home' request.team.slug request.book.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
         {% icon "pen-to-square" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Edit Budget" %}
       </a>
@@ -146,7 +146,7 @@
       {% else %}
       <p class="text-base-content/70 py-2">
         {% translate "No budget or spending for this month yet." %}
-        <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="link link-primary">{% translate "Set up your budget" %}</a>
+        <a href="{% url 'budget:budget_home' request.team.slug request.book.slug %}?month={{ month|date:'Y-m-d' }}" class="link link-primary">{% translate "Set up your budget" %}</a>
       </p>
       {% endif %}
     </div>

@@ -8,7 +8,7 @@ from . import views
 
 app_name = "reports"
 
-# URL patterns (all reports URLs are team-based)
+# URL patterns (all reports URLs are book-based)
 urlpatterns = [
     path("", views.reports_home, name="reports_home"),
     path("income-statement/", views.income_statement, name="income_statement"),

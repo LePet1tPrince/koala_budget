@@ -21,7 +21,7 @@ import Step4Apply from './Step4Apply';
  * just starts over -- harmless, since nothing has been written yet either way.
  */
 const DataTransferWizard = ({ props }) => {
-  const { api, urls, teamName, uncategorizedCount, bankFeedUrl, homeUrl, resume } = props;
+  const { api, urls, bookName, uncategorizedCount, bankFeedUrl, homeUrl, resume } = props;
 
   const [screen, setScreen] = useState(resume?.status === 'running' ? 'apply' : 'export');
   const [uploadResult, setUploadResult] = useState(null);
@@ -66,7 +66,7 @@ const DataTransferWizard = ({ props }) => {
         <Step3Confirm
           api={api}
           importId={importId}
-          teamName={teamName}
+          bookName={bookName}
           file={uploadResult.file}
           destination={uploadResult.destination}
           onApplyStarted={handleApplyStarted}

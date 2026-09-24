@@ -30,16 +30,16 @@ from apps.portability.services.schema import UNCATEGORIZED_STATUS, DocumentError
 from .db_fixtures import build_db_fixture_team, make_team
 
 
-def export_bytes(team) -> bytes:
-    accounts, journal_rows, budget_rows = export.build_archive(team)
-    checks = export.build_checks(team)
-    omitted = export.build_omitted(team)
+def export_bytes(book) -> bytes:
+    accounts, journal_rows, budget_rows = export.build_archive(book)
+    checks = export.build_checks(book)
+    omitted = export.build_omitted(book)
     return write.build_archive_bytes(
         accounts=accounts,
         journal=journal_rows,
         budget=budget_rows,
-        reconciliations=export.build_reconciliation_rows(team),
-        source={"team_name": team.name},
+        reconciliations=export.build_reconciliation_rows(book),
+        source={"team_name": book.name},
         checks=checks,
         omitted=omitted,
     )
@@ -132,12 +132,14 @@ class RoundTripTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.source_team, cls.source_user, cls.handles = build_db_fixture_team("Source", "source")
+        cls.source_book = cls.source_team.default_book
         cls.dest_team, cls.dest_user = make_team("Destination", "destination")
+        cls.dest_book = cls.dest_team.default_book
 
     def setUp(self):
-        self.source_bytes = export_bytes(self.source_team)
-        self.result = apply.apply_archive(self.dest_team, self.source_bytes, user=self.dest_user)
-        self.dest_bytes = export_bytes(self.dest_team)
+        self.source_bytes = export_bytes(self.source_book)
+        self.result = apply.apply_archive(self.dest_book, self.source_bytes, user=self.dest_user)
+        self.dest_bytes = export_bytes(self.dest_book)
         self.source_tables = read.read_archive(self.source_bytes)
         self.dest_tables = read.read_archive(self.dest_bytes)
 
@@ -197,9 +199,9 @@ class RoundTripTests(TestCase):
         # Every JournalLine on the destination team's Groceries account in
         # January should be linked to that month's Budget row -- proof
         # bulk_create_for_import's (account, month) resolution ran.
-        groceries = Account.objects.get(team=self.dest_team, name="Groceries")
-        budget = Budget.objects.get(team=self.dest_team, category=groceries, month=date(2026, 1, 1))
-        lines = JournalLine.objects.filter(team=self.dest_team, account=groceries, dr_amount__gt=0)
+        groceries = Account.objects.get(book=self.dest_book, name="Groceries")
+        budget = Budget.objects.get(book=self.dest_book, category=groceries, month=date(2026, 1, 1))
+        lines = JournalLine.objects.filter(book=self.dest_book, account=groceries, dr_amount__gt=0)
         self.assertTrue(lines.exists())
         self.assertTrue(all(line.budget_id == budget.id for line in lines))
 
@@ -221,16 +223,18 @@ class ImportIntoNonEmptyTeamTests(TestCase):
 
     def test_the_destinations_own_data_is_gone_afterwards(self):
         source_team, _u, _h = build_db_fixture_team("Src", "src")
+        source_book = source_team.default_book
         dest_team, dest_user, dest_handles = build_db_fixture_team("Dst", "dst")
-        original_dest_account_ids = set(Account.objects.filter(team=dest_team).values_list("id", flat=True))
+        dest_book = dest_team.default_book
+        original_dest_account_ids = set(Account.objects.filter(book=dest_book).values_list("id", flat=True))
 
-        data = export_bytes(source_team)
-        apply.apply_archive(dest_team, data, user=dest_user)
+        data = export_bytes(source_book)
+        apply.apply_archive(dest_book, data, user=dest_user)
 
         # None of the destination's original rows survive.
         self.assertFalse(Account.objects.filter(id__in=original_dest_account_ids).exists())
         # But the destination now has the source's books.
-        self.assertTrue(Account.objects.filter(team=dest_team, name="Goal: New Deck").exists())
+        self.assertTrue(Account.objects.filter(book=dest_book, name="Goal: New Deck").exists())
 
 
 class RollbackTests(TestCase):
@@ -238,12 +242,14 @@ class RollbackTests(TestCase):
 
     def test_a_forced_check_failure_leaves_the_destination_untouched(self):
         source_team, _u, _h = build_db_fixture_team("Src2", "src2")
+        source_book = source_team.default_book
         dest_team, dest_user, dest_handles = build_db_fixture_team("Dst2", "dst2")
-        original_account_names = set(Account.objects.filter(team=dest_team).values_list("name", flat=True))
-        original_entry_count = JournalEntry.objects.filter(team=dest_team).count()
+        dest_book = dest_team.default_book
+        original_account_names = set(Account.objects.filter(book=dest_book).values_list("name", flat=True))
+        original_entry_count = JournalEntry.objects.filter(book=dest_book).count()
 
-        accounts, journal_rows, budget_rows = export.build_archive(source_team)
-        checks = export.build_checks(source_team)
+        accounts, journal_rows, budget_rows = export.build_archive(source_book)
+        checks = export.build_checks(source_book)
         checks["trial_balance"]["dr"] = "999999.99"  # force a mismatch
         tampered = write.build_archive_bytes(
             accounts=accounts,
@@ -255,37 +261,40 @@ class RollbackTests(TestCase):
         )
 
         with self.assertRaises(apply.ApplyError):
-            apply.apply_archive(dest_team, tampered, user=dest_user)
+            apply.apply_archive(dest_book, tampered, user=dest_user)
 
         self.assertEqual(
-            set(Account.objects.filter(team=dest_team).values_list("name", flat=True)), original_account_names
+            set(Account.objects.filter(book=dest_book).values_list("name", flat=True)), original_account_names
         )
-        self.assertEqual(JournalEntry.objects.filter(team=dest_team).count(), original_entry_count)
+        self.assertEqual(JournalEntry.objects.filter(book=dest_book).count(), original_entry_count)
 
     def test_an_unparseable_archive_touches_nothing(self):
         dest_team, dest_user, _h = build_db_fixture_team("Dst3", "dst3")
-        original_count = Account.objects.filter(team=dest_team).count()
+        dest_book = dest_team.default_book
+        original_count = Account.objects.filter(book=dest_book).count()
         with self.assertRaises(DocumentError):
-            apply.apply_archive(dest_team, b"not a zip", user=dest_user)
-        self.assertEqual(Account.objects.filter(team=dest_team).count(), original_count)
+            apply.apply_archive(dest_book, b"not a zip", user=dest_user)
+        self.assertEqual(Account.objects.filter(book=dest_book).count(), original_count)
 
 
 class SafetyArchiveTests(TestCase):
     def test_safety_archive_captures_the_pre_wipe_state(self):
         team, user, handles = build_db_fixture_team("Safety", "safety")
-        safety_bytes = apply.build_safety_archive(team)
+        book = team.default_book
+        safety_bytes = apply.build_safety_archive(book)
 
         # Now actually wipe and reimport something else entirely -- a team
         # built with a distinctly-named account the original never had.
         other_team, other_user = make_team("Other", "other-safety")
-        group = AccountGroup.objects.create(team=other_team, name="Other Group", account_type="expense")
-        Account.objects.create(team=other_team, name="Only In Other Team", account_group=group)
-        other_bytes = export_bytes(other_team)
-        apply.apply_archive(team, other_bytes, user=other_user)
+        other_book = other_team.default_book
+        group = AccountGroup.objects.create(book=other_book, name="Other Group", account_type="expense")
+        Account.objects.create(book=other_book, name="Only In Other Team", account_group=group)
+        other_bytes = export_bytes(other_book)
+        apply.apply_archive(book, other_bytes, user=other_user)
 
         # Safety's own original accounts are gone; only Other's data remains.
-        self.assertFalse(Account.objects.filter(team=team, name="Chequing").exists())
-        self.assertTrue(Account.objects.filter(team=team, name="Only In Other Team").exists())
+        self.assertFalse(Account.objects.filter(book=book, name="Chequing").exists())
+        self.assertTrue(Account.objects.filter(book=book, name="Only In Other Team").exists())
 
         # But the safety copy still describes the ORIGINAL team's books.
         tables = read.read_archive(safety_bytes)
@@ -296,15 +305,16 @@ class SafetyArchiveTests(TestCase):
 class ApplyErrorMessageTests(TestCase):
     def test_dangling_reference_refuses_before_writing_anything(self):
         team, user, _h = build_db_fixture_team("Dangling", "dangling")
-        accounts, journal_rows, budget_rows = export.build_archive(team)
+        book = team.default_book
+        accounts, journal_rows, budget_rows = export.build_archive(book)
         journal_rows[0]["account_id"] = 999999
         bad_bytes = write.build_archive_bytes(
             accounts=accounts, journal=journal_rows, budget=budget_rows, source={}, checks={}, omitted={}
         )
-        original_count = Account.objects.filter(team=team).count()
+        original_count = Account.objects.filter(book=book).count()
         with self.assertRaises(DocumentError):
-            apply.apply_archive(team, bad_bytes, user=user)
-        self.assertEqual(Account.objects.filter(team=team).count(), original_count)
+            apply.apply_archive(book, bad_bytes, user=user)
+        self.assertEqual(Account.objects.filter(book=book).count(), original_count)
 
 
 class BlankFeedDescriptionTests(TestCase):
@@ -326,31 +336,33 @@ class BlankFeedDescriptionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.source_team, cls.source_user = make_team("Blank Desc Source", "blank-desc-source")
+        cls.source_book = cls.source_team.default_book
         cls.dest_team, cls.dest_user = make_team("Blank Desc Dest", "blank-desc-dest")
+        cls.dest_book = cls.dest_team.default_book
 
-        asset_group = AccountGroup.objects.create(team=cls.source_team, name="Cash", account_type="asset")
-        expense_group = AccountGroup.objects.create(team=cls.source_team, name="Spending", account_type="expense")
+        asset_group = AccountGroup.objects.create(book=cls.source_book, name="Cash", account_type="asset")
+        expense_group = AccountGroup.objects.create(book=cls.source_book, name="Spending", account_type="expense")
         cls.chequing = Account.objects.create(
-            team=cls.source_team, name="Chequing", account_group=asset_group, has_feed=True
+            book=cls.source_book, name="Chequing", account_group=asset_group, has_feed=True
         )
-        cls.groceries = Account.objects.create(team=cls.source_team, name="Groceries", account_group=expense_group)
+        cls.groceries = Account.objects.create(book=cls.source_book, name="Groceries", account_group=expense_group)
 
         # A categorised feed row with no description at all.
         entry = JournalEntry.objects.create(
-            team=cls.source_team,
+            book=cls.source_book,
             entry_date=date(2026, 3, 1),
             description="Nameless purchase",
             source=JournalEntry.SOURCE_BANK_MATCH,
             status=JournalEntry.STATUS_POSTED,
         )
         JournalLine.objects.create(
-            team=cls.source_team, journal_entry=entry, account=cls.groceries, dr_amount=Decimal("41.00")
+            book=cls.source_book, journal_entry=entry, account=cls.groceries, dr_amount=Decimal("41.00")
         )
         JournalLine.objects.create(
-            team=cls.source_team, journal_entry=entry, account=cls.chequing, cr_amount=Decimal("41.00")
+            book=cls.source_book, journal_entry=entry, account=cls.chequing, cr_amount=Decimal("41.00")
         )
         BankTransaction.objects.create(
-            team=cls.source_team,
+            book=cls.source_book,
             account=cls.chequing,
             journal_entry=entry,
             amount=Decimal("41.00"),
@@ -362,7 +374,7 @@ class BlankFeedDescriptionTests(TestCase):
         # An *uncategorized* feed row with no description either -- the other
         # branch of `_feed_columns`, which travels with a blank entry_id.
         BankTransaction.objects.create(
-            team=cls.source_team,
+            book=cls.source_book,
             account=cls.chequing,
             journal_entry=None,
             amount=Decimal("9.99"),
@@ -372,22 +384,22 @@ class BlankFeedDescriptionTests(TestCase):
         )
 
     def test_the_export_can_be_read_back(self):
-        read.read_archive(export_bytes(self.source_team))  # must not raise
+        read.read_archive(export_bytes(self.source_book))  # must not raise
 
     def test_importing_it_writes_both_rows_with_empty_descriptions(self):
-        apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
-        rows = BankTransaction.objects.filter(team=self.dest_team).order_by("posted_date")
+        apply.apply_archive(self.dest_book, export_bytes(self.source_book), user=self.dest_user)
+        rows = BankTransaction.objects.filter(book=self.dest_book).order_by("posted_date")
         self.assertEqual([r.description for r in rows], ["", ""])
 
     def test_description_is_an_empty_string_not_none_after_import(self):
         # The column cannot hold None; writing one would be an IntegrityError.
-        apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
-        for row in BankTransaction.objects.filter(team=self.dest_team):
+        apply.apply_archive(self.dest_book, export_bytes(self.source_book), user=self.dest_user)
+        for row in BankTransaction.objects.filter(book=self.dest_book):
             self.assertIsNotNone(row.description)
 
     def test_the_uncategorized_row_survives_as_uncategorized(self):
-        apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
-        uncategorized = BankTransaction.objects.filter(team=self.dest_team, journal_entry__isnull=True)
+        apply.apply_archive(self.dest_book, export_bytes(self.source_book), user=self.dest_user)
+        uncategorized = BankTransaction.objects.filter(book=self.dest_book, journal_entry__isnull=True)
         self.assertEqual(uncategorized.count(), 1)
         self.assertEqual(uncategorized.first().amount, Decimal("9.99"))
 
@@ -404,9 +416,11 @@ class StatementRoundTripTests(TestCase):
         from apps.reconciliation.services.signs import to_statement
 
         cls.source_team, cls.source_user, _ = build_db_fixture_team("Stmt Src", "stmt-src")
+        cls.source_book = cls.source_team.default_book
         cls.dest_team, cls.dest_user = make_team("Stmt Dest", "stmt-dest")
-        chequing = Account.objects.get(team=cls.source_team, name="Chequing")
-        card = Account.objects.get(team=cls.source_team, name="Credit Card")
+        cls.dest_book = cls.dest_team.default_book
+        chequing = Account.objects.get(book=cls.source_book, name="Chequing")
+        card = Account.objects.get(book=cls.source_book, name="Credit Card")
 
         draft = session.start(chequing, date(2099, 1, 31), Decimal("0"), cls.source_user)
         session.tick_through(draft, date(2099, 1, 31))
@@ -423,8 +437,8 @@ class StatementRoundTripTests(TestCase):
     def setUp(self):
         from apps.reconciliation.models import Reconciliation
 
-        self.result = apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
-        self.statements = {r.account.name: r for r in Reconciliation.objects.filter(team=self.dest_team)}
+        self.result = apply.apply_archive(self.dest_book, export_bytes(self.source_book), user=self.dest_user)
+        self.statements = {r.account.name: r for r in Reconciliation.objects.filter(book=self.dest_book)}
 
     def test_both_statements_arrive(self):
         self.assertEqual(self.result.reconciliations, 2)
@@ -459,12 +473,14 @@ class SplitRoundTripTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.source_team, cls.source_user, cls.handles = build_db_fixture_team("Split Src", "split-src")
+        cls.source_book = cls.source_team.default_book
         cls.dest_team, cls.dest_user = make_team("Split Dest", "split-dest")
+        cls.dest_book = cls.dest_team.default_book
 
     def setUp(self):
-        apply.apply_archive(self.dest_team, export_bytes(self.source_team), user=self.dest_user)
+        apply.apply_archive(self.dest_book, export_bytes(self.source_book), user=self.dest_user)
         self.split = (
-            JournalEntry.objects.filter(team=self.dest_team, description="Costco run").prefetch_related("lines").get()
+            JournalEntry.objects.filter(book=self.dest_book, description="Costco run").prefetch_related("lines").get()
         )
 
     def test_the_split_arrives_with_all_three_lines(self):
@@ -487,7 +503,7 @@ class SplitRoundTripTests(TestCase):
         self.assertTrue(bank_line.is_cleared)
 
     def test_one_feed_row_for_the_split_not_one_per_leg(self):
-        feed = BankTransaction.objects.filter(team=self.dest_team, journal_entry=self.split)
+        feed = BankTransaction.objects.filter(book=self.dest_book, journal_entry=self.split)
         self.assertEqual(feed.count(), 1)
         self.assertEqual(feed.get().amount, Decimal("80.00"))
         self.assertEqual(feed.get().account.name, "Chequing")
@@ -498,7 +514,7 @@ class SplitRoundTripTests(TestCase):
     def test_no_mirror_was_invented_for_the_split(self):
         # The import never calls `sync_transfer`, so a split cannot pick up the
         # phantom mirror that re-deriving the relationship would create.
-        mirrors = BankTransaction.objects.filter(team=self.dest_team, journal_entry=self.split, is_transfer_mirror=True)
+        mirrors = BankTransaction.objects.filter(book=self.dest_book, journal_entry=self.split, is_transfer_mirror=True)
         self.assertEqual(mirrors.count(), 0)
 
 
@@ -525,31 +541,33 @@ class UnplaceableFeedRowTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user = make_team("Unplaceable", "unplaceable")
+        cls.book = cls.team.default_book
         cls.dest, cls.dest_user = make_team("Unplaceable Dest", "unplaceable-dest")
+        cls.dest_book = cls.dest.default_book
 
-        asset = AccountGroup.objects.create(team=cls.team, name="Cash", account_type="asset")
-        expense = AccountGroup.objects.create(team=cls.team, name="Spend", account_type="expense")
-        cls.chequing = Account.objects.create(team=cls.team, name="Chequing", account_group=asset, has_feed=True)
-        cls.savings = Account.objects.create(team=cls.team, name="Savings", account_group=asset, has_feed=True)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=expense)
+        asset = AccountGroup.objects.create(book=cls.book, name="Cash", account_type="asset")
+        expense = AccountGroup.objects.create(book=cls.book, name="Spend", account_type="expense")
+        cls.chequing = Account.objects.create(book=cls.book, name="Chequing", account_group=asset, has_feed=True)
+        cls.savings = Account.objects.create(book=cls.book, name="Savings", account_group=asset, has_feed=True)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=expense)
 
         cls.entry = JournalEntry.objects.create(
-            team=cls.team,
+            book=cls.book,
             entry_date=date(2026, 4, 1),
             description="Thing",
             source=JournalEntry.SOURCE_BANK_MATCH,
             status=JournalEntry.STATUS_POSTED,
         )
         JournalLine.objects.create(
-            team=cls.team, journal_entry=cls.entry, account=cls.groceries, dr_amount=Decimal("10.00")
+            book=cls.book, journal_entry=cls.entry, account=cls.groceries, dr_amount=Decimal("10.00")
         )
         JournalLine.objects.create(
-            team=cls.team, journal_entry=cls.entry, account=cls.chequing, cr_amount=Decimal("10.00")
+            book=cls.book, journal_entry=cls.entry, account=cls.chequing, cr_amount=Decimal("10.00")
         )
 
         # The row that places normally.
         cls.placed = BankTransaction.objects.create(
-            team=cls.team,
+            book=cls.book,
             account=cls.chequing,
             journal_entry=cls.entry,
             amount=Decimal("10.00"),
@@ -559,7 +577,7 @@ class UnplaceableFeedRowTests(TestCase):
         )
         # Collision: a second row claiming the same line.
         cls.collided = BankTransaction.objects.create(
-            team=cls.team,
+            book=cls.book,
             account=cls.chequing,
             journal_entry=cls.entry,
             amount=Decimal("10.00"),
@@ -569,7 +587,7 @@ class UnplaceableFeedRowTests(TestCase):
         )
         # Orphan: an entry with no line on this row's own account.
         cls.orphan = BankTransaction.objects.create(
-            team=cls.team,
+            book=cls.book,
             account=cls.savings,
             journal_entry=cls.entry,
             amount=Decimal("10.00"),
@@ -579,43 +597,43 @@ class UnplaceableFeedRowTests(TestCase):
         )
 
     def test_every_feed_row_reaches_the_file(self):
-        _accounts, journal, _budget = export.build_archive(self.team)
+        _accounts, journal, _budget = export.build_archive(self.book)
         emitted = [r for r in journal if r["feed_source"] is not None]
-        self.assertEqual(len(emitted), BankTransaction.objects.filter(team=self.team).count())
+        self.assertEqual(len(emitted), BankTransaction.objects.filter(book=self.book).count())
         self.assertEqual({r["feed_description"] for r in emitted}, {"PLACED", "COLLIDED", "ORPHAN"})
 
     def test_the_lowest_id_keeps_the_line_so_exports_are_stable(self):
-        _accounts, journal, _budget = export.build_archive(self.team)
+        _accounts, journal, _budget = export.build_archive(self.book)
         on_a_line = [r for r in journal if r["feed_source"] is not None and r["entry_id"] is not None]
         self.assertEqual(len(on_a_line), 1)
         self.assertEqual(on_a_line[0]["feed_description"], "PLACED")
 
     def test_unplaceable_rows_travel_as_rows_to_review(self):
-        _accounts, journal, _budget = export.build_archive(self.team)
+        _accounts, journal, _budget = export.build_archive(self.book)
         standalone = [r for r in journal if r["status"] == UNCATEGORIZED_STATUS]
         self.assertEqual({r["feed_description"] for r in standalone}, {"COLLIDED", "ORPHAN"})
 
     def test_the_manifest_counts_them_as_uncategorized(self):
         # Or the import's own gate would refuse the file it just produced.
-        checks = export.build_checks(self.team)
+        checks = export.build_checks(self.book)
         self.assertEqual(checks["feed_counts"]["total"], 3)
         self.assertEqual(checks["feed_counts"]["uncategorized"], 2)
 
     def test_the_repair_is_disclosed_not_silent(self):
-        self.assertEqual(export.build_omitted(self.team)["unlinked_feed_rows"], 2)
+        self.assertEqual(export.build_omitted(self.book)["unlinked_feed_rows"], 2)
 
     def test_the_import_verifies(self):
-        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)  # must not raise
+        apply.apply_archive(self.dest_book, export_bytes(self.book), user=self.dest_user)  # must not raise
 
     def test_all_three_rows_arrive(self):
-        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)
-        arrived = BankTransaction.objects.filter(team=self.dest)
+        apply.apply_archive(self.dest_book, export_bytes(self.book), user=self.dest_user)
+        arrived = BankTransaction.objects.filter(book=self.dest_book)
         self.assertEqual(arrived.count(), 3)
         self.assertEqual(arrived.filter(journal_entry__isnull=True).count(), 2)
 
     def test_the_entry_and_its_balances_are_untouched_by_the_repair(self):
-        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)
-        entry = JournalEntry.objects.get(team=self.dest, description="Thing")
+        apply.apply_archive(self.dest_book, export_bytes(self.book), user=self.dest_user)
+        entry = JournalEntry.objects.get(book=self.dest_book, description="Thing")
         lines = list(entry.lines.all())
         self.assertEqual(len(lines), 2)
         self.assertEqual(sum(line.dr_amount for line in lines), Decimal("10.00"))
@@ -623,7 +641,7 @@ class UnplaceableFeedRowTests(TestCase):
 
     def test_a_healthy_team_reports_no_repair(self):
         healthy, _user = make_team("Healthy", "healthy-feed")
-        self.assertEqual(export.build_omitted(healthy)["unlinked_feed_rows"], 0)
+        self.assertEqual(export.build_omitted(healthy.default_book)["unlinked_feed_rows"], 0)
 
 
 class FeedRowRidesOneLineTests(TestCase):
@@ -643,33 +661,35 @@ class FeedRowRidesOneLineTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user = make_team("Two Lines", "two-lines")
+        cls.book = cls.team.default_book
         cls.dest, cls.dest_user = make_team("Two Lines Dest", "two-lines-dest")
+        cls.dest_book = cls.dest.default_book
 
-        cash = AccountGroup.objects.create(team=cls.team, name="Cash", account_type="asset")
-        spend = AccountGroup.objects.create(team=cls.team, name="Spend", account_type="expense")
-        cls.chequing = Account.objects.create(team=cls.team, name="Chequing", account_group=cash, has_feed=True)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=spend)
+        cash = AccountGroup.objects.create(book=cls.book, name="Cash", account_type="asset")
+        spend = AccountGroup.objects.create(book=cls.book, name="Spend", account_type="expense")
+        cls.chequing = Account.objects.create(book=cls.book, name="Chequing", account_group=cash, has_feed=True)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=spend)
 
         cls.entry = JournalEntry.objects.create(
-            team=cls.team,
+            book=cls.book,
             entry_date=date(2026, 5, 2),
             description="Groceries with cash back",
             source=JournalEntry.SOURCE_BANK_MATCH,
             status=JournalEntry.STATUS_POSTED,
         )
         JournalLine.objects.create(
-            team=cls.team, journal_entry=cls.entry, account=cls.groceries, dr_amount=Decimal("70.00")
+            book=cls.book, journal_entry=cls.entry, account=cls.groceries, dr_amount=Decimal("70.00")
         )
         # The second line on the bank account -- the leg that made the row
         # ride twice.
         JournalLine.objects.create(
-            team=cls.team, journal_entry=cls.entry, account=cls.chequing, dr_amount=Decimal("30.00")
+            book=cls.book, journal_entry=cls.entry, account=cls.chequing, dr_amount=Decimal("30.00")
         )
         JournalLine.objects.create(
-            team=cls.team, journal_entry=cls.entry, account=cls.chequing, cr_amount=Decimal("100.00")
+            book=cls.book, journal_entry=cls.entry, account=cls.chequing, cr_amount=Decimal("100.00")
         )
         BankTransaction.objects.create(
-            team=cls.team,
+            book=cls.book,
             account=cls.chequing,
             journal_entry=cls.entry,
             amount=Decimal("100.00"),
@@ -679,29 +699,29 @@ class FeedRowRidesOneLineTests(TestCase):
         )
 
     def test_the_feed_row_is_emitted_once_not_once_per_line(self):
-        _accounts, journal, _budget = export.build_archive(self.team)
+        _accounts, journal, _budget = export.build_archive(self.book)
         carrying = [r for r in journal if r["feed_source"] is not None]
         self.assertEqual(len(carrying), 1)
 
     def test_all_three_lines_still_travel(self):
-        _accounts, journal, _budget = export.build_archive(self.team)
+        _accounts, journal, _budget = export.build_archive(self.book)
         lines = [r for r in journal if r["entry_id"] is not None]
         self.assertEqual(len(lines), 3)
 
     def test_the_row_rides_the_lowest_id_line_of_its_account(self):
         # Stable across exports of the same team, rather than query-order
         # dependent -- the dr 30.00 leg is written before the cr 100.00 one.
-        _accounts, journal, _budget = export.build_archive(self.team)
+        _accounts, journal, _budget = export.build_archive(self.book)
         carrying = next(r for r in journal if r["feed_source"] is not None)
         self.assertEqual(carrying["dr_amount"], Decimal("30.00"))
 
     def test_the_import_verifies_and_writes_one_feed_row(self):
-        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)
-        self.assertEqual(BankTransaction.objects.filter(team=self.dest).count(), 1)
+        apply.apply_archive(self.dest_book, export_bytes(self.book), user=self.dest_user)
+        self.assertEqual(BankTransaction.objects.filter(book=self.dest_book).count(), 1)
 
     def test_the_entry_arrives_intact_and_balanced(self):
-        apply.apply_archive(self.dest, export_bytes(self.team), user=self.dest_user)
-        entry = JournalEntry.objects.get(team=self.dest, description="Groceries with cash back")
+        apply.apply_archive(self.dest_book, export_bytes(self.book), user=self.dest_user)
+        entry = JournalEntry.objects.get(book=self.dest_book, description="Groceries with cash back")
         lines = list(entry.lines.all())
         self.assertEqual(len(lines), 3)
         self.assertEqual(sum(line.dr_amount for line in lines), sum(line.cr_amount for line in lines))
@@ -716,9 +736,10 @@ class ExportInvariantGuardTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user, _handles = build_db_fixture_team("Guard", "guard-team")
+        cls.book = cls.team.default_book
 
     def test_a_healthy_team_exports(self):
-        export.build_archive(self.team)  # must not raise
+        export.build_archive(self.book)  # must not raise
 
     def test_a_mismatch_is_refused_before_anything_is_written(self):
         # Simulate a future regression in the row-building walk: a feed row
@@ -726,8 +747,8 @@ class ExportInvariantGuardTests(TestCase):
         # cause, since its whole point is catching the case nobody predicted.
         real = export._build_journal_rows
 
-        def dropping_one(team):
-            rows = real(team)
+        def dropping_one(book):
+            rows = real(book)
             for index, row in enumerate(rows):
                 if row["feed_source"] is not None:
                     return rows[:index] + rows[index + 1 :]
@@ -736,7 +757,7 @@ class ExportInvariantGuardTests(TestCase):
         export._build_journal_rows = dropping_one
         try:
             with self.assertRaises(export.ExportError) as ctx:
-                export.build_archive(self.team)
+                export.build_archive(self.book)
         finally:
             export._build_journal_rows = real
         self.assertIn("bank feed row", str(ctx.exception))

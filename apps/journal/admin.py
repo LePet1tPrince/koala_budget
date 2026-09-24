@@ -25,18 +25,18 @@ class JournalEntryAdmin(admin.ModelAdmin):
         "total_debits",
         "total_credits",
         "is_balanced",
-        "team",
+        "book",
     ]
-    list_filter = ["status", "source", "entry_date", "team"]
+    list_filter = ["status", "source", "entry_date", "book"]
     search_fields = ["description", "payee__name"]
     ordering = ["-entry_date", "-created_at"]
     readonly_fields = ["created_at", "updated_at", "total_debits", "total_credits", "is_balanced"]
-    autocomplete_fields = ["payee", "team"]
+    autocomplete_fields = ["payee", "book"]
     date_hierarchy = "entry_date"
     inlines = [JournalLineInline]
 
     fieldsets = (
-        (None, {"fields": ("entry_date", "payee", "description", "status", "source", "team")}),
+        (None, {"fields": ("entry_date", "payee", "description", "status", "source", "book")}),
         (
             "Totals",
             {
@@ -60,12 +60,12 @@ class JournalEntryAdmin(admin.ModelAdmin):
     description_short.short_description = "Description"
 
     def save_formset(self, request, form, formset, change):
-        """Save the formset and ensure team is set on all journal lines."""
+        """Save the formset and ensure book is set on all journal lines."""
         instances = formset.save(commit=False)
         for instance in instances:
             if isinstance(instance, JournalLine):
-                # Set team from the parent journal entry
-                instance.team = form.instance.team
+                # Set book from the parent journal entry
+                instance.book = form.instance.book
             instance.save()
         formset.save_m2m()
 
@@ -74,19 +74,19 @@ class JournalEntryAdmin(admin.ModelAdmin):
 class JournalLineAdmin(admin.ModelAdmin):
     """Admin for JournalLine model."""
 
-    list_display = ["id", "journal_entry", "account", "dr_amount", "cr_amount", "is_cleared", "is_reconciled", "team"]
-    list_filter = ["is_cleared", "is_reconciled", "team"]
+    list_display = ["id", "journal_entry", "account", "dr_amount", "cr_amount", "is_cleared", "is_reconciled", "book"]
+    list_filter = ["is_cleared", "is_reconciled", "book"]
     search_fields = ["journal_entry__description", "account__name"]
     ordering = ["journal_entry", "id"]
     readonly_fields = ["created_at", "updated_at", "amount"]
-    autocomplete_fields = ["journal_entry", "account", "team"]
+    autocomplete_fields = ["journal_entry", "account", "book"]
 
     fieldsets = (
         (None, {"fields": ("journal_entry", "account", "dr_amount", "cr_amount", "amount")}),
         (
             "Status",
             {
-                "fields": ("is_cleared", "is_reconciled", "team"),
+                "fields": ("is_cleared", "is_reconciled", "book"),
             },
         ),
         (

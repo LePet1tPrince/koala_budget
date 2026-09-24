@@ -4,24 +4,24 @@ from .base import BasePage
 
 
 class ReportsPage(BasePage):
-    def home_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/reports/"
+    def home_path(self, book) -> str:
+        return f"{book.base_url}reports/"
 
-    def income_statement_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/reports/income-statement/"
+    def income_statement_path(self, book) -> str:
+        return f"{book.base_url}reports/income-statement/"
 
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
 
-    def goto_home(self, team_slug: str):
+    def goto_home(self, book):
         self.goto(
-            self.home_path(team_slug),
+            self.home_path(book),
             wait_for="[data-testid='report-link-income-statement']",
         )
 
-    def goto_income_statement(self, team_slug: str):
-        self.goto(self.income_statement_path(team_slug))
+    def goto_income_statement(self, book):
+        self.goto(self.income_statement_path(book))
         # The page always renders (summary only shows when there's data)
         self.page.wait_for_selector("section.app-card", timeout=10_000)
 

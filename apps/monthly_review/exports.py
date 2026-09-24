@@ -9,9 +9,9 @@ def _decimal_str(value):
     return f"{value:.2f}" if value is not None else "0.00"
 
 
-def export_monthly_review_csv(team, month) -> HttpResponse:
+def export_monthly_review_csv(book, month) -> HttpResponse:
     """CSV of the month's budget breakdown, following apps.reports.exports's pattern."""
-    review = build_review(team, month)
+    review = build_review(book, month)
 
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="monthly_review_{month.isoformat()}.csv"'

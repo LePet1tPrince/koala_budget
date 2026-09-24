@@ -54,53 +54,63 @@ import {
 
 export interface JournalEntriesAuditRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     page?: number;
 }
 
 export interface JournalEntriesCreateRequest {
+    bookSlug: string;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
 
 export interface JournalEntriesDestroyRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface JournalEntriesListRequest {
+    bookSlug: string;
     teamSlug: string;
     page?: number;
 }
 
 export interface JournalEntriesPartialUpdateRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     patchedJournalEntry?: Omit<PatchedJournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
 
 export interface JournalEntriesRetrieveRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface JournalEntriesUpdateRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
 
 export interface SimpleLinesCreateRequest {
+    bookSlug: string;
     teamSlug: string;
     simpleLine: Omit<SimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
 }
 
 export interface SimpleLinesDestroyRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface SimpleLinesListRequest {
+    bookSlug: string;
     teamSlug: string;
     account?: number;
     month?: string;
@@ -109,29 +119,34 @@ export interface SimpleLinesListRequest {
 
 export interface SimpleLinesPartialUpdateRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     patchedSimpleLine?: Omit<PatchedSimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
 }
 
 export interface SimpleLinesRecategorizeOperationRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     simpleLinesRecategorizeRequest?: SimpleLinesRecategorizeRequest;
 }
 
 export interface SimpleLinesRetrieveRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface SimpleLinesUpdateRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     simpleLine: Omit<SimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
 }
 
 export interface TransactionsFacetsRequest {
     column: string;
+    bookSlug: string;
     teamSlug: string;
     dir?: string;
     endDate?: string;
@@ -143,6 +158,7 @@ export interface TransactionsFacetsRequest {
 }
 
 export interface TransactionsListRequest {
+    bookSlug: string;
     teamSlug: string;
     dir?: string;
     endDate?: string;
@@ -169,6 +185,13 @@ export class JournalApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling journalEntriesAudit().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -192,7 +215,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/{id}/audit/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/{id}/audit/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -213,6 +236,13 @@ export class JournalApi extends runtime.BaseAPI {
      * ViewSet for JournalEntry model. Provides CRUD operations for journal entries with nested lines.
      */
     async journalEntriesCreateRaw(requestParameters: JournalEntriesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<JournalEntry>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling journalEntriesCreate().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -241,7 +271,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -270,6 +300,13 @@ export class JournalApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling journalEntriesDestroy().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -289,7 +326,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'DELETE',
             headers: headerParameters,
             query: queryParameters,
@@ -309,6 +346,13 @@ export class JournalApi extends runtime.BaseAPI {
      * ViewSet for JournalEntry model. Provides CRUD operations for journal entries with nested lines.
      */
     async journalEntriesListRaw(requestParameters: JournalEntriesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedJournalEntryList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling journalEntriesList().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -332,7 +376,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -360,6 +404,13 @@ export class JournalApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling journalEntriesPartialUpdate().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -381,7 +432,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
@@ -410,6 +461,13 @@ export class JournalApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling journalEntriesRetrieve().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -429,7 +487,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -454,6 +512,13 @@ export class JournalApi extends runtime.BaseAPI {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling journalEntriesUpdate().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling journalEntriesUpdate().'
             );
         }
 
@@ -485,7 +550,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/journal-entries/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/journal-entries/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'PUT',
             headers: headerParameters,
             query: queryParameters,
@@ -507,6 +572,13 @@ export class JournalApi extends runtime.BaseAPI {
      * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesCreateRaw(requestParameters: SimpleLinesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SimpleLine>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling simpleLinesCreate().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -535,7 +607,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/lines/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/lines/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -564,6 +636,13 @@ export class JournalApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling simpleLinesDestroy().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -583,7 +662,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'DELETE',
             headers: headerParameters,
             query: queryParameters,
@@ -603,6 +682,13 @@ export class JournalApi extends runtime.BaseAPI {
      * ViewSet for simplified line interface. Provides CRUD operations for journal lines using a simple format that presents data from the line, parent journal entry, and sibling line.  This is designed for displaying transactions from the perspective of a single account, similar to a bank register view.  For create/update operations: - Creates/updates a journal entry with exactly 2 lines - The main line uses the specified account with inflow/outflow amounts - The sibling line uses the category account with opposite amounts  Query parameters for filtering: - account: Filter by account ID (useful for getting all transactions in a category) - month: Filter by month (YYYY-MM-DD format, uses first day of month)
      */
     async simpleLinesListRaw(requestParameters: SimpleLinesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedSimpleLineList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling simpleLinesList().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -634,7 +720,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/lines/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/lines/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -662,6 +748,13 @@ export class JournalApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling simpleLinesPartialUpdate().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -683,7 +776,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
@@ -712,6 +805,13 @@ export class JournalApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling simpleLinesRecategorize().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -733,7 +833,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/lines/{id}/recategorize/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/lines/{id}/recategorize/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -762,6 +862,13 @@ export class JournalApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling simpleLinesRetrieve().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -781,7 +888,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -806,6 +913,13 @@ export class JournalApi extends runtime.BaseAPI {
             throw new runtime.RequiredError(
                 'id',
                 'Required parameter "id" was null or undefined when calling simpleLinesUpdate().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling simpleLinesUpdate().'
             );
         }
 
@@ -837,7 +951,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/lines/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'PUT',
             headers: headerParameters,
             query: queryParameters,
@@ -863,6 +977,13 @@ export class JournalApi extends runtime.BaseAPI {
             throw new runtime.RequiredError(
                 'column',
                 'Required parameter "column" was null or undefined when calling transactionsFacets().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling transactionsFacets().'
             );
         }
 
@@ -917,7 +1038,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/transactions/facets/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/transactions/facets/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -938,6 +1059,13 @@ export class JournalApi extends runtime.BaseAPI {
      * Read-only list of journal entries flattened into transaction rows.  Every entry is returned, including splits -- an entry apportioned across several categories, which has one line on one side and several on the other. This list used to filter to ``line_count=2``, which silently hid every split from the page that presents itself as the ledger, and from its filters, facet counts and CSV export.  A split row reports ``Split (N)`` on its many-line side and carries its ``legs`` for the table\'s disclosure.  Search, date range, per-column value filters and sorting all run as query params so that they apply to the whole ledger, not just whatever page the client has fetched so far.  `facets/` lists a column\'s distinct values so the table\'s column menus can offer them.
      */
     async transactionsListRaw(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling transactionsList().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -985,7 +1113,7 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/journal/api/transactions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/journal/api/transactions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,

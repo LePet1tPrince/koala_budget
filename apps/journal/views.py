@@ -17,9 +17,10 @@ from rest_framework.response import Response
 from apps.accounts.models import Account
 from apps.audit.models import AuditLog
 from apps.audit.serializers import AuditLogSerializer
+from apps.books.decorators import login_and_book_required
+from apps.books.helpers import book_display_name
+from apps.books.permissions import BookModelAccessPermissions
 from apps.reconciliation.services.guards import ReconciledLineError, assert_entry_voidable, assert_line_mutable
-from apps.teams.decorators import login_and_team_required
-from apps.teams.permissions import TeamModelAccessPermissions
 
 from .filters import (
     COLUMNS,
@@ -47,19 +48,19 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = JournalEntrySerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     queryset = JournalEntry.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
-        """Get journal entries for the current team with optimized queries."""
-        return JournalEntry.for_team.select_related("payee").prefetch_related("lines__account")
+        """Get journal entries for the current book with optimized queries."""
+        return JournalEntry.for_book.select_related("payee").prefetch_related("lines__account")
 
     def perform_create(self, serializer):
-        """Create journal entry with team context."""
-        serializer.save(team=self.request.team)
+        """Create journal entry in the current book."""
+        serializer.save(book=self.request.book)
 
     @action(detail=True, methods=["post"])
-    def post_entry(self, request, pk=None, team_slug=None):
+    def post_entry(self, request, pk=None, team_slug=None, book_slug=None):
         """
         Post a draft journal entry (change status to posted).
         Only draft entries can be posted.
@@ -85,7 +86,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
-    def void_entry(self, request, pk=None, team_slug=None):
+    def void_entry(self, request, pk=None, team_slug=None, book_slug=None):
         """
         Void a posted journal entry.
         Only posted entries can be voided.
@@ -112,7 +113,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 
     @extend_schema(operation_id="journal_entries_audit", tags=["journal"], responses=AuditLogSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="audit")
-    def audit(self, request, team_slug=None, pk=None):
+    def audit(self, request, team_slug=None, book_slug=None, pk=None):
         """Return the row-level audit history for this journal entry and its lines."""
         entry = self.get_object()
         logs = AuditLog.objects.filter(journal_entry_id=entry.pk).select_related("user", "event").order_by("-timestamp")
@@ -167,12 +168,12 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = SimpleLineSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     queryset = JournalLine.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
         """
-        Get journal lines for the current team.
+        Get journal lines for the current book.
         Optimized with select_related and prefetch_related for performance.
 
         Supports filtering by:
@@ -181,7 +182,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         """
         qs = (
             JournalLine.objects.filter(
-                team=self.request.team,
+                book=self.request.book,
             )
             .select_related(
                 "account",
@@ -218,11 +219,11 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         return qs.order_by("-journal_entry__entry_date")
 
     def perform_create(self, serializer):
-        """Create line with team context."""
+        """Create line in the current book."""
         serializer.save()
 
     def perform_update(self, serializer):
-        """Update line with team context."""
+        """Update line in the current book."""
         serializer.save()
 
     def perform_destroy(self, instance):
@@ -239,7 +240,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         },  # noqa: E501
     )
     @action(detail=True, methods=["post"])
-    def recategorize(self, request, pk=None, team_slug=None):
+    def recategorize(self, request, pk=None, team_slug=None, book_slug=None):
         """
         Recategorize a journal line to a different account/category.
 
@@ -260,7 +261,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        new_category = get_object_or_404(Account.objects.filter(team=self.request.team), id=new_category_id)
+        new_category = get_object_or_404(Account.objects.filter(book=self.request.book), id=new_category_id)
 
         # A line moved onto an account the entry already posts to on the *other*
         # side (e.g. the bank account the money came through) cancels itself out.
@@ -373,7 +374,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         page_size = 200
 
     serializer_class = TransactionRowSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     pagination_class = Pagination
 
     def base_queryset(self, *, facet_column=None):
@@ -385,7 +386,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         unfiltered list pays for none of them.
         """
         return (
-            JournalEntry.for_team.filter(counted_entries())
+            JournalEntry.for_book.filter(counted_entries())
             .select_related("payee")
             .prefetch_related("lines__account")
             .annotate(**annotations_for(self.request.query_params, facet_column=facet_column))
@@ -412,7 +413,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         search = (params.get("search") or "").strip()
         if search:
             matching_line_entries = (
-                JournalLine.for_team.annotate(
+                JournalLine.for_book.annotate(
                     dr_str=Cast("dr_amount", CharField()),
                     cr_str=Cast("cr_amount", CharField()),
                 )
@@ -423,7 +424,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 Q(payee__name__icontains=search) | Q(description__icontains=search) | Q(id__in=matching_line_entries)
             )
 
-        return apply_column_filters(queryset, params, self.request.team, exclude=exclude_column)
+        return apply_column_filters(queryset, params, self.request.book, exclude=exclude_column)
 
     def get_queryset(self):
         return apply_ordering(self.filtered_queryset(), self.request.query_params)
@@ -471,7 +472,7 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         },
     )
     @action(detail=False, methods=["get"], url_path="facets")
-    def facets(self, request, team_slug=None):
+    def facets(self, request, team_slug=None, book_slug=None):
         """
         List the values one column offers, with the row count behind each.
 
@@ -490,15 +491,15 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
         queryset = self.filtered_queryset(exclude_column=column.key, facet_column=column.key)
         query = (request.query_params.get("q") or "").strip()
-        return Response(facet_values(queryset, column, request.team, query=query))
+        return Response(facet_values(queryset, column, request.book, query=query))
 
 
-@login_and_team_required
-def transactions_home(request, team_slug):
+@login_and_book_required
+def transactions_home(request, team_slug, book_slug):
     """Transactions list page - renders the React-powered transactions table."""
     api_urls = {
-        "transactions_list": f"/a/{team_slug}/journal/api/transactions/",
-        "transactions_facets": f"/a/{team_slug}/journal/api/transactions/facets/",
+        "transactions_list": f"/a/{team_slug}/{book_slug}/journal/api/transactions/",
+        "transactions_facets": f"/a/{team_slug}/{book_slug}/journal/api/transactions/facets/",
     }
 
     return render(
@@ -506,8 +507,7 @@ def transactions_home(request, team_slug):
         "journal/transactions_home.html",
         {
             "active_tab": "transactions",
-            "page_title": _("Transactions | {team}").format(team=request.team),
+            "page_title": _("Transactions | {name}").format(name=book_display_name(request.book)),
             "api_urls": api_urls,
-            "team_slug": team_slug,
         },
     )

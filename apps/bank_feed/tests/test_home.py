@@ -15,8 +15,8 @@ from apps.accounts.models import (
     AccountGroup,
 )
 from apps.bank_feed.models import BankTransaction
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN, ROLE_MEMBER
 from apps.users.models import CustomUser
@@ -29,21 +29,22 @@ class BankFeedHomeViewTest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
 
         cls.bank_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Checking",
             account_group=cls.asset_group,
             has_feed=True,
         )
         cls.savings_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Savings",
             account_group=cls.asset_group,
             has_feed=False,  # No feed
@@ -55,7 +56,7 @@ class BankFeedHomeViewTest(TestCase):
 
     def test_bank_feed_home_renders_template(self):
         """Test that bank feed home view renders the correct template."""
-        response = self.client.get(f"/a/{self.team.slug}/bankfeed/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTemplateUsed(response, "bank_feed/bank_feed_home.html")
@@ -63,14 +64,14 @@ class BankFeedHomeViewTest(TestCase):
     def test_bank_feed_home_requires_login(self):
         """Test that bank feed home requires login."""
         self.client.logout()
-        response = self.client.get(f"/a/{self.team.slug}/bankfeed/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/")
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertIn("/accounts/login/", response.url)
 
     def test_bank_feed_home_context_contains_accounts(self):
         """Test that context contains accounts with bank feeds."""
-        response = self.client.get(f"/a/{self.team.slug}/bankfeed/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("accounts", response.context)
@@ -81,7 +82,7 @@ class BankFeedHomeViewTest(TestCase):
 
     def test_bank_feed_home_context_contains_api_urls(self):
         """Test that context contains api_urls."""
-        response = self.client.get(f"/a/{self.team.slug}/bankfeed/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("api_urls", response.context)
@@ -93,16 +94,16 @@ class BankFeedHomeViewTest(TestCase):
         """Test that the initial page-load context includes latest_reconciled_date."""
         today = date.today()
 
-        entry = JournalEntry.objects.create(team=self.team, entry_date=today)
+        entry = JournalEntry.objects.create(book=self.book, entry_date=today)
         JournalLine.objects.create(
-            team=self.team,
+            book=self.book,
             journal_entry=entry,
             account=self.bank_account,
             dr_amount=Decimal("100.00"),
             is_reconciled=True,
         )
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=today,
             description="Test transaction",
@@ -111,7 +112,7 @@ class BankFeedHomeViewTest(TestCase):
             journal_entry=entry,
         )
 
-        response = self.client.get(f"/a/{self.team.slug}/bankfeed/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         accounts_by_name = {a["name"]: a for a in response.context["accounts"]}
@@ -125,6 +126,7 @@ class BankFeedPermissionsTest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.admin_user = CustomUser.objects.create_user(username="admin", password="pass")
         cls.member_user = CustomUser.objects.create_user(username="member", password="pass")
         cls.other_user = CustomUser.objects.create_user(username="other", password="pass")
@@ -133,20 +135,21 @@ class BankFeedPermissionsTest(TestCase):
         cls.team.members.add(cls.member_user, through_defaults={"role": ROLE_MEMBER})
 
         cls.other_team = Team.objects.create(name="Other Team", slug="other-team")
+        cls.other_book = cls.other_team.default_book
         cls.other_team.members.add(cls.other_user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.bank_account = Account.objects.create(
-            team=cls.team,
+            book=cls.book,
             name="Checking",
             account_group=cls.asset_group,
             has_feed=True,
         )
 
         cls.bank_tx = BankTransaction.objects.create(
-            team=cls.team,
+            book=cls.book,
             account=cls.bank_account,
             posted_date=date.today(),
             description="Test transaction",
@@ -162,8 +165,8 @@ class BankFeedPermissionsTest(TestCase):
         """Test that team members can view the bank feed."""
         self.client.force_authenticate(user=self.member_user)
 
-        with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/")
+        with current_book(self.book):
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["count"], 1)
@@ -177,8 +180,8 @@ class BankFeedPermissionsTest(TestCase):
         """
         self.client.force_authenticate(user=self.member_user)
 
-        with current_team(self.team):
-            response = self.client.get(f"/a/{self.team.slug}/bankfeed/api/feed/")
+        with current_book(self.book):
+            response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Team member should see the team's transaction

@@ -17,9 +17,10 @@ class BuildArchiveTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user, cls.handles = build_db_fixture_team()
+        cls.book = cls.team.default_book
 
     def setUp(self):
-        self.accounts, self.journal_rows, self.budget_rows = export.build_archive(self.team)
+        self.accounts, self.journal_rows, self.budget_rows = export.build_archive(self.book)
 
     def test_every_account_is_present(self):
         self.assertEqual(len(self.accounts), 8)
@@ -138,8 +139,8 @@ class BuildArchiveTests(TestCase):
     def test_archive_round_trips_through_write_and_read_without_error(self):
         # Phase 2's output must be exactly what Phase 1 expects -- the real
         # regression test for "the exporter builds rows read.py will accept".
-        checks = export.build_checks(self.team)
-        omitted = export.build_omitted(self.team)
+        checks = export.build_checks(self.book)
+        omitted = export.build_omitted(self.book)
         data = write.build_archive_bytes(
             accounts=self.accounts,
             journal=self.journal_rows,
@@ -158,9 +159,10 @@ class BuildChecksTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user, cls.handles = build_db_fixture_team()
+        cls.book = cls.team.default_book
 
     def setUp(self):
-        self.checks = export.build_checks(self.team)
+        self.checks = export.build_checks(self.book)
 
     def test_trial_balance_matches_and_excludes_the_void_entry(self):
         # Non-void debit totals: 84.12 + 50.00 + 30.00 + 30.00 + 15.00 + 0.00,
@@ -205,9 +207,10 @@ class BuildOmittedTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.user, cls.handles = build_db_fixture_team()
+        cls.book = cls.team.default_book
 
     def test_counts(self):
-        omitted = export.build_omitted(self.team)
+        omitted = export.build_omitted(self.book)
         self.assertEqual(omitted["empty_account_groups"], 1)
         self.assertEqual(omitted["unused_institutions"], 1)
         self.assertEqual(omitted["unused_payees"], 1)
@@ -217,6 +220,7 @@ class BuildOmittedTests(TestCase):
 class RowCountGuardTests(TestCase):
     def test_build_row_count_matches_manual_count(self):
         team, _user, _handles = build_db_fixture_team()
-        count = export.build_row_count(team)
-        accounts, journal, budget = export.build_archive(team)
+        book = team.default_book
+        count = export.build_row_count(book)
+        accounts, journal, budget = export.build_archive(book)
         self.assertEqual(count, len(accounts) + len(journal) + len(budget))

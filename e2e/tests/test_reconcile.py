@@ -32,9 +32,9 @@ def _in_period(day: int) -> date:
 def entry(team, account, category, amount, *, on, description, feed=True, reconciled=False):
     """A posted two-line entry; `amount` is the effect on `account` in ledger sign (dr - cr)."""
     amount = Decimal(amount)
-    je = JournalEntry.objects.create(team=team, entry_date=on, description=description, status="posted")
+    je = JournalEntry.objects.create(book=team.default_book, entry_date=on, description=description, status="posted")
     line = JournalLine.objects.create(
-        team=team,
+        book=team.default_book,
         journal_entry=je,
         account=account,
         dr_amount=max(amount, 0),
@@ -42,12 +42,12 @@ def entry(team, account, category, amount, *, on, description, feed=True, reconc
         is_reconciled=reconciled,
     )
     JournalLine.objects.create(
-        team=team, journal_entry=je, account=category, dr_amount=max(-amount, 0), cr_amount=max(amount, 0)
+        book=team.default_book, journal_entry=je, account=category, dr_amount=max(-amount, 0), cr_amount=max(amount, 0)
     )
     tx = None
     if feed:
         tx = BankTransaction.objects.create(
-            team=team,
+            book=team.default_book,
             account=account,
             amount=-amount,
             posted_date=on,
@@ -83,7 +83,7 @@ def test_statement_that_balances_finishes_and_shows_intact(
     rent, _ = entry(team, account, chequing["groceries"], "-1800.00", on=_in_period(2), description="Rent")
 
     page = ReconcilePage(authenticated_page, live_server.url)
-    page.goto(team.slug, account.id)
+    page.goto(team.default_book, account.id)
     page.start("650.00")
     expect(page.difference()).to_have_text("$650.00")
     page.tick(pay.id)
@@ -98,7 +98,7 @@ def test_statement_that_balances_finishes_and_shows_intact(
     assert pay.is_reconciled
 
     hub = ReconcileHubPage(authenticated_page, live_server.url)
-    hub.goto(team.slug)
+    hub.goto(team.default_book)
     assert "Intact" in hub.status_for(account.id)
 
 
@@ -111,7 +111,7 @@ def test_duplicate_is_named_by_a_hint_and_fixed_in_one_click(
     entry(team, account, chequing["coffee"], "-12.75", on=_in_period(20), description="Coffee")
 
     page = ReconcilePage(authenticated_page, live_server.url)
-    page.goto(team.slug, account.id)
+    page.goto(team.default_book, account.id)
     page.start("-12.75")
     page.tick_all_through()
     expect(page.difference()).to_have_text("$12.75")
@@ -131,7 +131,7 @@ def test_credit_card_balance_owed_is_typed_as_printed(requires_vite, authenticat
     charge, _ = entry(team, card, chequing["groceries"], "-284.56", on=_in_period(5), description="Groceries")
 
     page = ReconcilePage(authenticated_page, live_server.url)
-    page.goto(team.slug, card.id)
+    page.goto(team.default_book, card.id)
     expect(page.page.get_by_text("Balance owed")).to_be_visible()
     page.start("284.56")
     page.tick(charge.id)
@@ -146,7 +146,7 @@ def test_finish_with_adjustment_posts_a_reconciled_feed_row(
     line, _ = entry(team, account, chequing["groceries"], "-40.00", on=_in_period(3), description="Store")
 
     page = ReconcilePage(authenticated_page, live_server.url)
-    page.goto(team.slug, account.id)
+    page.goto(team.default_book, account.id)
     page.start("-42.50")
     page.tick(line.id)
     expect(page.difference()).to_have_text("-$2.50")
@@ -165,12 +165,12 @@ def test_draft_resumes_after_reload(requires_vite, authenticated_page: Page, liv
     line, _ = entry(team, account, chequing["groceries"], "-40.00", on=_in_period(3), description="Store")
 
     page = ReconcilePage(authenticated_page, live_server.url)
-    page.goto(team.slug, account.id)
+    page.goto(team.default_book, account.id)
     page.start("-40.00")
     page.tick(line.id)
     page.wait_saved()
 
-    page.goto(team.slug, account.id)
+    page.goto(team.default_book, account.id)
     expect(page.row(line.id)).to_have_attribute("data-ticked", "true")
     expect(page.difference()).to_have_text("$0.00")
 
@@ -182,7 +182,7 @@ def test_feed_selection_arrives_ticked(requires_vite, authenticated_page: Page, 
     other, _ = entry(team, account, chequing["groceries"], "-5.00", on=_in_period(4), description="Other")
 
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.slug)
+    feed.goto(team.default_book)
     feed.click_account_card(account.id)
     feed.wait_for_table()
     feed.select_row(tx.id)
@@ -203,7 +203,7 @@ def test_unreconciling_in_the_feed_marks_the_statement_changed(
     team, account = chequing["team"], chequing["account"]
     line, tx = entry(team, account, chequing["groceries"], "-40.00", on=_in_period(3), description="Store")
     rec = Reconciliation.objects.create(
-        team=team,
+        book=team.default_book,
         account=account,
         statement_date=_statement_date(),
         statement_balance=Decimal("-40.00"),
@@ -216,7 +216,7 @@ def test_unreconciling_in_the_feed_marks_the_statement_changed(
     line.save()
 
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.slug)
+    feed.goto(team.default_book)
     feed.click_account_card(account.id)
     feed.wait_for_table()
     expect(authenticated_page.locator("[data-testid='reconciled-through']")).to_contain_text("Intact")
@@ -227,13 +227,13 @@ def test_unreconciling_in_the_feed_marks_the_statement_changed(
     expect(authenticated_page.locator("[data-testid='reconciled-through']")).to_contain_text("Changed")
 
     hub = ReconcileHubPage(authenticated_page, live_server.url)
-    hub.goto(team.slug)
+    hub.goto(team.default_book)
     assert "Changed" in hub.status_for(account.id)
 
     # The next statement (the default date follows the last one) names the line
     # that moved and offers it again.
     page = ReconcilePage(authenticated_page, live_server.url)
-    page.goto(team.slug, account.id)
+    page.goto(team.default_book, account.id)
     expect(page.history_statuses()).to_have_text(["Changed"])
     page.start("-40.00")
     expect(authenticated_page.locator("[data-testid='drift-banner']")).to_contain_text("Store")

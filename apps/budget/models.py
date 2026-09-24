@@ -6,14 +6,14 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel
 
 
 class BudgetQuerySet(models.QuerySet):
     pass
 
 
-class Budget(BaseTeamModel):
+class Budget(BaseBookModel):
     """
     Budget model for monthly budget planning.
     Automatically generates entries for income/expense accounts each month.
@@ -33,7 +33,7 @@ class Budget(BaseTeamModel):
     objects = BudgetQuerySet.as_manager()
 
     class Meta:
-        unique_together = ["team", "month", "category"]
+        unique_together = ["book", "month", "category"]
         ordering = ["-month", "category__name"]
 
     def __str__(self):
@@ -67,7 +67,7 @@ class GoalQuerySet(models.QuerySet):
         )
 
 
-class Goal(BaseTeamModel):
+class Goal(BaseBookModel):
     """
     Goal model for savings goals.
     Each goal is backed by an equity account in the chart of accounts.
@@ -108,7 +108,7 @@ class Goal(BaseTeamModel):
 
     class Meta:
         ordering = ["order", "target_date", "name"]
-        unique_together = ["team", "name"]
+        unique_together = ["book", "name"]
         # Use unique related_name to avoid conflict with deprecated apps.goals.Goal
         default_related_name = "budget_goals"
 
@@ -116,7 +116,7 @@ class Goal(BaseTeamModel):
         return self.name
 
     def get_absolute_url(self):
-        return reverse("budget:goal_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("budget:goal_detail", args=[*self.book.url_args, self.pk])
 
     def save(self, *args, **kwargs):
         """Override save to automatically create backing account for new goals."""
@@ -125,20 +125,20 @@ class Goal(BaseTeamModel):
         if is_new and not self.account_id:
             with transaction.atomic():
                 # Get or create the Goals account group. Filter by name as well as type:
-                # a team can have several equity groups, and get_or_create on type alone
+                # a book can have several equity groups, and get_or_create on type alone
                 # would raise MultipleObjectsReturned.
                 goal_group = AccountGroup.objects.filter(
-                    team=self.team, account_type=ACCOUNT_TYPE_EQUITY, name="Goals"
+                    book=self.book, account_type=ACCOUNT_TYPE_EQUITY, name="Goals"
                 ).first()
                 if goal_group is None:
                     goal_group = (
-                        AccountGroup.objects.filter(team=self.team, account_type=ACCOUNT_TYPE_EQUITY)
+                        AccountGroup.objects.filter(book=self.book, account_type=ACCOUNT_TYPE_EQUITY)
                         .order_by("id")
                         .first()
                     )
                 if goal_group is None:
                     goal_group = AccountGroup.objects.create(
-                        team=self.team,
+                        book=self.book,
                         account_type=ACCOUNT_TYPE_EQUITY,
                         name="Goals",
                         description="Savings goals",
@@ -147,7 +147,7 @@ class Goal(BaseTeamModel):
                 # Create the backing account inside the same transaction so a failed
                 # goal save doesn't leave an orphaned account behind
                 self.account = Account.objects.create(
-                    team=self.team, name=f"Goal: {self.name}", account_group=goal_group
+                    book=self.book, name=f"Goal: {self.name}", account_group=goal_group
                 )
                 super().save(*args, **kwargs)
             return
@@ -167,7 +167,7 @@ class Goal(BaseTeamModel):
         return 0
 
 
-class GoalAllocation(BaseTeamModel):
+class GoalAllocation(BaseBookModel):
     """
     Monthly allocation towards a goal.
     This represents how much is being saved toward the goal each month.
@@ -188,7 +188,7 @@ class GoalAllocation(BaseTeamModel):
     notes = models.TextField(blank=True, verbose_name=_("Notes"))
 
     class Meta:
-        unique_together = ["team", "goal", "month"]
+        unique_together = ["book", "goal", "month"]
         ordering = ["-month"]
         default_related_name = "budget_goal_allocations"
 

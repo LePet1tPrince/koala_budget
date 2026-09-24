@@ -6,6 +6,10 @@
 {% block app %}
 
   <h1 class="text-2xl font-semibold" data-testid="dashboard-greeting">{{ greeting }}</h1>
+  {% if book_label %}
+    {# Only once a team has several sets of books -- a single-book team sees no change. #}
+    <p class="mt-1 text-sm text-base-content/70" data-testid="dashboard-book-name">{{ book_label }}</p>
+  {% endif %}
 
   {# Unassigned leads: every dollar should have a job (docs/unassigned-plan.md) #}
   <section class="app-card mt-4" data-testid="metric-unassigned">
@@ -27,9 +31,9 @@
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <a href="{% url 'budget:budget_home' request.team.slug %}" class="btn btn-sm btn-outline">{% translate "Budget" %}</a>
-        <a href="{% url 'budget:goals_list' request.team.slug %}" class="btn btn-sm btn-outline">{% translate "Goals" %}</a>
-        <a href="{% url 'reports:dollar_map' request.team.slug %}" class="btn btn-sm btn-primary" data-testid="dashboard-dollar-map-link">{% translate "Where every dollar is going" %}</a>
+        <a href="{% url 'budget:budget_home' request.team.slug request.book.slug %}" class="btn btn-sm btn-outline">{% translate "Budget" %}</a>
+        <a href="{% url 'budget:goals_list' request.team.slug request.book.slug %}" class="btn btn-sm btn-outline">{% translate "Goals" %}</a>
+        <a href="{% url 'reports:dollar_map' request.team.slug request.book.slug %}" class="btn btn-sm btn-primary" data-testid="dashboard-dollar-map-link">{% translate "Where every dollar is going" %}</a>
       </div>
     </div>
     <div class="mt-4">
@@ -50,7 +54,7 @@
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if income_ytd.net_profit < 0 %}text-error{% else %}text-success{% endif %}">
         {{ income_ytd.net_profit|currency }}
       </div>
-      <a href="{% url 'reports:income_statement' request.team.slug %}" class="link text-xs mt-2 inline-block">{% translate "View profit & loss" %}</a>
+      <a href="{% url 'reports:income_statement' request.team.slug request.book.slug %}" class="link text-xs mt-2 inline-block">{% translate "View profit & loss" %}</a>
     </section>
     <section class="app-card" data-testid="metric-goals-remaining">
       <div class="text-sm text-base-content/70">{% translate "To reach all goals" %}</div>
@@ -64,7 +68,7 @@
   <section class="app-card mt-6" data-testid="dashboard-net-worth-chart">
     <div class="flex justify-between items-center mb-2">
       <h2 class="text-2xl font-semibold">{% translate "Net worth" %}</h2>
-      <a href="{% url 'reports:net_worth_trend' request.team.slug %}" class="link text-sm">{% translate "See more reports" %}</a>
+      <a href="{% url 'reports:net_worth_trend' request.team.slug request.book.slug %}" class="link text-sm">{% translate "See more reports" %}</a>
     </div>
     {% if net_worth_chart_data %}
       <div class="w-full" style="height: 220px;">
@@ -157,7 +161,7 @@
           {{ counter }} transactions to review
         {% endblocktranslate %}
       </span>
-      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug %}" class="btn btn-primary btn-sm">
+      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm">
         {% translate "Review" %}
       </a>
     </div>
@@ -167,7 +171,7 @@
   <section class="app-card mt-6" data-testid="dashboard-goals">
     <div class="flex justify-between items-center mb-2">
       <h2 class="text-2xl font-semibold">{% translate "Goals" %}</h2>
-      <a href="{% url 'budget:goals_list' request.team.slug %}" class="link text-sm">{% translate "All goals" %}</a>
+      <a href="{% url 'budget:goals_list' request.team.slug request.book.slug %}" class="link text-sm">{% translate "All goals" %}</a>
     </div>
     {% if goals %}
       <ul class="space-y-3">
@@ -184,7 +188,7 @@
     {% else %}
       <p class="text-base-content/70">
         {% translate "Nothing you're saving for yet." %}
-        <a href="{% url 'budget:goal_create' request.team.slug %}" class="link">{% translate "Create a goal" %}</a>
+        <a href="{% url 'budget:goal_create' request.team.slug request.book.slug %}" class="link">{% translate "Create a goal" %}</a>
       </p>
     {% endif %}
   </section>

@@ -53,52 +53,62 @@ import {
 } from '../models/index';
 
 export interface ImportedTransactionsListRequest {
+    bookSlug: string;
     teamSlug: string;
     page?: number;
 }
 
 export interface ImportedTransactionsRetrieveRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface PlaidAccountsListRequest {
+    bookSlug: string;
     teamSlug: string;
     page?: number;
 }
 
 export interface PlaidAccountsPartialUpdateRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
     patchedPlaidAccount?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'>;
 }
 
 export interface PlaidAccountsRetrieveRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface PlaidCreateLinkTokenRequest {
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface PlaidExchangePublicTokenRequest {
+    bookSlug: string;
     teamSlug: string;
     exchangePublicTokenRequest: ExchangePublicTokenRequest;
 }
 
 export interface PlaidItemsListRequest {
+    bookSlug: string;
     teamSlug: string;
     page?: number;
 }
 
 export interface PlaidItemsRetrieveRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
 export interface PlaidItemsSyncRequest {
     id: number;
+    bookSlug: string;
     teamSlug: string;
 }
 
@@ -111,6 +121,13 @@ export class PlaidApi extends runtime.BaseAPI {
      * ViewSet for PlaidTransaction model (read-only).
      */
     async importedTransactionsListRaw(requestParameters: ImportedTransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedPlaidTransactionList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling importedTransactionsList().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -134,7 +151,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/transactions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/transactions/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -162,6 +179,13 @@ export class PlaidApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling importedTransactionsRetrieve().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -181,7 +205,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/transactions/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/transactions/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -202,6 +226,13 @@ export class PlaidApi extends runtime.BaseAPI {
      * ViewSet for PlaidAccount model. Allows updating the \'account\' field to map Plaid accounts to ledger accounts.
      */
     async plaidAccountsListRaw(requestParameters: PlaidAccountsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedPlaidAccountList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidAccountsList().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -225,7 +256,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/accounts/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -253,6 +284,13 @@ export class PlaidApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidAccountsPartialUpdate().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -274,7 +312,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/accounts/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
@@ -303,6 +341,13 @@ export class PlaidApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidAccountsRetrieve().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -322,7 +367,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/accounts/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/accounts/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -343,6 +388,13 @@ export class PlaidApi extends runtime.BaseAPI {
      * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.
      */
     async plaidCreateLinkTokenRaw(requestParameters: PlaidCreateLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidCreateLinkToken200Response>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidCreateLinkToken().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -362,7 +414,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/link-token/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/link-token/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -383,6 +435,13 @@ export class PlaidApi extends runtime.BaseAPI {
      * Exchange a public token for an access token and create PlaidItem and PlaidAccount records. Body: - public_token: Public token from Plaid Link - institution_id: Institution ID from Plaid Link - accounts: List of account objects from Plaid Link metadata
      */
     async plaidExchangePublicTokenRaw(requestParameters: PlaidExchangePublicTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ExchangePublicTokenResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidExchangePublicToken().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -411,7 +470,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/exchange-token/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/exchange-token/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -433,6 +492,13 @@ export class PlaidApi extends runtime.BaseAPI {
      * ViewSet for PlaidItem model (read-only).
      */
     async plaidItemsListRaw(requestParameters: PlaidItemsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedPlaidItemList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsList().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -456,7 +522,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/items/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -484,6 +550,13 @@ export class PlaidApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsRetrieve().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -503,7 +576,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/items/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
@@ -531,6 +604,13 @@ export class PlaidApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsSync().'
+            );
+        }
+
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
@@ -550,7 +630,7 @@ export class PlaidApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/plaid/api/items/{id}/sync/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/sync/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,

@@ -52,12 +52,12 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Scope writable FKs to the current team so a PATCH can't link a Plaid
+        # Scope writable FKs to the current book so a PATCH can't link a Plaid
         # account to another tenant's ledger account or item
         request = self.context.get("request")
-        if request is not None and getattr(request, "team", None):
-            self.fields["account"].queryset = Account.for_team.all()
-            self.fields["item"].queryset = PlaidItem.for_team.all()
+        if request is not None and getattr(request, "book", None):
+            self.fields["account"].queryset = Account.for_book.all()
+            self.fields["item"].queryset = PlaidItem.for_book.all()
 
 
 class PlaidTransactionSerializer(serializers.ModelSerializer):

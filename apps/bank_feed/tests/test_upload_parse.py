@@ -9,7 +9,7 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.teams.context import current_team
+from apps.books.context import current_book
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -22,6 +22,7 @@ class BankFeedViewSetUploadParseTest(TestCase):
     def setUpTestData(cls):
         """Set up test data for all tests."""
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
@@ -58,9 +59,9 @@ class BankFeedViewSetUploadParseTest(TestCase):
         csv_content = "Date,Description,Amount\n2025-01-01,Test,100.00\n2025-01-02,Test2,50.00"
         csv_file = self._create_csv_file(csv_content)
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_parse/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_parse/",
                 {"file": csv_file},
                 format="multipart",
             )
@@ -75,9 +76,9 @@ class BankFeedViewSetUploadParseTest(TestCase):
         """Test that Excel upload returns headers and sample rows."""
         xlsx_file = self._create_xlsx_file()
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_parse/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_parse/",
                 {"file": xlsx_file},
                 format="multipart",
             )
@@ -89,9 +90,9 @@ class BankFeedViewSetUploadParseTest(TestCase):
 
     def test_upload_parse_no_file_returns_400(self):
         """Test that missing file returns 400."""
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_parse/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_parse/",
                 {},
                 format="multipart",
             )
@@ -103,9 +104,9 @@ class BankFeedViewSetUploadParseTest(TestCase):
         """Test that empty file returns error in response."""
         csv_file = self._create_csv_file("")
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_parse/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_parse/",
                 {"file": csv_file},
                 format="multipart",
             )
@@ -117,9 +118,9 @@ class BankFeedViewSetUploadParseTest(TestCase):
         """Test that unsupported file type returns error."""
         txt_file = SimpleUploadedFile("test.txt", b"Some text content", content_type="text/plain")
 
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/upload_parse/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/upload_parse/",
                 {"file": txt_file},
                 format="multipart",
             )

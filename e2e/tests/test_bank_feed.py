@@ -27,7 +27,7 @@ def test_bank_feed_shows_accounts_with_feed(requires_vite, authenticated_page: P
     AssetAccountFactory(team=team, account_group=group, has_feed=False)
 
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.slug)
+    feed.goto(team.default_book)
 
     assert feed.has_account_card(feed_account.id)
     assert feed.get_account_card_count() == 1
@@ -40,7 +40,7 @@ def test_selecting_account_shows_filter_toggles(requires_vite, authenticated_pag
     feed_account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
 
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.slug)
+    feed.goto(team.default_book)
     feed.click_account_card(feed_account.id)
 
     assert feed.is_filter_visible()
@@ -53,7 +53,7 @@ def test_add_transaction_modal_opens(requires_vite, authenticated_page: Page, li
     feed_account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
 
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.slug)
+    feed.goto(team.default_book)
     feed.click_account_card(feed_account.id)
     feed.click_add_transaction()
 
@@ -98,7 +98,7 @@ def feed_fixture(team):
 def test_default_view_shows_every_unarchived_row(requires_vite, authenticated_page, live_server, feed_fixture):
     """No filter selected: categorized and uncategorized, reconciled and not — but never archived."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
 
@@ -111,7 +111,7 @@ def test_default_view_shows_every_unarchived_row(requires_vite, authenticated_pa
 @pytest.mark.django_db(transaction=True)
 def test_to_review_filter_hides_reconciled(requires_vite, authenticated_page, live_server, feed_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
 
@@ -126,7 +126,7 @@ def test_to_review_filter_hides_reconciled(requires_vite, authenticated_page, li
 @pytest.mark.django_db(transaction=True)
 def test_reconciled_filter_shows_only_reconciled(requires_vite, authenticated_page, live_server, feed_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
 
@@ -141,7 +141,7 @@ def test_reconciled_filter_shows_only_reconciled(requires_vite, authenticated_pa
 def test_to_review_and_reconciled_are_mutually_exclusive(requires_vite, authenticated_page, live_server, feed_fixture):
     """Selecting one clears the other — they are opposite states, not a narrowing."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
 
@@ -157,7 +157,7 @@ def test_to_review_and_reconciled_are_mutually_exclusive(requires_vite, authenti
 def test_uncategorized_filter_is_independent(requires_vite, authenticated_page, live_server, feed_fixture):
     """Uncategorized narrows whatever else is selected rather than replacing it."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
 
@@ -176,7 +176,7 @@ def test_uncategorized_filter_is_independent(requires_vite, authenticated_page, 
 def test_archived_is_a_separate_view(requires_vite, authenticated_page, live_server, feed_fixture):
     """Archived shows only archived rows and disables the quick filters entirely."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
 
@@ -209,7 +209,7 @@ def test_archived_is_a_separate_view(requires_vite, authenticated_page, live_ser
 @pytest.mark.django_db(transaction=True)
 def test_no_batch_bar_until_a_row_is_selected(requires_vite, authenticated_page, live_server, feed_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
 
@@ -220,7 +220,7 @@ def test_no_batch_bar_until_a_row_is_selected(requires_vite, authenticated_page,
 def test_uncategorized_selection_cannot_reconcile(requires_vite, authenticated_page, live_server, feed_fixture):
     """Reconcile is offered but disabled — reconciling an uncategorized row is meaningless."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["uncategorized"].id)
@@ -232,7 +232,7 @@ def test_uncategorized_selection_cannot_reconcile(requires_vite, authenticated_p
 @pytest.mark.django_db(transaction=True)
 def test_categorized_unreconciled_selection_can_reconcile(requires_vite, authenticated_page, live_server, feed_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["unreconciled"].id)
@@ -253,7 +253,7 @@ def test_reconciled_selection_offers_unreconcile_not_reconcile(
     does show Archive — see the next test.
     """
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["reconciled"].id)
@@ -268,7 +268,7 @@ def test_mixed_selection_withholds_both_reconcile_and_unreconcile(
     """One reconciled row in the selection is enough to withhold Reconcile and Duplicate;
     Unreconcile needs *all* of them reconciled, so a mixed selection gets neither."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["reconciled"].id)
@@ -281,7 +281,7 @@ def test_mixed_selection_withholds_both_reconcile_and_unreconcile(
 def test_archived_view_offers_unarchive_and_delete_only(requires_vite, authenticated_page, live_server, feed_fixture):
     """The archived view is a different set of verbs: nothing to edit, reconcile or duplicate."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.click_filter("archived")
@@ -293,7 +293,7 @@ def test_archived_view_offers_unarchive_and_delete_only(requires_vite, authentic
 @pytest.mark.django_db(transaction=True)
 def test_clearing_the_selection_dismisses_the_bar(requires_vite, authenticated_page, live_server, feed_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["unreconciled"].id)
@@ -307,7 +307,7 @@ def test_clearing_the_selection_dismisses_the_bar(requires_vite, authenticated_p
 @pytest.mark.django_db(transaction=True)
 def test_bulk_edit_opens_from_the_bar(requires_vite, authenticated_page, live_server, feed_fixture):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].team.slug)
+    feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["unreconciled"].id)
@@ -345,7 +345,7 @@ def transfer_pair(team):
 @pytest.mark.django_db(transaction=True)
 def test_transfer_review_surfaces_a_candidate_pair(requires_vite, authenticated_page, live_server, transfer_pair):
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(transfer_pair["chequing"].team.slug)
+    feed.goto(transfer_pair["chequing"].book)
     feed.click_account_card(transfer_pair["chequing"].id)
     feed.wait_for_table()
     feed.open_transfer_review()
@@ -382,7 +382,7 @@ def test_reconciled_leg_cannot_be_archived_from_the_review(
     assert reconciled_leg.pk  # the pair only surfaces once both legs exist
 
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(transfer_pair["chequing"].team.slug)
+    feed.goto(transfer_pair["chequing"].book)
     feed.click_account_card(transfer_pair["chequing"].id)
     feed.wait_for_table()
     feed.open_transfer_review()
@@ -407,7 +407,7 @@ def test_reconciled_leg_cannot_be_archived_from_the_review(
 def test_dismissing_a_pair_removes_it_from_the_review(requires_vite, authenticated_page, live_server, transfer_pair):
     """'Not a duplicate' records a dismissal, so the pair stops being suggested."""
     feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(transfer_pair["chequing"].team.slug)
+    feed.goto(transfer_pair["chequing"].book)
     feed.click_account_card(transfer_pair["chequing"].id)
     feed.wait_for_table()
     feed.open_transfer_review()
