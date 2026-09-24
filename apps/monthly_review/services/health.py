@@ -11,13 +11,15 @@ fact into a warning, with copy and severity, is `services/insights.py`'s job.
 """
 
 from datetime import timedelta
+from decimal import Decimal
 
 from django.conf import settings
-from django.db.models import Count, F, Max, Min
+from django.db.models import Count, F, Max, Min, Sum
 from django.urls import reverse
 
 from apps.accounts.models import Account
 from apps.bank_feed.models import BankTransaction
+from apps.journal.models import JournalLine, counted_entries
 from apps.reconciliation.models import Reconciliation
 
 NO_TRANSACTIONS = "no_transactions"
@@ -37,6 +39,21 @@ def _stale_days() -> int:
     return getattr(settings, "MONTHLY_REVIEW_STALE_DAYS", 14)
 
 
+def _opening_balances(team, account_ids, before_date) -> dict:
+    """Each account's balance from everything dated before `before_date` -- the
+    starting point `balance_change` measures this month's movement against."""
+    if not account_ids:
+        return {}
+    counted = counted_entries("journal_entry__")
+    rows = (
+        JournalLine.objects.filter(team=team, account_id__in=account_ids, journal_entry__entry_date__lt=before_date)
+        .filter(counted)
+        .values("account_id")
+        .annotate(dr=Sum("dr_amount"), cr=Sum("cr_amount"))
+    )
+    return {row["account_id"]: (row["dr"] or Decimal("0")) - (row["cr"] or Decimal("0")) for row in rows}
+
+
 def account_health(team, month) -> dict:
     """
     Returns:
@@ -50,6 +67,8 @@ def account_health(team, month) -> dict:
               "balance": Decimal,              # as of month end; voided/archived entries excluded
               "reconciled_balance": Decimal,   # as of month end
               "balance_gap": Decimal,
+              "balance_change": Decimal,       # this month's net movement (balance - opening balance)
+              "account_type": str,             # "asset" | "liability"
               "flags": [{"kind": str, ...}, ...],
           }, ...],
           "flags": [{"kind": str, "account": Account, ...}, ...],  # flattened
@@ -120,6 +139,7 @@ def account_health(team, month) -> dict:
         .annotate(first=Min("posted_date"))
         .values_list("account_id", "first")
     )
+    opening_balances = _opening_balances(team, account_ids, month_start)
     last_statement_dates = dict(
         # As of the month's end, like every other check here: reviewing July must
         # not be satisfied by a statement reconciled in September.
@@ -146,6 +166,7 @@ def account_health(team, month) -> dict:
         balance = account._balance
         reconciled_balance = account._reconciled_balance
         balance_gap = balance - reconciled_balance
+        balance_change = balance - opening_balances.get(account.pk, Decimal("0"))
 
         flags = []
         if transaction_count == 0:
@@ -209,6 +230,8 @@ def account_health(team, month) -> dict:
                 "balance": balance,
                 "reconciled_balance": reconciled_balance,
                 "balance_gap": balance_gap,
+                "balance_change": balance_change,
+                "account_type": account.account_type,
                 "flags": flags,
             }
         )

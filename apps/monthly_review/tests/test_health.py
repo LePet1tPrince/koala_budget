@@ -251,6 +251,25 @@ class AccountHealthTests(TestCase):
         self.assertEqual(september_row["uncategorized_count"], 1)
         self.assertEqual(september_row["unreconciled_count"], 1)
 
+    def test_balance_change_is_movement_within_the_month(self):
+        account = self._account("Chequing")
+        category = Account.objects.create(team=self.team, name="Groceries", account_group=self.equity_group)
+        july = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("100.00"), posted_date=date(2026, 7, 15), description="Jul"
+        )
+        self._categorize(july, category, reconciled=True)
+        august = BankTransaction.objects.create(
+            team=self.team, account=account, amount=Decimal("30.00"), posted_date=date(2026, 8, 10), description="Aug"
+        )
+        self._categorize(august, category, reconciled=True)
+
+        row = account_health(self.team, self.month)["accounts"][0]
+        # July's $100 spend sets the opening balance at -100; August's own $30
+        # spend is the only thing that happened in the reviewed month, so
+        # balance_change must read -30 regardless of what came before it.
+        self.assertEqual(row["balance"], Decimal("-130.00"))
+        self.assertEqual(row["balance_change"], Decimal("-30.00"))
+
 
 class StatementDueTests(TestCase):
     """The monthly review points at the reconcile page when a statement is overdue."""
