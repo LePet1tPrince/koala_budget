@@ -2,49 +2,69 @@
 
 **Goal:** every YNAB register row on a bank-type account arrives as a `BankTransaction`
 in that account's Inbox feed, linked to the journal entry the import already writes.
-Categorized rows arrive categorized (and locked where YNAB reconciled them); rows YNAB
-never categorized arrive uncategorized, waiting in the Inbox.
+Categorized rows arrive categorized; rows YNAB never categorized arrive uncategorized,
+waiting in the Inbox. **Nothing imported is reconciled** — the user reconciles every
+account by hand.
 
-**Supersedes D12** in `docs/ynab-import-plan.md` ("straight to the journal, no
-`BankTransaction` rows"). D12's objection was presenting 7,572 already-answered
-questions. Feed rows linked to their entries answer that: they are not in the
-review queue, they are history in the place the user looks at an account.
+**Supersedes** in `docs/ynab-import-plan.md`: **D12** ("straight to the journal, no
+`BankTransaction` rows") and **D9** (carry YNAB's reconciled flag onto the bank line).
 
-All figures below are measured against `docs/reference/… Register.csv` (7,572 rows,
+All figures are measured against `docs/reference/… Register.csv` (7,572 rows,
 36 accounts: 22 on-budget, 14 tracking).
 
 ---
 
-## 1. What changes for the user
+## 1. Decisions
 
-| Today | After |
-|---|---|
-| Inbox is empty after import; every account card shows no rows | Each feed account shows its full YNAB history, categorized, reconciled rows locked |
-| Categorize-mode suggestions (`similar_transactions.py`, history = categorized feed rows) have nothing to learn from | Suggestions work on day one: the last 2,000 categorized rows are YNAB's |
-| First Plaid/CSV sync re-imports the overlap as uncategorized rows; categorizing them double-counts | Overlap can be matched against the imported rows (§4 B2) |
-| YNAB-uncategorized rows post to `Uncategorized Expense/Income` | They sit in the Inbox as uncategorized feed rows |
+| # | Question | Decision |
+|---|---|---|
+| F1 | Transfers between two feed accounts | The feed row is written **once**, on one leg. The other side appears through the app's own transfer-mirror rule, exactly as if the user had categorized it in the Inbox (§3.2). |
+| F2 | Split containing a transfer | One feed row, on the account that holds the split. The transfer leg's counterpart appears through the same mirror rule — which today skips splits, so the rule is extended (§3.3). |
+| F3 | Reconciliation state | **Never reconcile imported lines.** `is_reconciled=False` on every line, feed row and opening balance. No `Reconciliation` records. |
+| F4 | Default "Show in Inbox" per account | On-budget or liability, **off** when the closing balance is 0 and there is no row in the 12 months before the export. Toggle per account on the wizard's accounts screen. |
+| F5 | Future-dated rows | Feed rows like any other. |
+| F6 | Deduplication | **Open — see §4 B1/B2.** F1 prevents a transfer appearing twice *within* the import; it does not cover the two cases there. |
+| F7 | Statement records for "reconciled through" | Not built (follows from F3). |
 
 ---
 
-## 2. Row → feed row rules
+## 2. What changes for the user
 
-A feed row is written only on an account with `has_feed=True`. The journal side is
-unchanged except for the uncategorized case.
+| Today | After |
+|---|---|
+| Inbox empty after import | Each feed account shows its full YNAB history, categorized |
+| YNAB-reconciled lines arrive locked | Every imported line is unreconciled, ready for manual statement reconciliation |
+| Categorize-mode suggestions (history = categorized feed rows) have nothing to learn from | Suggestions work on day one from the last 2,000 imported rows |
+| YNAB-uncategorized rows post to `Uncategorized Expense/Income` | They sit in the Inbox, uncategorized |
 
-| Register row | Sample count | Feed rows written |
+---
+
+## 3. Design
+
+### 3.1 Row → feed row rules
+
+A feed row is written only on an account with `has_feed=True` (after the F4 default
+and the user's toggle).
+
+| Register row | Sample (feed accounts, F4 defaults) | Feed rows |
 |---|---|---|
-| Categorized row / income inflow on a feed account | 4,474 + 1,115 | 1, `journal_entry` = its entry |
-| Transfer, feed ↔ feed | 1,044 rows (522 pairs) | 2 on one entry: primary + `is_transfer_mirror=True` leg (§4 B3) |
-| Transfer, feed ↔ non-feed (tracking) | 315 | 1, on the feed side only |
-| Split | 169 legs in 83 groups | 1 per group, for the total, on the split's account |
-| Split leg that is a transfer merged into the split (D8) | 3 | 0 on the *other* account (§4 B4) |
-| Reconciliation adjustment (`RECONCILIATION_PAYEES`) | 15 | 1 (matches `reconciliation/services/adjustment.py`, which writes a feed row on `has_feed` accounts) |
-| Uncategorized, non-transfer, on a feed account | 3 | 1, `journal_entry=None`; **no journal entry written** (§4 B5) |
-| `Starting Balance` | 21 | 0 — opening balances are not bank transactions |
-| Any row on a non-feed account | 433 | 0 |
+| Categorized row / income inflow | 5,472 | 1 |
+| Transfer, feed ↔ feed | 472 pairs | 1 primary + 1 mirror from the mirror rule (§3.2) |
+| Transfer, feed ↔ non-feed | 350 | 1, on the feed side; no mirror (the rule only mirrors into feed accounts) |
+| Split | ~83 groups | 1, for the total, on the split's account |
+| Split with a transfer leg to a feed account | 3 | the split's row + 1 mirror per such leg (§3.3) |
+| YNAB reconciliation adjustment (`RECONCILIATION_PAYEES`) | 5 | 1 (posts to equity, as today) |
+| Uncategorized, non-transfer | 3 | 1, `journal_entry=None`; **no journal entry written** |
+| Future-dated (after export date) | 4 | as its row type (F5) |
+| `Starting Balance` | — | 0 — opening balances are not bank transactions |
+| Any row on a non-feed account | — | 0 |
 
-Expected on the sample with today's `has_feed` rule: **~7,040 feed rows** across 22
-accounts, ~6,985 of them locked as reconciled.
+Sample total: **~6,850 feed rows on 13 accounts**, 3 in the Inbox queue.
+F4 turns off 9 on-budget accounts by default: `BBC A/R`, `Bender Books (TG)`,
+`Glebeholme Expenses`, `Short-Term Savings (EQ)`, `Tax Payments (EQ)`,
+`Timmy's Invest (WS)`, `Timmy's Trade (WS)`, `Viv's Invest (WS)`, `WS Cash`.
+`Cash` and `Reconcile account` stay on (active, non-zero history); the user can
+toggle them off.
 
 ### Field mapping
 
@@ -55,173 +75,155 @@ accounts, ~6,985 of them locked as reconciled.
 | `description` | `_description(row)` truncated to 255 |
 | `merchant_name` | `_payee(row)` (None for transfers, as today) |
 | `source` | new `SOURCE_YNAB = "ynab"` (choices-only migration; `journal_source` → `SOURCE_IMPORT`) |
-| `raw` | `{"ynab": {"index", "account", "payee", "category", "memo", "cleared"}}` — provenance, and the key the overlap matcher (§4 B2) reads |
-| `is_transfer_mirror` | per §2 table |
-| `journal_entry` | the entry built from the row; None for §2's uncategorized case |
+| `raw` | `{"ynab": {"index", "account", "payee", "category", "memo", "cleared"}}` — provenance |
+| `is_transfer_mirror` | False on every row the import writes itself; True only on rows the mirror rule produces |
+| `journal_entry` | the entry built from the row; None for uncategorized rows |
 
-`FEED_SOURCES` in `apps/portability/services/schema.py` is derived from
-`SOURCE_CHOICES`, so the new value exports/imports with no format bump.
+`JournalLine.is_reconciled=False` everywhere (F3). `JournalLine.is_cleared` keeps
+YNAB's `Cleared` value: nothing reads it for balances or reconciliation.
 
----
+`FEED_SOURCES` in `apps/portability/services/schema.py` derives from
+`SOURCE_CHOICES`, so the new value exports and imports with no format bump.
 
-## 3. Implementation
+### 3.2 F1 — one feed row per transfer, the mirror from the app's rule
 
-### Phase 1 — Build (pure)
+`transfer_mirror.sync_transfer()` is what makes a transfer show up in the
+counterpart's feed. The import must produce exactly its output, but through
+`bulk_create` rather than ~470 individual `save()`s. So:
 
-- `build.py`: `PlannedFeedRow(account, amount, posted_date, description, merchant, is_mirror, raw)`;
-  `PlannedEntry.feed: tuple[PlannedFeedRow, ...]`; `ImportPlan.inbox_rows: list[PlannedFeedRow]`
-  for uncategorized rows with no entry. Rules from §2 live in `_simple_entry`,
-  `_transfer_entry`, `_split_entry`, and a new branch in `_build_entries` for the
-  uncategorized case.
-- `AccountChoice.has_feed` (wizard payload `accounts[name].has_feed`, validated in
-  `parse_choices`). Default = today's rule (`on_budget or liability`).
-- `reconcile.py::check_balances`: expected closing balance minus the sum of
-  `inbox_rows` per account; `_net_worth(plan)` likewise. Gate stays exact.
-- `_stats`/`_notes`: `feed_rows`, `inbox_rows`, `inbox_amount`, split-transfer legs
-  not shown in a feed (B4).
-- `assert_sound`: every consumed row reaches an entry **or** `inbox_rows`.
+- Factor the row-building half of `sync_transfer` into a pure
+  `mirror_rows_for(tx, entry_lines) -> list[BankTransaction]` (unsaved).
+  `sync_transfer` keeps its create/move/delete logic on top of it; the import calls
+  `mirror_rows_for` on each primary and bulk-inserts the result.
+- **Primary** = the leg on a feed account; when both are, the first in file order.
+  The mirror copies the primary's `description`/`merchant_name`/`posted_date` (that
+  is the rule), so the other leg's own YNAB memo survives only in the entry's
+  description when the primary had none.
+- Test: after import, `sync_transfer(primary)` on every imported transfer is a
+  no-op (no row created, moved, changed or deleted). That is the definition of
+  "created correctly".
 
-### Phase 2 — Apply + wizard
+### 3.3 F2 — splits with a transfer leg
 
-- `apply.py::_create_entries`: after each batch's entries exist, `bulk_create`
-  their feed rows; then `inbox_rows` in one batch. `ApplyResult.feed_rows`.
-  `ANALYZED_MODELS` already analyzes `BankTransaction`.
-- `can_import`: also refuse a book with any `BankTransaction` — an uploaded-but-
-  uncategorized CSV passes today and would be duplicated.
-- `AuditEvent.YNAB_IMPORT` metadata gains `feed_rows`/`inbox_rows`.
-- Wizard, accounts screen: "Show in Inbox" toggle per account. Summary screen:
-  "N transactions in your Inbox feeds, M waiting to be categorized ($X — these
-  accounts' balances reach YNAB's once they are)".
-- Onboarding: the YNAB path pre-ticks the categorize task; leave it unticked when
+Sample case, `Viv's Paycheck (TD)` 28-05-2026: one $500 outflow split into Car $420
++ Transfer to `Cash` $80; `Cash` has the matching +$80.
+
+End state: `Viv's Paycheck (TD)` shows one $500 split row; `Cash` shows +$80
+categorized to `Viv's Paycheck (TD)`, appearing automatically.
+
+Today `sync_transfer` returns early for any entry with more than two lines, so the
+`Cash` row would never appear — in the import *or* when a user builds the same
+split in the Inbox. Extending the rule (benefits both):
+
+- `mirror_rows_for`: for a split, one mirror per leg whose account
+  `is_transfer_target`, amount = that leg's line.
+- `sync_transfer`: for a split, create/update/delete those mirrors to match the
+  current legs; called from `apply_splits` after every split edit (leg removed →
+  mirror deleted; leg re-amounted → mirror follows).
+- `bank_transaction_to_feed_row`: a mirror whose entry is a split renders as a
+  plain row — category = the primary's account, amount = its own line — not as the
+  split's legs.
+- `would_orphan_primary`: currently returns False for any split. A split's mirror
+  must refuse re-categorization and split-editing ("edit the original
+  transaction instead"), or `apply_splits` would treat the mirror's account as
+  the bank line.
+- `linked_legs` already finds rows by entry, so archive/delete of the split takes
+  its mirrors with it; `find_transfer_candidates` already excludes mirrors.
+
+### 3.4 Phases
+
+**Phase 1 — Mirror rule** (`apps/bank_feed/services/transfer_mirror.py`,
+`splits.py`, `serializers.py`): `mirror_rows_for`, split mirrors, rendering,
+orphan guard. Tests on in-app categorization and split edits, independent of YNAB.
+
+**Phase 2 — Build (pure)** (`apps/ynab_import/services/build.py`, `reconcile.py`):
+- `PlannedFeedRow`; `PlannedEntry.feed` (primary rows only — mirrors are derived at
+  apply time); `ImportPlan.inbox_rows` for uncategorized rows with no entry.
+- `AccountChoice.has_feed` (payload `accounts[name].has_feed`, validated in
+  `parse_choices`), default per F4.
+- `is_reconciled=False` on every `PlannedLine`; drop D9's carry.
+- Gate: `check_balances` and `_net_worth(plan)` subtract `inbox_rows` per account,
+  so the reconciliation stays exact. `assert_sound`: every consumed row reaches an
+  entry or `inbox_rows`.
+- `_stats`: `feed_rows`, `inbox_rows`, `inbox_amount`.
+
+**Phase 3 — Apply + wizard** (`apply.py`, `assets/javascript/ynab_import/`):
+- Per batch: entries → lines → primary feed rows → `mirror_rows_for` → bulk insert.
+  Then `inbox_rows`. `ApplyResult.feed_rows`; `YNAB_IMPORT` audit metadata.
+- `can_import`: also refuse a book with any `BankTransaction` (an uploaded,
+  uncategorized CSV passes today and would be duplicated).
+- Accounts screen: "Show in Inbox" toggle. Summary: "N transactions in your Inbox
+  feeds, M waiting to be categorized ($X — these accounts' balances reach YNAB's
+  once they are). Nothing is reconciled; reconcile each account from its statement."
+- Onboarding: the YNAB path no longer pre-ticks the categorize task when
   `inbox_rows` is non-empty.
 
-### Phase 3 — Transfer-review guard
+**Phase 4 — Dedup guards** (per F6 outcome, §4 B1/B2).
 
-`transfer_detection.py` changes per §4 B1. Must ship with Phase 2.
-
-### Phase 4 — Overlap matcher for Plaid/CSV
-
-Matcher + "matched" marker per §4 B2, called from `process_added_transaction` and
-`preview_transactions`.
-
-### Phase 5 (optional) — Statement records
-
-One completed `Reconciliation` per account at its last reconciled row's date,
-`statement_balance` = reconciled balance, `cleared_total` = sum of locked lines, so
-the feed header and account cards show "reconciled through {date}" instead of
-nothing. Lines get `reconciliation_id`. Requires `integrity.py` to treat it as intact.
-
-### Tests
-
-Pure: every §2 rule, the gate with inbox rows, `has_feed` toggle, sample totals
-(`feed_rows`, `inbox_rows`). Apply: the sample lands N feed rows; each feed row's
-account has a line on its entry; mirror/primary share an entry; `bank_transaction_to_feed_row`
-reports the right category/split/reconciled for each §2 case. Isolation: nothing
-in a sibling book. E2E: import → account card shows rows → a reconciled row is locked.
+**Tests:** every §3.1 rule; the gate with inbox rows; F4 defaults on the sample
+(the 9 accounts above); no imported line reconciled; `sync_transfer` no-op
+invariant; F2 end state on the three sample splits; isolation (nothing in a sibling
+book); E2E: import → account card shows rows → transfer appears in both feeds.
 
 ---
 
 ## 4. Blockers and risks
 
-### B1 — Transfer review floods with historical false positives · **blocking**
+### B1 — Transfer review flags historical coincidences · open (F6)
 
-`find_transfer_candidates()` scans every non-archived, non-mirror feed row,
-categorized included, and pairs equal-magnitude opposite-direction rows on
-different accounts within 5 days. Five years of history will produce coincidental
-pairs (a $50 refund here, a $50 purchase there). "Resolve" **voids** the archived
-leg's entry — one wrong click deletes a real expense from every balance. It also
-loads every feed row into Python on each call.
+`find_transfer_candidates()` pairs any two non-mirror feed rows on different
+accounts with equal magnitude, opposite direction, within 5 days, that don't share
+an entry — categorized rows included. F1 stops a real transfer being flagged (its
+two rows share an entry). It does not stop unrelated rows pairing. **Simulated on the
+sample with F1 + F4: ~53 suggestions**, each offering "Resolve", which **voids** one
+side's journal entry. The function also loads every feed row into memory per call
+(~6,400 on the sample).
 
-Fix: skip a pair when both legs are `source=ynab` (YNAB already paired every real
-transfer: 839 matched, 0 unmatched), and bound the scan (e.g. rows posted in the
-last 90 days or unreconciled). Measure the candidate count on the sample before/after.
+Fix: skip a pair when both rows are `source=ynab` — YNAB paired every real transfer
+itself (839 matched, 0 unmatched) — and scan only recent rows.
 
-### B2 — Plaid/CSV overlap duplicates · **blocking for anyone who links a bank**
+### B2 — Linking a bank or uploading a CSV after import · open (F6)
+
+Separate from F1: this is the same *bank transaction* arriving from two sources.
 
 - Plaid (`plaid/tasks.py::process_added_transaction`) dedupes only on
-  `plaid_transaction_id`. The first sync's history window duplicates every imported
-  row in it.
+  `plaid_transaction_id`. The first sync returns Plaid's history window (90 days by
+  default; the app sets no `days_requested`), all already imported from YNAB → the
+  same transactions again, uncategorized. Categorizing them double-counts.
 - CSV (`csv_upload.py`) flags a duplicate only on account + date + amount +
-  **description `iexact`**; YNAB's cleaned payee/memo never equals the bank's raw
-  text, so nothing is flagged.
+  description `iexact`; YNAB's cleaned payee never equals the bank's raw text.
 
-This exists today (D12's corollary — the per-account cut-off it called for was never
-built), and is worse today: the duplicate arrives uncategorized against an entry that
-already exists, and categorizing it double-counts. Feed rows make it fixable:
-match an incoming row to an unmatched `source=ynab` row on the same account, same
-amount, date within ±3 days (prefer uncleared YNAB rows, then closest date). Plaid:
-attach the `PlaidTransaction` to the existing row instead of creating one. CSV:
-mark `is_potential_duplicate`. Needs a "matched" marker on the YNAB row
-(`raw["ynab"]["matched"]` or a nullable FK) so one YNAB row absorbs one bank row.
+Minimum fix (what D12 proposed and was never built): record each account's last
+imported date; Plaid rows on or before it are skipped, CSV rows on or before it are
+pre-flagged as duplicates. Fuller fix: match on account + amount + date ±3 days
+against unmatched `source=ynab` rows.
 
-### B3 — Transfers: both legs are real, the model has a primary and a mirror
+### B3 — Reconciling five years by hand
 
-KB's feed transfer = one real leg + one synthetic mirror. Imported, both are real.
-Making the inflow leg the mirror reuses every invariant (archive/delete together,
-detection exclusion, orphan guard) at two costs: `sync_transfer` overwrites the
-mirror's description/merchant/date from the primary on the first edit, and
-`would_orphan_primary` refuses re-categorizing the mirror leg to a non-feed account
-("edit the original transaction instead"). Alternative — two non-mirror legs on
-one entry — needs `sync_transfer`, `linked_legs`, `would_orphan_primary` and
-`batch_delete` audited for a non-mirror counterpart. **Recommend mirror.**
+Every imported line is unreconciled (F3):
+- The reconcile workspace lists every candidate line up to statement date + 7 days,
+  **unpaginated** (`candidates.visible_lines`). The first statement on
+  `Credit Card (TG)` lists ~2,700 lines; `diagnose()` runs over all of them. Needs a
+  measure, and likely pagination or virtualization.
+- `tick_through(date)` makes a catch-up statement one click; month-by-month
+  reconciliation of the history is ~58 statements per account.
+- Opening balances are unreconciled too and must be ticked in each account's first
+  statement.
+- Every imported row shows under the feed's "To Review" filter, and the monthly
+  review's step 1 reports every historical month as unreconciled.
 
-### B4 — Split with a merged transfer leg (3 rows on the sample)
+### B4 — Split mirrors are a change to live feed behaviour
 
-The split's entry has one bank line plus legs; one leg is another feed account.
-A feed row on that other account would render as a split of the *wrong* account
-(`bank_transaction_to_feed_row` treats every non-own line as a leg) and
-`apply_splits` would edit the wrong bank line. Its journal line still counts, so the
-balance is right; the row is missing from that feed. Named in the import summary.
-Alternative: restructure into a split + a separate transfer entry — changes the
-statement-line shape on the split's account. **Recommend leave out.**
-
-### B5 — Uncategorized rows in the Inbox (3 on the sample)
-
-No journal entry → the account balance is short by their amount until categorized,
-and a YNAB-reconciled row cannot carry `is_reconciled` (it lives on `JournalLine`).
-The gate change in Phase 1 keeps the reconciliation exact; the summary says why the
-balance differs. On the sample all 3 are Cleared/Uncleared, none Reconciled.
-Decision needed for other exports: a *reconciled* uncategorized row → Inbox (loses
-lock) or `Uncategorized Expense/Income` + categorized feed row (keeps lock).
-**Recommend the latter**: a reconciled statement must not change after import.
-
-### B6 — Accounts that are not banks get Inbox cards
-
-Default `has_feed = on_budget or liability` puts `Cash` (79 rows),
-`Reconcile account` (516 rows — a pension pass-through clearing account) and
-`BBC A/R` in the Inbox, plus 13 dormant zero-balance accounts. The per-account
-toggle (Phase 1) is the fix; defaults need a rule. `feed_accounts` does **not**
-filter `is_archived`, so archiving dormant accounts would not hide their cards
-without that change too.
-
-### B7 — Uncleared and future-dated rows
-
-60 uncleared + 80 cleared-not-reconciled rows on feed accounts; 6 dated after the
-export date (scheduled). Uncleared rows are the likeliest to be duplicated by the
-first bank sync — B2's matcher prefers them. Future-dated rows are already posted
-as journal entries today; as feed rows they would show future dates in the Inbox.
-Decision: skip feed rows for `entry_date > export date`, or import as-is.
+§3.3 changes `sync_transfer`, `apply_splits`, `would_orphan_primary` and the feed
+row renderer for all books, not just imports. Phase 1 ships and is tested on its own.
 
 ### Non-blocking
 
-- **Volume:** +~7,000 inserts beside ~13,300 lines; same batch loop. Feed list is
-  paginated (200) and prefetches lines.
+- **Volume:** ~6,850 inserts beside ~13,300 lines, same batch loop.
+  `ANALYZED_MODELS` already analyzes `BankTransaction`.
 - **Portability:** new `source` value flows via `FEED_SOURCES`; `wipe_book` cascades
-  `BankTransaction` through `Account`. Round-trip test with the sample.
-- **Guards:** reconciled imported rows are protected by the existing
-  `ReconciledLineError` guards on every edit path; no change.
-- **Audit:** `bulk_create` skips signals by design; the one `YNAB_IMPORT` event is the record.
-
----
-
-## 5. Decisions
-
-| # | Question | Recommendation |
-|---|---|---|
-| F1 | Transfer feed ↔ feed: primary + mirror, or two real legs | Primary (outflow leg) + mirror (B3) |
-| F2 | Split-merged transfer legs | Leave out of the other feed; name in summary (B4) |
-| F3 | YNAB-uncategorized rows | Inbox if unreconciled; `Uncategorized` account + categorized feed row if reconciled (B5) |
-| F4 | Default "Show in Inbox" per account | On-budget or liability, **off** when closing balance is 0 and no row in the last 12 months (B6) |
-| F5 | Future-dated rows | No feed row (B7) |
-| F6 | Ship B2 with this, or after | With it: without the matcher, linking a bank after import duplicates the overlap |
-| F7 | Phase 5 statement records | After; not needed for the goal |
+  `BankTransaction` through `Account`. Add a round-trip test on the sample.
+- **Audit:** `bulk_create` skips signals by design; the one `YNAB_IMPORT` event is
+  the record.
+- **Future-dated rows (F5):** an account card's latest-transaction date can read
+  later than today.
