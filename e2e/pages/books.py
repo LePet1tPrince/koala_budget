@@ -4,10 +4,11 @@ from .base import BasePage
 
 
 class BookSwitcher(BasePage):
-    """The sidebar tile (desktop). Its menu lists the team's books, then other teams."""
+    """The "My books" submenu of the sidebar's user menu (desktop): the team's books, then other teams."""
 
     def open(self):
-        self.page.locator("[data-testid='team-switcher']").click()
+        self.page.locator("[data-testid='user-menu']").click()
+        self.page.locator("[data-testid='my-books-toggle']:visible").click()
 
     def current_book_name(self) -> str:
         return self.page.locator("[data-testid='switcher-book-name']").inner_text().strip()

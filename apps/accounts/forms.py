@@ -16,7 +16,30 @@ from .models import (
 )
 
 
-class AccountGroupForm(forms.ModelForm):
+class BookUniqueNameMixin:
+    """
+    Enforce the model's `unique_together = ["book", "name"]` as a form error.
+
+    `book` is not a form field, so ModelForm's own unique check skips the
+    constraint and a duplicate name reached the database as an IntegrityError.
+    """
+
+    def __init__(self, *args, book=None, **kwargs):
+        self.book = book
+        super().__init__(*args, **kwargs)
+
+    def clean_name(self):
+        name = self.cleaned_data["name"].strip()
+        if self.book is not None:
+            taken = self._meta.model.objects.filter(book=self.book, name=name)
+            if self.instance.pk:
+                taken = taken.exclude(pk=self.instance.pk)
+            if taken.exists():
+                raise forms.ValidationError(_("“%(name)s” already exists.") % {"name": name})
+        return name
+
+
+class AccountGroupForm(BookUniqueNameMixin, forms.ModelForm):
     """Form for creating and editing account groups."""
 
     class Meta:
@@ -25,6 +48,15 @@ class AccountGroupForm(forms.ModelForm):
         widgets = {
             "description": forms.Textarea(attrs={"rows": 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A group's type is its accounts' type: changing it would silently turn,
+        # say, expense accounts into assets. Locked once the group holds any.
+        if self.instance.pk and (self.instance.is_system or self.instance.accounts.exists()):
+            field = self.fields["account_type"]
+            field.disabled = True
+            field.help_text = _("Fixed while the group has accounts in it.")
 
 
 class AccountForm(forms.ModelForm):
@@ -121,7 +153,7 @@ class AccountForm(forms.ModelForm):
         return cleaned_data
 
 
-class InstitutionForm(forms.ModelForm):
+class InstitutionForm(BookUniqueNameMixin, forms.ModelForm):
     """Form for creating and editing institutions."""
 
     class Meta:
@@ -129,7 +161,7 @@ class InstitutionForm(forms.ModelForm):
         fields = ["name"]
 
 
-class PayeeForm(forms.ModelForm):
+class PayeeForm(BookUniqueNameMixin, forms.ModelForm):
     """Form for creating and editing payees."""
 
     class Meta:

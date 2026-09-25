@@ -4,14 +4,11 @@
 {% comment %}
   The Team › Book switcher's menu, shared by the desktop sidebar and the mobile
   dropdown: this team's sets of books (the open one ticked), then the other
-  teams (each opens its most recently used book), then creating a book and the
-  team's own settings.
+  teams (each opens its most recently used book), then creating a book. Team
+  settings are reached through Settings, not from here.
 {% endcomment %}
 {% if nav_team %}
 {% if nav_books %}
-<li class="menu-title">
-  <span>{% translate "My books" %}</span>
-</li>
 {% for item in nav_books %}
 <li>
   <a href="{% url 'web_book:home' nav_team.slug item.slug %}" data-testid="book-switch-{{ item.slug }}"
@@ -34,14 +31,6 @@
   </a>
 </li>
 {% endif %}
-{% if request.user|is_member_of:nav_team %}
-<li>
-  <a href="{% url 'single_team:manage_team' nav_team.slug %}">
-    {% icon "gear" class="inline-block shrink-0 w-4 h-4" %}
-    {% translate "Team Settings" %}
-  </a>
-</li>
-{% endif %}
 {% if other_teams %}
 <li class="menu-title">
   <span>{% translate "Switch Team" %}</span>
@@ -53,20 +42,14 @@
 {% endfor %}
 {% endif %}
 {% endif %}
-{% if request.user.is_authenticated %}
+{% if user_pending_invitations %}
 <li class="menu-title">
   <hr/>
 </li>
 <li>
-  <a href="{% url 'teams:manage_teams' %}new">
-    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}
-    {% translate "Add Team" %}
-  </a>
-  {% if user_pending_invitations %}
   <a href="{% url 'teams:manage_teams' %}">
     {% icon "envelope" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Pending Invitations" %}
   </a>
-  {% endif %}
 </li>
 {% endif %}

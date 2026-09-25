@@ -1,62 +1,73 @@
-{% extends "web/app/app_base.html" %}
+{% extends "accounts/detail_base.html" %}
 {% load i18n %}
+{% load icons %}
 {% load currency_tags %}
+{% load account_nav %}
 {% load django_vite %}
-{% block app %}
-<section class="app-card">
-  <div class="flex justify-between items-center mb-4">
-    <h3 class="text-xl mb-1">{{ account.name }}</h3>
-    <div class="flex gap-2">
-      {% if reconcilable %}
-        <a href="{% url 'reconciliation:account' request.team.slug request.book.slug account.pk %}" class="btn btn-outline" data-testid="account-reconcile-btn">
-          {% translate "Reconcile" %}
-        </a>
-      {% endif %}
-      <a href="{% url 'accounts:account_update' request.team.slug request.book.slug account.pk %}" class="btn btn-primary">
-        {% translate "Edit" %}
-      </a>
-      <button type="button" id="delete-account-btn" class="btn btn-outline btn-error" data-testid="delete-account-btn">
-        {% translate "Delete" %}
-      </button>
+{% block detail_title %}{{ account.name }}{% endblock %}
+{% block detail_meta %}
+  <span class="badge badge-ghost badge-sm">{{ account.account_group.get_account_type_display }}</span>
+  <a href="{% return_here account.account_group.get_absolute_url %}" class="link link-hover" data-testid="account-group-link">{{ account.account_group.name }}</a>
+  {% if account.institution %}
+    <span aria-hidden="true">·</span>
+    <a href="{% return_here account.institution.get_absolute_url %}" class="link link-hover" data-testid="account-institution-link">{{ account.institution.name }}</a>
+  {% endif %}
+  {% if account.has_feed %}<span class="badge badge-ghost badge-sm">{% translate "Bank feed" %}</span>{% endif %}
+  {% if account.is_system %}<span class="badge badge-ghost badge-sm">{% translate "System" %}</span>{% endif %}
+{% endblock %}
+{% block detail_actions %}
+  {% if feed_url %}
+    <a href="{{ feed_url }}" class="btn btn-ghost btn-sm" data-testid="account-inbox-btn">
+      {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}{% translate "Open in Inbox" %}
+    </a>
+  {% endif %}
+  {% if reconcilable %}
+    <a href="{% url 'reconciliation:account' request.team.slug request.book.slug account.pk %}" class="btn btn-outline btn-sm" data-testid="account-reconcile-btn">
+      {% translate "Reconcile" %}
+    </a>
+  {% endif %}
+  <a href="{{ edit_url }}" class="btn btn-outline btn-sm" data-testid="edit-account-btn">
+    {% icon "pencil" class="inline-block shrink-0 w-4 h-4" %}{% translate "Edit" %}
+  </a>
+  {% if not account.is_system %}
+    <a href="#" id="delete-account-btn" class="btn btn-ghost btn-sm text-error" data-dialog="delete-account-modal" data-testid="delete-account-btn">
+      {% icon "trash" class="inline-block shrink-0 w-4 h-4" %}{% translate "Delete" %}
+    </a>
+  {% endif %}
+{% endblock %}
+{% block detail_header_extra %}
+  <div class="stats stats-vertical sm:stats-horizontal w-full border border-base-300 mt-4" data-testid="account-stats">
+    {% if current_balance %}
+      <div class="stat py-3">
+        <div class="stat-title">{{ current_balance.label }}</div>
+        <div class="stat-value text-2xl money {% if current_balance.negative %}text-error{% endif %}" data-testid="account-balance">{{ current_balance.amount|currency }}</div>
+        <div class="stat-desc">{% translate "today" %}</div>
+      </div>
+      <div class="stat py-3">
+        <div class="stat-title">{% translate "Change" %}</div>
+        <div class="stat-value text-2xl money">{% if report_data.total > 0 %}+{% endif %}{{ report_data.total|currency }}</div>
+        <div class="stat-desc">{{ start_date|date:"M j, Y" }} – {{ end_date|date:"M j, Y" }}</div>
+      </div>
+    {% else %}
+      <div class="stat py-3">
+        <div class="stat-title">{% translate "Total" %}</div>
+        <div class="stat-value text-2xl money {% if report_data.total < 0 %}text-error{% endif %}" data-testid="account-period-total">{{ report_data.total|currency }}</div>
+        <div class="stat-desc">{{ start_date|date:"M j, Y" }} – {{ end_date|date:"M j, Y" }}</div>
+      </div>
+    {% endif %}
+    <div class="stat py-3">
+      <div class="stat-title">{% translate "Transactions" %}</div>
+      <div class="stat-value text-2xl money">{{ report_data.transactions|length }}</div>
+      <div class="stat-desc">{% translate "in this period" %}</div>
     </div>
   </div>
-  <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-      <dt class="font-semibold">{% translate "Type" %}</dt>
-      <dd>{{ account.account_group.get_account_type_display }}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold">{% translate "Account Group" %}</dt>
-      <dd><a href="{{ account.account_group.get_absolute_url }}" class="link">{{ account.account_group.name }}</a></dd>
-    </div>
-    <div>
-      <dt class="font-semibold">{% translate "Institution" %}</dt>
-      <dd>{% if account.institution %}{{ account.institution.name }}{% else %}-{% endif %}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold">{% translate "Has Bank Feed" %}</dt>
-      <dd>{% if account.has_feed %}{% translate "Yes" %}{% else %}{% translate "No" %}{% endif %}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold">{% translate "Created" %}</dt>
-      <dd>{{ account.created_at }}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold">{% translate "Journal Lines" %}</dt>
-      <dd>{{ account.journal_lines.count }}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold">{% translate "Account Balance" %}</dt>
-      <dd {% if account.balance < 0 %}class="text-error"{% endif %}>{{ account.balance|currency }}</dd>
-    </div>
-  </dl>
-</section>
-
+{% endblock %}
+{% block detail_body %}
 {% if reconcilable %}
 <section class="app-card" data-testid="account-statements">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-2">
-    <h3 class="text-xl mb-1">{% translate "Statements" %}</h3>
-    <a href="{% url 'reconciliation:account' request.team.slug request.book.slug account.pk %}" class="link link-primary text-sm">{% translate "Reconcile a statement" %}</a>
+    <h2 class="text-base font-semibold">{% translate "Statements" %}</h2>
+    <a href="{% url 'reconciliation:account' request.team.slug request.book.slug account.pk %}" class="btn btn-ghost btn-sm">{% translate "Reconcile a statement" %}</a>
   </div>
   {% if statements %}
     <table class="table table-sm table-quiet">
@@ -70,7 +81,7 @@
       <tbody>
         {% for statement in statements %}
           <tr>
-            <td><a class="link" href="{{ statement.url }}">{{ statement.statement_date }}</a></td>
+            <td><a class="link link-hover" href="{{ statement.url }}">{{ statement.statement_date }}</a></td>
             <td class="text-right money">{{ statement.statement_balance|currency }}</td>
             <td>
               {% if statement.status == "undone" %}
@@ -91,59 +102,21 @@
 </section>
 {% endif %}
 
-<section class="app-card">
+<section class="app-card" data-testid="account-activity">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
-    <div>
-      <h3 class="text-xl mb-1">{% translate "Activity" %}</h3>
-      {% if start_date and end_date %}
-      <p class="text-sm text-base-content/70">
-        {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" trimmed %}
-          {{ start }} – {{ end }}
-        {% endblocktranslate %}
-      </p>
-      {% endif %}
-    </div>
+    <h2 class="text-base font-semibold">{% translate "Activity" %}</h2>
     <div id="date-range-picker" data-default-range="year"></div>
   </div>
   {% include "reports/components/account_activity_section.html" %}
 </section>
-
-<dialog id="delete-account-modal" class="modal">
-  <div class="modal-box">
-    <h3 class="font-bold text-lg">{% translate "Delete Account" %}</h3>
-    <p class="py-4">
-      {% blocktranslate with name=account.name trimmed %}
-        Are you sure you want to delete "{{ name }}"?
-      {% endblocktranslate %}
-    </p>
-    <div class="modal-action">
-      <form method="dialog">
-        <button class="btn">{% translate "Cancel" %}</button>
-      </form>
-      <form method="post" action="{% url 'accounts:account_delete' request.team.slug request.book.slug account.pk %}">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-outline btn-error" data-testid="confirm-delete-btn">
-          {% translate "Delete" %}
-        </button>
-      </form>
-    </div>
-  </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>{% translate "close" %}</button>
-  </form>
-</dialog>
-
-<script>
-  (function () {
-    const openBtn = document.getElementById('delete-account-btn');
-    const modal = document.getElementById('delete-account-modal');
-    if (openBtn && modal) {
-      openBtn.addEventListener('click', function () {
-        modal.showModal();
-      });
-    }
-  })();
-</script>
+{% endblock %}
+{% block dialogs %}
+  {% if not account.is_system %}
+    {% url 'accounts:account_delete' request.team.slug request.book.slug account.pk as delete_url %}
+    {% translate "Delete account" as delete_title %}
+    {% translate "Accounts with transactions can't be deleted. An opening balance, if it has one, is removed along with it." as delete_note %}
+    {% include "accounts/components/delete_dialog.html" with dialog_id="delete-account-modal" title=delete_title name=account.name action=delete_url note=delete_note %}
+  {% endif %}
 {% endblock %}
 
 {% block page_js %}

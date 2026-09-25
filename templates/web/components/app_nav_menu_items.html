@@ -154,7 +154,7 @@
     <div x-data="{ open: {% if active_tab == 'accounts' %}true{% else %}false{% endif %} }" class="flex flex-col">
       <div class="side-row">
         <a href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
-           class="side-link flex-1 {% if active_tab == 'accounts' %}side-link-active{% endif %}">
+           class="side-link flex-1 {% if active_tab == 'accounts' and not accounts_section %}side-link-active{% endif %}">
           {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Accounts" %}
         </a>
@@ -167,22 +167,22 @@
       </div>
       <div x-show="open" x-cloak class="flex flex-col gap-0.5">
         <a href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub" data-testid="nav-accounts-list">
+           class="side-link side-link-sub {% if accounts_section == 'accounts' %}side-link-active{% endif %}" data-testid="nav-accounts-list">
           {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Accounts" %}
         </a>
         <a href="{% url 'accounts:accountgroup_list' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub" data-testid="nav-accounts-groups">
+           class="side-link side-link-sub {% if accounts_section == 'groups' %}side-link-active{% endif %}" data-testid="nav-accounts-groups">
           {% icon "layer-group" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Groups" %}
         </a>
         <a href="{% url 'accounts:payee_list' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub" data-testid="nav-accounts-payees">
+           class="side-link side-link-sub {% if accounts_section == 'payees' %}side-link-active{% endif %}" data-testid="nav-accounts-payees">
           {% icon "users" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Payees" %}
         </a>
         <a href="{% url 'accounts:institution_list' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub" data-testid="nav-accounts-institutions">
+           class="side-link side-link-sub {% if accounts_section == 'institutions' %}side-link-active{% endif %}" data-testid="nav-accounts-institutions">
           {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Institutions" %}
         </a>
