@@ -5,7 +5,15 @@ import React, { useMemo } from 'react';
 import Icon from '../common/Icon';
 import ChipSelect from './ChipSelect';
 import NameBank from './NameBank';
-import { resolveNewName, withName } from './names';
+import {
+  editsAfterAdd,
+  editsAfterRemove,
+  editsAfterRename,
+  EMPTY_EDITS,
+  listNames,
+  resolveNewName,
+  resolveRename,
+} from './names';
 
 /**
  * Where each inflow came from.
@@ -18,7 +26,7 @@ import { resolveNewName, withName } from './names';
 const money = (value) =>
   `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const Step3Income = ({ income, suggestions, otherIncome, choices, onChange, extraAccounts, onExtraAccountsChange }) => {
+const Step3Income = ({ income, suggestions, otherIncome, choices, onChange, edits = EMPTY_EDITS, onEditsChange }) => {
   const choiceFor = (row) => choices[row.payee] || {};
   const update = (row, patch) => onChange({ ...choices, [row.payee]: { ...choiceFor(row), ...patch } });
   const kindOf = (row) => choiceFor(row).kind ?? row.kind;
@@ -26,21 +34,13 @@ const Step3Income = ({ income, suggestions, otherIncome, choices, onChange, extr
   // it lands where the server would put it.
   const accountOf = (row) => choiceFor(row).account || row.account || otherIncome;
 
-  // The suggested accounts, then any a row is in, then the ones the user added.
-  const accounts = useMemo(() => {
-    let names = [];
-    suggestions.forEach((name) => {
-      names = withName(names, name);
-    });
-    income.forEach((row) => {
-      if (kindOf(row) === 'income') names = withName(names, accountOf(row));
-    });
-    extraAccounts.forEach((name) => {
-      names = withName(names, name);
-    });
-    return names;
+  // The suggested accounts (as renamed), then the ones the user added, then any
+  // other a row is in.
+  const accounts = useMemo(
+    () => listNames(suggestions, income.filter((row) => kindOf(row) === 'income').map(accountOf), edits),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [income, suggestions, choices, extraAccounts]);
+    [income, suggestions, choices, edits],
+  );
 
   const counts = useMemo(() => {
     const tally = {};
@@ -54,8 +54,27 @@ const Step3Income = ({ income, suggestions, otherIncome, choices, onChange, extr
 
   const createAccount = (raw) => {
     const result = resolveNewName(accounts, raw);
-    if (result.created) onExtraAccountsChange([...extraAccounts, result.name]);
+    if (result.created) onEditsChange(editsAfterAdd(edits, result.name));
     return result;
+  };
+
+  // Every payee in `from` -- "not income" ones too, so one switched back to income
+  // later lands in the renamed account rather than bringing the old name back.
+  const movePayees = (from, to) => {
+    const next = { ...choices };
+    income.forEach((row) => {
+      if (accountOf(row) === from) next[row.payee] = { ...choiceFor(row), account: to };
+    });
+    onChange(next);
+  };
+
+  const renameAccount = (from, raw) => {
+    const result = resolveRename(accounts, from, raw);
+    if (result.error) return result.error;
+    if (result.unchanged) return null;
+    movePayees(from, result.name);
+    onEditsChange(editsAfterRename(edits, from, result.name, result.merged));
+    return null;
   };
 
   return (
@@ -74,16 +93,18 @@ const Step3Income = ({ income, suggestions, otherIncome, choices, onChange, extr
           <h3 className="font-semibold">{gettext('Income accounts')}</h3>
           <p className="mt-1 text-sm text-base-content/70">
             {gettext(
-              'Each payee below goes into one of these. Add an account with + here or from any row’s menu, and it is offered on every row.',
+              'Each payee below goes into one of these. Add an account with + here or from any row’s menu, and it is offered on every row. Click an account to rename it or move all its payees to another.',
             )}
           </p>
         </div>
         <NameBank
           names={accounts}
           counts={counts}
-          removable={extraAccounts.filter((name) => !counts[name])}
-          onRemove={(name) => onExtraAccountsChange(extraAccounts.filter((item) => item !== name))}
+          removable={accounts}
+          onRemove={(name) => onEditsChange(editsAfterRemove(edits, name))}
           onAdd={(raw) => createAccount(raw).error}
+          onRename={renameAccount}
+          onReassign={movePayees}
           addLabel={gettext('New income account')}
           addPlaceholder={gettext('Account name')}
           testId="ynab-income-accounts"

@@ -111,6 +111,71 @@ def test_accounts_are_filed_into_groups_picked_from_one_list(import_page, tiny_e
 
 
 @pytest.mark.django_db
+def test_a_group_is_picked_by_filter_and_keyboard(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    import_page.add_group("asset", "Everyday")
+    import_page.add_group("asset", "Emergency")
+
+    # The filter narrows the list; Enter takes the highlighted match.
+    import_page.pick_group_by_keyboard("Chequing", "every", ["Enter"])
+    assert import_page.account_group("Chequing") == "Everyday"
+
+    # ↓ / Tab walk the list from the current choice and wrap past the "New group"
+    # row at the end; Shift+Tab walks back.
+    assert import_page.group_names("asset") == ["Bank Account", "Tracking Account", "Everyday", "Emergency"]
+    import_page.pick_group_by_keyboard("Chequing", "", ["ArrowDown", "Enter"])
+    assert import_page.account_group("Chequing") == "Emergency"
+    import_page.pick_group_by_keyboard("Chequing", "", ["Tab", "Tab", "Tab", "Shift+Tab", "Enter"])
+    assert import_page.account_group("Chequing") == "Bank Account"
+
+
+@pytest.mark.django_db
+def test_a_group_can_be_renamed_and_emptied_from_its_chip(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    bank = "ynab-groups-asset"
+    assert import_page.account_group("Chequing") == "Bank Account"
+
+    # Renaming a chip renames it for every row using it, in place.
+    import_page.rename_name(bank, "Bank Account", "Everyday Banking")
+    assert "Bank Account" not in import_page.chip_names(bank)
+    assert "Everyday Banking" in import_page.chip_names(bank)
+    assert import_page.account_group("Chequing") == "Everyday Banking"
+
+    # "Move all" sends every row in a group to another, leaving the chip unused.
+    import_page.move_all(bank, "Everyday Banking", "Tracking Account")
+    assert import_page.account_group("Chequing") == "Tracking Account"
+    assert "Everyday Banking" in import_page.chip_names(bank)
+
+    # Renaming onto an existing name combines the two.
+    import_page.rename_name(bank, "Tracking Account", "everyday banking")
+    assert "Tracking Account" not in import_page.chip_names(bank)
+    assert import_page.account_group("Chequing") == "Everyday Banking"
+    assert import_page.account_group("Savings") == "Everyday Banking"
+
+    import_page.continue_to_preview()
+    import_page.apply()
+    group = AccountGroup.objects.get(book=team.default_book, name="Everyday Banking")
+    assert set(group.accounts.values_list("name", flat=True)) == {"Chequing", "Savings"}
+
+
+@pytest.mark.django_db
+def test_an_income_account_can_be_renamed_from_its_chip(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    import_page.click_next()
+    import_page.page.wait_for_selector("[data-testid='ynab-income-table']")
+    bank = "ynab-income-accounts"
+    (original,) = [name for name in import_page.chip_names(bank) if name]
+
+    import_page.rename_name(bank, original, "Salary")
+    assert import_page.chip_names(bank) == ["Salary"]
+
+    import_page.continue_to_preview()
+    import_page.apply()
+    assert Account.objects.filter(book=team.default_book, name="Salary", account_group__account_type="income").exists()
+    assert not Account.objects.filter(book=team.default_book, name=original).exists()
+
+
+@pytest.mark.django_db
 def test_closing_mid_review_asks_in_a_dialog_not_a_browser_prompt(import_page, tiny_export, team, requires_vite):
     native_prompts = []
     import_page.page.on("dialog", lambda dialog: (native_prompts.append(dialog.type), dialog.dismiss()))

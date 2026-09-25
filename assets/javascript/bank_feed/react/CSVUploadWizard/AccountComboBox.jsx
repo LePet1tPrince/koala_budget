@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import Icon from '../../../common/Icon';
 import { accountKind, pickableAccounts } from '../../../common/accountKind';
+import useListNavigation from '../../../common/useListNavigation';
 
 const ACCOUNT_TYPE_LABELS = {
   asset: gettext('Assets'),
@@ -24,20 +25,19 @@ const TYPE_ORDER = ['asset', 'liability', 'income', 'expense', 'goal', 'equity']
  * The dropdown panel is rendered in a portal with fixed positioning so it is
  * not clipped by (or constrained to the width of) scrollable modal containers.
  *
- * Keyboard: while the search field is focused, Up/Down move the highlighted
- * option and Enter selects it; Left/Right are left untouched so they still
- * move the text cursor within the search query.
+ * Keyboard (`common/useListNavigation`): while the search field is focused,
+ * Up/Down move the highlighted option and Enter selects it; Left/Right are left
+ * untouched so they still move the text cursor within the search query, and Tab
+ * closes the panel so focus moves on to the next card.
  */
 const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [menuPos, setMenuPos] = useState(null);
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const containerRef = useRef(null);
   const menuRef = useRef(null);
   const inputRef = useRef(null);
   const triggerRef = useRef(null);
-  const highlightedRef = useRef(null);
 
   const selectedAccount = useMemo(
     () => allAccounts.find((a) => a.id === value) || null,
@@ -139,22 +139,17 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
     return map;
   }, [orderedTypes, groupedAccounts]);
   const createIndex = flatOptions.length - 1;
+  const nav = useListNavigation(flatOptions.length, { wrap: false, scrollKey: open });
+  const highlightedIndex = nav.active;
 
   // When opening, highlight the currently selected account (or the top option).
   useEffect(() => {
     if (open) {
-      setHighlightedIndex(value != null && accountFlatIndex.has(value) ? accountFlatIndex.get(value) : 0);
+      nav.setActive(value != null && accountFlatIndex.has(value) ? accountFlatIndex.get(value) : 0);
     }
     // Only when open toggles; accountFlatIndex is stable while open with empty search.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  // Keep the highlighted option scrolled into view as it changes.
-  useEffect(() => {
-    if (open && highlightedRef.current) {
-      highlightedRef.current.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightedIndex, open]);
 
   const handleSelect = (accountId, fromKeyboard = false) => {
     onChange(accountId);
@@ -198,18 +193,9 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
       setSearch('');
       return;
     }
-    if (e.key === 'ArrowDown') {
-      // Vertical arrows drive option selection...
-      e.preventDefault();
-      setHighlightedIndex((i) => Math.min(i + 1, flatOptions.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightedIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      activateOption(flatOptions[highlightedIndex], true);
-    }
-    // ...Left/Right fall through so they move the cursor within the search text.
+    // Vertical arrows and Enter drive option selection; Left/Right fall through
+    // so they move the cursor within the search text.
+    nav.onKeyDown(e, { onPick: (index) => activateOption(flatOptions[index], true) });
   };
 
   return (
@@ -264,7 +250,7 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
-                setHighlightedIndex(0);
+                nav.setActive(0);
               }}
               onKeyDown={handleSearchKeyDown}
             />
@@ -274,10 +260,9 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
           <div className="overflow-y-auto flex-1">
             {/* Leave uncategorized option */}
             <div
-              ref={highlightedIndex === 0 ? highlightedRef : null}
+              {...nav.itemProps(0)}
               className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm text-base-content/70 italic ${!value ? 'bg-primary/10 font-medium' : ''} ${highlightedIndex === 0 ? 'bg-base-300' : ''}`}
               onMouseDown={() => handleSelect(null)}
-              onMouseEnter={() => setHighlightedIndex(0)}
             >
               {gettext('-- Leave uncategorized --')}
             </div>
@@ -299,10 +284,9 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
                   return (
                     <div
                       key={account.id}
-                      ref={isHighlighted ? highlightedRef : null}
+                      {...nav.itemProps(idx)}
                       className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm flex items-center justify-between gap-2 ${value === account.id ? 'bg-primary/10 font-medium text-primary' : ''} ${isHighlighted ? 'bg-base-300' : ''}`}
                       onMouseDown={() => handleSelect(account.id)}
-                      onMouseEnter={() => setHighlightedIndex(idx)}
                     >
                       <span className="truncate">{account.name}</span>
                       {account.institution_name && (
@@ -321,10 +305,9 @@ const AccountComboBox = ({ allAccounts, value, onChange, onCreateNew }) => {
           {/* Create new account */}
           <div className="border-t border-base-300 p-1">
             <div
-              ref={highlightedIndex === createIndex ? highlightedRef : null}
+              {...nav.itemProps(createIndex)}
               className={`px-3 py-2 cursor-pointer hover:bg-base-200 text-sm text-primary font-medium flex items-center gap-2 rounded ${highlightedIndex === createIndex ? 'bg-base-300' : ''}`}
               onMouseDown={handleCreateNew}
-              onMouseEnter={() => setHighlightedIndex(createIndex)}
             >
               <Icon name="plus" className="inline-block shrink-0 w-3 h-3" />
               {gettext('Create new account')}

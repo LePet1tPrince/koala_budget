@@ -415,3 +415,36 @@ def test_dismissing_a_pair_removes_it_from_the_review(requires_vite, authenticat
     authenticated_page.get_by_text("All transfers reviewed.").wait_for(timeout=10_000)
 
     assert feed.transfer_suggestion_count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_csv_category_picker_is_keyboard_driven(requires_vite, authenticated_page: Page, live_server, team, tmp_path):
+    """
+    The Map Categories picker: the search filters, ↑/↓ move the highlight (stopping
+    at the ends), Enter takes it. Shared with the YNAB import's chip menus through
+    `common/useListNavigation`, so this locks the behaviour both rely on.
+    """
+    group = AccountGroupFactory(team=team, name="Zed Spending")
+    AccountFactory(team=team, account_group=group, name="Zed Groceries")
+    AccountFactory(team=team, account_group=group, name="Zed Dining")
+    feed_account = AssetAccountFactory(team=team, has_feed=True)
+    csv_file = tmp_path / "statement.csv"
+    csv_file.write_text("Date,Description,Amount,Category\n2026-01-05,Grocer,-40.00,Food\n")
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.click_account_card(feed_account.id)
+    feed.open_csv_upload(str(csv_file))
+    page = authenticated_page
+    page.get_by_role("button", name="Next", exact=True).click()
+
+    trigger = page.get_by_role("button", name="-- Leave uncategorized --")
+    trigger.click()
+    search = page.get_by_placeholder("Search accounts...")
+    search.fill("zed")
+    # Rows: "Leave uncategorized", Zed Dining, Zed Groceries, "Create new account".
+    search.press("ArrowUp")  # already at the top: stays there
+    search.press("ArrowDown")
+    search.press("ArrowDown")
+    search.press("Enter")
+    assert page.get_by_role("button", name="Zed Groceries").is_visible()
