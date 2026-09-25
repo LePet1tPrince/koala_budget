@@ -9,9 +9,6 @@
 {% endcomment %}
 {% if nav_team %}
 {% if nav_books %}
-<li class="menu-title">
-  <span>{% translate "Sets of books" %}</span>
-</li>
 {% for item in nav_books %}
 <li>
   <a href="{% url 'web_book:home' nav_team.slug item.slug %}" data-testid="book-switch-{{ item.slug }}"
@@ -45,20 +42,14 @@
 {% endfor %}
 {% endif %}
 {% endif %}
-{% if request.user.is_authenticated %}
+{% if user_pending_invitations %}
 <li class="menu-title">
   <hr/>
 </li>
 <li>
-  <a href="{% url 'teams:manage_teams' %}new">
-    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}
-    {% translate "Add Team" %}
-  </a>
-  {% if user_pending_invitations %}
   <a href="{% url 'teams:manage_teams' %}">
     {% icon "envelope" class="inline-block shrink-0 w-4 h-4" %}
     {% translate "Pending Invitations" %}
   </a>
-  {% endif %}
 </li>
 {% endif %}
