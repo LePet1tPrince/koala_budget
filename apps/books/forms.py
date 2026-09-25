@@ -53,8 +53,8 @@ class BookCreateForm(BookNameMixin, forms.ModelForm):
 class BookSettingsForm(BookNameMixin, forms.ModelForm):
     class Meta:
         model = Book
-        fields = ["name", "slug"]
-        labels = {"slug": _("Web address")}
+        fields = ["name", "slug", "budget_future_income"]
+        labels = {"slug": _("Web address"), "budget_future_income": _("Budget income before it arrives")}
         help_texts = {
             "slug": _("The part of the address after the team. Changing it breaks links to the old one."),
         }
@@ -76,13 +76,6 @@ class BookSettingsForm(BookNameMixin, forms.ModelForm):
         if Book.objects.filter(team=self.team, slug=slug).exclude(pk=self.instance.pk).exists():
             raise forms.ValidationError(_("Another set of books in this team already uses that address."))
         return slug
-
-
-class BookBudgetingForm(forms.ModelForm):
-    class Meta:
-        model = Book
-        fields = ["budget_future_income"]
-        labels = {"budget_future_income": _("Budget income before it arrives")}
 
 
 class ConfirmNameForm(forms.Form):

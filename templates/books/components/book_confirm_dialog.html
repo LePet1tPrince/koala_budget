@@ -1,0 +1,61 @@
+{% load i18n %}
+{% comment %}
+  Type-the-name confirmation for archiving or deleting a book from My books.
+
+  Include with `item` (the book) and `action` ("archive" or "delete"), on
+  a page that opens it by id (`book-<action>-dialog-<slug>`). The confirm
+  button stays disabled until the typed name matches; the server checks the
+  name again, so this is a convenience, not the guard.
+{% endcomment %}
+<dialog class="modal" id="book-{{ action }}-dialog-{{ item.slug }}"
+        x-data="{ typed: '', name: $el.dataset.name }" data-name="{{ item.name }}"
+        @close="typed = ''"
+        data-testid="book-{{ action }}-dialog-{{ item.slug }}">
+  <div class="modal-box">
+    {% if action == "archive" %}
+      <h3 class="text-lg font-bold">
+        {% blocktranslate trimmed with name=item.name %}Archive {{ name }}?{% endblocktranslate %}
+      </h3>
+      <p class="py-3 text-sm text-base-content/70">
+        {% blocktranslate trimmed %}
+          Archiving hides this set of books from the switcher. Nothing in it is deleted, and you can restore it
+          from My books at any time.
+        {% endblocktranslate %}
+      </p>
+    {% else %}
+      <h3 class="text-lg font-bold text-error">
+        {% blocktranslate trimmed with name=item.name %}Delete {{ name }}?{% endblocktranslate %}
+      </h3>
+      <p class="py-3 text-sm text-base-content/70">
+        {% blocktranslate trimmed with name=item.name %}
+          Deleting {{ name }} removes its accounts, transactions, budgets, goals and bank connections for good.
+          Download an export first if you might want any of it back.
+        {% endblocktranslate %}
+      </p>
+    {% endif %}
+    <form method="post" action="{% if action == 'archive' %}{% url 'books_team:archive' request.team.slug item.slug %}{% else %}{% url 'books_team:delete' request.team.slug item.slug %}{% endif %}"
+          class="space-y-3">
+      {% csrf_token %}
+      <label class="block">
+        <span class="mb-1 block text-sm">
+          {% blocktranslate trimmed with name=item.name %}
+            Type <strong>{{ name }}</strong> to confirm
+          {% endblocktranslate %}
+        </span>
+        <input type="text" name="confirm" class="input input-bordered w-full" autocomplete="off" required
+               x-model="typed" data-testid="book-{{ action }}-confirm-{{ item.slug }}">
+      </label>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">{% translate "Cancel" %}</button>
+        <button type="submit" :disabled="typed.trim() !== name"
+                class="btn {% if action == 'archive' %}btn-warning{% else %}btn-error{% endif %}"
+                data-testid="book-{{ action }}-submit-{{ item.slug }}">
+          {% if action == "archive" %}{% translate "Archive" %}{% else %}{% translate "Delete forever" %}{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>{% translate "close" %}</button>
+  </form>
+</dialog>

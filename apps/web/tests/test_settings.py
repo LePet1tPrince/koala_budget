@@ -15,7 +15,7 @@ from django.urls import reverse
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN, ROLE_MEMBER
 from apps.users.models import CustomUser
-from apps.web.settings_sections import sections_for
+from apps.web.settings_sections import grouped_sections, sections_for
 
 
 class SettingsHubTest(TestCase):
@@ -108,16 +108,20 @@ class SettingsSectionsTest(TestCase):
                 "profile",
                 "password",
                 "book",
-                "budgeting",
                 "data_transfer",
                 "import",
                 "audit",
-                "archive",
                 "team",
                 "books",
                 "subscription",
             },
         )
+
+    def test_groups_run_team_then_book_then_me(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("web_team:settings", kwargs={"team_slug": self.team.slug}))
+        headings = [str(heading) for heading, _ in grouped_sections(response.wsgi_request)]
+        self.assertEqual(headings, ["My Team", "This book", "Me"])
 
     def test_member_is_not_offered_subscription(self):
         """Billing is admin-only, and the view refuses a member — so don't offer it."""
