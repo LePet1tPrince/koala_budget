@@ -32,6 +32,7 @@ urlpatterns = [
     path("institutions/", views.InstitutionListView.as_view(), name="institution_list"),
     path("institutions/new/", views.InstitutionCreateView.as_view(), name="institution_create"),
     path("institutions/<int:pk>/", views.InstitutionDetailView.as_view(), name="institution_detail"),
+    path("institutions/<int:pk>/accounts/", views.InstitutionAccountsView.as_view(), name="institution_accounts"),
     path("institutions/<int:pk>/update/", views.InstitutionUpdateView.as_view(), name="institution_update"),
     path("institutions/<int:pk>/delete/", views.InstitutionDeleteView.as_view(), name="institution_delete"),
     # JSON API for the drag-and-drop chart-of-accounts board
