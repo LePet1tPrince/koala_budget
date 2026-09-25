@@ -16,9 +16,11 @@ which balances for any mix of signs, including a refund leg inside an outflow
 (+100, -20 against a total of +80) and a gross paycheque with deductions
 (-4000, +800, +200 against a total of -3000).
 
-Everything that writes a feed transaction's journal lines goes through
-`apply_splits`, so the balance invariant is enforced in one place instead of at
-each call site -- which is what the previous per-call-site arithmetic got wrong.
+Everything that writes a transaction's journal lines goes through `write_lines`,
+so the balance invariant is enforced in one place instead of at each call site --
+which is what the previous per-call-site arithmetic got wrong. `apply_splits` is
+that function with a feed row's account filled in; the Transactions page calls
+`write_lines` directly, since a manually-entered transaction has no feed row.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -137,39 +139,45 @@ def check_legs_total(legs, *, total):
 
 
 @transaction.atomic
-def apply_splits(bank_tx, legs, *, total):
+def write_lines(entry, home_account, legs, *, total, book):
     """
-    Write `legs` as the category lines of `bank_tx`'s journal entry.
+    Write `legs` as the category lines of `entry`, against `home_account`.
 
-    The bank line is updated in place, never recreated: it carries
-    is_reconciled / is_cleared / is_archived, and recreating it would silently
-    unreconcile a transaction the user has already confirmed against a
-    statement.
+    The home line -- the one on the account the money sat in -- is updated in
+    place, never recreated: it carries is_reconciled / is_cleared / is_archived,
+    and recreating it would silently unreconcile a transaction the user has
+    already confirmed against a statement.
 
     `total` is signed, positive for an outflow. Raises SplitError when the legs
-    do not sum to it -- the bank sets the total, so a mismatch is a caller bug
-    and must not reach the ledger.
+    do not sum to it -- the total is a fact about the transaction, so a mismatch
+    is a caller bug and must not reach the ledger.
+
+    Split out of `apply_splits` so the Transactions page can write the same lines
+    for an entry that has no `BankTransaction` at all. Everything that writes a
+    transaction's journal lines still goes through one function, which is what
+    keeps the balance invariant and the sign convention in one place rather than
+    at each call site.
     """
     check_legs_total(legs, total=total)
 
-    entry = bank_tx.journal_entry
     if entry is None:
         raise SplitError(_("This transaction has no journal entry to split."))
 
+    home_account_id = getattr(home_account, "id", home_account)
     existing = list(entry.lines.all())
-    bank_lines = [line for line in existing if line.account_id == bank_tx.account_id]
-    if len(bank_lines) != 1:
+    home_lines = [line for line in existing if line.account_id == home_account_id]
+    if len(home_lines) != 1:
         # Not a shape this function can safely rewrite: bail rather than guess
-        # which line is the bank's and risk rewriting the wrong one.
+        # which line is the home account's and risk rewriting the wrong one.
         raise SplitError(_("This transaction's ledger entry cannot be split automatically."))
-    bank_line = bank_lines[0]
+    home_line = home_lines[0]
 
     # Match each leg to an existing category line on the same account (same
     # amount first), so an unchanged leg is left exactly as it is. That matters
     # for a transfer: its "category" line is the *other* feed's bank line, which
     # carries that feed's reconciliation -- deleting and recreating it silently
     # unreconciled the other side of every transfer edited from this one.
-    remaining = [line for line in existing if line.id != bank_line.id]
+    remaining = [line for line in existing if line.id != home_line.id]
     plan = []
     for account, amount in legs:
         match = next(
@@ -187,10 +195,14 @@ def apply_splits(bank_tx, legs, *, total):
         if match is not None:
             assert_line_mutable(match, new_amount=amount, own=False)
 
-    # The bank line takes the opposite side of the total.
-    bank_line.dr_amount = -total if total < 0 else Decimal("0")
-    bank_line.cr_amount = total if total > 0 else Decimal("0")
-    bank_line.save()
+    # The home line takes the opposite side of the total.
+    home_line.dr_amount = -total if total < 0 else Decimal("0")
+    home_line.cr_amount = total if total > 0 else Decimal("0")
+    # Re-point at the caller's entry object so `JournalLine.save()` resolves the
+    # budget link from the entry date the caller just set, rather than from the
+    # stale one its own FK cache is holding.
+    home_line.journal_entry = entry
+    home_line.save()
 
     for line in remaining:
         line.delete()
@@ -199,14 +211,29 @@ def apply_splits(bank_tx, legs, *, total):
         dr = amount if amount > 0 else Decimal("0")
         cr = -amount if amount < 0 else Decimal("0")
         if match is None:
-            JournalLine.objects.create(
-                journal_entry=entry, book=bank_tx.book, account=account, dr_amount=dr, cr_amount=cr
-            )
+            JournalLine.objects.create(journal_entry=entry, book=book, account=account, dr_amount=dr, cr_amount=cr)
         elif (match.dr_amount, match.cr_amount) != (dr, cr):
             match.dr_amount, match.cr_amount = dr, cr
+            match.journal_entry = entry
             match.save()
 
     return entry
+
+
+def apply_splits(bank_tx, legs, *, total):
+    """
+    Write `legs` as the category lines of `bank_tx`'s journal entry.
+
+    A feed row names its own home account, so this is `write_lines` with the bank
+    account filled in.
+    """
+    return write_lines(
+        bank_tx.journal_entry,
+        bank_tx.account_id,
+        legs,
+        total=total,
+        book=bank_tx.book,
+    )
 
 
 @transaction.atomic

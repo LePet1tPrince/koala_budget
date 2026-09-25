@@ -564,3 +564,190 @@ class TransactionRowSerializer(serializers.Serializer):
             }
             for line in lines
         ]
+
+
+class TransactionLegSerializer(serializers.Serializer):
+    """
+    One category leg of a transaction.
+
+    Field-for-field the same shape as `apps.bank_feed.serializers.SplitLegSerializer`,
+    deliberately: `SplitEditor` is shared between the Bank Feed and the
+    Transactions page, and a component that had to guess which page's payload it
+    was holding would be a component with two ways to be wrong.
+    """
+
+    category_id = serializers.IntegerField(help_text="Account ID of this leg's category")
+    category_name = serializers.CharField(help_text="Name of this leg's category")
+    amount = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Signed share of the transaction total; positive is an outflow",
+    )
+
+
+class TransactionDetailSerializer(serializers.Serializer):
+    """
+    One transaction as the edit modal needs it: an account, a category or several,
+    an amount, and what may be changed about them.
+
+    The `capabilities` block is computed from the same predicates
+    `apps.journal.services.simple_edit` guards with, so a field the modal lets the
+    user type into is a field the server will accept. Anything else and the user
+    meets a refusal only after filling the form in.
+    """
+
+    id = serializers.IntegerField(source="pk")
+    date = serializers.DateField(source="entry_date")
+    description = serializers.CharField()
+    payee_name = serializers.SerializerMethodField()
+    status = serializers.CharField()
+    source = serializers.CharField()
+
+    account = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
+    is_split = serializers.SerializerMethodField()
+    splits = serializers.SerializerMethodField()
+    inflow = serializers.SerializerMethodField()
+    outflow = serializers.SerializerMethodField()
+
+    bank_source = serializers.SerializerMethodField()
+    is_mirror = serializers.SerializerMethodField()
+    is_reconciled = serializers.SerializerMethodField()
+    has_normal_account_side = serializers.SerializerMethodField()
+    capabilities = serializers.SerializerMethodField()
+
+    def _sides(self, entry):
+        # Resolved once per entry; every field below reads the same answer.
+        from .services.sides import resolve_sides
+
+        if not hasattr(entry, "_resolved_sides"):
+            entry._resolved_sides = resolve_sides(entry)
+        return entry._resolved_sides
+
+    @staticmethod
+    def _account(account):
+        return {"id": account.id, "name": account.name}
+
+    def get_payee_name(self, entry) -> str | None:
+        return entry.payee.name if entry.payee else None
+
+    def get_account(self, entry):
+        return self._account(self._sides(entry).account)
+
+    def get_category(self, entry):
+        """The single category, or null when the transaction is split."""
+        sides = self._sides(entry)
+        if sides.is_split:
+            return None
+        return self._account(sides.legs[0].account)
+
+    def get_is_split(self, entry) -> bool:
+        return self._sides(entry).is_split
+
+    def get_splits(self, entry):
+        sides = self._sides(entry)
+        if not sides.is_split:
+            return []
+        return [
+            {
+                "category_id": line.account_id,
+                "category_name": line.account.name,
+                "amount": line.dr_amount - line.cr_amount,
+            }
+            for line in sides.legs
+        ]
+
+    def get_inflow(self, entry) -> str:
+        return str(self._sides(entry).inflow)
+
+    def get_outflow(self, entry) -> str:
+        return str(self._sides(entry).outflow)
+
+    def get_bank_source(self, entry) -> str | None:
+        bank_tx = self._sides(entry).bank_tx
+        return bank_tx.source if bank_tx else None
+
+    def get_is_mirror(self, entry) -> bool:
+        """True when the only feed row on this entry is a transfer's mirror leg."""
+        sides = self._sides(entry)
+        return sides.bank_tx is None and bool(sides.mirror_txs)
+
+    def get_is_reconciled(self, entry) -> bool:
+        return self._sides(entry).home_line.is_reconciled
+
+    def get_has_normal_account_side(self, entry) -> bool:
+        return self._sides(entry).normal
+
+    def get_capabilities(self, entry):
+        sides = self._sides(entry)
+        voided = entry.status == JournalEntry.STATUS_VOID
+        from_plaid = sides.bank_tx is not None and sides.bank_tx.source == "plaid"
+        reconciled = sides.home_line.is_reconciled
+
+        return {
+            "can_edit_date": not voided and not from_plaid,
+            "can_edit_amount": not voided and not from_plaid and not reconciled,
+            "can_edit_account": not voided and not reconciled,
+            "can_edit_category": not voided,
+            # Splitting re-apportions the same total, which reconciliation does
+            # not fix -- but a Plaid row whose total is locked can still be split.
+            "can_split": not voided,
+            "can_delete": not reconciled,
+            "can_void": entry.status != JournalEntry.STATUS_VOID,
+            "can_unvoid": entry.status == JournalEntry.STATUS_VOID,
+        }
+
+
+class TransactionLegInputSerializer(serializers.Serializer):
+    """One leg as the client sends it."""
+
+    category = serializers.IntegerField(help_text="Account ID for this leg")
+    amount = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Signed share of the total; positive is an outflow",
+    )
+
+
+class TransactionEditRequestSerializer(serializers.Serializer):
+    """
+    A partial edit applied to one or more transactions.
+
+    Every field is optional and an omitted field is left alone -- which is what
+    lets one payload describe a single row's full edit and a bulk change to forty
+    of them. `null` is not a sentinel for "unchanged": `payee` accepts a blank
+    string precisely so a payee can be cleared.
+    """
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        allow_empty=False,
+        help_text="Transactions to edit. A single-row edit is a list of one.",
+    )
+    date = serializers.DateField(required=False)
+    payee = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True)
+    account_id = serializers.IntegerField(required=False)
+    category_id = serializers.IntegerField(required=False)
+    splits = TransactionLegInputSerializer(many=True, required=False)
+    remove_split = serializers.BooleanField(required=False, default=False)
+    inflow = serializers.DecimalField(max_digits=15, decimal_places=2, required=False)
+    outflow = serializers.DecimalField(max_digits=15, decimal_places=2, required=False)
+
+    def validate(self, data):
+        if "splits" in data and "category_id" in data:
+            raise serializers.ValidationError("Send either a single category or splits, not both.")
+        if "splits" in data and data.get("remove_split"):
+            raise serializers.ValidationError("A transaction cannot be split and unsplit in the same edit.")
+        return data
+
+
+class TransactionStatusRequestSerializer(serializers.Serializer):
+    """Void the given transactions, or restore them."""
+
+    ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
+    status = serializers.ChoiceField(choices=[JournalEntry.STATUS_VOID, JournalEntry.STATUS_POSTED])
+
+
+class TransactionIdsSerializer(serializers.Serializer):
+    ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
