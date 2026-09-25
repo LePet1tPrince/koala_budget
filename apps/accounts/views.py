@@ -13,6 +13,7 @@ from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
@@ -879,7 +880,104 @@ class InstitutionDetailView(InstitutionViewMixin, DetailPageMixin, DetailView):
             + "?"
             + urlencode({"account_type": ACCOUNT_TYPE_ASSET, "institution": institution.pk})
         )
+        context["choose_accounts_url"] = with_return_to(
+            reverse("accounts:institution_accounts", args=[*self.request.book.url_args, institution.pk]),
+            context["return_to"],
+        )
+        context["account_sections"] = _institution_account_sections(
+            institution, _institution_account_choices(institution)
+        )
         return context
+
+
+def _institution_account_choices(institution):
+    """
+    Accounts an institution can hold: this book's assets and liabilities (the only
+    types `AccountForm` offers an institution for), in board order. An archived
+    account is offered only while it is linked here, so it can still be unlinked.
+    """
+    return list(
+        Account.objects.filter(
+            book=institution.book,
+            account_group__account_type__in=FEED_ACCOUNT_TYPES,
+            is_system=False,
+        )
+        .filter(Q(is_archived=False) | Q(institution=institution))
+        .select_related("account_group", "institution")
+    )
+
+
+def _institution_account_sections(institution, accounts):
+    """The choices as type -> group -> accounts, each marked linked here or elsewhere."""
+    sections = []
+    for account in accounts:
+        kind = account.account_group.account_type
+        if not sections or sections[-1]["type"] != kind:
+            sections.append({"type": kind, "label": ACCOUNT_TYPE_SECTION_LABELS[kind], "groups": []})
+        groups = sections[-1]["groups"]
+        if not groups or groups[-1]["group"].pk != account.account_group_id:
+            groups.append({"group": account.account_group, "choices": []})
+        linked_here = account.institution_id == institution.pk
+        groups[-1]["choices"].append(
+            {
+                "account": account,
+                "checked": linked_here,
+                "elsewhere": account.institution if account.institution_id and not linked_here else None,
+            }
+        )
+    return sections
+
+
+class InstitutionAccountsView(InstitutionViewMixin, DetailView):
+    """
+    Pick, from one checklist, which accounts are held at an institution.
+
+    The detail page opens the same form in a dialog; this GET is its no-JS page.
+    The POST names every account that should be linked here: a ticked account is
+    linked (moving it from any other institution), an unticked one linked here is
+    unlinked. Accounts the checklist does not offer are never touched.
+    """
+
+    template_name = "accounts/institution_accounts.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        return_to = get_return_to(self.request)
+        detail_url = with_return_to(self.object.get_absolute_url(), return_to)
+        context["sections"] = _institution_account_sections(self.object, _institution_account_choices(self.object))
+        context["return_to"] = return_to
+        context["cancel_url"] = detail_url
+        context["back"] = {"url": detail_url, "label": _("Back to %(name)s") % {"name": self.object.name}}
+        return context
+
+    def post(self, request, *args, **kwargs):
+        institution = self.object = self.get_object()
+        chosen = set(request.POST.getlist("accounts"))
+        to_link, to_unlink = [], []
+        for account in _institution_account_choices(institution):
+            ticked = str(account.pk) in chosen
+            if ticked and account.institution_id != institution.pk:
+                to_link.append(account.pk)
+            elif not ticked and account.institution_id == institution.pk:
+                to_unlink.append(account.pk)
+
+        now = timezone.now()
+        with transaction.atomic():
+            Account.objects.filter(pk__in=to_link).update(institution=institution, updated_at=now)
+            Account.objects.filter(pk__in=to_unlink).update(institution=None, updated_at=now)
+
+        if to_link or to_unlink:
+            count = institution.accounts.count()
+            messages.success(
+                request,
+                ngettext(
+                    "Saved. “%(name)s” now holds %(count)d account.",
+                    "Saved. “%(name)s” now holds %(count)d accounts.",
+                    count,
+                )
+                % {"name": institution.name, "count": count},
+            )
+        return redirect(with_return_to(institution.get_absolute_url(), get_return_to(request)))
 
 
 class InstitutionUpdateView(InstitutionViewMixin, BookFormMixin, ReturnToMixin, FormPageMixin, UpdateView):

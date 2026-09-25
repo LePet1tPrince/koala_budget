@@ -19,9 +19,14 @@
 <section class="app-card">
   <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
     <h2 class="text-base font-semibold">{% translate "Accounts held here" %}</h2>
-    <a href="{% return_here add_account_url %}" class="btn btn-ghost btn-sm" data-testid="add-account-link">
-      {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "Add account" %}
-    </a>
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ choose_accounts_url }}" class="btn btn-outline btn-sm" data-dialog="accounts-dialog" data-testid="choose-accounts-btn">
+        {% icon "list-filter" class="inline-block shrink-0 w-4 h-4" %}{% translate "Choose accounts" %}
+      </a>
+      <a href="{% return_here add_account_url %}" class="btn btn-ghost btn-sm" data-testid="add-account-link">
+        {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "Add account" %}
+      </a>
+    </div>
   </div>
   {% if rows %}
     {% translate "Balance" as amount_label %}
@@ -33,6 +38,14 @@
 </section>
 {% endblock %}
 {% block dialogs %}
+  <dialog id="accounts-dialog" class="modal" data-testid="accounts-dialog">
+    <div class="modal-box max-w-lg">
+      <h3 class="text-lg font-semibold">{% blocktranslate trimmed with name=institution.name %}Accounts at {{ name }}{% endblocktranslate %}</h3>
+      <p class="mt-1 text-sm text-base-content/70">{% translate "Tick every account held here. Ticking one held elsewhere moves it here." %}</p>
+      {% include "accounts/components/institution_accounts_form.html" with action=choose_accounts_url sections=account_sections return_to=return_to list_class="max-h-[55vh] overflow-y-auto pr-1" %}
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>{% translate "close" %}</button></form>
+  </dialog>
   {% translate "Rename institution" as edit_title %}
   {% include "accounts/components/form_dialog.html" with dialog_id="edit-dialog" title=edit_title form=edit_form action=edit_url %}
   {% translate "Delete institution" as delete_title %}
