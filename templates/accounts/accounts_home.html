@@ -1,22 +1,15 @@
-{% extends "web/app/app_base.html" %}
+{% extends "accounts/manage_base.html" %}
 {% load i18n %}
+{% load icons %}
 {% load django_vite %}
-{% block app %}
-<section class="app-card">
-  <div class="flex justify-between items-center mb-4">
-    <div>
-      <h1 class="text-2xl font-semibold">{% translate "Accounts" %}</h1>
-      <p class="text-sm text-base-content/70">
-        {% translate "Drag accounts to reorder them or move them between groups — this order is used across reports and budgets." %}
-      </p>
-    </div>
-    <a href="{% url 'accounts:account_create' request.team.slug request.book.slug %}" class="btn btn-primary" data-testid="new-account-btn">
-      {% translate "New Account" %}
-    </a>
-  </div>
-
-  {% include "accounts/components/manage_tabs.html" with manage_tab="accounts" %}
-
+{% block manage_title %}{% translate "Accounts" %}{% endblock %}
+{% block manage_subtitle %}{% translate "Drag accounts to reorder them or move them between groups — this order is used across reports and budgets." %}{% endblock %}
+{% block manage_actions %}
+  <a href="{% url 'accounts:account_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-testid="new-account-btn">
+    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "New account" %}
+  </a>
+{% endblock %}
+{% block manage_content %}
   {{ manage_props|json_script:'accounts-board-props' }}
   <div id="accounts-board">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -30,7 +23,6 @@
       {% translate "The accounts board requires JavaScript. Use the Groups tab to manage the chart of accounts instead." %}
     </div>
   </noscript>
-</section>
 {% endblock %}
 
 {% block page_js %}

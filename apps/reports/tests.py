@@ -606,7 +606,7 @@ class AccountActivityViewTest(TestCase):
         self.assertTemplateUsed(response, "reports/account_activity.html")
         self.assertEqual(response.context["account"], self.expense_account)
         self.assertEqual(response.context["report_data"]["total"], Decimal("1200.00"))
-        self.assertContains(response, "Back to Summary")
+        self.assertContains(response, "Back to Income Statement")
 
     def test_account_activity_shows_contra_account_and_source(self):
         """Each row surfaces the other side of the entry plus its source."""

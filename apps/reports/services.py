@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.urls import reverse
 from django.utils.formats import date_format
 
 from apps.accounts.models import (
@@ -602,7 +603,7 @@ class ReportService:
             dict: {
                 'account': Account,
                 'transactions': [{
-                    'date': date, 'payee': str, 'memo': str, 'amount': Decimal, 'source': str,
+                    'date': date, 'payee': str, 'payee_url': str, 'memo': str, 'amount': Decimal, 'source': str,
                     'contra_accounts': [{'name': str, 'url': str}, ...],
                     'balance': Decimal,  # running balance, balance-type accounts only
                 }, ...],
@@ -682,15 +683,25 @@ class ReportService:
         total = Decimal("0")
         running_balance = starting_balance
 
+        # Built from the book in hand: get_absolute_url() would load each row's book and team
+        url_args = self.book.url_args
         for line in transactions:
             contra_accounts = [
-                {"name": contra.account.name, "url": contra.account.get_absolute_url()}
+                {
+                    "name": contra.account.name,
+                    "url": reverse("accounts:account_detail", args=[*url_args, contra.account_id]),
+                }
                 for contra in line.journal_entry.lines.all()
                 if contra.pk != line.pk
             ]
             transaction = {
                 "date": line.journal_entry.entry_date,
                 "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
+                "payee_url": (
+                    reverse("accounts:payee_detail", args=[*url_args, line.journal_entry.payee_id])
+                    if line.journal_entry.payee_id
+                    else ""
+                ),
                 "memo": line.journal_entry.description,
                 "amount": line.signed_amount,
                 "source": line.journal_entry.get_source_display(),

@@ -15,7 +15,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from apps.accounts.guards import assert_category_allowed
-from apps.accounts.models import Account
+from apps.accounts.models import Account, Payee
 from apps.audit.models import AuditLog
 from apps.audit.serializers import AuditLogSerializer
 from apps.books.decorators import login_and_book_required
@@ -522,8 +522,9 @@ def transactions_home(request, team_slug, book_slug):
 def _initial_account_filters(request):
     """
     `?f_debit_account=a:12` / `?f_credit_account=a:12` from a link (e.g. a goal's
-    "see its spending"), as the page's opening column filters with their labels.
-    Only single-account tokens are accepted, and only the book's own accounts.
+    "see its spending"), and `?f_payee=<name>` (a payee's page), as the page's
+    opening column filters with their labels. Only single-account tokens are
+    accepted, and only the book's own accounts and payees.
     """
     filters = {}
     for column in ("debit_account", "credit_account"):
@@ -537,4 +538,11 @@ def _initial_account_filters(request):
                 entries.append({"value": raw, "label": account.name})
         if entries:
             filters[column] = entries
+    # A payee's page links here as ?f_payee=<name> (the column's filter value is the name).
+    payees = [name for name in request.GET.getlist("f_payee") if name]
+    if payees:
+        known = set(Payee.objects.filter(book=request.book, name__in=payees).values_list("name", flat=True))
+        entries = [{"value": name, "label": name} for name in payees if name in known]
+        if entries:
+            filters["payee"] = entries
     return filters

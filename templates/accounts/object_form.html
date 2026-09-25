@@ -1,0 +1,30 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load icons %}
+{% load form_tags %}
+{% comment %}
+Standalone create/edit page for an account, group, payee or institution. The
+detail and list pages open the same form in a dialog; this page is the no-JS
+path and where a rejected submit shows its errors.
+{% endcomment %}
+{% block app %}
+<section class="app-card max-w-2xl">
+  <a href="{{ back.url }}" class="btn btn-ghost btn-sm -ml-3 mb-1" data-back-link data-testid="back-link">
+    {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4" %}
+    {{ back.label }}
+  </a>
+  <h1 class="text-2xl font-semibold tracking-tight mb-2">{{ form_title }}</h1>
+  <form method="post" data-testid="{{ form_testid }}">
+    {% csrf_token %}
+    {% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
+    {% if form.non_field_errors %}
+      <div role="alert" class="alert alert-error alert-soft my-3 text-sm">{{ form.non_field_errors }}</div>
+    {% endif %}
+    {% render_form_fields form %}
+    <div class="flex gap-2 mt-6">
+      <button type="submit" class="btn btn-primary" data-testid="save-btn">{% translate "Save" %}</button>
+      <a href="{{ cancel_url }}" class="btn btn-ghost" data-testid="cancel-btn">{% translate "Cancel" %}</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

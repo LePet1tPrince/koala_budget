@@ -320,7 +320,7 @@ def account_activity(request, team_slug, book_slug, account_id):
         query_params.pop("source", None)
         if query_params:
             back_url += f"?{query_params.urlencode()}"
-        back_label = _("Back to Summary")
+        back_label = _("Back to Income Statement")
 
     return render(
         request,

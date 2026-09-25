@@ -1,0 +1,43 @@
+{% load i18n %}
+{% load currency_tags %}
+{% load account_nav %}
+{% comment %}
+Accounts on a group or institution page. Each links to the account with this page
+as its return_to, so the account's back link comes straight back here.
+Params: rows ([{account, url, display, negative, tag}]), amount_label, show_group (bool),
+total + total_label (optional footer).
+{% endcomment %}
+<div class="overflow-x-auto">
+  <table class="table table-sm table-quiet w-full" data-testid="account-table">
+    <thead>
+      <tr>
+        <th>{% translate "Account" %}</th>
+        {% if show_group %}<th class="hidden sm:table-cell">{% translate "Group" %}</th>{% endif %}
+        <th class="text-right">{{ amount_label }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr data-testid="account-table-row">
+          <td>
+            <a href="{% return_here row.url %}" class="link link-hover font-medium">{{ row.account.name }}</a>
+            {% if row.account.is_system %}<span class="badge badge-ghost badge-sm ml-1">{% translate "System" %}</span>{% endif %}
+            {% if not show_group and row.account.institution %}<div class="text-xs text-base-content/70">{{ row.account.institution.name }}</div>{% endif %}
+          </td>
+          {% if show_group %}<td class="hidden sm:table-cell text-base-content/70">{{ row.account.account_group.name }}</td>{% endif %}
+          <td class="text-right money whitespace-nowrap {% if row.negative %}text-error{% endif %}">
+            {{ row.display|currency }}{% if row.tag %}<span class="ml-1 text-xs text-base-content/70">{{ row.tag }}</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+    {% if total_label %}
+      <tfoot>
+        <tr class="text-sm text-base-content border-t border-base-300">
+          <td {% if show_group %}colspan="2"{% endif %} class="font-semibold">{{ total_label }}</td>
+          <td class="text-right money font-semibold whitespace-nowrap {% if total < 0 %}text-error{% endif %}" data-testid="account-table-total">{{ total|currency }}</td>
+        </tr>
+      </tfoot>
+    {% endif %}
+  </table>
+</div>

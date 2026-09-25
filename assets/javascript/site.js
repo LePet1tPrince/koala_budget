@@ -2,3 +2,4 @@
 // HTMX setup: https://htmx.org/docs/#installing
 import './htmx';
 import './alpine';
+import './page-nav';

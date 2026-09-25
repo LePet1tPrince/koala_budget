@@ -117,3 +117,44 @@ def test_edit_account_form_prefills_name(authenticated_page: Page, live_server, 
 
     name_value = authenticated_page.locator("[name='name']").input_value()
     assert name_value == "My Test Account"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_account_opened_from_a_report_leads_back_to_it(authenticated_page: Page, live_server, team):
+    """
+    Report drill-down → linked account → "Back to … report" returns to the drill-down
+    through history, so the browser's own Back then continues to the income statement
+    instead of bouncing between the two pages.
+    """
+    from datetime import date
+
+    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
+    from e2e.factories import AssetAccountFactory, JournalEntryFactory, JournalLineFactory
+
+    page = authenticated_page
+    book = team.default_book
+    expense = AccountFactory(
+        team=team, name="Zed Groceries", account_group=AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
+    )
+    bank = AssetAccountFactory(team=team, name="Zed Chequing")
+    entry = JournalEntryFactory(team=team, entry_date=date.today(), description="Weekly shop")
+    JournalLineFactory(team=team, journal_entry=entry, account=expense, dr_amount="42.00")
+    JournalLineFactory(team=team, journal_entry=entry, account=bank, cr_amount="42.00")
+
+    today = date.today()
+    period = f"start_date={today.replace(day=1)}&end_date={today}"
+    statement = f"{live_server.url}{book.base_url}reports/income-statement/?{period}"
+    page.goto(statement)
+    page.get_by_role("link", name="Zed Groceries", exact=True).first.click()
+    page.wait_for_url(f"**/income-statement/account/{expense.pk}/**")
+    drill_down = page.url
+
+    page.locator("[data-testid='account-activity-table'] a", has_text="Zed Chequing").click()
+    page.wait_for_url(f"**/accounts/accounts/{bank.pk}/**")
+    back = page.locator("[data-testid='back-link']")
+    assert back.inner_text().strip() == "Back to Zed Groceries report"
+
+    back.click()
+    page.wait_for_url(drill_down)
+    page.go_back()
+    page.wait_for_url(statement)
