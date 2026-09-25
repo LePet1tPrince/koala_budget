@@ -18,6 +18,9 @@ from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from apps.accounts.models import ACCOUNT_TYPE_INCOME, Account, AccountGroup, Institution, Payee
+from apps.bank_feed.models import BankTransaction
+from apps.bank_feed.services.transfer_detection import dismiss_all_candidates
+from apps.bank_feed.services.transfer_mirror import mirror_rows_for
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
@@ -46,6 +49,9 @@ class ApplyResult:
     goals: int
     payees: int
     openings: int
+    feed_rows: int = 0
+    inbox_rows: int = 0
+    dismissed_transfer_matches: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -56,6 +62,9 @@ class ApplyResult:
             "goals": self.goals,
             "payees": self.payees,
             "openings": self.openings,
+            "feed_rows": self.feed_rows,
+            "inbox_rows": self.inbox_rows,
+            "dismissed_transfer_matches": self.dismissed_transfer_matches,
         }
 
 
@@ -66,8 +75,11 @@ def can_import(book) -> bool:
     Merging it into a book that already has transactions would double history
     wherever the two overlap and leave no way to tell which copy is which -- so a
     book with any live entry is refused, and told to start a fresh book or clear
-    this one.
+    this one. So is one with any bank-feed row: an uploaded but uncategorized
+    statement has no entry yet, and is the same history again.
     """
+    if BankTransaction.objects.filter(book=book).exists():
+        return False
     return not JournalEntry.objects.filter(book=book).exclude(status=JournalEntry.STATUS_VOID).exists()
 
 
@@ -94,7 +106,16 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
     budgets = _create_budgets(book, plan, accounts)
 
     report(40, "Importing your transactions")
-    entries, lines = _create_entries(book, plan, accounts, payees, budgets, report)
+    entries, lines, feed_rows = _create_entries(book, plan, accounts, payees, budgets, report)
+    inbox_rows = _create_inbox_rows(book, plan, accounts)
+
+    report(82, "Checking for look-alike transfers")
+    # The detector reads every feed row just written; let the planner know they exist.
+    _refresh_planner_statistics()
+    # Every real transfer in the export is already one entry with one feed row per
+    # side. What the transfer detector would pair across the imported rows is a
+    # coincidence of amount and date; left in, it would offer to void real entries.
+    dismissed = dismiss_all_candidates(book)
 
     report(85, "Setting your savings goals")
     goals = _create_goals(book, plan, accounts)
@@ -112,12 +133,14 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
         goals=goals,
         payees=len(payees),
         openings=openings,
+        feed_rows=feed_rows + inbox_rows,
+        inbox_rows=inbox_rows,
+        dismissed_transfer_matches=dismissed,
     )
 
 
-# Every table the import fills. `BankTransaction` is added at call time (it is not
-# imported here): the import writes none, but `counted_entries` joins on it.
-ANALYZED_MODELS = (JournalLine, JournalEntry, Account, AccountGroup, Budget, GoalAllocation, Payee)
+# Every table the import fills.
+ANALYZED_MODELS = (JournalLine, JournalEntry, Account, AccountGroup, Budget, GoalAllocation, Payee, BankTransaction)
 
 
 def _refresh_planner_statistics():
@@ -136,9 +159,8 @@ def _refresh_planner_statistics():
     """
     if connection.vendor != "postgresql":
         return
-    from apps.bank_feed.models import BankTransaction
 
-    tables = ", ".join(model._meta.db_table for model in (*ANALYZED_MODELS, BankTransaction))
+    tables = ", ".join(model._meta.db_table for model in ANALYZED_MODELS)
     try:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(f"ANALYZE {tables}")
@@ -255,17 +277,19 @@ def _create_budgets(book, plan: ImportPlan, accounts) -> dict[tuple[int, object]
     return {(budget.category_id, budget.month): budget for budget in Budget.objects.filter(book=book)}
 
 
-def _create_entries(book, plan: ImportPlan, accounts, payees, budgets, report) -> tuple[int, int]:
+def _create_entries(book, plan: ImportPlan, accounts, payees, budgets, report) -> tuple[int, int, int]:
     """
-    The transactions themselves, in batches of entries-then-their-lines.
+    The transactions themselves, in batches of entries, their lines, their feed rows.
 
     Entries are inserted first because a line needs an entry id; the lines are then
     inserted through `bulk_create_for_import`, which resolves the budget link from an
     in-memory map rather than one query per line (see the queryset's docstring for
-    what that costs and what it skips).
+    what that costs and what it skips). Feed rows last: each entry's own row, then
+    the mirror rows the bank feed's rule derives from the lines -- the rows
+    `sync_transfer` would have made, without a save per transfer.
     """
     budget_map = {key: budget.id for key, budget in budgets.items()}
-    total_entries = total_lines = 0
+    total_entries = total_lines = total_feed = 0
     batches = max(1, (len(plan.entries) + BATCH_SIZE - 1) // BATCH_SIZE)
 
     for number, start in enumerate(range(0, len(plan.entries), BATCH_SIZE), start=1):
@@ -289,27 +313,63 @@ def _create_entries(book, plan: ImportPlan, accounts, payees, budgets, report) -
         )
 
         lines = []
+        lines_by_entry = []
         for spec, entry in zip(chunk, entries, strict=True):
-            for line in spec.lines:
-                lines.append(
-                    JournalLine(
-                        book=book,
-                        journal_entry=entry,
-                        account=accounts[line.account],
-                        dr_amount=line.dr,
-                        cr_amount=line.cr,
-                        is_reconciled=line.is_reconciled,
-                        is_cleared=line.is_cleared,
-                    )
+            entry_lines = [
+                JournalLine(
+                    book=book,
+                    journal_entry=entry,
+                    account=accounts[line.account],
+                    dr_amount=line.dr,
+                    cr_amount=line.cr,
+                    # Never reconciled on import: the user reconciles against statements.
+                    is_reconciled=False,
+                    is_cleared=line.is_cleared,
                 )
+                for line in spec.lines
+            ]
+            lines.extend(entry_lines)
+            lines_by_entry.append(entry_lines)
         JournalLine.objects.bulk_create_for_import(lines, budget_map, batch_size=BATCH_SIZE)
+
+        primaries = []
+        for spec, entry, entry_lines in zip(chunk, entries, lines_by_entry, strict=True):
+            if spec.feed is not None:
+                primary = _bank_transaction(book, spec.feed, accounts, journal_entry=entry)
+                primaries.append((primary, entry_lines))
+        feed = [primary for primary, _lines in primaries]
+        for primary, entry_lines in primaries:
+            feed.extend(mirror_rows_for(primary, entry_lines))
+        BankTransaction.objects.bulk_create(feed, batch_size=BATCH_SIZE)
 
         total_entries += len(entries)
         total_lines += len(lines)
+        total_feed += len(feed)
         done = f"{total_entries:,} of {len(plan.entries):,}"
-        report(40 + int(45 * number / batches), f"Importing your transactions ({done})")
+        report(40 + int(42 * number / batches), f"Importing your transactions ({done})")
 
-    return total_entries, total_lines
+    return total_entries, total_lines, total_feed
+
+
+def _bank_transaction(book, spec, accounts, journal_entry=None) -> BankTransaction:
+    return BankTransaction(
+        book=book,
+        account=accounts[spec.account],
+        journal_entry=journal_entry,
+        amount=spec.amount,
+        posted_date=spec.posted_date,
+        description=spec.description,
+        merchant_name=spec.merchant,
+        source=BankTransaction.SOURCE_YNAB,
+        raw={"ynab": {"row": spec.row_index}},
+    )
+
+
+def _create_inbox_rows(book, plan: ImportPlan, accounts) -> int:
+    """The rows YNAB never categorised: uncategorized feed rows, waiting in the Inbox."""
+    rows = [_bank_transaction(book, spec, accounts) for spec in plan.inbox_rows]
+    BankTransaction.objects.bulk_create(rows, batch_size=BATCH_SIZE)
+    return len(rows)
 
 
 def _create_goals(book, plan: ImportPlan, accounts) -> int:

@@ -18,6 +18,7 @@ class BankTransaction(BaseBookModel):
     - plaid: Transactions synced from Plaid
     - csv: Transactions imported via CSV upload
     - manual: Manually entered bank feed transactions
+    - ynab: A YNAB register row, written by the YNAB import
     """
 
     # Source choices for imported transactions
@@ -25,12 +26,14 @@ class BankTransaction(BaseBookModel):
     SOURCE_CSV = "csv"
     SOURCE_MANUAL = "manual"
     SOURCE_SYSTEM = "system"
+    SOURCE_YNAB = "ynab"
 
     SOURCE_CHOICES = [
         (SOURCE_PLAID, "Plaid"),
         (SOURCE_CSV, "CSV"),
         (SOURCE_MANUAL, "Manual"),
         (SOURCE_SYSTEM, "System"),
+        (SOURCE_YNAB, "YNAB"),
     ]
 
     account = models.ForeignKey(
@@ -114,6 +117,7 @@ class BankTransaction(BaseBookModel):
             self.SOURCE_CSV: JournalEntry.SOURCE_IMPORT,
             self.SOURCE_MANUAL: JournalEntry.SOURCE_MANUAL,
             self.SOURCE_SYSTEM: JournalEntry.SOURCE_BANK_MATCH,
+            self.SOURCE_YNAB: JournalEntry.SOURCE_IMPORT,
         }.get(self.source, JournalEntry.SOURCE_IMPORT)
 
 

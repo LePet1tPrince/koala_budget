@@ -58,6 +58,10 @@ NON_INCOME_PAYEES = frozenset(
 # which is exactly what that account is for.
 RECONCILIATION_PAYEES = frozenset({"reconciliation balance adjustment", "reconcile", "manual balance adjustment"})
 
+# An account with a zero balance and no transaction in this many days before the
+# export's last one is left out of the Inbox by default.
+DORMANT_DAYS = 365
+
 # An inflow payee earns its own income account at this much recurrence, or this
 # much money. Below both, it lands in "Other Income" -- which the user can undo on
 # the mapping screen, where the counts and totals behind this are shown.
@@ -118,6 +122,8 @@ class AccountFacts:
     starting_date: date | None
     # Which rule decided the type, so the review screen can say why.
     reason: str
+    # Whether its transactions land in the Inbox, before the user says otherwise.
+    suggested_feed: bool = False
 
 
 @dataclass(frozen=True)
@@ -352,6 +358,8 @@ def infer_accounts(register: list[RegisterRow], plan: list[PlanRow]) -> list[Acc
     for row in register:
         rows_by_account[row.account].append(row)
 
+    latest = max((row.entry_date for row in register), default=None)
+
     facts = []
     for name, rows in rows_by_account.items():
         ordered = sorted(rows, key=lambda r: (r.entry_date, r.index))
@@ -386,10 +394,26 @@ def infer_accounts(register: list[RegisterRow], plan: list[PlanRow]) -> list[Acc
                 starting_balance=opening.net if opening else None,
                 starting_date=opening.entry_date if opening else None,
                 reason=reason,
+                suggested_feed=suggested_feed(account_type, on_budget, running, ordered[-1].entry_date, latest),
             )
         )
 
     return sorted(facts, key=lambda f: (f.account_type != ASSET, not f.on_budget, f.name))
+
+
+def suggested_feed(account_type: str, on_budget: bool, closing: Decimal, last_date: date, latest: date | None) -> bool:
+    """
+    Whether an account's transactions should land in the Inbox by default.
+
+    An everyday account or a debt has a statement to work through; a tracking account
+    (a pension, a GIC) does not. An account emptied and left alone for a year is
+    finished with -- a feed for it would put an Inbox card in front of the user for
+    an account they no longer use.
+    """
+    if not (on_budget or account_type == LIABILITY):
+        return False
+    dormant = closing == ZERO and latest is not None and (latest - last_date).days > DORMANT_DAYS
+    return not dormant
 
 
 def _suggested_group(account_type: str, name: str, cards: set[str], on_budget: bool) -> str:

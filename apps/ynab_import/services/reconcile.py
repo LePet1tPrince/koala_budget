@@ -220,6 +220,11 @@ def check_balances(analysis: Analysis, plan: ImportPlan) -> Check:
                 totals[line.account] += line.dr - line.cr
     for opening in plan.openings:
         totals[opening.account] += opening.amount if types.get(opening.account) == ASSET else -opening.amount
+    # A row waiting in the Inbox has no journal line yet, but it is in the account:
+    # the balance reaches YNAB's the moment it is categorised. Feed amounts are
+    # positive for an outflow, so the ledger movement is the negation.
+    for row in plan.inbox_rows:
+        totals[row.account] -= row.amount
 
     expected: dict[tuple[str, str], Decimal] = {}
     for facts in analysis.accounts:

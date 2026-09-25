@@ -55,6 +55,7 @@ def analysis_payload(analysis: Analysis) -> dict:
                 "starting_balance": _money(facts.starting_balance) if facts.starting_balance is not None else None,
                 "first_date": facts.first_date.isoformat(),
                 "last_date": facts.last_date.isoformat(),
+                "has_feed": facts.suggested_feed,
             }
             for facts in analysis.accounts
         ],

@@ -131,6 +131,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
               <th>{gettext('Group')}</th>
               <th className="text-right">{gettext('Transactions')}</th>
               <th className="text-right">{gettext('Balance')}</th>
+              <th className="text-center">{gettext('In Inbox')}</th>
               <th className="text-center">{gettext('Import')}</th>
             </tr>
           </thead>
@@ -138,6 +139,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
             {accounts.map((account) => {
               const choice = choiceFor(account);
               const skip = Boolean(choice.skip);
+              const hasFeed = choice.has_feed ?? account.has_feed;
               return (
                 <tr
                   key={account.name}
@@ -189,9 +191,21 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
                     <input
                       type="checkbox"
                       className="checkbox checkbox-sm rounded-sm"
+                      checked={hasFeed && !skip}
+                      disabled={skip}
+                      onChange={(e) => update(account, { has_feed: e.target.checked })}
+                      aria-label={gettext('Show this account’s transactions in the Inbox')}
+                      data-testid="ynab-account-feed"
+                    />
+                  </td>
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm rounded-sm"
                       checked={!skip}
                       onChange={(e) => update(account, { skip: !e.target.checked })}
                       aria-label={gettext('Import this account')}
+                      data-testid="ynab-account-import"
                     />
                   </td>
                 </tr>
@@ -200,6 +214,13 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
           </tbody>
         </table>
       </div>
+
+      <p className="flex items-start gap-2 text-sm text-base-content/70">
+        <Icon name="info" className="mt-0.5 h-4 w-4 shrink-0" />
+        {gettext(
+          'An account in the Inbox gets its own feed with every transaction from YNAB, ready to reconcile against your statements. Tracking accounts and accounts emptied over a year ago start without one.',
+        )}
+      </p>
 
       <p className="flex items-start gap-2 text-sm text-base-content/70">
         <Icon name="info" className="mt-0.5 h-4 w-4 shrink-0" />

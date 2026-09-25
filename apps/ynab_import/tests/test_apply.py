@@ -82,9 +82,13 @@ class TinyApplyTest(TestCase):
         net_worth = NetWorthService(self.book).get_net_worth(date(2024, 3, 1))
         self.assertEqual(net_worth, Decimal("2291.25"))
 
-    def test_reconciliation_flags_land_on_the_bank_side_only(self):
+    def test_nothing_is_reconciled(self):
+        # YNAB's reconciled flag is not carried: the user reconciles against statements.
+        self.assertFalse(JournalLine.objects.filter(book=self.book, is_reconciled=True).exists())
+
+    def test_cleared_flags_land_on_the_bank_side_only(self):
         entry = JournalEntry.objects.get(book=self.book, description="Weekly shop")
-        flags = {line.account.name: line.is_reconciled for line in entry.lines.all()}
+        flags = {line.account.name: line.is_cleared for line in entry.lines.all()}
         self.assertTrue(flags["Chequing"])
         self.assertFalse(flags["Groceries"])
 
@@ -141,12 +145,24 @@ class TinyApplyTest(TestCase):
         self.assertEqual(service.available(self.account("Employer"), date(2024, 1, 1)), Decimal("0.00"))
         self.assertEqual(service.available(self.account("Employer"), date(2024, 2, 1)), Decimal("0.00"))
 
-    def test_no_bank_feed_rows_are_created(self):
+    def test_feed_rows_on_the_everyday_accounts(self):
         from apps.bank_feed.models import BankTransaction
 
-        # The register is already categorised. Staging it in the feed would present
-        # the user with thousands of questions they have already answered.
-        self.assertEqual(BankTransaction.objects.filter(book=self.book).count(), 0)
+        # Chequing: pay, the shop, the transfer to Savings (a tracking account, so no
+        # mirror there). Visa: the split, once, for its total.
+        rows = BankTransaction.objects.filter(book=self.book).select_related("account")
+        self.assertEqual(
+            sorted((row.account.name, row.amount) for row in rows),
+            [
+                ("Chequing", Decimal("-2000.00")),
+                ("Chequing", Decimal("80.00")),
+                ("Chequing", Decimal("300.00")),
+                ("Visa", Decimal("10.00")),
+            ],
+        )
+        self.assertTrue(all(row.source == BankTransaction.SOURCE_YNAB for row in rows))
+        self.assertTrue(all(row.journal_entry_id for row in rows), "Categorised rows arrive categorised.")
+        self.assertFalse(Account.objects.get(book=self.book, name="Savings").has_feed)
 
     def test_a_second_import_is_refused(self):
         self.assertFalse(can_import(self.book))
@@ -220,11 +236,13 @@ class SampleApplyTest(TestCase):
         # `Starting Balance` rows are for accounts that were added empty, and an
         # entry with nothing on either side is not a journal entry.
         self.assertEqual(self.plan.stats["zero_openings"], 8)
-        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 6623 + 13)
-        self.assertEqual(JournalLine.objects.filter(book=self.book).count(), 13335 + 13 * 2)
+        # 8 rows YNAB never categorised wait in the Inbox rather than posting anywhere.
+        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 6615 + 13)
+        self.assertEqual(JournalLine.objects.filter(book=self.book).count(), 13319 + 13 * 2)
         # Every goal's account is planned with the chart (the four savings
         # categories), replacing the two expense accounts spending used to land in.
-        self.assertEqual(Account.objects.filter(book=self.book).count(), 106)
+        # No `Uncategorized Expense`/`Income`: the rows that needed them wait in the Inbox.
+        self.assertEqual(Account.objects.filter(book=self.book).count(), 104)
         # No `Budget` rows on goal categories: 56 of the old 1,872 were on them.
         self.assertEqual(Budget.objects.filter(book=self.book).count(), 1816)
         self.assertEqual(Goal.objects.filter(book=self.book).count(), 4)
@@ -256,10 +274,16 @@ class SampleApplyTest(TestCase):
         self.assertEqual([row for row in totals if row["dr"] != row["cr"]], [])
 
     def test_account_balances_match_the_export(self):
+        from apps.bank_feed.models import BankTransaction
+
         balances = {
             account.name: account.balance
             for account in Account.objects.filter(book=self.book).select_related("account_group")
         }
+        # A row waiting in the Inbox is not in the ledger yet; categorising it closes
+        # the gap. Feed amounts are positive for an outflow.
+        for row in BankTransaction.objects.filter(book=self.book, journal_entry__isnull=True).select_related("account"):
+            balances[row.account.name] -= row.amount
         for facts in self.analysis.accounts:
             self.assertEqual(balances[facts.name], facts.closing_balance, facts.name)
 
@@ -297,10 +321,5 @@ class SampleApplyTest(TestCase):
             0,
         )
 
-    def test_reconciled_lines_are_the_bank_side(self):
-        reconciled = JournalLine.objects.filter(book=self.book, is_reconciled=True).select_related(
-            "account__account_group"
-        )
-        self.assertTrue(
-            all(line.account.account_group.account_type in ("asset", "liability") for line in reconciled[:200])
-        )
+    def test_nothing_is_reconciled(self):
+        self.assertFalse(JournalLine.objects.filter(book=self.book, is_reconciled=True).exists())

@@ -79,7 +79,13 @@ class YnabImportPage(BasePage):
         self.account_row(name).locator("select").select_option(value)
 
     def drop_account(self, name: str):
-        self.account_row(name).locator("input[type='checkbox']").uncheck()
+        self.account_row(name).locator("[data-testid='ynab-account-import']").uncheck()
+
+    def in_inbox(self, name: str) -> bool:
+        return self.account_row(name).locator("[data-testid='ynab-account-feed']").is_checked()
+
+    def set_in_inbox(self, name: str, value: bool):
+        self.account_row(name).locator("[data-testid='ynab-account-feed']").set_checked(value)
 
     def income_rows(self) -> int:
         return self.page.locator("[data-testid='ynab-income-row']").count()

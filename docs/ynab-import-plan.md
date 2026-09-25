@@ -346,6 +346,9 @@ pass, not independently.
 
 `Cleared` column: 7,368 `Reconciled`, 98 `Cleared`, 106 `Uncleared`.
 
+> **Superseded** by `docs/ynab-feed-rows-plan.md` (F3): nothing imported is
+> reconciled; only `Cleared` is carried, on the bank-account line.
+
 KB flags `is_reconciled`/`is_cleared` **per `JournalLine`**; YNAB flags per
 transaction. Set the flag on the **bank-account leg only**, following the
 transfer-mirror precedent already in the codebase ("the two legs reconcile
@@ -387,6 +390,10 @@ Account numbers follow the project convention (1000s/2000s/3000s/4000s/5000s)
 assigned in Plan order within each block.
 
 ### D12 — Staging vs direct posting · **decided**
+
+> **Superseded** by `docs/ynab-feed-rows-plan.md`: every row on a feed account now
+> also gets a categorized `BankTransaction` linked to its entry, and rows YNAB never
+> categorised wait in the Inbox with no entry.
 
 Does the register land in `BankTransaction` (the feed, awaiting categorisation)
 or straight into the journal?

@@ -19,11 +19,11 @@ All figures are measured against `docs/reference/… Register.csv` (7,572 rows,
 | # | Question | Decision |
 |---|---|---|
 | F1 | Transfers between two feed accounts | The feed row is written **once**, on one leg. The other side appears through the app's own transfer-mirror rule, exactly as if the user had categorized it in the Inbox (§3.2). |
-| F2 | Split containing a transfer | One feed row, on the account that holds the split. The transfer leg's counterpart appears through the same mirror rule — which today skips splits, so the rule is extended (§3.3). |
+| F2 | Split containing a transfer | One feed row, on the account that holds the split. The transfer leg's counterpart appears through the same mirror rule — which skipped splits, so the rule is extended for every book, not just imports (§3.3). |
 | F3 | Reconciliation state | **Never reconcile imported lines.** `is_reconciled=False` on every line, feed row and opening balance. No `Reconciliation` records. |
 | F4 | Default "Show in Inbox" per account | On-budget or liability, **off** when the closing balance is 0 and there is no row in the 12 months before the export. Toggle per account on the wizard's accounts screen. |
 | F5 | Future-dated rows | Feed rows like any other. |
-| F6 | Deduplication | **Open — see §4 B1/B2.** F1 prevents a transfer appearing twice *within* the import; it does not cover the two cases there. |
+| F6 | Deduplication | Every real transfer is already one entry, so anything the transfer detector would pair across the imported rows is a coincidence. After the rows are written, every such pair is recorded as a `TransferMatchDismissal` ("not a transfer"), repeating until the detector finds nothing (§4 B1). No per-account cut-off or Plaid/CSV matcher (§4 B2). |
 | F7 | Statement records for "reconciled through" | Not built (follows from F3). |
 
 ---
@@ -155,10 +155,9 @@ orphan guard. Tests on in-app categorization and split edits, independent of YNA
 - Accounts screen: "Show in Inbox" toggle. Summary: "N transactions in your Inbox
   feeds, M waiting to be categorized ($X — these accounts' balances reach YNAB's
   once they are). Nothing is reconciled; reconcile each account from its statement."
-- Onboarding: the YNAB path no longer pre-ticks the categorize task when
-  `inbox_rows` is non-empty.
+- Onboarding: unchanged — see §5.
 
-**Phase 4 — Dedup guards** (per F6 outcome, §4 B1/B2).
+**Phase 4 — Dismiss look-alike transfers** (F6): `transfer_detection.dismiss_all_candidates(book)` at the end of the apply.
 
 **Tests:** every §3.1 rule; the gate with inbox rows; F4 defaults on the sample
 (the 9 accounts above); no imported line reconciled; `sync_transfer` no-op
@@ -169,7 +168,7 @@ book); E2E: import → account card shows rows → transfer appears in both feed
 
 ## 4. Blockers and risks
 
-### B1 — Transfer review flags historical coincidences · open (F6)
+### B1 — Transfer review flags historical coincidences · resolved (F6)
 
 `find_transfer_candidates()` pairs any two non-mirror feed rows on different
 accounts with equal magnitude, opposite direction, within 5 days, that don't share
@@ -179,10 +178,11 @@ sample with F1 + F4: ~53 suggestions**, each offering "Resolve", which **voids**
 side's journal entry. The function also loads every feed row into memory per call
 (~6,400 on the sample).
 
-Fix: skip a pair when both rows are `source=ynab` — YNAB paired every real transfer
-itself (839 matched, 0 unmatched) — and scan only recent rows.
+Resolved by F6: the apply dismisses every pair the detector finds, pass after pass
+(the matching is greedy one-to-one, so dismissing one pair can free a row for its
+next-closest match). Measured on the sample: 57 pairs, ~1.5 s.
 
-### B2 — Linking a bank or uploading a CSV after import · open (F6)
+### B2 — Linking a bank or uploading a CSV after import · not built (F6)
 
 Separate from F1: this is the same *bank transaction* arriving from two sources.
 
@@ -227,3 +227,43 @@ row renderer for all books, not just imports. Phase 1 ships and is tested on its
   the record.
 - **Future-dated rows (F5):** an account card's latest-transaction date can read
   later than today.
+
+---
+
+## 5. What was built
+
+Measured on the sample export: **6,860 feed rows** (8 uncategorized, in the Inbox),
+6,615 journal entries, 13,319 lines, 104 accounts (no `Uncategorized Expense/Income`:
+the rows that needed them wait in the Inbox), 57 look-alike pairs dismissed, no line
+reconciled. The whole apply takes ~3.7 s.
+
+- **Mirror rule** (`apps/bank_feed/services/transfer_mirror.py`): `mirror_rows_for(primary, lines)`
+  is the pure half — one mirror per line on another feed account, for that line's
+  amount. `sync_transfer` uses it for splits (`_sync_split_mirrors`: create, resize,
+  drop to match the legs) and cleans up stray mirrors in the two-line case (a split
+  collapsed to a transfer used to keep all of them). `is_split_mirror()` refuses
+  every edit of a split's mirror in `update` and `batch_edit`
+  (`SPLIT_MIRROR_ERROR`); `bank_transaction_to_feed_row` renders it as a plain row
+  whose category is the split's account (the feed list prefetches
+  `journal_entry__bank_feed_transactions__account` for it).
+- **Build** (`apps/ynab_import/services/build.py`): `PlannedFeedRow`, `PlannedEntry.feed`,
+  `ImportPlan.inbox_rows`, `_Resolver.goes_to_inbox()` (no category, not a transfer,
+  not a correcting entry, not a tracking account, on a feed account). `PlannedLine`
+  lost `is_reconciled`. `AccountChoice.has_feed`, defaulted by
+  `analyse.suggested_feed()` (`DORMANT_DAYS = 365`, measured back from the export's
+  last row). `check_balances` counts the Inbox rows; `_net_worth` (the preview) does
+  not — it is what the ledger will say.
+- **Apply** (`apply.py`): feed rows are bulk-inserted per batch, primaries then
+  `mirror_rows_for`; `source=ynab` (new `BankTransaction.SOURCE_YNAB`, migration
+  `bank_feed.0007`), `raw={"ynab": {"row": n}}`; `can_import` also refuses a book
+  with any `BankTransaction`; `ApplyResult` gains `feed_rows`, `inbox_rows`,
+  `dismissed_transfer_matches`.
+- **Wizard**: "In Inbox" checkbox per account (`ynab-account-feed`; the Import
+  checkbox became `ynab-account-import`), an "In your Inbox" stat on the preview
+  and the result.
+- **Not changed, deliberately**: the onboarding "categorize" task stays ticked — it
+  is auto-detected from "has a journal entry", which an import has.
+- **Tests**: `apps/ynab_import/tests/test_feed.py` (build rules, defaults, apply on a
+  hand-written export and on the sample, the `sync_transfer` no-op invariant,
+  portability round trip), `SplitTransferMirrorTest` in
+  `apps/bank_feed/tests/test_splits.py`, two E2E tests in `e2e/tests/test_ynab_import.py`.
