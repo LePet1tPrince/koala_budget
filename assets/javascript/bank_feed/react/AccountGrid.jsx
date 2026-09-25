@@ -4,10 +4,7 @@ import AccountCard from "./AccountCard"
 import { useState, useMemo } from "react"
 import Icon from '../../common/Icon';
 
-const TYPE_SECTIONS = [
-  { type: 'asset', icon: 'university', getLabel: () => gettext('Bank Accounts') },
-  { type: 'liability', icon: 'credit-card', getLabel: () => gettext('Credit Cards') },
-]
+const TYPE_ICONS = { asset: 'university', liability: 'credit-card' }
 
 function InstitutionFilter({ options, selected, onSelect }) {
   if (options.length <= 1) return null
@@ -78,24 +75,24 @@ function AccountGrid({ accounts, selectedAccount, handleAccountSelect }) {
     !selectedInstitution || a.institution_name === selectedInstitution
   )), [accounts, selectedInstitution])
 
-  // Group accounts by account type (bank accounts vs. credit cards) so the two
-  // feed kinds are easy to tell apart at a glance, with any unexpected type
-  // (feed accounts are normally asset/liability only) caught in a fallback section.
+  // One section per account group (Bank Accounts, Credit Cards, Investments, …).
+  // The server already orders accounts by type, then group, then account (the
+  // accounts board order), so sections appear in first-seen order.
   const sections = useMemo(() => {
-    const grouped = TYPE_SECTIONS.map(({ type, icon, getLabel }) => ({
-      key: type,
-      title: getLabel(),
-      icon,
-      accounts: filteredAccounts.filter((a) => a.account_type === type),
-    })).filter((section) => section.accounts.length > 0)
-
-    const knownTypes = new Set(TYPE_SECTIONS.map((s) => s.type))
-    const otherAccounts = filteredAccounts.filter((a) => !knownTypes.has(a.account_type))
-    if (otherAccounts.length > 0) {
-      grouped.push({ key: 'other', title: gettext('Other'), icon: 'folder', accounts: otherAccounts })
-    }
-
-    return grouped
+    const byGroup = new Map()
+    filteredAccounts.forEach((a) => {
+      const key = a.account_group ?? 'none'
+      if (!byGroup.has(key)) {
+        byGroup.set(key, {
+          key,
+          title: a.account_group_name || gettext('Other'),
+          icon: TYPE_ICONS[a.account_type] || 'folder',
+          accounts: [],
+        })
+      }
+      byGroup.get(key).accounts.push(a)
+    })
+    return [...byGroup.values()]
   }, [filteredAccounts])
 
   return (
