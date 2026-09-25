@@ -10,10 +10,11 @@ where it could be previewed; here it is inserts, in the order the foreign keys
 require, at the volume the data actually has.
 """
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from apps.accounts.models import ACCOUNT_TYPE_INCOME, Account, AccountGroup, Institution, Payee
@@ -22,6 +23,8 @@ from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
 
 from .build import ASSET, EQUITY_TYPE, ImportPlan
+
+logger = logging.getLogger(__name__)
 
 ZERO = Decimal("0")
 
@@ -100,6 +103,7 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
     openings = _create_openings(book, plan, accounts)
 
     report(98, "Checking the numbers")
+    _refresh_planner_statistics()
     return ApplyResult(
         accounts=len(accounts),
         entries=entries,
@@ -109,6 +113,37 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
         payees=len(payees),
         openings=openings,
     )
+
+
+# Every table the import fills. `BankTransaction` is added at call time (it is not
+# imported here): the import writes none, but `counted_entries` joins on it.
+ANALYZED_MODELS = (JournalLine, JournalEntry, Account, AccountGroup, Budget, GoalAllocation, Payee)
+
+
+def _refresh_planner_statistics():
+    """
+    Tell Postgres how much was just written, before anyone reads it.
+
+    The import lands ~13,000 lines in one go. Until the tables are analyzed, the
+    planner's statistics still describe them as they were before the import --
+    often empty -- so it picks nested loops and the dashboard's net-worth aggregate
+    runs for minutes. Autovacuum fixes that eventually, but the user reaches the
+    dashboard seconds after the import, and autovacuum can be kept off these tables
+    by the locks this very transaction holds. ANALYZE inside the import's
+    transaction counts the rows it inserted, and the statistics commit with them.
+
+    A savepoint, so a failed ANALYZE costs a slow first page rather than the import.
+    """
+    if connection.vendor != "postgresql":
+        return
+    from apps.bank_feed.models import BankTransaction
+
+    tables = ", ".join(model._meta.db_table for model in (*ANALYZED_MODELS, BankTransaction))
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(f"ANALYZE {tables}")
+    except DatabaseError:
+        logger.warning("Could not refresh planner statistics after a YNAB import", exc_info=True)
 
 
 def _create_groups(book, plan: ImportPlan) -> dict[str, AccountGroup]:

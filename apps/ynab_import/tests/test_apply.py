@@ -200,16 +200,19 @@ class SampleApplyTest(TestCase):
         cls.book = cls.team.default_book
         cls.analysis = sample_analysis()
         cls.plan = build(cls.analysis)
+        # apply_plan analyzes the tables it filled; without that, ~13,000 lines
+        # against statistics saying the tables are empty makes a single net-worth
+        # aggregate below run for minutes (see _refresh_planner_statistics).
         cls.result = apply_plan(cls.book, cls.plan, user=cls.user)
-        # ~13,000 lines just arrived inside the test transaction, while the
-        # planner's statistics (autoanalyzed after earlier tests rolled back)
-        # say these tables are empty. Left alone, it picks nested loops and a
-        # single net-worth aggregate runs for minutes; a real import commits and
-        # is autoanalyzed, so this is a test-only concern.
+
+    def test_planner_statistics_describe_the_import(self):
+        # Postgres's row estimate for the lines table counts the import itself, so
+        # the first dashboard after an import is planned for 13,000 lines, not for
+        # whatever the table held before (see _refresh_planner_statistics).
         with connection.cursor() as cursor:
-            cursor.execute(
-                "ANALYZE journal_journalline, journal_journalentry, accounts_account, bank_feed_banktransaction"
-            )
+            cursor.execute("SELECT reltuples FROM pg_class WHERE relname = %s", [JournalLine._meta.db_table])
+            (estimated_rows,) = cursor.fetchone()
+        self.assertGreaterEqual(estimated_rows, JournalLine.objects.filter(book=self.book).count())
 
     def test_everything_was_written(self):
         # 6,623 transactions plus 13 opening balances: 8 of the export's 21
