@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import Icon from '../common/Icon';
+import Modal from '../common/Modal';
 import Step1Upload from './Step1Upload';
 import Step2Accounts from './Step2Accounts';
 import Step3Income from './Step3Income';
@@ -49,6 +50,11 @@ const YnabImportWizard = ({ props }) => {
   const [importId, setImportId] = useState(resume?.id ?? null);
   const [analysis, setAnalysis] = useState(null);
   const [choices, setChoices] = useState({ accounts: {}, income: {}, categories: {} });
+  // Names the user added on the accounts and income screens. Held here rather than
+  // in the screens, which unmount on Back/Continue, so an added group that no row
+  // uses yet is still offered on returning to the screen.
+  const [extraGroups, setExtraGroups] = useState([]);
+  const [extraIncomeAccounts, setExtraIncomeAccounts] = useState([]);
 
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -66,6 +72,8 @@ const YnabImportWizard = ({ props }) => {
     setAnalysis(null);
     setPreview(null);
     setChoices({ accounts: {}, income: {}, categories: {} });
+    setExtraGroups([]);
+    setExtraIncomeAccounts([]);
     setError(null);
     setStep(0);
   }, []);
@@ -78,6 +86,8 @@ const YnabImportWizard = ({ props }) => {
         const result = await api.upload(files);
         setImportId(result.import_id);
         setAnalysis(result);
+        setExtraGroups([]);
+        setExtraIncomeAccounts([]);
         setPreview(result);
         setStep(1);
       } catch (e) {
@@ -141,10 +151,57 @@ const YnabImportWizard = ({ props }) => {
 
   const current = STEPS[step];
 
+  // The choices made on the review screens live only in this page, so leaving
+  // loses them. Not on the upload screen (nothing chosen yet) nor once the import
+  // is running (it carries on in the worker without the page).
+  const hasChoices = step > 0 && step < APPLY_STEP;
+  // Where the user asked to go, while the "leave the import?" dialog is up.
+  const [leaveTo, setLeaveTo] = useState(null);
+  // Set once the user has confirmed, so the browser's own prompt doesn't follow ours.
+  const leaving = useRef(false);
+
+  useEffect(() => {
+    if (!hasChoices) return undefined;
+
+    // The takeover's close button is ours to intercept, so it gets a real dialog.
+    const onClick = (e) => {
+      const link = e.target.closest?.('a[data-takeover-close]');
+      if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      setLeaveTo(link.href);
+    };
+    // Closing the tab, reloading and the browser's Back button are not: there the
+    // browser only ever shows its own prompt, so that stays as the fallback.
+    const warn = (e) => {
+      if (leaving.current) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    document.addEventListener('click', onClick);
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      document.removeEventListener('click', onClick);
+      window.removeEventListener('beforeunload', warn);
+    };
+  }, [hasChoices]);
+
+  // `showModal()` focuses the first button, which is "Leave". Put focus on the safe
+  // choice instead; the Modal child's effect has opened the dialog by the time this
+  // parent effect runs.
+  const keepGoingRef = useRef(null);
+  useEffect(() => {
+    if (leaveTo !== null) keepGoingRef.current?.focus();
+  }, [leaveTo]);
+
+  const leave = () => {
+    leaving.current = true;
+    window.location.href = leaveTo;
+  };
+
   if (!canImport && !resumed && step === 0) {
     return (
       <div className="app-card max-w-xl space-y-4" data-testid="ynab-blocked">
-        <h1 className="text-xl font-semibold tracking-tight">{gettext('Import from YNAB')}</h1>
+        <h2 className="text-xl font-semibold tracking-tight">{gettext('This set of books is not empty')}</h2>
         <p className="text-base-content/70">
           {gettext(
             '{book} already has transactions. A YNAB import brings a whole set of books, so it needs an empty one — create a new set of books for it, or delete the existing transactions first.',
@@ -159,13 +216,16 @@ const YnabImportWizard = ({ props }) => {
 
   return (
     <div className="space-y-6">
-      <ul className="steps w-full" data-testid="ynab-steps">
-        {STEPS.map((item, index) => (
-          <li key={item.key} className={`step ${index <= step ? 'step-primary' : ''}`}>
-            <span className="text-xs">{item.label}</span>
-          </li>
-        ))}
-      </ul>
+      {/* Six steps do not fit a phone's width; scroll the bar, not the page. */}
+      <div className="overflow-x-auto">
+        <ul className="steps w-full" data-testid="ynab-steps">
+          {STEPS.map((item, index) => (
+            <li key={item.key} className={`step ${index <= step ? 'step-primary' : ''}`}>
+              <span className="text-xs">{item.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <div className="app-card">
         {current.key === 'upload' && <Step1Upload onUpload={upload} busy={busy} error={error} />}
@@ -176,6 +236,8 @@ const YnabImportWizard = ({ props }) => {
             groups={analysis.groups}
             choices={choices.accounts}
             onChange={(accounts) => setChoices({ ...choices, accounts })}
+            extraGroups={extraGroups}
+            onExtraGroupsChange={setExtraGroups}
           />
         )}
 
@@ -183,8 +245,11 @@ const YnabImportWizard = ({ props }) => {
           <Step3Income
             income={analysis.income}
             suggestions={analysis.income_accounts}
+            otherIncome={analysis.other_income}
             choices={choices.income}
             onChange={(income) => setChoices({ ...choices, income })}
+            extraAccounts={extraIncomeAccounts}
+            onExtraAccountsChange={setExtraIncomeAccounts}
           />
         )}
 
@@ -241,6 +306,36 @@ const YnabImportWizard = ({ props }) => {
           )}
         </div>
       )}
+
+      <Modal
+        open={leaveTo !== null}
+        onClose={() => setLeaveTo(null)}
+        title={gettext('Leave the import?')}
+        size="sm"
+        testId="ynab-leave-dialog"
+        actions={
+          <>
+            <button type="button" className="btn btn-ghost" onClick={leave} data-testid="ynab-leave-confirm">
+              {gettext('Leave without importing')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setLeaveTo(null)}
+              ref={keepGoingRef}
+              data-testid="ynab-leave-cancel"
+            >
+              {gettext('Keep going')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-base-content/70">
+          {gettext(
+            'Nothing has been imported yet, and the choices you made on these screens are not saved. If you leave now, you will start again by uploading your export.',
+          )}
+        </p>
+      </Modal>
     </div>
   );
 };

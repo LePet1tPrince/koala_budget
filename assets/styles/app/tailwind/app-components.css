@@ -133,6 +133,53 @@
 }
 
 /*
+  YNAB import: pick-from-a-list names (account groups, income accounts). A
+  `.chip-select` is a row's choice, a button that opens the list; a `.name-chip`
+  is one entry in the list at the top of the screen, carrying its usage count.
+*/
+.chip-select {
+  @apply inline-flex h-8 max-w-56 items-center gap-1.5 rounded-full border border-base-300 bg-base-100 px-3 text-sm;
+}
+
+.chip-select:hover,
+.chip-select[aria-expanded="true"] {
+  @apply bg-base-200;
+}
+
+.chip-select:focus-visible {
+  @apply outline-2 outline-offset-2 outline-primary;
+}
+
+.name-chip {
+  @apply inline-flex h-8 max-w-64 items-center gap-2 rounded-full border border-base-300 bg-base-200 px-3 text-sm;
+}
+
+.name-chip.is-unused {
+  @apply border-dashed bg-transparent text-base-content/70;
+}
+
+/*
+  Full-screen takeover pages (`templates/web/takeover_base.html`): the new-book
+  form and the YNAB import. The title bar and the content share one column, so
+  the close button lines up with the right edge of what it closes.
+*/
+.takeover {
+  @apply flex min-h-screen flex-col;
+}
+
+.takeover-column {
+  @apply mx-auto w-full px-4 sm:px-6;
+}
+
+.takeover-wide .takeover-column {
+  @apply max-w-screen-2xl;
+}
+
+.takeover-narrow .takeover-column {
+  @apply max-w-xl;
+}
+
+/*
   Guided onboarding takeover (onboarding plan §6).
 
   Only `opacity` and `transform` are animated -- no layout-triggering properties --

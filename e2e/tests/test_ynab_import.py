@@ -19,7 +19,7 @@ migrating user is in.
 import pytest
 from playwright.sync_api import Page
 
-from apps.accounts.models import Account
+from apps.accounts.models import Account, AccountGroup
 from apps.budget.models import Budget, Goal
 from apps.journal.models import JournalEntry
 from apps.ynab_import.tests.fixtures import TINY_PLAN, TINY_REGISTER
@@ -79,6 +79,56 @@ def test_the_inferred_account_types_are_shown_and_can_be_changed(import_page, ti
 
 
 @pytest.mark.django_db
+def test_accounts_are_filed_into_groups_picked_from_one_list(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+
+    # The defaults are singular, and each type offers only its own groups.
+    assert import_page.account_group("Chequing") == "Bank Account"
+    assert import_page.account_group("Visa") == "Credit Card"
+    assert "Credit Card" not in import_page.group_names("asset")
+
+    # A group added at the top is offered on every row of its type...
+    import_page.add_group("asset", "Everyday")
+    assert "Everyday" in import_page.group_names("asset")
+    import_page.set_account_group("Chequing", "Everyday")
+    # ...and retyping the name in another casing picks the same group, not a new one.
+    import_page.set_account_group("Savings", "everyday")
+    assert import_page.account_group("Savings") == "Everyday"
+
+    # Retyping an account moves it into a group of its new type.
+    import_page.set_account_type("Chequing", "liability")
+    assert import_page.account_group("Chequing") in import_page.group_names("liability")
+    import_page.set_account_type("Chequing", "asset")
+    import_page.set_account_group("Chequing", "Everyday")
+
+    import_page.continue_to_preview()
+    import_page.apply()
+
+    group = AccountGroup.objects.get(book=team.default_book, name="Everyday")
+    assert set(group.accounts.values_list("name", flat=True)) == {"Chequing", "Savings"}
+
+
+@pytest.mark.django_db
+def test_closing_mid_review_asks_in_a_dialog_not_a_browser_prompt(import_page, tiny_export, team, requires_vite):
+    native_prompts = []
+    import_page.page.on("dialog", lambda dialog: (native_prompts.append(dialog.type), dialog.dismiss()))
+    import_page.upload(tiny_export)
+    start_url = import_page.page.url
+
+    import_page.click_close()
+    assert import_page.leave_dialog_open()
+    import_page.keep_going()
+    assert not import_page.leave_dialog_open()
+    assert import_page.page.url == start_url
+    assert import_page.account_rows() >= 1
+
+    import_page.click_close()
+    import_page.leave_import()
+    import_page.page.wait_for_url(lambda url: url != start_url, timeout=10_000)
+    assert native_prompts == []
+
+
+@pytest.mark.django_db
 def test_an_account_can_be_left_behind(import_page, tiny_export, team, requires_vite):
     import_page.upload(tiny_export)
     import_page.drop_account("Savings")
@@ -103,6 +153,29 @@ def test_income_payees_become_income_accounts(import_page, tiny_export, team, re
     import_page.apply()
 
     assert Account.objects.filter(book=team.default_book, name="Day job", account_group__account_type="income").exists()
+
+
+@pytest.mark.django_db
+def test_an_income_account_made_on_one_row_is_offered_on_the_others(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    import_page.click_next()
+    import_page.page.wait_for_selector("[data-testid='ynab-income-table']")
+
+    rows = import_page.page.locator("[data-testid='ynab-income-row']:has([data-testid='ynab-income-account'])")
+    payees = [rows.nth(i).get_attribute("data-payee") for i in range(rows.count())]
+    assert payees, "the tiny export has at least one income payee"
+
+    import_page.set_income_account(payees[0], "Paycheque")
+    names = import_page.page.locator("[data-testid='ynab-income-accounts-chip']")
+    assert "Paycheque" in [names.nth(i).get_attribute("data-name") for i in range(names.count())]
+    for payee in payees[1:]:
+        import_page.set_income_account(payee, "Paycheque")
+
+    import_page.continue_to_preview()
+    import_page.apply()
+
+    paycheque = Account.objects.filter(book=team.default_book, name="Paycheque", account_group__account_type="income")
+    assert paycheque.exists()
 
 
 @pytest.mark.django_db

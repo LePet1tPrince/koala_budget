@@ -17,7 +17,7 @@ from decimal import Decimal
 from .analyse import (
     ASSET,
     GROUP_BANK,
-    GROUP_CREDIT_CARDS,
+    GROUP_CREDIT_CARD,
     GROUP_EQUITY,
     GROUP_INCOME,
     GROUP_INVESTMENT,
@@ -440,7 +440,7 @@ def _build_accounts(analysis: Analysis, choices: Choices, chart: _Chart) -> dict
 
 def _default_group(account_type: str, on_budget: bool) -> str:
     if account_type == LIABILITY:
-        return GROUP_CREDIT_CARDS
+        return GROUP_CREDIT_CARD
     return GROUP_BANK if on_budget else GROUP_TRACKING
 
 

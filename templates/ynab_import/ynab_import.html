@@ -1,20 +1,28 @@
-{% extends "web/settings/settings_base.html" %}
+{% extends "web/takeover_base.html" %}
 {% load i18n %}
 {% load django_vite %}
-
-{% block settings_content %}
+{% comment %}
+  A full-screen takeover, not a settings page: the account, income and savings
+  screens are wide tables, and inside the settings shell (sidebar + rail) they
+  were squeezed until their selects were unreadable.
+{% endcomment %}
+{% block takeover_content %}
   {{ ynab_props|json_script:'ynab-props' }}
 
-  {# The heading is the shell's, from the view's `settings_page_title`. #}
-  <div>
-    <div id="ynab-import-app"></div>
+  <p class="mb-6 max-w-prose text-sm text-base-content/70">
+    {% blocktranslate trimmed %}
+      Your accounts, your whole transaction history, your monthly budgets and your savings —
+      brought over and checked against YNAB’s own numbers.
+    {% endblocktranslate %}
+  </p>
 
-    <noscript>
-      <div class="app-card">
-        <p>{% translate "The import wizard needs JavaScript." %}</p>
-      </div>
-    </noscript>
-  </div>
+  <div id="ynab-import-app"></div>
+
+  <noscript>
+    <div class="app-card">
+      <p>{% translate "The import wizard needs JavaScript." %}</p>
+    </div>
+  </noscript>
 {% endblock %}
 
 {% block page_js %}
