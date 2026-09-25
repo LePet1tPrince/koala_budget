@@ -1,0 +1,74 @@
+{% load i18n %}
+{% load icons %}
+{% comment %}
+The checklist behind "Choose accounts" on an institution page: every asset and
+liability account, grouped as on the board, ticked where it is held here. Saving
+posts the ticked ids; see InstitutionAccountsView.
+Params: action, sections, return_to, cancel_url (a link; omit inside a dialog),
+list_class (extra classes for the scrolling list).
+{% endcomment %}
+<form method="post" action="{{ action }}" data-testid="institution-accounts-form"
+      x-data="{
+        q: '',
+        count: 0,
+        matches(name) { const t = this.q.trim().toLowerCase(); return !t || name.includes(t); },
+        recount() { this.count = this.$el.querySelectorAll('input[name=accounts]:checked').length; },
+      }"
+      x-init="recount()" @change="recount()">
+  {% csrf_token %}
+  {% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
+  {% if sections %}
+    <label class="input input-sm w-full mt-3">
+      {% icon "search" class="inline-block shrink-0 w-4 h-4 opacity-60" %}
+      <input type="search" x-model="q" @keydown.enter.prevent placeholder="{% translate 'Filter accounts' %}" aria-label="{% translate 'Filter accounts' %}" data-testid="institution-accounts-filter">
+    </label>
+    <div class="mt-3 space-y-4 {{ list_class }}">
+      {% for section in sections %}
+        <div x-show="[...$el.querySelectorAll('[data-name]')].some(r => matches(r.dataset.name))">
+          <h3 class="manage-heading">{{ section.label }}</h3>
+          <div class="space-y-3">
+            {% for group in section.groups %}
+              <div x-show="[...$el.querySelectorAll('[data-name]')].some(r => matches(r.dataset.name))">
+                <div class="text-sm font-medium text-base-content/70 mb-1">{{ group.group.name }}</div>
+                <div class="manage-list">
+                  {% for choice in group.choices %}
+                    <label class="manage-row cursor-pointer py-2" data-name="{{ choice.account.name|lower }} {{ group.group.name|lower }}"
+                           x-show="matches($el.dataset.name)">
+                      <input type="checkbox" name="accounts" value="{{ choice.account.pk }}" class="checkbox checkbox-sm checkbox-primary rounded-sm"
+                             {% if choice.checked %}checked{% endif %} data-testid="institution-account-choice">
+                      <div class="min-w-0 flex-1">
+                        <div class="font-medium truncate">
+                          {{ choice.account.name }}
+                          {% if choice.account.is_archived %}<span class="badge badge-ghost badge-sm ml-1">{% translate "Archived" %}</span>{% endif %}
+                        </div>
+                        {% if choice.elsewhere %}
+                          <div class="text-xs text-base-content/70">
+                            {% blocktranslate trimmed with name=choice.elsewhere.name %}At {{ name }} — ticking moves it here{% endblocktranslate %}
+                          </div>
+                        {% endif %}
+                      </div>
+                    </label>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+      <p class="py-6 text-center text-sm text-base-content/70" x-cloak
+         x-show="![...$root.querySelectorAll('[data-name]')].some(r => matches(r.dataset.name))">{% translate "No accounts match." %}</p>
+    </div>
+  {% else %}
+    <p class="py-6 text-center text-sm text-base-content/70">{% translate "There are no asset or liability accounts to choose from yet." %}</p>
+  {% endif %}
+  <div class="modal-action items-center">
+    <span class="mr-auto text-sm text-base-content/70" x-cloak data-testid="institution-accounts-count"
+          x-text="count + ' {% translate "selected" %}'"></span>
+    {% if cancel_url %}
+      <a href="{{ cancel_url }}" class="btn btn-ghost">{% translate "Cancel" %}</a>
+    {% else %}
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">{% translate "Cancel" %}</button>
+    {% endif %}
+    <button type="submit" class="btn btn-primary" data-testid="institution-accounts-submit">{% translate "Save" %}</button>
+  </div>
+</form>
