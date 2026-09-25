@@ -3,9 +3,10 @@
 {% load icons %}
 {% load team_tags %}
 {% block settings_content %}
+  {% with is_admin=request.user|is_admin_of:request.team %}
   <section class="app-surface divide-y divide-base-300" data-testid="book-list">
     {% for item in books %}
-      <div class="flex items-center gap-3 p-4" data-testid="book-row-{{ item.slug }}">
+      <div class="flex flex-wrap items-center gap-3 p-4" data-testid="book-row-{{ item.slug }}">
         <span class="grid h-9 w-9 shrink-0 place-items-center rounded-field bg-primary/10 text-primary">
           {% icon "book-open" class="inline-block shrink-0 w-4 h-4" %}
         </span>
@@ -20,26 +21,64 @@
           </div>
           <div class="mt-0.5 font-mono text-xs text-base-content/70">/a/{{ item.team.slug }}/{{ item.slug }}/</div>
         </div>
-        {% if item.is_archived %}
-          {% if request.user|is_admin_of:request.team %}
-            <form method="post" action="{% url 'books:restore' request.team.slug item.slug %}">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-outline" data-testid="book-restore-{{ item.slug }}">
-                {% icon "archive-restore" class="inline-block shrink-0 w-4 h-4" %}
-                {% translate "Restore" %}
-              </button>
-            </form>
+        <div class="flex flex-wrap items-center gap-1">
+          {% if item.is_archived %}
+            {% if is_admin %}
+              <form method="post" action="{% url 'books_team:restore' request.team.slug item.slug %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline" data-testid="book-restore-{{ item.slug }}">
+                  {% icon "archive-restore" class="inline-block shrink-0 w-4 h-4" %}
+                  {% translate "Restore" %}
+                </button>
+              </form>
+            {% endif %}
+          {% else %}
+            <a href="{% url 'web_book:home' request.team.slug item.slug %}" class="btn btn-sm btn-ghost" data-testid="book-open-{{ item.slug }}">
+              {% translate "Open" %}
+              {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4" %}
+            </a>
           {% endif %}
-        {% else %}
-          <a href="{% url 'web_book:home' request.team.slug item.slug %}" class="btn btn-sm btn-ghost" data-testid="book-open-{{ item.slug }}">
-            {% translate "Open" %}
-            {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4" %}
-          </a>
-        {% endif %}
+          {% if is_admin %}
+            {% comment %}
+              Neither action may leave the team without an open book, so the last
+              open one offers neither -- with the reason on hover rather than a
+              button that only refuses once clicked.
+            {% endcomment %}
+            {% if not item.is_archived and open_count <= 1 %}
+              <span class="tooltip tooltip-left" data-tip="{% translate "The team's only set of books can't be archived or deleted. Create another one first." %}">
+                <button type="button" class="btn btn-sm btn-ghost" disabled data-testid="book-archive-{{ item.slug }}">
+                  {% icon "archive" class="inline-block shrink-0 w-4 h-4" %}
+                  {% translate "Archive" %}
+                </button>
+                <button type="button" class="btn btn-sm btn-ghost" disabled data-testid="book-delete-{{ item.slug }}">
+                  {% icon "trash" class="inline-block shrink-0 w-4 h-4" %}
+                  {% translate "Delete" %}
+                </button>
+              </span>
+            {% else %}
+              {% if not item.is_archived %}
+                <button type="button" class="btn btn-sm btn-ghost"
+                        onclick="document.getElementById('book-archive-dialog-{{ item.slug }}').showModal()"
+                        data-testid="book-archive-{{ item.slug }}">
+                  {% icon "archive" class="inline-block shrink-0 w-4 h-4" %}
+                  {% translate "Archive" %}
+                </button>
+                {% include "books/components/book_confirm_dialog.html" with action="archive" %}
+              {% endif %}
+              <button type="button" class="btn btn-sm btn-ghost text-error"
+                      onclick="document.getElementById('book-delete-dialog-{{ item.slug }}').showModal()"
+                      data-testid="book-delete-{{ item.slug }}">
+                {% icon "trash" class="inline-block shrink-0 w-4 h-4" %}
+                {% translate "Delete" %}
+              </button>
+              {% include "books/components/book_confirm_dialog.html" with action="delete" %}
+            {% endif %}
+          {% endif %}
+        </div>
       </div>
     {% endfor %}
   </section>
-  {% if request.user|is_admin_of:request.team %}
+  {% if is_admin %}
     <div class="mt-4">
       <a href="{% url 'books_team:create' request.team.slug %}" class="btn btn-primary btn-sm" data-testid="new-book-btn">
         {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}
@@ -47,4 +86,5 @@
       </a>
     </div>
   {% endif %}
+  {% endwith %}
 {% endblock %}

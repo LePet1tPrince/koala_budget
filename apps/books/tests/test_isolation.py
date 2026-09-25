@@ -37,8 +37,6 @@ def month_query(**extra):
 READS = {
     "web_book:home": {},
     "books:settings": {},
-    "books:budgeting": {},
-    "books:archive": {},
     "accounts:accounts_home": {},
     "accounts:accountgroup_list": {},
     "accounts:payee_list": {},
@@ -213,8 +211,6 @@ WRITES = {
 WRITE_OVERRIDES = {"journal:journal-entry-list", "reconciliation:reconciliation-list"}
 
 EXEMPT = {
-    "books:restore": "BookArchiveTest: acts only on request.book",
-    "books:delete": "BookDeleteTest: wipes only its own book, with another book populated",
     "budget:budget_autofill": "form post over this book's own categories; BudgetFallbackTest covers B's ids",
     "plaid:create-link-token": "calls the Plaid API; creates nothing",
     "plaid:exchange-public-token": "calls the Plaid API; writes only to request.book",

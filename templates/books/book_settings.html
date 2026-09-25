@@ -1,17 +1,67 @@
 {% extends "web/settings/settings_base.html" %}
 {% load i18n %}
 {% load form_tags %}
+{% load currency_tags %}
 {% block settings_content %}
-  <form method="post" class="app-card space-y-2" data-testid="book-settings-form">
+  <form method="post" class="app-card space-y-6" data-testid="book-settings-form">
     {% csrf_token %}
-    {% render_text_input form.name %}
-    {% render_text_input form.slug %}
-    <p class="text-sm text-base-content/70">
-      {% blocktranslate trimmed %}
-        Renaming keeps the address, so links and bookmarks keep working.
-      {% endblocktranslate %}
-    </p>
-    <div class="pt-2">
+
+    <section class="space-y-2" aria-labelledby="book-name-heading">
+      <h3 id="book-name-heading" class="font-semibold">{% translate "Name and address" %}</h3>
+      {% render_text_input form.name %}
+      {% render_text_input form.slug %}
+      <p class="text-sm text-base-content/70">
+        {% blocktranslate trimmed %}
+          Renaming keeps the address, so links and bookmarks keep working.
+        {% endblocktranslate %}
+      </p>
+    </section>
+
+    <section class="space-y-4 border-t border-base-300 pt-6" aria-labelledby="book-budgeting-heading">
+      <h3 id="book-budgeting-heading" class="font-semibold">{% translate "Budgeting" %}</h3>
+      <label class="flex cursor-pointer items-start gap-3">
+        <input type="checkbox" name="{{ form.budget_future_income.html_name }}" class="toggle toggle-primary mt-0.5"
+               {% if form.budget_future_income.value %}checked{% endif %}
+               data-testid="budget-future-income-toggle">
+        <span>
+          <span class="block font-medium">{{ form.budget_future_income.label }}</span>
+          <span class="mt-1 block text-sm text-base-content/70">
+            {% blocktranslate trimmed %}
+              On: you budget this month's paycheque before it lands, and money you expect this month counts
+              toward Unassigned. Off: money is unassigned only once it has arrived, and income categories
+              are left out of the budget.
+            {% endblocktranslate %}
+          </span>
+        </span>
+      </label>
+
+      {% comment %}
+        What changing the setting would do, stated before saving. Computed server-side
+        by the same `compute_unassigned` the pill uses, so it cannot disagree with the
+        number the user sees once they save.
+      {% endcomment %}
+      <div class="rounded-field border border-base-300 bg-base-200 p-3 text-sm" data-testid="budget-future-income-consequence">
+        {% if future_income %}
+          {% blocktranslate trimmed with flipped=unassigned_flipped.amount|currency now=unassigned_now.amount|currency %}
+            Turned off, your Unassigned would be <strong class="money">{{ flipped }}</strong> instead of
+            <strong class="money">{{ now }}</strong> this month.
+          {% endblocktranslate %}
+        {% else %}
+          {% blocktranslate trimmed with flipped=unassigned_flipped.amount|currency now=unassigned_now.amount|currency %}
+            Turned on, your Unassigned would be <strong class="money">{{ flipped }}</strong> instead of
+            <strong class="money">{{ now }}</strong> this month.
+          {% endblocktranslate %}
+        {% endif %}
+      </div>
+
+      <p class="text-sm text-base-content/70">
+        {% blocktranslate trimmed %}
+          Income budgets you have already set are kept while this is off, and come back if you turn it on again.
+        {% endblocktranslate %}
+      </p>
+    </section>
+
+    <div class="border-t border-base-300 pt-4">
       <button type="submit" class="btn btn-primary" data-testid="book-settings-save">{% translate "Save" %}</button>
     </div>
   </form>

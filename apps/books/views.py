@@ -13,14 +13,7 @@ from apps.audit.utils import log_event
 from apps.teams.decorators import login_and_team_required, team_admin_required
 
 from .decorators import book_admin_required
-from .forms import (
-    START_EXPORT,
-    START_YNAB,
-    BookBudgetingForm,
-    BookCreateForm,
-    BookSettingsForm,
-    ConfirmNameForm,
-)
+from .forms import START_EXPORT, START_YNAB, BookCreateForm, BookSettingsForm, ConfirmNameForm
 from .helpers import create_book, remember_book, url_segments
 from .models import Book
 
@@ -69,16 +62,24 @@ def legacy_book_redirect(request, team_slug, legacy_prefix, rest):
 
 @login_and_team_required
 def book_list(request, team_slug):
-    """Every set of books in the team, archived ones included so they can be restored."""
+    """
+    Every set of books in the team, archived ones included so they can be restored.
+
+    Archiving and deleting happen here, from the team, rather than from inside
+    the book: a book can be put away without first opening it.
+    """
+    books = list(Book.objects.filter(team=request.team).order_by("is_archived", "sort_order", "name"))
     return render(
         request,
         "books/book_list.html",
         {
-            "books": Book.objects.filter(team=request.team).order_by("is_archived", "sort_order", "name"),
+            "books": books,
+            # Neither archive nor delete may leave the team without an open book.
+            "open_count": sum(1 for b in books if not b.is_archived),
             "active_tab": "settings",
             "settings_section": "books",
-            "settings_page_title": _("Sets of books"),
-            "page_title": _("Sets of books"),
+            "settings_page_title": _("My books"),
+            "page_title": _("My books"),
             "settings_page_blurb": _(
                 "Each set of books has its own accounts, transactions, budget and goals. "
                 "Nothing is shared between them."
@@ -129,32 +130,78 @@ def book_create(request, team_slug):
     )
 
 
+def _team_book(request, slug):
+    """A book of the URL's team, archived or not; another team's slug is a 404."""
+    return get_object_or_404(Book, team=request.team, slug=slug)
+
+
+def _open_books(team):
+    return Book.objects.filter(team=team, is_archived=False)
+
+
+def _back_to_list(request):
+    return HttpResponseRedirect(reverse("books_team:list", args=[request.team.slug]))
+
+
+@team_admin_required
+def book_archive(request, team_slug, slug):
+    """Archive a book. Type-the-name confirmed; refused for the team's last open book."""
+    if request.method != "POST":
+        raise Http404
+    book = _team_book(request, slug)
+    if book.is_archived:
+        return _back_to_list(request)
+    if not _open_books(request.team).exclude(pk=book.pk).exists():
+        messages.error(request, _("This is the team's only set of books, so it can't be archived."))
+        return _back_to_list(request)
+    form = ConfirmNameForm(request.POST, book=book)
+    if not form.is_valid():
+        messages.error(request, form.errors["confirm"][0])
+        return _back_to_list(request)
+    book.archive()
+    log_event(AuditEvent.BOOK_ARCHIVED, request=request, team=request.team, book=book)
+    messages.success(request, _("%(name)s was archived.") % {"name": book.name})
+    return _back_to_list(request)
+
+
+@team_admin_required
+def book_restore(request, team_slug, slug):
+    if request.method != "POST":
+        raise Http404
+    book = _team_book(request, slug)
+    book.restore()
+    log_event(AuditEvent.BOOK_RESTORED, request=request, team=request.team, book=book)
+    messages.success(request, _("%(name)s was restored.") % {"name": book.name})
+    return _back_to_list(request)
+
+
+@team_admin_required
+def book_delete(request, team_slug, slug):
+    """Delete the book and every row in it. Type-the-name confirmed; never the last open book."""
+    if request.method != "POST":
+        raise Http404
+    from apps.portability.services.wipe import wipe_book
+
+    book = _team_book(request, slug)
+    if not _open_books(request.team).exclude(pk=book.pk).exists():
+        messages.error(request, _("This is the team's only set of books, so it can't be deleted."))
+        return _back_to_list(request)
+    form = ConfirmNameForm(request.POST, book=book)
+    if not form.is_valid():
+        messages.error(request, form.errors["confirm"][0])
+        return _back_to_list(request)
+
+    name = book.name
+    with transaction.atomic():
+        wipe_book(book)
+        # Audit rows outlive the book (their FK is SET_NULL); the event says which one it was.
+        log_event(AuditEvent.BOOK_DELETED, request=request, team=request.team, book=None, metadata={"name": name})
+        book.delete()
+    messages.success(request, _("%(name)s was deleted.") % {"name": name})
+    return _back_to_list(request)
+
+
 # --- Book level -------------------------------------------------------------------
-
-
-@book_admin_required
-def book_settings(request, team_slug, book_slug):
-    book = request.book
-    old_slug = book.slug
-    form = BookSettingsForm(request.POST or None, instance=book)
-    if request.method == "POST" and form.is_valid():
-        book = form.save()
-        messages.success(request, _("Saved."))
-        if book.slug != old_slug:
-            messages.info(request, _("The address changed. Links to the old one no longer work."))
-        return HttpResponseRedirect(reverse("books:settings", args=book.url_args))
-    return render(
-        request,
-        "books/book_settings.html",
-        {
-            "form": form,
-            "active_tab": "settings",
-            "settings_section": "book",
-            "settings_page_title": _("This set of books"),
-            "page_title": _("This set of books"),
-            "settings_page_blurb": _("Its name and web address."),
-        },
-    )
 
 
 def _unassigned_both_ways(book):
@@ -168,18 +215,20 @@ def _unassigned_both_ways(book):
 
 
 @book_admin_required
-def book_budgeting(request, team_slug, book_slug):
+def book_settings(request, team_slug, book_slug):
     """
-    The future-income setting. The page states the consequence before saving --
-    what Unassigned would be this month with the setting flipped -- computed by
+    Everything about this book on one page: its name, its web address and the
+    future-income setting. The page states that setting's consequence before
+    saving -- what Unassigned would be this month with it flipped -- computed by
     the same function the pill uses, so the two cannot disagree.
     """
     book = request.book
-    # Not `request.POST or None`: switching the setting off posts an empty form
-    # (an unticked checkbox sends nothing), which must still bind.
-    form = BookBudgetingForm(request.POST if request.method == "POST" else None, instance=book)
-    # Read before validating: `is_valid()` copies the posted value onto the instance.
+    old_slug = book.slug
+    # Read before validating: `is_valid()` copies the posted values onto the instance.
     before = book.budget_future_income
+    # Not `request.POST or None` alone: an unticked checkbox sends nothing, and
+    # the form must still bind.
+    form = BookSettingsForm(request.POST if request.method == "POST" else None, instance=book)
     if request.method == "POST" and form.is_valid():
         book = form.save()
         if before != book.budget_future_income:
@@ -191,94 +240,25 @@ def book_budgeting(request, team_slug, book_slug):
                 metadata={"budget_future_income": book.budget_future_income},
             )
         messages.success(request, _("Saved."))
-        return HttpResponseRedirect(reverse("books:budgeting", args=book.url_args))
+        if book.slug != old_slug:
+            messages.info(request, _("The address changed. Links to the old one no longer work."))
+        return HttpResponseRedirect(reverse("books:settings", args=book.url_args))
+    # An invalid post has copied its values onto the instance; the consequence is
+    # stated for the setting as saved.
+    book.budget_future_income = before
     current, flipped = _unassigned_both_ways(book)
     return render(
         request,
-        "books/book_budgeting.html",
+        "books/book_settings.html",
         {
             "form": form,
+            "future_income": before,
             "unassigned_now": current,
             "unassigned_flipped": flipped,
             "active_tab": "settings",
-            "settings_section": "budgeting",
-            "settings_page_title": _("Budgeting"),
-            "page_title": _("Budgeting"),
-            "settings_page_blurb": _("How this set of books counts money that hasn't arrived yet."),
+            "settings_section": "book",
+            "settings_page_title": _("This book"),
+            "page_title": _("This book"),
+            "settings_page_blurb": _("Its name, web address and how it budgets income."),
         },
     )
-
-
-def _open_books(team):
-    return Book.objects.filter(team=team, is_archived=False)
-
-
-@book_admin_required
-def book_archive(request, team_slug, book_slug):
-    """
-    Archive or delete this set of books. Both are refused for the team's last
-    open book -- a team always has somewhere to land.
-    """
-    book = request.book
-    is_last = not _open_books(request.team).exclude(pk=book.pk).exists()
-    form = ConfirmNameForm(request.POST or None, book=book)
-    if request.method == "POST":
-        if is_last and not book.is_archived:
-            messages.error(request, _("This is the team's only set of books, so it can't be archived."))
-            return HttpResponseRedirect(reverse("books:archive", args=book.url_args))
-        if form.is_valid():
-            book.archive()
-            log_event(AuditEvent.BOOK_ARCHIVED, request=request, team=request.team, book=book)
-            messages.success(request, _("%(name)s was archived.") % {"name": book.name})
-            return HttpResponseRedirect(reverse("books_team:list", args=[request.team.slug]))
-    return render(
-        request,
-        "books/book_archive.html",
-        {
-            "form": form,
-            "delete_form": ConfirmNameForm(book=book, prefix="delete"),
-            "is_last": is_last,
-            "active_tab": "settings",
-            "settings_section": "archive",
-            "settings_page_title": _("Archive or delete"),
-            "page_title": _("Archive or delete"),
-            "settings_page_blurb": _("Put this set of books away, or remove it and everything in it."),
-        },
-    )
-
-
-@book_admin_required
-def book_restore(request, team_slug, book_slug):
-    if request.method != "POST":
-        raise Http404
-    book = request.book
-    book.restore()
-    log_event(AuditEvent.BOOK_RESTORED, request=request, team=request.team, book=book)
-    messages.success(request, _("%(name)s was restored.") % {"name": book.name})
-    return HttpResponseRedirect(reverse("web_book:home", args=book.url_args))
-
-
-@book_admin_required
-def book_delete(request, team_slug, book_slug):
-    """Delete the book and every row in it. Type-the-name confirmed; never the last book."""
-    if request.method != "POST":
-        raise Http404
-    from apps.portability.services.wipe import wipe_book
-
-    book = get_object_or_404(Book, pk=request.book.pk)
-    form = ConfirmNameForm(request.POST, book=book, prefix="delete")
-    if not _open_books(request.team).exclude(pk=book.pk).exists():
-        messages.error(request, _("This is the team's only set of books, so it can't be deleted."))
-        return HttpResponseRedirect(reverse("books:archive", args=book.url_args))
-    if not form.is_valid():
-        messages.error(request, form.errors["confirm"][0])
-        return HttpResponseRedirect(reverse("books:archive", args=book.url_args))
-
-    name = book.name
-    with transaction.atomic():
-        wipe_book(book)
-        # Audit rows outlive the book (their FK is SET_NULL); the event says which one it was.
-        log_event(AuditEvent.BOOK_DELETED, request=request, team=request.team, book=None, metadata={"name": name})
-        book.delete()
-    messages.success(request, _("%(name)s was deleted.") % {"name": name})
-    return HttpResponseRedirect(reverse("web_team:home", args=[request.team.slug]))
