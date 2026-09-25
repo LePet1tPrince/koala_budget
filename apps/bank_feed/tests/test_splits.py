@@ -25,6 +25,7 @@ from apps.accounts.models import (
     AccountGroup,
 )
 from apps.bank_feed.models import BankTransaction
+from apps.bank_feed.services.transfer_mirror import sync_transfer
 from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
@@ -321,26 +322,27 @@ class SplitRegressionTest(SplitTestCase):
         self.assertFalse(plain.journal_entry.lines.filter(account=self.shopping).exists())
         self.assertBalanced(split.journal_entry)
 
-    def test_split_does_not_grow_a_transfer_mirror(self):
+    def test_split_mirrors_only_its_transfer_leg(self):
         """
-        T5 -- `_counterpart_account` takes the first non-bank line, so a split whose
-        first leg is a feed account is mistaken for a transfer and grows a phantom
-        mirror row for the split's whole amount.
+        T5 -- a split whose first leg is a feed account once grew a mirror for the
+        split's *whole* amount. A transfer leg is mirrored for its own amount only.
         """
         tx = self.make_split(
             legs=[(self.savings, Decimal("100.00")), (self.groceries, Decimal("60.00"))],
         )
+        sync_transfer(tx)
 
         mirrors = BankTransaction.objects.filter(journal_entry=tx.journal_entry).exclude(id=tx.id)
-        self.assertFalse(
-            mirrors.exists(),
-            "A split has no single counterpart; mirroring it invents a transaction the bank never reported.",
+        self.assertEqual(
+            [(m.account_id, m.amount) for m in mirrors],
+            [(self.savings.id, Decimal("-100.00"))],
+            "The mirror carries the transfer leg, never the split's total.",
         )
 
     def test_split_survives_a_payee_only_edit(self):
         """
-        T5b -- `sync_transfer` runs after every edit, so the mirror bug is reachable
-        from an edit that never mentions a category.
+        T5b -- `sync_transfer` runs after every edit, so the mirror is reachable
+        from an edit that never mentions a category: it follows the leg, once.
         """
         tx = self.make_split(
             legs=[(self.savings, Decimal("100.00")), (self.groceries, Decimal("60.00"))],
@@ -356,7 +358,8 @@ class SplitRegressionTest(SplitTestCase):
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT, resp.data)
         self.assertBalanced(tx.journal_entry)
         mirrors = BankTransaction.objects.filter(journal_entry=tx.journal_entry).exclude(id=tx.id)
-        self.assertFalse(mirrors.exists())
+        self.assertEqual([(m.account_id, m.amount) for m in mirrors], [(self.savings.id, Decimal("-100.00"))])
+        self.assertEqual(mirrors.get().merchant_name, "Costco Wholesale")
 
 
 class SplitArithmeticTest(SplitTestCase):
@@ -816,3 +819,194 @@ class SplitReportingTest(SplitTestCase):
         self.assertEqual(by_name["Groceries"], Decimal("160.00"))
         self.assertEqual(by_name["Household Goods"], Decimal("50.40"))
         self.assertEqual(data["total_expenses"], Decimal("210.40"), "The split must not be double-counted.")
+
+
+class SplitTransferMirrorTest(SplitTestCase):
+    """
+    A split with a transfer leg shows in both feeds.
+
+    The split is written once, on the account that holds it; the transfer leg's
+    other side appears as a mirror row, the same way a plain transfer does --
+    so the counterpart feed never needs a row of its own.
+    """
+
+    def put_split(self, tx, legs, *, outflow="500.00", **extra):
+        payload = {
+            "date": "2026-09-14",
+            "account": self.chequing.id,
+            "inflow": "0",
+            "outflow": outflow,
+            "description": "Paycheque split",
+            "payee": "",
+            "splits": [{"category": account.id, "amount": amount} for account, amount in legs],
+        }
+        payload.update(extra)
+        with current_book(self.book):
+            return self.client.put(self.feed_url(f"{tx.id}/"), payload, format="json")
+
+    def mirrors_of(self, tx):
+        return list(BankTransaction.objects.filter(journal_entry_id=tx.journal_entry_id, is_transfer_mirror=True))
+
+    def test_splitting_with_a_transfer_leg_creates_a_mirror_for_that_leg(self):
+        tx = self.make_plain(amount="500.00")
+
+        resp = self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertTrue(resp.data["is_split"])
+        (mirror,) = self.mirrors_of(tx)
+        self.assertEqual(mirror.account_id, self.savings.id)
+        self.assertEqual(mirror.amount, Decimal("-80.00"), "Money arriving in savings is an inflow there.")
+        self.assertEqual(mirror.posted_date, date(2026, 9, 14))
+        self.assertEqual(mirror.description, "Paycheque split")
+        self.assertEqual(mirror.source, BankTransaction.SOURCE_SYSTEM)
+        self.assertBalanced(tx.journal_entry)
+
+    def test_mirror_follows_the_leg_amount(self):
+        tx = self.make_plain(amount="500.00")
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+
+        resp = self.put_split(tx, [(self.groceries, "450.00"), (self.savings, "50.00")])
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        (mirror,) = self.mirrors_of(tx)
+        self.assertEqual(mirror.amount, Decimal("-50.00"))
+
+    def test_dropping_the_transfer_leg_drops_the_mirror(self):
+        tx = self.make_plain(amount="500.00")
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+
+        resp = self.put_split(tx, [(self.groceries, "300.00"), (self.household, "200.00")])
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertEqual(self.mirrors_of(tx), [])
+
+    def test_a_plain_transfer_split_keeps_one_mirror_resized_to_the_leg(self):
+        tx = self.make_plain(amount="500.00", category=self.groceries)
+        with current_book(self.book):
+            self.client.put(
+                self.feed_url(f"{tx.id}/"),
+                {
+                    "date": "2026-09-14",
+                    "account": self.chequing.id,
+                    "category": self.savings.id,
+                    "inflow": "0",
+                    "outflow": "500.00",
+                    "description": "To savings",
+                    "payee": "",
+                },
+                format="json",
+            )
+        self.assertEqual([m.amount for m in self.mirrors_of(tx)], [Decimal("-500.00")])
+
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+
+        self.assertEqual([m.amount for m in self.mirrors_of(tx)], [Decimal("-80.00")])
+
+    def test_collapsing_to_a_transfer_keeps_one_mirror_for_the_whole_amount(self):
+        tx = self.make_plain(amount="500.00")
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+
+        with current_book(self.book):
+            resp = self.client.put(
+                self.feed_url(f"{tx.id}/"),
+                {
+                    "date": "2026-09-14",
+                    "account": self.chequing.id,
+                    "category": self.savings.id,
+                    "inflow": "0",
+                    "outflow": "500.00",
+                    "description": "To savings",
+                    "payee": "",
+                    "remove_split": True,
+                },
+                format="json",
+            )
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertEqual([m.amount for m in self.mirrors_of(tx)], [Decimal("-500.00")])
+
+    def test_mirror_row_reads_as_a_plain_transfer_from_the_split_account(self):
+        tx = self.make_plain(amount="500.00")
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+
+        with current_book(self.book):
+            resp = self.client.get(self.feed_url(f"?account={self.savings.id}"))
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        (row,) = resp.data["results"]
+        self.assertFalse(row["is_split"])
+        self.assertEqual(row["category"]["id"], self.chequing.id)
+        self.assertEqual(Decimal(row["inflow"]), Decimal("80.00"))
+        self.assertEqual(row["journal_entry_id"], tx.journal_entry_id)
+
+    def test_the_mirror_cannot_be_edited_on_its_own(self):
+        tx = self.make_plain(amount="500.00")
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+        (mirror,) = self.mirrors_of(tx)
+
+        with current_book(self.book):
+            put = self.client.put(
+                self.feed_url(f"{mirror.id}/"),
+                {
+                    "date": "2026-09-20",
+                    "account": self.savings.id,
+                    "category": self.chequing.id,
+                    "inflow": "80.00",
+                    "outflow": "0",
+                    "description": "Changed",
+                    "payee": "",
+                },
+                format="json",
+            )
+            batch = self.client.patch(self.feed_url("batch_edit/"), {"ids": [mirror.id], "payee": "X"}, format="json")
+
+        self.assertEqual(put.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(batch.status_code, status.HTTP_400_BAD_REQUEST)
+        mirror.refresh_from_db()
+        self.assertEqual(mirror.description, "Paycheque split")
+        self.assertEqual(tx.journal_entry.lines.count(), 3)
+
+    def test_archiving_the_split_archives_its_mirror(self):
+        tx = self.make_plain(amount="500.00")
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+        (mirror,) = self.mirrors_of(tx)
+
+        with current_book(self.book):
+            resp = self.client.post(self.feed_url("batch_archive/"), {"ids": [tx.id]}, format="json")
+
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        mirror.refresh_from_db()
+        self.assertTrue(mirror.is_archived)
+
+    def test_decategorizing_the_split_removes_its_mirror(self):
+        tx = self.make_plain(amount="500.00")
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+        (mirror,) = self.mirrors_of(tx)
+
+        with current_book(self.book):
+            resp = self.client.put(
+                self.feed_url(f"{tx.id}/"),
+                {
+                    "date": "2026-09-14",
+                    "account": self.chequing.id,
+                    "inflow": "0",
+                    "outflow": "500.00",
+                    "description": "Paycheque split",
+                    "payee": "",
+                },
+                format="json",
+            )
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertFalse(BankTransaction.objects.filter(id=mirror.id).exists())
+
+    def test_sync_is_idempotent(self):
+        tx = self.make_plain(amount="500.00")
+        self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
+        tx.refresh_from_db()
+        before = [(m.id, m.amount, m.updated_at) for m in self.mirrors_of(tx)]
+
+        sync_transfer(tx)
+
+        self.assertEqual([(m.id, m.amount, m.updated_at) for m in self.mirrors_of(tx)], before)

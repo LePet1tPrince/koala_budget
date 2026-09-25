@@ -60,6 +60,11 @@ const Step5Preview = ({ preview, loading }) => {
           value={Number(summary.budgets).toLocaleString()}
           desc={gettext('across {n} months').replace('{n}', summary.months)}
         />
+        <Stat
+          label={gettext('In your Inbox')}
+          value={Number(summary.feed_rows ?? 0).toLocaleString()}
+          desc={gettext('{n} to categorize').replace('{n}', Number(summary.inbox_rows ?? 0).toLocaleString())}
+        />
         <Stat label={gettext('Net worth')} value={money(summary.net_worth)} desc={gettext('once imported')} />
       </div>
 

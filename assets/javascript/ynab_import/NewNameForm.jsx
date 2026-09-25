@@ -3,13 +3,13 @@
 import React, { useState } from 'react';
 
 /**
- * One-line "name it" form: the + on the name bank and the "New …" row in a chip
- * menu both open this.
+ * One-line "name it" form: the + on the name bank, the "New …" row in a chip
+ * menu, and a name chip's Rename all open this.
  *
  * `onSubmit(raw)` returns an error message, or nothing when the name was taken.
  */
-const NewNameForm = ({ placeholder, submitLabel, onSubmit, onCancel, testId }) => {
-  const [value, setValue] = useState('');
+const NewNameForm = ({ placeholder, submitLabel, initialValue = '', onSubmit, onCancel, testId }) => {
+  const [value, setValue] = useState(initialValue);
   const [error, setError] = useState('');
 
   const submit = () => {
@@ -28,6 +28,8 @@ const NewNameForm = ({ placeholder, submitLabel, onSubmit, onCancel, testId }) =
           maxLength={200}
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
+          // A rename starts from the current name, selected, so typing replaces it.
+          onFocus={(e) => e.target.select()}
           aria-label={placeholder}
           aria-invalid={Boolean(error)}
           onChange={(e) => {

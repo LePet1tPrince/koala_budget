@@ -5,7 +5,15 @@ import React, { useMemo } from 'react';
 import Icon from '../common/Icon';
 import ChipSelect from './ChipSelect';
 import NameBank from './NameBank';
-import { resolveNewName, withName } from './names';
+import {
+  editsAfterAdd,
+  editsAfterRemove,
+  editsAfterRename,
+  EMPTY_EDITS,
+  listNames,
+  resolveNewName,
+  resolveRename,
+} from './names';
 
 /**
  * The accounts, with the type we inferred and the evidence for it.
@@ -30,27 +38,29 @@ const TAKEN_BY_OTHER_TYPE = {
 
 const otherType = (type) => (type === 'asset' ? 'liability' : 'asset');
 
-const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExtraGroupsChange }) => {
+const Step2Accounts = ({ accounts, groups, choices, onChange, groupEdits, onGroupEditsChange }) => {
   const choiceFor = (account) => choices[account.name] || {};
   const typeOf = (account) => choiceFor(account).account_type ?? account.account_type;
   const groupOf = (account) => choiceFor(account).group ?? account.group;
 
   const update = (account, patch) => onChange({ ...choices, [account.name]: { ...choiceFor(account), ...patch } });
 
+  const editsFor = (type) => groupEdits[type] || EMPTY_EDITS;
+  const setEdits = (type, edits) => onGroupEditsChange({ ...groupEdits, [type]: edits });
+
   // A group holds one type of account, as it does in the app, so each type has its
-  // own list: the suggested groups first, then any a row is already in, then the
-  // ones the user added.
+  // own list: the suggested groups first (as renamed), then the ones the user
+  // added, then any other a row is in.
   const groupsByType = useMemo(() => {
-    const byType = { asset: [], liability: [] };
-    const add = (name, type) => {
-      if (byType[type]) byType[type] = withName(byType[type], name);
-    };
-    groups.forEach((group) => add(group.name, group.account_type));
-    accounts.forEach((account) => add(groupOf(account), typeOf(account)));
-    extraGroups.forEach((group) => add(group.name, group.account_type));
+    const byType = {};
+    TYPES.forEach(({ key }) => {
+      const suggested = groups.filter((group) => group.account_type === key).map((group) => group.name);
+      const inUse = accounts.filter((account) => typeOf(account) === key).map(groupOf);
+      byType[key] = listNames(suggested, inUse, editsFor(key));
+    });
     return byType;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, accounts, choices, extraGroups]);
+  }, [groups, accounts, choices, groupEdits]);
 
   // Counted over the accounts being imported; an unticked row still holds its
   // group, so it keeps a group the user added from being removed under it.
@@ -72,8 +82,32 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
       taken: groupsByType[otherType(type)],
       takenMessage: TAKEN_BY_OTHER_TYPE[type],
     });
-    if (result.created) onExtraGroupsChange([...extraGroups, { name: result.name, account_type: type }]);
+    if (result.created) setEdits(type, editsAfterAdd(editsFor(type), result.name));
     return result;
+  };
+
+  // Every account of `type` in group `from` -- skipped ones too, so a group
+  // renamed or emptied is not held by a row that is not being imported.
+  const moveAccounts = (type, from, to) => {
+    const next = { ...choices };
+    accounts.forEach((account) => {
+      if (typeOf(account) === type && groupOf(account) === from) {
+        next[account.name] = { ...choiceFor(account), group: to };
+      }
+    });
+    onChange(next);
+  };
+
+  const renameGroup = (type, from, raw) => {
+    const result = resolveRename(groupsByType[type], from, raw, {
+      taken: groupsByType[otherType(type)],
+      takenMessage: TAKEN_BY_OTHER_TYPE[type],
+    });
+    if (result.error) return result.error;
+    if (result.unchanged) return null;
+    moveAccounts(type, from, result.name);
+    setEdits(type, editsAfterRename(editsFor(type), from, result.name, result.merged));
+    return null;
   };
 
   // Retyping an account moves it out of a group that no longer fits: back to the
@@ -100,7 +134,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
           <h3 className="font-semibold">{gettext('Account groups')}</h3>
           <p className="mt-1 text-sm text-base-content/70">
             {gettext(
-              'Every account goes in one of these. Add a group with + here or from any row’s group menu, and it is offered on every row.',
+              'Every account goes in one of these. Add a group with + here or from any row’s group menu, and it is offered on every row. Click a group to rename it or move all its accounts to another.',
             )}
           </p>
         </div>
@@ -110,11 +144,11 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
             label={type.label}
             names={groupsByType[type.key]}
             counts={counts[type.key]}
-            removable={extraGroups
-              .filter((group) => group.account_type === type.key && !held.has(group.name))
-              .map((group) => group.name)}
-            onRemove={(name) => onExtraGroupsChange(extraGroups.filter((group) => group.name !== name))}
+            removable={groupsByType[type.key].filter((name) => !held.has(name))}
+            onRemove={(name) => setEdits(type.key, editsAfterRemove(editsFor(type.key), name))}
             onAdd={(raw) => createGroup(type.key, raw).error}
+            onRename={(name, raw) => renameGroup(type.key, name, raw)}
+            onReassign={(name, target) => moveAccounts(type.key, name, target)}
             addLabel={gettext('New group')}
             addPlaceholder={gettext('Group name')}
             testId={`ynab-groups-${type.key}`}
@@ -131,6 +165,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
               <th>{gettext('Group')}</th>
               <th className="text-right">{gettext('Transactions')}</th>
               <th className="text-right">{gettext('Balance')}</th>
+              <th className="text-center">{gettext('In Inbox')}</th>
               <th className="text-center">{gettext('Import')}</th>
             </tr>
           </thead>
@@ -138,6 +173,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
             {accounts.map((account) => {
               const choice = choiceFor(account);
               const skip = Boolean(choice.skip);
+              const hasFeed = choice.has_feed ?? account.has_feed;
               return (
                 <tr
                   key={account.name}
@@ -189,9 +225,21 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
                     <input
                       type="checkbox"
                       className="checkbox checkbox-sm rounded-sm"
+                      checked={hasFeed && !skip}
+                      disabled={skip}
+                      onChange={(e) => update(account, { has_feed: e.target.checked })}
+                      aria-label={gettext('Show this account’s transactions in the Inbox')}
+                      data-testid="ynab-account-feed"
+                    />
+                  </td>
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm rounded-sm"
                       checked={!skip}
                       onChange={(e) => update(account, { skip: !e.target.checked })}
                       aria-label={gettext('Import this account')}
+                      data-testid="ynab-account-import"
                     />
                   </td>
                 </tr>
@@ -200,6 +248,13 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, extraGroups, onExt
           </tbody>
         </table>
       </div>
+
+      <p className="flex items-start gap-2 text-sm text-base-content/70">
+        <Icon name="info" className="mt-0.5 h-4 w-4 shrink-0" />
+        {gettext(
+          'An account in the Inbox gets its own feed with every transaction from YNAB, ready to reconcile against your statements. Tracking accounts and accounts emptied over a year ago start without one.',
+        )}
+      </p>
 
       <p className="flex items-start gap-2 text-sm text-base-content/70">
         <Icon name="info" className="mt-0.5 h-4 w-4 shrink-0" />

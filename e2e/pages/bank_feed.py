@@ -51,6 +51,12 @@ class BankFeedPage(BasePage):
         # After clicking, the filter toggles and table should appear
         self.page.wait_for_selector("[data-testid='quick-filters-btn']", timeout=10_000)
 
+    def open_csv_upload(self, csv_path: str):
+        """Open the CSV wizard from the table's "More actions" menu and hand it a file."""
+        self.page.get_by_role("button", name="More actions").click()
+        self.page.get_by_text("Upload CSV/Excel", exact=True).click()
+        self.page.locator("[data-testid='csv-file-input']").set_input_files(csv_path)
+
     def click_add_transaction(self):
         """Click the add-transaction button to open the edit modal."""
         self.page.locator("[data-testid='add-transaction-btn']").click()

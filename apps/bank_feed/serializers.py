@@ -578,7 +578,14 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
                     statement_date = line.reconciliation.statement_date
 
         legs = [line for line in lines if line.account_id != tx.account_id]
-        if len(lines) > 2:
+        if len(lines) > 2 and tx.is_transfer_mirror:
+            # This row is one transfer leg of a split made in another account. Here
+            # it is a plain transfer from that account -- the split's legs belong
+            # to the split's own row, not to this one.
+            siblings = tx.journal_entry.bank_feed_transactions.all()
+            primary = next((leg for leg in siblings if not leg.is_transfer_mirror), None)
+            category = primary.account if primary is not None else None
+        elif len(lines) > 2:
             # A split has no single category. Report its legs and leave `category`
             # null, so nothing renders one leg as though it were the whole
             # transaction -- which is what the old loop did, silently.

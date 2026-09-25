@@ -80,9 +80,9 @@ class TinyBuildTest(SimpleTestCase):
         # stays editable rather than reading as finished.
         self.assertEqual(goal.target_amount, Decimal("300.00"))
 
-    def test_each_leg_of_a_transfer_keeps_its_own_reconciliation_state(self):
+    def test_each_leg_of_a_transfer_keeps_its_own_cleared_state(self):
         entry = next(e for e in self.plan.entries if e.description == "To savings")
-        flags = {line.account[1]: line.is_reconciled for line in entry.lines}
+        flags = {line.account[1]: line.is_cleared for line in entry.lines}
         self.assertTrue(flags["Chequing"])
         self.assertFalse(flags["Savings"])
 
@@ -222,15 +222,20 @@ class SampleBuildTest(SimpleTestCase):
         cls.plan = build(cls.analysis)
 
     def test_every_row_is_imported(self):
-        # Every one of the 7,572 rows is accounted for: 6,623 transactions, 13
-        # opening balances, and 8 `Starting Balance` rows for accounts that were
-        # added empty and so carry no entry.
+        # Every one of the 7,572 rows is accounted for: 6,615 transactions, 8 rows
+        # YNAB never categorised (waiting in the Inbox), 13 opening balances, and 8
+        # `Starting Balance` rows for accounts that were added empty and so carry no
+        # entry.
         self.assertEqual(
-            len(self.plan.entries) + len(self.plan.openings) + self.plan.stats["zero_openings"],
+            len(self.plan.entries)
+            + len(self.plan.inbox_rows)
+            + len(self.plan.openings)
+            + self.plan.stats["zero_openings"],
             self.analysis.entry_count,
         )
-        self.assertEqual(len(self.plan.entries), 6623)
-        self.assertEqual(self.plan.stats["lines"], 13335)
+        self.assertEqual(len(self.plan.entries), 6615)
+        self.assertEqual(len(self.plan.inbox_rows), 8)
+        self.assertEqual(self.plan.stats["lines"], 13319)
 
     def test_every_entry_balances(self):
         self.assertTrue(all(entry.balances for entry in self.plan.entries))

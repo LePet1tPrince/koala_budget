@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import Icon from '../common/Icon';
 import Modal from '../common/Modal';
+import { EMPTY_EDITS } from './names';
 import Step1Upload from './Step1Upload';
 import Step2Accounts from './Step2Accounts';
 import Step3Income from './Step3Income';
@@ -50,11 +51,12 @@ const YnabImportWizard = ({ props }) => {
   const [importId, setImportId] = useState(resume?.id ?? null);
   const [analysis, setAnalysis] = useState(null);
   const [choices, setChoices] = useState({ accounts: {}, income: {}, categories: {} });
-  // Names the user added on the accounts and income screens. Held here rather than
-  // in the screens, which unmount on Back/Continue, so an added group that no row
+  // How the user changed the lists of names on the accounts and income screens
+  // (added, renamed, removed -- `names.js` EMPTY_EDITS). Held here rather than in
+  // the screens, which unmount on Back/Continue, so an added group that no row
   // uses yet is still offered on returning to the screen.
-  const [extraGroups, setExtraGroups] = useState([]);
-  const [extraIncomeAccounts, setExtraIncomeAccounts] = useState([]);
+  const [groupEdits, setGroupEdits] = useState({});
+  const [incomeEdits, setIncomeEdits] = useState(EMPTY_EDITS);
 
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -72,8 +74,8 @@ const YnabImportWizard = ({ props }) => {
     setAnalysis(null);
     setPreview(null);
     setChoices({ accounts: {}, income: {}, categories: {} });
-    setExtraGroups([]);
-    setExtraIncomeAccounts([]);
+    setGroupEdits({});
+    setIncomeEdits(EMPTY_EDITS);
     setError(null);
     setStep(0);
   }, []);
@@ -86,8 +88,8 @@ const YnabImportWizard = ({ props }) => {
         const result = await api.upload(files);
         setImportId(result.import_id);
         setAnalysis(result);
-        setExtraGroups([]);
-        setExtraIncomeAccounts([]);
+        setGroupEdits({});
+        setIncomeEdits(EMPTY_EDITS);
         setPreview(result);
         setStep(1);
       } catch (e) {
@@ -236,8 +238,8 @@ const YnabImportWizard = ({ props }) => {
             groups={analysis.groups}
             choices={choices.accounts}
             onChange={(accounts) => setChoices({ ...choices, accounts })}
-            extraGroups={extraGroups}
-            onExtraGroupsChange={setExtraGroups}
+            groupEdits={groupEdits}
+            onGroupEditsChange={setGroupEdits}
           />
         )}
 
@@ -248,8 +250,8 @@ const YnabImportWizard = ({ props }) => {
             otherIncome={analysis.other_income}
             choices={choices.income}
             onChange={(income) => setChoices({ ...choices, income })}
-            extraAccounts={extraIncomeAccounts}
-            onExtraAccountsChange={setExtraIncomeAccounts}
+            edits={incomeEdits}
+            onEditsChange={setIncomeEdits}
           />
         )}
 

@@ -79,7 +79,13 @@ class YnabImportPage(BasePage):
         self.account_row(name).locator("select").select_option(value)
 
     def drop_account(self, name: str):
-        self.account_row(name).locator("input[type='checkbox']").uncheck()
+        self.account_row(name).locator("[data-testid='ynab-account-import']").uncheck()
+
+    def in_inbox(self, name: str) -> bool:
+        return self.account_row(name).locator("[data-testid='ynab-account-feed']").is_checked()
+
+    def set_in_inbox(self, name: str, value: bool):
+        self.account_row(name).locator("[data-testid='ynab-account-feed']").set_checked(value)
 
     def income_rows(self) -> int:
         return self.page.locator("[data-testid='ynab-income-row']").count()
@@ -122,6 +128,40 @@ class YnabImportPage(BasePage):
         field = self.page.locator(f"[data-testid='{bank}-new-form'] input")
         field.fill(name)
         field.press("Enter")
+
+    def pick_group_by_keyboard(self, name: str, typed: str, keys: list[str]):
+        """Open a row's group chip, type into its filter, press `keys`, and read nothing back."""
+        self.account_row(name).locator("[data-testid='ynab-account-group']").click()
+        menu = self.page.locator("[data-testid='ynab-account-group-menu']")
+        field = menu.get_by_label("Filter")
+        field.wait_for()
+        if typed:
+            field.fill(typed)
+        for key in keys:
+            field.press(key)
+
+    def open_name_chip(self, bank: str, name: str):
+        """Open the menu of a name chip at the top of the screen (`bank` is its testid)."""
+        self.page.locator(f"[data-testid='{bank}-chip'][data-name='{name}']").click()
+        menu = self.page.locator(f"[data-testid='{bank}-chip-menu']")
+        menu.wait_for()
+        return menu
+
+    def rename_name(self, bank: str, name: str, new_name: str):
+        menu = self.open_name_chip(bank, name)
+        menu.locator(f"[data-testid='{bank}-rename']").click()
+        field = menu.locator(f"[data-testid='{bank}-rename-form'] input")
+        field.fill(new_name)
+        field.press("Enter")
+
+    def move_all(self, bank: str, name: str, target: str):
+        menu = self.open_name_chip(bank, name)
+        menu.locator(f"[data-testid='{bank}-move']").click()
+        menu.get_by_role("option", name=target, exact=True).click()
+
+    def chip_names(self, bank: str) -> list[str]:
+        chips = self.page.locator(f"[data-testid='{bank}-chip']")
+        return [chips.nth(i).get_attribute("data-name") for i in range(chips.count())]
 
     def income_account(self, payee: str) -> str:
         return self.income_row(payee).locator("[data-testid='ynab-income-account']").get_attribute("data-value")

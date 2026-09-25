@@ -97,11 +97,35 @@ class PlannedAccount:
 
 @dataclass(frozen=True)
 class PlannedLine:
+    """
+    One journal line. Never reconciled: an imported line is reconciled by the user,
+    against a statement, like any other -- YNAB's `Reconciled` flag is not carried.
+    """
+
     account: tuple[str, str]
     dr: Decimal
     cr: Decimal
-    is_reconciled: bool = False
     is_cleared: bool = False
+
+
+@dataclass(frozen=True)
+class PlannedFeedRow:
+    """
+    One bank-feed row, in the feed's convention: positive `amount` is an outflow.
+
+    An entry carries at most one -- its primary, on a feed account. The other side
+    of a transfer (or of a split's transfer leg) is not planned here: it is the
+    mirror the bank feed's own rule derives from the entry's lines at apply time,
+    so an imported transfer is exactly what categorizing one in the Inbox makes.
+    """
+
+    account: tuple[str, str]
+    amount: Decimal
+    posted_date: date
+    description: str
+    merchant: str | None
+    # The register row it came from, kept on the feed row as provenance.
+    row_index: int
 
 
 @dataclass(frozen=True)
@@ -110,6 +134,7 @@ class PlannedEntry:
     description: str
     payee: str | None
     lines: tuple[PlannedLine, ...]
+    feed: PlannedFeedRow | None = None
 
     @property
     def balances(self) -> bool:
@@ -155,6 +180,9 @@ class ImportPlan:
     openings: list[PlannedOpening]
     budgets: list[PlannedBudget]
     goals: list[PlannedGoal]
+    # Rows YNAB never categorised, on a feed account: they go to the Inbox as
+    # uncategorized feed rows, with no journal entry until the user files them.
+    inbox_rows: list[PlannedFeedRow] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     # Counts the summary screen reports, so the user is told what was inferred
     # rather than finding it later.
@@ -180,6 +208,8 @@ class AccountChoice:
     group: str
     institution: str = ""
     skip: bool = False
+    # Whether the account's transactions land in the Inbox.
+    has_feed: bool = False
 
 
 @dataclass(frozen=True)
@@ -210,7 +240,12 @@ def default_choices(analysis: Analysis) -> Choices:
     """Everything the inference suggests, before the user touches any of it."""
     return Choices(
         accounts={
-            facts.name: AccountChoice(name=facts.name, account_type=facts.account_type, group=facts.group)
+            facts.name: AccountChoice(
+                name=facts.name,
+                account_type=facts.account_type,
+                group=facts.group,
+                has_feed=facts.suggested_feed,
+            )
             for facts in analysis.accounts
         },
         income={facts.payee: IncomeChoice(kind=facts.kind, account=facts.account) for facts in analysis.income_payees},
@@ -246,6 +281,7 @@ def parse_choices(analysis: Analysis, raw) -> Choices:
             group=_clean_name(value.get("group"), current.group),
             institution=_clean_name(value.get("institution"), "", allow_blank=True),
             skip=bool(value.get("skip")),
+            has_feed=value["has_feed"] if isinstance(value.get("has_feed"), bool) else current.has_feed,
         )
 
     income = dict(defaults.income)
@@ -389,12 +425,13 @@ def build(analysis: Analysis, choices: Choices | None = None) -> ImportPlan:
         equity=equity,
     )
 
-    entries, openings, allocations, consumed = _build_entries(analysis, resolver)
+    entries, openings, allocations, consumed, inbox_rows = _build_entries(analysis, resolver)
     goals, spent_goals = _build_goals(analysis, choices, allocations, categories)
     # Goal categories never get a `Budget`: what was assigned to them became goal allocations.
     budget_categories = {key: account for key, account in categories.items() if not resolver.is_goal_category(*key)}
     budgets, budget_stats = _build_budgets(analysis, choices, budget_categories, entries, income)
 
+    resolver.inbox_rows = len(inbox_rows)
     notes.extend(resolver.notes)
     notes.extend(_notes(analysis, choices, goals, spent_goals, budget_stats, resolver))
     plan = ImportPlan(
@@ -406,6 +443,7 @@ def build(analysis: Analysis, choices: Choices | None = None) -> ImportPlan:
         openings=openings,
         budgets=budgets,
         goals=goals,
+        inbox_rows=inbox_rows,
         notes=notes,
         choices=choices,
         account_keys=accounts,
@@ -430,9 +468,9 @@ def _build_accounts(analysis: Analysis, choices: Choices, chart: _Chart) -> dict
             choice.name,
             choice.account_type,
             group,
-            # A tracking account (a pension, a GIC, home equity) has no bank feed to
-            # connect; an everyday account does.
-            has_feed=facts.on_budget or choice.account_type == LIABILITY,
+            # Defaulted by `analyse.suggested_feed`: an everyday account or a debt has a
+            # feed, a tracking account (a pension, a GIC) and a dormant one do not.
+            has_feed=choice.has_feed,
             institution=choice.institution,
         )
     return keys
@@ -526,6 +564,7 @@ class _Resolver:
         self.dropped_transfer_categories = 0
         self.zero_openings = 0
         self.spent_goals = 0
+        self.inbox_rows = 0
         # Goal funding, by (group, category, month), and -- in the same shape -- all
         # the category activity that rode on a transfer leg. No transfer can post to
         # a category account without misstating net worth, so the reconciliation
@@ -631,6 +670,26 @@ class _Resolver:
     def _is_tracking(self, account_name: str) -> bool:
         return account_name in self.tracking
 
+    def has_feed(self, key: tuple[str, str] | None) -> bool:
+        return key is not None and self.chart.accounts[key].has_feed
+
+    def goes_to_inbox(self, row: RegisterRow, account: tuple[str, str]) -> bool:
+        """
+        A row YNAB never categorised, on an everyday account with a feed.
+
+        It waits in the Inbox rather than posting to `Uncategorized`: filing it is a
+        decision the user never made. Not a transfer (its category is the other
+        account), not a correcting entry (that posts to equity), and not a tracking
+        account's growth, which has no category by design (D5).
+        """
+        return (
+            not row.category
+            and not row.transfer_account
+            and row.payee.strip().lower() not in RECONCILIATION_PAYEES
+            and not self._is_tracking(row.account)
+            and self.has_feed(account)
+        )
+
 
 _MISSING = object()
 
@@ -650,6 +709,7 @@ def _build_entries(analysis: Analysis, resolver: _Resolver):
 
     entries: list[PlannedEntry] = []
     planned_openings: list[PlannedOpening] = []
+    inbox_rows: list[PlannedFeedRow] = []
     consumed: set[int] = set()
     note = resolver.note_transfer_leg
 
@@ -696,9 +756,12 @@ def _build_entries(analysis: Analysis, resolver: _Resolver):
             continue
 
         consumed.add(row.index)
+        if resolver.goes_to_inbox(row, account):
+            inbox_rows.append(_feed_row(row, account))
+            continue
         entries.append(_simple_entry(row, account, resolver.counter_for(row), resolver))
 
-    return entries, planned_openings, resolver.allocations, consumed
+    return entries, planned_openings, resolver.allocations, consumed, inbox_rows
 
 
 def _opening(row: RegisterRow, account: tuple[str, str], resolver: _Resolver) -> PlannedOpening:
@@ -713,19 +776,27 @@ def _opening(row: RegisterRow, account: tuple[str, str], resolver: _Resolver) ->
     return PlannedOpening(account=account, amount=amount.quantize(CENT), as_of=row.entry_date)
 
 
+def _feed_row(row: RegisterRow, account: tuple[str, str], net: Decimal | None = None) -> PlannedFeedRow:
+    """The bank-feed row for `row` on `account`. `net` overrides the amount (a split's total)."""
+    net = row.net if net is None else net
+    return PlannedFeedRow(
+        account=account,
+        amount=(-net).quantize(CENT),
+        posted_date=row.entry_date,
+        description=_description(row)[:255],
+        merchant=_payee(row),
+        row_index=row.index,
+    )
+
+
 def _lines_for(row: RegisterRow, account: tuple[str, str], counter: tuple[str, str]) -> tuple[PlannedLine, ...]:
     amount = abs(row.net).quantize(CENT)
     inflow = row.net > ZERO
     return (
+        # D9: YNAB flags a transaction, KB flags a line. `Cleared` belongs on the
+        # bank-account side, which is the side a bank statement can confirm.
         PlannedLine(
-            account=account,
-            dr=amount if inflow else ZERO,
-            cr=ZERO if inflow else amount,
-            # D9: YNAB flags a transaction, KB flags a line. The flag belongs on the
-            # bank-account side, which is the side a bank statement can confirm --
-            # the same rule the transfer-mirror code already follows.
-            is_reconciled=row.is_reconciled,
-            is_cleared=row.is_cleared,
+            account=account, dr=amount if inflow else ZERO, cr=ZERO if inflow else amount, is_cleared=row.is_cleared
         ),
         PlannedLine(account=counter, dr=ZERO if inflow else amount, cr=amount if inflow else ZERO),
     )
@@ -737,37 +808,40 @@ def _simple_entry(row: RegisterRow, account, counter, resolver: _Resolver) -> Pl
         description=_description(row),
         payee=_payee(row),
         lines=_lines_for(row, account, counter),
+        feed=_feed_row(row, account) if resolver.has_feed(account) else None,
     )
 
 
 def _transfer_entry(row, mate, account, mate_account, resolver: _Resolver) -> PlannedEntry:
     """
-    One entry for both legs of a transfer.
+    One entry for both legs of a transfer, and one feed row for it.
 
-    Each leg keeps its own reconciliation flag: in KB the two sides reconcile
-    independently, because two banks clear the same movement on their own schedules.
+    The feed row goes on the first leg whose account has a feed; the other side, if
+    it has one too, gets the bank feed's mirror row -- the same one categorizing a
+    transfer in the Inbox creates -- so the transfer is in each feed exactly once.
     """
     amount = abs(row.net).quantize(CENT)
     inflow = row.net > ZERO
 
     lines = (
         PlannedLine(
-            account=account,
-            dr=amount if inflow else ZERO,
-            cr=ZERO if inflow else amount,
-            is_reconciled=row.is_reconciled,
-            is_cleared=row.is_cleared,
+            account=account, dr=amount if inflow else ZERO, cr=ZERO if inflow else amount, is_cleared=row.is_cleared
         ),
         PlannedLine(
             account=mate_account,
             dr=ZERO if inflow else amount,
             cr=amount if inflow else ZERO,
-            is_reconciled=mate.is_reconciled,
             is_cleared=mate.is_cleared,
         ),
     )
+    if resolver.has_feed(account):
+        feed = _feed_row(row, account)
+    elif resolver.has_feed(mate_account):
+        feed = _feed_row(mate, mate_account)
+    else:
+        feed = None
     description = _description(row) or _description(mate) or f"Transfer: {row.account} → {mate.account}"
-    return PlannedEntry(entry_date=row.entry_date, description=description, payee=None, lines=lines)
+    return PlannedEntry(entry_date=row.entry_date, description=description, payee=None, lines=lines, feed=feed)
 
 
 def _split_entry(group, account, resolver: _Resolver, mates, by_index):
@@ -775,7 +849,8 @@ def _split_entry(group, account, resolver: _Resolver, mates, by_index):
     One entry for a split: a single line on the account, one counter line per leg.
 
     A leg that is itself a transfer takes its counter from the *other account* and
-    consumes that pair, so the money moves once.
+    consumes that pair, so the money moves once. The split gets one feed row, for its
+    total, on its own account; a transfer leg's other side is the feed's mirror row.
     """
     used = {row.index for row in group}
     total = sum(row.net for row in group)
@@ -786,7 +861,6 @@ def _split_entry(group, account, resolver: _Resolver, mates, by_index):
             account=account,
             dr=abs(total).quantize(CENT) if total > ZERO else ZERO,
             cr=abs(total).quantize(CENT) if total <= ZERO else ZERO,
-            is_reconciled=parent.is_reconciled,
             is_cleared=parent.is_cleared,
         )
     ]
@@ -811,8 +885,19 @@ def _split_entry(group, account, resolver: _Resolver, mates, by_index):
     payee = next((_payee(leg) for leg in group if _payee(leg)), None)
     description = next((leg.clean_memo for leg in group if leg.clean_memo), "") or (payee or "Split transaction")
 
+    feed = None
+    if resolver.has_feed(account):
+        feed = PlannedFeedRow(
+            account=account,
+            amount=(-total).quantize(CENT),
+            posted_date=parent.entry_date,
+            description=description[:255],
+            merchant=payee,
+            row_index=parent.index,
+        )
+
     return (
-        PlannedEntry(entry_date=parent.entry_date, description=description, payee=payee, lines=tuple(lines)),
+        PlannedEntry(entry_date=parent.entry_date, description=description, payee=payee, lines=tuple(lines), feed=feed),
         used,
     )
 
@@ -1020,6 +1105,18 @@ def _notes(
         )
 
     notes.append(
+        "Nothing is marked reconciled. YNAB's reconciled flags are not carried over: reconcile each account against "
+        "its statements when you are ready."
+    )
+
+    inbox = resolver.inbox_rows
+    if inbox:
+        notes.append(
+            f"{inbox} transaction(s) YNAB never categorised are waiting in your Inbox. Until you categorise them, the "
+            "balances of the accounts they are in differ from YNAB's by their amount."
+        )
+
+    notes.append(
         "Amounts were imported exactly as exported. A YNAB export carries no currency, so they are treated as "
         "your currency."
     )
@@ -1040,6 +1137,8 @@ def _stats(analysis: Analysis, plan: ImportPlan, resolver: _Resolver, budget_sta
         "goals": len(plan.goals),
         "spent_goals": resolver.spent_goals,
         "openings": len(plan.openings),
+        "feed_rows": _feed_row_count(plan),
+        "inbox_rows": len(plan.inbox_rows),
         "zero_openings": resolver.zero_openings,
         "transfer_pairs": analysis.transfer_pairs,
         "splits": len(analysis.split_groups),
@@ -1051,6 +1150,22 @@ def _stats(analysis: Analysis, plan: ImportPlan, resolver: _Resolver, budget_sta
         "net_worth": str(_net_worth(plan)),
         **budget_stats,
     }
+
+
+def _feed_row_count(plan: ImportPlan) -> int:
+    """
+    Every bank-feed row the import will write: each entry's own row, the mirror the
+    feed derives for each of its lines on another feed account, and the Inbox rows.
+    """
+    feed_accounts = {account.key for account in plan.accounts if account.has_feed}
+    count = len(plan.inbox_rows)
+    for entry in plan.entries:
+        if entry.feed is None:
+            continue
+        count += 1 + sum(
+            1 for line in entry.lines if line.account in feed_accounts and line.account != entry.feed.account
+        )
+    return count
 
 
 def _net_worth(plan: ImportPlan) -> Decimal:

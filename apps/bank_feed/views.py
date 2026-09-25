@@ -65,11 +65,15 @@ from .services.sample_csv import build_sample_csv
 from .services.similar_transactions import suggest_categories
 from .services.splits import SplitError, apply_splits, check_legs_total, is_split, parse_legs
 from .services.transfer_detection import find_transfer_candidates
-from .services.transfer_mirror import linked_legs, sync_transfer, would_orphan_primary
+from .services.transfer_mirror import is_split_mirror, linked_legs, sync_transfer, would_orphan_primary
 
 # Upper bound on how many transactions one similar-category request may ask about.
 # The categorize view only ever needs the handful of cards it is about to show.
 MAX_SIMILAR_CATEGORY_IDS = 50
+
+# A split's transfer leg is mirrored into the other account's feed; that row is
+# part of the split and is edited from the split's own row.
+SPLIT_MIRROR_ERROR = "This is one part of a split transaction in another account. Open the split there to change it."
 
 
 def _annotate_feed_account_activity(accounts, book):
@@ -275,7 +279,11 @@ class BankFeedViewSet(
                 "plaid_transaction__plaid_account",
                 "plaid_transaction__plaid_account__account",
             )
-            .prefetch_related("journal_entry__lines__account__institution", "journal_entry__lines__reconciliation")
+            .prefetch_related(
+                "journal_entry__lines__account__institution",
+                "journal_entry__lines__reconciliation",
+                "journal_entry__bank_feed_transactions__account",
+            )
         )
 
         # Filter by account if provided in query params
@@ -644,6 +652,11 @@ class BankFeedViewSet(
                 assert_category_allowed(category_account, keep_ids=current_category_ids)
             except ValueError as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # A split's transfer leg shows here as a mirror row; any edit to it would
+        # rewrite a split the user made in the other account.
+        if is_split_mirror(bank_tx):
+            return Response({"error": SPLIT_MIRROR_ERROR}, status=status.HTTP_400_BAD_REQUEST)
 
         # Re-pointing (or clearing) the mirror leg's category would orphan the real
         # primary transaction; reject it (edit the original transaction instead).
@@ -1320,6 +1333,11 @@ class BankFeedViewSet(
             id__in=ids,
             book=request.book,
         ).select_related("account", "journal_entry")
+
+        # A split's transfer-leg mirror is part of a split in another account; no
+        # batch field (date, payee, account, category) can be edited on it alone.
+        if any(is_split_mirror(tx) for tx in transactions):
+            return Response({"error": SPLIT_MIRROR_ERROR}, status=status.HTTP_400_BAD_REQUEST)
 
         # Reject up front: re-pointing a mirror leg to a non-feed category would
         # orphan the real primary transaction, and a split has no single category

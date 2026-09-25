@@ -118,3 +118,35 @@ def _dismissed_pairs(book):
             "transaction_low_id", "transaction_high_id"
         )
     }
+
+
+# `dismiss_all_candidates` repeats until nothing is left to pair. Each pass
+# dismisses a whole matching, so a real book settles in a handful of passes; the
+# cap only stops a pathological one from spinning.
+MAX_DISMISS_PASSES = 100
+
+
+def dismiss_all_candidates(book, window_days=None) -> int:
+    """
+    Record every pair the detector would suggest as "not a transfer".
+
+    For a bulk import whose own transfers are already joined on one entry (the YNAB
+    import): anything the detector pairs across its rows is a coincidence of amount
+    and date, not a duplicate -- and "resolve" on a suggestion voids an entry. The
+    detector pairs greedily one-to-one, so dismissing one matching can free a row
+    to pair with its next-closest candidate; it runs until a pass finds nothing.
+
+    Returns how many pairs were dismissed.
+    """
+    dismissed = 0
+    for _pass in range(MAX_DISMISS_PASSES):
+        pairs = find_transfer_candidates(book, window_days=window_days)
+        if not pairs:
+            break
+        rows = []
+        for pair in pairs:
+            low, high = TransferMatchDismissal.normalize_pair(pair["outflow"].id, pair["inflow"].id)
+            rows.append(TransferMatchDismissal(book=book, transaction_low_id=low, transaction_high_id=high))
+        TransferMatchDismissal.objects.bulk_create(rows, ignore_conflicts=True)
+        dismissed += len(rows)
+    return dismissed

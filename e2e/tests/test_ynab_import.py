@@ -20,10 +20,12 @@ import pytest
 from playwright.sync_api import Page
 
 from apps.accounts.models import Account, AccountGroup
+from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal
 from apps.journal.models import JournalEntry
 from apps.ynab_import.tests.fixtures import TINY_PLAN, TINY_REGISTER
 from e2e.factories import JournalEntryFactory
+from e2e.pages.bank_feed import BankFeedPage
 from e2e.pages.ynab_import import YnabImportPage, sample_export_paths
 
 
@@ -109,6 +111,71 @@ def test_accounts_are_filed_into_groups_picked_from_one_list(import_page, tiny_e
 
 
 @pytest.mark.django_db
+def test_a_group_is_picked_by_filter_and_keyboard(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    import_page.add_group("asset", "Everyday")
+    import_page.add_group("asset", "Emergency")
+
+    # The filter narrows the list; Enter takes the highlighted match.
+    import_page.pick_group_by_keyboard("Chequing", "every", ["Enter"])
+    assert import_page.account_group("Chequing") == "Everyday"
+
+    # ↓ / Tab walk the list from the current choice and wrap past the "New group"
+    # row at the end; Shift+Tab walks back.
+    assert import_page.group_names("asset") == ["Bank Account", "Tracking Account", "Everyday", "Emergency"]
+    import_page.pick_group_by_keyboard("Chequing", "", ["ArrowDown", "Enter"])
+    assert import_page.account_group("Chequing") == "Emergency"
+    import_page.pick_group_by_keyboard("Chequing", "", ["Tab", "Tab", "Tab", "Shift+Tab", "Enter"])
+    assert import_page.account_group("Chequing") == "Bank Account"
+
+
+@pytest.mark.django_db
+def test_a_group_can_be_renamed_and_emptied_from_its_chip(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    bank = "ynab-groups-asset"
+    assert import_page.account_group("Chequing") == "Bank Account"
+
+    # Renaming a chip renames it for every row using it, in place.
+    import_page.rename_name(bank, "Bank Account", "Everyday Banking")
+    assert "Bank Account" not in import_page.chip_names(bank)
+    assert "Everyday Banking" in import_page.chip_names(bank)
+    assert import_page.account_group("Chequing") == "Everyday Banking"
+
+    # "Move all" sends every row in a group to another, leaving the chip unused.
+    import_page.move_all(bank, "Everyday Banking", "Tracking Account")
+    assert import_page.account_group("Chequing") == "Tracking Account"
+    assert "Everyday Banking" in import_page.chip_names(bank)
+
+    # Renaming onto an existing name combines the two.
+    import_page.rename_name(bank, "Tracking Account", "everyday banking")
+    assert "Tracking Account" not in import_page.chip_names(bank)
+    assert import_page.account_group("Chequing") == "Everyday Banking"
+    assert import_page.account_group("Savings") == "Everyday Banking"
+
+    import_page.continue_to_preview()
+    import_page.apply()
+    group = AccountGroup.objects.get(book=team.default_book, name="Everyday Banking")
+    assert set(group.accounts.values_list("name", flat=True)) == {"Chequing", "Savings"}
+
+
+@pytest.mark.django_db
+def test_an_income_account_can_be_renamed_from_its_chip(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    import_page.click_next()
+    import_page.page.wait_for_selector("[data-testid='ynab-income-table']")
+    bank = "ynab-income-accounts"
+    (original,) = [name for name in import_page.chip_names(bank) if name]
+
+    import_page.rename_name(bank, original, "Salary")
+    assert import_page.chip_names(bank) == ["Salary"]
+
+    import_page.continue_to_preview()
+    import_page.apply()
+    assert Account.objects.filter(book=team.default_book, name="Salary", account_group__account_type="income").exists()
+    assert not Account.objects.filter(book=team.default_book, name=original).exists()
+
+
+@pytest.mark.django_db
 def test_closing_mid_review_asks_in_a_dialog_not_a_browser_prompt(import_page, tiny_export, team, requires_vite):
     native_prompts = []
     import_page.page.on("dialog", lambda dialog: (native_prompts.append(dialog.type), dialog.dismiss()))
@@ -138,6 +205,41 @@ def test_an_account_can_be_left_behind(import_page, tiny_export, team, requires_
     assert not Account.objects.filter(book=team.default_book, name="Savings").exists()
     # The transfer to it still balances -- it posts against the equity offset.
     assert all(entry.is_balanced for entry in JournalEntry.objects.filter(book=team.default_book))
+
+
+@pytest.mark.django_db
+def test_imported_transactions_land_in_the_account_feeds(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    # Everyday accounts start in the Inbox; a tracking account does not.
+    assert import_page.in_inbox("Chequing")
+    assert import_page.in_inbox("Visa")
+    assert not import_page.in_inbox("Savings")
+    import_page.continue_to_preview()
+    import_page.apply()
+    assert import_page.succeeded(), import_page.page.content()[:2000]
+
+    book = team.default_book
+    chequing = Account.objects.get(book=book, name="Chequing")
+    assert BankTransaction.objects.filter(book=book, account=chequing, source="ynab").count() == 3
+
+    feed = BankFeedPage(import_page.page, import_page.base_url)
+    feed.goto(book)
+    feed.click_account_card(chequing.id)
+    feed.wait_for_table()
+    assert feed.has_row_matching("Weekly shop")
+
+
+@pytest.mark.django_db
+def test_an_account_can_be_kept_out_of_the_inbox(import_page, tiny_export, team, requires_vite):
+    import_page.upload(tiny_export)
+    import_page.set_in_inbox("Visa", False)
+    import_page.continue_to_preview()
+    import_page.apply()
+    assert import_page.succeeded(), import_page.page.content()[:2000]
+
+    visa = Account.objects.get(book=team.default_book, name="Visa")
+    assert not visa.has_feed
+    assert not BankTransaction.objects.filter(account=visa).exists()
 
 
 @pytest.mark.django_db
@@ -302,17 +404,21 @@ def test_a_real_five_year_export_imports_and_reconciles(import_page, team, requi
 
     import_page.continue_to_preview(timeout=120_000)
     preview = import_page.preview_text()
-    assert "6,623" in preview  # transactions, plus the opening balances
-    assert "$292,472.98" in preview  # the net worth they will land on
+    assert "6,615" in preview  # transactions (8 more wait uncategorized in the Inbox)
+    assert "6,860" in preview  # rows in the account feeds
+    # The net worth they will land on: YNAB's $292,472.98 plus the $1,301.65 net
+    # outflow of the 8 rows that stay out of the ledger until they are categorized.
+    assert "$293,774.63" in preview
 
     import_page.apply()
     assert import_page.succeeded()
 
     result = import_page.result_text()
     assert "Your budget is in" in result
-    assert "$292,472.98" in result
+    assert "$293,774.63" in result
 
-    assert JournalEntry.objects.filter(book=team.default_book).count() == 6636
+    assert JournalEntry.objects.filter(book=team.default_book).count() == 6615 + 13
+    assert BankTransaction.objects.filter(book=team.default_book).count() == 6860
     # No `Budget` rows on goal categories (56 of the old 1,872 were on them).
     assert Budget.objects.filter(book=team.default_book).count() == 1816
     # Three open goals, plus `House` -- spent out, so it arrives closed with its history.
@@ -321,4 +427,4 @@ def test_a_real_five_year_export_imports_and_reconciles(import_page, team, requi
 
     import_page.go_to_dashboard()
     import_page.page.wait_for_url(f"**{team.default_book.base_url}", timeout=30_000, wait_until="domcontentloaded")
-    assert "$292,472.98" in import_page.page.locator("body").inner_text()
+    assert "$293,774.63" in import_page.page.locator("body").inner_text()

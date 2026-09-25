@@ -193,6 +193,13 @@ const Step6Apply = ({ status, urls, onRetry }) => {
           <div className="stat-title text-xs">{gettext('Net worth')}</div>
           <div className="stat-value money text-2xl">{money(summary.net_worth)}</div>
         </div>
+        <div className="stat px-4 py-3" data-testid="ynab-result-feed">
+          <div className="stat-title text-xs">{gettext('In your Inbox')}</div>
+          <div className="stat-value money text-2xl">{Number(created.feed_rows ?? 0).toLocaleString()}</div>
+          <div className="stat-desc">
+            {gettext('{n} to categorize').replace('{n}', Number(created.inbox_rows ?? 0).toLocaleString())}
+          </div>
+        </div>
         <div className="stat px-4 py-3">
           <div className="stat-title text-xs">{gettext('Budgets')}</div>
           <div className="stat-value money text-2xl">{Number(created.budgets).toLocaleString()}</div>
