@@ -9,7 +9,7 @@ import pytest
 from playwright.sync_api import Page
 
 from e2e.factories import AccountFactory, AccountGroupFactory
-from e2e.pages.books import BookBudgetingPage, BookCreatePage, BookSwitcher
+from e2e.pages.books import BookCreatePage, BookListPage, BookSettingsPage, BookSwitcher
 from e2e.pages.budget import BudgetPage
 from e2e.pages.onboarding import OnboardingPage
 
@@ -76,7 +76,7 @@ def test_future_income_toggle_hides_and_restores_the_income_section(authenticate
     budget.goto_budget(book)
     assert authenticated_page.locator("[data-testid='budget-total-income']").count() == 1
 
-    settings = BookBudgetingPage(authenticated_page, live_server.url)
+    settings = BookSettingsPage(authenticated_page, live_server.url)
     settings.goto(book)
     # The consequence is stated before saving.
     assert "Turned off, your Unassigned would be" in settings.consequence()
@@ -99,3 +99,28 @@ def test_an_old_link_lands_on_the_default_book(authenticated_page: Page, live_se
     authenticated_page.goto(f"{live_server.url}/a/{team.slug}/budget/?month=2026-03-01", wait_until="domcontentloaded")
     assert f"{book.base_url}budget/" in authenticated_page.url
     assert "month=2026-03-01" in authenticated_page.url
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_book_is_archived_and_deleted_from_my_books(authenticated_page: Page, live_server, team, book, second_book):
+    """Both actions live on My books and need the book's name typed before the button enables."""
+    from apps.books.models import Book
+
+    books = BookListPage(authenticated_page, live_server.url)
+    books.goto(team)
+
+    books._confirm("archive", second_book, "not the name")
+    assert books.submit_button("archive", second_book).is_disabled()
+    authenticated_page.keyboard.press("Escape")
+
+    books.archive(second_book, second_book.name)
+    second_book.refresh_from_db()
+    assert second_book.is_archived
+    # Archiving didn't open the book: the page is still My books with the first book open.
+    assert authenticated_page.locator(f"[data-testid='book-restore-{second_book.slug}']").is_visible()
+
+    books.delete(second_book, second_book.name)
+    assert not Book.objects.filter(pk=second_book.pk).exists()
+    # The one open book left offers neither action.
+    assert authenticated_page.locator(f"[data-testid='book-archive-{book.slug}']").is_disabled()
+    assert authenticated_page.locator(f"[data-testid='book-delete-{book.slug}']").is_disabled()

@@ -139,6 +139,13 @@ class RequestPlumbingTest(TestCase):
         self.assertContains(response, 'data-testid="book-switch-business"')
         self.assertContains(response, reverse("books_team:create", args=[self.team.slug]))
 
+    def test_the_switcher_lives_in_the_user_menu_without_team_settings(self):
+        response = self.client.get(reverse("web_book:home", args=self.personal.url_args))
+        self.assertNotContains(response, 'data-testid="team-switcher"')
+        self.assertContains(response, 'data-testid="my-books-toggle"')
+        self.assertContains(response, 'data-testid="theme-toggle"')
+        self.assertNotContains(response, "Team Settings")
+
     def test_a_single_book_team_sees_no_book_name_on_the_dashboard(self):
         team, user = make_team("single-book")
         finish_onboarding(team.default_book)
@@ -288,8 +295,25 @@ class BookSettingsTest(TestCase):
         self.client.force_login(member)
         self.assertEqual(self.post(name="Hijacked", slug="business").status_code, 404)
 
+    def test_name_and_budgeting_save_together(self):
+        """One page, one Save: the name and the future-income setting land in the same post."""
+        self.assertFalse(self.book.budget_future_income)
+        self.post(name="Consulting", slug="business", budget_future_income="on")
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.name, "Consulting")
+        self.assertTrue(self.book.budget_future_income)
+
+    def test_an_invalid_post_saves_nothing_and_states_the_saved_setting(self):
+        response = self.post(name="Business", slug="budget", budget_future_income="on")
+        self.assertEqual(response.status_code, 200)
+        self.book.refresh_from_db()
+        self.assertFalse(self.book.budget_future_income)
+        self.assertFalse(response.context["future_income"])
+
 
 class BookArchiveTest(TestCase):
+    """Archiving is a team-level action on My books: a book is put away without opening it."""
+
     @classmethod
     def setUpTestData(cls):
         cls.team, cls.admin = make_team("archive-team")
@@ -299,28 +323,79 @@ class BookArchiveTest(TestCase):
     def setUp(self):
         self.client.force_login(self.admin)
 
+    def archive(self, book, confirm):
+        return self.client.post(reverse("books_team:archive", args=[self.team.slug, book.slug]), {"confirm": confirm})
+
     def test_archive_and_restore(self):
-        response = self.client.post(reverse("books:archive", args=self.business.url_args), {"confirm": "Business"})
+        response = self.archive(self.business, "Business")
         self.assertRedirects(response, reverse("books_team:list", args=[self.team.slug]))
         self.business.refresh_from_db()
         self.assertTrue(self.business.is_archived)
         # Out of the switcher; still restorable.
         page = self.client.get(reverse("budget:budget_home", args=self.personal.url_args))
         self.assertNotContains(page, 'data-testid="book-switch-business"')
-        self.client.post(reverse("books:restore", args=self.business.url_args))
+        response = self.client.post(reverse("books_team:restore", args=[self.team.slug, self.business.slug]))
+        self.assertRedirects(response, reverse("books_team:list", args=[self.team.slug]))
         self.business.refresh_from_db()
         self.assertFalse(self.business.is_archived)
 
+    def test_archiving_another_book_does_not_open_it(self):
+        """The book being archived must not become the one the team home lands on."""
+        self.client.get(reverse("web_book:home", args=self.personal.url_args))
+        self.archive(self.business, "Business")
+        self.client.post(reverse("books_team:restore", args=[self.team.slug, self.business.slug]))
+        response = self.client.get(reverse("web_team:home", args=[self.team.slug]))
+        self.assertRedirects(
+            response, reverse("web_book:home", args=self.personal.url_args), fetch_redirect_response=False
+        )
+
     def test_the_name_must_be_typed(self):
-        self.client.post(reverse("books:archive", args=self.business.url_args), {"confirm": "wrong"})
+        self.archive(self.business, "wrong")
         self.business.refresh_from_db()
         self.assertFalse(self.business.is_archived)
 
     def test_the_last_open_book_cannot_be_archived(self):
-        self.client.post(reverse("books:archive", args=self.business.url_args), {"confirm": "Business"})
-        self.client.post(reverse("books:archive", args=self.personal.url_args), {"confirm": "Personal"})
+        self.archive(self.business, "Business")
+        self.archive(self.personal, "Personal")
         self.personal.refresh_from_db()
         self.assertFalse(self.personal.is_archived)
+
+    def test_a_get_is_refused(self):
+        response = self.client.get(reverse("books_team:archive", args=[self.team.slug, self.business.slug]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_a_member_cannot_archive(self):
+        member = CustomUser.objects.create_user(username="m-archive@example.com", password="pass")
+        self.team.members.add(member, through_defaults={"role": ROLE_MEMBER})
+        self.client.force_login(member)
+        self.assertEqual(self.archive(self.business, "Business").status_code, 404)
+        self.business.refresh_from_db()
+        self.assertFalse(self.business.is_archived)
+
+    def test_another_teams_book_is_a_404(self):
+        other_team, _ = make_team("archive-other")
+        other = create_book(other_team, "Theirs")
+        response = self.client.post(
+            reverse("books_team:archive", args=[self.team.slug, other.slug]), {"confirm": "Theirs"}
+        )
+        self.assertEqual(response.status_code, 404)
+        other.refresh_from_db()
+        self.assertFalse(other.is_archived)
+
+    def test_the_list_offers_archive_and_delete_with_a_confirm_dialog(self):
+        page = self.client.get(reverse("books_team:list", args=[self.team.slug]))
+        for action in ("archive", "delete"):
+            with self.subTest(action=action):
+                self.assertContains(page, f'data-testid="book-{action}-dialog-business"')
+                self.assertContains(page, f'data-testid="book-{action}-confirm-business"')
+
+    def test_the_list_offers_neither_for_the_last_open_book(self):
+        self.archive(self.business, "Business")
+        page = self.client.get(reverse("books_team:list", args=[self.team.slug]))
+        self.assertNotContains(page, 'data-testid="book-archive-dialog-personal"')
+        self.assertNotContains(page, 'data-testid="book-delete-dialog-personal"')
+        # The archived book can still be deleted.
+        self.assertContains(page, 'data-testid="book-delete-dialog-business"')
 
 
 class BookDeleteTest(TestCase):
@@ -336,12 +411,12 @@ class BookDeleteTest(TestCase):
         self.client.force_login(self.admin)
 
     def delete(self, book, confirm):
-        return self.client.post(reverse("books:delete", args=book.url_args), {"delete-confirm": confirm})
+        return self.client.post(reverse("books_team:delete", args=[self.team.slug, book.slug]), {"confirm": confirm})
 
     def test_delete_wipes_only_that_book(self):
         before = snapshot(self.keep.book)
         response = self.delete(self.gone.book, "Business")
-        self.assertRedirects(response, reverse("web_team:home", args=[self.team.slug]), fetch_redirect_response=False)
+        self.assertRedirects(response, reverse("books_team:list", args=[self.team.slug]))
         self.assertFalse(Book.objects.filter(pk=self.gone.book.pk).exists())
         self.assertFalse(JournalEntry.objects.filter(description__contains="GONE").exists())
         self.assertEqual(snapshot(self.keep.book), before)
@@ -439,7 +514,7 @@ class FutureIncomeTest(TestCase):
 
     def test_the_settings_page_states_the_consequence(self):
         self.set_future_income(True)
-        response = self.client.get(reverse("books:budgeting", args=self.book.url_args))
+        response = self.client.get(reverse("books:settings", args=self.book.url_args))
         self.assertEqual(response.context["unassigned_now"].income_due, Decimal("5000"))
         self.assertEqual(response.context["unassigned_flipped"].income_due, Decimal("0"))
         self.assertEqual(
@@ -448,7 +523,7 @@ class FutureIncomeTest(TestCase):
 
     def test_the_settings_page_saves_and_records_the_change(self):
         self.set_future_income(True)
-        self.client.post(reverse("books:budgeting", args=self.book.url_args), {})
+        self.client.post(reverse("books:settings", args=self.book.url_args), {"name": "Personal", "slug": "personal"})
         self.book.refresh_from_db()
         self.assertFalse(self.book.budget_future_income)
         self.assertTrue(AuditEvent.objects.filter(event_type=AuditEvent.BOOK_SETTINGS_CHANGED, book=self.book).exists())
