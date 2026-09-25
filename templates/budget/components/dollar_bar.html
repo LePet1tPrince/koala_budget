@@ -1,0 +1,54 @@
+{% load i18n %}
+{% load currency_tags %}
+{% comment %}
+  The allocation bar: every claim on your money side by side. Geometry comes from
+  apps.budget.unassigned.allocation_bar(); `bar` is its result, `unassigned` the
+  Unassigned it was built from. `show_markers` adds the net-worth scale beneath.
+{% endcomment %}
+{% if bar.empty %}
+  <p class="text-sm text-base-content/70">{% translate "Nothing to show yet: add accounts and a budget to see where your money is going." %}</p>
+{% else %}
+  <div class="relative" data-testid="dollar-bar">
+    <div class="dollar-bar" role="img"
+         aria-label="{% for seg in bar.segments %}{{ seg.label }} {{ seg.amount|currency }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+      {% for seg in bar.segments %}
+        <div class="dollar-bar-seg" data-key="{{ seg.key }}" style="flex: 0 0 {{ seg.pct|stringformat:'.3f' }}%" title="{{ seg.label }}: {{ seg.amount|currency }}" data-testid="dollar-bar-{{ seg.key }}">
+          <span>{{ seg.label }} · {{ seg.amount|currency }}</span>
+        </div>
+      {% endfor %}
+      {% if bar.overshoot %}
+        <div class="dollar-bar-over" style="left: {{ bar.overshoot.start_pct|stringformat:'.3f' }}%; width: {{ bar.overshoot.width_pct|stringformat:'.3f' }}%" data-testid="dollar-bar-overshoot"></div>
+      {% endif %}
+    </div>
+    {% if show_markers %}
+      <div class="relative {% if bar.with_due_pct is not None %}h-14{% else %}h-9{% endif %}" aria-hidden="true">
+        {% if bar.net_worth_pct is not None %}
+          <div class="dollar-bar-marker" style="left: {{ bar.net_worth_pct|stringformat:'.3f' }}%"></div>
+          <div class="dollar-bar-marker-label{% if bar.net_worth_pct > 85 %} is-end{% elif bar.net_worth_pct < 15 %} is-start{% endif %}" style="left: {{ bar.net_worth_pct|stringformat:'.3f' }}%">
+            {% translate "Net worth" %} {{ unassigned.net_worth|currency }}
+          </div>
+        {% endif %}
+        {% if bar.with_due_pct is not None %}
+          <div class="dollar-bar-marker is-due" style="left: {{ bar.with_due_pct|stringformat:'.3f' }}%"></div>
+          <div class="dollar-bar-marker-label is-end is-due" style="left: {{ bar.with_due_pct|stringformat:'.3f' }}%">
+            {% translate "with income due" %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if bar.overshoot %}
+      <p class="mt-1 text-xs text-error" data-testid="dollar-bar-overshoot-note">
+        {% if bar.overshoot.over_assigned %}
+          {% blocktranslate trimmed with amount=bar.overshoot.over_assigned|currency %}
+            Hatched: {{ amount }} more is promised than you have.
+          {% endblocktranslate %}
+        {% endif %}
+        {% if bar.overshoot.carried %}
+          {% blocktranslate trimmed with amount=bar.overshoot.carried|currency %}
+            {{ amount }} is overspent and carried as negative balances, so these claims add up to more than you have.
+          {% endblocktranslate %}
+        {% endif %}
+      </p>
+    {% endif %}
+  </div>
+{% endif %}

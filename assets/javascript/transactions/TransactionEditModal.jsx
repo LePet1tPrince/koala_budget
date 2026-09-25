@@ -60,7 +60,7 @@ const TransactionEditModal = ({
   transactions = [],
   allAccounts = [],
   allPayees = [],
-  teamSlug,
+  book,
   onSave,
   onDelete,
   onSetStatus,
@@ -426,7 +426,7 @@ const TransactionEditModal = ({
       )}
 
       {onHistoryTab ? (
-        <TransactionHistory teamSlug={teamSlug} journalEntryId={one.id} />
+        <TransactionHistory book={book} journalEntryId={one.id} />
       ) : (
         <div className="flex flex-col gap-4">
           {isBatch && (

@@ -32,6 +32,25 @@ document.addEventListener('DOMContentLoaded', () => {
       spanGaps: false,
       goalIndex: i,
     });
+    if (goal.spent) {
+      datasets.push({
+        label: `${goal.name} (spent)`,
+        data: goal.spent,
+        borderColor: colors[i],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        borderDash: [2, 3],
+        // Hollow points, so a single month of spending still shows.
+        pointRadius: 3,
+        pointStyle: 'rectRot',
+        pointHoverRadius: 4,
+        pointBackgroundColor: colors[i],
+        tension: 0,
+        spanGaps: false,
+        goalIndex: i,
+        isProjection: true,
+      });
+    }
     if (goal.projection.some((v) => v !== null)) {
       datasets.push({
         label: `${goal.name} (projected)`,

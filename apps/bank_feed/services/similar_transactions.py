@@ -1,9 +1,9 @@
 """
 Category suggestions from similar transactions.
 
-The same merchant is billed over and over, so how a team categorized a payee
+The same merchant is billed over and over, so how a book categorized a payee
 before is the best available guess for how they want it categorized now. This
-service looks back over the team's already-categorized bank transactions and,
+service looks back over the book's already-categorized bank transactions and,
 for each uncategorized one, returns the categories that were used on
 transactions that look like it — with a count, so the UI can say *why* it is
 suggesting a category ("4 transactions with this payee were categorized as
@@ -24,7 +24,7 @@ Nothing here writes: it only suggests, and the user picks.
 
 import re
 
-from apps.journal.models import JournalEntry
+from apps.journal.models import counted_entries
 
 from ..models import BankTransaction
 
@@ -37,7 +37,7 @@ MATCH_RANK = {MATCH_PAYEE: 0, MATCH_DESCRIPTION: 1, MATCH_SIMILAR: 2}
 
 # How many recent categorized transactions to consider. Deep history adds little
 # (a merchant categorized 40 times reads the same as one categorized 400 times)
-# and this keeps the scan bounded for a long-lived team.
+# and this keeps the scan bounded for a long-lived book.
 HISTORY_LIMIT = 2000
 
 # How many suggestions to return per transaction. More than a few stops being a
@@ -49,7 +49,7 @@ DEFAULT_LIMIT = 3
 # keeping "SHELL GAS" apart from "SHELL OIL DIVIDEND".
 SIMILARITY_THRESHOLD = 0.6
 
-# A word this common across the team's history says nothing about which
+# A word this common across the book's history says nothing about which
 # transaction is which, so it is not worth pulling candidates in on. The floor
 # keeps the rule from swallowing a small history whole — in a 3-transaction
 # history every word is in more than 20% of it.
@@ -124,7 +124,7 @@ def _jaccard(a, b):
 
 class HistoryIndex:
     """
-    The team's categorized transactions, indexed for lookup by payee, by
+    The book's categorized transactions, indexed for lookup by payee, by
     description and by shared words.
 
     Built once and queried for many transactions, so scanning a whole
@@ -185,9 +185,9 @@ class HistoryIndex:
         return self._records[index]
 
 
-def build_history_index(team, limit=HISTORY_LIMIT):
+def build_history_index(book, limit=HISTORY_LIMIT):
     """
-    Index the team's recent categorized bank transactions.
+    Index the book's recent categorized bank transactions.
 
     Excluded, because none of them represents a decision the user made about a
     merchant: voided and archived transactions, and transfer mirror legs (the
@@ -196,12 +196,12 @@ def build_history_index(team, limit=HISTORY_LIMIT):
     """
     transactions = (
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             journal_entry__isnull=False,
             is_archived=False,
             is_transfer_mirror=False,
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("account")
         .prefetch_related("journal_entry__lines__account")
         .order_by("-posted_date", "-created_at")[:limit]
@@ -283,7 +283,7 @@ def suggest_categories_for(transaction, index, limit=DEFAULT_LIMIT):
     return ranked[:limit]
 
 
-def suggest_categories(team, transactions, limit=DEFAULT_LIMIT):
+def suggest_categories(book, transactions, limit=DEFAULT_LIMIT):
     """
     Suggest categories for several transactions at once.
 
@@ -294,7 +294,7 @@ def suggest_categories(team, transactions, limit=DEFAULT_LIMIT):
     if not transactions:
         return {}
 
-    index = build_history_index(team)
+    index = build_history_index(book)
     if not len(index):
         return {}
 

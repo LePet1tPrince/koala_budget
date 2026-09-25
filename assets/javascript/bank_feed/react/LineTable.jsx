@@ -11,7 +11,7 @@ import Icon from '../../common/Icon';
 
 /* globals gettext, interpolate */
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200];
 
 // Column widths are fixed (the table is `table-fixed`) so the Description column
 // absorbs whatever the others leave behind, and long payees or categories
@@ -81,7 +81,7 @@ const LineTable = ({
   allAccounts,
   allPayees = [],
   categorySuggestions = {},
-  teamSlug,
+  book,
   onAdd,
   onDelete,
   onEditTransaction,
@@ -103,7 +103,7 @@ const LineTable = ({
   const [filterStart, setFilterStart] = useState('');
   const [filterEnd, setFilterEnd] = useState('');
   // Controlled page size so it survives data reloads
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState({ key: 'postedDate', dir: 'desc' });
   const [quickFiltersOpen, setQuickFiltersOpen] = useState(false);
@@ -111,7 +111,7 @@ const LineTable = ({
 
   // Plaid "Link Bank Account" flow, triggered from the dropdown menu below
   const { handleClick: handleLinkBankClick, loading: linkBankLoading, modal: linkBankModal } = usePlaidLinkFlow({
-    teamSlug,
+    book,
     allAccounts,
     onSuccess: onLinkSuccess,
     plaidClient,
@@ -694,7 +694,7 @@ const LineTable = ({
         allAccounts={allAccounts}
         allPayees={allPayees}
         categorySuggestions={categorySuggestions}
-        teamSlug={teamSlug}
+        book={book}
         onSave={handleEditSave}
         mode={modalMode}
       />

@@ -8,12 +8,12 @@ ACTIVE_ROW = "[data-nav-key][data-active='true']"
 
 
 class CategorizePage(BasePage):
-    def path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/bankfeed/categorize/"
+    def path(self, book) -> str:
+        return f"{book.base_url}bankfeed/categorize/"
 
-    def goto(self, team_slug: str):
+    def goto(self, book):
         """Navigate to categorize mode and wait for the first card to render."""
-        self.page.goto(self.url(self.path(team_slug)))
+        self.page.goto(self.url(self.path(book)))
         self.page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
 
     # ------------------------------------------------------------------

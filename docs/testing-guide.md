@@ -243,18 +243,21 @@ make test-e2e-accounts  # Run specific test file
   the suite itself needs an environment with a working Playwright browser
 ---
 
+### Statement reconciliation (`apps/reconciliation/tests/`, `e2e/tests/test_reconcile.py`)
+
+- `test_guards.py` — the reconciled-line guards, including the three defects that returned 200 before (transfer counterpart unreconciled by an edit, reconciled row moved/re-dated, reconciled entry voided).
+- `test_session.py` — the plan's §6.1 worked examples as fixtures (chequing with a duplicate coffee; a credit card entered as "balance owed"), candidates' exclusions, adjustments' sign for assets and liabilities, undo of any statement, intact/drift.
+- `test_diagnose.py` — one test per hint rule (pure, `SimpleTestCase`).
+- `test_views.py` — API happy path as a plain member, statement-sign payloads, 400/409 on finish, cross-team 404s, a foreign line id refused, pages render.
+- `apps/portability/tests/test_apply.py::StatementRoundTripTests` — statements survive export → import intact; `test_read_errors.py` covers a v1 archive and a dangling `reconciliation_id`.
+- E2E (7): balance → finish → hub Intact; duplicate hint fixed in one click; card balance typed as printed; finish with adjustment; draft resumes after reload; feed selection arrives ticked; unreconcile in the feed marks the statement Changed and the next session shows the drift banner.
+
 ## Known Coverage Gaps
 
 - `reports/` app has minimal test coverage — complex aggregation logic is untested
 - `plaid/` sync logic is tested via mocks only — no integration test against Plaid sandbox
 - `subscriptions/` webhook handling has no automated tests
 - `chat/` and `ai/` apps have no unit tests for agent logic
-- `e2e/tests/test_splits.py::test_opening_a_split_shows_its_legs` fails:
-  `BankFeedPage.split_amounts()` calls `Locator.all_input_values()`, which does not exist
-  in the pinned Playwright. Four tests in `e2e/tests/test_categorize.py` fail too
-  (`test_payee_and_description_are_editable_on_the_card`, `test_edits_are_saved_with_the_categorization`,
-  `test_revert_puts_the_banks_wording_back`, `test_a_draft_survives_a_skip`). All five
-  reproduce on a clean `develop`; they are test bugs, not product bugs
 - Frontend React components have no unit tests (no Jest/Vitest setup)
 
 ### Running E2E where the pinned browser is missing

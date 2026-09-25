@@ -23,7 +23,7 @@
   <!-- Header: title, month range picker, and actions on one row -->
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1" data-back-link>
         {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
@@ -52,6 +52,11 @@
       <div class="stat-figure text-error hidden sm:block">{% icon "arrow-down" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Money Out" %}</div>
       <div class="stat-value text-2xl text-error">{{ stats.total_expenses|currency }}</div>
+      {% if has_goal_spending %}
+      <div class="stat-desc" data-testid="cash-flow-goal-spending">
+        {% blocktranslate trimmed with amount=stats.total_goal_spending|currency %}+ {{ amount }} from goals{% endblocktranslate %}
+      </div>
+      {% endif %}
     </div>
     <div class="stat py-3">
       <div class="stat-figure {% if stats.net < 0 %}text-error{% endif %} hidden sm:block">{% icon "scale-balanced" class="inline-block shrink-0 w-5 h-5" %}</div>
@@ -91,6 +96,7 @@
               <th>{% translate "Month" %}</th>
               <th class="text-right">{% translate "Money In" %}</th>
               <th class="text-right">{% translate "Money Out" %}</th>
+              {% if has_goal_spending %}<th class="text-right">{% translate "Goal spending" %}</th>{% endif %}
               <th class="text-right">{% translate "Net" %}</th>
             </tr>
           </thead>
@@ -100,6 +106,7 @@
               <td class="whitespace-nowrap">{{ item.label }}</td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ item.income|currency }}</td>
               <td class="text-right tabular-nums whitespace-nowrap">{{ item.expenses|currency }}</td>
+              {% if has_goal_spending %}<td class="text-right tabular-nums whitespace-nowrap{% if not item.goal_spending %} opacity-40{% endif %}">{{ item.goal_spending|currency }}</td>{% endif %}
               <td class="text-right tabular-nums whitespace-nowrap font-medium {% if item.net < 0 %}text-error{% endif %}">
                 {% if item.net >= 0 %}+{% endif %}{{ item.net|currency }}
               </td>

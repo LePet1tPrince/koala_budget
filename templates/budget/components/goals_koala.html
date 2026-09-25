@@ -119,13 +119,14 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
        data-goal-card
        data-remaining="{{ item.remaining }}"
        data-saved="{{ item.saved }}"
-       data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug pk=item.goal.pk %}"
-       data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug pk=item.goal.pk %}"
+       data-left="{{ item.left }}"
+       data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}"
+       data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}"
        data-testid="goal-card">
     <div class="card-body">
       <div class="flex justify-between items-start gap-2">
         <h2 class="card-title">
-          <a href="{% url 'budget:goal_detail' team_slug=request.team.slug pk=item.goal.pk %}" class="link link-hover">{{ item.goal.name }}</a>
+          <a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="link link-hover">{{ item.goal.name }}</a>
         </h2>
         {% if item.streak >= 2 %}
           <span class="badge badge-warning gap-1">🔥 {{ item.streak }}</span>
@@ -157,6 +158,12 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
             <span class="font-mono font-semibold text-success" data-num="saved">{{ item.saved|currency }}</span>
             <span class="text-base-content/70">{% translate "of" %} {{ item.goal.target_amount|currency }}</span>
           </div>
+          {% if item.spent %}
+            <div class="text-sm text-base-content/70 mt-1" data-testid="goal-numbers">
+              {% translate "Spent" %} {{ item.spent|currency }} ·
+              {% translate "Left" %} <span class="font-mono {% if item.left < 0 %}text-error{% endif %}" data-num="left">{{ item.left|currency }}</span>{% if item.left < 0 %}<span data-carried> · {% translate "carried" %}</span>{% endif %}
+            </div>
+          {% endif %}
           <div class="text-sm text-base-content/70 mt-1">
             {% translate "To the top:" %} <span class="font-mono" data-num="remaining">{{ item.remaining|currency }}</span>
           </div>
@@ -214,20 +221,21 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
                    class="input input-bordered input-sm join-item w-full font-mono" data-withdraw-input>
             <button type="button" class="btn btn-outline btn-error btn-sm join-item"
                     data-withdraw-btn data-testid="withdraw-btn"
-                    {% if item.saved <= 0 %}disabled{% endif %}>{% translate "Climb down" %}</button>
+                    {% if item.left <= 0 %}disabled{% endif %}>{% translate "Climb down" %}</button>
           </div>
           <button type="button" class="btn btn-outline btn-error btn-sm w-full"
                   data-withdraw-all data-label-all="{% translate '🍂 Back to the ground' %}"
                   data-testid="withdraw-all-btn"
-                  {% if item.saved <= 0 %}disabled{% endif %}>
-            <span data-withdraw-all-label>🍂 {% translate "Back to the ground" %} ({{ item.saved|currency }})</span>
+                  {% if item.left <= 0 %}disabled{% endif %}>
+            <span data-withdraw-all-label>🍂 {% translate "Back to the ground" %} ({% if item.left > 0 %}{{ item.left|currency }}{% else %}$0.00{% endif %})</span>
           </button>
           <p class="text-xs text-base-content/70">
-            {% translate "The koala hands the money back to Available — this month's record shows the climb down, past months stay untouched." %}
+            {% blocktranslate trimmed with label=net_worth_card.label %}The koala hands the money back to {{ label }} — this month's record shows the climb down, past months stay untouched.{% endblocktranslate %}
           </p>
         </div>
+        {% include "budget/components/goal_close_form.html" with goal=item.goal %}
         <noscript>
-          <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug pk=item.goal.pk %}" class="join w-full">
+          <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}
             <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
             <input type="number" min="0" step="0.01" name="amount" value="{{ item.this_month }}"
@@ -246,7 +254,7 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
     <div class="text-6xl mb-2">🐨</div>
     <h2 class="card-title">{% translate "No trees to climb yet!" %}</h2>
     <p class="text-base-content/70">{% translate "Plant a goal and the koala will start climbing as you save." %}</p>
-    <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-success mt-4">🌱 {% translate "Plant your first goal" %}</a>
+    <a href="{% url 'budget:goal_create' team_slug=request.team.slug book_slug=request.book.slug %}" class="btn btn-success mt-4">🌱 {% translate "Plant your first goal" %}</a>
   </div>
 </div>
 {% endif %}

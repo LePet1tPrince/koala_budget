@@ -18,18 +18,19 @@ class MonthlyReviewNudgeTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Nudge Team", slug="nudge-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="nudgeuser@example.com", password="testpass123")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_MEMBER})
-        cls.url = reverse("web_team:home", kwargs={"team_slug": cls.team.slug})
+        cls.url = reverse("web_book:home", args=cls.book.url_args)
 
-        onboarding = OnboardingState.objects.create(team=cls.team)
+        onboarding = OnboardingState.objects.create(book=cls.book)
         onboarding.complete()
         onboarding.save()
 
-        cls.asset_group = AccountGroup.objects.create(team=cls.team, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Pay", account_type=ACCOUNT_TYPE_INCOME)
-        cls.chequing = Account.objects.create(team=cls.team, name="Chequing", account_group=cls.asset_group)
-        cls.salary = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
+        cls.asset_group = AccountGroup.objects.create(book=cls.book, name="Assets", account_type=ACCOUNT_TYPE_ASSET)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Pay", account_type=ACCOUNT_TYPE_INCOME)
+        cls.chequing = Account.objects.create(book=cls.book, name="Chequing", account_group=cls.asset_group)
+        cls.salary = Account.objects.create(book=cls.book, name="Salary", account_group=cls.income_group)
 
     def setUp(self):
         self.client.login(username="nudgeuser@example.com", password="testpass123")
@@ -37,10 +38,10 @@ class MonthlyReviewNudgeTest(TestCase):
     def _give_last_month_activity(self):
         last_month = _prev_month(date.today().replace(day=1))
         entry = JournalEntry.objects.create(
-            team=self.team, entry_date=last_month, description="pay", status=JournalEntry.STATUS_POSTED
+            book=self.book, entry_date=last_month, description="pay", status=JournalEntry.STATUS_POSTED
         )
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.chequing, dr_amount=Decimal("500"))
-        JournalLine.objects.create(team=self.team, journal_entry=entry, account=self.salary, cr_amount=Decimal("500"))
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=self.chequing, dr_amount=Decimal("500"))
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=self.salary, cr_amount=Decimal("500"))
         return last_month
 
     def test_no_nudge_without_activity(self):
@@ -56,7 +57,7 @@ class MonthlyReviewNudgeTest(TestCase):
 
     def test_nudge_hidden_once_completed(self):
         last_month = self._give_last_month_activity()
-        state = MonthlyReviewState.objects.create(team=self.team, month=last_month)
+        state = MonthlyReviewState.objects.create(book=self.book, month=last_month)
         state.complete()
         state.save()
         response = self.client.get(self.url)
@@ -64,7 +65,7 @@ class MonthlyReviewNudgeTest(TestCase):
 
     def test_nudge_hidden_once_dismissed(self):
         last_month = self._give_last_month_activity()
-        state = MonthlyReviewState.objects.create(team=self.team, month=last_month)
+        state = MonthlyReviewState.objects.create(book=self.book, month=last_month)
         state.dismiss()
         state.save()
         response = self.client.get(self.url)

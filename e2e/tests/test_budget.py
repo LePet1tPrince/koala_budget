@@ -20,7 +20,7 @@ from e2e.pages.budget import BudgetPage
 def test_budget_home_empty_state(authenticated_page: Page, live_server, team):
     """Budget home shows an empty state when there are no income/expense accounts."""
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_budget(team.slug)
+    budget.goto_budget(team.default_book)
 
     assert budget.is_budget_empty()
     assert not budget.has_budget_table() or budget.get_budget_row_count() == 0
@@ -38,7 +38,7 @@ def test_budget_home_shows_rows_for_accounts(authenticated_page: Page, live_serv
     AccountFactory(team=team, account_group=expense_group)
 
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_budget(team.slug)
+    budget.goto_budget(team.default_book)
 
     assert budget.has_budget_table()
     assert budget.get_budget_row_count() == 3
@@ -49,7 +49,7 @@ def test_budget_home_shows_rows_for_accounts(authenticated_page: Page, live_serv
 def test_goals_list_empty_state(authenticated_page: Page, live_server, team):
     """Goals list shows the empty-state card (and no goal cards) when no goals exist."""
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_goals(team.slug)
+    budget.goto_goals(team.default_book)
 
     assert budget.has_goals_empty_state()
     assert budget.get_goal_card_count() == 0
@@ -62,30 +62,30 @@ def test_create_goal(authenticated_page: Page, live_server, team):
     budget.create_goal(
         name="Emergency Fund",
         target_amount="5000.00",
-        team_slug=team.slug,
+        book=team.default_book,
     )
 
     # After save, redirects back to goals area
-    assert f"/a/{team.slug}/budget/goals" in authenticated_page.url
+    assert f"{team.default_book.base_url}budget/goals" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)
 def test_cancel_goal_form_returns_to_goals_list(authenticated_page: Page, live_server, team):
     """Clicking Cancel on the goal form returns the user to the goals list."""
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_goal_create(team.slug)
+    budget.goto_goal_create(team.default_book)
     budget.cancel_goal_form()
 
-    authenticated_page.wait_for_url(f"**/a/{team.slug}/budget/goals/", timeout=5_000)
-    assert f"/a/{team.slug}/budget/goals/" in authenticated_page.url
+    authenticated_page.wait_for_url(f"**{team.default_book.base_url}budget/goals/", timeout=5_000)
+    assert f"{team.default_book.base_url}budget/goals/" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)
 def test_new_goal_button_navigates_to_form(authenticated_page: Page, live_server, team):
     """The 'New Goal' button on the goals list navigates to the create form."""
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_goals(team.slug)
+    budget.goto_goals(team.default_book)
     budget.click_new_goal()
 
-    assert f"/a/{team.slug}/budget/goals/new/" in authenticated_page.url
+    assert f"{team.default_book.base_url}budget/goals/new/" in authenticated_page.url
     assert authenticated_page.locator("[data-testid='goal-form']").is_visible()

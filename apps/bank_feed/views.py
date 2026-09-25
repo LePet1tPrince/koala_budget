@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Count, F, Max
 from django.http import HttpResponse
 from django.shortcuts import render
-from django.utils import timezone
+from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -18,6 +18,7 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Payee
 from apps.accounts.serializers import (
     AccountGroupSerializer,
@@ -26,16 +27,25 @@ from apps.accounts.serializers import (
 )
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
+from apps.books.decorators import login_and_book_required
+from apps.books.helpers import book_display_name
+from apps.books.permissions import BookModelAccessPermissions
+from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry, JournalLine
-from apps.teams.decorators import login_and_team_required
-from apps.teams.permissions import TeamModelAccessPermissions
+from apps.reconciliation.models import Reconciliation
+from apps.reconciliation.services.guards import (
+    ReconciledLineError,
+    assert_date_change_allowed,
+    assert_entry_removable,
+    assert_line_mutable,
+)
+from apps.reconciliation.services.integrity import intact_map
 
 from .models import BankTransaction, TransferMatchDismissal
 from .serializers import (
     BankFeedRowSerializer,
     BatchEditRequestSerializer,
     BatchIdsSerializer,
-    BatchReconcileRequestSerializer,
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
     FeedAccountSerializer,
@@ -62,19 +72,19 @@ from .services.transfer_mirror import linked_legs, sync_transfer, would_orphan_p
 MAX_SIMILAR_CATEGORY_IDS = 50
 
 
-def _annotate_feed_account_activity(accounts, team):
+def _annotate_feed_account_activity(accounts, book):
     """
     Attach per-account review/activity fields to feed accounts: uncategorized_count,
-    latest_transaction_date, latest_reconciled_date.
+    latest_transaction_date, latest_reconciled_date, last_statement_date, last_statement_intact.
 
-    Computed as separate queries (not chained onto the with_balance()/with_categorized_balance()/
-    with_reconciled_balance() annotations) to avoid the join fan-out that would inflate the Sum()
+    Computed as separate queries (not chained onto the with_balance()/with_reconciled_balance()
+    annotations) to avoid the join fan-out that would inflate the Sum()
     balances: bank_transactions and journal_lines are different reverse relations, so annotating
     both in one query would cross-multiply their rows per account.
     """
     uncategorized_counts = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account__has_feed=True,
             journal_entry__isnull=True,
             is_archived=False,
@@ -85,7 +95,7 @@ def _annotate_feed_account_activity(accounts, team):
     )
     latest_transaction_dates = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account__has_feed=True,
             is_archived=False,
         )
@@ -95,7 +105,7 @@ def _annotate_feed_account_activity(accounts, team):
     )
     latest_reconciled_dates = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account__has_feed=True,
             is_archived=False,
             journal_entry__isnull=False,
@@ -106,10 +116,22 @@ def _annotate_feed_account_activity(accounts, team):
         .order_by("account_id", "-posted_date")
         .values_list("account_id", "posted_date")
     )
+    # The last finished statement per account and whether it still holds, so a
+    # card can say "Reconciled through Aug 31" (and warn when that changed).
+    last_statements = {}
+    for rec in Reconciliation.objects.filter(book=book, status=Reconciliation.STATUS_COMPLETED).order_by(
+        "account_id", "-statement_date", "-id"
+    ):
+        last_statements.setdefault(rec.account_id, rec)
+    intact = intact_map(list(last_statements.values()))
+
     for account in accounts:
         account.uncategorized_count = uncategorized_counts.get(account.id, 0)
         account.latest_transaction_date = latest_transaction_dates.get(account.id)
         account.latest_reconciled_date = latest_reconciled_dates.get(account.id)
+        statement = last_statements.get(account.id)
+        account.last_statement_date = statement.statement_date if statement else None
+        account.last_statement_intact = intact.get(statement.id) if statement else None
 
 
 class ManualTransactionSerializer(serializers.Serializer):
@@ -228,14 +250,14 @@ class BankFeedViewSet(
     (extended with PlaidTransaction data when applicable) and categorized BankTransactions
     showing category from linked JournalEntry.
 
-    - GET /a/{team_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
+    - GET /a/{team_slug}/{book_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
     """
 
     class Pagination(PageNumberPagination):
         page_size = 200
 
     serializer_class = BankFeedRowSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     pagination_class = Pagination
     queryset = BankTransaction.objects.none()  # for drf-spectacular schema generation
 
@@ -243,7 +265,7 @@ class BankFeedViewSet(
         """Get all BankTransactions, optionally filtered by account."""
         queryset = (
             BankTransaction.objects.filter(
-                team=self.request.team,
+                book=self.request.book,
             )
             .select_related(
                 "account",
@@ -253,7 +275,7 @@ class BankFeedViewSet(
                 "plaid_transaction__plaid_account",
                 "plaid_transaction__plaid_account__account",
             )
-            .prefetch_related("journal_entry__lines__account__institution")
+            .prefetch_related("journal_entry__lines__account__institution", "journal_entry__lines__reconciliation")
         )
 
         # Filter by account if provided in query params
@@ -269,18 +291,17 @@ class BankFeedViewSet(
         responses={200: FeedAccountSerializer(many=True)},
     )
     @action(detail=False, methods=["get"])
-    def feed_accounts(self, request, team_slug=None):
+    def feed_accounts(self, request, team_slug=None, book_slug=None):
         """Return feed accounts with up-to-date balances and review counts."""
         accounts = list(
-            Account.for_team.filter(has_feed=True)
+            Account.for_book.filter(has_feed=True)
             .with_balance()
-            .with_categorized_balance()
             .with_reconciled_balance()
             .select_related("account_group", "institution")
             .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
         )
 
-        _annotate_feed_account_activity(accounts, request.team)
+        _annotate_feed_account_activity(accounts, request.book)
 
         return Response(FeedAccountSerializer(accounts, many=True).data)
 
@@ -291,7 +312,7 @@ class BankFeedViewSet(
         responses={204: None},
     )
     @action(detail=False, methods=["post"])
-    def categorize(self, request, team_slug=None):
+    def categorize(self, request, team_slug=None, book_slug=None):
         """
         Categorize one or more bank transactions.
         Creates journal entries linking the bank account to the category account.
@@ -309,19 +330,23 @@ class BankFeedViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Verify category account exists and belongs to team
+        # Verify category account exists and belongs to book
         try:
-            category_account = Account.for_team.get(id=category_id)
+            category_account = Account.for_book.get(id=category_id)
         except Account.DoesNotExist:
             return Response(
                 {"error": "Category account not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        try:
+            assert_category_allowed(category_account)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Resolve all transactions up front so a bad id can't partially apply the batch
         tx_ids = {row.get("id") for row in rows if row.get("id")}
         transactions = list(
-            BankTransaction.objects.select_related("account", "journal_entry").filter(id__in=tx_ids, team=request.team)
+            BankTransaction.objects.select_related("account", "journal_entry").filter(id__in=tx_ids, book=request.book)
         )
         if len(transactions) != len(tx_ids):
             return Response(
@@ -340,7 +365,7 @@ class BankFeedViewSet(
                         self._create_journal_from_bank_transaction(
                             transaction_id=bank_tx.id,
                             category_account=category_account,
-                            team=request.team,
+                            book=request.book,
                         )
         except ValueError as e:
             return Response(
@@ -352,7 +377,7 @@ class BankFeedViewSet(
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
-    def _create_journal_from_bank_transaction(self, transaction_id: int, category_account: Account, team):
+    def _create_journal_from_bank_transaction(self, transaction_id: int, category_account: Account, book):
         """
         Create a JournalEntry from a BankTransaction.
         Links the transaction to the journal entry.
@@ -366,7 +391,7 @@ class BankFeedViewSet(
             "plaid_transaction",
             "plaid_transaction__plaid_account",
             "plaid_transaction__plaid_account__account",
-        ).get(id=transaction_id, team=team)
+        ).get(id=transaction_id, book=book)
 
         # Get the bank account - BankTransaction always has a direct account FK
         if not bank_tx.account:
@@ -375,7 +400,7 @@ class BankFeedViewSet(
 
         # Create journal entry
         journal_entry = JournalEntry.objects.create(
-            team=team,
+            book=book,
             entry_date=bank_tx.posted_date,
             description=bank_tx.description,
             source=bank_tx.journal_source,
@@ -391,14 +416,14 @@ class BankFeedViewSet(
             # Money coming in: debit bank account, credit category
             JournalLine.objects.create(
                 journal_entry=journal_entry,
-                team=team,
+                book=book,
                 account=bank_account,
                 dr_amount=amount,
                 cr_amount=Decimal("0"),
             )
             JournalLine.objects.create(
                 journal_entry=journal_entry,
-                team=team,
+                book=book,
                 account=category_account,
                 dr_amount=Decimal("0"),
                 cr_amount=amount,
@@ -407,14 +432,14 @@ class BankFeedViewSet(
             # Money going out: credit bank account, debit category
             JournalLine.objects.create(
                 journal_entry=journal_entry,
-                team=team,
+                book=book,
                 account=bank_account,
                 dr_amount=Decimal("0"),
                 cr_amount=amount,
             )
             JournalLine.objects.create(
                 journal_entry=journal_entry,
-                team=team,
+                book=book,
                 account=category_account,
                 dr_amount=amount,
                 cr_amount=Decimal("0"),
@@ -430,7 +455,7 @@ class BankFeedViewSet(
 
         return journal_entry
 
-    def list(self, request, team_slug=None):
+    def list(self, request, team_slug=None, book_slug=None):
         """
         Get unified bank feed, optionally filtered by account.
         Query params:
@@ -445,7 +470,7 @@ class BankFeedViewSet(
         serializer = BankFeedRowSerializer(rows, many=True)
         return self.get_paginated_response(serializer.data)
 
-    def create(self, request, team_slug=None):
+    def create(self, request, team_slug=None, book_slug=None):
         """
         Create a new manual bank transaction with associated journal entry.
 
@@ -464,9 +489,9 @@ class BankFeedViewSet(
 
         data = serializer.validated_data
 
-        # Verify accounts exist and belong to team
+        # Verify accounts exist and belong to this book
         try:
-            bank_account = Account.for_team.get(id=data["account"])
+            bank_account = Account.for_book.get(id=data["account"])
         except Account.DoesNotExist:
             return Response(
                 {"error": "Bank account not found"},
@@ -478,12 +503,16 @@ class BankFeedViewSet(
         category_account = None
         if data.get("category") is not None:
             try:
-                category_account = Account.for_team.get(id=data["category"])
+                category_account = Account.for_book.get(id=data["category"])
             except Account.DoesNotExist:
                 return Response(
                     {"error": "Category account not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            try:
+                assert_category_allowed(category_account)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
         inflow = data.get("inflow", Decimal("0")) or Decimal("0")
@@ -505,7 +534,7 @@ class BankFeedViewSet(
         payee_name = data.get("payee", "")
         if payee_name:
             payee, _ = Payee.objects.get_or_create(
-                team=request.team,
+                book=request.book,
                 name=payee_name,
             )
 
@@ -516,7 +545,7 @@ class BankFeedViewSet(
             entry_legs = legs if legs is not None else ([(category_account, amount)] if category_account else None)
             if entry_legs is not None:
                 journal_entry = JournalEntry.objects.create(
-                    team=request.team,
+                    book=request.book,
                     entry_date=data["date"],
                     description=data.get("description", ""),
                     payee=payee,
@@ -527,7 +556,7 @@ class BankFeedViewSet(
                 # side and amount, so only one place decides that.
                 JournalLine.objects.create(
                     journal_entry=journal_entry,
-                    team=request.team,
+                    book=request.book,
                     account=bank_account,
                     dr_amount=Decimal("0"),
                     cr_amount=Decimal("0"),
@@ -535,7 +564,7 @@ class BankFeedViewSet(
 
             # Create bank transaction
             bank_tx = BankTransaction.objects.create(
-                team=request.team,
+                book=request.book,
                 account=bank_account,
                 amount=amount,
                 posted_date=data["date"],
@@ -557,7 +586,7 @@ class BankFeedViewSet(
         response_serializer = BankFeedRowSerializer(row)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
-    def update(self, request, team_slug=None, pk=None):
+    def update(self, request, team_slug=None, book_slug=None, pk=None):
         """
         Update an existing bank transaction and its associated journal entry.
 
@@ -572,7 +601,7 @@ class BankFeedViewSet(
         """
         # Get the existing bank transaction
         try:
-            bank_tx = BankTransaction.objects.select_related("account", "journal_entry").get(id=pk, team=request.team)
+            bank_tx = BankTransaction.objects.select_related("account", "journal_entry").get(id=pk, book=request.book)
         except BankTransaction.DoesNotExist:
             return Response(
                 {"error": "Transaction not found"},
@@ -585,9 +614,9 @@ class BankFeedViewSet(
 
         data = serializer.validated_data
 
-        # Verify accounts exist and belong to team
+        # Verify accounts exist and belong to this book
         try:
-            bank_account = Account.for_team.get(id=data["account"])
+            bank_account = Account.for_book.get(id=data["account"])
         except Account.DoesNotExist:
             return Response(
                 {"error": "Bank account not found"},
@@ -595,15 +624,26 @@ class BankFeedViewSet(
             )
 
         # Category is optional — clearing it de-categorizes the transaction.
+        # An account the entry already uses stays allowed even if it's a system
+        # one, so re-saving an adjustment untouched keeps working.
+        current_category_ids = (
+            {line.account_id for line in bank_tx.journal_entry.lines.all() if line.account_id != bank_tx.account_id}
+            if bank_tx.journal_entry_id
+            else set()
+        )
         category_account = None
         if data.get("category") is not None:
             try:
-                category_account = Account.for_team.get(id=data["category"])
+                category_account = Account.for_book.get(id=data["category"])
             except Account.DoesNotExist:
                 return Response(
                     {"error": "Category account not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            try:
+                assert_category_allowed(category_account, keep_ids=current_category_ids)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Re-pointing (or clearing) the mirror leg's category would orphan the real
         # primary transaction; reject it (edit the original transaction instead).
@@ -642,7 +682,7 @@ class BankFeedViewSet(
         legs = None
         if data.get("splits") is not None:
             try:
-                legs = parse_legs(data["splits"])
+                legs = parse_legs(data["splits"], keep_ids=current_category_ids)
                 check_legs_total(legs, total=amount)
             except SplitError as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -675,86 +715,108 @@ class BankFeedViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # The rest of what can change a reconciled line: moving it to another
+        # account, re-dating it past its statement, or dropping the other side of
+        # a transfer by de-categorizing. `apply_splits` guards the legs themselves.
+        try:
+            entry = bank_tx.journal_entry
+            if entry is not None:
+                if bank_account.id != bank_tx.account_id:
+                    for line in entry.lines.filter(account=bank_tx.account):
+                        assert_line_mutable(line, new_account=bank_account)
+                assert_date_change_allowed(entry, data["date"])
+                if category_account is None and data.get("splits") is None:
+                    assert_entry_removable(
+                        entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category")
+                    )
+        except ReconciledLineError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         # Get or create payee if provided
         payee = None
         payee_name = data.get("payee", "")
         if payee_name:
             payee, _ = Payee.objects.get_or_create(
-                team=request.team,
+                book=request.book,
                 name=payee_name,
             )
 
-        with transaction.atomic():
-            # Remember the original bank account so we can still identify the bank-side
-            # journal line after the account is reassigned
-            old_account = bank_tx.account
+        try:
+            with transaction.atomic():
+                # Remember the original bank account so we can still identify the bank-side
+                # journal line after the account is reassigned
+                old_account = bank_tx.account
 
-            # Update bank transaction
-            bank_tx.account = bank_account
-            bank_tx.amount = amount
-            bank_tx.posted_date = data["date"]
-            bank_tx.description = data.get("description", "")
-            bank_tx.merchant_name = payee_name
-            bank_tx.save()
-
-            # Update, create, or remove the journal entry depending on the category.
-            # `apply_splits` writes the lines in every case -- a plain transaction is
-            # just a split with one leg -- so there is one place that decides which
-            # side of a line an amount lands on, and one place that checks the
-            # entry balances.
-            journal_entry = bank_tx.journal_entry
-            entry_legs = legs if legs is not None else [(category_account, amount)]
-
-            if category_account is None and legs is None:
-                # Blank category: leave the transaction uncategorized. Drop any
-                # existing journal entry (and its mirror leg) so it disappears from
-                # balances and reappears as an uncategorized feed row.
-                if journal_entry is not None:
-                    self._decategorize(bank_tx)
-            elif journal_entry:
-                # Update existing journal entry
-                journal_entry.entry_date = data["date"]
-                journal_entry.description = data.get("description", "")
-                journal_entry.payee = payee
-                journal_entry.save()
-
-                # Follow an account move before the lines are rewritten: everything
-                # below finds the bank line by the transaction's *current* account.
-                # Saved one at a time rather than through `QuerySet.update()` so the
-                # audit signals fire.
-                if old_account != bank_account:
-                    for line in journal_entry.lines.filter(account=old_account):
-                        line.account = bank_account
-                        line.save()
-
-                apply_splits(bank_tx, entry_legs, total=amount)
-            else:
-                # Create the entry with a placeholder bank line; `apply_splits`
-                # immediately gives it the right side and amount.
-                journal_entry = JournalEntry.objects.create(
-                    team=request.team,
-                    entry_date=data["date"],
-                    description=data.get("description", ""),
-                    payee=payee,
-                    source=JournalEntry.SOURCE_MANUAL,
-                    status=JournalEntry.STATUS_POSTED,
-                )
-                JournalLine.objects.create(
-                    journal_entry=journal_entry,
-                    team=request.team,
-                    account=bank_account,
-                    dr_amount=Decimal("0"),
-                    cr_amount=Decimal("0"),
-                )
-
-                bank_tx.journal_entry = journal_entry
+                # Update bank transaction
+                bank_tx.account = bank_account
+                bank_tx.amount = amount
+                bank_tx.posted_date = data["date"]
+                bank_tx.description = data.get("description", "")
+                bank_tx.merchant_name = payee_name
                 bank_tx.save()
 
-                apply_splits(bank_tx, entry_legs, total=amount)
+                # Update, create, or remove the journal entry depending on the category.
+                # `apply_splits` writes the lines in every case -- a plain transaction is
+                # just a split with one leg -- so there is one place that decides which
+                # side of a line an amount lands on, and one place that checks the
+                # entry balances.
+                journal_entry = bank_tx.journal_entry
+                entry_legs = legs if legs is not None else [(category_account, amount)]
 
-            # Keep the transfer's two legs in lockstep — moves/creates/removes the
-            # counterpart leg and syncs its display fields, in either direction.
-            sync_transfer(bank_tx)
+                if category_account is None and legs is None:
+                    # Blank category: leave the transaction uncategorized. Drop any
+                    # existing journal entry (and its mirror leg) so it disappears from
+                    # balances and reappears as an uncategorized feed row.
+                    if journal_entry is not None:
+                        self._decategorize(bank_tx)
+                elif journal_entry:
+                    # Update existing journal entry
+                    journal_entry.entry_date = data["date"]
+                    journal_entry.description = data.get("description", "")
+                    journal_entry.payee = payee
+                    journal_entry.save()
+
+                    # Follow an account move before the lines are rewritten: everything
+                    # below finds the bank line by the transaction's *current* account.
+                    # Saved one at a time rather than through `QuerySet.update()` so the
+                    # audit signals fire.
+                    if old_account != bank_account:
+                        for line in journal_entry.lines.filter(account=old_account):
+                            line.account = bank_account
+                            line.save()
+
+                    apply_splits(bank_tx, entry_legs, total=amount)
+                else:
+                    # Create the entry with a placeholder bank line; `apply_splits`
+                    # immediately gives it the right side and amount.
+                    journal_entry = JournalEntry.objects.create(
+                        book=request.book,
+                        entry_date=data["date"],
+                        description=data.get("description", ""),
+                        payee=payee,
+                        source=JournalEntry.SOURCE_MANUAL,
+                        status=JournalEntry.STATUS_POSTED,
+                    )
+                    JournalLine.objects.create(
+                        journal_entry=journal_entry,
+                        book=request.book,
+                        account=bank_account,
+                        dr_amount=Decimal("0"),
+                        cr_amount=Decimal("0"),
+                    )
+
+                    bank_tx.journal_entry = journal_entry
+                    bank_tx.save()
+
+                    apply_splits(bank_tx, entry_legs, total=amount)
+
+                # Keep the transfer's two legs in lockstep — moves/creates/removes the
+                # counterpart leg and syncs its display fields, in either direction.
+                sync_transfer(bank_tx)
+
+        except ValueError as e:
+            # A reconciled leg `apply_splits` refused to drop or re-amount.
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Reload to get updated data
         bank_tx.refresh_from_db()
@@ -770,13 +832,13 @@ class BankFeedViewSet(
         responses={(200, "text/csv"): OpenApiTypes.STR},
     )
     @action(detail=False, methods=["get"], url_path="sample_csv")
-    def sample_csv(self, request, team_slug=None):
+    def sample_csv(self, request, team_slug=None, book_slug=None):
         """
         Download a sample bank statement CSV.
 
         For users who want to try the import before they have a statement of
         their own. Nothing is created here -- the file is downloaded and then
-        uploaded through the ordinary wizard, so the rows that land in the team's
+        uploaded through the ordinary wizard, so the rows that land in the book's
         books are ones the user knowingly imported.
         """
         response = HttpResponse(build_sample_csv(), content_type="text/csv")
@@ -792,7 +854,7 @@ class BankFeedViewSet(
         responses={200: UploadParseResponseSerializer},
     )
     @action(detail=False, methods=["post"], url_path="upload_parse")
-    def upload_parse(self, request, team_slug=None):
+    def upload_parse(self, request, team_slug=None, book_slug=None):
         """
         Parse an uploaded CSV/Excel file and return headers + sample rows.
         Used in step 1 of the upload wizard.
@@ -829,7 +891,7 @@ class BankFeedViewSet(
         responses={200: UploadValidateDatesResponseSerializer},
     )
     @action(detail=False, methods=["post"], url_path="upload_validate_dates")
-    def upload_validate_dates(self, request, team_slug=None):
+    def upload_validate_dates(self, request, team_slug=None, book_slug=None):
         """
         Check every row's date cell against the chosen date format.
 
@@ -905,7 +967,7 @@ class BankFeedViewSet(
         responses={200: UploadPreviewResponseSerializer},
     )
     @action(detail=False, methods=["post"], url_path="upload_preview")
-    def upload_preview(self, request, team_slug=None):
+    def upload_preview(self, request, team_slug=None, book_slug=None):
         """
         Apply column mapping to uploaded file and return parsed transactions.
         Used in step 2-3 of the upload wizard.
@@ -947,9 +1009,9 @@ class BankFeedViewSet(
         except (json.JSONDecodeError, KeyError):
             category_mappings = {}
 
-        # Verify account belongs to team
+        # Verify account belongs to book
         try:
-            Account.for_team.get(id=account_id)
+            Account.for_book.get(id=account_id)
         except Account.DoesNotExist:
             return Response(
                 {"error": "Account not found"},
@@ -963,7 +1025,7 @@ class BankFeedViewSet(
             filename=uploaded_file.name,
             column_mapping=column_mapping,
             category_mappings=category_mappings,
-            team=request.team,
+            book=request.book,
             account_id=account_id,
             date_format=date_format,
         )
@@ -1003,7 +1065,7 @@ class BankFeedViewSet(
         responses={200: UploadConfirmResponseSerializer},
     )
     @action(detail=False, methods=["post"], url_path="upload_confirm")
-    def upload_confirm(self, request, team_slug=None):
+    def upload_confirm(self, request, team_slug=None, book_slug=None):
         """
         Create BankTransaction records from confirmed transactions.
         Used in step 4 of the upload wizard.
@@ -1020,9 +1082,9 @@ class BankFeedViewSet(
         transactions = data["transactions"]
         skip_duplicates = data.get("skip_duplicates", True)
 
-        # Verify account belongs to team
+        # Verify account belongs to book
         try:
-            Account.for_team.get(id=account_id)
+            Account.for_book.get(id=account_id)
         except Account.DoesNotExist:
             return Response(
                 {"error": "Account not found"},
@@ -1031,7 +1093,7 @@ class BankFeedViewSet(
 
         result = create_transactions(
             transactions=transactions,
-            team=request.team,
+            book=request.book,
             account_id=account_id,
             skip_duplicates=skip_duplicates,
         )
@@ -1045,7 +1107,7 @@ class BankFeedViewSet(
         responses={201: SimpleAccountSerializer},
     )
     @action(detail=False, methods=["post"], url_path="create_account")
-    def create_account(self, request, team_slug=None):
+    def create_account(self, request, team_slug=None, book_slug=None):
         """
         Create a new account for use in the CSV upload category mapping step.
         Body: name (str), account_group_id (int)
@@ -1059,17 +1121,17 @@ class BankFeedViewSet(
             return Response({"error": "account_group_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            account_group = AccountGroup.for_team.get(id=account_group_id)
+            account_group = AccountGroup.for_book.get(id=account_group_id)
         except AccountGroup.DoesNotExist:
             return Response({"error": "Account group not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if Account.for_team.filter(name__iexact=name).exists():
+        if Account.for_book.filter(name__iexact=name).exists():
             return Response({"error": f'An account named "{name}" already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
         account = Account.objects.create(
             name=name,
             account_group=account_group,
-            team=request.team,
+            book=request.book,
             has_feed=account_group.account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY),
         )
 
@@ -1082,9 +1144,9 @@ class BankFeedViewSet(
         responses={200: AccountGroupSerializer(many=True)},
     )
     @action(detail=False, methods=["get"], url_path="account_groups")
-    def account_groups(self, request, team_slug=None):
-        """Return all account groups for the team, for use in account creation."""
-        groups = AccountGroup.for_team.all()
+    def account_groups(self, request, team_slug=None, book_slug=None):
+        """Return all account groups for the book, for use in account creation."""
+        groups = AccountGroup.for_book.all()
         serializer = AccountGroupSerializer(groups, many=True)
         return Response(serializer.data)
 
@@ -1094,13 +1156,13 @@ class BankFeedViewSet(
         responses={200: CategorySuggestionSerializer(many=True)},
     )
     @action(detail=False, methods=["get"], url_path="category_suggestions", pagination_class=None)
-    def category_suggestions(self, request, team_slug=None):
+    def category_suggestions(self, request, team_slug=None, book_slug=None):
         """
         Suggest a category per merchant based on the most recent categorization.
         Used to pre-fill the category when editing an uncategorized transaction.
         """
         transactions = (
-            BankTransaction.objects.filter(team=request.team, journal_entry__isnull=False)
+            BankTransaction.objects.filter(book=request.book, journal_entry__isnull=False)
             .exclude(merchant_name__isnull=True)
             .exclude(merchant_name="")
             .select_related("account")
@@ -1144,7 +1206,7 @@ class BankFeedViewSet(
         responses={200: SimilarCategorySuggestionSerializer(many=True)},
     )
     @action(detail=False, methods=["get"], url_path="similar_categories", pagination_class=None)
-    def similar_categories(self, request, team_slug=None):
+    def similar_categories(self, request, team_slug=None, book_slug=None):
         """
         Suggest categories for uncategorized transactions from how similar ones
         were categorized before — matching on payee, on description, or on
@@ -1174,8 +1236,8 @@ class BankFeedViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        transactions = BankTransaction.objects.filter(team=request.team, id__in=ids)
-        suggestions_by_transaction = suggest_categories(request.team, transactions)
+        transactions = BankTransaction.objects.filter(book=request.book, id__in=ids)
+        suggestions_by_transaction = suggest_categories(request.book, transactions)
 
         # Preserve the order the client asked in, so it can pair responses up
         # without re-sorting.
@@ -1196,7 +1258,7 @@ class BankFeedViewSet(
         responses={204: None},
     )
     @action(detail=False, methods=["patch"], url_path="batch_edit")
-    def batch_edit(self, request, team_slug=None):
+    def batch_edit(self, request, team_slug=None, book_slug=None):
         """
         Bulk edit multiple bank transactions.
         Only fields that are provided (non-null) are updated.
@@ -1218,17 +1280,21 @@ class BankFeedViewSet(
         category_account = None
         if category_id is not None:
             try:
-                category_account = Account.for_team.get(id=category_id)
+                category_account = Account.for_book.get(id=category_id)
             except Account.DoesNotExist:
                 return Response(
                     {"error": "Category account not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            try:
+                assert_category_allowed(category_account)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         target_account = None
         if account_id is not None:
             try:
-                target_account = Account.for_team.get(id=account_id)
+                target_account = Account.for_book.get(id=account_id)
                 if not target_account.has_feed:
                     return Response(
                         {"error": "Target account must have bank feed enabled"},
@@ -1245,14 +1311,14 @@ class BankFeedViewSet(
         payee_obj = None
         if payee_name:
             payee_obj, _ = Payee.objects.get_or_create(
-                team=request.team,
+                book=request.book,
                 name=payee_name,
             )
 
         # Get transactions
         transactions = BankTransaction.objects.filter(
             id__in=ids,
-            team=request.team,
+            book=request.book,
         ).select_related("account", "journal_entry")
 
         # Reject up front: re-pointing a mirror leg to a non-feed category would
@@ -1277,65 +1343,20 @@ class BankFeedViewSet(
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-        with transaction.atomic():
-            for tx in transactions:
-                # --- Category ---
-                if category_account is not None:
-                    if tx.journal_entry:
-                        self._update_journal_category(tx, category_account)
-                    else:
-                        self._create_journal_from_bank_transaction(
-                            transaction_id=tx.id,
-                            category_account=category_account,
-                            team=request.team,
-                        )
-                        tx.refresh_from_db()
+        if new_date is not None:
+            try:
+                for tx in transactions:
+                    assert_date_change_allowed(tx.journal_entry, new_date)
+            except ReconciledLineError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-                # --- Move account ---
-                if target_account is not None:
-                    # Reconciled transactions cannot be moved to another account
-                    is_reconciled = (
-                        tx.journal_entry
-                        and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
-                    )
-                    if not is_reconciled:
-                        old_account = tx.account
-                        tx.account = target_account
-                        if tx.journal_entry:
-                            for line in tx.journal_entry.lines.all():
-                                if line.account == old_account:
-                                    line.account = target_account
-                                    line.save()
-                                    break
-
-                # --- Payee ---
-                if payee_name is not None:
-                    tx.merchant_name = payee_name
-                    if tx.journal_entry:
-                        tx.journal_entry.payee = payee_obj
-                        tx.journal_entry.save()
-
-                # --- Description ---
-                if description is not None:
-                    tx.description = description
-                    if tx.journal_entry:
-                        tx.journal_entry.description = description
-                        tx.journal_entry.save()
-
-                # --- Date ---
-                if new_date is not None:
-                    tx.posted_date = new_date
-                    if tx.journal_entry:
-                        tx.journal_entry.entry_date = new_date
-                        tx.journal_entry.save()
-                        # Re-save lines so their auto-linked budget follows the new month
-                        for line in tx.journal_entry.lines.all():
-                            line.save()
-
-                tx.save()
-
-                # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
-                sync_transfer(tx)
+        try:
+            self._apply_batch_edit(
+                transactions, category_account, target_account, payee_name, payee_obj, description, new_date, request
+            )
+        except ValueError as e:
+            # Raised inside the atomic block, so nothing in the batch was written.
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         log_event(
             AuditEvent.BULK_EDIT,
@@ -1348,6 +1369,69 @@ class BankFeedViewSet(
             },
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @transaction.atomic
+    def _apply_batch_edit(
+        self, transactions, category_account, target_account, payee_name, payee_obj, description, new_date, request
+    ):
+        """The writes behind `batch_edit`, in one transaction so a refusal rolls back the whole batch."""
+        for tx in transactions:
+            # --- Category ---
+            if category_account is not None:
+                if tx.journal_entry:
+                    self._update_journal_category(tx, category_account)
+                else:
+                    self._create_journal_from_bank_transaction(
+                        transaction_id=tx.id,
+                        category_account=category_account,
+                        book=request.book,
+                    )
+                    tx.refresh_from_db()
+
+            # --- Move account ---
+            if target_account is not None:
+                # Reconciled transactions cannot be moved to another account
+                is_reconciled = (
+                    tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
+                )
+                if not is_reconciled:
+                    old_account = tx.account
+                    tx.account = target_account
+                    if tx.journal_entry:
+                        for line in tx.journal_entry.lines.all():
+                            if line.account == old_account:
+                                line.account = target_account
+                                line.save()
+                                break
+
+            # --- Payee ---
+            if payee_name is not None:
+                tx.merchant_name = payee_name
+                if tx.journal_entry:
+                    tx.journal_entry.payee = payee_obj
+                    tx.journal_entry.save()
+
+            # --- Description ---
+            if description is not None:
+                tx.description = description
+                if tx.journal_entry:
+                    tx.journal_entry.description = description
+                    tx.journal_entry.save()
+
+            # --- Date ---
+            if new_date is not None:
+                tx.posted_date = new_date
+                if tx.journal_entry:
+                    tx.journal_entry.entry_date = new_date
+                    tx.journal_entry.save()
+                    # Re-save lines so their auto-linked budget follows the new month
+                    for line in tx.journal_entry.lines.all():
+                        line.save()
+
+            tx.save()
+
+            # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
+            sync_transfer(tx)
 
     @transaction.atomic
     def _update_journal_category(self, bank_tx, new_category_account):
@@ -1370,6 +1454,8 @@ class BankFeedViewSet(
         # Find the category line (the one that's not the bank account)
         for line in journal_entry.lines.all():
             if line.account != bank_tx.account:
+                # On a transfer this line is the other feed's bank line.
+                assert_line_mutable(line, new_account=new_category_account, own=False)
                 line.account = new_category_account
                 line.save()
                 break
@@ -1388,6 +1474,7 @@ class BankFeedViewSet(
         entry = bank_tx.journal_entry
         if entry is None:
             return
+        assert_entry_removable(entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category"))
 
         # A transfer's counterpart mirror leg only exists to surface the shared
         # entry in the other feed; drop it so it doesn't linger as an orphan.
@@ -1406,7 +1493,7 @@ class BankFeedViewSet(
         responses={204: None},
     )
     @action(detail=False, methods=["post"], url_path="batch_archive")
-    def batch_archive(self, request, team_slug=None):
+    def batch_archive(self, request, team_slug=None, book_slug=None):
         """
         Batch archive multiple bank transactions.
         Sets is_archived=True on BankTransaction.
@@ -1424,7 +1511,7 @@ class BankFeedViewSet(
             )
 
         transactions = list(
-            BankTransaction.objects.filter(id__in=ids, team=request.team).prefetch_related("journal_entry__lines")
+            BankTransaction.objects.filter(id__in=ids, book=request.book).prefetch_related("journal_entry__lines")
         )
 
         # A transfer's two legs archive together, and a reconciled leg must never
@@ -1481,7 +1568,7 @@ class BankFeedViewSet(
         responses={204: None},
     )
     @action(detail=False, methods=["post"], url_path="batch_unarchive")
-    def batch_unarchive(self, request, team_slug=None):
+    def batch_unarchive(self, request, team_slug=None, book_slug=None):
         """
         Batch unarchive multiple bank transactions.
         Sets is_archived=False on BankTransaction.
@@ -1494,7 +1581,7 @@ class BankFeedViewSet(
 
         # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
         unarchived_count = 0
-        for tx in BankTransaction.objects.filter(id__in=ids, team=request.team):
+        for tx in BankTransaction.objects.filter(id__in=ids, book=request.book):
             if not tx.is_archived:
                 continue
             tx.is_archived = False
@@ -1519,7 +1606,7 @@ class BankFeedViewSet(
         responses={204: None},
     )
     @action(detail=False, methods=["post"], url_path="batch_delete")
-    def batch_delete(self, request, team_slug=None):
+    def batch_delete(self, request, team_slug=None, book_slug=None):
         """
         Permanently delete multiple archived bank transactions.
         Also deletes any linked journal entries.
@@ -1532,7 +1619,7 @@ class BankFeedViewSet(
 
         transactions = BankTransaction.objects.filter(
             id__in=ids,
-            team=request.team,
+            book=request.book,
             is_archived=True,
         ).select_related("journal_entry")
 
@@ -1558,7 +1645,7 @@ class BankFeedViewSet(
         responses={200: BankFeedRowSerializer(many=True)},
     )
     @action(detail=False, methods=["post"], url_path="batch_duplicate")
-    def batch_duplicate(self, request, team_slug=None):
+    def batch_duplicate(self, request, team_slug=None, book_slug=None):
         """
         Batch duplicate multiple bank transactions.
         Creates new BankTransaction copies without journal entries.
@@ -1569,11 +1656,11 @@ class BankFeedViewSet(
 
         ids = serializer.validated_data["ids"]
 
-        # Get transactions that belong to this team, excluding reconciled ones
+        # Get transactions that belong to this book, excluding reconciled ones
         transactions = (
             BankTransaction.objects.filter(
                 id__in=ids,
-                team=request.team,
+                book=request.book,
             )
             .select_related("account")
             .prefetch_related("journal_entry__lines")
@@ -1589,7 +1676,7 @@ class BankFeedViewSet(
         for tx in transactions:
             # Create a duplicate with no journal entry
             new_tx = BankTransaction.objects.create(
-                team=request.team,
+                book=request.book,
                 account=tx.account,
                 amount=tx.amount,
                 posted_date=tx.posted_date,
@@ -1609,183 +1696,13 @@ class BankFeedViewSet(
         return Response(response_serializer.data)
 
     @extend_schema(
-        operation_id="bank_feed_batch_reconcile",
-        tags=["bank-feed"],
-        request=BatchReconcileRequestSerializer,
-        responses={204: None},
-    )
-    @action(detail=False, methods=["post"], url_path="batch_reconcile")
-    def batch_reconcile(self, request, team_slug=None):
-        """
-        Batch reconcile multiple bank transactions.
-        Sets is_reconciled=True on the JournalLine for the bank account side.
-        Optionally creates an adjustment if adjustment_amount is non-zero.
-        """
-        serializer = BatchReconcileRequestSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        ids = serializer.validated_data["ids"]
-        adjustment_amount = serializer.validated_data.get("adjustment_amount", Decimal("0"))
-        reconciliation_date = serializer.validated_data.get("reconciliation_date") or timezone.localdate()
-
-        # Get transactions that belong to this team
-        transactions = BankTransaction.objects.filter(
-            id__in=ids,
-            team=request.team,
-        ).select_related("account", "journal_entry")
-
-        # Validate: All transactions must be categorized (have journal_entry)
-        uncategorized = [tx for tx in transactions if not tx.journal_entry]
-        if uncategorized:
-            return Response(
-                {
-                    "error": f"Cannot reconcile uncategorized transactions. {len(uncategorized)} transaction(s) need to be categorized first."  # noqa: E501
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not transactions:
-            return Response(status=status.HTTP_204_NO_CONTENT)
-
-        # Reconciliation (and any adjustment) only makes sense against a single account
-        account_ids = {tx.account_id for tx in transactions}
-        if len(account_ids) > 1:
-            return Response(
-                {"error": "All transactions must belong to the same account to reconcile."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        bank_account = transactions[0].account
-
-        with transaction.atomic():
-            # Mark each transaction's bank account journal line as reconciled
-            for tx in transactions:
-                for line in tx.journal_entry.lines.all():
-                    if line.account == tx.account:
-                        line.is_reconciled = True
-                        line.save()
-                        break
-
-            # Create adjustment if needed
-            if adjustment_amount and adjustment_amount != Decimal("0"):
-                self._create_reconciliation_adjustment(
-                    team=request.team,
-                    bank_account=bank_account,
-                    amount=adjustment_amount,
-                    date=reconciliation_date,
-                )
-
-        log_event(AuditEvent.BULK_RECONCILE, request=request, metadata={"count": len(ids)})
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @transaction.atomic
-    def _create_reconciliation_adjustment(self, team, bank_account, amount, date=None):
-        """
-        Create a reconciliation adjustment transaction.
-        Creates a BankTransaction and JournalEntry against the system equity
-        "Reconciliation Adjustments" account. The adjustment is marked as reconciled immediately.
-        """
-        from apps.accounts.models import ACCOUNT_TYPE_EQUITY, AccountGroup
-
-        if date is None:
-            date = timezone.localdate()
-
-        # Find or create the system equity group for reconciliation adjustments
-        equity_group, _ = AccountGroup.objects.get_or_create(
-            team=team,
-            name="Equity Adjustments",
-            defaults={
-                "account_type": ACCOUNT_TYPE_EQUITY,
-                "is_system": True,
-            },
-        )
-        # Ensure existing group is marked system (in case it was created before this field existed)
-        if not equity_group.is_system:
-            equity_group.is_system = True
-            equity_group.save(update_fields=["is_system"])
-
-        # Find or create the system reconciliation adjustments account
-        adjustments_account, _ = Account.objects.get_or_create(
-            team=team,
-            name="Reconciliation Adjustments",
-            defaults={
-                "has_feed": False,
-                "account_group": equity_group,
-                "is_system": True,
-            },
-        )
-        if not adjustments_account.is_system:
-            adjustments_account.is_system = True
-            adjustments_account.save(update_fields=["is_system"])
-
-        # Create the journal entry
-        journal_entry = JournalEntry.objects.create(
-            team=team,
-            entry_date=date,
-            description="Reconciliation Adjustment",
-            source=JournalEntry.SOURCE_BANK_MATCH,
-            status=JournalEntry.STATUS_POSTED,
-        )
-
-        # Determine dr/cr based on sign (positive = increase bank balance)
-        abs_amount = abs(amount)
-        if amount > 0:
-            # Positive adjustment: debit bank account, credit adjustments
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=bank_account,
-                dr_amount=abs_amount,
-                cr_amount=Decimal("0"),
-                is_reconciled=True,
-            )
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=adjustments_account,
-                dr_amount=Decimal("0"),
-                cr_amount=abs_amount,
-            )
-        else:
-            # Negative adjustment: credit bank account, debit adjustments
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=bank_account,
-                dr_amount=Decimal("0"),
-                cr_amount=abs_amount,
-                is_reconciled=True,
-            )
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                team=team,
-                account=adjustments_account,
-                dr_amount=abs_amount,
-                cr_amount=Decimal("0"),
-            )
-
-        # Create the BankTransaction
-        BankTransaction.objects.create(
-            team=team,
-            account=bank_account,
-            amount=-amount if amount > 0 else abs_amount,  # Plaid convention: positive = outflow
-            posted_date=date,
-            description="Reconciliation Adjustment",
-            source=BankTransaction.SOURCE_SYSTEM,
-            journal_entry=journal_entry,
-        )
-
-        return journal_entry
-
-    @extend_schema(
         operation_id="bank_feed_batch_unreconcile",
         tags=["bank-feed"],
         request=BatchIdsSerializer,
         responses={204: None},
     )
     @action(detail=False, methods=["post"], url_path="batch_unreconcile")
-    def batch_unreconcile(self, request, team_slug=None):
+    def batch_unreconcile(self, request, team_slug=None, book_slug=None):
         """
         Batch unreconcile multiple bank transactions.
         Sets is_reconciled=False on the JournalLine for the bank account side.
@@ -1796,10 +1713,10 @@ class BankFeedViewSet(
 
         ids = serializer.validated_data["ids"]
 
-        # Get transactions that belong to this team
+        # Get transactions that belong to this book
         transactions = BankTransaction.objects.filter(
             id__in=ids,
-            team=request.team,
+            book=request.book,
         ).select_related("account", "journal_entry")
 
         # Mark each transaction's bank account journal line as unreconciled
@@ -1820,14 +1737,14 @@ class BankFeedViewSet(
         responses={200: TransferSuggestionSerializer(many=True)},
     )
     @action(detail=False, methods=["get"], url_path="transfers", pagination_class=None)
-    def transfer_suggestions(self, request, team_slug=None):
+    def transfer_suggestions(self, request, team_slug=None, book_slug=None):
         """
         List likely-duplicate transfer pairs (a transfer reported by both banks).
 
         Each pair shows both legs so the user can archive the duplicate, archive
         the other side, or dismiss the suggestion. Read-only; nothing is changed.
         """
-        candidates = find_transfer_candidates(request.team)
+        candidates = find_transfer_candidates(request.book)
         serializer = TransferSuggestionSerializer(candidates, many=True)
         return Response(serializer.data)
 
@@ -1838,7 +1755,7 @@ class BankFeedViewSet(
         responses={204: None},
     )
     @action(detail=False, methods=["post"], url_path="transfers/resolve")
-    def transfer_resolve(self, request, team_slug=None):
+    def transfer_resolve(self, request, team_slug=None, book_slug=None):
         """
         Resolve a duplicate transfer: archive one leg, keep the other.
 
@@ -1853,14 +1770,14 @@ class BankFeedViewSet(
         archive_id = serializer.validated_data["archive_id"]
         keep_id = serializer.validated_data["keep_id"]
 
-        # Both legs must belong to the team (the kept leg is validated but not mutated).
-        if not BankTransaction.objects.filter(id=keep_id, team=request.team).exists():
+        # Both legs must belong to this book (the kept leg is validated but not mutated).
+        if not BankTransaction.objects.filter(id=keep_id, book=request.book).exists():
             return Response(
                 {"error": "One or both transactions not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
-            archive_tx = BankTransaction.objects.select_related("journal_entry").get(id=archive_id, team=request.team)
+            archive_tx = BankTransaction.objects.select_related("journal_entry").get(id=archive_id, book=request.book)
         except BankTransaction.DoesNotExist:
             return Response(
                 {"error": "One or both transactions not found."},
@@ -1917,7 +1834,7 @@ class BankFeedViewSet(
         responses={204: None},
     )
     @action(detail=False, methods=["post"], url_path="transfers/dismiss")
-    def transfer_dismiss(self, request, team_slug=None):
+    def transfer_dismiss(self, request, team_slug=None, book_slug=None):
         """
         Dismiss a suggested pair as 'not a duplicate' so it stops being suggested.
         """
@@ -1928,15 +1845,15 @@ class BankFeedViewSet(
         tx_a = serializer.validated_data["transaction_a"]
         tx_b = serializer.validated_data["transaction_b"]
 
-        # Both transactions must belong to the team before recording a dismissal.
-        found = set(BankTransaction.objects.filter(id__in=[tx_a, tx_b], team=request.team).values_list("id", flat=True))
+        # Both transactions must belong to this book before recording a dismissal.
+        found = set(BankTransaction.objects.filter(id__in=[tx_a, tx_b], book=request.book).values_list("id", flat=True))
         if found != {tx_a, tx_b}:
             return Response(
                 {"error": "One or both transactions not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        TransferMatchDismissal.record(request.team, tx_a, tx_b)
+        TransferMatchDismissal.record(request.book, tx_a, tx_b)
         log_event(
             AuditEvent.TRANSFER_DUP_DISMISSED,
             request=request,
@@ -1948,41 +1865,39 @@ class BankFeedViewSet(
 # # Template Views
 
 
-@login_and_team_required
-def bank_feed_home(request, team_slug):
+@login_and_book_required
+def bank_feed_home(request, team_slug, book_slug):
     """
     Main bank feed page view.
     Displays accounts with bank feeds and bank transactions table.
     """
     # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
     accounts_with_feeds = list(
-        Account.for_team.filter(has_feed=True)
+        Account.for_book.filter(has_feed=True)
         .with_balance()
-        .with_categorized_balance()
         .with_reconciled_balance()
         .select_related("account_group", "institution")
         .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
     )  # noqa: E501
 
-    _annotate_feed_account_activity(accounts_with_feeds, request.team)
+    _annotate_feed_account_activity(accounts_with_feeds, request.book)
 
     # Serialize accounts for React
     accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data
 
     # Get all accounts, payees, and account groups for dropdowns
-    all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")
-    all_payees = Payee.for_team.all().order_by("name")
-    all_account_groups = AccountGroup.for_team.all().order_by("account_type", "name")
+    all_payees = Payee.for_book.all().order_by("name")
+    all_account_groups = AccountGroup.for_book.all().order_by("account_type", "name")
 
-    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
+    all_accounts_data = picker_accounts_data(request.book)
     all_payees_data = PayeeSerializer(all_payees, many=True).data
     all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
 
     # API URLs
     api_urls = {
-        "transactions_list": f"/a/{team_slug}/bankfeed/api/transactions/",
-        "transactions_detail": f"/a/{team_slug}/bankfeed/api/transactions/{{id}}/",
-        "feed_list": f"/a/{team_slug}/bankfeed/api/feed/",
+        "transactions_list": f"/a/{team_slug}/{book_slug}/bankfeed/api/transactions/",
+        "transactions_detail": f"/a/{team_slug}/{book_slug}/bankfeed/api/transactions/{{id}}/",
+        "feed_list": f"/a/{team_slug}/{book_slug}/bankfeed/api/feed/",
     }
 
     return render(
@@ -1990,41 +1905,38 @@ def bank_feed_home(request, team_slug):
         "bank_feed/bank_feed_home.html",
         {
             "active_tab": "bank-feed",
-            "page_title": _("Bank Feed | {team}").format(team=request.team),
+            "page_title": _("Bank Feed | {name}").format(name=book_display_name(request.book)),
             "accounts": accounts_data,
             "all_accounts": all_accounts_data,
             "all_payees": all_payees_data,
             "all_account_groups": all_account_groups_data,
             "api_urls": api_urls,
-            "team_slug": team_slug,
         },
     )
 
 
-@login_and_team_required
-def categorize_mode(request, team_slug):
+@login_and_book_required
+def categorize_mode(request, team_slug, book_slug):
     """Categorize mode — gamified single-transaction categorization view."""
     from django.urls import reverse
 
-    all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")
-    all_account_groups = AccountGroup.for_team.all().order_by("account_type", "name")
-    all_payees = Payee.for_team.all().order_by("name")
+    all_account_groups = AccountGroup.for_book.all().order_by("account_type", "name")
+    all_payees = Payee.for_book.all().order_by("name")
 
-    all_accounts_data = SimpleAccountSerializer(all_accounts, many=True).data
+    all_accounts_data = picker_accounts_data(request.book)
     all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
     all_payees_data = PayeeSerializer(all_payees, many=True).data
 
-    back_url = reverse("bank_feed:bank_feed_home", kwargs={"team_slug": team_slug})
+    back_url = reverse("bank_feed:bank_feed_home", kwargs={"team_slug": team_slug, "book_slug": book_slug})
 
     return render(
         request,
         "bank_feed/categorize_mode.html",
         {
-            "page_title": _("Categorize Mode | {team}").format(team=request.team),
+            "page_title": _("Categorize Mode | {name}").format(name=book_display_name(request.book)),
             "all_accounts": all_accounts_data,
             "all_account_groups": all_account_groups_data,
             "all_payees": all_payees_data,
-            "team_slug": team_slug,
             "back_url": back_url,
         },
     )

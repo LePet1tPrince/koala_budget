@@ -16,6 +16,7 @@ export const SOURCE_STYLES = {
   import: { label: gettext('Import'), className: 'badge-soft badge-info' },
   bank_match: { label: gettext('Bank'), className: 'badge-soft badge-accent' },
   recurring: { label: gettext('Recurring'), className: 'badge-soft badge-secondary' },
+  reconciliation: { label: gettext('Adjustment'), className: 'badge-soft badge-warning' },
 };
 
 export const STATUS_STYLES = {
@@ -82,7 +83,7 @@ export const TRANSACTION_COLUMNS = [
     formatValue: codeFormatter(SOURCE_STYLES),
     // The API matches `q` against the stored code, not the label we show, so
     // searching a handful of codes for "Bank" would come back empty. These
-    // columns have four values; the list is the search.
+    // columns have a handful of values; the list is the search.
     searchable: false,
   },
   {

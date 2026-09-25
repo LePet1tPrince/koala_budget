@@ -17,11 +17,11 @@ from .base import BasePage
 class OnboardingPage(BasePage):
     """The full-screen takeover."""
 
-    def path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/onboarding/"
+    def path(self, book) -> str:
+        return f"{book.base_url}onboarding/"
 
-    def goto_onboarding(self, team_slug: str):
-        self.goto(self.path(team_slug), wait_for="[data-testid='onboarding-takeover']")
+    def goto_onboarding(self, book):
+        self.goto(self.path(book), wait_for="[data-testid='onboarding-takeover']")
 
     # ------------------------------------------------------------------
     # Welcome
@@ -106,9 +106,9 @@ class OnboardingPage(BasePage):
         self.page.locator(f"[data-testid='coa-remove-{name}']").click()
         self.page.wait_for_timeout(700)  # the list redraws from the server
 
-    def confirm_accounts(self, team_slug: str):
+    def confirm_accounts(self, book):
         self.page.locator("[data-testid='onboarding-continue']").click()
-        self.page.wait_for_url(f"**/a/{team_slug}/", timeout=30_000, wait_until="domcontentloaded")
+        self.page.wait_for_url(f"**{book.base_url}", timeout=30_000, wait_until="domcontentloaded")
 
 
 class TaskRailPage(BasePage):
@@ -179,8 +179,8 @@ class TaskRailPage(BasePage):
 class DashboardOnboardingPage(BasePage):
     """The dashboard's "Finish setting up" nudge."""
 
-    def goto_dashboard(self, team_slug: str):
-        self.goto(f"/a/{team_slug}/")
+    def goto_dashboard(self, book):
+        self.goto(f"{book.base_url}")
 
     def has_resume_card(self) -> bool:
         return self.page.locator("[data-testid='onboarding-resume']").count() > 0

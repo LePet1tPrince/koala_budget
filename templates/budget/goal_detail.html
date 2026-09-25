@@ -8,23 +8,29 @@
   <div class="container mx-auto px-4 py-6">
     <div class="flex justify-between items-start mb-6">
       <div>
-        <h1 class="text-3xl font-bold">{{ goal.name }}</h1>
+        <h1 class="text-3xl font-bold flex items-center gap-3">
+          {{ goal.name }}
+          <span class="badge {% if goal.state == 'closed' %}badge-neutral{% elif goal.state == 'spending' %}badge-info{% elif goal.state == 'funded' %}badge-success{% else %}badge-ghost{% endif %}" data-testid="goal-state">{{ goal.state_label }}</span>
+        </h1>
         {% if goal.description %}
         <p class="text-base-content/70 mt-2">{{ goal.description }}</p>
         {% endif %}
       </div>
 
       <div class="flex gap-2">
-        <a href="{% url 'budget:goal_update' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-outline btn-sm">
+        <a href="{% url 'budget:goal_update' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}" class="btn btn-outline btn-sm">
           {% translate "Edit" %}
         </a>
-        {% if not goal.is_complete %}
-        <form method="post" action="{% url 'budget:goal_complete' team_slug=request.team.slug pk=goal.pk %}">
+        {% if not goal.is_complete and not goal.is_closed %}
+        <form method="post" action="{% url 'budget:goal_complete' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}">
           {% csrf_token %}
-          <button type="submit" class="btn btn-success btn-sm">{% translate "Mark Complete" %}</button>
+          <button type="submit" class="btn btn-success btn-sm" title="{% translate 'Stop asking for money for this goal. It keeps what it holds.' %}">{% translate "Mark Funded" %}</button>
         </form>
         {% endif %}
-        <a href="{% url 'budget:goal_delete' team_slug=request.team.slug pk=goal.pk %}" class="btn btn-outline btn-warning btn-sm">
+        {% if not goal.is_closed %}
+          {% include "budget/components/goal_close_form.html" with button_class="btn btn-outline btn-sm" %}
+        {% endif %}
+        <a href="{% url 'budget:goal_delete' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}" class="btn btn-outline btn-warning btn-sm">
           {% translate "Archive" %}
         </a>
       </div>
@@ -37,7 +43,7 @@
           <div>
             <div class="text-sm text-base-content/70">{% translate "Progress" %}</div>
             <div class="text-2xl font-bold">
-              {{ goal.total_saved|currency }} / {{ goal.target_amount|currency }}
+              {{ goal.allocated|currency }} / {{ goal.target_amount|currency }}
             </div>
           </div>
           <div class="text-4xl font-bold text-primary">{{ goal.progress_percentage|floatformat:0 }}%</div>
@@ -48,6 +54,22 @@
           value="{{ goal.progress_percentage }}"
           max="100"
         ></progress>
+
+        <div class="stats stats-horizontal border border-base-300 mt-4 w-full" data-testid="goal-numbers">
+          <div class="stat py-2">
+            <div class="stat-title">{% translate "Allocated" %}</div>
+            <div class="stat-value text-xl money">{{ goal.allocated|currency }}</div>
+          </div>
+          <div class="stat py-2">
+            <div class="stat-title">{% translate "Spent" %}</div>
+            <div class="stat-value text-xl money" data-testid="goal-spent">{{ goal.spent|currency }}</div>
+          </div>
+          <div class="stat py-2">
+            <div class="stat-title">{% translate "Left" %}</div>
+            <div class="stat-value text-xl money {% if goal.left < 0 %}text-error{% endif %}" data-testid="goal-left">{{ goal.left|currency }}</div>
+            {% if goal.left < 0 %}<div class="stat-desc text-error">{% translate "carried — cover it or keep paying it back" %}</div>{% endif %}
+          </div>
+        </div>
 
         {% if goal.target_date %}
         <div class="mt-4 text-sm text-base-content/70">
@@ -61,14 +83,60 @@
         </div>
         {% endif %}
 
-        {% if goal.is_complete %}
+        {% if goal.is_closed %}
+        <div class="alert mt-4">
+          <span>{% blocktranslate trimmed with date=goal.closed_at|date:"F j, Y" %}Closed on {{ date }}.{% endblocktranslate %}</span>
+        </div>
+        {% elif goal.is_complete %}
         <div class="alert alert-success mt-4">
           <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span>{% translate "Goal completed!" %}</span>
+          <span>{% translate "Funded — this goal no longer asks for money." %}</span>
         </div>
         {% endif %}
+      </div>
+    </div>
+
+    <!-- Spending: the goal account's lines -->
+    <div class="card bg-base-100 border border-base-300 mb-6" data-testid="goal-spending">
+      <div class="card-body">
+        <div class="flex justify-between items-baseline gap-2">
+          <h2 class="card-title">{% translate "Spending" %}</h2>
+          {% if spending_url %}
+            <a href="{{ spending_url }}" class="link link-primary text-sm">{% translate "Open in Transactions" %}</a>
+          {% endif %}
+        </div>
+        <div class="overflow-x-auto">
+          <table class="table table-sm table-quiet w-full">
+            <thead>
+              <tr>
+                <th>{% translate "Date" %}</th>
+                <th>{% translate "Payee" %}</th>
+                <th>{% translate "Memo" %}</th>
+                <th>{% translate "Paid from" %}</th>
+                <th class="text-right">{% translate "Amount" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for line in spending %}
+              <tr data-testid="goal-spending-row">
+                <td class="whitespace-nowrap">{{ line.date|date:"M j, Y" }}</td>
+                <td>{{ line.payee|default:"-" }}</td>
+                <td class="text-base-content/70">{{ line.memo|default:"-" }}</td>
+                <td class="text-base-content/70">{{ line.counter|default:"-" }}</td>
+                <td class="text-right money">{{ line.amount|currency }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="5" class="text-center text-base-content/70">
+                  {% translate "Nothing spent from this goal yet. Categorize a purchase to it and it shows up here." %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 

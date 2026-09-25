@@ -15,9 +15,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // a progress bar: the Budgeted outline is the container, the solid Actual
   // fill shows how much of it is used. The outline is a darker step of the
   // same hue so it stays visible where an over-budget fill overflows it.
+  // A goal account draws Allocated vs Spent with its running Left, in the goals colour.
   const income = data.account_type === 'income';
-  const seriesColor = income ? MONEY.in : MONEY.out;
-  const outlineColor = income ? 'rgb(15, 118, 66)' : 'rgb(185, 28, 28)';
+  const goal = data.account_type === 'goal';
+  const labels = {budgeted: 'Budgeted', actual: 'Actual', available: 'Available', ...(data.series_labels || {})};
+  const seriesColor = goal ? '#c98500' : income ? MONEY.in : MONEY.out;
+  const outlineColor = goal ? 'rgb(133, 88, 0)' : income ? 'rgb(15, 118, 66)' : 'rgb(185, 28, 28)';
 
   const ink = getInk(canvas);
   const surface = getSurface(canvas);
@@ -30,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           // Dataset 0 draws top-most, so the line rides over the bars.
           type: 'line',
-          label: 'Available',
+          label: labels.available,
           data: data.available,
           borderColor: MONEY.net,
           backgroundColor: MONEY.net,
@@ -46,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // Outline only — drawn over the Actual fill so the budget container
           // stays visible whether the fill is inside it or overflows it.
           type: 'bar',
-          label: 'Budgeted',
+          label: labels.budgeted,
           data: data.budgeted,
           backgroundColor: 'transparent',
           borderColor: outlineColor,
@@ -57,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         {
           type: 'bar',
-          label: 'Actual',
+          label: labels.actual,
           data: data.actual,
           backgroundColor: seriesColor,
           borderWidth: 0,

@@ -29,6 +29,12 @@
   .bva-meter.bva-income > div {
     background: var(--color-info);
   }
+  .bva-meter.bva-goal {
+    background: color-mix(in oklab, var(--color-accent) 18%, var(--color-base-100));
+  }
+  .bva-meter.bva-goal > div {
+    background: var(--color-accent);
+  }
 </style>
 {% endblock %}
 
@@ -37,7 +43,7 @@
   <!-- Header: title, month navigation, and actions on one row -->
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1" data-back-link>
         {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
@@ -54,7 +60,7 @@
           {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4" %}
         </a>
       </div>
-      <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
+      <a href="{% url 'budget:budget_home' request.team.slug request.book.slug %}?month={{ month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">
         {% icon "pen-to-square" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Edit Budget" %}
       </a>
@@ -63,6 +69,16 @@
 
   <!-- Summary Section -->
   <div class="stats stats-vertical sm:stats-horizontal shadow w-full mb-4" data-testid="bva-summary">
+    {% if goal_rows %}
+    <div class="stat py-3" data-testid="bva-set-aside">
+      <div class="stat-figure text-accent hidden sm:block">{% icon "piggy-bank" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Set aside" %}</div>
+      <div class="stat-value text-2xl">{{ goal_totals.assigned|currency }}</div>
+      {% if goal_totals.needed %}
+      <div class="stat-desc">{% blocktranslate trimmed with needed=goal_totals.needed|currency %}of {{ needed }} needed for your goals{% endblocktranslate %}</div>
+      {% endif %}
+    </div>
+    {% endif %}
     <div class="stat py-3">
       <div class="stat-figure text-info hidden sm:block">{% icon "bullseye" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Budgeted" %}</div>
@@ -88,6 +104,64 @@
       <div class="stat-value text-2xl {% if expense_totals.remaining < 0 %}text-error{% endif %}">{{ expense_totals.remaining|currency }}</div>
     </div>
   </div>
+
+  {% if goal_rows %}
+  <!-- Goals Section: pay yourself first -->
+  <div class="card bg-base-100 shadow-lg mb-4">
+    <div class="card-body p-4">
+      <h2 class="card-title text-base">{% translate "Goals" %} <span class="text-sm font-normal text-base-content/70">{% translate "pay yourself first" %}</span></h2>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" data-testid="bva-goals-table">
+          <thead>
+            <tr>
+              <th class="w-1/4">{% translate "Goal" %}</th>
+              <th class="w-2/5">{% translate "Progress" %}</th>
+              <th class="text-right">{% translate "Assigned" %}</th>
+              <th class="text-right">{% translate "Needed" %}</th>
+              <th class="text-right">{% translate "Spent from goal" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in goal_rows %}
+            <tr data-testid="bva-goal-row">
+              <td class="pl-6 whitespace-nowrap">
+                <a href="{{ row.goal.get_absolute_url }}" class="link link-hover">{{ row.goal.name }}</a>
+                {% if row.note == "funded" %}
+                <span class="badge badge-success badge-sm ml-1 align-middle">{% translate "Funded" %}</span>
+                {% elif row.note == "no_target_date" %}
+                <span class="badge badge-ghost badge-sm ml-1 align-middle">{% translate "No target date" %}</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <div class="bva-meter bva-goal flex-1">
+                    <div style="width: {{ row.pct_capped|floatformat:0 }}%;"></div>
+                  </div>
+                  <span class="text-xs text-base-content/70 tabular-nums w-12 text-right">
+                    {% if row.pct is not None %}{{ row.pct|floatformat:0 }}%{% else %}—{% endif %}
+                  </span>
+                </div>
+              </td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ row.assigned|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{% if row.needed is not None %}{{ row.needed|currency }}{% else %}—{% endif %}</td>
+              <td class="text-right tabular-nums whitespace-nowrap {% if not row.spent %}opacity-40{% endif %}">{{ row.spent|currency }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="font-semibold">
+              <td>{% translate "Total" %}</td>
+              <td></td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ goal_totals.assigned|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ goal_totals.needed|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{{ goal_totals.spent|currency }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Expenses Section -->
   <div class="card bg-base-100 shadow-lg mb-4">
@@ -146,7 +220,7 @@
       {% else %}
       <p class="text-base-content/70 py-2">
         {% translate "No budget or spending for this month yet." %}
-        <a href="{% url 'budget:budget_home' request.team.slug %}?month={{ month|date:'Y-m-d' }}" class="link link-primary">{% translate "Set up your budget" %}</a>
+        <a href="{% url 'budget:budget_home' request.team.slug request.book.slug %}?month={{ month|date:'Y-m-d' }}" class="link link-primary">{% translate "Set up your budget" %}</a>
       </p>
       {% endif %}
     </div>

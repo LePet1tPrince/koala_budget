@@ -32,12 +32,20 @@ Flags: show_grid_link (Budget page), goals_header (Goals page: style picker + Ne
     </div>
   </noscript>
   {% if show_grid_link %}
-    <a href="{% url 'budget:budget_grid' team_slug=request.team.slug %}?start={{ month|date:'Y' }}-01-01"
+    <a href="{% url 'budget:budget_grid' team_slug=request.team.slug book_slug=request.book.slug %}?start={{ month|date:'Y' }}-01-01"
        class="btn btn-outline btn-sm" data-testid="budget-grid-link">
       {% translate "Edit Multiple Months" %}
     </a>
   {% endif %}
   {% if goals_header %}
+    <div class="join" role="group" aria-label="{% translate 'Which goals' %}" data-testid="goals-filter">
+      <a href="?month={{ month|date:'Y-m-d' }}" class="btn btn-sm join-item {% if not show_closed %}btn-active{% endif %}"
+         {% if not show_closed %}aria-current="page"{% endif %} data-testid="goals-filter-open">{% translate "Open" %}</a>
+      <a href="?show=closed&month={{ month|date:'Y-m-d' }}" class="btn btn-sm join-item {% if show_closed %}btn-active{% endif %}"
+         {% if show_closed %}aria-current="page"{% endif %} data-testid="goals-filter-closed">
+        {% translate "Closed" %}{% if closed_count %} <span class="badge badge-sm badge-ghost">{{ closed_count }}</span>{% endif %}
+      </a>
+    </div>
     <div class="dropdown dropdown-end" data-testid="goals-style-picker">
       <div tabindex="0" role="button" class="btn btn-outline btn-sm">
         {% icon "palette" class="inline-block shrink-0 w-4 h-4" %}
@@ -57,7 +65,7 @@ Flags: show_grid_link (Budget page), goals_header (Goals page: style picker + Ne
         {% endfor %}
       </ul>
     </div>
-    <a href="{% url 'budget:goal_create' team_slug=request.team.slug %}" class="btn btn-primary btn-sm" data-testid="new-goal-btn">
+    <a href="{% url 'budget:goal_create' team_slug=request.team.slug book_slug=request.book.slug %}" class="btn btn-primary btn-sm" data-testid="new-goal-btn">
       + {% translate "New Goal" %}
     </a>
   {% endif %}

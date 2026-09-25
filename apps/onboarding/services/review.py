@@ -172,7 +172,7 @@ def apply_edits(template: dict, edits: Edits) -> dict:
 
 def _reject_duplicates(accounts: list[dict], group_types: dict[str, str]) -> None:
     """
-    Account names are unique per account *type*, not per team -- the same rule
+    Account names are unique per account *type*, not per book -- the same rule
     `AccountForm` and the accounts board enforce. Catching it here means the
     whole edit is refused with a clear message instead of failing halfway
     through `get_or_create`.

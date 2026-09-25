@@ -79,6 +79,7 @@ export interface PatchedJournalEntry {
      * * `import` - Import
      * * `bank_match` - Bank Match
      * * `recurring` - Recurring Entry
+     * * `reconciliation` - Reconciliation Adjustment
      * @type {JournalEntrySourceEnum}
      * @memberof PatchedJournalEntry
      */

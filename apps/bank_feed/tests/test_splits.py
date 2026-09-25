@@ -25,8 +25,8 @@ from apps.accounts.models import (
     AccountGroup,
 )
 from apps.bank_feed.models import BankTransaction
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -38,47 +38,49 @@ class SplitTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Split Team", slug="split-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="splituser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.other_team = Team.objects.create(name="Other Team", slug="other-team")
+        cls.other_book = cls.other_team.default_book
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.liability_group = AccountGroup.objects.create(
-            team=cls.team, name="Credit Cards", account_type=ACCOUNT_TYPE_LIABILITY
+            book=cls.book, name="Credit Cards", account_type=ACCOUNT_TYPE_LIABILITY
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
 
         cls.chequing = Account.objects.create(
-            team=cls.team, name="Chequing", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Chequing", account_group=cls.asset_group, has_feed=True
         )
         cls.savings = Account.objects.create(
-            team=cls.team, name="Savings", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Savings", account_group=cls.asset_group, has_feed=True
         )
         cls.groceries = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group, has_feed=False
+            book=cls.book, name="Groceries", account_group=cls.expense_group, has_feed=False
         )
         cls.household = Account.objects.create(
-            team=cls.team, name="Household Goods", account_group=cls.expense_group, has_feed=False
+            book=cls.book, name="Household Goods", account_group=cls.expense_group, has_feed=False
         )
         cls.shopping = Account.objects.create(
-            team=cls.team, name="Shopping", account_group=cls.expense_group, has_feed=False
+            book=cls.book, name="Shopping", account_group=cls.expense_group, has_feed=False
         )
         cls.salary = Account.objects.create(
-            team=cls.team, name="Salary", account_group=cls.income_group, has_feed=False
+            book=cls.book, name="Salary", account_group=cls.income_group, has_feed=False
         )
 
         # An account belonging to somebody else, for the team-scoping test.
         other_group = AccountGroup.objects.create(
-            team=cls.other_team, name="Their Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.other_book, name="Their Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.foreign_account = Account.objects.create(
-            team=cls.other_team, name="Their Groceries", account_group=other_group, has_feed=False
+            book=cls.other_book, name="Their Groceries", account_group=other_group, has_feed=False
         )
 
     def setUp(self):
@@ -100,7 +102,7 @@ class SplitTestCase(TestCase):
         total = sum(amount for _, amount in legs) if total is None else total
 
         entry = JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=date(2026, 9, 14),
             description=description,
             source=JournalEntry.SOURCE_BANK_MATCH,
@@ -109,7 +111,7 @@ class SplitTestCase(TestCase):
         # The bank line takes the opposite side of the total.
         JournalLine.objects.create(
             journal_entry=entry,
-            team=self.team,
+            book=self.book,
             account=account,
             dr_amount=-total if total < 0 else Decimal("0"),
             cr_amount=total if total > 0 else Decimal("0"),
@@ -119,14 +121,14 @@ class SplitTestCase(TestCase):
         for category, amount in legs:
             JournalLine.objects.create(
                 journal_entry=entry,
-                team=self.team,
+                book=self.book,
                 account=category,
                 dr_amount=amount if amount > 0 else Decimal("0"),
                 cr_amount=-amount if amount < 0 else Decimal("0"),
             )
 
         tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=account,
             amount=total,
             posted_date=date(2026, 9, 14),
@@ -142,20 +144,20 @@ class SplitTestCase(TestCase):
         category = category or self.groceries
         amount = Decimal(amount)
         entry = JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=date(2026, 9, 14),
             description=description,
             source=JournalEntry.SOURCE_BANK_MATCH,
             status=JournalEntry.STATUS_POSTED,
         )
         JournalLine.objects.create(
-            journal_entry=entry, team=self.team, account=account, dr_amount=Decimal("0"), cr_amount=amount
+            journal_entry=entry, book=self.book, account=account, dr_amount=Decimal("0"), cr_amount=amount
         )
         JournalLine.objects.create(
-            journal_entry=entry, team=self.team, account=category, dr_amount=amount, cr_amount=Decimal("0")
+            journal_entry=entry, book=self.book, account=category, dr_amount=amount, cr_amount=Decimal("0")
         )
         return BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=account,
             amount=amount,
             posted_date=date(2026, 9, 14),
@@ -174,7 +176,7 @@ class SplitTestCase(TestCase):
         )
 
     def feed_url(self, suffix=""):
-        return f"/a/{self.team.slug}/bankfeed/api/feed/{suffix}"
+        return f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/{suffix}"
 
 
 class SplitRegressionTest(SplitTestCase):
@@ -193,7 +195,7 @@ class SplitRegressionTest(SplitTestCase):
         tx = self.make_split()
         entry = tx.journal_entry
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -232,7 +234,7 @@ class SplitRegressionTest(SplitTestCase):
         tx = self.make_split()
         entry = tx.journal_entry
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -263,7 +265,7 @@ class SplitRegressionTest(SplitTestCase):
         whichever leg sorts last as its one category.
         """
         tx = self.make_split()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.get(self.feed_url(f"?account={self.chequing.id}"))
 
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
@@ -284,7 +286,7 @@ class SplitRegressionTest(SplitTestCase):
         tx = self.make_split()
         entry = tx.journal_entry
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.post(
                 self.feed_url("categorize/"),
                 {"rows": [{"id": tx.id}], "category_id": self.shopping.id},
@@ -305,7 +307,7 @@ class SplitRegressionTest(SplitTestCase):
         split = self.make_split()
         plain = self.make_plain()
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.feed_url("batch_edit/"),
                 {"ids": [split.id, plain.id], "category_id": self.shopping.id},
@@ -344,7 +346,7 @@ class SplitRegressionTest(SplitTestCase):
             legs=[(self.savings, Decimal("100.00")), (self.groceries, Decimal("60.00"))],
         )
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.patch(
                 self.feed_url("batch_edit/"),
                 {"ids": [tx.id], "payee": "Costco Wholesale"},
@@ -372,7 +374,7 @@ class SplitArithmeticTest(SplitTestCase):
         return {line.account.name: (str(line.dr_amount), str(line.cr_amount)) for line in tx.journal_entry.lines.all()}
 
     def create_split(self, *, inflow, outflow, legs):
-        with current_team(self.team):
+        with current_book(self.book):
             return self.client.post(
                 self.feed_url(),
                 {
@@ -469,7 +471,7 @@ class SplitValidationTest(SplitTestCase):
     """Every rule in the plan's validation table, at the endpoint."""
 
     def put_splits(self, tx, splits, *, outflow="210.40", inflow="0"):
-        with current_team(self.team):
+        with current_book(self.book):
             return self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -556,7 +558,7 @@ class SplitValidationTest(SplitTestCase):
 
     def test_category_and_splits_are_mutually_exclusive(self):
         tx = self.make_plain()
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -585,7 +587,7 @@ class SplitEditingTest(SplitTestCase):
         tx = self.make_plain(amount="40.00")
         entry_id = tx.journal_entry_id
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -614,7 +616,7 @@ class SplitEditingTest(SplitTestCase):
         tx = self.make_split()
         bank_line_id = tx.journal_entry.lines.get(account=self.chequing).id
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -648,7 +650,7 @@ class SplitEditingTest(SplitTestCase):
         tx = self.make_split()
         bank_line_id = tx.journal_entry.lines.get(account=self.chequing).id
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -682,7 +684,7 @@ class SplitEditingTest(SplitTestCase):
         tx = self.make_split(reconciled=True)
         bank_line = tx.journal_entry.lines.get(account=self.chequing)
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -709,7 +711,7 @@ class SplitEditingTest(SplitTestCase):
     def test_reconciled_split_cannot_change_its_total(self):
         tx = self.make_split(reconciled=True)
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -736,7 +738,7 @@ class SplitEditingTest(SplitTestCase):
         tx = self.make_split()
         entry_id = tx.journal_entry_id
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -761,7 +763,7 @@ class SplitEditingTest(SplitTestCase):
         """The bank line must follow the move, and the legs must not."""
         tx = self.make_split()
 
-        with current_team(self.team):
+        with current_book(self.book):
             resp = self.client.put(
                 self.feed_url(f"{tx.id}/"),
                 {
@@ -798,7 +800,7 @@ class SplitReportingTest(SplitTestCase):
         from apps.budget.services import BudgetService
 
         self.make_split()
-        service = BudgetService(self.team)
+        service = BudgetService(self.book)
         month = date(2026, 9, 1)
 
         self.assertEqual(service.actual(self.groceries, month), Decimal("160.00"))
@@ -808,7 +810,7 @@ class SplitReportingTest(SplitTestCase):
         from apps.reports.services import ReportService
 
         self.make_split()
-        data = ReportService(self.team).get_income_statement_data(date(2026, 9, 1), date(2026, 9, 30))
+        data = ReportService(self.book).get_income_statement_data(date(2026, 9, 1), date(2026, 9, 30))
 
         by_name = {item["account"].name: item["amount"] for item in data["expenses"]}
         self.assertEqual(by_name["Groceries"], Decimal("160.00"))

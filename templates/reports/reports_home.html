@@ -9,7 +9,7 @@
 
   <ul class="divide-y divide-base-300">
     <li>
-      <a href="{% url 'monthly_review:home' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-monthly-review">
+      <a href="{% url 'monthly_review:home' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-monthly-review">
         <div>
           <div class="font-medium flex items-center gap-2">
             {% translate "Monthly Review" %}
@@ -25,7 +25,25 @@
       </a>
     </li>
     <li>
-      <a href="{% url 'reports:income_statement' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-income-statement">
+      <a href="{% url 'reports:dollar_map' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-dollar-map">
+        <div>
+          <div class="font-medium">{% translate "Dollar Map" %}</div>
+          <div class="text-sm text-base-content/70">{% translate "Where every dollar is going: goals, budget envelopes, and what still has no job." %}</div>
+        </div>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'reconciliation:hub' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-reconciliation">
+        <div>
+          <div class="font-medium">{% translate "Reconciliation Status" %}</div>
+          <div class="text-sm text-base-content/70">{% translate "Every account checked against its bank or card statement, and whether each statement still holds." %}</div>
+        </div>
+        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'reports:income_statement' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-income-statement">
         <div>
           <div class="font-medium">{% translate "Income Statement" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Income and expenses over a time period — your profit or loss." %}</div>
@@ -34,7 +52,7 @@
       </a>
     </li>
     <li>
-      <a href="{% url 'reports:balance_sheet' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-balance-sheet">
+      <a href="{% url 'reports:balance_sheet' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-balance-sheet">
         <div>
           <div class="font-medium">{% translate "Balance Sheet" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Assets, liabilities, and equity as of a specific date." %}</div>
@@ -43,7 +61,7 @@
       </a>
     </li>
     <li>
-      <a href="{% url 'reports:net_worth_trend' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-net-worth-trend">
+      <a href="{% url 'reports:net_worth_trend' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-net-worth-trend">
         <div>
           <div class="font-medium">{% translate "Net Worth Trend" %}</div>
           <div class="text-sm text-base-content/70">{% translate "How your net worth changes month over month." %}</div>
@@ -52,7 +70,7 @@
       </a>
     </li>
     <li>
-      <a href="{% url 'reports:cash_flow' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-cash-flow">
+      <a href="{% url 'reports:cash_flow' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-cash-flow">
         <div>
           <div class="font-medium">{% translate "Cash Flow" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Money in vs money out each month, and what you kept." %}</div>
@@ -61,7 +79,7 @@
       </a>
     </li>
     <li>
-      <a href="{% url 'reports:budget_vs_actual' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-budget-vs-actual">
+      <a href="{% url 'reports:budget_vs_actual' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-budget-vs-actual">
         <div>
           <div class="font-medium">{% translate "Budget vs Actual" %}</div>
           <div class="text-sm text-base-content/70">{% translate "How this month's spending compares to your budget, category by category." %}</div>
@@ -70,7 +88,7 @@
       </a>
     </li>
     <li>
-      <a href="{% url 'reports:goal_progress' request.team.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-goal-progress">
+      <a href="{% url 'reports:goal_progress' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-goal-progress">
         <div>
           <div class="font-medium">{% translate "Goal Progress" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Savings goals over time, with the pace needed to hit each target." %}</div>
@@ -85,7 +103,7 @@
       <div class="font-medium">{% translate "Export transactions" %}</div>
       <div class="text-sm text-base-content/70">{% translate "Download all journal entries and lines as a CSV file." %}</div>
     </div>
-    <a href="{% url 'reports:export_transactions' request.team.slug %}" class="btn btn-ghost btn-sm">
+    <a href="{% url 'reports:export_transactions' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm">
       {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
       {% translate "Download CSV" %}
     </a>

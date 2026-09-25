@@ -51,6 +51,7 @@ class TransactionEditTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Edit Team", slug="edit-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="edituser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
@@ -58,44 +59,45 @@ class TransactionEditTestCase(TestCase):
         cls.team.members.add(cls.member, through_defaults={"role": ROLE_MEMBER})
 
         cls.other_team = Team.objects.create(name="Other Team", slug="other-edit-team")
+        cls.other_book = cls.other_team.default_book
         cls.outsider = CustomUser.objects.create_user(username="outsider", password="pass")
         cls.other_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.liability_group = AccountGroup.objects.create(
-            team=cls.team, name="Credit Cards", account_type=ACCOUNT_TYPE_LIABILITY
+            book=cls.book, name="Credit Cards", account_type=ACCOUNT_TYPE_LIABILITY
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        cls.income_group = AccountGroup.objects.create(team=cls.team, name="Income", account_type=ACCOUNT_TYPE_INCOME)
+        cls.income_group = AccountGroup.objects.create(book=cls.book, name="Income", account_type=ACCOUNT_TYPE_INCOME)
         cls.equity_group = AccountGroup.objects.create(
-            team=cls.team, name="Equity Adjustments", account_type=ACCOUNT_TYPE_EQUITY, is_system=True
+            book=cls.book, name="Equity Adjustments", account_type=ACCOUNT_TYPE_EQUITY, is_system=True
         )
 
         cls.chequing = Account.objects.create(
-            team=cls.team, name="Chequing", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Chequing", account_group=cls.asset_group, has_feed=True
         )
         cls.savings = Account.objects.create(
-            team=cls.team, name="Savings", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Savings", account_group=cls.asset_group, has_feed=True
         )
-        cls.cash = Account.objects.create(team=cls.team, name="Cash", account_group=cls.asset_group, has_feed=False)
-        cls.visa = Account.objects.create(team=cls.team, name="Visa", account_group=cls.liability_group, has_feed=True)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
-        cls.household = Account.objects.create(team=cls.team, name="Household Goods", account_group=cls.expense_group)
-        cls.dining = Account.objects.create(team=cls.team, name="Dining", account_group=cls.expense_group)
-        cls.salary = Account.objects.create(team=cls.team, name="Salary", account_group=cls.income_group)
+        cls.cash = Account.objects.create(book=cls.book, name="Cash", account_group=cls.asset_group, has_feed=False)
+        cls.visa = Account.objects.create(book=cls.book, name="Visa", account_group=cls.liability_group, has_feed=True)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
+        cls.household = Account.objects.create(book=cls.book, name="Household Goods", account_group=cls.expense_group)
+        cls.dining = Account.objects.create(book=cls.book, name="Dining", account_group=cls.expense_group)
+        cls.salary = Account.objects.create(book=cls.book, name="Salary", account_group=cls.income_group)
         cls.opening = Account.objects.create(
-            team=cls.team, name="Reconciliation Adjustments", account_group=cls.equity_group, is_system=True
+            book=cls.book, name="Reconciliation Adjustments", account_group=cls.equity_group, is_system=True
         )
 
         other_group = AccountGroup.objects.create(
-            team=cls.other_team, name="Their Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.other_book, name="Their Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.foreign_account = Account.objects.create(
-            team=cls.other_team, name="Their Groceries", account_group=other_group
+            book=cls.other_book, name="Their Groceries", account_group=other_group
         )
 
     def setUp(self):
@@ -112,7 +114,7 @@ class TransactionEditTestCase(TestCase):
         to be able to express shapes the writer would refuse.
         """
         entry = JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=entry_date,
             description=description,
             payee=payee,
@@ -122,7 +124,7 @@ class TransactionEditTestCase(TestCase):
         for account, dr, cr, *rest in lines:
             JournalLine.objects.create(
                 journal_entry=entry,
-                team=self.team,
+                book=self.book,
                 account=account,
                 dr_amount=Decimal(dr),
                 cr_amount=Decimal(cr),
@@ -210,7 +212,7 @@ class ResolveSidesTest(TransactionEditTestCase):
         """A transfer's two legs share one entry; the primary's account is home."""
         entry = self.make_entry(lines=[(self.chequing, "0", "500"), (self.savings, "500", "0")])
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.savings,
             amount=Decimal("-500"),
             posted_date=entry.entry_date,
@@ -231,7 +233,7 @@ class ResolveSidesTest(TransactionEditTestCase):
     def test_mirror_leg_is_not_mistaken_for_the_primary(self):
         entry = self.make_entry(lines=[(self.chequing, "0", "500"), (self.savings, "500", "0")])
         primary = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("500"),
             posted_date=entry.entry_date,
@@ -240,7 +242,7 @@ class ResolveSidesTest(TransactionEditTestCase):
             journal_entry=entry,
         )
         mirror = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.savings,
             amount=Decimal("-500"),
             posted_date=entry.entry_date,
@@ -292,7 +294,7 @@ class ApplyEditsTest(TransactionEditTestCase):
     """Field-by-field edits on a plain transaction."""
 
     def edit(self, entry, **kwargs):
-        return apply_edits(entry, TransactionEdits(**kwargs), team=self.team)
+        return apply_edits(entry, TransactionEdits(**kwargs), book=self.book)
 
     def test_change_category(self):
         entry = self.make_plain()
@@ -310,7 +312,7 @@ class ApplyEditsTest(TransactionEditTestCase):
         self.assertEqual(entry.payee.name, "Costco")
 
     def test_blank_payee_clears_it(self):
-        payee = Payee.objects.create(team=self.team, name="Costco")
+        payee = Payee.objects.create(book=self.book, name="Costco")
         entry = self.make_plain(payee=payee)
         self.edit(entry, payee_name="")
         entry.refresh_from_db()
@@ -318,11 +320,11 @@ class ApplyEditsTest(TransactionEditTestCase):
         self.assertIsNone(entry.payee)
 
     def test_payee_is_reused_not_duplicated(self):
-        Payee.objects.create(team=self.team, name="Costco")
+        Payee.objects.create(book=self.book, name="Costco")
         entry = self.make_plain()
         self.edit(entry, payee_name="Costco")
 
-        self.assertEqual(Payee.objects.filter(team=self.team, name="Costco").count(), 1)
+        self.assertEqual(Payee.objects.filter(book=self.book, name="Costco").count(), 1)
 
     def test_change_amount_moves_both_sides(self):
         entry = self.make_plain(amount="40.00")
@@ -370,10 +372,10 @@ class ApplyEditsTest(TransactionEditTestCase):
 
     def test_date_change_relinks_the_budget(self):
         september = Budget.objects.create(
-            team=self.team, category=self.groceries, month=date(2026, 9, 1), budget_amount=Decimal("500")
+            book=self.book, category=self.groceries, month=date(2026, 9, 1), budget_amount=Decimal("500")
         )
         october = Budget.objects.create(
-            team=self.team, category=self.groceries, month=date(2026, 10, 1), budget_amount=Decimal("500")
+            book=self.book, category=self.groceries, month=date(2026, 10, 1), budget_amount=Decimal("500")
         )
         entry = self.make_plain(entry_date=date(2026, 9, 14))
         self.assertEqual(entry.lines.get(account=self.groceries).budget_id, september.id)
@@ -406,7 +408,7 @@ class ApplyEditsTest(TransactionEditTestCase):
         self.assertEqual(self.legs_of(entry, self.chequing), {"Groceries": Decimal("40.00")})
 
     def test_unset_fields_are_left_alone(self):
-        payee = Payee.objects.create(team=self.team, name="Costco")
+        payee = Payee.objects.create(book=self.book, name="Costco")
         entry = self.make_plain(payee=payee, description="Original")
         self.edit(entry, category_id=self.dining.id)
         entry.refresh_from_db()
@@ -421,7 +423,7 @@ class SplitEditTest(TransactionEditTestCase):
     """Editing a transaction apportioned across several categories."""
 
     def edit(self, entry, **kwargs):
-        return apply_edits(entry, TransactionEdits(**kwargs), team=self.team)
+        return apply_edits(entry, TransactionEdits(**kwargs), book=self.book)
 
     def test_reapportion_a_split(self):
         entry = self.make_split()
@@ -517,7 +519,7 @@ class SplitEditTest(TransactionEditTestCase):
     def test_editing_a_split_does_not_grow_a_mirror_leg(self):
         entry = self.make_split()
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("210.40"),
             posted_date=entry.entry_date,
@@ -536,7 +538,7 @@ class BankSyncTest(TransactionEditTestCase):
 
     def attach(self, entry, *, account, amount, source=BankTransaction.SOURCE_CSV):
         return BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=account,
             amount=Decimal(amount),
             posted_date=entry.entry_date,
@@ -558,7 +560,7 @@ class BankSyncTest(TransactionEditTestCase):
                 outflow=Decimal("55.25"),
                 inflow=Decimal("0"),
             ),
-            team=self.team,
+            book=self.book,
         )
 
         tx.refresh_from_db()
@@ -571,7 +573,7 @@ class BankSyncTest(TransactionEditTestCase):
         entry = self.make_plain(amount="40.00")
         tx = self.attach(entry, account=self.chequing, amount="40.00")
 
-        apply_edits(entry, TransactionEdits(inflow=Decimal("40.00"), outflow=Decimal("0")), team=self.team)
+        apply_edits(entry, TransactionEdits(inflow=Decimal("40.00"), outflow=Decimal("0")), book=self.book)
 
         tx.refresh_from_db()
         self.assertEqual(tx.amount, Decimal("-40.00"))
@@ -580,7 +582,7 @@ class BankSyncTest(TransactionEditTestCase):
         entry = self.make_plain()
         tx = self.attach(entry, account=self.chequing, amount="40.00")
 
-        apply_edits(entry, TransactionEdits(account_id=self.visa.id), team=self.team)
+        apply_edits(entry, TransactionEdits(account_id=self.visa.id), book=self.book)
 
         tx.refresh_from_db()
         self.assertEqual(tx.account, self.visa)
@@ -591,11 +593,11 @@ class BankSyncTest(TransactionEditTestCase):
         self.attach(entry, account=self.chequing, amount="40.00")
 
         with self.assertRaises(EditRefused):
-            apply_edits(entry, TransactionEdits(account_id=self.cash.id), team=self.team)
+            apply_edits(entry, TransactionEdits(account_id=self.cash.id), book=self.book)
 
     def test_a_manual_entry_may_move_to_an_account_with_no_feed(self):
         entry = self.make_plain()
-        apply_edits(entry, TransactionEdits(account_id=self.cash.id), team=self.team)
+        apply_edits(entry, TransactionEdits(account_id=self.cash.id), book=self.book)
 
         self.assertEqual(resolve_sides(entry).account, self.cash)
 
@@ -603,7 +605,7 @@ class BankSyncTest(TransactionEditTestCase):
         entry = self.make_plain(category=self.groceries)
         self.attach(entry, account=self.chequing, amount="40.00")
 
-        apply_edits(entry, TransactionEdits(category_id=self.savings.id), team=self.team)
+        apply_edits(entry, TransactionEdits(category_id=self.savings.id), book=self.book)
 
         mirror = BankTransaction.objects.get(journal_entry=entry, is_transfer_mirror=True)
         self.assertEqual(mirror.account, self.savings)
@@ -612,9 +614,9 @@ class BankSyncTest(TransactionEditTestCase):
     def test_the_mirror_leg_follows_a_date_change(self):
         entry = self.make_plain(category=self.savings)
         self.attach(entry, account=self.chequing, amount="40.00")
-        apply_edits(entry, TransactionEdits(category_id=self.savings.id), team=self.team)
+        apply_edits(entry, TransactionEdits(category_id=self.savings.id), book=self.book)
 
-        apply_edits(entry, TransactionEdits(date=date(2026, 11, 2)), team=self.team)
+        apply_edits(entry, TransactionEdits(date=date(2026, 11, 2)), book=self.book)
 
         mirror = BankTransaction.objects.get(journal_entry=entry, is_transfer_mirror=True)
         self.assertEqual(mirror.posted_date, date(2026, 11, 2))
@@ -622,9 +624,9 @@ class BankSyncTest(TransactionEditTestCase):
     def test_categorizing_away_from_a_transfer_removes_the_mirror_leg(self):
         entry = self.make_plain(category=self.savings)
         self.attach(entry, account=self.chequing, amount="40.00")
-        apply_edits(entry, TransactionEdits(category_id=self.savings.id), team=self.team)
+        apply_edits(entry, TransactionEdits(category_id=self.savings.id), book=self.book)
 
-        apply_edits(entry, TransactionEdits(category_id=self.groceries.id), team=self.team)
+        apply_edits(entry, TransactionEdits(category_id=self.groceries.id), book=self.book)
 
         self.assertFalse(BankTransaction.objects.filter(journal_entry=entry, is_transfer_mirror=True).exists())
 
@@ -635,22 +637,22 @@ class GuardsTest(TransactionEditTestCase):
     def test_a_void_entry_cannot_be_edited(self):
         entry = self.make_plain(status=JournalEntry.STATUS_VOID)
         with self.assertRaises(EditRefused):
-            apply_edits(entry, TransactionEdits(description="nope"), team=self.team)
+            apply_edits(entry, TransactionEdits(description="nope"), book=self.book)
 
     def test_a_reconciled_transactions_amount_is_locked(self):
         entry = self.make_plain(reconciled=True)
         with self.assertRaises(EditRefused):
-            apply_edits(entry, TransactionEdits(outflow=Decimal("99"), inflow=Decimal("0")), team=self.team)
+            apply_edits(entry, TransactionEdits(outflow=Decimal("99"), inflow=Decimal("0")), book=self.book)
 
     def test_a_reconciled_transactions_account_is_locked(self):
         entry = self.make_plain(reconciled=True)
         with self.assertRaises(EditRefused):
-            apply_edits(entry, TransactionEdits(account_id=self.visa.id), team=self.team)
+            apply_edits(entry, TransactionEdits(account_id=self.visa.id), book=self.book)
 
     def test_a_reconciled_transaction_may_still_be_recategorized(self):
         """Reconciliation is a fact about the bank line, not about the category."""
         entry = self.make_plain(reconciled=True)
-        apply_edits(entry, TransactionEdits(category_id=self.dining.id), team=self.team)
+        apply_edits(entry, TransactionEdits(category_id=self.dining.id), book=self.book)
 
         self.assertEqual(self.legs_of(entry, self.chequing), {"Dining": Decimal("40.00")})
         self.assertTrue(resolve_sides(entry).home_line.is_reconciled)
@@ -660,7 +662,7 @@ class GuardsTest(TransactionEditTestCase):
         apply_edits(
             entry,
             TransactionEdits(legs=[(self.groceries, Decimal("100.00")), (self.household, Decimal("110.40"))]),
-            team=self.team,
+            book=self.book,
         )
 
         self.assertEqual(self.legs_of(entry, self.chequing)["Groceries"], Decimal("100.00"))
@@ -669,7 +671,7 @@ class GuardsTest(TransactionEditTestCase):
     def test_plaid_sets_the_date(self):
         entry = self.make_plain()
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("40.00"),
             posted_date=entry.entry_date,
@@ -678,12 +680,12 @@ class GuardsTest(TransactionEditTestCase):
             journal_entry=entry,
         )
         with self.assertRaises(EditRefused):
-            apply_edits(entry, TransactionEdits(date=date(2026, 10, 1)), team=self.team)
+            apply_edits(entry, TransactionEdits(date=date(2026, 10, 1)), book=self.book)
 
     def test_plaid_sets_the_amount(self):
         entry = self.make_plain()
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("40.00"),
             posted_date=entry.entry_date,
@@ -692,12 +694,12 @@ class GuardsTest(TransactionEditTestCase):
             journal_entry=entry,
         )
         with self.assertRaises(EditRefused):
-            apply_edits(entry, TransactionEdits(outflow=Decimal("99"), inflow=Decimal("0")), team=self.team)
+            apply_edits(entry, TransactionEdits(outflow=Decimal("99"), inflow=Decimal("0")), book=self.book)
 
     def test_a_plaid_rows_category_is_still_editable(self):
         entry = self.make_plain()
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("40.00"),
             posted_date=entry.entry_date,
@@ -705,7 +707,7 @@ class GuardsTest(TransactionEditTestCase):
             source=BankTransaction.SOURCE_PLAID,
             journal_entry=entry,
         )
-        apply_edits(entry, TransactionEdits(category_id=self.dining.id, payee_name="Costco"), team=self.team)
+        apply_edits(entry, TransactionEdits(category_id=self.dining.id, payee_name="Costco"), book=self.book)
 
         self.assertEqual(self.legs_of(entry, self.chequing), {"Dining": Decimal("40.00")})
 
@@ -715,7 +717,7 @@ class BatchTest(TransactionEditTestCase):
 
     def test_the_same_edit_lands_on_every_entry(self):
         entries = [self.make_plain(description=f"Row {n}") for n in range(3)]
-        apply_edits_bulk(entries, TransactionEdits(category_id=self.dining.id), team=self.team)
+        apply_edits_bulk(entries, TransactionEdits(category_id=self.dining.id), book=self.book)
 
         for entry in entries:
             self.assertEqual(self.legs_of(entry, self.chequing), {"Dining": Decimal("40.00")})
@@ -725,7 +727,7 @@ class BatchTest(TransactionEditTestCase):
         bad = self.make_plain(description="Void", status=JournalEntry.STATUS_VOID)
 
         with self.assertRaises(EditRefused):
-            apply_edits_bulk([good, bad], TransactionEdits(category_id=self.dining.id), team=self.team)
+            apply_edits_bulk([good, bad], TransactionEdits(category_id=self.dining.id), book=self.book)
 
         self.assertEqual(self.legs_of(good, self.chequing), {"Groceries": Decimal("40.00")})
 
@@ -740,7 +742,7 @@ class BatchTest(TransactionEditTestCase):
         legs = [(self.groceries, Decimal("60.00")), (self.dining, Decimal("40.00"))]
 
         with self.assertRaises(EditRefused):
-            apply_edits_bulk([first, second], TransactionEdits(legs=legs), team=self.team)
+            apply_edits_bulk([first, second], TransactionEdits(legs=legs), book=self.book)
 
         self.assertEqual(self.legs_of(first, self.chequing), {"Groceries": Decimal("100.00")})
         self.assertEqual(self.legs_of(second, self.chequing), {"Groceries": Decimal("250.00")})
@@ -749,14 +751,14 @@ class BatchTest(TransactionEditTestCase):
 class DeleteAndStatusTest(TransactionEditTestCase):
     def test_a_manual_transaction_is_deleted_outright(self):
         entry = self.make_plain()
-        delete_transaction(entry, team=self.team)
+        delete_transaction(entry, book=self.book)
 
         self.assertFalse(JournalEntry.objects.filter(id=entry.id).exists())
 
     def test_a_bank_backed_transaction_returns_to_the_feed_uncategorized(self):
         entry = self.make_plain()
         tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("40.00"),
             posted_date=entry.entry_date,
@@ -764,7 +766,7 @@ class DeleteAndStatusTest(TransactionEditTestCase):
             source=BankTransaction.SOURCE_CSV,
             journal_entry=entry,
         )
-        delete_transaction(entry, team=self.team)
+        delete_transaction(entry, book=self.book)
 
         tx.refresh_from_db()
         self.assertIsNone(tx.journal_entry_id)
@@ -773,7 +775,7 @@ class DeleteAndStatusTest(TransactionEditTestCase):
     def test_deleting_a_transfer_takes_its_mirror_leg_with_it(self):
         entry = self.make_plain(category=self.savings)
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("40.00"),
             posted_date=entry.entry_date,
@@ -781,55 +783,64 @@ class DeleteAndStatusTest(TransactionEditTestCase):
             source=BankTransaction.SOURCE_CSV,
             journal_entry=entry,
         )
-        apply_edits(entry, TransactionEdits(category_id=self.savings.id), team=self.team)
+        apply_edits(entry, TransactionEdits(category_id=self.savings.id), book=self.book)
         self.assertTrue(BankTransaction.objects.filter(journal_entry=entry, is_transfer_mirror=True).exists())
 
-        delete_transaction(entry, team=self.team)
+        delete_transaction(entry, book=self.book)
 
         self.assertFalse(BankTransaction.objects.filter(is_transfer_mirror=True).exists())
 
     def test_a_reconciled_transaction_cannot_be_deleted(self):
         entry = self.make_plain(reconciled=True)
         with self.assertRaises(EditRefused):
-            delete_transaction(entry, team=self.team)
+            delete_transaction(entry, book=self.book)
         self.assertTrue(JournalEntry.objects.filter(id=entry.id).exists())
 
     def test_void_and_restore(self):
         entry = self.make_plain()
-        set_status(entry, JournalEntry.STATUS_VOID, team=self.team)
+        set_status(entry, JournalEntry.STATUS_VOID, book=self.book)
         entry.refresh_from_db()
         self.assertEqual(entry.status, JournalEntry.STATUS_VOID)
 
-        set_status(entry, JournalEntry.STATUS_POSTED, team=self.team)
+        set_status(entry, JournalEntry.STATUS_POSTED, book=self.book)
         entry.refresh_from_db()
         self.assertEqual(entry.status, JournalEntry.STATUS_POSTED)
 
     def test_only_void_and_posted_are_reachable(self):
         entry = self.make_plain()
         with self.assertRaises(EditRefused):
-            set_status(entry, JournalEntry.STATUS_DRAFT, team=self.team)
+            set_status(entry, JournalEntry.STATUS_DRAFT, book=self.book)
 
 
 class AuditTest(TransactionEditTestCase):
     """The history tab has to show a field diff, not a delete and a create."""
 
-    def test_editing_the_home_line_produces_an_update_not_a_recreate(self):
+    def test_changing_an_amount_reads_as_an_update_on_both_lines(self):
+        """
+        Both sides are mutated in place, so neither shows up as a delete and a
+        create -- which is what the history tab would otherwise have to render
+        for an edit the user thinks of as changing one number.
+        """
         entry = self.make_plain()
         AuditLog.objects.filter(journal_entry_id=entry.id).delete()
 
-        apply_edits(entry, TransactionEdits(outflow=Decimal("55.25"), inflow=Decimal("0")), team=self.team)
+        apply_edits(entry, TransactionEdits(outflow=Decimal("55.25"), inflow=Decimal("0")), book=self.book)
 
-        updates = AuditLog.objects.filter(
-            journal_entry_id=entry.id, source_model="JournalLine", action=AuditLog.ACTION_UPDATE
+        line_logs = AuditLog.objects.filter(journal_entry_id=entry.id, source_model="JournalLine")
+        self.assertFalse(
+            line_logs.filter(action__in=(AuditLog.ACTION_CREATE, AuditLog.ACTION_DELETE)).exists(),
+            "an amount change must not read as a line being replaced",
         )
-        self.assertTrue(updates.exists(), "the home line's amount change should read as an update")
-        self.assertIn("cr_amount", updates.first().changes)
+        changed = [set(log.changes) for log in line_logs.filter(action=AuditLog.ACTION_UPDATE)]
+        # The home line carries the credit (money out); its category the debit.
+        self.assertTrue(any("cr_amount" in fields for fields in changed), changed)
+        self.assertTrue(any("dr_amount" in fields for fields in changed), changed)
 
     def test_a_description_change_is_recorded_against_the_entry(self):
         entry = self.make_plain()
         AuditLog.objects.filter(journal_entry_id=entry.id).delete()
 
-        apply_edits(entry, TransactionEdits(description="Weekly shop"), team=self.team)
+        apply_edits(entry, TransactionEdits(description="Weekly shop"), book=self.book)
 
         log = AuditLog.objects.filter(
             journal_entry_id=entry.id, source_model="JournalEntry", action=AuditLog.ACTION_UPDATE
@@ -842,12 +853,12 @@ class TransactionEditApiTest(TransactionEditTestCase):
     """The endpoints the modal talks to."""
 
     def url(self, suffix=""):
-        return f"/a/{self.team.slug}/journal/api/transactions/{suffix}"
+        return f"/a/{self.team.slug}/{self.book.slug}/journal/api/transactions/{suffix}"
 
     # --- retrieve --------------------------------------------------------
 
     def test_detail_reads_as_account_and_category(self):
-        entry = self.make_plain(payee=Payee.objects.create(team=self.team, name="Costco"))
+        entry = self.make_plain(payee=Payee.objects.create(book=self.book, name="Costco"))
         response = self.client.get(self.url(f"{entry.id}/"))
 
         self.assertEqual(response.status_code, 200)
@@ -876,7 +887,7 @@ class TransactionEditApiTest(TransactionEditTestCase):
     def test_capabilities_match_what_the_writer_would_accept(self):
         entry = self.make_plain(reconciled=True)
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("40.00"),
             posted_date=entry.entry_date,
@@ -897,7 +908,8 @@ class TransactionEditApiTest(TransactionEditTestCase):
     def test_another_teams_transaction_is_not_found(self):
         entry = self.make_plain()
         self.client.force_authenticate(user=self.outsider)
-        response = self.client.get(f"/a/{self.other_team.slug}/journal/api/transactions/{entry.id}/")
+        url = f"/a/{self.other_team.slug}/{self.other_book.slug}/journal/api/transactions/{entry.id}/"
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, 404)
 
@@ -992,7 +1004,7 @@ class TransactionEditApiTest(TransactionEditTestCase):
     def test_another_teams_id_is_refused_not_edited(self):
         mine = self.make_plain()
         theirs = JournalEntry.objects.create(
-            team=self.other_team,
+            book=self.other_book,
             entry_date=date(2026, 9, 14),
             description="Theirs",
             status=JournalEntry.STATUS_POSTED,
@@ -1038,7 +1050,7 @@ class TransactionEditApiTest(TransactionEditTestCase):
     def test_deleting_a_bank_backed_row_leaves_it_in_the_feed(self):
         entry = self.make_plain()
         tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.chequing,
             amount=Decimal("40.00"),
             posted_date=entry.entry_date,

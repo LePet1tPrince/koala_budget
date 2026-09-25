@@ -27,18 +27,19 @@ class TaskTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Tasked", slug="tasked")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="worker", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
-        group = AccountGroup.objects.create(team=cls.team, name="Bank Accounts", account_type="asset")
-        cls.account = Account.objects.create(team=cls.team, name="Chequing Account", account_group=group, has_feed=True)
+        group = AccountGroup.objects.create(book=cls.book, name="Bank Accounts", account_type="asset")
+        cls.account = Account.objects.create(book=cls.book, name="Chequing Account", account_group=group, has_feed=True)
 
     def setUp(self):
         self.client.force_login(self.user)
-        self.tasks_url = reverse("onboarding:api_tasks", args=[self.team.slug])
-        self.task_url = reverse("onboarding:api_task", args=[self.team.slug])
+        self.tasks_url = reverse("onboarding:api_tasks", args=[self.team.slug, self.book.slug])
+        self.task_url = reverse("onboarding:api_task", args=[self.team.slug, self.book.slug])
 
-        self.state = OnboardingState.objects.create(team=self.team)
+        self.state = OnboardingState.objects.create(book=self.book)
         self.state.complete()
         self.state.save()
 
@@ -55,7 +56,7 @@ class TaskTestCase(TestCase):
 
     def add_transaction(self):
         BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.account,
             posted_date=date(2026, 9, 1),
             amount=Decimal("25.00"),
@@ -65,7 +66,7 @@ class TaskTestCase(TestCase):
 
     def add_entry(self):
         JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=date(2026, 9, 1),
             description="groceries",
             status=JournalEntry.STATUS_POSTED,
@@ -86,7 +87,7 @@ class TaskListTest(TaskTestCase):
         """The rail's rows are links; a task with nowhere to go is a dead row."""
         for task in self.client.get(self.tasks_url).json()["tasks"]:
             with self.subTest(task=task["slug"]):
-                self.assertTrue(task["url"].startswith(f"/a/{self.team.slug}/"))
+                self.assertTrue(task["url"].startswith(f"/a/{self.team.slug}/{self.book.slug}/"))
 
     def test_locked_tasks_explain_themselves(self):
         for task in self.client.get(self.tasks_url).json()["tasks"]:
@@ -135,7 +136,7 @@ class MarkTaskTest(TaskTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.states()["import"], "available")
-        self.assertNotIn("import", OnboardingState.objects.get(team=self.team).tasks_done)
+        self.assertNotIn("import", OnboardingState.objects.get(book=self.book).tasks_done)
 
     def test_an_unknown_task_is_refused(self):
         self.assertEqual(self.post_json({"slug": "buy_a_boat"}).status_code, 400)
@@ -146,22 +147,22 @@ class MarkTaskTest(TaskTestCase):
         self.post_json({"slug": "report"})
         self.post_json({"slug": "report"})
 
-        self.assertEqual(OnboardingState.objects.get(team=self.team).tasks_done.count("report"), 1)
+        self.assertEqual(OnboardingState.objects.get(book=self.book).tasks_done.count("report"), 1)
 
     def test_finishing_every_task_ends_the_walkthrough(self):
         self.add_transaction()
         self.add_entry()
         from apps.budget.models import Budget
 
-        expenses = AccountGroup.objects.create(team=self.team, name="Regular", account_type="expense")
-        category = Account.objects.create(team=self.team, name="Groceries", account_group=expenses)
-        Budget.objects.create(team=self.team, month=date(2026, 9, 1), category=category, budget_amount=Decimal("300"))
+        expenses = AccountGroup.objects.create(book=self.book, name="Regular", account_type="expense")
+        category = Account.objects.create(book=self.book, name="Groceries", account_group=expenses)
+        Budget.objects.create(book=self.book, month=date(2026, 9, 1), category=category, budget_amount=Decimal("300"))
 
         self.post_json({"slug": "report"})
         response = self.post_json({"slug": "net_worth"})
 
         self.assertFalse(response.json()["active"])
-        self.assertEqual(OnboardingState.objects.get(team=self.team).phase, OnboardingState.PHASE_DONE)
+        self.assertEqual(OnboardingState.objects.get(book=self.book).phase, OnboardingState.PHASE_DONE)
 
     def test_get_is_refused(self):
         self.assertEqual(self.client.get(self.task_url).status_code, 405)
@@ -172,20 +173,20 @@ class DismissTest(TaskTestCase):
         response = self.post_json({"action": "dismiss"})
 
         self.assertFalse(response.json()["active"])
-        self.assertEqual(OnboardingState.objects.get(team=self.team).phase, OnboardingState.PHASE_DONE)
+        self.assertEqual(OnboardingState.objects.get(book=self.book).phase, OnboardingState.PHASE_DONE)
 
     def test_a_dismissed_team_keeps_its_books(self):
         """Dismissing the guide is not undoing the setup."""
         self.post_json({"action": "dismiss"})
 
-        self.assertTrue(Account.objects.filter(team=self.team).exists())
+        self.assertTrue(Account.objects.filter(book=self.book).exists())
 
 
 class RailVisibilityTest(TaskTestCase):
     """The context processor decides whether the rail renders at all."""
 
     def _request(self):
-        request = self.client.get(reverse("web_team:home", args=[self.team.slug])).wsgi_request
+        request = self.client.get(reverse("web_book:home", args=[self.team.slug, self.book.slug])).wsgi_request
         return request
 
     def test_shown_during_the_task_phase(self):

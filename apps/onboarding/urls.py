@@ -1,4 +1,4 @@
-"""URL configuration for the onboarding walkthrough (all team-scoped)."""
+"""URL configuration for the onboarding walkthrough (all book-scoped)."""
 
 from django.urls import path
 

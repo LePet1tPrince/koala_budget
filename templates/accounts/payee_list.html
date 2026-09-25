@@ -1,39 +1,49 @@
-{% extends "web/app/app_base.html" %}
+{% extends "accounts/manage_base.html" %}
 {% load i18n %}
-{% block app %}
-<section class="app-card">
-  {% include "accounts/components/manage_tabs.html" with manage_tab="payees" %}
-  <div class="flex justify-between items-center mb-4">
-    <h3 class="text-xl mb-1">{% translate "Payees" %}</h3>
-    <a href="{% url 'accounts:payee_create' request.team.slug %}" class="btn btn-primary">
-      {% translate "New Payee" %}
-    </a>
-  </div>
+{% load icons %}
+{% block manage_title %}{% translate "Payees" %}{% endblock %}
+{% block manage_subtitle %}{% translate "Who your transactions are with. Rename one here and every transaction using it follows." %}{% endblock %}
+{% block manage_actions %}
+  <a href="{% url 'accounts:payee_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-dialog="create-dialog" data-testid="new-payee-btn">
+    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "New payee" %}
+  </a>
+{% endblock %}
+{% block manage_content %}
   {% if object_list %}
-    <div class="overflow-x-auto">
-      <table class="table table-quiet w-full">
-        <thead>
-          <tr>
-            <th>{% translate "Name" %}</th>
-            <th>{% translate "Actions" %}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for payee in object_list %}
-            <tr>
-              <td><a href="{{ payee.get_absolute_url }}" class="link">{{ payee.name }}</a></td>
-              <td>
-                <a href="{% url 'accounts:payee_update' request.team.slug payee.pk %}" class="btn btn-outline btn-sm">
-                  {% translate "Edit" %}
-                </a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div x-data="{ q: '', total: {{ object_list|length }}, shown: {{ object_list|length }} }"
+         x-effect="const t = q.trim().toLowerCase(); shown = $refs.list ? [...$refs.list.children].filter(r => !t || r.dataset.name.includes(t)).length : total">
+      <label class="input input-sm w-full sm:w-72 mb-3">
+        {% icon "search" class="inline-block shrink-0 w-4 h-4 opacity-60" %}
+        <input type="search" x-model="q" placeholder="{% translate 'Filter payees' %}" aria-label="{% translate 'Filter payees' %}" data-testid="payee-filter">
+      </label>
+      <div class="manage-list" x-ref="list" x-show="shown">
+        {% for payee in object_list %}
+          <a href="{{ payee.get_absolute_url }}" class="manage-row" data-testid="payee-row" data-name="{{ payee.name|lower }}"
+             x-show="!q.trim() || $el.dataset.name.includes(q.trim().toLowerCase())">
+            <div class="min-w-0 flex-1 font-medium truncate">{{ payee.name }}</div>
+            <div class="text-sm text-base-content/70 whitespace-nowrap text-right">
+              {% if payee.transaction_count %}
+                {% blocktranslate trimmed count counter=payee.transaction_count %}{{ counter }} transaction{% plural %}{{ counter }} transactions{% endblocktranslate %}
+                <span class="hidden sm:inline">· {% blocktranslate with date=payee.last_used|date:"M j, Y" trimmed %}last {{ date }}{% endblocktranslate %}</span>
+              {% else %}
+                {% translate "Not used yet" %}
+              {% endif %}
+            </div>
+            {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+          </a>
+        {% endfor %}
+      </div>
+      <p class="py-8 text-center text-sm text-base-content/70" x-show="!shown" x-cloak>{% translate "No payees match." %}</p>
     </div>
   {% else %}
-    <p class="text-base-content/70">{% translate "No payees yet." %} <a href="{% url 'accounts:payee_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <div class="py-10 text-center text-sm text-base-content/70">
+      {% translate "No payees yet — they're added as you categorize transactions." %}
+    </div>
   {% endif %}
-</section>
+{% endblock %}
+{% block dialogs %}
+  {% url 'accounts:payee_create' request.team.slug request.book.slug as create_url %}
+  {% translate "New payee" as dialog_title %}
+  {% translate "Create payee" as submit_label %}
+  {% include "accounts/components/form_dialog.html" with dialog_id="create-dialog" title=dialog_title form=create_form action=create_url submit_label=submit_label %}
 {% endblock %}

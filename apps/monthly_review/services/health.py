@@ -11,37 +11,56 @@ fact into a warning, with copy and severity, is `services/insights.py`'s job.
 """
 
 from datetime import timedelta
+from decimal import Decimal
 
 from django.conf import settings
-from django.db.models import Count, F, Max
+from django.db.models import Count, Max, Sum
 
 from apps.accounts.models import Account
 from apps.bank_feed.models import BankTransaction
+from apps.journal.models import JournalLine, counted_entries
 
 NO_TRANSACTIONS = "no_transactions"
 STALE_ACCOUNT = "stale_account"
 UNCATEGORIZED = "uncategorized"
 UNRECONCILED = "unreconciled"
-BALANCE_GAP = "balance_gap"
 
 
 def _stale_days() -> int:
     return getattr(settings, "MONTHLY_REVIEW_STALE_DAYS", 14)
 
 
-def account_health(team, month) -> dict:
+def _opening_balances(book, account_ids, before_date) -> dict:
+    """Each account's balance from everything dated before `before_date` -- the
+    starting point `balance_change` measures this month's movement against."""
+    if not account_ids:
+        return {}
+    counted = counted_entries("journal_entry__")
+    rows = (
+        JournalLine.objects.filter(book=book, account_id__in=account_ids, journal_entry__entry_date__lt=before_date)
+        .filter(counted)
+        .values("account_id")
+        .annotate(dr=Sum("dr_amount"), cr=Sum("cr_amount"))
+    )
+    return {row["account_id"]: (row["dr"] or Decimal("0")) - (row["cr"] or Decimal("0")) for row in rows}
+
+
+def account_health(book, month) -> dict:
     """
     Returns:
         {
           "accounts": [{
               "account": Account,
-              "transaction_count": int,        # this month, non-archived
-              "uncategorized_count": int,      # all time, non-archived (Inbox definition)
-              "unreconciled_count": int,       # all time, categorized + non-archived
+              "transaction_count": int,        # this month: journal entries on the account + uncategorized feed rows
+              "uncategorized_count": int,      # posted by month end, non-archived (Inbox definition)
+              "unreconciled_count": int,       # this month: journal entries with an unreconciled line on the account
               "last_transaction_date": date | None,
-              "balance": Decimal,
-              "reconciled_balance": Decimal,
+              "balance": Decimal,              # as of month end; voided/archived entries excluded
+              "reconciled_balance": Decimal,   # as of month end
               "balance_gap": Decimal,
+              "balance_change": Decimal,       # this month's net movement (balance - opening balance)
+              "account_type": str,             # "asset" | "liability"
+              "institution": str | None,       # institution name, None when unset
               "flags": [{"kind": str, ...}, ...],
           }, ...],
           "flags": [{"kind": str, "account": Account, ...}, ...],  # flattened
@@ -52,18 +71,38 @@ def account_health(team, month) -> dict:
     month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
     accounts = list(
-        Account.objects.filter(team=team, has_feed=True, is_system=False)
-        .select_related("account_group")
-        .with_balance()
-        .with_reconciled_balance()
+        Account.objects.filter(book=book, has_feed=True, is_system=False)
+        .select_related("account_group", "institution")
+        # As of month end: reviewing August must not flag what happened in September.
+        .with_balance(as_of=month_end)
+        .with_reconciled_balance(as_of=month_end)
         .order_by("sort_order", "name")
     )
     account_ids = [a.pk for a in accounts]
 
-    this_month_counts = dict(
+    # The month's own activity: journal lines on the account dated in the month,
+    # the same set `balance_change` sums. Unreconciled is a subset of it, so the
+    # count can never exceed the transaction count.
+    month_lines = JournalLine.objects.filter(
+        book=book, account_id__in=account_ids, journal_entry__entry_date__range=(month_start, month_end)
+    ).filter(counted_entries("journal_entry__"))
+    entry_counts = dict(
+        month_lines.values("account_id")
+        .annotate(count=Count("journal_entry", distinct=True))
+        .values_list("account_id", "count")
+    )
+    unreconciled_counts = dict(
+        month_lines.filter(is_reconciled=False)
+        .values("account_id")
+        .annotate(count=Count("journal_entry", distinct=True))
+        .values_list("account_id", "count")
+    )
+    # Uncategorized feed rows have no journal line yet but are still this month's transactions.
+    uncategorized_this_month = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account_id__in=account_ids,
+            journal_entry__isnull=True,
             is_archived=False,
             posted_date__range=(month_start, month_end),
         )
@@ -73,47 +112,39 @@ def account_health(team, month) -> dict:
     )
     uncategorized_counts = dict(
         BankTransaction.objects.filter(
-            team=team,
+            book=book,
             account_id__in=account_ids,
             journal_entry__isnull=True,
             is_archived=False,
-        )
-        .values("account_id")
-        .annotate(count=Count("id"))
-        .values_list("account_id", "count")
-    )
-    unreconciled_counts = dict(
-        BankTransaction.objects.filter(
-            team=team,
-            account_id__in=account_ids,
-            is_archived=False,
-            journal_entry__isnull=False,
-            journal_entry__lines__account_id=F("account_id"),
-            journal_entry__lines__is_reconciled=False,
+            posted_date__lte=month_end,
         )
         .values("account_id")
         .annotate(count=Count("id"))
         .values_list("account_id", "count")
     )
     last_transaction_dates = dict(
-        BankTransaction.objects.filter(team=team, account_id__in=account_ids, is_archived=False)
+        BankTransaction.objects.filter(
+            book=book, account_id__in=account_ids, is_archived=False, posted_date__lte=month_end
+        )
         .values("account_id")
         .annotate(latest=Max("posted_date"))
         .values_list("account_id", "latest")
     )
+    opening_balances = _opening_balances(book, account_ids, month_start)
 
     stale_days = _stale_days()
     result_accounts = []
     all_flags = []
 
     for account in accounts:
-        transaction_count = this_month_counts.get(account.pk, 0)
+        transaction_count = entry_counts.get(account.pk, 0) + uncategorized_this_month.get(account.pk, 0)
         uncategorized_count = uncategorized_counts.get(account.pk, 0)
         unreconciled_count = unreconciled_counts.get(account.pk, 0)
         last_transaction_date = last_transaction_dates.get(account.pk)
         balance = account._balance
         reconciled_balance = account._reconciled_balance
         balance_gap = balance - reconciled_balance
+        balance_change = balance - opening_balances.get(account.pk, Decimal("0"))
 
         flags = []
         if transaction_count == 0:
@@ -141,12 +172,6 @@ def account_health(team, month) -> dict:
                 }
             )
 
-        if balance_gap != 0 and not any(f["kind"] == UNRECONCILED for f in flags):
-            # A gap can exist even with zero unreconciled *bank feed* transactions
-            # (e.g. a manual journal entry touching the account) -- surfaced on
-            # its own so it is never silently dropped.
-            flags.append({"kind": BALANCE_GAP, "account": account, "gap": balance_gap})
-
         result_accounts.append(
             {
                 "account": account,
@@ -157,6 +182,9 @@ def account_health(team, month) -> dict:
                 "balance": balance,
                 "reconciled_balance": reconciled_balance,
                 "balance_gap": balance_gap,
+                "balance_change": balance_change,
+                "account_type": account.account_group.account_type,
+                "institution": account.institution.name if account.institution else None,
                 "flags": flags,
             }
         )

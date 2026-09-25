@@ -17,7 +17,7 @@ import Icon from '../../common/Icon';
  * LineApp - Main application component for managing lines
  * Manages account selection and bank feed operations
  */
-const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccountGroups, teamSlug, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
+const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccountGroups, book, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
   // Store accounts in state so we can update reconciled_balance after reconciliation
   const [accounts, setAccounts] = useState(initialAccounts);
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -59,10 +59,10 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   const feedAccountIds = useMemo(() => new Set(accounts.map((a) => a.id)), [accounts]);
 
   // Batch operations API
-  const batchApi = useMemo(() => getBatchOperationsApi(teamSlug), [teamSlug]);
+  const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
 
   // Transaction API (create/update)
-  const transactionApi = useMemo(() => getTransactionApi(teamSlug), [teamSlug]);
+  const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
 
   // Show snackbar helper
   const showSnackbar = useCallback((message, severity = 'info') => {
@@ -98,8 +98,8 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   const loadPlaidStatus = useCallback(async () => {
     try {
       const [accountsData, itemsData] = await Promise.all([
-        plaidClient.plaidAccountsList({ teamSlug }),
-        plaidClient.plaidItemsList({ teamSlug }),
+        plaidClient.plaidAccountsList({ ...book.params }),
+        plaidClient.plaidItemsList({ ...book.params }),
       ]);
       const itemsById = {};
       (itemsData.results || []).forEach((item) => {
@@ -115,7 +115,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     } catch (err) {
       console.error('Failed to load Plaid sync status:', err);
     }
-  }, [plaidClient, teamSlug]);
+  }, [plaidClient, book]);
 
   useEffect(() => {
     loadPlaidStatus();
@@ -124,7 +124,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // Load category suggestions (most recent category per merchant)
   useEffect(() => {
     bankFeedClient
-      .bankFeedCategorySuggestions({ teamSlug })
+      .bankFeedCategorySuggestions({ ...book.params })
       .then((rows) => {
         const map = {};
         (rows || []).forEach((s) => {
@@ -133,7 +133,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         setCategorySuggestions(map);
       })
       .catch((err) => console.error('Failed to load category suggestions:', err));
-  }, [bankFeedClient, teamSlug]);
+  }, [bankFeedClient, book]);
 
   // Load lines when account is selected
   useEffect(() => {
@@ -154,7 +154,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       // returns more than one page
       const results = [];
       let data = await bankFeedClient.bankFeedFeedList({
-        teamSlug: teamSlug,
+        ...book.params,
         account: account.id,
       });
       results.push(...(data.results || []));
@@ -162,7 +162,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         const nextPage = Number(new URL(data.next, window.location.origin).searchParams.get('page'));
         if (!nextPage) break;
         data = await bankFeedClient.bankFeedFeedList({
-          teamSlug: teamSlug,
+          ...book.params,
           account: account.id,
           page: nextPage,
         });
@@ -215,6 +215,21 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     setIsAccountPickerOpen(false);
   };
 
+  // The Inbox nav submenu links straight to an account via ?account=<id>, so a
+  // click there opens the feed with that account already selected instead of
+  // landing back on the picker. Only applied once, on the first load of the
+  // accounts list.
+  const appliedAccountParamRef = useRef(false);
+  useEffect(() => {
+    if (appliedAccountParamRef.current || accounts.length === 0) return;
+    const requestedId = Number(new URLSearchParams(window.location.search).get('account'));
+    if (!requestedId) return;
+    appliedAccountParamRef.current = true;
+    const target = accounts.find((a) => a.id === requestedId);
+    if (target) handleAccountSelect(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts]);
+
   /**
    * Refresh bank feed data from Plaid
    */
@@ -227,7 +242,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     try {
       // First, get all Plaid accounts and find one mapped to this ledger account
       const plaidAccountsData = await plaidClient.plaidAccountsList({
-        teamSlug: teamSlug,
+        ...book.params,
       });
 
       // Find Plaid account mapped to the selected ledger account
@@ -238,7 +253,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       if (plaidAccount) {
         // Trigger sync task for this Plaid item
         await plaidClient.plaidItemsSync({
-          teamSlug: teamSlug,
+          ...book.params,
           id: plaidAccount.item,
         });
 
@@ -278,7 +293,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   const handleCategorize = async (rows, categoryAccountId) => {
     try {
       await bankFeedClient.bankFeedTransactionsCategorize({
-        teamSlug: teamSlug,
+        ...book.params,
         categorizeTransactionsRequest: {
           rows: rows,
           categoryId: categoryAccountId,
@@ -464,19 +479,17 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   };
 
   /**
-   * Batch reconcile selected transactions
+   * Reconcile the selection against a statement: hand it to the reconcile page,
+   * which opens (or resumes) the account's draft with these rows already ticked.
+   * A feed row knows its journal entry, not its line, so entries are passed.
    */
-  const handleBatchReconcile = async (adjustmentAmount = 0, reconciliationDate = null) => {
-    try {
-      await batchApi.batchReconcile([...selectedIds], adjustmentAmount, reconciliationDate);
-      setSelectedIds(new Set());
-      await Promise.all([loadLines(), loadAccounts()]);
-
-      showSnackbar(gettext('Transactions reconciled successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch reconcile:', err);
-      showSnackbar(err.message || gettext('Failed to reconcile transactions'), 'error');
-    }
+  const handleBatchReconcile = (rows) => {
+    if (!selectedAccount) return;
+    const entries = (rows || [])
+      .map((r) => r.journal_entry_id ?? r.journalEntryId)
+      .filter(Boolean);
+    const query = entries.length ? `?entries=${entries.join(',')}` : '';
+    window.location.href = `${book.base}reconcile/${selectedAccount.id}/${query}`;
   };
 
   /**
@@ -572,7 +585,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               }}
             />
             <a
-              href={`/a/${teamSlug}/bankfeed/categorize/`}
+              href={`${book.base}bankfeed/categorize/`}
               className="btn btn-primary btn-sm gap-1"
               data-testid="categorize-mode-btn"
             >
@@ -588,7 +601,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
                 {gettext('No accounts with bank feeds found. Please link a bank account to get started.')}
               </span>
               <PlaidLinkButton
-                teamSlug={teamSlug}
+                book={book}
                 allAccounts={allAccounts}
                 onSuccess={handlePlaidSuccess}
                 plaidClient={plaidClient}
@@ -629,12 +642,31 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               <span className="font-semibold text-base-content">
                 {formatCurrency(selectedAccount.reconciled_balance ?? 0)}
               </span>
-              {selectedAccount.latest_reconciled_date && (
-                <span className="text-base-content/70 ml-2">
-                  {gettext('as of')} {new Date(selectedAccount.latest_reconciled_date).toLocaleDateString()}
+              {selectedAccount.last_statement_date ? (
+                <span className="ml-2" data-testid="reconciled-through">
+                  {gettext('reconciled through')}{' '}
+                  {new Date(`${selectedAccount.last_statement_date}T00:00:00`).toLocaleDateString()}{' '}
+                  {selectedAccount.last_statement_intact ? (
+                    <span className="badge badge-soft badge-success badge-xs">{gettext('Intact')}</span>
+                  ) : (
+                    <span className="badge badge-soft badge-warning badge-xs">{gettext('Changed')}</span>
+                  )}
                 </span>
+              ) : (
+                selectedAccount.latest_reconciled_date && (
+                  <span className="text-base-content/70 ml-2">
+                    {gettext('as of')} {new Date(selectedAccount.latest_reconciled_date).toLocaleDateString()}
+                  </span>
+                )
               )}
             </span>
+            <a
+              className="btn btn-outline btn-xs"
+              href={`${book.base}reconcile/${selectedAccount.id}/`}
+              data-testid="reconcile-statement-btn"
+            >
+              {gettext('Reconcile statement')}
+            </a>
           </div>
           {error && (
             <div className="alert alert-error mb-4">
@@ -653,7 +685,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             allAccounts={allAccounts}
             allPayees={allPayees}
             categorySuggestions={categorySuggestions}
-            teamSlug={teamSlug}
+            book={book}
             onAdd={handleAddLine}
             onDelete={handleDeleteLine}
             onEditTransaction={handleEditTransaction}

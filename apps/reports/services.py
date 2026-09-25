@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.urls import reverse
 from django.utils.formats import date_format
 
 from apps.accounts.models import (
@@ -10,7 +11,7 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_INCOME,
     ACCOUNT_TYPE_LIABILITY,
 )
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalLine, counted_entries
 
 
 class ReportService:
@@ -18,8 +19,8 @@ class ReportService:
     Service class for generating financial reports from journal data.
     """
 
-    def __init__(self, team):
-        self.team = team
+    def __init__(self, book):
+        self.book = book
 
     def get_income_statement_data(self, start_date, end_date, period=None):
         """
@@ -44,22 +45,34 @@ class ReportService:
                 'total_income_per_period': [Decimal, ...] (empty unless period given),
                 'total_expenses_per_period': [...],
                 'net_profit_per_period': [...],
+                'goal_spending': {'items': [...same item shape...], 'total': Decimal,
+                                  'per_period': [...]},
+                'net_after_goal_spending': Decimal,
+                'net_after_goal_spending_per_period': [...],
             }
+
+        `net_profit` is the operating net (income − expenses), the figure the
+        savings rate uses. Goal spending -- lines on a goal's account -- is its
+        own section below it, like capital spending: a real outflow, but planned
+        and paid from money set aside (docs/goals-envelopes-plan.md §4.5). Plain
+        equity accounts (opening balances) are not goal spending.
         """
         # Get all journal lines in the date range (voided entries don't count)
         journal_lines = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__range=(start_date, end_date),
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .select_related("account", "account__account_group", "journal_entry")
         )
 
         periods = self._period_range(start_date, end_date, period) if period else []
+        goal_account_ids = self.goal_account_ids()
 
         income_data = []
         expense_data = []
+        goal_data = []
         total_income = Decimal("0")
         total_expenses = Decimal("0")
 
@@ -76,10 +89,10 @@ class ReportService:
             # For expenses: debits increase expenses
             if account_type == ACCOUNT_TYPE_INCOME:
                 amount = line.cr_amount - line.dr_amount
-            elif account_type == ACCOUNT_TYPE_EXPENSE:
+            elif account_type == ACCOUNT_TYPE_EXPENSE or account.pk in goal_account_ids:
                 amount = line.dr_amount - line.cr_amount
             else:
-                continue  # Skip non-income/expense accounts
+                continue  # Skip balance-sheet accounts
 
             if account not in account_balances:
                 account_balances[account] = Decimal("0")
@@ -104,10 +117,15 @@ class ReportService:
                 elif account_type == ACCOUNT_TYPE_EXPENSE:
                     expense_data.append(item)
                     total_expenses += amount
+                else:
+                    goal_data.append(item)
 
         # Sort by the user's chart-of-accounts order
         income_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
         expense_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
+        goal_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
+        total_goal_spending = sum((item["amount"] for item in goal_data), Decimal("0"))
+        goal_spending_per_period = self._sum_periods(goal_data, len(periods)) if period else []
 
         net_profit = total_income - total_expenses
 
@@ -130,7 +148,22 @@ class ReportService:
             "total_income_per_period": total_income_per_period,
             "total_expenses_per_period": total_expenses_per_period,
             "net_profit_per_period": net_profit_per_period,
+            "goal_spending": {
+                "items": goal_data,
+                "total": total_goal_spending,
+                "per_period": goal_spending_per_period,
+            },
+            "net_after_goal_spending": net_profit - total_goal_spending,
+            "net_after_goal_spending_per_period": [
+                net - goal for net, goal in zip(net_profit_per_period, goal_spending_per_period, strict=True)
+            ],
         }
+
+    def goal_account_ids(self):
+        """Accounts a `Goal` points at. Never inferred from the type: the equity type is stored as "goal"."""
+        from apps.accounts.models import Account
+
+        return set(Account.objects.filter(book=self.book, goal__isnull=False).values_list("pk", flat=True))
 
     @staticmethod
     def _period_start(day, period):
@@ -219,12 +252,16 @@ class ReportService:
         # Get all journal lines up to as_of_date (voided entries don't count)
         journal_lines = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__lte=as_of_date,
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .select_related("account", "account__account_group")
         )
+
+        # Goal accounts are left out: spending from a goal is reported on the
+        # income statement, not here. Plain equity (opening balances) stays.
+        goal_account_ids = self.goal_account_ids()
 
         asset_data = []
         liability_data = []
@@ -239,6 +276,8 @@ class ReportService:
         for line in journal_lines:
             account = line.account
             account_type = account.account_group.account_type
+            if account.pk in goal_account_ids:
+                continue
 
             # Calculate account balance based on account type
             # Assets: debit balances are positive (dr - cr)
@@ -307,11 +346,11 @@ class ReportService:
 
         monthly_deltas = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__lte=end_date,
                 account__account_group__account_type__in=[ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY],
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .annotate(month=TruncMonth("journal_entry__entry_date"))
             .values(
                 "month",
@@ -391,7 +430,12 @@ class ReportService:
         from apps.budget.models import Budget
 
         account_type = account.account_group.account_type
+        if account.pk in self.goal_account_ids():
+            return self._goal_chart_data(account, start_date, end_date)
         if account_type not in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE):
+            return None
+        # Income isn't budgeted in a book that counts money only once it lands.
+        if account_type == ACCOUNT_TYPE_INCOME and not self.book.budget_future_income:
             return None
 
         months = self._period_range(start_date, end_date, "month")
@@ -401,14 +445,14 @@ class ReportService:
 
         # Available accumulates from the account's first budget/activity month.
         first_budget_month = (
-            Budget.objects.filter(team=self.team, category=account)
+            Budget.objects.filter(book=self.book, category=account)
             .order_by("month")
             .values_list("month", flat=True)
             .first()
         )
         first_activity_date = (
-            JournalLine.objects.filter(team=self.team, account=account)
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            JournalLine.objects.filter(book=self.book, account=account)
+            .filter(counted_entries("journal_entry__"))
             .order_by("journal_entry__entry_date")
             .values_list("journal_entry__entry_date", flat=True)
             .first()
@@ -422,7 +466,7 @@ class ReportService:
 
         budgets = dict(
             Budget.objects.filter(
-                team=self.team, category=account, month__gte=first_month, month__lt=month_after_last
+                book=self.book, category=account, month__gte=first_month, month__lt=month_after_last
             ).values_list("month", "budget_amount")
         )
 
@@ -434,12 +478,12 @@ class ReportService:
             row["month"]: row["total"]
             for row in (
                 JournalLine.objects.filter(
-                    team=self.team,
+                    book=self.book,
                     account=account,
                     journal_entry__entry_date__gte=first_month,
                     journal_entry__entry_date__lt=month_after_last,
                 )
-                .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+                .filter(counted_entries("journal_entry__"))
                 .annotate(month=TruncMonth("journal_entry__entry_date"))
                 .values("month")
                 .annotate(total=Sum(signed_amount))
@@ -472,6 +516,65 @@ class ReportService:
             "account_type": account_type,
         }
 
+    def _goal_chart_data(self, account, start_date, end_date):
+        """
+        Allocated vs Spent per month for a goal account, with the running Left
+        line (allocated − spent, all time up to each month). Same shape as the
+        budget chart, so the same chart draws it.
+        """
+        from django.db.models import F, Sum
+        from django.db.models.functions import TruncMonth
+
+        from apps.budget.models import GoalAllocation
+
+        months = self._period_range(start_date, end_date, "month")
+        if not months:
+            return None
+        month_after_last = (months[-1] + timedelta(days=32)).replace(day=1)
+
+        allocated = {
+            row["month"]: row["total"]
+            for row in GoalAllocation.objects.filter(book=self.book, goal__account=account, month__lt=month_after_last)
+            .values("month")
+            .annotate(total=Sum("amount"))
+        }
+        spent = {
+            (row["month"].date() if hasattr(row["month"], "date") else row["month"]): row["total"]
+            for row in JournalLine.objects.filter(
+                book=self.book, account=account, journal_entry__entry_date__lt=month_after_last
+            )
+            .filter(counted_entries("journal_entry__"))
+            .annotate(month=TruncMonth("journal_entry__entry_date"))
+            .values("month")
+            .annotate(total=Sum(F("dr_amount") - F("cr_amount")))
+        }
+
+        first_month = min([months[0], *allocated, *spent])
+        displayed = set(months)
+        allocated_series, spent_series, left_series = [], [], []
+        left = Decimal("0")
+        current = first_month
+        while current < month_after_last:
+            month_allocated = allocated.get(current, Decimal("0"))
+            month_spent = spent.get(current, Decimal("0"))
+            left += month_allocated - month_spent
+            if current in displayed:
+                allocated_series.append(float(month_allocated))
+                spent_series.append(float(month_spent))
+                left_series.append(float(left))
+            month = current.month + 1
+            current = date(current.year + (month - 1) // 12, (month - 1) % 12 + 1, 1)
+
+        return {
+            "labels": [self._period_label(bucket, "month") for bucket in months],
+            "budgeted": allocated_series,
+            "actual": spent_series,
+            "available": left_series,
+            "account_type": "goal",
+            "title": "Allocated vs Spent",
+            "series_labels": {"budgeted": "Allocated", "actual": "Spent", "available": "Left"},
+        }
+
     @staticmethod
     def build_balance_chart_data(report_data, start_date, end_date):
         """
@@ -500,7 +603,7 @@ class ReportService:
             dict: {
                 'account': Account,
                 'transactions': [{
-                    'date': date, 'payee': str, 'memo': str, 'amount': Decimal, 'source': str,
+                    'date': date, 'payee': str, 'payee_url': str, 'memo': str, 'amount': Decimal, 'source': str,
                     'contra_accounts': [{'name': str, 'url': str}, ...],
                     'balance': Decimal,  # running balance, balance-type accounts only
                 }, ...],
@@ -520,10 +623,10 @@ class ReportService:
         # Build the queryset (voided entries don't count)
         queryset = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 account=account,
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .select_related("journal_entry", "journal_entry__payee")
             .prefetch_related("journal_entry__lines__account__account_group")
         )
@@ -532,12 +635,20 @@ class ReportService:
         if start_date and end_date:
             queryset = queryset.filter(journal_entry__entry_date__range=(start_date, end_date))
 
-        # Determine account type for sign logic
+        # Determine account type for sign logic. A goal account is read like an
+        # expense (period totals of what was spent from it), not as a balance.
         account_type = account.account_group.account_type
-        is_balance_account = account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, ACCOUNT_TYPE_EQUITY)
+        is_goal = account.pk in self.goal_account_ids()
+        is_balance_account = not is_goal and account_type in (
+            ACCOUNT_TYPE_ASSET,
+            ACCOUNT_TYPE_LIABILITY,
+            ACCOUNT_TYPE_EQUITY,
+        )
 
         # Annotate signed amount based on account type
-        if account_type == ACCOUNT_TYPE_INCOME:
+        if is_goal:
+            signed_amount = F("dr_amount") - F("cr_amount")
+        elif account_type == ACCOUNT_TYPE_INCOME:
             # Income: credits increase income
             signed_amount = F("cr_amount") - F("dr_amount")
         elif account_type == ACCOUNT_TYPE_EXPENSE:
@@ -560,10 +671,10 @@ class ReportService:
             starting_balance = Decimal("0")
             if start_date:
                 starting_balance = JournalLine.objects.filter(
-                    team=self.team,
+                    book=self.book,
                     account=account,
                     journal_entry__entry_date__lt=start_date,
-                ).exclude(journal_entry__status=JournalEntry.STATUS_VOID).aggregate(balance=Sum(signed_amount))[
+                ).filter(counted_entries("journal_entry__")).aggregate(balance=Sum(signed_amount))[
                     "balance"
                 ] or Decimal("0")
 
@@ -572,15 +683,25 @@ class ReportService:
         total = Decimal("0")
         running_balance = starting_balance
 
+        # Built from the book in hand: get_absolute_url() would load each row's book and team
+        url_args = self.book.url_args
         for line in transactions:
             contra_accounts = [
-                {"name": contra.account.name, "url": contra.account.get_absolute_url()}
+                {
+                    "name": contra.account.name,
+                    "url": reverse("accounts:account_detail", args=[*url_args, contra.account_id]),
+                }
                 for contra in line.journal_entry.lines.all()
                 if contra.pk != line.pk
             ]
             transaction = {
                 "date": line.journal_entry.entry_date,
                 "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
+                "payee_url": (
+                    reverse("accounts:payee_detail", args=[*url_args, line.journal_entry.payee_id])
+                    if line.journal_entry.payee_id
+                    else ""
+                ),
                 "memo": line.journal_entry.description,
                 "amount": line.signed_amount,
                 "source": line.journal_entry.get_source_display(),
@@ -618,11 +739,11 @@ class ReportService:
 
         monthly_deltas = (
             JournalLine.objects.filter(
-                team=self.team,
+                book=self.book,
                 journal_entry__entry_date__lte=end_date,
                 account__account_group__account_type__in=[ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY],
             )
-            .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+            .filter(counted_entries("journal_entry__"))
             .annotate(month=TruncMonth("journal_entry__entry_date"))
             .values("month", "account__account_group__account_type")
             .annotate(delta=Sum(F("dr_amount") - F("cr_amount")))

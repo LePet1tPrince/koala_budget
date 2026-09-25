@@ -37,6 +37,8 @@
  * * `team_member_removed` - Team Member Removed
  * * `goal_funds_assigned` - Goal Funds Assigned
  * * `goal_funds_withdrawn` - Goal Funds Withdrawn
+ * * `goal_closed` - Goal Closed
+ * * `goal_covered_budget` - Budget Covered From Goal
  * * `onboarding_started` - Onboarding Started
  * * `onboarding_phase_completed` - Onboarding Phase Completed
  * * `onboarding_completed` - Onboarding Questionnaire Completed
@@ -50,6 +52,17 @@
  * * `monthly_review_baseline_changed` - Monthly Review Baseline Changed
  * * `ynab_import_started` - YNAB Import Started
  * * `ynab_import` - YNAB Import Applied
+ * * `data_exported` - Data Exported
+ * * `data_wiped` - Data Wiped
+ * * `data_imported` - Data Imported
+ * * `reconciliation_started` - Reconciliation Started
+ * * `reconciliation_completed` - Reconciliation Completed
+ * * `reconciliation_undone` - Reconciliation Undone
+ * * `book_created` - Set of Books Created
+ * * `book_settings_changed` - Set of Books Settings Changed
+ * * `book_archived` - Set of Books Archived
+ * * `book_restored` - Set of Books Restored
+ * * `book_deleted` - Set of Books Deleted
  * @export
  */
 export const EventTypeEnum = {
@@ -76,6 +89,8 @@ export const EventTypeEnum = {
     TeamMemberRemoved: 'team_member_removed',
     GoalFundsAssigned: 'goal_funds_assigned',
     GoalFundsWithdrawn: 'goal_funds_withdrawn',
+    GoalClosed: 'goal_closed',
+    GoalCoveredBudget: 'goal_covered_budget',
     OnboardingStarted: 'onboarding_started',
     OnboardingPhaseCompleted: 'onboarding_phase_completed',
     OnboardingCompleted: 'onboarding_completed',
@@ -88,7 +103,18 @@ export const EventTypeEnum = {
     MonthlyReviewDismissed: 'monthly_review_dismissed',
     MonthlyReviewBaselineChanged: 'monthly_review_baseline_changed',
     YnabImportStarted: 'ynab_import_started',
-    YnabImport: 'ynab_import'
+    YnabImport: 'ynab_import',
+    DataExported: 'data_exported',
+    DataWiped: 'data_wiped',
+    DataImported: 'data_imported',
+    ReconciliationStarted: 'reconciliation_started',
+    ReconciliationCompleted: 'reconciliation_completed',
+    ReconciliationUndone: 'reconciliation_undone',
+    BookCreated: 'book_created',
+    BookSettingsChanged: 'book_settings_changed',
+    BookArchived: 'book_archived',
+    BookRestored: 'book_restored',
+    BookDeleted: 'book_deleted'
 } as const;
 export type EventTypeEnum = typeof EventTypeEnum[keyof typeof EventTypeEnum];
 

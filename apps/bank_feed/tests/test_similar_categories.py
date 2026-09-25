@@ -28,8 +28,8 @@ from apps.bank_feed.services.similar_transactions import (
     suggest_categories,
     suggest_categories_for,
 )
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -41,42 +41,43 @@ class SimilarCategoriesTestMixin:
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Similar Team", slug="similar-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="similaruser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
-        asset_group = AccountGroup.objects.create(team=cls.team, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
-        expense_group = AccountGroup.objects.create(team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE)
+        asset_group = AccountGroup.objects.create(book=cls.book, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        expense_group = AccountGroup.objects.create(book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE)
         cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=asset_group, has_feed=True
+            book=cls.book, name="Checking", account_group=asset_group, has_feed=True
         )
-        cls.coffee = Account.objects.create(team=cls.team, name="Coffee", account_group=expense_group)
-        cls.groceries = Account.objects.create(team=cls.team, name="Groceries", account_group=expense_group)
-        cls.dining = Account.objects.create(team=cls.team, name="Dining", account_group=expense_group)
+        cls.coffee = Account.objects.create(book=cls.book, name="Coffee", account_group=expense_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=expense_group)
+        cls.dining = Account.objects.create(book=cls.book, name="Dining", account_group=expense_group)
 
     def _categorized(self, category, *, merchant="", description="", posted_date=None, **kwargs):
         posted_date = posted_date or date.today()
         entry = JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=posted_date,
             description=description or merchant,
             status=kwargs.pop("entry_status", JournalEntry.STATUS_POSTED),
         )
         JournalLine.objects.create(
             journal_entry=entry,
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             dr_amount=Decimal("0"),
             cr_amount=Decimal("10"),
         )
         JournalLine.objects.create(
             journal_entry=entry,
-            team=self.team,
+            book=self.book,
             account=category,
             dr_amount=Decimal("10"),
             cr_amount=Decimal("0"),
         )
         return BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=posted_date,
             description=description or merchant,
@@ -89,7 +90,7 @@ class SimilarCategoriesTestMixin:
 
     def _uncategorized(self, *, merchant="", description="", posted_date=None):
         return BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=posted_date or date.today(),
             description=description or merchant,
@@ -99,7 +100,7 @@ class SimilarCategoriesTestMixin:
         )
 
     def _suggest(self, transaction):
-        return suggest_categories_for(transaction, build_history_index(self.team))
+        return suggest_categories_for(transaction, build_history_index(self.book))
 
 
 class SignatureTokensTest(TestCase):
@@ -211,34 +212,35 @@ class SuggestCategoriesForTest(SimilarCategoriesTestMixin, TestCase):
     def test_only_the_top_matches_are_returned(self):
         for category in (self.coffee, self.groceries, self.dining):
             self._categorized(category, merchant="Blue Bottle")
-        fourth = Account.objects.create(team=self.team, name="Zebra", account_group=self.coffee.account_group)
+        fourth = Account.objects.create(book=self.book, name="Zebra", account_group=self.coffee.account_group)
         self._categorized(fourth, merchant="Blue Bottle")
 
         self.assertEqual(len(self._suggest(self._uncategorized(merchant="Blue Bottle"))), 3)
 
     def test_another_teams_history_is_not_used(self):
         other_team = Team.objects.create(name="Other", slug="other-team")
-        other_group = AccountGroup.objects.create(team=other_team, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        other_book = other_team.default_book
+        other_group = AccountGroup.objects.create(book=other_book, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
         other_expenses = AccountGroup.objects.create(
-            team=other_team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=other_book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
-        other_bank = Account.objects.create(team=other_team, name="Checking", account_group=other_group, has_feed=True)
-        other_category = Account.objects.create(team=other_team, name="Coffee", account_group=other_expenses)
+        other_bank = Account.objects.create(book=other_book, name="Checking", account_group=other_group, has_feed=True)
+        other_category = Account.objects.create(book=other_book, name="Coffee", account_group=other_expenses)
         entry = JournalEntry.objects.create(
-            team=other_team, entry_date=date.today(), description="Blue Bottle", status=JournalEntry.STATUS_POSTED
+            book=other_book, entry_date=date.today(), description="Blue Bottle", status=JournalEntry.STATUS_POSTED
         )
         JournalLine.objects.create(
-            journal_entry=entry, team=other_team, account=other_bank, dr_amount=Decimal("0"), cr_amount=Decimal("10")
+            journal_entry=entry, book=other_book, account=other_bank, dr_amount=Decimal("0"), cr_amount=Decimal("10")
         )
         JournalLine.objects.create(
             journal_entry=entry,
-            team=other_team,
+            book=other_book,
             account=other_category,
             dr_amount=Decimal("10"),
             cr_amount=Decimal("0"),
         )
         BankTransaction.objects.create(
-            team=other_team,
+            book=other_book,
             account=other_bank,
             posted_date=date.today(),
             description="Blue Bottle",
@@ -257,7 +259,7 @@ class SuggestCategoriesForTest(SimilarCategoriesTestMixin, TestCase):
         second = self._uncategorized(merchant="Wholefoods")
         third = self._uncategorized(merchant="Nobody Knows")
 
-        results = suggest_categories(self.team, [first, second, third])
+        results = suggest_categories(self.book, [first, second, third])
 
         self.assertEqual(results[first.id][0]["category_id"], self.coffee.id)
         self.assertEqual(results[second.id][0]["category_id"], self.groceries.id)
@@ -270,10 +272,10 @@ class SimilarCategoriesEndpointTest(SimilarCategoriesTestMixin, TestCase):
     def setUp(self):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        self.url = f"/a/{self.team.slug}/bankfeed/api/feed/similar_categories/"
+        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/similar_categories/"
 
     def _get(self, ids):
-        with current_team(self.team):
+        with current_book(self.book):
             return self.client.get(self.url, {"ids": ids})
 
     def test_returns_ranked_suggestions_with_counts(self):
@@ -317,7 +319,7 @@ class SimilarCategoriesEndpointTest(SimilarCategoriesTestMixin, TestCase):
         self.assertEqual(response.data, [])
 
     def test_blank_ids_returns_empty(self):
-        with current_team(self.team):
+        with current_book(self.book):
             response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -335,10 +337,11 @@ class SimilarCategoriesEndpointTest(SimilarCategoriesTestMixin, TestCase):
 
     def test_another_teams_transaction_ids_are_ignored(self):
         other_team = Team.objects.create(name="Other", slug="other-endpoint-team")
-        other_group = AccountGroup.objects.create(team=other_team, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
-        other_bank = Account.objects.create(team=other_team, name="Checking", account_group=other_group, has_feed=True)
+        other_book = other_team.default_book
+        other_group = AccountGroup.objects.create(book=other_book, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        other_bank = Account.objects.create(book=other_book, name="Checking", account_group=other_group, has_feed=True)
         foreign = BankTransaction.objects.create(
-            team=other_team,
+            book=other_book,
             account=other_bank,
             posted_date=date.today(),
             description="Blue Bottle",

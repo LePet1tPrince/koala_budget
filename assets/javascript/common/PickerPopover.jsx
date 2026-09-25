@@ -71,8 +71,11 @@ const PickerPopover = ({
       // outside press, closing it on `pointerdown` — so the panel unmounted
       // before the `click` on the month or day being aimed at could land, and
       // picking a value silently did nothing.
+      // A Combobox inside the panel portals its list out of the panel as well.
       const inside =
-        rootRef.current?.contains(e.target) || panelRef.current?.contains(e.target);
+        rootRef.current?.contains(e.target) ||
+        panelRef.current?.contains(e.target) ||
+        e.target.closest?.('[data-combobox]');
       if (!inside) close();
     };
     const onKeyDown = (e) => {

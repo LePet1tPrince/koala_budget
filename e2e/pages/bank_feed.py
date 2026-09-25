@@ -4,21 +4,21 @@ from .base import BasePage
 
 
 class BankFeedPage(BasePage):
-    def path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/bankfeed/"
+    def path(self, book) -> str:
+        return f"{book.base_url}bankfeed/"
 
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
 
-    def goto(self, team_slug: str):
+    def goto(self, book):
         """Navigate to the bank feed page and wait for the React app to mount."""
         console_msgs = []
         failed_urls = []
         self.page.on("console", lambda msg: console_msgs.append(f"[{msg.type}] {msg.text}"))
         self.page.on("requestfailed", lambda req: failed_urls.append(f"{req.failure} {req.url}"))
 
-        self.page.goto(self.url(self.path(team_slug)))
+        self.page.goto(self.url(self.path(book)))
         # Wait until at least one account card or the line-app container is visible
         try:
             self.page.wait_for_selector("#line-app", timeout=15_000)
@@ -199,7 +199,7 @@ class BankFeedPage(BasePage):
         return self.page.locator("[data-testid^='split-amount-']").count()
 
     def split_amounts(self) -> list[str]:
-        return self.page.locator("[data-testid^='split-amount-']").all_input_values()
+        return self.page.locator("[data-testid^='split-amount-']").evaluate_all("els => els.map((el) => el.value)")
 
     def set_split_amount(self, index: int, value: str):
         field = self.page.locator(f"[data-testid='split-amount-{index}']")

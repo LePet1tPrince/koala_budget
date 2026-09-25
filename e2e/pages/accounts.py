@@ -8,21 +8,21 @@ from .base import BasePage
 
 
 class AccountsPage(BasePage):
-    def home_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/accounts/"
+    def home_path(self, book) -> str:
+        return f"{book.base_url}accounts/"
 
-    def create_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/accounts/accounts/new/"
+    def create_path(self, book) -> str:
+        return f"{book.base_url}accounts/accounts/new/"
 
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
 
-    def goto_home(self, team_slug: str):
-        self.goto(self.home_path(team_slug), wait_for="[data-testid='account-type-section']")
+    def goto_home(self, book):
+        self.goto(self.home_path(book), wait_for="[data-testid='account-type-section']")
 
-    def goto_create(self, team_slug: str):
-        self.goto(self.create_path(team_slug), wait_for="[data-testid='account-form']")
+    def goto_create(self, book):
+        self.goto(self.create_path(book), wait_for="[data-testid='account-form']")
 
     # ------------------------------------------------------------------
     # Queries
@@ -61,10 +61,10 @@ class AccountsPage(BasePage):
     def click_account(self, name: str):
         self.page.locator("[data-testid='account-name']", has_text=name).first.click()
 
-    def create_account(self, name: str, account_group_name: str, team_slug: str, account_type: str = "expense"):
+    def create_account(self, name: str, account_group_name: str, book, account_type: str = "expense"):
         """High-level helper: navigate to create form, fill, and submit."""
-        self.goto_create(team_slug)
+        self.goto_create(book)
         self.fill_account_form(name, account_group_name, account_type)
         self.submit_form()
         # After save, Django redirects to the account detail page
-        self.page.wait_for_url(f"**/a/{team_slug}/accounts/**", timeout=10_000)
+        self.page.wait_for_url(f"**{book.base_url}accounts/**", timeout=10_000)

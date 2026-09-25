@@ -16,7 +16,30 @@ from .models import (
 )
 
 
-class AccountGroupForm(forms.ModelForm):
+class BookUniqueNameMixin:
+    """
+    Enforce the model's `unique_together = ["book", "name"]` as a form error.
+
+    `book` is not a form field, so ModelForm's own unique check skips the
+    constraint and a duplicate name reached the database as an IntegrityError.
+    """
+
+    def __init__(self, *args, book=None, **kwargs):
+        self.book = book
+        super().__init__(*args, **kwargs)
+
+    def clean_name(self):
+        name = self.cleaned_data["name"].strip()
+        if self.book is not None:
+            taken = self._meta.model.objects.filter(book=self.book, name=name)
+            if self.instance.pk:
+                taken = taken.exclude(pk=self.instance.pk)
+            if taken.exists():
+                raise forms.ValidationError(_("“%(name)s” already exists.") % {"name": name})
+        return name
+
+
+class AccountGroupForm(BookUniqueNameMixin, forms.ModelForm):
     """Form for creating and editing account groups."""
 
     class Meta:
@@ -25,6 +48,15 @@ class AccountGroupForm(forms.ModelForm):
         widgets = {
             "description": forms.Textarea(attrs={"rows": 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A group's type is its accounts' type: changing it would silently turn,
+        # say, expense accounts into assets. Locked once the group holds any.
+        if self.instance.pk and (self.instance.is_system or self.instance.accounts.exists()):
+            field = self.fields["account_type"]
+            field.disabled = True
+            field.help_text = _("Fixed while the group has accounts in it.")
 
 
 class AccountForm(forms.ModelForm):
@@ -46,9 +78,9 @@ class AccountForm(forms.ModelForm):
     field_order = ["name", "account_type", "account_group", "institution", "has_feed"]
 
     def __init__(self, *args, **kwargs):
-        team = kwargs.pop("team", None)
+        book = kwargs.pop("book", None)
         is_create = kwargs.pop("is_create", False)
-        self.team = team
+        self.book = book
         super().__init__(*args, **kwargs)
 
         # If editing an existing account, set the account_type from the account_group
@@ -66,18 +98,18 @@ class AccountForm(forms.ModelForm):
         self.fields["institution"].required = False
         self.fields["institution"].empty_label = "---------"
 
-        # Filter account_group and institution querysets to the current team
-        if team:
+        # Filter account_group and institution querysets to the current book
+        if book:
             if account_type_value:
                 # Filter account groups by the selected account type
-                self.fields["account_group"].queryset = AccountGroup.for_team.filter(account_type=account_type_value)
+                self.fields["account_group"].queryset = AccountGroup.for_book.filter(account_type=account_type_value)
             else:
                 # Show all account groups (grouped by type in the label)
-                self.fields["account_group"].queryset = AccountGroup.for_team.all()
+                self.fields["account_group"].queryset = AccountGroup.for_book.all()
                 # Update help text to guide user
                 self.fields["account_group"].help_text = _("Select an account type first for filtered options")
 
-            self.fields["institution"].queryset = Institution.for_team.all()
+            self.fields["institution"].queryset = Institution.for_book.all()
 
         # Institution is only relevant for asset and liability accounts.
         # In create mode the unbound form keeps the field so the template can render
@@ -108,8 +140,8 @@ class AccountForm(forms.ModelForm):
                 }
             )
 
-        if name and self.team and account_type:
-            qs = Account.objects.filter(team=self.team, name=name, account_group__account_type=account_type)
+        if name and self.book and account_type:
+            qs = Account.objects.filter(book=self.book, name=name, account_group__account_type=account_type)
             if self.instance and self.instance.pk:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
@@ -121,7 +153,7 @@ class AccountForm(forms.ModelForm):
         return cleaned_data
 
 
-class InstitutionForm(forms.ModelForm):
+class InstitutionForm(BookUniqueNameMixin, forms.ModelForm):
     """Form for creating and editing institutions."""
 
     class Meta:
@@ -129,7 +161,7 @@ class InstitutionForm(forms.ModelForm):
         fields = ["name"]
 
 
-class PayeeForm(forms.ModelForm):
+class PayeeForm(BookUniqueNameMixin, forms.ModelForm):
     """Form for creating and editing payees."""
 
     class Meta:

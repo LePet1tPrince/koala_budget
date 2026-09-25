@@ -1,0 +1,44 @@
+{% extends "web/takeover_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+{% comment %}
+  A takeover rather than a settings page: starting by YNAB import or export
+  continues into another takeover, so the whole "new set of books" job reads as
+  one full-screen modal. The questionnaire path lands in the onboarding
+  takeover, which is full-screen too.
+{% endcomment %}
+{% block takeover_size %}takeover-narrow{% endblock %}
+{% block takeover_content %}
+  <p class="mb-5 text-sm text-base-content/70">
+    {% blocktranslate trimmed %}
+      A separate chart of accounts, ledger and budget — for a business, a rental, or anything
+      you want to keep apart.
+    {% endblocktranslate %}
+  </p>
+
+  <form method="post" class="app-card space-y-4" data-testid="book-create-form">
+    {% csrf_token %}
+    {% render_text_input form.name %}
+
+    <fieldset>
+      <legend class="mb-2 font-bold">{{ form.start.label }}</legend>
+      <div class="grid gap-2">
+        {% for choice in form.start %}
+          <label class="flex cursor-pointer items-start gap-3 rounded-field border border-base-300 p-3 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+                 data-testid="book-start-{{ choice.data.value }}">
+            <input type="radio" name="{{ form.start.html_name }}" value="{{ choice.data.value }}"
+                   class="radio radio-primary radio-sm mt-0.5 shrink-0"
+                   {% if choice.data.selected %}checked{% endif %}>
+            <span>{{ choice.choice_label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      {{ form.start.errors }}
+    </fieldset>
+
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary" data-testid="book-create-submit">{% translate "Create" %}</button>
+      <a href="{{ takeover_close_url }}" class="btn btn-ghost">{% translate "Cancel" %}</a>
+    </div>
+  </form>
+{% endblock %}

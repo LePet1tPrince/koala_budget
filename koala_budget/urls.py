@@ -23,18 +23,52 @@ from django.views.generic import RedirectView
 from django.views.i18n import JavaScriptCatalog
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
+from apps.books.urls import book_urlpatterns as books_book_urls
+from apps.books.urls import team_urlpatterns as books_team_urls
+from apps.books.views import legacy_book_redirect_pattern
 from apps.plaid.views import plaid_webhook_view
 from apps.subscriptions.urls import team_urlpatterns as subscriptions_team_urls
 from apps.teams.urls import team_urlpatterns as single_team_urls
 from apps.web.sitemaps import StaticViewSitemap
+from apps.web.urls import book_urlpatterns as web_book_urls
 from apps.web.urls import team_urlpatterns as web_team_urls
 
 sitemaps = {
     "static": StaticViewSitemap(),
 }
 
-# urls that are unique to using a team should go here
-team_urlpatterns = [
+# Team-level pages: people and billing, which belong to the team rather than to
+# any one set of books. Every first segment here is reserved as a book slug, so a
+# team-level page can never be shadowed by a book.
+team_level_urlpatterns = [
+    path("", include(web_team_urls)),
+    path("subscription/", include(subscriptions_team_urls)),
+    path("team/", include(single_team_urls)),
+    path("books/", include(books_team_urls)),
+    path("example/", include("apps.teams_example.urls")),
+]
+
+# Everything that reads or writes money data lives in a set of books, under
+# `/a/{team_slug}/{book_slug}/`. Every first segment here is reserved as a book
+# slug too, which is what makes the legacy redirect unambiguous.
+book_urlpatterns = [
+    path("", include(web_book_urls)),
+    path("settings/", include(books_book_urls)),
+    path("accounts/", include("apps.accounts.urls")),
+    path("journal/", include("apps.journal.urls")),
+    path("audit/", include("apps.audit.urls")),
+    path("budget/", include("apps.budget.urls")),
+    path("reports/", include("apps.reports.urls")),
+    path("reports/monthly-review/", include("apps.monthly_review.urls")),
+    path("plaid/", include("apps.plaid.urls")),
+    path("bankfeed/", include("apps.bank_feed.urls")),
+    path("onboarding/", include("apps.onboarding.urls")),
+    path("ynab-import/", include("apps.ynab_import.urls")),
+    path("data/", include("apps.portability.urls")),
+    path("reconcile/", include("apps.reconciliation.urls")),
+]
+
+urlpatterns = [
     path("", include(web_team_urls)),
     path("subscription/", include(subscriptions_team_urls)),
     path("team/", include(single_team_urls)),
@@ -50,6 +84,8 @@ team_urlpatterns = [
     path("bankfeed/", include("apps.bank_feed.urls")),
     path("onboarding/", include("apps.onboarding.urls")),
     path("ynab-import/", include("apps.ynab_import.urls")),
+    path("data/", include("apps.portability.urls")),
+    path("reconcile/", include("apps.reconciliation.urls")),
 ]
 
 urlpatterns = [
@@ -62,7 +98,13 @@ urlpatterns = [
     path("i18n/", include("django.conf.urls.i18n")),
     path("jsi18n/", JavaScriptCatalog.as_view(), name="javascript-catalog"),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="django.contrib.sitemaps.views.sitemap"),
-    path("a/<slug:team_slug>/", include(team_urlpatterns)),
+    path("a/<slug:team_slug>/", include(team_level_urlpatterns)),
+    # Book URLs used to sit straight under the team (`/a/{team}/budget/...`). A GET
+    # to one of those 301s to the same path under the team's default book, so
+    # bookmarks and emailed links survive. It must precede the book include, or
+    # `budget` would be read as a book slug.
+    legacy_book_redirect_pattern(book_urlpatterns, team_level_urlpatterns),
+    path("a/<slug:team_slug>/<slug:book_slug>/", include(book_urlpatterns)),
     path("accounts/", include("allauth.urls")),
     path("_allauth/", include("allauth.headless.urls")),
     path("users/", include("apps.users.urls")),

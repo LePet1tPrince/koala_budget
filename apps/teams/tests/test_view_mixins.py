@@ -1,5 +1,5 @@
 from django.contrib.auth.models import AnonymousUser
-from django.http import Http404, HttpResponse
+from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
 from django.views import View
 
@@ -70,8 +70,10 @@ class TeamMixinTest(TestCase):
         self.assertTrue("/login/" in response.url)
 
     def assertNotFound(self, view_cls, user, team_slug):
-        with self.assertRaises(Http404):
-            self._call_view(view_cls, user, team_slug)
+        # Rendered directly as a friendly 404 response (see `apps.teams.decorators`),
+        # rather than a raised `Http404`, so the page is friendly under DEBUG=True too.
+        response = self._call_view(view_cls, user, team_slug)
+        self.assertEqual(404, response.status_code)
 
     def test_anonymous_user_redirect_to_login(self):
         for view_cls in [MemberView, AdminView]:

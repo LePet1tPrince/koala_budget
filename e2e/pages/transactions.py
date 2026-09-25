@@ -10,21 +10,21 @@ from .base import BasePage
 
 
 class TransactionsPage(BasePage):
-    def path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/journal/transactions/"
+    def path(self, book) -> str:
+        return f"{book.base_url}journal/transactions/"
 
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
 
-    def goto(self, team_slug: str):
+    def goto(self, book):
         """Navigate to the transactions page and wait for the React app to mount."""
         console_msgs = []
         failed_urls = []
         self.page.on("console", lambda msg: console_msgs.append(f"[{msg.type}] {msg.text}"))
         self.page.on("requestfailed", lambda req: failed_urls.append(f"{req.failure} {req.url}"))
 
-        self.page.goto(self.url(self.path(team_slug)))
+        self.page.goto(self.url(self.path(book)))
         # Wait for React to finish loading: either the table or the empty state appears
         try:
             self.page.wait_for_selector(

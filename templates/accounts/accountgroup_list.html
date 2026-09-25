@@ -1,43 +1,43 @@
-{% extends "web/app/app_base.html" %}
+{% extends "accounts/manage_base.html" %}
 {% load i18n %}
-{% block app %}
-<section class="app-card">
-  {% include "accounts/components/manage_tabs.html" with manage_tab="groups" %}
-  <div class="flex justify-between items-center mb-4">
-    <h3 class="text-xl mb-1">{% translate "Account Groups" %}</h3>
-    <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="btn btn-primary">
-      {% translate "New Account Group" %}
-    </a>
-  </div>
-  {% if object_list %}
-    <div class="overflow-x-auto">
-      <table class="table table-quiet w-full">
-        <thead>
-          <tr>
-            <th>{% translate "Name" %}</th>
-            <th>{% translate "Type" %}</th>
-            <th>{% translate "Description" %}</th>
-            <th>{% translate "Actions" %}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for accountgroup in object_list %}
-            <tr>
-              <td><a href="{{ accountgroup.get_absolute_url }}" class="link">{{ accountgroup.name }}</a></td>
-              <td>{{ accountgroup.get_account_type_display }}</td>
-              <td>{{ accountgroup.description|truncatewords:10 }}</td>
-              <td>
-                <a href="{% url 'accounts:accountgroup_update' request.team.slug accountgroup.pk %}" class="btn btn-outline btn-sm">
-                  {% translate "Edit" %}
-                </a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+{% load icons %}
+{% block manage_title %}{% translate "Groups" %}{% endblock %}
+{% block manage_subtitle %}{% translate "Groups organise accounts of one type — they are the subtotals on your reports and budget." %}{% endblock %}
+{% block manage_actions %}
+  <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-dialog="create-dialog" data-testid="new-group-btn">
+    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "New group" %}
+  </a>
+{% endblock %}
+{% block manage_content %}
+  {% for section in sections %}
+    <h2 class="manage-heading">{{ section.label }}</h2>
+    <div class="manage-list">
+      {% for group in section.groups %}
+        <a href="{{ group.get_absolute_url }}" class="manage-row" data-testid="group-row">
+          <div class="min-w-0 flex-1">
+            <div class="font-medium truncate">
+              {{ group.name }}
+              {% if group.is_system %}<span class="badge badge-ghost badge-sm ml-1">{% translate "System" %}</span>{% endif %}
+            </div>
+            {% if group.description %}<div class="text-xs text-base-content/70 truncate">{{ group.description }}</div>{% endif %}
+          </div>
+          <div class="text-sm text-base-content/70 whitespace-nowrap">
+            {% blocktranslate trimmed count counter=group.account_count %}{{ counter }} account{% plural %}{{ counter }} accounts{% endblocktranslate %}
+          </div>
+          {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+        </a>
+      {% endfor %}
     </div>
-  {% else %}
-    <p class="text-base-content/70">{% translate "No account groups yet." %} <a href="{% url 'accounts:accountgroup_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
-  {% endif %}
-</section>
+  {% empty %}
+    <div class="py-10 text-center text-sm text-base-content/70">
+      {% translate "No groups yet." %}
+      <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="link link-primary" data-dialog="create-dialog">{% translate "Create one" %}</a>
+    </div>
+  {% endfor %}
+{% endblock %}
+{% block dialogs %}
+  {% url 'accounts:accountgroup_create' request.team.slug request.book.slug as create_url %}
+  {% translate "New group" as dialog_title %}
+  {% translate "Create group" as submit_label %}
+  {% include "accounts/components/form_dialog.html" with dialog_id="create-dialog" title=dialog_title form=create_form action=create_url submit_label=submit_label %}
 {% endblock %}

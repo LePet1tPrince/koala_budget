@@ -7,8 +7,10 @@ class AuditEvent(models.Model):
     """
     Operation-level audit events (logins, CSV uploads, Plaid syncs, bulk operations).
 
-    Plain ``models.Model`` (not ``BaseTeamModel``) because events can originate
-    from contexts without a team (e.g. failed logins) and must tolerate a null team.
+    Plain ``models.Model`` (not ``BaseBookModel``) because events can originate
+    from contexts without a team (e.g. failed logins) and must tolerate a null team,
+    and from team-level contexts without a book (logins, membership changes) and
+    must tolerate a null book.
     """
 
     USER_LOGIN = "user_login"
@@ -34,6 +36,8 @@ class AuditEvent(models.Model):
     TEAM_MEMBER_REMOVED = "team_member_removed"
     GOAL_FUNDS_ASSIGNED = "goal_funds_assigned"
     GOAL_FUNDS_WITHDRAWN = "goal_funds_withdrawn"
+    GOAL_CLOSED = "goal_closed"
+    GOAL_COVERED_BUDGET = "goal_covered_budget"
     ONBOARDING_STARTED = "onboarding_started"
     ONBOARDING_PHASE_COMPLETED = "onboarding_phase_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
@@ -47,6 +51,17 @@ class AuditEvent(models.Model):
     MONTHLY_REVIEW_BASELINE_CHANGED = "monthly_review_baseline_changed"
     YNAB_IMPORT_STARTED = "ynab_import_started"
     YNAB_IMPORT = "ynab_import"
+    DATA_EXPORTED = "data_exported"
+    DATA_WIPED = "data_wiped"
+    DATA_IMPORTED = "data_imported"
+    RECONCILIATION_STARTED = "reconciliation_started"
+    RECONCILIATION_COMPLETED = "reconciliation_completed"
+    RECONCILIATION_UNDONE = "reconciliation_undone"
+    BOOK_CREATED = "book_created"
+    BOOK_SETTINGS_CHANGED = "book_settings_changed"
+    BOOK_ARCHIVED = "book_archived"
+    BOOK_RESTORED = "book_restored"
+    BOOK_DELETED = "book_deleted"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -72,6 +87,8 @@ class AuditEvent(models.Model):
         (TEAM_MEMBER_REMOVED, "Team Member Removed"),
         (GOAL_FUNDS_ASSIGNED, "Goal Funds Assigned"),
         (GOAL_FUNDS_WITHDRAWN, "Goal Funds Withdrawn"),
+        (GOAL_CLOSED, "Goal Closed"),
+        (GOAL_COVERED_BUDGET, "Budget Covered From Goal"),
         (ONBOARDING_STARTED, "Onboarding Started"),
         (ONBOARDING_PHASE_COMPLETED, "Onboarding Phase Completed"),
         (ONBOARDING_COMPLETED, "Onboarding Questionnaire Completed"),
@@ -85,9 +102,21 @@ class AuditEvent(models.Model):
         (MONTHLY_REVIEW_BASELINE_CHANGED, "Monthly Review Baseline Changed"),
         (YNAB_IMPORT_STARTED, "YNAB Import Started"),
         (YNAB_IMPORT, "YNAB Import Applied"),
+        (DATA_EXPORTED, "Data Exported"),
+        (DATA_WIPED, "Data Wiped"),
+        (DATA_IMPORTED, "Data Imported"),
+        (RECONCILIATION_STARTED, "Reconciliation Started"),
+        (RECONCILIATION_COMPLETED, "Reconciliation Completed"),
+        (RECONCILIATION_UNDONE, "Reconciliation Undone"),
+        (BOOK_CREATED, "Set of Books Created"),
+        (BOOK_SETTINGS_CHANGED, "Set of Books Settings Changed"),
+        (BOOK_ARCHIVED, "Set of Books Archived"),
+        (BOOK_RESTORED, "Set of Books Restored"),
+        (BOOK_DELETED, "Set of Books Deleted"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)
+    book = models.ForeignKey("books.Book", on_delete=models.SET_NULL, null=True, blank=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     event_type = models.CharField(max_length=50, choices=EVENT_TYPE_CHOICES)
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -107,8 +136,8 @@ class AuditLog(models.Model):
     """
     Row-level field-diff audit for JournalEntry and JournalLine changes.
 
-    Plain ``models.Model`` (not ``BaseTeamModel``) because the team must be nullable
-    so a delete that races a team teardown still records cleanly.
+    Plain ``models.Model`` (not ``BaseBookModel``) because the book must be nullable
+    so a delete that races a book or team teardown still records cleanly.
     """
 
     ACTION_CREATE = "CREATE"
@@ -127,6 +156,7 @@ class AuditLog(models.Model):
     # Denormalized for fast "show history for this entry" queries (lines point at their entry too).
     journal_entry_id = models.PositiveIntegerField(null=True, blank=True, db_index=True)
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True)
+    book = models.ForeignKey("books.Book", on_delete=models.SET_NULL, null=True, blank=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     event = models.ForeignKey("AuditEvent", on_delete=models.SET_NULL, null=True, blank=True)
     action = models.CharField(max_length=10, choices=ACTION_CHOICES)

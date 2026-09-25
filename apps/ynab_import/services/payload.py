@@ -8,7 +8,7 @@ spread across the views. Everything here is derived from an `Analysis` or an
 
 from decimal import Decimal
 
-from .analyse import ASSET, INCOME, LIABILITY, Analysis
+from .analyse import ASSET, DEFAULT_ACCOUNT_GROUPS, INCOME, LIABILITY, OTHER_INCOME, Analysis
 from .build import EQUITY_TYPE, ImportPlan, category_key
 
 TYPE_LABELS = {
@@ -22,6 +22,22 @@ TYPE_LABELS = {
 
 def _money(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.01")))
+
+
+def _account_groups(analysis: Analysis) -> list[dict]:
+    """
+    The groups the accounts screen offers, each with the type it holds.
+
+    Typed because a group in the app is: an account can only be placed in a group
+    of its own type, so the screen offers a debt only the debt groups.
+    """
+    groups = [{"name": name, "account_type": account_type} for name, account_type in DEFAULT_ACCOUNT_GROUPS]
+    offered = {(group["name"], group["account_type"]) for group in groups}
+    for facts in analysis.accounts:
+        if (facts.group, facts.account_type) not in offered:
+            offered.add((facts.group, facts.account_type))
+            groups.append({"name": facts.group, "account_type": facts.account_type})
+    return groups
 
 
 def analysis_payload(analysis: Analysis) -> dict:
@@ -72,8 +88,11 @@ def analysis_payload(analysis: Analysis) -> dict:
             for facts in analysis.categories
             if facts.transfer_legs or facts.kind != "expense"
         ],
-        "groups": sorted({facts.group for facts in analysis.accounts}),
+        "groups": _account_groups(analysis),
         "income_accounts": sorted({facts.account for facts in analysis.income_payees if facts.kind == INCOME}),
+        # Where a payee switched from "not income" back to income lands until the
+        # user picks otherwise -- the same fallback `parse_choices` applies.
+        "other_income": OTHER_INCOME,
     }
 
 

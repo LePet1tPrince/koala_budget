@@ -47,6 +47,8 @@ export default defineConfig({
         'task-rail-app': path.resolve(__dirname, './assets/javascript/onboarding/task-rail-app.jsx'),
         'onboarding-resume': path.resolve(__dirname, './assets/javascript/onboarding/resume.js'),
         'ynab-import-app': path.resolve(__dirname, './assets/javascript/ynab_import/ynab-import-app.jsx'),
+        'data-transfer-app': path.resolve(__dirname, './assets/javascript/portability/data-transfer-app.jsx'),
+        'reconcile-app': path.resolve(__dirname, './assets/javascript/reconcile/reconcile-app.jsx'),
         'monthly-review-app': path.resolve(__dirname, './assets/javascript/monthly_review/monthly-review-app.jsx'),
         'monthly-review-resume': path.resolve(__dirname, './assets/javascript/monthly_review/resume.js'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
@@ -58,6 +60,8 @@ export default defineConfig({
         'goal-progress-chart': path.resolve(__dirname, './assets/javascript/reports/goal-progress-chart.js'),
         'account-balance-chart': path.resolve(__dirname, './assets/javascript/reports/account-balance-chart.js'),
         'account-budget-chart': path.resolve(__dirname, './assets/javascript/reports/account-budget-chart.js'),
+        'dollar-map-chart': path.resolve(__dirname, './assets/javascript/reports/dollar-map-chart.js'),
+        'unassigned-pill': path.resolve(__dirname, './assets/javascript/unassigned/unassigned-pill.js'),
       },
       output: {
         // Output JS bundles to js/ directory with -bundle suffix

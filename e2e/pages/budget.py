@@ -4,30 +4,30 @@ from .base import BasePage
 
 
 class BudgetPage(BasePage):
-    def path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/budget/"
+    def path(self, book) -> str:
+        return f"{book.base_url}budget/"
 
-    def goals_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/budget/goals/"
+    def goals_path(self, book) -> str:
+        return f"{book.base_url}budget/goals/"
 
-    def goal_create_path(self, team_slug: str) -> str:
-        return f"/a/{team_slug}/budget/goals/new/"
+    def goal_create_path(self, book) -> str:
+        return f"{book.base_url}budget/goals/new/"
 
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
 
-    def goto_budget(self, team_slug: str):
-        self.goto(self.path(team_slug), wait_for="[data-testid='budget-table'], [data-testid='budget-empty-state']")
+    def goto_budget(self, book):
+        self.goto(self.path(book), wait_for="[data-testid='budget-table'], [data-testid='budget-empty-state']")
 
-    def goto_goals(self, team_slug: str, style: str | None = None):
-        path = self.goals_path(team_slug)
+    def goto_goals(self, book, style: str | None = None):
+        path = self.goals_path(book)
         if style:
             path = f"{path}?style={style}"
         self.goto(path, wait_for="[data-testid='goals-page']")
 
-    def goto_goal_create(self, team_slug: str):
-        self.goto(self.goal_create_path(team_slug), wait_for="[data-testid='goal-form']")
+    def goto_goal_create(self, book):
+        self.goto(self.goal_create_path(book), wait_for="[data-testid='goal-form']")
 
     # ------------------------------------------------------------------
     # Budget table queries
@@ -58,6 +58,21 @@ class BudgetPage(BasePage):
     def has_goals_empty_state(self) -> bool:
         return self.page.locator("[data-testid='goals-empty-state']").is_visible()
 
+    def goal_card(self, name: str):
+        return self.page.locator("[data-testid='goal-card']", has_text=name)
+
+    def goal_spent(self, name: str) -> str:
+        return self.goal_card(name).locator("[data-testid='goal-spent']").inner_text().strip()
+
+    def goal_left(self, name: str) -> str:
+        return self.goal_card(name).locator("[data-testid='goal-left']").inner_text().strip()
+
+    def goal_state(self, name: str) -> str:
+        return self.goal_card(name).locator("[data-testid='goal-state']").get_attribute("data-state")
+
+    def unassigned_pill_value(self) -> str:
+        return self.page.locator("[data-testid='unassigned-pill'] [data-unassigned-pill-value]").inner_text().strip()
+
     def assign_available(self, goal_index: int = 0):
         self.page.locator("[data-testid='assign-available-btn']").nth(goal_index).click()
 
@@ -79,13 +94,13 @@ class BudgetPage(BasePage):
         self.page.locator("[data-testid='new-goal-btn']").click()
         self.page.wait_for_selector("[data-testid='goal-form']")
 
-    def create_goal(self, name: str, target_amount: str, team_slug: str):
+    def create_goal(self, name: str, target_amount: str, book):
         """Navigate to the create form, fill it out, and submit."""
-        self.goto_goal_create(team_slug)
+        self.goto_goal_create(book)
         self.page.locator("[name='name']").fill(name)
         self.page.locator("[name='target_amount']").fill(target_amount)
         self.page.locator("[data-testid='goal-submit-btn']").click()
-        self.page.wait_for_url(f"**/a/{team_slug}/budget/goals/**", timeout=10_000)
+        self.page.wait_for_url(f"**{book.base_url}budget/goals/**", timeout=10_000)
 
     def cancel_goal_form(self):
         self.page.locator("[data-testid='goal-cancel-btn']").click()

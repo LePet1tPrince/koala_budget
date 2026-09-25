@@ -1,0 +1,212 @@
+"""
+Schema completeness and cell-codec correctness (§2.6, §7 Phase 1).
+
+The completeness test is the one this whole module exists to make possible:
+it walks the *actual* fields Django knows about on every exported model and
+fails if one belongs to neither a `FieldMap.columns` mapping nor a
+`FieldMap.omitted` reason. It is the mechanical version of the check that,
+done by hand while this module was being written, caught `goal_archived_at`
+and `BankTransaction.amount` missing from the plan's own column tables (see
+`docs/export-import-plan.md` §8) -- so it is written to fail loudly and name
+exactly what is missing, the way that check should have from the start.
+"""
+
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
+from django.test import SimpleTestCase
+
+from apps.portability.services import schema
+
+
+class SchemaCompletenessTests(SimpleTestCase):
+    def test_every_concrete_field_is_mapped_or_omitted(self):
+        for field_map in schema.FIELD_MAPS:
+            with self.subTest(model=field_map.model.__name__):
+                model_fields = {f.name for f in field_map.model._meta.get_fields() if getattr(f, "concrete", False)}
+                declared = set(field_map.columns) | set(field_map.omitted)
+
+                missing = model_fields - declared
+                self.assertFalse(
+                    missing,
+                    f"{field_map.model.__name__} has concrete field(s) {sorted(missing)} that are neither "
+                    "mapped to a column nor listed in `omitted`. Either map them or omit them with a reason.",
+                )
+
+                extra = declared - model_fields
+                self.assertFalse(
+                    extra,
+                    f"{field_map.model.__name__}'s FieldMap names {sorted(extra)}, which are not concrete "
+                    "fields on the model (stale entry after a rename?).",
+                )
+
+    def test_omissions_all_have_a_non_empty_reason(self):
+        for field_map in schema.FIELD_MAPS:
+            for field_name, reason in field_map.omitted.items():
+                with self.subTest(model=field_map.model.__name__, field=field_name):
+                    self.assertTrue(
+                        reason and reason.strip(),
+                        "an omission with no reason is indistinguishable from one that was never reviewed",
+                    )
+
+    def test_file_columns_are_produced_by_some_field_map_or_declared_synthetic(self):
+        # This is exactly what `validate_schema()` checks at app startup
+        # (`PortabilityConfig.ready()`); asserted again here so a broken
+        # schema fails a test, not just an import.
+        schema.validate_schema()
+
+    def test_no_two_maps_in_one_composition_write_the_same_column(self):
+        """
+        `build_row` composes several maps into one row, so two writable specs
+        sharing a column would mean one silently overwriting the other -- which
+        is exactly what `writes=False` exists to prevent.
+        """
+        for filename, compositions in schema.ROW_COMPOSITIONS.items():
+            for composition in compositions:
+                writers: dict[str, list[str]] = {}
+                for field_map in composition:
+                    for field_name, spec in field_map.columns.items():
+                        if spec.writes:
+                            writers.setdefault(spec.name, []).append(f"{field_map.model.__name__}.{field_name}")
+                for column_name, owners in writers.items():
+                    with self.subTest(file=filename, column=column_name):
+                        self.assertEqual(
+                            len(owners),
+                            1,
+                            f"{filename}: '{column_name}' is written by {owners} in one row. Exactly one "
+                            "spec may write a column; mark the others `writes=False`.",
+                        )
+
+    def test_every_column_is_written_by_some_composition(self):
+        """
+        A column no composition writes would go out blank on every row -- the
+        quiet half of the same failure.
+        """
+        for filename, columns in schema.FILE_COLUMNS.items():
+            written = {
+                spec.name
+                for composition in schema.ROW_COMPOSITIONS[filename]
+                for field_map in composition
+                for spec in field_map.columns.values()
+                if spec.writes
+            }
+            for column in columns:
+                if column.name in schema.INFORMATIONAL_COLUMNS | schema.SYNTHETIC_COLUMNS:
+                    continue
+                with self.subTest(file=filename, column=column.name):
+                    self.assertIn(
+                        column.name,
+                        written,
+                        f"{filename}: no FieldMap writes '{column.name}', so it would be blank on every row.",
+                    )
+
+    def test_a_non_writing_spec_names_a_column_its_own_composition_writes(self):
+        """
+        `writes=False` says "another map in this row carries it". If none does,
+        the field quietly stops travelling.
+        """
+        for filename, compositions in schema.ROW_COMPOSITIONS.items():
+            for composition in compositions:
+                written = {spec.name for field_map in composition for spec in field_map.columns.values() if spec.writes}
+                for field_map in composition:
+                    for field_name, spec in field_map.columns.items():
+                        if not spec.writes:
+                            with self.subTest(file=filename, model=field_map.model.__name__, field=field_name):
+                                self.assertIn(
+                                    spec.name,
+                                    written,
+                                    f"{field_map.model.__name__}.{field_name} is writes=False but nothing else "
+                                    f"in {filename}'s row writes '{spec.name}'.",
+                                )
+
+    def test_every_field_map_belongs_to_a_composition(self):
+        """A map in FIELD_MAPS but no composition is declared and never used."""
+        composed = {fm.model for maps in schema.ROW_COMPOSITIONS.values() for c in maps for fm in c}
+        for field_map in schema.FIELD_MAPS:
+            with self.subTest(model=field_map.model.__name__):
+                self.assertIn(field_map.model, composed)
+
+    def test_blank_value_matches_what_the_codec_decodes_a_blank_cell_into(self):
+        """
+        `build_row` fills an absent value with `blank_value(kind)`. If that ever
+        disagreed with `decode_cell`, a row built from model instances and the
+        same row read back from a file would differ -- and the round-trip test
+        asserts they do not.
+        """
+        for kind in sorted(schema._VALID_KINDS):
+            with self.subTest(kind=kind):
+                decoded = schema.decode_cell(kind, "", file="t.csv", row_number=2, column="c")
+                self.assertEqual(schema.blank_value(kind), decoded)
+
+    def test_no_duplicate_columns_within_a_file(self):
+        for filename, columns in schema.FILE_COLUMNS.items():
+            names = [c.name for c in columns]
+            with self.subTest(file=filename):
+                self.assertEqual(len(names), len(set(names)), f"{filename} has a duplicate column name")
+
+
+class CellCodecTests(SimpleTestCase):
+    """encode_cell/decode_cell round trip for every kind, including the blank case."""
+
+    def _round_trip(self, kind, value):
+        cell = schema.encode_cell(kind, value)
+        return schema.decode_cell(kind, cell, file="t.csv", row_number=2, column="c")
+
+    def test_str_blank_decodes_to_empty_string_not_none(self):
+        self.assertEqual(self._round_trip(schema.KIND_STR, None), "")
+        self.assertEqual(self._round_trip(schema.KIND_STR, ""), "")
+        self.assertEqual(self._round_trip(schema.KIND_STR, "hello"), "hello")
+
+    def test_str_or_none_blank_decodes_to_none(self):
+        self.assertIsNone(self._round_trip(schema.KIND_STR_OR_NONE, None))
+        self.assertEqual(self._round_trip(schema.KIND_STR_OR_NONE, "Tangerine"), "Tangerine")
+
+    def test_int_round_trips_and_blank_is_none(self):
+        self.assertEqual(self._round_trip(schema.KIND_INT, 42), 42)
+        self.assertEqual(self._round_trip(schema.KIND_INT, 0), 0)
+        self.assertIsNone(self._round_trip(schema.KIND_INT, None))
+
+    def test_decimal_round_trips_and_is_quantized_to_two_places(self):
+        self.assertEqual(self._round_trip(schema.KIND_DECIMAL, Decimal("84.1")), Decimal("84.10"))
+        self.assertEqual(self._round_trip(schema.KIND_DECIMAL, Decimal("-100")), Decimal("-100.00"))
+        self.assertIsNone(self._round_trip(schema.KIND_DECIMAL, None))
+
+    def test_decimal_two_places_never_loses_a_cent_the_way_a_float_would(self):
+        # The reason this format is CSV-of-strings rather than a float
+        # anywhere in the pipeline (§3.5).
+        total = Decimal("0.10") + Decimal("0.20")
+        self.assertEqual(self._round_trip(schema.KIND_DECIMAL, total), Decimal("0.30"))
+
+    def test_date_round_trips_and_blank_is_none(self):
+        self.assertEqual(self._round_trip(schema.KIND_DATE, date(2026, 7, 4)), date(2026, 7, 4))
+        self.assertIsNone(self._round_trip(schema.KIND_DATE, None))
+
+    def test_date_rejects_garbage(self):
+        with self.assertRaises(schema.DocumentError):
+            schema.decode_cell(schema.KIND_DATE, "04-07-2026", file="t.csv", row_number=2, column="c")
+
+    def test_datetime_round_trips_as_utc_and_blank_is_none(self):
+        original = datetime(2026, 7, 4, 12, 30, tzinfo=UTC)
+        self.assertEqual(self._round_trip(schema.KIND_DATETIME, original), original)
+        self.assertIsNone(self._round_trip(schema.KIND_DATETIME, None))
+
+    def test_bool_round_trips_as_lowercase_true_false(self):
+        self.assertEqual(schema.encode_cell(schema.KIND_BOOL, True), "true")
+        self.assertEqual(schema.encode_cell(schema.KIND_BOOL, False), "false")
+        self.assertIs(self._round_trip(schema.KIND_BOOL, True), True)
+        self.assertIs(self._round_trip(schema.KIND_BOOL, False), False)
+        self.assertIsNone(self._round_trip(schema.KIND_BOOL, None))
+
+    def test_bool_rejects_anything_other_than_true_or_false(self):
+        with self.assertRaises(schema.DocumentError):
+            schema.decode_cell(schema.KIND_BOOL, "1", file="t.csv", row_number=2, column="c")
+        with self.assertRaises(schema.DocumentError):
+            schema.decode_cell(schema.KIND_BOOL, "yes", file="t.csv", row_number=2, column="c")
+
+    def test_decode_error_names_file_row_and_column(self):
+        with self.assertRaises(schema.DocumentError) as ctx:
+            schema.decode_cell(schema.KIND_INT, "not-a-number", file="accounts.csv", row_number=7, column="account_id")
+        message = str(ctx.exception)
+        self.assertIn("accounts.csv", message)
+        self.assertIn("7", message)
+        self.assertIn("account_id", message)

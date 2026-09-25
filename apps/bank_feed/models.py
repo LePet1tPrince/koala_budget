@@ -6,10 +6,10 @@ These become JournalEntry records when the user categorizes them.
 
 from django.db import models
 
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel
 
 
-class BankTransaction(BaseTeamModel):
+class BankTransaction(BaseBookModel):
     """
     Staging model for transactions imported from external sources.
     These become JournalEntry records when the user categorizes them.
@@ -117,7 +117,7 @@ class BankTransaction(BaseTeamModel):
         }.get(self.source, JournalEntry.SOURCE_IMPORT)
 
 
-class TransferMatchDismissal(BaseTeamModel):
+class TransferMatchDismissal(BaseBookModel):
     """
     Records that the user reviewed two bank transactions flagged as a possible
     duplicated transfer and confirmed they are NOT the same movement of money.
@@ -144,7 +144,7 @@ class TransferMatchDismissal(BaseTeamModel):
     class Meta:
         verbose_name = "Transfer Match Dismissal"
         verbose_name_plural = "Transfer Match Dismissals"
-        unique_together = ["team", "transaction_low", "transaction_high"]
+        unique_together = ["book", "transaction_low", "transaction_high"]
 
     def __str__(self):
         return f"Not-a-transfer: {self.transaction_low_id} / {self.transaction_high_id}"
@@ -155,11 +155,11 @@ class TransferMatchDismissal(BaseTeamModel):
         return (tx_id_a, tx_id_b) if tx_id_a <= tx_id_b else (tx_id_b, tx_id_a)
 
     @classmethod
-    def record(cls, team, tx_id_a, tx_id_b):
+    def record(cls, book, tx_id_a, tx_id_b):
         """Idempotently record a dismissed pair (order-independent)."""
         low, high = cls.normalize_pair(tx_id_a, tx_id_b)
         obj, _ = cls.objects.get_or_create(
-            team=team,
+            book=book,
             transaction_low_id=low,
             transaction_high_id=high,
         )

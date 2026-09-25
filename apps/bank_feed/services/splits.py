@@ -28,8 +28,10 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 
+from apps.accounts.guards import SystemCategoryError, assert_category_allowed
 from apps.accounts.models import Account
 from apps.journal.models import JournalLine
+from apps.reconciliation.services.guards import assert_line_mutable, assert_line_removable
 
 #: A split with one leg is a plain transaction; offer "remove split" instead.
 MIN_LEGS = 2
@@ -77,14 +79,15 @@ def split_legs(entry, bank_account):
     return [line for line in lines if line.account_id != bank_account_id]
 
 
-def parse_legs(raw) -> list[tuple[Account, Decimal]]:
+def parse_legs(raw, keep_ids=()) -> list[tuple[Account, Decimal]]:
     """
     Validate a client's `splits` payload into (account, signed amount) pairs.
 
     Every rejection is a refusal rather than a silent drop: a leg the user
     entered that vanished without explanation is worse than an error they can
-    act on. Accounts are looked up through the team-scoped manager, so another
-    team's account is "not found" rather than a successful cross-tenant write.
+    act on. Accounts are looked up through the book-scoped manager, so another
+    book's account is "not found" rather than a successful cross-tenant write.
+    A system account is refused unless its id is in `keep_ids` (already on the entry).
     """
     if not isinstance(raw, list):
         raise SplitError(_("Splits must be a list."))
@@ -99,9 +102,13 @@ def parse_legs(raw) -> list[tuple[Account, Decimal]]:
             raise SplitError(_("Split %(n)d is not valid.") % {"n": index})
 
         try:
-            account = Account.for_team.get(id=item.get("category"))
+            account = Account.for_book.get(id=item.get("category"))
         except (Account.DoesNotExist, TypeError, ValueError):
             raise SplitError(_("Split %(n)d: category not found.") % {"n": index}) from None
+        try:
+            assert_category_allowed(account, keep_ids=keep_ids)
+        except SystemCategoryError as e:
+            raise SplitError(_("Split %(n)d: %(error)s") % {"n": index, "error": e}) from None
 
         try:
             amount = Decimal(str(item.get("amount"))).quantize(CENT)
@@ -132,7 +139,7 @@ def check_legs_total(legs, *, total):
 
 
 @transaction.atomic
-def write_lines(entry, home_account, legs, *, total, team):
+def write_lines(entry, home_account, legs, *, total, book):
     """
     Write `legs` as the category lines of `entry`, against `home_account`.
 
@@ -165,6 +172,29 @@ def write_lines(entry, home_account, legs, *, total, team):
         raise SplitError(_("This transaction's ledger entry cannot be split automatically."))
     home_line = home_lines[0]
 
+    # Match each leg to an existing category line on the same account (same
+    # amount first), so an unchanged leg is left exactly as it is. That matters
+    # for a transfer: its "category" line is the *other* feed's bank line, which
+    # carries that feed's reconciliation -- deleting and recreating it silently
+    # unreconciled the other side of every transfer edited from this one.
+    remaining = [line for line in existing if line.id != home_line.id]
+    plan = []
+    for account, amount in legs:
+        match = next(
+            (line for line in remaining if line.account_id == account.id and signed_amount(line) == amount), None
+        ) or next((line for line in remaining if line.account_id == account.id), None)
+        if match is not None:
+            remaining.remove(match)
+        plan.append((match, account, amount))
+
+    # Refuse before writing anything: a reconciled line may be neither dropped
+    # nor re-amounted.
+    for line in remaining:
+        assert_line_removable(line, own=False, verb=_("changing its category"))
+    for match, _account, amount in plan:
+        if match is not None:
+            assert_line_mutable(match, new_amount=amount, own=False)
+
     # The home line takes the opposite side of the total.
     home_line.dr_amount = -total if total < 0 else Decimal("0")
     home_line.cr_amount = total if total > 0 else Decimal("0")
@@ -174,21 +204,18 @@ def write_lines(entry, home_account, legs, *, total, team):
     home_line.journal_entry = entry
     home_line.save()
 
-    # Replace the category lines. They carry no state the user set -- only the
-    # home line does -- so recreating them is safe, and it keeps this function
-    # independent of how many legs the entry had before.
-    for line in existing:
-        if line.id != home_line.id:
-            line.delete()
+    for line in remaining:
+        line.delete()
 
-    for account, amount in legs:
-        JournalLine.objects.create(
-            journal_entry=entry,
-            team=team,
-            account=account,
-            dr_amount=amount if amount > 0 else Decimal("0"),
-            cr_amount=-amount if amount < 0 else Decimal("0"),
-        )
+    for match, account, amount in plan:
+        dr = amount if amount > 0 else Decimal("0")
+        cr = -amount if amount < 0 else Decimal("0")
+        if match is None:
+            JournalLine.objects.create(journal_entry=entry, book=book, account=account, dr_amount=dr, cr_amount=cr)
+        elif (match.dr_amount, match.cr_amount) != (dr, cr):
+            match.dr_amount, match.cr_amount = dr, cr
+            match.journal_entry = entry
+            match.save()
 
     return entry
 
@@ -205,7 +232,7 @@ def apply_splits(bank_tx, legs, *, total):
         bank_tx.account_id,
         legs,
         total=total,
-        team=bank_tx.team,
+        book=bank_tx.book,
     )
 
 

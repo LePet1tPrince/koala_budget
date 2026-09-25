@@ -21,7 +21,7 @@
           There's no ledger activity yet for {{ month }}, so there's nothing to review.
         {% endblocktranslate %}
       </p>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm">
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-outline btn-sm">
         {% translate "Back to Reports" %}
       </a>
     </section>
@@ -35,7 +35,7 @@
     <noscript>
       <div class="app-card">
         <p>{% translate "The guided monthly review needs JavaScript. Try the other reports instead." %}</p>
-        <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-outline btn-sm mt-4">
+        <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-outline btn-sm mt-4">
           {% translate "Back to Reports" %}
         </a>
       </div>

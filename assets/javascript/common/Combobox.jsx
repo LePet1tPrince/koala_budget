@@ -34,6 +34,9 @@ const Combobox = ({
   placeholder = '',
   error = '',
   helperText = '',
+  size = 'md',
+  listMinWidth = 0,
+  ariaLabel,
   testId,
 }) => {
   const [open, setOpen] = useState(false);
@@ -55,6 +58,11 @@ const Combobox = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, query, value, freeText]);
 
+  // A free-text value is valid whether or not it matches a suggestion, so an empty
+  // list has nothing to say — and a "No matches" panel left open would sit over
+  // the next field, swallowing the click a user makes to move on to it.
+  const showList = open && (!freeText || filtered.length > 0);
+
   const close = useCallback(() => {
     setOpen(false);
     setQuery('');
@@ -72,11 +80,14 @@ const Combobox = ({
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open, close, listId]);
 
-  const { style: listStyle, measure } = useAnchoredPosition(open, rootRef, listRef, { matchWidth: true });
+  const { style: listStyle, measure } = useAnchoredPosition(showList, rootRef, listRef, {
+    matchWidth: true,
+    minWidth: listMinWidth,
+  });
 
   useEffect(() => {
-    if (open) measure();
-  }, [open, filtered.length, measure]);
+    if (showList) measure();
+  }, [showList, filtered.length, measure]);
 
   const commit = (option) => {
     onChange(freeText ? getLabel(option) : option);
@@ -131,7 +142,7 @@ const Combobox = ({
     });
   });
 
-  const list = open
+  const list = showList
     ? createPortal(
         <ul
           ref={listRef}
@@ -186,10 +197,11 @@ const Combobox = ({
           ref={inputRef}
           type="text"
           role="combobox"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
+          aria-expanded={showList}
+          aria-controls={showList ? listId : undefined}
           aria-autocomplete="list"
-          className={`input input-bordered w-full ${error ? 'input-error' : ''}`}
+          aria-label={ariaLabel}
+          className={`input input-bordered w-full ${size === 'sm' ? 'input-sm' : ''} ${error ? 'input-error' : ''}`}
           disabled={disabled}
           placeholder={placeholder}
           value={text}

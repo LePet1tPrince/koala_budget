@@ -21,7 +21,7 @@ def test_accounts_board_shows_existing_accounts(authenticated_page: Page, live_s
     AccountFactory(team=team, account_group=group, name="Savings Account")
 
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_home(team.slug)
+    accounts.goto_home(team.default_book)
 
     names = accounts.get_account_names()
     assert "Checking Account" in names
@@ -39,34 +39,37 @@ def test_create_account(authenticated_page: Page, live_server, team):
     accounts.create_account(
         name="Office Supplies",
         account_group_name=group.name,
-        team_slug=team.slug,
+        book=team.default_book,
     )
 
     # Should redirect back to accounts area after save
-    assert f"/a/{team.slug}/accounts/accounts" in authenticated_page.url
+    assert f"{team.default_book.base_url}accounts/accounts" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)
 def test_accounts_board_empty_state(authenticated_page: Page, live_server, team):
     """With no accounts, the board shows all type sections with add-group buttons."""
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_home(team.slug)
+    accounts.goto_home(team.default_book)
 
     assert accounts.get_row_count() == 0
-    # All five flow-type sections render, each with a "new group" affordance
-    assert authenticated_page.locator("[data-testid='account-type-section']").count() == 5
+    # Six sections: the equity type is shown as Goals and Equity. Five offer a
+    # "new group"; Goals offers "New goal" instead, since the Goals page makes
+    # a goal's account (a group added there would hold plain equity).
+    assert authenticated_page.locator("[data-testid='account-type-section']").count() == 6
     assert authenticated_page.locator("[data-testid='add-group-btn']").count() == 5
+    assert authenticated_page.locator("[data-testid='add-goal-section-link']").count() == 1
 
 
 @pytest.mark.django_db(transaction=True)
 def test_cancel_create_account_returns_home(authenticated_page: Page, live_server, team):
     """Clicking Cancel on the create form takes the user back to the accounts home."""
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_create(team.slug)
+    accounts.goto_create(team.default_book)
     accounts.click_cancel()
 
-    authenticated_page.wait_for_url(f"**/a/{team.slug}/accounts/", timeout=5_000)
-    assert authenticated_page.url.rstrip("/").endswith(f"/a/{team.slug}/accounts")
+    authenticated_page.wait_for_url(f"**{team.default_book.base_url}accounts/", timeout=5_000)
+    assert authenticated_page.url.rstrip("/").endswith(f"{team.default_book.base_url}accounts")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -75,7 +78,7 @@ def test_add_account_inline_from_group(authenticated_page: Page, live_server, te
     AccountGroupFactory(team=team, name="Bank Accounts")
 
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_home(team.slug)
+    accounts.goto_home(team.default_book)
 
     authenticated_page.locator("[data-testid='add-account-btn']").first.click()
     authenticated_page.locator("input[placeholder='New account name']").fill("Inline Chequing")
@@ -89,7 +92,7 @@ def test_add_account_inline_from_group(authenticated_page: Page, live_server, te
 def test_add_group_inline_from_section(authenticated_page: Page, live_server, team):
     """The "+ New … group" button at the bottom of a section creates a group."""
     accounts = AccountsPage(authenticated_page, live_server.url)
-    accounts.goto_home(team.slug)
+    accounts.goto_home(team.default_book)
 
     section = authenticated_page.locator("[data-testid='account-type-section'][data-account-type='asset']")
     section.locator("[data-testid='add-group-btn']").click()
@@ -108,9 +111,50 @@ def test_edit_account_form_prefills_name(authenticated_page: Page, live_server, 
 
     accounts = AccountsPage(authenticated_page, live_server.url)
     accounts.goto(
-        f"/a/{team.slug}/accounts/accounts/{account.pk}/update/",
+        f"{team.default_book.base_url}accounts/accounts/{account.pk}/update/",
         wait_for="[data-testid='account-form']",
     )
 
     name_value = authenticated_page.locator("[name='name']").input_value()
     assert name_value == "My Test Account"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_account_opened_from_a_report_leads_back_to_it(authenticated_page: Page, live_server, team):
+    """
+    Report drill-down → linked account → "Back to … report" returns to the drill-down
+    through history, so the browser's own Back then continues to the income statement
+    instead of bouncing between the two pages.
+    """
+    from datetime import date
+
+    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
+    from e2e.factories import AssetAccountFactory, JournalEntryFactory, JournalLineFactory
+
+    page = authenticated_page
+    book = team.default_book
+    expense = AccountFactory(
+        team=team, name="Zed Groceries", account_group=AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
+    )
+    bank = AssetAccountFactory(team=team, name="Zed Chequing")
+    entry = JournalEntryFactory(team=team, entry_date=date.today(), description="Weekly shop")
+    JournalLineFactory(team=team, journal_entry=entry, account=expense, dr_amount="42.00")
+    JournalLineFactory(team=team, journal_entry=entry, account=bank, cr_amount="42.00")
+
+    today = date.today()
+    period = f"start_date={today.replace(day=1)}&end_date={today}"
+    statement = f"{live_server.url}{book.base_url}reports/income-statement/?{period}"
+    page.goto(statement)
+    page.get_by_role("link", name="Zed Groceries", exact=True).first.click()
+    page.wait_for_url(f"**/income-statement/account/{expense.pk}/**")
+    drill_down = page.url
+
+    page.locator("[data-testid='account-activity-table'] a", has_text="Zed Chequing").click()
+    page.wait_for_url(f"**/accounts/accounts/{bank.pk}/**")
+    back = page.locator("[data-testid='back-link']")
+    assert back.inner_text().strip() == "Back to Zed Groceries report"
+
+    back.click()
+    page.wait_for_url(drill_down)
+    page.go_back()
+    page.wait_for_url(statement)

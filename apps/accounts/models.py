@@ -4,9 +4,9 @@ from django.db import models
 from django.db.models import Sum
 from django.urls import reverse
 
-from apps.teams.models import BaseTeamModel
+from apps.books.models import BaseBookModel, BookScopedManager
 
-from .querysets import AccountQuerySet, AccountTeamScopedManager
+from .querysets import AccountQuerySet
 
 # Account type constants - shared across models
 ACCOUNT_TYPE_ASSET = "asset"
@@ -24,7 +24,7 @@ ACCOUNT_TYPE_CHOICES = [
 ]
 
 
-class AccountGroup(BaseTeamModel):
+class AccountGroup(BaseBookModel):
     """
     Account Group model for tracking account groups.
     """
@@ -37,16 +37,16 @@ class AccountGroup(BaseTeamModel):
 
     class Meta:
         ordering = ["sort_order", "name"]
-        unique_together = ["team", "name"]
+        unique_together = ["book", "name"]
 
     def __str__(self):
         return self.name
 
     def get_absolute_url(self):
-        return reverse("accounts:accountgroup_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("accounts:accountgroup_detail", args=[*self.book.url_args, self.pk])
 
 
-class Account(BaseTeamModel):
+class Account(BaseBookModel):
     """
     Account model for tracking financial accounts.
     Can be assets, liabilities, income, expenses, or equity.
@@ -74,7 +74,7 @@ class Account(BaseTeamModel):
 
     # Override managers to use AccountQuerySet for optimized balance queries
     objects = AccountQuerySet.as_manager()
-    for_team = AccountTeamScopedManager()
+    for_book = BookScopedManager.from_queryset(AccountQuerySet)()
 
     class Meta:
         ordering = [
@@ -89,20 +89,22 @@ class Account(BaseTeamModel):
         return self.name
 
     def get_absolute_url(self):
-        return reverse("accounts:account_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("accounts:account_detail", args=[*self.book.url_args, self.pk])
 
     @property
     def balance(self):
         """Return annotated balance if available, otherwise calculate."""
         if hasattr(self, "_balance"):
             return self._balance or Decimal("0")
-        # Fallback for non-annotated queries (voided entries don't count)
-        lines = self.journal_lines.exclude(journal_entry__status="void")
+        # Fallback for non-annotated queries (voided/archived entries don't count)
+        from apps.journal.models import counted_entries
+
+        lines = self.journal_lines.filter(counted_entries("journal_entry__"))
         totals = lines.aggregate(dr=Sum("dr_amount"), cr=Sum("cr_amount"))
         return (totals["dr"] or Decimal("0")) - (totals["cr"] or Decimal("0"))
 
 
-class Institution(BaseTeamModel):
+class Institution(BaseBookModel):
     """
     Institution model for tracking the bank or financial institution an account is held with.
     Examples: TD Bank, CIBC, Wealthsimple.
@@ -112,16 +114,16 @@ class Institution(BaseTeamModel):
 
     class Meta:
         ordering = ["name"]
-        unique_together = ["team", "name"]
+        unique_together = ["book", "name"]
 
     def __str__(self):
         return self.name
 
     def get_absolute_url(self):
-        return reverse("accounts:institution_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("accounts:institution_detail", args=[*self.book.url_args, self.pk])
 
 
-class Payee(BaseTeamModel):
+class Payee(BaseBookModel):
     """
     Payee model for tracking who transactions are with.
     """
@@ -130,10 +132,10 @@ class Payee(BaseTeamModel):
 
     class Meta:
         ordering = ["name"]
-        unique_together = ["team", "name"]
+        unique_together = ["book", "name"]
 
     def __str__(self):
         return self.name
 
     def get_absolute_url(self):
-        return reverse("accounts:payee_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("accounts:payee_detail", args=[*self.book.url_args, self.pk])

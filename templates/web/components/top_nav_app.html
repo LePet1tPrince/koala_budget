@@ -8,11 +8,16 @@
   `menu` styles `li > a`, and these are `li > div > a`, so they keep their
   own .side-link styling.
 {% endcomment %}
+{% block navbar_end_extra %}
+  <div class="mr-2">
+    {% include "budget/components/unassigned_pill.html" with compact=True %}
+  </div>
+{% endblock %}
 {% block mobile_nav %}
   <li>
     <details>
       <summary>
-        {% if nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
+        {% if nav_book %}{{ nav_team.name }} › {{ nav_book.name }}{% elif nav_team %}{{ nav_team.name }}{% else %}{{ request.user.get_display_name }}{% endif %}
       </summary>
       <ul>
         {% include "web/components/team_nav_items.html" %}

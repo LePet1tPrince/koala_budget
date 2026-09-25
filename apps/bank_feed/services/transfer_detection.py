@@ -14,7 +14,7 @@ archive one leg (keeping a single entry) or dismiss the suggestion. It only
 
 from django.conf import settings
 
-from apps.journal.models import JournalEntry
+from apps.journal.models import counted_entries
 
 from ..models import BankTransaction, TransferMatchDismissal
 
@@ -27,9 +27,9 @@ def get_window_days():
     return int(getattr(settings, "BANK_FEED_TRANSFER_WINDOW_DAYS", DEFAULT_WINDOW_DAYS))
 
 
-def find_transfer_candidates(team, window_days=None):
+def find_transfer_candidates(book, window_days=None):
     """
-    Return a list of likely-duplicate transfer pairs for a team.
+    Return a list of likely-duplicate transfer pairs for a book.
 
     Each item is a dict ``{"outflow": BankTransaction, "inflow": BankTransaction,
     "date_gap_days": int}``. A pair qualifies when the two transactions:
@@ -54,8 +54,8 @@ def find_transfer_candidates(team, window_days=None):
     # a mirror leg can pair with an unrelated real transaction, surfacing the same
     # underlying transfer as a second, spurious suggestion.
     transactions = list(
-        BankTransaction.objects.filter(team=team, is_archived=False, is_transfer_mirror=False)
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        BankTransaction.objects.filter(book=book, is_archived=False, is_transfer_mirror=False)
+        .filter(counted_entries("journal_entry__"))
         .select_related("account", "journal_entry")
         .order_by("posted_date", "id")
     )
@@ -65,7 +65,7 @@ def find_transfer_candidates(team, window_days=None):
     for tx in transactions:
         by_amount.setdefault(abs(tx.amount), []).append(tx)
 
-    dismissed = _dismissed_pairs(team)
+    dismissed = _dismissed_pairs(book)
     used = set()
     pairs = []
 
@@ -110,11 +110,11 @@ def find_transfer_candidates(team, window_days=None):
     return pairs
 
 
-def _dismissed_pairs(team):
+def _dismissed_pairs(book):
     """Return a set of normalized (low_id, high_id) tuples the user has dismissed."""
     return {
         (low, high)
-        for low, high in TransferMatchDismissal.objects.filter(team=team).values_list(
+        for low, high in TransferMatchDismissal.objects.filter(book=book).values_list(
             "transaction_low_id", "transaction_high_id"
         )
     }

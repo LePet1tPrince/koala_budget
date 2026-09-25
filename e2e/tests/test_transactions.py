@@ -34,7 +34,7 @@ from e2e.pages.transactions import TransactionsPage
 def test_transactions_page_loads(requires_vite, authenticated_page: Page, live_server, team):
     """The transactions page mounts the React app and shows an empty state when there are no entries."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
 
     assert transactions.is_empty() or transactions.has_table()
 
@@ -43,7 +43,7 @@ def test_transactions_page_loads(requires_vite, authenticated_page: Page, live_s
 def test_transactions_empty_state_shown_with_no_entries(requires_vite, authenticated_page: Page, live_server, team):
     """With no journal entries, the empty state message is displayed."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
 
     assert transactions.is_empty()
     assert transactions.get_row_count() == 0
@@ -61,7 +61,7 @@ def test_transactions_table_shows_seeded_entries(requires_vite, authenticated_pa
     JournalLineFactory(team=team, journal_entry=entry, account=credit_acct, cr_amount="1500.00")
 
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
 
     assert transactions.get_row_count() >= 1
     assert transactions.has_table()
@@ -83,7 +83,7 @@ def test_transactions_search_filters_rows(requires_vite, authenticated_page: Pag
     JournalLineFactory(team=team, journal_entry=entry2, account=credit_acct, cr_amount="120.00")
 
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
 
     # Initially both rows visible
     assert transactions.get_row_count() >= 2
@@ -131,14 +131,14 @@ def ledger(team):
     entry(2, costco, groceries, "10.00", "Milk")
     entry(3, amazon, coffee, "5.00", "Beans")
     # The account tree is addressed by id, so the tests need the group's.
-    return SimpleNamespace(slug=team.slug, coffee_group_id=treats.pk)
+    return SimpleNamespace(book=team.default_book, coffee_group_id=treats.pk)
 
 
 @pytest.mark.django_db(transaction=True)
 def test_column_menu_lists_the_columns_distinct_values(requires_vite, authenticated_page: Page, live_server, ledger):
     """The chevron menu offers the column's unique values, with a row count each."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
 
     transactions.open_column_menu("payee")
 
@@ -149,7 +149,7 @@ def test_column_menu_lists_the_columns_distinct_values(requires_vite, authentica
 def test_column_filter_narrows_the_table(requires_vite, authenticated_page: Page, live_server, ledger):
     """Ticking a value and applying leaves only the rows carrying it."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
     transactions.expect_row_count(3)
 
     transactions.open_column_menu("payee")
@@ -164,7 +164,7 @@ def test_column_filter_narrows_the_table(requires_vite, authenticated_page: Page
 def test_column_filters_on_two_columns_combine(requires_vite, authenticated_page: Page, live_server, ledger):
     """Filters on different columns narrow together rather than replacing each other."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
 
     transactions.open_column_menu("payee")
     transactions.tick_column_value("payee", "Amazon")
@@ -184,7 +184,7 @@ def test_column_filters_on_two_columns_combine(requires_vite, authenticated_page
 def test_clear_all_restores_every_row(requires_vite, authenticated_page: Page, live_server, ledger):
     """The chip bar's Clear all drops every column filter in one go."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
 
     transactions.open_column_menu("payee")
     transactions.tick_column_value("payee", "Costco")
@@ -201,7 +201,7 @@ def test_clear_all_restores_every_row(requires_vite, authenticated_page: Page, l
 def test_column_header_sorts_ascending_then_descending(requires_vite, authenticated_page: Page, live_server, ledger):
     """Clicking a header sorts by it; clicking again reverses."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
     transactions.expect_row_count(3)
 
     transactions.sort_by("amount")
@@ -215,7 +215,7 @@ def test_column_header_sorts_ascending_then_descending(requires_vite, authentica
 def test_clear_inside_a_menu_drops_the_staged_selection(requires_vite, authenticated_page: Page, live_server, ledger):
     """Clear empties what's been ticked without closing the menu, so a long selection can be restarted."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
 
     transactions.open_column_menu("payee")
     transactions.select_all_in_menu("payee")
@@ -230,7 +230,7 @@ def test_clear_inside_a_menu_drops_the_staged_selection(requires_vite, authentic
 def test_account_column_nests_type_group_account(requires_vite, authenticated_page: Page, live_server, ledger):
     """The account columns open on account types and expand down to accounts."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
 
     transactions.open_column_menu("debit_account")
     assert transactions.column_filter_values("debit_account") == ["Expense"]
@@ -248,7 +248,7 @@ def test_ticking_an_account_group_selects_every_account_in_it(
 ):
     """A branch is one filter value meaning "everything under it", not a list of leaves."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
     transactions.expect_row_count(3)
 
     transactions.open_column_menu("debit_account")
@@ -267,7 +267,7 @@ def test_ticking_an_account_group_selects_every_account_in_it(
 def test_ticking_a_year_selects_every_date_in_it(requires_vite, authenticated_page: Page, live_server, ledger):
     """The date column nests year → month → day, and a year selects the whole year."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
 
     transactions.open_column_menu("date")
     assert transactions.column_filter_values("date") == ["2025"]
@@ -286,7 +286,7 @@ def test_ticking_a_year_selects_every_date_in_it(requires_vite, authenticated_pa
 def test_ticking_a_month_narrows_to_that_month(requires_vite, authenticated_page: Page, live_server, ledger):
     """A month is selectable in its own right, and its chip carries the year."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(ledger.slug)
+    transactions.goto(ledger.book)
 
     transactions.open_column_menu("date")
     transactions.expand_tree_node("2025")

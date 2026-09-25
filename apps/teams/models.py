@@ -44,7 +44,18 @@ class Team(SubscriptionModelBase, BaseModel):
 
     @property
     def dashboard_url(self) -> str:
+        # Redirects on to the book this user last opened in the team.
         return reverse("web_team:home", args=[self.slug])
+
+    @property
+    def default_book(self):
+        """
+        The team's first open set of books -- where an old `/a/{team}/budget/`
+        link lands, and the book a member who has not opened one yet is sent to.
+        Earliest-created wins among equal `sort_order`s, so it is the book the
+        migration created for a team that predates multiple books.
+        """
+        return self.books.filter(is_archived=False).order_by("sort_order", "id").first()
 
 
 class Membership(BaseModel):

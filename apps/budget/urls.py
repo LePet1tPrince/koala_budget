@@ -8,14 +8,16 @@ from . import views
 
 app_name = "budget"
 
-# URL patterns (all budget URLs are team-based, mounted at /a/<team_slug>/budget/)
+# URL patterns (all budget URLs are book-based, mounted at /a/<team_slug>/<book_slug>/budget/)
 urlpatterns = [
     # Budget views
     path("", views.budget_month_view, name="budget_home"),
     path("autofill/", views.budget_autofill_view, name="budget_autofill"),
     path("save-amount/", views.budget_save_amount, name="budget_save_amount"),
+    path("cover/", views.budget_cover, name="budget_cover"),
     path("grid/", views.budget_grid_view, name="budget_grid"),
     path("grid/save/", views.budget_grid_save, name="budget_grid_save"),
+    path("api/unassigned/", views.unassigned_api, name="api_unassigned"),
     # Goal views
     path("goals/", views.goals_list_view, name="goals_list"),
     path("goals/new/", views.goal_create_view, name="goal_create"),
@@ -26,4 +28,5 @@ urlpatterns = [
     path("goals/<int:pk>/assign-available/", views.goal_assign_available, name="goal_assign_available"),
     path("goals/<int:pk>/withdraw/", views.goal_withdraw, name="goal_withdraw"),
     path("goals/<int:pk>/complete/", views.goal_complete_view, name="goal_complete"),
+    path("goals/<int:pk>/close/", views.goal_close_view, name="goal_close"),
 ]

@@ -2,6 +2,9 @@
 import Chart from 'chart.js/auto';
 import {GRID, MONEY, currency, compactCurrency, getInk, getSurface, observeTheme} from './chart-theme';
 
+// The goals colour used on the Dollar Map and the Sankey.
+const GOAL_COLOR = '#c98500';
+
 document.addEventListener('DOMContentLoaded', () => {
   const dataEl = document.getElementById('cash-flow-data');
   const canvas = document.getElementById('cash-flow-chart');
@@ -50,6 +53,18 @@ document.addEventListener('DOMContentLoaded', () => {
           maxBarThickness: 24,
           order: 1,
         },
+        // Goal spending: money out too, planned and paid from goals -- its own series.
+        ...(data.goal_spending
+          ? [{
+            type: 'bar',
+            label: 'Goal spending',
+            data: data.goal_spending,
+            backgroundColor: GOAL_COLOR,
+            borderRadius: {topLeft: 4, topRight: 4},
+            maxBarThickness: 24,
+            order: 1,
+          }]
+          : []),
       ],
     },
     options: {

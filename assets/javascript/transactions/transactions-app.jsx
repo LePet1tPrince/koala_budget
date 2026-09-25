@@ -7,6 +7,7 @@ import TransactionsTable from './TransactionsTable';
 import TransactionEditModal from './TransactionEditModal';
 import { getTransactionsApi } from './transactionsApi';
 import Toast from '../common/Toast';
+import { readBook } from '../common/book';
 import { getApiHeaders } from '../api';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -52,7 +53,11 @@ const TransactionsApp = () => {
   // The label rides along because a hierarchical column's value is a branch
   // token (`2025-03`, `g:12`) that nothing on the client could turn back into
   // "Mar 2025" or "Employment Income".
-  const [columnFilters, setColumnFilters] = useState({});
+  const [columnFilters, setColumnFilters] = useState(() => {
+    // A link can open the page already filtered (a goal's "see its spending").
+    const el = document.getElementById('initial-filters');
+    return el ? JSON.parse(el.textContent) : {};
+  });
   // { key, dir } or null for the API's default newest-first ordering.
   const [sort, setSort] = useState(null);
 
@@ -63,10 +68,12 @@ const TransactionsApp = () => {
   const [toast, setToast] = useState(null);
 
   const apiUrls = JSON.parse(document.getElementById('api-urls').textContent);
-  const teamSlug = readJson('team-slug', '');
+  // Every book URL the modal builds starts from this, so the URL shape lives in
+  // one place (`common/book.js`) rather than in each fetch.
+  const book = useMemo(() => readBook(), []);
   const allAccounts = useMemo(() => readJson('all-accounts', []), []);
   const allPayees = useMemo(() => readJson('all-payees', []), []);
-  const api = useMemo(() => getTransactionsApi(teamSlug), [teamSlug]);
+  const api = useMemo(() => getTransactionsApi(book.base), [book.base]);
 
   // Bumped to force the list effect to re-run when an edit moved a row out of
   // the filters currently applied — the params themselves have not changed, so
@@ -315,7 +322,7 @@ const TransactionsApp = () => {
         transactions={editing}
         allAccounts={allAccounts}
         allPayees={allPayees}
-        teamSlug={teamSlug}
+        book={book}
         onSave={handleSave}
         onDelete={handleDelete}
         onSetStatus={handleSetStatus}

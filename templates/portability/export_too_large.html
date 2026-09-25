@@ -1,0 +1,11 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+
+{% block app %}
+  <div class="max-w-xl mx-auto py-12">
+    <div class="app-card p-6">
+      <h1 class="text-xl font-semibold mb-2">{% translate "This export is too large" %}</h1>
+      <p class="text-base-content/70">{{ error }}</p>
+    </div>
+  </div>
+{% endblock %}

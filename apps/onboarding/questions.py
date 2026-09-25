@@ -81,6 +81,11 @@ class Option:
     # circumstances the catalog did not anticipate cannot get past it. Checked by
     # `validate_catalog()`.
     catch_all: bool = False
+    # Settings on the set of books that picking this option sets, as
+    # (Book field, value) pairs -- how a question about *how* someone budgets,
+    # rather than what they own, stays data like every other rule. Applied by
+    # `book_settings()` when the walkthrough completes.
+    settings: tuple[tuple[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -177,6 +182,28 @@ Q_HOUSEHOLD_SHAPE = Question(
                 accounts=(AccountSpec(4010, "Salary Income — Partner", INCOME.name),),
                 requires=("income_sources:employment",),
             ),
+        ),
+    ),
+)
+
+Q_BUDGET_FUTURE_INCOME = Question(
+    id="budget_future_income",
+    phase=PHASE_INCOME,
+    prompt=_("Do you budget your paycheque before it arrives?"),
+    help_text=_("You can change this later under Settings, Budgeting."),
+    kind=SINGLE,
+    required=True,
+    options=(
+        Option(
+            "no",
+            _("No, I budget money once it's in my account"),
+            settings=(("budget_future_income", False),),
+            catch_all=True,
+        ),
+        Option(
+            "yes",
+            _("Yes, I plan this month's pay before payday"),
+            settings=(("budget_future_income", True),),
         ),
     ),
 )
@@ -422,6 +449,7 @@ Q_FIRST_GOAL = Question(
 QUESTION_CATALOG: tuple[Question, ...] = (
     Q_INCOME_SOURCES,
     Q_HOUSEHOLD_SHAPE,
+    Q_BUDGET_FUTURE_INCOME,
     Q_MONTHLY_INCOME,
     Q_HOUSING,
     Q_KIDS,
@@ -453,6 +481,23 @@ def get_question(question_id: str) -> Question | None:
 
 def required_question_ids() -> tuple[str, ...]:
     return tuple(q.id for q in QUESTION_CATALOG if q.required)
+
+
+def book_settings(answers: dict) -> dict:
+    """
+    The `Book` settings the answers choose, from each picked option's `settings`.
+
+    Like `build_template`, it tolerates answers naming questions or options the
+    catalog no longer has -- stored answers outlive the catalog.
+    """
+    chosen: dict = {}
+    for question in QUESTION_CATALOG:
+        answer = answers.get(question.id)
+        picked = answer if isinstance(answer, list) else [answer]
+        for option in question.options:
+            if option.value in picked:
+                chosen.update(dict(option.settings))
+    return chosen
 
 
 def catalog_payload() -> list[dict]:
@@ -519,6 +564,16 @@ def validate_catalog() -> list[str]:
     for question in QUESTION_CATALOG:
         if question.required and question.options and not any(o.catch_all for o in question.options):
             problems.append(f"{question.id}: required question has no catch-all option")
+
+    # A setting must name a real field on the set of books.
+    from apps.books.models import Book
+
+    book_fields = {f.name for f in Book._meta.get_fields()}
+    for question in QUESTION_CATALOG:
+        for option in question.options:
+            for name, _value in option.settings:
+                if name not in book_fields:
+                    problems.append(f"{question.id}:{option.value}: sets unknown book field {name!r}")
 
     # Cross-question dependencies must point at something that exists.
     for question in QUESTION_CATALOG:

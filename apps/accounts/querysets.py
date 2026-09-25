@@ -1,64 +1,37 @@
-import logging
 from decimal import Decimal
 
-from django.conf import settings
 from django.db import models
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 
-# Lines belonging to voided journal entries must not count toward any balance.
-# (String literal to avoid a circular import of JournalEntry.STATUS_VOID.)
-NOT_VOID = ~Q(journal_lines__journal_entry__status="void")
+
+def _counted():
+    """Lines of entries that count (not void, not behind an archived bank transaction)."""
+    from apps.journal.models import counted_entries
+
+    return counted_entries("journal_lines__journal_entry__")
+
+
+def _through(as_of):
+    """Lines of entries dated on or before `as_of`; every line when it is None."""
+    return Q(journal_lines__journal_entry__entry_date__lte=as_of) if as_of else Q()
 
 
 class AccountQuerySet(models.QuerySet):
     """Custom QuerySet for Account model with optimized balance calculation."""
 
-    def with_balance(self):
-        """Annotate accounts with their calculated balance in a single query."""
+    def with_balance(self, as_of=None):
+        """Annotate accounts with their calculated balance in a single query (optionally as of a date)."""
+        counted = _counted() & _through(as_of)
         return self.annotate(
-            _balance=Coalesce(Sum("journal_lines__dr_amount", filter=NOT_VOID), Decimal("0"))
-            - Coalesce(Sum("journal_lines__cr_amount", filter=NOT_VOID), Decimal("0"))
+            _balance=Coalesce(Sum("journal_lines__dr_amount", filter=counted), Decimal("0"))
+            - Coalesce(Sum("journal_lines__cr_amount", filter=counted), Decimal("0"))
         )
 
-    def with_categorized_balance(self):
-        """Balance excluding journal entries linked to archived bank transactions in this account."""
-        from apps.bank_feed.models import BankTransaction
-
-        archived_je_ids = BankTransaction.objects.filter(
-            is_archived=True,
-            journal_entry__isnull=False,
-        ).values("journal_entry_id")
-        categorized_filter = NOT_VOID & ~Q(journal_lines__journal_entry_id__in=archived_je_ids)
-        return self.annotate(
-            _categorized_balance=Coalesce(Sum("journal_lines__dr_amount", filter=categorized_filter), Decimal("0"))
-            - Coalesce(Sum("journal_lines__cr_amount", filter=categorized_filter), Decimal("0"))
-        )
-
-    def with_reconciled_balance(self):
-        """Annotate accounts with their reconciled balance (only reconciled journal lines)."""
-        reconciled = Q(journal_lines__is_reconciled=True) & NOT_VOID
+    def with_reconciled_balance(self, as_of=None):
+        """Annotate accounts with their reconciled balance (only reconciled journal lines, optionally as of a date)."""
+        reconciled = Q(journal_lines__is_reconciled=True) & _counted() & _through(as_of)
         return self.annotate(
             _reconciled_balance=Coalesce(Sum("journal_lines__dr_amount", filter=reconciled), Decimal("0"))
             - Coalesce(Sum("journal_lines__cr_amount", filter=reconciled), Decimal("0"))
         )
-
-
-class AccountTeamScopedManager(models.Manager):
-    """
-    Team-scoped manager for Account model that uses AccountQuerySet.
-    Combines TeamScopedManager filtering with AccountQuerySet methods.
-    """
-
-    def get_queryset(self):
-        from apps.teams.context import EmptyTeamContextException, get_current_team
-
-        queryset = AccountQuerySet(self.model, using=self._db)
-        team = get_current_team()
-        if team is None:
-            if getattr(settings, "STRICT_TEAM_CONTEXT", False):
-                raise EmptyTeamContextException("Team missing from context")
-            else:
-                logging.warning("Team not available in filtered context. Use `set_current_team()`.")
-            return queryset.none()
-        return queryset.filter(team=team)

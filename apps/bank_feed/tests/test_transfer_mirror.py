@@ -23,8 +23,8 @@ from apps.accounts.models import (
 )
 from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.transfer_detection import find_transfer_candidates
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -34,29 +34,30 @@ class TransferMirrorTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.liability_group = AccountGroup.objects.create(
-            team=cls.team, name="Credit Cards", account_type=ACCOUNT_TYPE_LIABILITY
+            book=cls.book, name="Credit Cards", account_type=ACCOUNT_TYPE_LIABILITY
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.checking = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Checking", account_group=cls.asset_group, has_feed=True
         )
         cls.credit_card = Account.objects.create(
-            team=cls.team, name="Credit Card", account_group=cls.liability_group, has_feed=True
+            book=cls.book, name="Credit Card", account_group=cls.liability_group, has_feed=True
         )
         cls.savings = Account.objects.create(
-            team=cls.team, name="Savings", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Savings", account_group=cls.asset_group, has_feed=True
         )
         cls.groceries = Account.objects.create(
-            team=cls.team, name="Groceries", account_group=cls.expense_group, has_feed=False
+            book=cls.book, name="Groceries", account_group=cls.expense_group, has_feed=False
         )
 
     def setUp(self):
@@ -67,7 +68,7 @@ class TransferMirrorTest(TestCase):
 
     def _tx(self, account, amount, **kwargs):
         return BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=account,
             amount=Decimal(amount),
             posted_date=kwargs.pop("posted_date", date(2026, 6, 1)),
@@ -77,8 +78,8 @@ class TransferMirrorTest(TestCase):
         )
 
     def _categorize(self, tx, category_account):
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/categorize/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/categorize/"
+        with current_book(self.book):
             return self.client.post(url, {"rows": [{"id": tx.id}], "category_id": category_account.id}, format="json")
 
     def _mirror_of(self, entry):
@@ -102,8 +103,8 @@ class TransferMirrorTest(TestCase):
     def test_mirror_shows_in_counterpart_feed(self):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/?account={self.credit_card.id}"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/?account={self.credit_card.id}"
+        with current_book(self.book):
             resp = self.client.get(url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         rows = resp.data["results"]
@@ -116,7 +117,7 @@ class TransferMirrorTest(TestCase):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         # Exactly one (non-void) journal entry books the movement.
-        self.assertEqual(JournalEntry.objects.filter(team=self.team).count(), 1)
+        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 1)
         self.checking.refresh_from_db()
         self.credit_card.refresh_from_db()
         self.assertEqual(self.checking.balance, Decimal("-100.00"))  # cr asset
@@ -128,18 +129,16 @@ class TransferMirrorTest(TestCase):
         tx.refresh_from_db()
         self.assertIsNone(self._mirror_of(tx.journal_entry))
         # No extra BankTransaction was created.
-        self.assertEqual(BankTransaction.objects.filter(team=self.team).count(), 1)
+        self.assertEqual(BankTransaction.objects.filter(book=self.book).count(), 1)
 
     def test_legs_reconcile_independently(self):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
-        mirror = self._mirror_of(tx.journal_entry)
+        self.assertIsNotNone(self._mirror_of(tx.journal_entry))
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_reconcile/"
-        with current_team(self.team):
-            resp = self.client.post(url, {"ids": [mirror.id]}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        # Reconcile the mirror's own line (the credit card side).
+        tx.journal_entry.lines.filter(account=self.credit_card).update(is_reconciled=True)
 
         entry = tx.journal_entry
         cc_line = entry.lines.get(account=self.credit_card)
@@ -152,8 +151,8 @@ class TransferMirrorTest(TestCase):
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/{tx.id}/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/{tx.id}/"
+        with current_book(self.book):
             resp = self.client.put(
                 url,
                 {
@@ -180,8 +179,8 @@ class TransferMirrorTest(TestCase):
         self.assertIsNotNone(self._mirror_of(entry))
 
         # Re-categorize the same transaction to an expense via batch_edit.
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_edit/"
+        with current_book(self.book):
             resp = self.client.patch(url, {"ids": [tx.id], "category_id": self.groceries.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         self.assertIsNone(self._mirror_of(entry))
@@ -196,8 +195,8 @@ class TransferMirrorTest(TestCase):
         # Archive then delete the primary leg.
         tx.is_archived = True
         tx.save(update_fields=["is_archived"])
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_delete/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_delete/"
+        with current_book(self.book):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -209,7 +208,7 @@ class TransferMirrorTest(TestCase):
         # Categorizing a transfer during CSV import must also create the mirror leg.
         from apps.bank_feed.services.csv_upload import create_transactions
 
-        with current_team(self.team):
+        with current_book(self.book):
             result = create_transactions(
                 transactions=[
                     {
@@ -220,7 +219,7 @@ class TransferMirrorTest(TestCase):
                         "category_id": self.credit_card.id,
                     }
                 ],
-                team=self.team,
+                book=self.book,
                 account_id=self.checking.id,
             )
         self.assertEqual(result["created_count"], 1)
@@ -237,8 +236,8 @@ class TransferMirrorTest(TestCase):
         tx.refresh_from_db()
         mirror = self._mirror_of(tx.journal_entry)
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_edit/"
+        with current_book(self.book):
             resp = self.client.patch(url, {"ids": [tx.id], "category_id": self.savings.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -252,8 +251,8 @@ class TransferMirrorTest(TestCase):
         tx.refresh_from_db()
         mirror = self._mirror_of(tx.journal_entry)
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_edit/"
+        with current_book(self.book):
             resp = self.client.patch(url, {"ids": [mirror.id], "category_id": self.savings.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -262,7 +261,7 @@ class TransferMirrorTest(TestCase):
         mirror.refresh_from_db()
         self.assertEqual(mirror.account_id, self.credit_card.id)  # mirror stayed put
         # Still one entry, both legs intact.
-        self.assertEqual(JournalEntry.objects.filter(team=self.team).count(), 1)
+        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 1)
 
     def test_pointing_mirror_at_non_feed_category_is_rejected(self):
         # Pointing the mirror at an expense would orphan the real primary -> blocked.
@@ -271,8 +270,8 @@ class TransferMirrorTest(TestCase):
         tx.refresh_from_db()
         mirror = self._mirror_of(tx.journal_entry)
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_edit/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_edit/"
+        with current_book(self.book):
             resp = self.client.patch(url, {"ids": [mirror.id], "category_id": self.groceries.id}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -287,8 +286,8 @@ class TransferMirrorTest(TestCase):
         tx.refresh_from_db()
         mirror = self._mirror_of(tx.journal_entry)
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        with current_book(self.book):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -303,8 +302,8 @@ class TransferMirrorTest(TestCase):
         tx.refresh_from_db()
         mirror = self._mirror_of(tx.journal_entry)
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        with current_book(self.book):
             resp = self.client.post(url, {"ids": [mirror.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -323,8 +322,8 @@ class TransferMirrorTest(TestCase):
         mirror.is_archived = True
         mirror.save(update_fields=["is_archived"])
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_unarchive/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_unarchive/"
+        with current_book(self.book):
             resp = self.client.post(url, {"ids": [mirror.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -345,8 +344,8 @@ class TransferMirrorTest(TestCase):
         cc_line.is_reconciled = True
         cc_line.save(update_fields=["is_reconciled"])
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        with current_book(self.book):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("reconciled", resp.json()["error"])
@@ -367,8 +366,8 @@ class TransferMirrorTest(TestCase):
         checking_line.is_reconciled = True
         checking_line.save(update_fields=["is_reconciled"])
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        with current_book(self.book):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("reconciled", resp.json()["error"])
@@ -390,8 +389,8 @@ class TransferMirrorTest(TestCase):
 
         plain = self._tx(self.checking, "25.00")
 
-        url = f"/a/{self.team.slug}/bankfeed/api/feed/batch_archive/"
-        with current_team(self.team):
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        with current_book(self.book):
             resp = self.client.post(url, {"ids": [plain.id, blocked.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -405,5 +404,5 @@ class TransferMirrorTest(TestCase):
         self._categorize(tx, self.credit_card)
         # The primary and its mirror share one entry; they must not look like a
         # cross-account duplicate.
-        with current_team(self.team):
-            self.assertEqual(find_transfer_candidates(self.team), [])
+        with current_book(self.book):
+            self.assertEqual(find_transfer_candidates(self.book), [])

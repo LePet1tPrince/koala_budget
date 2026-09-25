@@ -1,41 +1,45 @@
-{% extends "web/app/app_base.html" %}
+{% extends "accounts/manage_base.html" %}
 {% load i18n %}
-{% block app %}
-<section class="app-card">
-  {% include "accounts/components/manage_tabs.html" with manage_tab="institutions" %}
-  <div class="flex justify-between items-center mb-4">
-    <h3 class="text-xl mb-1">{% translate "Institutions" %}</h3>
-    <a href="{% url 'accounts:institution_create' request.team.slug %}" class="btn btn-primary">
-      {% translate "New Institution" %}
-    </a>
-  </div>
+{% load icons %}
+{% load currency_tags %}
+{% block manage_title %}{% translate "Institutions" %}{% endblock %}
+{% block manage_subtitle %}{% translate "The banks and brokerages your accounts are held with." %}{% endblock %}
+{% block manage_actions %}
+  <a href="{% url 'accounts:institution_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-dialog="create-dialog" data-testid="new-institution-btn">
+    {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "New institution" %}
+  </a>
+{% endblock %}
+{% block manage_content %}
   {% if object_list %}
-    <div class="overflow-x-auto">
-      <table class="table table-quiet w-full">
-        <thead>
-          <tr>
-            <th>{% translate "Name" %}</th>
-            <th>{% translate "Accounts" %}</th>
-            <th>{% translate "Actions" %}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for institution in object_list %}
-            <tr>
-              <td><a href="{{ institution.get_absolute_url }}" class="link">{{ institution.name }}</a></td>
-              <td>{{ institution.accounts.count }}</td>
-              <td>
-                <a href="{% url 'accounts:institution_update' request.team.slug institution.pk %}" class="btn btn-outline btn-sm">
-                  {% translate "Edit" %}
-                </a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="manage-list">
+      {% for institution in object_list %}
+        <a href="{{ institution.get_absolute_url }}" class="manage-row" data-testid="institution-row">
+          <div class="min-w-0 flex-1">
+            <div class="font-medium truncate">{{ institution.name }}</div>
+            <div class="text-xs text-base-content/70">
+              {% blocktranslate trimmed count counter=institution.account_count %}{{ counter }} account{% plural %}{{ counter }} accounts{% endblocktranslate %}
+            </div>
+          </div>
+          {% if institution.account_count %}
+            <div class="text-right">
+              <div class="money font-medium whitespace-nowrap {% if institution.net_balance < 0 %}text-error{% endif %}">{{ institution.net_balance|currency }}</div>
+              <div class="text-xs text-base-content/70">{% translate "net" %}</div>
+            </div>
+          {% endif %}
+          {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+        </a>
+      {% endfor %}
     </div>
   {% else %}
-    <p class="text-base-content/70">{% translate "No institutions yet." %} <a href="{% url 'accounts:institution_create' request.team.slug %}" class="link">{% translate "Create one now" %}</a>.</p>
+    <div class="py-10 text-center text-sm text-base-content/70">
+      {% translate "No institutions yet." %}
+      <a href="{% url 'accounts:institution_create' request.team.slug request.book.slug %}" class="link link-primary" data-dialog="create-dialog">{% translate "Add one" %}</a>
+    </div>
   {% endif %}
-</section>
+{% endblock %}
+{% block dialogs %}
+  {% url 'accounts:institution_create' request.team.slug request.book.slug as create_url %}
+  {% translate "New institution" as dialog_title %}
+  {% translate "Create institution" as submit_label %}
+  {% include "accounts/components/form_dialog.html" with dialog_id="create-dialog" title=dialog_title form=create_form action=create_url submit_label=submit_label %}
 {% endblock %}

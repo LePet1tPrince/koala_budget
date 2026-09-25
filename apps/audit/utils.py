@@ -12,8 +12,16 @@ def set_current_user(user):
     _thread_locals.user = user
 
 
-def log_event(event_type, user=None, team=None, metadata=None, request=None):
-    """Create an AuditEvent. Safe to call from Celery (user/team can be None)."""
+_UNSET = object()
+
+
+def log_event(event_type, user=None, team=None, metadata=None, request=None, book=_UNSET):
+    """
+    Create an AuditEvent. Safe to call from Celery (user/team/book can be None).
+
+    `book` falls back to `request.book` when not given; pass `book=None` for an
+    event that belongs to the team rather than to any one set of books.
+    """
     from apps.audit.models import AuditEvent
 
     ip = None
@@ -25,13 +33,18 @@ def log_event(event_type, user=None, team=None, metadata=None, request=None):
             user = request.user if request.user.is_authenticated else None
         if team is None:
             team = getattr(request, "team", None)
-    # On non-team URLs (e.g. the login page) request.team is a SimpleLazyObject
-    # resolving to None, which Django rejects as an FK value — force-resolve it.
-    team = team or None
+    if book is _UNSET:
+        book = getattr(request, "book", None) if request else None
+    # On non-team URLs (e.g. the login page) request.team and request.book are
+    # SimpleLazyObjects resolving to None, which Django rejects as an FK value —
+    # force-resolve them.
+    book = book or None
+    team = team or (book.team if book else None)
     return AuditEvent.objects.create(
         event_type=event_type,
         user=user,
         team=team,
+        book=book,
         ip_address=ip,
         metadata=metadata or {},
     )

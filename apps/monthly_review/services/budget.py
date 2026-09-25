@@ -16,7 +16,7 @@ from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
 from apps.budget.models import Budget
 from apps.budget.services import BudgetService
 from apps.budget.views import _budget_categories
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalLine, counted_entries
 
 
 def build_section(items, budget_rows, spending=True):
@@ -83,7 +83,7 @@ def _month_bounds(month):
     return start, end
 
 
-def budget_breakdown(team, month) -> dict:
+def budget_breakdown(book, month) -> dict:
     """
     Every budgeted/spent category for `month`, grouped in budget-page order
     (income sections first), with the overspent-vs-over-assigned split.
@@ -104,27 +104,27 @@ def budget_breakdown(team, month) -> dict:
           "over_assigned": [ same shape, ...],
         }
     """
-    categories = list(_budget_categories(team))
+    categories = list(_budget_categories(book))
     category_ids = [c.pk for c in categories]
     month_start, month_end = _month_bounds(month)
     prev_month = _prev_month(month_start)
 
-    service = BudgetService(team)
+    service = BudgetService(book)
     this_actuals = service.get_actuals_by_category(month_start)
     prev_actuals = service.get_actuals_by_category(prev_month)
     available_map = service.get_available_by_category(month_start, categories)
     budgets = dict(
-        Budget.objects.filter(team=team, month=month_start, category_id__in=category_ids).values_list(
+        Budget.objects.filter(book=book, month=month_start, category_id__in=category_ids).values_list(
             "category_id", "budget_amount"
         )
     )
     counts = dict(
         JournalLine.objects.filter(
-            team=team,
+            book=book,
             account_id__in=category_ids,
             journal_entry__entry_date__range=(month_start, month_end),
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .values("account_id")
         .annotate(count=Count("id"))
         .values_list("account_id", "count")

@@ -21,10 +21,19 @@ urlpatterns = [
 ]
 
 
+# `/a/{team}/` -- the team's root sends the user on to the book they last opened.
 team_urlpatterns = (
     [
         path("", views.team_home, name="home"),
         path("settings/", views.settings_home, name="settings"),
     ],
     "web_team",
+)
+
+# `/a/{team}/{book}/` -- the dashboard of one set of books.
+book_urlpatterns = (
+    [
+        path("", views.book_home, name="home"),
+    ],
+    "web_book",
 )

@@ -74,7 +74,7 @@ export interface FeedAccount {
      */
     readonly balance: string;
     /**
-     * 
+     * Same as `balance` now that archived entries count nowhere; kept for API compatibility.
      * @type {string}
      * @memberof FeedAccount
      */
@@ -127,6 +127,18 @@ export interface FeedAccount {
      * @memberof FeedAccount
      */
     readonly latestReconciledDate: Date;
+    /**
+     * 
+     * @type {Date}
+     * @memberof FeedAccount
+     */
+    readonly lastStatementDate: Date;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof FeedAccount
+     */
+    readonly lastStatementIntact: boolean | null;
 }
 
 /**
@@ -148,6 +160,8 @@ export function instanceOfFeedAccount(value: object): value is FeedAccount {
     if (!('uncategorizedCount' in value) || value['uncategorizedCount'] === undefined) return false;
     if (!('latestTransactionDate' in value) || value['latestTransactionDate'] === undefined) return false;
     if (!('latestReconciledDate' in value) || value['latestReconciledDate'] === undefined) return false;
+    if (!('lastStatementDate' in value) || value['lastStatementDate'] === undefined) return false;
+    if (!('lastStatementIntact' in value) || value['lastStatementIntact'] === undefined) return false;
     return true;
 }
 
@@ -179,6 +193,8 @@ export function FeedAccountFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'uncategorizedCount': json['uncategorized_count'],
         'latestTransactionDate': (new Date(json['latest_transaction_date'])),
         'latestReconciledDate': (new Date(json['latest_reconciled_date'])),
+        'lastStatementDate': (new Date(json['last_statement_date'])),
+        'lastStatementIntact': json['last_statement_intact'],
     };
 }
 
@@ -186,7 +202,7 @@ export function FeedAccountFromJSONTyped(json: any, ignoreDiscriminator: boolean
       return FeedAccountToJSONTyped(json, false);
   }
 
-  export function FeedAccountToJSONTyped(value?: Omit<FeedAccount, 'id'|'account_group_name'|'account_type'|'institution_name'|'balance'|'categorized_balance'|'reconciled_balance'|'created_at'|'updated_at'|'archived_at'|'uncategorized_count'|'latest_transaction_date'|'latest_reconciled_date'> | null, ignoreDiscriminator: boolean = false): any {
+  export function FeedAccountToJSONTyped(value?: Omit<FeedAccount, 'id'|'account_group_name'|'account_type'|'institution_name'|'balance'|'categorized_balance'|'reconciled_balance'|'created_at'|'updated_at'|'archived_at'|'uncategorized_count'|'latest_transaction_date'|'latest_reconciled_date'|'last_statement_date'|'last_statement_intact'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

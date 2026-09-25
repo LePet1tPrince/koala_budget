@@ -45,6 +45,19 @@ class TeamsAuthTest(TestCase):
         self.assertEqual(404, response.status_code)
         self._assertRequestHasTeam(response, self.yanks, None, None)
 
+    def test_team_view_nonexistent_team(self):
+        # A team-slug in the URL that doesn't exist at all (as opposed to one the
+        # user isn't a member of) is handled the same way: our friendly 404 page,
+        # not Django's raw technical 404 (which used to be raised straight out of
+        # the team-lookup middleware, before the request ever reached the view).
+        self._login(self.sox_admin)
+        response = self.client.get(reverse("single_team:manage_team", args=["does-not-exist"]))
+        self.assertEqual(404, response.status_code)
+        self.assertTemplateUsed(response, "404.html")
+        self.assertContains(response, "Shucks. We couldn't find that.", status_code=404)
+        request = response.wsgi_request
+        self.assertEqual(request.team, None)
+
     def test_team_admin_view(self):
         self._login(self.sox_admin)
         invite = self._create_invitation()

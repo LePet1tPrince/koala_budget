@@ -5,12 +5,20 @@ Handles nested journal entries with lines for double-entry bookkeeping.
 
 from decimal import Decimal
 
+from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import (
     Account,
     Payee,
+)
+from apps.reconciliation.services.guards import (
+    ReconciledLineError,
+    assert_date_change_allowed,
+    assert_entry_removable,
+    assert_line_mutable,
 )
 
 from .models import JournalEntry, JournalLine
@@ -121,6 +129,18 @@ class JournalEntrySerializer(serializers.ModelSerializer):
                 {"lines": f"Journal entry must balance. Total debits: {total_debits}, Total credits: {total_credits}"}
             )
 
+        # The nested line serializer is built once at class definition, before any
+        # request, so its `account` field cannot be narrowed to the book the way
+        # SimpleLineSerializer's is. Check it here instead: an entry may only ever
+        # touch accounts and a payee from the book in the URL.
+        book = getattr(self.context.get("request"), "book", None)
+        if book is not None:
+            payee = data.get("payee")
+            if payee is not None and payee.book_id != book.id:
+                raise serializers.ValidationError({"payee": "Unknown payee."})
+            if any(line["account"].book_id != book.id for line in lines if line.get("account")):
+                raise serializers.ValidationError({"lines": "Unknown account."})
+
         return data
 
     def create(self, validated_data):
@@ -129,13 +149,24 @@ class JournalEntrySerializer(serializers.ModelSerializer):
         journal_entry = JournalEntry.objects.create(**validated_data)
 
         for line_data in lines_data:
-            JournalLine.objects.create(journal_entry=journal_entry, team=journal_entry.team, **line_data)
+            JournalLine.objects.create(journal_entry=journal_entry, book=journal_entry.book, **line_data)
 
         return journal_entry
 
     def update(self, instance, validated_data):
         """Update journal entry and replace all lines."""
         lines_data = validated_data.pop("lines", None)
+
+        # Replacing the lines deletes and recreates them, which would drop
+        # `is_reconciled` from a line confirmed against a statement; re-dating
+        # past that statement would make it false.
+        try:
+            if lines_data is not None:
+                assert_entry_removable(instance, verb=gettext("replacing its lines"))
+            if "entry_date" in validated_data:
+                assert_date_change_allowed(instance, validated_data["entry_date"])
+        except ReconciledLineError as e:
+            raise serializers.ValidationError(str(e)) from None
 
         # Update journal entry fields
         for attr, value in validated_data.items():
@@ -149,7 +180,7 @@ class JournalEntrySerializer(serializers.ModelSerializer):
 
             # Create new lines
             for line_data in lines_data:
-                JournalLine.objects.create(journal_entry=instance, team=instance.team, **line_data)
+                JournalLine.objects.create(journal_entry=instance, book=instance.book, **line_data)
         elif "entry_date" in validated_data:
             # Re-save lines so their auto-linked budget follows the new month
             for line in instance.lines.all():
@@ -212,14 +243,26 @@ class SimpleLineSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(read_only=True)
 
     def __init__(self, *args, **kwargs):
-        """Initialize with team context for querysets."""
+        """Limit the account, category and payee choices to the current book."""
         super().__init__(*args, **kwargs)
-        # Get team from context
+        # The book comes from the request
         request = self.context.get("request")
-        if request and hasattr(request, "team"):
-            self.fields["account"].queryset = Account.for_team.all()
-            self.fields["category"].queryset = Account.for_team.all()
-            self.fields["payee"].queryset = Payee.for_team.all()
+        if request and getattr(request, "book", None):
+            self.fields["account"].queryset = Account.for_book.all()
+            self.fields["category"].queryset = Account.for_book.all()
+            self.fields["payee"].queryset = Payee.for_book.all()
+
+    def validate_category(self, value):
+        keep_ids = set()
+        if self.instance is not None:
+            sibling = self._get_sibling_line(self.instance)
+            if sibling is not None:
+                keep_ids.add(sibling.account_id)
+        try:
+            assert_category_allowed(value, keep_ids=keep_ids)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e)) from None
+        return value
 
     def validate(self, data):
         """Validate that exactly one of inflow or outflow is non-zero."""
@@ -266,7 +309,7 @@ class SimpleLineSerializer(serializers.Serializer):
     def create(self, validated_data):
         """Create a journal entry with two lines from simple line data."""
         request = self.context.get("request")
-        team = request.team
+        book = request.book
 
         account = validated_data["account"]
         category = validated_data["category"]
@@ -275,7 +318,7 @@ class SimpleLineSerializer(serializers.Serializer):
 
         # Create journal entry
         journal_entry = JournalEntry.objects.create(
-            team=team,
+            book=book,
             entry_date=validated_data["date"],
             description=validated_data["description"],
             payee=validated_data.get("payee"),
@@ -286,7 +329,7 @@ class SimpleLineSerializer(serializers.Serializer):
         # Create the main line (this account)
         main_line = JournalLine.objects.create(
             journal_entry=journal_entry,
-            team=team,
+            book=book,
             account=account,
             dr_amount=inflow,
             cr_amount=outflow,
@@ -298,7 +341,7 @@ class SimpleLineSerializer(serializers.Serializer):
         # Create the sibling line (category account) with opposite amounts
         JournalLine.objects.create(
             journal_entry=journal_entry,
-            team=team,
+            book=book,
             account=category,
             dr_amount=outflow,  # Opposite of main line
             cr_amount=inflow,  # Opposite of main line
@@ -330,6 +373,20 @@ class SimpleLineSerializer(serializers.Serializer):
             inflow = instance.dr_amount
             outflow = instance.cr_amount
 
+        # A reconciled line keeps its account, amount and statement period, unless
+        # this same request unreconciles it. The sibling is the other side of a
+        # transfer when both accounts have feeds, and carries its own flag.
+        try:
+            if validated_data.get("is_reconciled", instance.is_reconciled):
+                assert_line_mutable(instance, new_account=account, new_amount=inflow - outflow)
+                assert_date_change_allowed(journal_entry, validated_data.get("date"))
+            if sibling is not None:
+                assert_line_mutable(
+                    sibling, new_account=category or sibling.account, new_amount=outflow - inflow, own=False
+                )
+        except ReconciledLineError as e:
+            raise serializers.ValidationError(str(e)) from None
+
         # Update journal entry fields
         journal_entry.entry_date = validated_data.get("date", journal_entry.entry_date)
         journal_entry.description = validated_data.get("description", journal_entry.description)
@@ -357,7 +414,7 @@ class SimpleLineSerializer(serializers.Serializer):
             # If no sibling exists, create one
             JournalLine.objects.create(
                 journal_entry=journal_entry,
-                team=instance.team,
+                book=instance.book,
                 account=category,
                 dr_amount=outflow,
                 cr_amount=inflow,

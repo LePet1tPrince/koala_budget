@@ -19,7 +19,7 @@ from django.utils.translation import gettext as _
 
 from apps.web.templatetags.currency_tags import currency
 
-from .health import BALANCE_GAP, NO_TRANSACTIONS, STALE_ACCOUNT, UNCATEGORIZED, UNRECONCILED
+from .health import NO_TRANSACTIONS, STALE_ACCOUNT, UNCATEGORIZED, UNRECONCILED
 
 INCOME_DOWN_THRESHOLD = Decimal("0.10")  # 10%
 TOP_TRANSACTIONS_SHARE_THRESHOLD = Decimal("0.50")  # 50%
@@ -36,6 +36,7 @@ class Insight:
     url: str = ""  # where to act on it
     metric: Decimal | None = None
     delta: Decimal | None = None
+    lines: tuple = ()  # one plain sentence per account, for a card that covers several
 
 
 def _money(amount) -> str:
@@ -77,21 +78,15 @@ def _step1_health(review) -> list:
         ]
 
     out = []
+    no_transactions = []
+    uncategorized = []
+    reconciliation = []
     for flag in health["flags"]:
         account_name = flag["account"].name
         url = flag.get("url", "")
         kind = flag["kind"]
         if kind == NO_TRANSACTIONS:
-            out.append(
-                Insight(
-                    kind=kind,
-                    severity="bad",
-                    step=1,
-                    title=_("%(account)s has no transactions this month.") % {"account": account_name},
-                    body=_("Did an import get missed? Fix in Inbox."),
-                    url=url,
-                )
-            )
+            no_transactions.append(flag)
         elif kind == STALE_ACCOUNT:
             out.append(
                 Insight(
@@ -105,44 +100,70 @@ def _step1_health(review) -> list:
                 )
             )
         elif kind == UNCATEGORIZED:
-            out.append(
-                Insight(
-                    kind=kind,
-                    severity="warn",
-                    step=1,
-                    title=_("%(count)d uncategorized transaction(s) in %(account)s.")
-                    % {"count": flag["count"], "account": account_name},
-                    body=_("Fix in Inbox."),
-                    url=url,
-                    metric=Decimal(flag["count"]),
-                )
-            )
+            uncategorized.append(flag)
         elif kind == UNRECONCILED:
-            out.append(
-                Insight(
-                    kind=kind,
-                    severity="warn",
-                    step=1,
-                    title=_("%(count)d unreconciled transaction(s) in %(account)s.")
-                    % {"count": flag["count"], "account": account_name},
-                    body=_("The reconciled balance is off by %(gap)s. Fix in Inbox.") % {"gap": _money(flag["gap"])},
-                    url=url,
-                    delta=flag["gap"],
-                )
-            )
-        elif kind == BALANCE_GAP:
-            out.append(
-                Insight(
-                    kind=kind,
-                    severity="warn",
-                    step=1,
-                    title=_("%(account)s's balance doesn't match its reconciled balance.") % {"account": account_name},
-                    body=_("Off by %(gap)s.") % {"gap": _money(flag["gap"])},
-                    url=url,
-                    delta=flag["gap"],
-                )
-            )
+            reconciliation.append(flag)
+
+    if no_transactions:
+        out.insert(0, _no_transactions_card(no_transactions))
+    if uncategorized:
+        out.append(_uncategorized_card(uncategorized))
+    if reconciliation:
+        out.append(_reconciliation_card(reconciliation))
     return out
+
+
+def _no_transactions_card(flags) -> Insight:
+    """One card for every account with no transactions this month, a line per account."""
+    return Insight(
+        kind=NO_TRANSACTIONS,
+        severity="bad",
+        step=1,
+        title=_("%(accounts)d account(s) have no transactions this month.") % {"accounts": len(flags)},
+        body=_("Did an import get missed? Fix in Inbox."),
+        url=flags[0].get("url", ""),
+        metric=Decimal(len(flags)),
+        lines=tuple(f["account"].name for f in flags),
+    )
+
+
+def _uncategorized_card(flags) -> Insight:
+    """One card for every account with uncategorized transactions, a line per account."""
+    total = sum(f["count"] for f in flags)
+    return Insight(
+        kind=UNCATEGORIZED,
+        severity="warn",
+        step=1,
+        title=_("%(count)d uncategorized transaction(s) across %(accounts)d account(s).")
+        % {"count": total, "accounts": len(flags)},
+        body=_("Fix in Inbox."),
+        url=flags[0].get("url", ""),
+        metric=Decimal(total),
+        lines=tuple(
+            _("%(account)s: %(count)d uncategorized") % {"account": f["account"].name, "count": f["count"]}
+            for f in flags
+        ),
+    )
+
+
+def _reconciliation_card(flags) -> Insight:
+    """One card for every account with unreconciled transactions this month, a line per account."""
+    lines = tuple(
+        _("%(account)s: %(count)d unreconciled, off by %(gap)s")
+        % {"account": f["account"].name, "count": f["count"], "gap": _money(f["gap"])}
+        for f in flags
+    )
+    count = sum(f["count"] for f in flags)
+    return Insight(
+        kind="reconciliation",
+        severity="warn",
+        step=1,
+        title=_("%(accounts)d account(s) not fully reconciled.") % {"accounts": len(flags)},
+        body=_("%(count)d unreconciled transaction(s). Fix in Inbox.") % {"count": count},
+        url=flags[0].get("url", ""),
+        metric=Decimal(count),
+        lines=lines,
+    )
 
 
 # Step 2 -- the month at a glance -------------------------------------------
@@ -204,20 +225,10 @@ def _step3_income(review) -> list:
                 )
             )
 
+    # A stream that paid nothing this month is deliberately not flagged: irregular
+    # income (a side gig, a quarterly payout) skips months routinely.
     for row in baseline["streams"]:
-        if not row["amount"] and row["avg"] > 0:
-            out.append(
-                Insight(
-                    kind="stream_missing",
-                    severity="bad",
-                    step=3,
-                    title=_("No income from %(payee)s this month.") % {"payee": row["payee"]},
-                    body=_("It usually brings in about %(avg)s.") % {"avg": _money(row["avg"])},
-                    metric=row["amount"],
-                    delta=-row["avg"],
-                )
-            )
-        elif row["new"]:
+        if row["new"]:
             out.append(
                 Insight(
                     kind="stream_new",
@@ -314,18 +325,8 @@ def _step6_breakdown(review) -> list:
         {**category, "group": group["name"]} for group in review["budget"]["groups"] for category in group["categories"]
     ]
 
-    for row in rows:
-        if row["unbudgeted"] and row["spent"]:
-            out.append(
-                Insight(
-                    kind="unbudgeted_spend",
-                    severity="warn",
-                    step=6,
-                    title=_("%(category)s had spending but no budget.") % {"category": row["name"]},
-                    body=_("Spent %(spent)s with nothing assigned.") % {"spent": _money(row["spent"])},
-                    metric=row["spent"],
-                )
-            )
+    # Spending in a category with no budget is deliberately not flagged: the
+    # breakdown table already marks those rows "unbudgeted".
 
     if baseline is not None:
         cat_avg = baseline["cat_avg"]
@@ -400,6 +401,24 @@ def _step7_saving(review) -> list:
                 delta=Decimal(str(rate_delta)),
             )
         )
+
+    # Spending from a goal is planned spending paid from money set aside: shown,
+    # never flagged as overspending.
+    for spend in review.get("goal_spending", ()):
+        if spend["amount"] <= 0:
+            continue
+        if spend["months_funded"] > 1:
+            title = _("%(amount)s from %(goal)s — funded over %(months)d months.") % {
+                "amount": _money(spend["amount"]),
+                "goal": spend["name"],
+                "months": spend["months_funded"],
+            }
+        else:
+            title = _("%(amount)s spent from %(goal)s, money you'd set aside for it.") % {
+                "amount": _money(spend["amount"]),
+                "goal": spend["name"],
+            }
+        out.append(Insight(kind="goal_spending", severity="info", step=7, title=title, metric=spend["amount"]))
     return out
 
 
@@ -423,22 +442,6 @@ def _step8_net_worth(review) -> list:
         )
     )
 
-    series = net_worth["series"]
-    if len(series) > 1:
-        window_change = net_worth["now"]["net"] - series[0]["net"]
-        out.append(
-            Insight(
-                kind="net_worth_window",
-                severity="good" if window_change >= 0 else "bad",
-                step=8,
-                title=_("Net worth is %(direction)s %(amount)s since %(start)s.")
-                % {
-                    "direction": _("up") if window_change >= 0 else _("down"),
-                    "amount": _money(abs(window_change)),
-                    "start": series[0]["label"],
-                },
-                metric=net_worth["now"]["net"],
-                delta=window_change,
-            )
-        )
+    # The change over the comparison window is stated on the page itself, which
+    # follows the selected baseline -- an insight computed here could not.
     return out

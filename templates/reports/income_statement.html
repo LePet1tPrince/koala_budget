@@ -50,6 +50,14 @@
     --row-bg: color-mix(in oklab, var(--color-error) 10%, var(--color-base-100));
     background: var(--row-bg);
   }
+  #income-statement-scroll .row-goals {
+    --row-bg: color-mix(in oklab, var(--color-accent) 12%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+  #income-statement-scroll .row-subnet {
+    --row-bg: var(--color-base-100);
+    background: var(--row-bg);
+  }
   #income-statement-scroll .row-group {
     --row-bg: var(--color-base-200);
     background: var(--row-bg);
@@ -66,7 +74,7 @@
   <!-- Header: title, date range picker, and actions on one row -->
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
-      <a href="{% url 'reports:reports_home' request.team.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1">
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1" data-back-link>
         {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Back to Reports" %}
       </a>
@@ -95,7 +103,7 @@
           </ul>
         </div>
       </div>
-      <a href="{% url 'reports:export_income_statement' request.team.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
+      <a href="{% url 'reports:export_income_statement' request.team.slug request.book.slug %}?{{ request.GET.urlencode }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
         {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Export CSV" %}
       </a>
@@ -129,11 +137,21 @@
       </div>
       {% endif %}
     </div>
+    {% if report_data.goal_spending.items %}
+    <div class="stat py-3" data-testid="income-statement-goal-spending">
+      <div class="stat-figure text-accent hidden sm:block">{% icon "piggy-bank" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Goal spending" %}</div>
+      <div class="stat-value text-2xl">{{ report_data.goal_spending.total|currency }}</div>
+      <div class="stat-desc">
+        {% blocktranslate trimmed with net=report_data.net_after_goal_spending|currency %}paid from goals · {{ net }} net after{% endblocktranslate %}
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   <div x-data="{
-        tab: 'statement',
-        sec: { income: true, expenses: true },
+        tab: '{{ initial_tab }}',
+        sec: { income: true, expenses: true, goals: true },
         grp: { {% for group_data in report_data.income_groups %}g{{ group_data.group.pk }}: true, {% endfor %}{% for group_data in report_data.expense_groups %}g{{ group_data.group.pk }}: true{% if not forloop.last %}, {% endif %}{% endfor %} }
       }">
     <!-- Statement / Income Flow tabs -->
@@ -197,7 +215,7 @@
                 </tr>
                 {% for item in group_data.accounts %}
                 <tr x-show="sec.income && grp.g{{ group_data.group.pk }}" class="row-account">
-                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
+                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug request.book.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
                   {% if period %}{% for amount in item.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
@@ -236,7 +254,7 @@
                 </tr>
                 {% for item in group_data.accounts %}
                 <tr x-show="sec.expenses && grp.g{{ group_data.group.pk }}" class="row-account">
-                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
+                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug request.book.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.name }}</a></td>
                   {% if period %}{% for amount in item.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
@@ -250,7 +268,49 @@
                 {% endfor %}
               </tbody>
 
+              {% if report_data.goal_spending.items %}
+              <!-- Goal spending: planned, paid from goals -- below the operating net, like capital spending -->
+              <tbody data-testid="goal-spending-table">
+                <tr class="font-bold row-subnet border-t-2 border-base-300" data-testid="net-before-goal-spending">
+                  <td class="whitespace-nowrap">{% translate "Net before goal spending" %}</td>
+                  {% if period %}{% for amount in report_data.net_profit_per_period %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %} {% if amount < 0 %}text-error{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_profit < 0 %}text-error{% endif %}">{{ report_data.net_profit|currency }}</td>
+                </tr>
+                <tr class="cursor-pointer select-none row-goals font-bold" @click="sec.goals = !sec.goals">
+                  <td class="whitespace-nowrap">
+                    <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="sec.goals ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
+                    <span class="ml-1">{% translate "Goal spending" %}</span>
+                    <span class="font-normal text-xs text-base-content/70 ml-1">{% translate "planned, paid from goals" %}</span>
+                  </td>
+                  {% if period %}{% for amount in report_data.goal_spending.per_period %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap">{{ report_data.goal_spending.total|currency }}</td>
+                </tr>
+                {% for item in report_data.goal_spending.items %}
+                <tr x-show="sec.goals" class="row-account">
+                  <td class="pl-12 whitespace-nowrap"><a href="{% url 'reports:account_activity' request.team.slug request.book.slug item.account.pk %}?{{ request.GET.urlencode }}" class="link link-hover link-primary">{{ item.account.goal.name }}</a></td>
+                  {% if period %}{% for amount in item.per_period %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap">{{ item.amount|currency }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+              {% endif %}
+
               <tfoot>
+                {% if report_data.goal_spending.items %}
+                <tr class="font-bold text-sm text-base-content border-t-2 border-base-300" data-testid="net-after-goal-spending">
+                  <td class="whitespace-nowrap">{% translate "Net after goal spending" %}</td>
+                  {% if period %}{% for amount in report_data.net_after_goal_spending_per_period %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %} {% if amount < 0 %}text-error{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_after_goal_spending < 0 %}text-error{% endif %}">{{ report_data.net_after_goal_spending|currency }}</td>
+                </tr>
+                {% else %}
                 <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
                   <td class="whitespace-nowrap">{% translate "Net Profit" %}</td>
                   {% if period %}{% for amount in report_data.net_profit_per_period %}
@@ -258,6 +318,7 @@
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_profit < 0 %}text-error{% endif %}">{{ report_data.net_profit|currency }}</td>
                 </tr>
+                {% endif %}
               </tfoot>
             </table>
           </div>
@@ -282,7 +343,16 @@
     <div x-show="tab === 'trends'" style="display: none;">
       <div class="card bg-base-100 shadow-lg">
         <div class="card-body p-4">
-          <h2 class="card-title text-base">{% translate "Expenses by group" %}</h2>
+          <div class="flex flex-wrap justify-between items-center gap-2">
+            <h2 class="card-title text-base">{% translate "Expenses by group" %}</h2>
+            {% if has_goal_spending %}
+            <a href="?{{ goals_toggle_qs }}" class="label cursor-pointer gap-2 text-sm" data-testid="trends-goals-toggle"
+               role="switch" aria-checked="{% if include_goal_spending %}true{% else %}false{% endif %}">
+              <input type="checkbox" class="toggle toggle-sm pointer-events-none" tabindex="-1" aria-hidden="true" {% if include_goal_spending %}checked{% endif %}>
+              {% translate "Include goal spending" %}
+            </a>
+            {% endif %}
+          </div>
           <div class="w-full" style="height: 400px;">
             <canvas id="expense-trend-chart" class="w-full h-full"></canvas>
           </div>

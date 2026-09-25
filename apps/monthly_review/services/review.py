@@ -11,7 +11,7 @@ Returns rich Python objects (Decimal amounts, Account/Goal instances), same as
 page's `json_script` payload is the view's job, not this one's.
 """
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
@@ -21,13 +21,13 @@ from django.urls import reverse
 from django.utils.formats import date_format
 from django.utils.translation import gettext as _
 
-from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_LIABILITY
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import GoalAllocation
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.reports.services import ReportService
 
-from .baselines import MonthlyMatrix, build_baselines
+from .baselines import ALL_TIME, MonthlyMatrix, build_baselines
 from .budget import _month_bounds, _prev_month, budget_breakdown
 from .health import account_health
 
@@ -39,17 +39,29 @@ def _add_months(d: date, n: int) -> date:
 
 
 def _baseline_months_setting():
-    return tuple(getattr(settings, "MONTHLY_REVIEW_BASELINE_MONTHS", (1, 3, 6, 12)))
+    return tuple(getattr(settings, "MONTHLY_REVIEW_BASELINE_MONTHS", (1, 3, 6, 12, ALL_TIME)))
+
+
+def _window_start(month: date, baseline_months, first_month: date | None) -> date:
+    """
+    The first month the review loads: far enough back for the longest numeric
+    baseline, and back to the book's first activity when "all time" is offered.
+    """
+    numeric = [m for m in baseline_months if m != ALL_TIME]
+    start = _add_months(month, -max(numeric, default=0))
+    if ALL_TIME in baseline_months and first_month and first_month < start:
+        start = first_month
+    return start
 
 
 def _drill_limit():
     return getattr(settings, "MONTHLY_REVIEW_DRILL_LIMIT", 200)
 
 
-def _team_first_activity_month(team):
+def _book_first_activity_month(book):
     first_date = (
-        JournalEntry.objects.filter(team=team)
-        .exclude(status=JournalEntry.STATUS_VOID)
+        JournalEntry.objects.filter(book=book)
+        .filter(counted_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
         .first()
@@ -57,15 +69,15 @@ def _team_first_activity_month(team):
     return first_date.replace(day=1) if first_date else None
 
 
-def _stream_series(team, window_start, month_end):
+def _stream_series(book, window_start, month_end):
     """Income activity grouped by payee (falling back to the account name)."""
     lines = (
         JournalLine.objects.filter(
-            team=team,
+            book=book,
             account__account_group__account_type=ACCOUNT_TYPE_INCOME,
             journal_entry__entry_date__range=(window_start, month_end),
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("journal_entry__payee", "account")
         .annotate(month=TruncMonth("journal_entry__entry_date"))
     )
@@ -83,9 +95,9 @@ def _stream_series(team, window_start, month_end):
     return streams
 
 
-def _goal_series(team, window_start, month_end):
+def _goal_series(book, window_start, month_end):
     rows = (
-        GoalAllocation.objects.filter(team=team, goal__is_archived=False, month__range=(window_start, month_end))
+        GoalAllocation.objects.filter(book=book, goal__is_archived=False, month__range=(window_start, month_end))
         .values("goal_id", "goal__name", "month")
         .annotate(total=Sum("amount"))
     )
@@ -105,7 +117,7 @@ def _saved_by_month(goals: dict, months: list) -> dict:
     }
 
 
-def _build_matrix(team, window_start, month, month_end, report_service) -> MonthlyMatrix:
+def _build_matrix(book, window_start, month, month_end, report_service, first_month) -> MonthlyMatrix:
     data = report_service.get_income_statement_data(window_start, month_end, period="month")
     months = data["periods"]
 
@@ -124,11 +136,11 @@ def _build_matrix(team, window_start, month, month_end, report_service) -> Month
             "by_month": dict(zip(months, item["per_period"], strict=True)),
         }
 
-    goals = _goal_series(team, window_start, month_end)
+    goals = _goal_series(book, window_start, month_end)
     saved = _saved_by_month(goals, months)
     savings_rate = {m: (float(saved[m] / income[m] * 100) if income[m] else 0.0) for m in months}
 
-    streams = _stream_series(team, window_start, month_end)
+    streams = _stream_series(book, window_start, month_end)
 
     return MonthlyMatrix(
         months=months,
@@ -140,7 +152,7 @@ def _build_matrix(team, window_start, month, month_end, report_service) -> Month
         categories=categories,
         streams=streams,
         goals=goals,
-        first_month=_team_first_activity_month(team),
+        first_month=first_month,
     )
 
 
@@ -160,20 +172,20 @@ def _contra_account_name(line) -> str:
     return other.account.name if other else ""
 
 
-def _biggest_transactions(team, month, month_end, limit=25) -> list:
+def _biggest_transactions(book, month, month_end, limit=25) -> list:
     # There is no per-entry detail page in the app (transactions are worked
     # through the Transactions list, not a standalone URL per entry), so every
     # row links there rather than to a page that doesn't exist.
-    transactions_url = reverse("journal:transactions_home", args=[team.slug])
+    transactions_url = reverse("journal:transactions_home", args=book.url_args)
 
     lines = (
         JournalLine.objects.filter(
-            team=team,
+            book=book,
             account__account_group__account_type=ACCOUNT_TYPE_EXPENSE,
             journal_entry__entry_date__range=(month, month_end),
             dr_amount__gt=0,
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("journal_entry__payee", "account")
         .prefetch_related("journal_entry__lines__account")
         .order_by("-dr_amount")[:limit]
@@ -193,14 +205,14 @@ def _biggest_transactions(team, month, month_end, limit=25) -> list:
     return rows
 
 
-def _category_transactions(team, month, month_end, limit=200) -> dict:
+def _category_transactions(book, month, month_end, limit=200) -> dict:
     lines = (
         JournalLine.objects.filter(
-            team=team,
+            book=book,
             account__account_group__account_type__in=(ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE),
             journal_entry__entry_date__range=(month, month_end),
         )
-        .exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+        .filter(counted_entries("journal_entry__"))
         .select_related("journal_entry__payee", "account", "account__account_group")
         .prefetch_related("journal_entry__lines__account")
         .order_by("account_id", "journal_entry__entry_date", "pk")
@@ -226,14 +238,28 @@ def _category_transactions(team, month, month_end, limit=200) -> dict:
     return cat_txns
 
 
-def _balance_by_account(report_service, window_start, month_end) -> list:
-    end_data = report_service.get_balance_sheet_data(month_end)
-    start_data = report_service.get_balance_sheet_data(window_start - timedelta(days=1))
-    start_by_id = {}
-    for section in ("assets", "liabilities", "equity"):
-        for item in start_data[section]:
-            start_by_id[item["account"].pk] = item["amount"]
+def _balance_by_account(report_service, month_end, baselines) -> list:
+    """
+    Each non-system balance-sheet account's balance at month end, plus its change
+    per baseline: measured from the end of the baseline window's first month, the
+    same point the net worth chart starts from when that baseline is selected.
+    """
 
+    def amounts(as_of):
+        data = report_service.get_balance_sheet_data(as_of)
+        return {
+            item["account"].pk: item["amount"]
+            for section in ("assets", "liabilities", "equity")
+            for item in data[section]
+        }
+
+    start_by_baseline = {}
+    for baseline_id, baseline in baselines.items():
+        first_month = date.fromisoformat(baseline["keys"][0])
+        start_by_baseline[baseline_id] = _month_bounds(first_month)[1]
+    start_amounts = {as_of: amounts(as_of) for as_of in set(start_by_baseline.values())}
+
+    end_data = report_service.get_balance_sheet_data(month_end)
     rows = []
     for section, type_label in (("assets", "asset"), ("liabilities", "liability"), ("equity", "equity")):
         for item in end_data[section]:
@@ -245,13 +271,84 @@ def _balance_by_account(report_service, window_start, month_end) -> list:
                     "name": account.name,
                     "type": type_label,
                     "balance": item["amount"],
-                    "change": item["amount"] - start_by_id.get(account.pk, Decimal("0")),
+                    "changes": {
+                        baseline_id: item["amount"] - start_amounts[as_of].get(account.pk, Decimal("0"))
+                        for baseline_id, as_of in start_by_baseline.items()
+                    },
                 }
             )
     return rows
 
 
-def _net_worth_section(team, window_start, month, month_end, report_service) -> dict:
+CASH_BAND = "cash"
+
+
+def _net_worth_bands(book, window_start, month_end, month_keys) -> list:
+    """
+    Month-end net worth split into bands for the composition chart, each value
+    signed as its contribution to net worth (dr - cr: assets positive,
+    liabilities negative) and aligned with `month_keys`:
+
+    - one CASH_BAND for every account on a bank feed, asset *and* liability --
+      bank accounts net of credit cards, so everyday card debt reads as money
+      spent rather than as a negative band of its own;
+    - one band per account group for the remaining assets and liabilities
+      (investments, a mortgage, ...), typed "asset" or "liability".
+
+    Bands that are zero throughout are dropped. Whether the cash band dips below
+    zero is decided on the page, over the months the selected baseline shows.
+    """
+    deltas = (
+        JournalLine.objects.filter(
+            book=book,
+            journal_entry__entry_date__lte=month_end,
+            account__account_group__account_type__in=(ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY),
+        )
+        .filter(counted_entries("journal_entry__"))
+        .annotate(month=TruncMonth("journal_entry__entry_date"))
+        .values(
+            "month",
+            "account__has_feed",
+            "account__account_group_id",
+            "account__account_group__name",
+            "account__account_group__account_type",
+        )
+        .annotate(delta=Sum("dr_amount") - Sum("cr_amount"))
+    )
+
+    months = [date.fromisoformat(key) for key in month_keys]
+    bands = {}  # key -> {"bucket", "type", "deltas": {month: Decimal}}
+    for row in deltas:
+        if row["account__has_feed"]:
+            key, bucket, band_type = CASH_BAND, _("Bank accounts & credit cards"), CASH_BAND
+        else:
+            key = row["account__account_group_id"]
+            bucket, band_type = row["account__account_group__name"], row["account__account_group__account_type"]
+        band = bands.setdefault(key, {"bucket": bucket, "type": band_type, "deltas": {}})
+        month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
+        band["deltas"][month] = band["deltas"].get(month, Decimal("0")) + row["delta"]
+
+    out = []
+    for band in bands.values():
+        running = sum((amount for m, amount in band["deltas"].items() if months and m < months[0]), Decimal("0"))
+        values = []
+        for m in months:
+            running += band["deltas"].get(m, Decimal("0"))
+            values.append(float(running))
+        if any(values):
+            out.append({"bucket": band["bucket"], "type": band["type"], "values": values})
+
+    # Cash at the bottom, then other assets (largest first), then liabilities (largest debt nearest zero).
+    order = {CASH_BAND: 0, ACCOUNT_TYPE_ASSET: 1, ACCOUNT_TYPE_LIABILITY: 2}
+    out.sort(key=lambda b: (order[b["type"]], -abs(b["values"][-1]) if b["values"] else 0))
+    return out
+
+
+def _net_worth_section(book, window_start, month, month_end, report_service, baselines) -> dict:
+    """
+    Month-end net worth from `window_start` through the reviewed month. The page
+    shows the slice matching the selected baseline (its months plus this one).
+    """
     trend = report_service.get_net_worth_trend_data_by_date_range(window_start, month_end)
     series = [
         {
@@ -264,11 +361,7 @@ def _net_worth_section(team, window_start, month, month_end, report_service) -> 
         for point in trend
     ]
 
-    composition = report_service.get_balance_composition_data(window_start, month_end)
-    stack = [
-        {"bucket": group["name"], "values": group["values"]}
-        for group in (*composition["asset_groups"], *composition["liability_groups"])
-    ]
+    stack = _net_worth_bands(book, window_start, month_end, [point["key"] for point in series])
 
     now_data = report_service.get_balance_sheet_data(month_end)
     prev_month_end = _month_bounds(_prev_month(month))[1]
@@ -287,30 +380,47 @@ def _net_worth_section(team, window_start, month, month_end, report_service) -> 
             "assets": prev_data["total_assets"],
             "liabilities": prev_data["total_liabilities"],
         },
-        "by_account": _balance_by_account(report_service, window_start, month_end),
+        "by_account": _balance_by_account(report_service, month_end, baselines),
     }
 
 
-def build_review(team, month: date) -> dict:
+def _goal_spending(book, month: date) -> list:
+    """
+    What was spent from goals this month: planned spending paid from money set
+    aside, never overspending. Each: name, amount, months_funded (months with a
+    positive allocation up to this one).
+    """
+    from apps.budget.models import Goal, GoalAllocation
+
+    rows = []
+    for goal in Goal.objects.filter(book=book).with_progress(month).exclude(spent_this_month=0):
+        months_funded = GoalAllocation.objects.filter(goal=goal, month__lte=month, amount__gt=0).count()
+        rows.append({"name": goal.name, "amount": goal.spent_this_month, "months_funded": months_funded})
+    rows.sort(key=lambda r: r["amount"], reverse=True)
+    return rows
+
+
+def build_review(book, month: date) -> dict:
     month = month.replace(day=1)
     month_start, month_end = _month_bounds(month)
     baseline_months = _baseline_months_setting()
-    window_start = _add_months(month, -max(baseline_months))
+    first_month = _book_first_activity_month(book)
+    window_start = _window_start(month, baseline_months, first_month)
 
-    report_service = ReportService(team)
-    matrix = _build_matrix(team, window_start, month, month_end, report_service)
+    report_service = ReportService(book)
+    matrix = _build_matrix(book, window_start, month, month_end, report_service, first_month)
     baselines, baseline_order, default_baseline = build_baselines(matrix, month, baseline_months)
 
     transaction_count = BankTransaction.objects.filter(
-        team=team, is_archived=False, posted_date__range=(month_start, month_end)
+        book=book, is_archived=False, posted_date__range=(month_start, month_end)
     ).count()
 
-    health = account_health(team, month)
-    inbox_url = reverse("bank_feed:bank_feed_home", args=[team.slug])
+    health = account_health(book, month)
+    inbox_url = reverse("bank_feed:bank_feed_home", args=book.url_args)
     for flag in health["flags"]:
         # `health["accounts"][i]["flags"]` holds the same dict objects (not
         # copies), so this also covers the per-account view of the flags.
-        flag["url"] = inbox_url
+        flag.setdefault("url", inbox_url)
 
     review = {
         "month": month.isoformat(),
@@ -322,10 +432,11 @@ def build_review(team, month: date) -> dict:
         "baselines": baselines,
         "baseline_order": baseline_order,
         "default_baseline": default_baseline,
-        "budget": budget_breakdown(team, month),
-        "biggest": _biggest_transactions(team, month_start, month_end, limit=25),
-        "cat_txns": _category_transactions(team, month_start, month_end, limit=_drill_limit()),
-        "net_worth": _net_worth_section(team, window_start, month, month_end, report_service),
+        "budget": budget_breakdown(book, month),
+        "biggest": _biggest_transactions(book, month_start, month_end, limit=25),
+        "cat_txns": _category_transactions(book, month_start, month_end, limit=_drill_limit()),
+        "net_worth": _net_worth_section(book, window_start, month, month_end, report_service, baselines),
+        "goal_spending": _goal_spending(book, month),
         "notes": [
             _(
                 '"Saved" is the amount assigned to your savings goals this month -- it '

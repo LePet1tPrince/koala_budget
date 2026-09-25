@@ -19,8 +19,8 @@ from apps.accounts.models import (
     AccountGroup,
 )
 from apps.bank_feed.models import BankTransaction
+from apps.books.context import current_book
 from apps.journal.models import JournalEntry
-from apps.teams.context import current_team
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -32,28 +32,29 @@ class ManualTransactionCreateTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Checking", account_group=cls.asset_group, has_feed=True
         )
-        cls.expense_category = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.expense_category = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
 
     def setUp(self):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
     def _create(self, body):
-        with current_team(self.team):
+        with current_book(self.book):
             return self.client.post(
-                f"/a/{self.team.slug}/bankfeed/api/feed/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/",
                 body,
                 format="json",
             )
@@ -144,28 +145,29 @@ class ManualTransactionUpdateTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="testuser", password="pass")
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
 
         cls.asset_group = AccountGroup.objects.create(
-            team=cls.team, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
+            book=cls.book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
         )
         cls.expense_group = AccountGroup.objects.create(
-            team=cls.team, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+            book=cls.book, name="Expenses", account_type=ACCOUNT_TYPE_EXPENSE
         )
         cls.bank_account = Account.objects.create(
-            team=cls.team, name="Checking", account_group=cls.asset_group, has_feed=True
+            book=cls.book, name="Checking", account_group=cls.asset_group, has_feed=True
         )
-        cls.expense_category = Account.objects.create(team=cls.team, name="Groceries", account_group=cls.expense_group)
+        cls.expense_category = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.expense_group)
 
     def setUp(self):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
     def _update(self, tx_id, body):
-        with current_team(self.team):
+        with current_book(self.book):
             return self.client.put(
-                f"/a/{self.team.slug}/bankfeed/api/feed/{tx_id}/",
+                f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/{tx_id}/",
                 body,
                 format="json",
             )
@@ -173,7 +175,7 @@ class ManualTransactionUpdateTest(TestCase):
     def test_clearing_category_decategorizes(self):
         """Clearing the category on a categorized transaction removes its journal entry."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date(2026, 1, 10),
             description="Groceries",
@@ -181,7 +183,7 @@ class ManualTransactionUpdateTest(TestCase):
             source=BankTransaction.SOURCE_MANUAL,
         )
         entry = JournalEntry.objects.create(
-            team=self.team,
+            book=self.book,
             entry_date=bank_tx.posted_date,
             description="Groceries",
             source=JournalEntry.SOURCE_MANUAL,
@@ -191,14 +193,14 @@ class ManualTransactionUpdateTest(TestCase):
 
         JournalLine.objects.create(
             journal_entry=entry,
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             dr_amount=Decimal("0"),
             cr_amount=Decimal("50.00"),
         )
         JournalLine.objects.create(
             journal_entry=entry,
-            team=self.team,
+            book=self.book,
             account=self.expense_category,
             dr_amount=Decimal("50.00"),
             cr_amount=Decimal("0"),
@@ -224,7 +226,7 @@ class ManualTransactionUpdateTest(TestCase):
     def test_editing_uncategorized_transaction_stays_uncategorized(self):
         """Editing fields on an uncategorized transaction without a category keeps it uncategorized."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date(2026, 1, 10),
             description="Pending",
@@ -252,7 +254,7 @@ class ManualTransactionUpdateTest(TestCase):
     def test_adding_category_to_uncategorized_creates_entry(self):
         """Setting a category on an uncategorized transaction creates a journal entry."""
         bank_tx = BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.bank_account,
             posted_date=date(2026, 1, 10),
             description="Groceries",

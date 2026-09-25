@@ -11,19 +11,19 @@ from .models import PlaidAccount, PlaidItem, PlaidTransaction
 class PlaidItemAdmin(admin.ModelAdmin):
     """Admin for PlaidItem model."""
 
-    list_display = ["institution_name", "plaid_item_id", "is_archived", "team", "created_at"]
-    list_filter = ["is_archived", "team", "created_at"]
+    list_display = ["institution_name", "plaid_item_id", "is_archived", "book", "created_at"]
+    list_filter = ["is_archived", "book", "created_at"]
     search_fields = ["institution_name", "plaid_item_id"]
     ordering = ["-created_at"]
     readonly_fields = ["plaid_item_id", "created_at", "updated_at"]
-    autocomplete_fields = ["team"]
+    autocomplete_fields = ["book"]
     fields = [
         "plaid_item_id",
         "institution_name",
         "access_token",
         "cursor",
         "is_archived",
-        "team",
+        "book",
         "created_at",
         "updated_at",
     ]
@@ -33,12 +33,12 @@ class PlaidItemAdmin(admin.ModelAdmin):
 class PlaidAccountAdmin(admin.ModelAdmin):
     """Admin for PlaidAccount model."""
 
-    list_display = ["name", "mask", "type", "subtype", "account", "item", "team"]
-    list_filter = ["type", "subtype", "team", "created_at"]
+    list_display = ["name", "mask", "type", "subtype", "account", "item", "book"]
+    list_filter = ["type", "subtype", "book", "created_at"]
     search_fields = ["name", "plaid_account_id", "mask"]
     ordering = ["name"]
     readonly_fields = ["plaid_account_id", "created_at", "updated_at"]
-    autocomplete_fields = ["item", "account", "team"]
+    autocomplete_fields = ["item", "account", "book"]
     fields = [
         "plaid_account_id",
         "item",
@@ -47,7 +47,7 @@ class PlaidAccountAdmin(admin.ModelAdmin):
         "mask",
         "type",
         "subtype",
-        "team",
+        "book",
         "created_at",
         "updated_at",
     ]
@@ -64,13 +64,13 @@ class PlaidTransactionAdmin(admin.ModelAdmin):
         "plaid_account",
         "pending",
         "bank_transaction__journal_entry",
-        "team",
+        "book",
     ]
-    list_filter = ["pending", "bank_transaction__posted_date", "team", "plaid_account"]
+    list_filter = ["pending", "bank_transaction__posted_date", "book", "plaid_account"]
     search_fields = ["bank_transaction__description", "bank_transaction__merchant_name", "plaid_transaction_id"]
     ordering = ["-bank_transaction__posted_date", "-created_at"]
     readonly_fields = ["plaid_transaction_id", "created_at", "updated_at"]
-    autocomplete_fields = ["plaid_account", "team"]
+    autocomplete_fields = ["plaid_account", "book"]
     fields = [
         "plaid_transaction_id",
         "plaid_account",
@@ -88,7 +88,7 @@ class PlaidTransactionAdmin(admin.ModelAdmin):
         "transaction_type",
         "location",
         "merchant_metadata",
-        "team",
+        "book",
         "created_at",
         "updated_at",
     ]

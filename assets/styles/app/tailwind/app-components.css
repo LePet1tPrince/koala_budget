@@ -76,6 +76,34 @@
   @apply pl-9;
 }
 
+/*
+  A nav item with a submenu: link + chevron toggle share one row, and the row
+  (not either child) carries the hover and active shading so they read as one.
+*/
+.side-row {
+  @apply relative flex items-center rounded-field transition-colors hover:bg-base-300/45;
+}
+
+.side-row > .side-link,
+.side-row > .side-link:hover {
+  @apply bg-transparent;
+}
+
+.side-row:has(> .side-link-active),
+.side-row:has(> .side-link-active):hover {
+  @apply bg-primary/10;
+}
+
+.side-link-toggle {
+  @apply flex shrink-0 items-center justify-center self-stretch rounded-field px-2 text-base-content/45
+         transition-colors hover:text-base-content;
+}
+
+/* Institution heading inside the Inbox submenu. */
+.side-sublabel {
+  @apply mt-1 pl-9 pr-3 pt-1 text-[0.6875rem] font-medium text-base-content/70 truncate;
+}
+
 .side-section {
   @apply mt-5 mb-1 px-3 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
 }
@@ -102,6 +130,53 @@
 */
 .table-quiet tbody tr:hover > * {
   @apply bg-base-200/60;
+}
+
+/*
+  YNAB import: pick-from-a-list names (account groups, income accounts). A
+  `.chip-select` is a row's choice, a button that opens the list; a `.name-chip`
+  is one entry in the list at the top of the screen, carrying its usage count.
+*/
+.chip-select {
+  @apply inline-flex h-8 max-w-56 items-center gap-1.5 rounded-full border border-base-300 bg-base-100 px-3 text-sm;
+}
+
+.chip-select:hover,
+.chip-select[aria-expanded="true"] {
+  @apply bg-base-200;
+}
+
+.chip-select:focus-visible {
+  @apply outline-2 outline-offset-2 outline-primary;
+}
+
+.name-chip {
+  @apply inline-flex h-8 max-w-64 items-center gap-2 rounded-full border border-base-300 bg-base-200 px-3 text-sm;
+}
+
+.name-chip.is-unused {
+  @apply border-dashed bg-transparent text-base-content/70;
+}
+
+/*
+  Full-screen takeover pages (`templates/web/takeover_base.html`): the new-book
+  form and the YNAB import. The title bar and the content share one column, so
+  the close button lines up with the right edge of what it closes.
+*/
+.takeover {
+  @apply flex min-h-screen flex-col;
+}
+
+.takeover-column {
+  @apply mx-auto w-full px-4 sm:px-6;
+}
+
+.takeover-wide .takeover-column {
+  @apply max-w-screen-2xl;
+}
+
+.takeover-narrow .takeover-column {
+  @apply max-w-xl;
 }
 
 /*
@@ -540,4 +615,205 @@
   #budget-swap.is-swapping {
     transition: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Unassigned pill (docs/unassigned-plan.md §3): the money with no job yet, on
+   every app page. The state reads from colour *and* wording — the label itself
+   flips to "Over-assigned" — so it never depends on spotting a minus sign.
+   --------------------------------------------------------------------------- */
+.unassigned-pill {
+  --pill-ink: var(--color-base-content);
+  --pill-tint: var(--color-base-100);
+  --pill-edge: var(--color-base-300);
+  @apply relative flex flex-col gap-0.5 rounded-box border px-3 py-2.5;
+  background: var(--pill-tint);
+  border-color: var(--pill-edge);
+  color: var(--pill-ink);
+}
+
+.unassigned-pill[data-state='positive'] {
+  --pill-ink: var(--color-success);
+  --pill-tint: color-mix(in oklab, var(--color-success) 9%, var(--color-base-100));
+  --pill-edge: color-mix(in oklab, var(--color-success) 45%, var(--color-base-100));
+}
+
+.unassigned-pill[data-state='negative'] {
+  --pill-ink: var(--color-error);
+  --pill-tint: color-mix(in oklab, var(--color-error) 10%, var(--color-base-100));
+  --pill-edge: var(--color-error);
+}
+
+.unassigned-pill-main {
+  @apply flex flex-col rounded-field focus-visible:outline-2 focus-visible:outline-offset-2;
+  outline-color: var(--pill-ink);
+}
+
+.unassigned-pill-label {
+  @apply text-[11px] font-semibold uppercase;
+  letter-spacing: 0.07em;
+}
+
+.unassigned-pill-value {
+  @apply font-mono text-xl font-semibold leading-tight;
+}
+
+.unassigned-pill-main:hover .unassigned-pill-value {
+  @apply underline decoration-1 underline-offset-4;
+}
+
+.unassigned-pill-hint {
+  @apply flex items-baseline justify-between gap-2 text-xs;
+}
+
+.unassigned-pill-hint > span {
+  @apply opacity-90;
+}
+
+.unassigned-pill-action {
+  @apply font-semibold underline-offset-2 hover:underline;
+}
+
+/* Mobile top bar: the figure only, on one line. */
+.unassigned-pill-compact {
+  @apply flex-row items-center gap-2 px-2.5 py-1;
+}
+
+.unassigned-pill-compact .unassigned-pill-main {
+  @apply flex-row items-baseline gap-2;
+}
+
+.unassigned-pill-compact .unassigned-pill-value {
+  @apply text-sm;
+}
+
+.unassigned-pill-compact .unassigned-pill-label {
+  @apply whitespace-nowrap;
+}
+
+/* The ripple: how much the last action moved Unassigned. */
+.unassigned-delta {
+  @apply pointer-events-none absolute right-2 top-2 rounded-full px-2 py-0.5 font-mono text-xs font-semibold;
+  animation: unassigned-delta 4s ease-out forwards;
+}
+
+.unassigned-pill-compact .unassigned-delta {
+  @apply static;
+}
+
+.unassigned-delta[data-direction='up'] {
+  @apply bg-success/15 text-success;
+}
+
+.unassigned-delta[data-direction='down'] {
+  @apply bg-error/15 text-error;
+}
+
+@keyframes unassigned-delta {
+  0% { opacity: 0; transform: translateY(-4px); }
+  8%, 80% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+
+.unassigned-pill.is-changed .unassigned-pill-value {
+  animation: budget-cell-flash 900ms ease-out;
+  border-radius: 0.25rem;
+}
+
+/* Dollar Map allocation bar. Segments are server-sized; the overshoot band marks
+   claims that reach past what you have. */
+.dollar-bar {
+  @apply relative flex h-14 overflow-hidden rounded-box border border-base-300 bg-base-200;
+}
+
+.dollar-bar-seg {
+  @apply flex min-w-0 items-end px-2 pb-1.5 text-xs font-semibold;
+}
+
+.dollar-bar-seg > span {
+  @apply truncate;
+}
+
+.dollar-bar-seg[data-key='goals'] {
+  background: var(--color-accent);
+  color: var(--color-accent-content);
+}
+
+.dollar-bar-seg[data-key='envelopes'] {
+  background: var(--color-info);
+  color: var(--color-info-content);
+}
+
+.dollar-bar-seg[data-key='unassigned'] {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--color-success) 16%, var(--color-base-100)) 0 6px,
+    var(--color-base-100) 6px 12px
+  );
+  box-shadow: inset 0 0 0 2px var(--color-success);
+  color: var(--color-success);
+}
+
+.dollar-bar-over {
+  @apply pointer-events-none absolute inset-y-0;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--color-error) 45%, transparent) 0 2px,
+    transparent 2px 7px
+  );
+  border-left: 2px dashed var(--color-error);
+}
+
+.dollar-bar-marker {
+  @apply pointer-events-none absolute top-0 h-3 border-l-2 border-base-content;
+}
+
+.dollar-bar-marker-label {
+  @apply absolute top-3.5 -translate-x-1/2 whitespace-nowrap text-xs text-base-content/70;
+}
+
+.dollar-bar-marker-label.is-end {
+  @apply -translate-x-full;
+}
+
+.dollar-bar-marker-label.is-start {
+  @apply translate-x-0;
+}
+
+/* "with income due" sits on its own row so it never collides with the net-worth
+   label on a narrow bar. */
+.dollar-bar-marker.is-due {
+  @apply h-8 border-dashed;
+}
+
+.dollar-bar-marker-label.is-due {
+  @apply top-8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unassigned-delta {
+    animation: none;
+  }
+
+  .unassigned-pill.is-changed .unassigned-pill-value {
+    animation: none;
+  }
+}
+
+/*
+  Chart-of-accounts lists (Groups, Payees, Institutions): one surface with
+  hairline dividers, each row a single link to the item's page -- no per-row
+  Edit buttons; editing lives on the item's page.
+*/
+.manage-list {
+  @apply bg-base-100 border border-base-300 rounded-box divide-y divide-base-300 overflow-hidden;
+}
+
+.manage-row {
+  @apply flex items-center gap-4 px-4 py-3 transition-colors outline-none
+    hover:bg-base-200/60 focus-visible:bg-base-200/60;
+}
+
+.manage-heading {
+  @apply mb-2 mt-6 first:mt-0 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
 }

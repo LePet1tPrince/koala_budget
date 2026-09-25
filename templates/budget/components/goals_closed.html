@@ -1,0 +1,41 @@
+{% load i18n %}
+{% load currency_tags %}
+{% comment %}
+Closed goals, whatever the page style: finished with, their history kept.
+{% endcomment %}
+{% if goal_items %}
+  <div class="app-surface overflow-x-auto" data-testid="goals-closed-list">
+    <table class="table table-sm table-quiet">
+      <thead>
+        <tr>
+          <th>{% translate "Goal" %}</th>
+          <th>{% translate "Closed" %}</th>
+          <th class="text-right">{% translate "Allocated" %}</th>
+          <th class="text-right">{% translate "Spent" %}</th>
+          <th class="text-right">{% translate "Left" %}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in goal_items %}
+          <tr data-testid="closed-goal-row">
+            <td><a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="link link-hover font-medium">{{ item.goal.name }}</a></td>
+            <td class="text-base-content/70">{{ item.goal.closed_at|date:"M j, Y" }}</td>
+            <td class="text-right money">{{ item.saved|currency }}</td>
+            <td class="text-right money">{{ item.spent|currency }}</td>
+            <td class="text-right money {% if item.left < 0 %}text-error{% endif %}">{{ item.left|currency }}</td>
+            <td class="text-right">
+              {% if item.spending_url and item.spent %}
+                <a href="{{ item.spending_url }}" class="link link-primary text-sm">{% translate "Spending" %}</a>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="app-surface p-10 text-center text-base-content/70" data-testid="goals-closed-empty">
+    {% translate "No closed goals. Close a goal once you're done with it: anything left goes back to your unassigned money." %}
+  </div>
+{% endif %}

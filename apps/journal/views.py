@@ -15,13 +15,16 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import Account, Payee
 from apps.accounts.serializers import PayeeSerializer, SimpleAccountSerializer
 from apps.audit.models import AuditEvent, AuditLog
 from apps.audit.serializers import AuditLogSerializer
 from apps.audit.utils import log_event
-from apps.teams.decorators import login_and_team_required
-from apps.teams.permissions import TeamModelAccessPermissions
+from apps.books.decorators import login_and_book_required
+from apps.books.helpers import book_display_name
+from apps.books.permissions import BookModelAccessPermissions
+from apps.reconciliation.services.guards import ReconciledLineError, assert_entry_voidable, assert_line_mutable
 
 from .filters import (
     COLUMNS,
@@ -30,7 +33,7 @@ from .filters import (
     apply_ordering,
     facet_values,
 )
-from .models import JournalEntry, JournalLine
+from .models import JournalEntry, JournalLine, counted_entries
 from .serializers import (
     JournalEntrySerializer,
     SimpleLineSerializer,
@@ -77,19 +80,19 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = JournalEntrySerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     queryset = JournalEntry.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
-        """Get journal entries for the current team with optimized queries."""
-        return JournalEntry.for_team.select_related("payee").prefetch_related("lines__account")
+        """Get journal entries for the current book with optimized queries."""
+        return JournalEntry.for_book.select_related("payee").prefetch_related("lines__account")
 
     def perform_create(self, serializer):
-        """Create journal entry with team context."""
-        serializer.save(team=self.request.team)
+        """Create journal entry in the current book."""
+        serializer.save(book=self.request.book)
 
     @action(detail=True, methods=["post"])
-    def post_entry(self, request, pk=None, team_slug=None):
+    def post_entry(self, request, pk=None, team_slug=None, book_slug=None):
         """
         Post a draft journal entry (change status to posted).
         Only draft entries can be posted.
@@ -115,7 +118,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
-    def void_entry(self, request, pk=None, team_slug=None):
+    def void_entry(self, request, pk=None, team_slug=None, book_slug=None):
         """
         Void a posted journal entry.
         Only posted entries can be voided.
@@ -128,6 +131,12 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Voiding drops every line out of every balance, reconciled ones included.
+        try:
+            assert_entry_voidable(journal_entry)
+        except ReconciledLineError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         journal_entry.status = JournalEntry.STATUS_VOID
         journal_entry.save()
 
@@ -136,7 +145,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 
     @extend_schema(operation_id="journal_entries_audit", tags=["journal"], responses=AuditLogSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="audit")
-    def audit(self, request, team_slug=None, pk=None):
+    def audit(self, request, team_slug=None, book_slug=None, pk=None):
         """Return the row-level audit history for this journal entry and its lines."""
         entry = self.get_object()
         logs = AuditLog.objects.filter(journal_entry_id=entry.pk).select_related("user", "event").order_by("-timestamp")
@@ -191,12 +200,12 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = SimpleLineSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     queryset = JournalLine.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
         """
-        Get journal lines for the current team.
+        Get journal lines for the current book.
         Optimized with select_related and prefetch_related for performance.
 
         Supports filtering by:
@@ -205,7 +214,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         """
         qs = (
             JournalLine.objects.filter(
-                team=self.request.team,
+                book=self.request.book,
             )
             .select_related(
                 "account",
@@ -215,6 +224,9 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
             )
             .prefetch_related("journal_entry__lines__account")
         )
+        if self.action == "list":
+            # A listing mirrors the balances it explains: voided and archived entries count nowhere.
+            qs = qs.filter(counted_entries("journal_entry__"))
 
         # Filter by account (category) if provided
         account_id = self.request.query_params.get("account")
@@ -239,11 +251,11 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         return qs.order_by("-journal_entry__entry_date")
 
     def perform_create(self, serializer):
-        """Create line with team context."""
+        """Create line in the current book."""
         serializer.save()
 
     def perform_update(self, serializer):
-        """Update line with team context."""
+        """Update line in the current book."""
         serializer.save()
 
     def perform_destroy(self, instance):
@@ -260,7 +272,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         },  # noqa: E501
     )
     @action(detail=True, methods=["post"])
-    def recategorize(self, request, pk=None, team_slug=None):
+    def recategorize(self, request, pk=None, team_slug=None, book_slug=None):
         """
         Recategorize a journal line to a different account/category.
 
@@ -281,9 +293,37 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        new_category = get_object_or_404(Account.objects.filter(team=self.request.team), id=new_category_id)
+        new_category = get_object_or_404(Account.objects.filter(book=self.request.book), id=new_category_id)
+        try:
+            assert_category_allowed(new_category, keep_ids={line.account_id})
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # A line moved onto an account the entry already posts to on the *other*
+        # side (e.g. the bank account the money came through) cancels itself out.
+        other_side = {"cr_amount__gt": 0} if line.dr_amount > 0 else {"dr_amount__gt": 0}
+        if line.journal_entry.lines.exclude(pk=line.pk).filter(account=new_category, **other_side).exists():
+            return Response(
+                {"error": _("The transaction already uses that account on its other side.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            assert_line_mutable(line, new_account=new_category)
+        except ReconciledLineError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         line.account = new_category
         line.save()
+
+        # Moving the category side onto another feed account turns the entry into a
+        # transfer, which the bank feed shows in both accounts via a mirror leg.
+        from apps.bank_feed.models import BankTransaction
+        from apps.bank_feed.services.transfer_mirror import sync_transfer
+
+        primary = BankTransaction.objects.filter(journal_entry=line.journal_entry, is_transfer_mirror=False).first()
+        if primary is not None:
+            sync_transfer(primary)
 
         return Response({"status": "success", "line_id": line.id})
 
@@ -350,7 +390,10 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
     """
     Journal entries flattened into transaction rows, and the edits made to them.
 
-    Every entry is returned, including splits -- an entry apportioned across
+    Voided entries and entries behind an archived bank transaction are left out:
+    they count toward no balance, so they are not on the ledger either.
+
+    Every other entry is returned, including splits -- an entry apportioned across
     several categories, which has one line on one side and several on the other.
     This list used to filter to ``line_count=2``, which silently hid every split
     from the page that presents itself as the ledger, and from its filters,
@@ -372,7 +415,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         page_size = 200
 
     serializer_class = TransactionRowSerializer
-    permission_classes = [TeamModelAccessPermissions]
+    permission_classes = [BookModelAccessPermissions]
     pagination_class = Pagination
 
     def get_serializer_class(self):
@@ -385,7 +428,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         tags=["journal"],
         responses={200: TransactionDetailSerializer},
     )
-    def retrieve(self, request, team_slug=None, pk=None):
+    def retrieve(self, request, team_slug=None, book_slug=None, pk=None):
         """One transaction as the edit modal needs it, with what may be changed."""
         entry = self.get_object()
         try:
@@ -405,7 +448,8 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         unfiltered list pays for none of them.
         """
         return (
-            JournalEntry.for_team.select_related("payee")
+            JournalEntry.for_book.filter(counted_entries())
+            .select_related("payee")
             .prefetch_related("lines__account")
             .annotate(**annotations_for(self.request.query_params, facet_column=facet_column))
         )
@@ -431,7 +475,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         search = (params.get("search") or "").strip()
         if search:
             matching_line_entries = (
-                JournalLine.for_team.annotate(
+                JournalLine.for_book.annotate(
                     dr_str=Cast("dr_amount", CharField()),
                     cr_str=Cast("cr_amount", CharField()),
                 )
@@ -442,7 +486,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
                 Q(payee__name__icontains=search) | Q(description__icontains=search) | Q(id__in=matching_line_entries)
             )
 
-        return apply_column_filters(queryset, params, self.request.team, exclude=exclude_column)
+        return apply_column_filters(queryset, params, self.request.book, exclude=exclude_column)
 
     def get_queryset(self):
         if self.action in ("retrieve", "edit", "batch_delete", "batch_status"):
@@ -459,7 +503,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         and it is called once per entry -- so a batch of two hundred would
         otherwise be a few hundred queries.
         """
-        return JournalEntry.for_team.select_related("payee").prefetch_related(
+        return JournalEntry.for_book.select_related("payee").prefetch_related(
             "lines__account__account_group",
             "bank_feed_transactions",
         )
@@ -468,7 +512,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         """
         The requested entries, in the order asked for, or a 404-shaped refusal.
 
-        An id the team cannot see is refused rather than skipped: silently
+        An id the book cannot see is refused rather than skipped: silently
         editing four of the five rows a user selected is worse than editing none
         and saying why.
         """
@@ -490,7 +534,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         responses={200: TransactionRowSerializer(many=True)},
     )
     @action(detail=False, methods=["patch"], url_path="edit")
-    def edit(self, request, team_slug=None):
+    def edit(self, request, team_slug=None, book_slug=None):
         """
         Apply one partial edit to one or more transactions.
 
@@ -504,8 +548,8 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
 
         try:
             entries = self.load_for_edit(data["ids"])
-            edits = self._edits_from(data, team=request.team)
-            updated = apply_edits_bulk(entries, edits, team=request.team)
+            edits = self._edits_from(data, book=request.book)
+            updated = apply_edits_bulk(entries, edits, book=request.book)
         except EditRefused as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -522,7 +566,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         return Response({"results": self.rows_for(updated)})
 
     @staticmethod
-    def _edits_from(data, *, team):
+    def _edits_from(data, *, book):
         """
         Turn a validated payload into `TransactionEdits`.
 
@@ -537,9 +581,9 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
 
         if "splits" in data:
             wanted = [leg["category"] for leg in data["splits"]]
-            accounts = {a.id: a for a in Account.objects.filter(team=team, id__in=set(wanted))}
+            accounts = {a.id: a for a in Account.objects.filter(book=book, id__in=set(wanted))}
             if any(i not in accounts for i in wanted):
-                # Another team's account reads as gone rather than as a refusal
+                # Another book's account reads as gone rather than as a refusal
                 # that confirms it exists.
                 raise EditRefused(_("That category no longer exists."))
             edits.legs = [(accounts[leg["category"]], leg["amount"]) for leg in data["splits"]]
@@ -553,7 +597,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         responses={200: {"type": "object", "properties": {"deleted": {"type": "array", "items": {"type": "integer"}}}}},
     )
     @action(detail=False, methods=["post"], url_path="batch_delete")
-    def batch_delete(self, request, team_slug=None):
+    def batch_delete(self, request, team_slug=None, book_slug=None):
         """
         Remove transactions.
 
@@ -569,7 +613,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
             entries = self.load_for_edit(ids)
             with transaction.atomic():
                 for entry in entries:
-                    delete_transaction(entry, team=request.team)
+                    delete_transaction(entry, book=request.book)
         except EditRefused as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -584,7 +628,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         responses={200: TransactionRowSerializer(many=True)},
     )
     @action(detail=False, methods=["post"], url_path="batch_status")
-    def batch_status(self, request, team_slug=None):
+    def batch_status(self, request, team_slug=None, book_slug=None):
         """Void transactions so they drop out of every balance, or restore them."""
         serializer = TransactionStatusRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -593,7 +637,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         try:
             entries = self.load_for_edit(data["ids"])
             with transaction.atomic():
-                updated = [set_status(entry, data["status"], team=request.team) for entry in entries]
+                updated = [set_status(entry, data["status"], book=request.book) for entry in entries]
         except EditRefused as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -642,7 +686,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         },
     )
     @action(detail=False, methods=["get"], url_path="facets")
-    def facets(self, request, team_slug=None):
+    def facets(self, request, team_slug=None, book_slug=None):
         """
         List the values one column offers, with the row count behind each.
 
@@ -661,32 +705,61 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
 
         queryset = self.filtered_queryset(exclude_column=column.key, facet_column=column.key)
         query = (request.query_params.get("q") or "").strip()
-        return Response(facet_values(queryset, column, request.team, query=query))
+        return Response(facet_values(queryset, column, request.book, query=query))
 
 
-@login_and_team_required
-def transactions_home(request, team_slug):
+@login_and_book_required
+def transactions_home(request, team_slug, book_slug):
     """Transactions list page - renders the React-powered transactions table."""
     api_urls = {
-        "transactions_list": f"/a/{team_slug}/journal/api/transactions/",
-        "transactions_facets": f"/a/{team_slug}/journal/api/transactions/facets/",
+        "transactions_list": f"/a/{team_slug}/{book_slug}/journal/api/transactions/",
+        "transactions_facets": f"/a/{team_slug}/{book_slug}/journal/api/transactions/facets/",
     }
 
     # The edit modal's account and payee pickers, served with the page the same
     # way `bank_feed_home` serves them. A fetch on open would make the first row
     # click wait on a round trip for a list that rarely changes.
-    all_accounts = Account.for_team.select_related("account_group", "institution").order_by("name")
-    all_payees = Payee.for_team.all().order_by("name")
+    all_accounts = Account.for_book.select_related("account_group", "institution").order_by("name")
+    all_payees = Payee.for_book.all().order_by("name")
 
     return render(
         request,
         "journal/transactions_home.html",
         {
             "active_tab": "transactions",
-            "page_title": _("Transactions | {team}").format(team=request.team),
+            "page_title": _("Transactions | {name}").format(name=book_display_name(request.book)),
             "api_urls": api_urls,
-            "team_slug": team_slug,
+            "initial_filters": _initial_account_filters(request),
             "all_accounts": SimpleAccountSerializer(all_accounts, many=True).data,
             "all_payees": PayeeSerializer(all_payees, many=True).data,
         },
     )
+
+
+def _initial_account_filters(request):
+    """
+    `?f_debit_account=a:12` / `?f_credit_account=a:12` from a link (e.g. a goal's
+    "see its spending"), and `?f_payee=<name>` (a payee's page), as the page's
+    opening column filters with their labels. Only single-account tokens are
+    accepted, and only the book's own accounts and payees.
+    """
+    filters = {}
+    for column in ("debit_account", "credit_account"):
+        entries = []
+        for raw in request.GET.getlist(f"f_{column}"):
+            prefix, _sep, rest = raw.partition(":")
+            if prefix != "a" or not rest.isdigit():
+                continue
+            account = Account.objects.filter(book=request.book, pk=int(rest)).only("name").first()
+            if account is not None:
+                entries.append({"value": raw, "label": account.name})
+        if entries:
+            filters[column] = entries
+    # A payee's page links here as ?f_payee=<name> (the column's filter value is the name).
+    payees = [name for name in request.GET.getlist("f_payee") if name]
+    if payees:
+        known = set(Payee.objects.filter(book=request.book, name__in=payees).values_list("name", flat=True))
+        entries = [{"value": name, "label": name} for name in payees if name in known]
+        if entries:
+            filters["payee"] = entries
+    return filters

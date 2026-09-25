@@ -14,8 +14,8 @@ import { getApiHeaders } from '../api';
  * later is then a caller change, not a second set of endpoints that could
  * disagree with these about what an edit means.
  */
-export function getTransactionsApi(teamSlug) {
-  const baseUrl = `/a/${teamSlug}/journal/api/transactions`;
+export function getTransactionsApi(bookBase) {
+  const baseUrl = `${bookBase}journal/api/transactions`;
 
   const request = async (path, { method = 'POST', body = null } = {}) => {
     const response = await fetch(`${baseUrl}/${path}`, {

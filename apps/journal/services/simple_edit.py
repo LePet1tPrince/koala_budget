@@ -31,9 +31,17 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 
+from apps.accounts.guards import SystemCategoryError, assert_category_allowed
 from apps.accounts.models import Account, Payee
 from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.transfer_mirror import is_transfer_target, sync_transfer, would_orphan_primary
+from apps.reconciliation.services.guards import (
+    ReconciledLineError,
+    assert_date_change_allowed,
+    assert_entry_removable,
+    assert_entry_voidable,
+    assert_line_mutable,
+)
 
 from ..models import JournalEntry
 from .sides import UnsupportedEntry, resolve_sides
@@ -98,12 +106,12 @@ class TransactionEdits:
 # ---------------------------------------------------------------------------
 
 
-def apply_edits(entry, edits, *, team):
+def apply_edits(entry, edits, *, book):
     """Apply `edits` to one entry. See `apply_edits_bulk`."""
-    return apply_edits_bulk([entry], edits, team=team)[0]
+    return apply_edits_bulk([entry], edits, book=book)[0]
 
 
-def apply_edits_bulk(entries, edits, *, team):
+def apply_edits_bulk(entries, edits, *, book):
     """
     Apply the same `edits` to every entry, all of them or none.
 
@@ -111,15 +119,15 @@ def apply_edits_bulk(entries, edits, *, team):
     refused halfway leaves nothing half-applied -- the same pre-scan
     `BankFeedViewSet.batch_edit` does. Returns the entries, refreshed.
     """
-    _resolve_accounts(edits, team=team)
+    _resolve_accounts(edits, book=book)
 
     plans = [_plan(entry, edits) for entry in entries]
 
     with transaction.atomic():
-        return [_write(plan, edits, team=team) for plan in plans]
+        return [_write(plan, edits, book=book) for plan in plans]
 
 
-def delete_transaction(entry, *, team):
+def delete_transaction(entry, *, book):
     """
     Remove a transaction.
 
@@ -133,8 +141,10 @@ def delete_transaction(entry, *, team):
     except UnsupportedEntry as exc:
         raise EditRefused(str(exc)) from exc
 
-    if sides.home_line.is_reconciled:
-        raise EditRefused(_("This transaction is reconciled. Unreconcile it before deleting it."))
+    try:
+        assert_entry_removable(entry, own_account_id=sides.account.id, verb=_("deleting it"))
+    except ReconciledLineError as exc:
+        raise EditRefused(str(exc)) from exc
 
     with transaction.atomic():
         if sides.bank_tx is None:
@@ -152,7 +162,7 @@ def delete_transaction(entry, *, team):
         entry.delete()
 
 
-def set_status(entry, new_status, *, team):
+def set_status(entry, new_status, *, book):
     """
     Void a transaction, or restore a voided one.
 
@@ -166,6 +176,14 @@ def set_status(entry, new_status, *, team):
     if entry.status == new_status:
         return entry
 
+    if new_status == JournalEntry.STATUS_VOID:
+        # Voiding drops every line out of every balance, a reconciled one
+        # included -- so it is refused on the same terms as a delete.
+        try:
+            assert_entry_voidable(entry)
+        except ReconciledLineError as exc:
+            raise EditRefused(str(exc)) from exc
+
     entry.status = new_status
     entry.save()
     return entry
@@ -176,16 +194,16 @@ def set_status(entry, new_status, *, team):
 # ---------------------------------------------------------------------------
 
 
-def _resolve_accounts(edits, *, team):
-    """Look up every account the edits name, once, scoped to the team."""
+def _resolve_accounts(edits, *, book):
+    """Look up every account the edits name, once, scoped to the book."""
     ids = [i for i in (edits.account_id, edits.category_id) if i is not UNSET and i is not None]
     if edits.legs is not UNSET and edits.legs:
         ids += [account.id for account, _ in edits.legs]
 
-    found = {a.id: a for a in Account.objects.filter(team=team, id__in=set(ids))}
+    found = {a.id: a for a in Account.objects.filter(book=book, id__in=set(ids))}
     missing = set(ids) - set(found)
     if missing:
-        # Another team's account reads as "not found" rather than as a refusal
+        # Another book's account reads as "not found" rather than as a refusal
         # that confirms it exists.
         raise EditRefused(_("That category no longer exists."))
     edits._accounts = found
@@ -216,7 +234,7 @@ def _plan(entry, edits):
     total = _target_total(sides, edits)
     legs = _target_legs(sides, edits, account=account, total=total)
 
-    _check_reconciled(sides, account=account, total=total)
+    _check_reconciled(entry, sides, edits, account=account, total=total)
     _check_bank_rules(entry, sides, edits, total=total)
     _check_transfer(sides, legs)
 
@@ -254,12 +272,28 @@ def _amount(value, fallback) -> Decimal:
     return fallback if value is UNSET else (Decimal(value or 0))
 
 
+def _check_category(account, keep_ids):
+    """Refuse a system account as a category, in the words every other path uses."""
+    try:
+        assert_category_allowed(account, keep_ids=keep_ids)
+    except SystemCategoryError as exc:
+        raise EditRefused(str(exc)) from exc
+
+
 def _target_legs(sides, edits, *, account, total):
     """The (account, signed amount) pairs to write as the category lines."""
+    # A bookkeeping account is not a category a user may pick. `keep_ids` is what
+    # the entry already uses, so re-saving an existing adjustment untouched keeps
+    # working and only newly choosing one is refused.
+    keep_ids = {line.account_id for line in sides.legs}
+
     if edits.legs is not UNSET:
         if len(edits.legs) < 2:
             raise EditRefused(_("A split needs at least two categories."))
-        return [(edits._accounts[a.id], amount) for a, amount in edits.legs]
+        legs = [(edits._accounts[a.id], amount) for a, amount in edits.legs]
+        for leg_account, _leg_amount in legs:
+            _check_category(leg_account, keep_ids)
+        return legs
 
     if edits.category_id is not UNSET:
         if sides.is_split and not edits.remove_split:
@@ -271,6 +305,7 @@ def _target_legs(sides, edits, *, account, total):
         category = edits._accounts[edits.category_id]
         if category.id == account.id:
             raise EditRefused(_("A transaction cannot be categorized to the account it is in."))
+        _check_category(category, keep_ids)
         return [(category, total)]
 
     if edits.remove_split and sides.is_split:
@@ -292,19 +327,25 @@ def _target_legs(sides, edits, *, account, total):
     return existing
 
 
-def _check_reconciled(sides, *, account, total):
+def _check_reconciled(entry, sides, edits, *, account, total):
     """
     Reconciliation is a fact about the home line.
 
     Its amount does not change when legs are re-apportioned, so re-splitting a
     reconciled transaction is fine; changing what the bank confirmed is not.
+
+    The rules themselves live in `apps.reconciliation.services.guards`, which
+    every write path in the app asks -- the feed, the journal API and this one --
+    so a reconciled line cannot be moved by whichever surface forgot to check.
+    The home line's signed amount is `dr - cr`, the negative of `total`, which is
+    the feed's convention (positive is an outflow).
     """
-    if not sides.home_line.is_reconciled:
-        return
-    if total != sides.total:
-        raise EditRefused(_("This transaction is reconciled. Unreconcile it before changing its amount."))
-    if account.id != sides.account.id:
-        raise EditRefused(_("This transaction is reconciled. Unreconcile it before changing its account."))
+    try:
+        assert_line_mutable(sides.home_line, new_account=account, new_amount=-total, own=True)
+        if edits.date is not UNSET:
+            assert_date_change_allowed(entry, edits.date)
+    except ReconciledLineError as exc:
+        raise EditRefused(str(exc)) from exc
 
 
 def _check_bank_rules(entry, sides, edits, *, total):
@@ -339,7 +380,7 @@ def _check_transfer(sides, legs):
 # ---------------------------------------------------------------------------
 
 
-def _write(plan, edits, *, team):
+def _write(plan, edits, *, book):
     # Imported here, not at module scope: `apps.bank_feed` imports from this app,
     # and `transfer_mirror` already avoids the reverse import at module level for
     # the same reason. One local import keeps the direction explicit.
@@ -350,12 +391,13 @@ def _write(plan, edits, *, team):
     # The entry is saved before its lines, because `JournalLine.save()` resolves
     # its budget link from `journal_entry.entry_date` -- writing lines first
     # would file them under the month the transaction just left.
+    date_moved = edits.date is not UNSET and edits.date != entry.entry_date
     if edits.date is not UNSET:
         entry.entry_date = edits.date
     if edits.description is not UNSET:
         entry.description = edits.description
     if edits.payee_name is not UNSET:
-        entry.payee = _payee(edits.payee_name, team=team)
+        entry.payee = _payee(edits.payee_name, book=book)
     entry.save()
 
     # Follow an account move before the lines are written: `write_lines` finds
@@ -369,9 +411,20 @@ def _write(plan, edits, *, team):
         home_line.save()
 
     try:
-        write_lines(entry, plan.account, plan.legs, total=plan.total, team=team)
+        write_lines(entry, plan.account, plan.legs, total=plan.total, book=book)
     except SplitError as exc:
         raise EditRefused(str(exc)) from exc
+
+    if date_moved:
+        # `write_lines` leaves a line whose amount did not change exactly as it
+        # is -- which is what keeps a transfer's far side reconciled. But a
+        # line's `budget` is resolved from its entry's date by `save()`, so on a
+        # date edit an untouched line would stay filed under the month the
+        # transaction just left. Re-save them; the bank feed's `batch_edit` does
+        # the same at its own call site, for the same reason.
+        for line in entry.lines.all():
+            line.journal_entry = entry
+            line.save()
 
     _sync_bank_row(sides, entry, account=plan.account, total=plan.total)
 
@@ -379,11 +432,11 @@ def _write(plan, edits, *, team):
     return entry
 
 
-def _payee(name, *, team):
+def _payee(name, *, book):
     name = (name or "").strip()
     if not name:
         return None
-    payee, _created = Payee.objects.get_or_create(team=team, name=name)
+    payee, _created = Payee.objects.get_or_create(book=book, name=name)
     return payee
 
 

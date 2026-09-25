@@ -56,7 +56,11 @@ class AccountGroupFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = AccountGroup
 
-    team = factory.SubFactory(TeamFactory)
+    class Params:
+        # Callers still say `team=`; the row belongs to that team's default book.
+        team = factory.SubFactory(TeamFactory)
+
+    book = factory.LazyAttribute(lambda o: o.team.default_book)
     name = factory.Sequence(lambda n: f"Account Group {n}")
     account_type = ACCOUNT_TYPE_EXPENSE
 
@@ -65,7 +69,11 @@ class AccountFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Account
 
-    team = factory.SubFactory(TeamFactory)
+    class Params:
+        # Callers still say `team=`; the row belongs to that team's default book.
+        team = factory.SubFactory(TeamFactory)
+
+    book = factory.LazyAttribute(lambda o: o.team.default_book)
     account_group = factory.SubFactory(AccountGroupFactory, team=factory.SelfAttribute("..team"))
     name = factory.Sequence(lambda n: f"Account {n}")
 
@@ -92,7 +100,11 @@ class PayeeFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Payee
 
-    team = factory.SubFactory(TeamFactory)
+    class Params:
+        # Callers still say `team=`; the row belongs to that team's default book.
+        team = factory.SubFactory(TeamFactory)
+
+    book = factory.LazyAttribute(lambda o: o.team.default_book)
     name = factory.Sequence(lambda n: f"Payee {n}")
 
 
@@ -100,7 +112,11 @@ class JournalEntryFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = JournalEntry
 
-    team = factory.SubFactory(TeamFactory)
+    class Params:
+        # Callers still say `team=`; the row belongs to that team's default book.
+        team = factory.SubFactory(TeamFactory)
+
+    book = factory.LazyAttribute(lambda o: o.team.default_book)
     entry_date = factory.Faker("date_this_year")
     description = factory.Sequence(lambda n: f"Test Entry {n}")
     status = "posted"
@@ -110,7 +126,11 @@ class JournalLineFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = JournalLine
 
-    team = factory.SubFactory(TeamFactory)
+    class Params:
+        # Callers still say `team=`; the row belongs to that team's default book.
+        team = factory.SubFactory(TeamFactory)
+
+    book = factory.LazyAttribute(lambda o: o.team.default_book)
     journal_entry = factory.SubFactory(JournalEntryFactory, team=factory.SelfAttribute("..team"))
     account = factory.SubFactory(AccountFactory, team=factory.SelfAttribute("..team"))
     dr_amount = Decimal("0.00")
@@ -129,7 +149,11 @@ class BankTransactionFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = BankTransaction
 
-    team = factory.SubFactory(TeamFactory)
+    class Params:
+        # Callers still say `team=`; the row belongs to that team's default book.
+        team = factory.SubFactory(TeamFactory)
+
+    book = factory.LazyAttribute(lambda o: o.team.default_book)
     account = factory.SubFactory(AssetAccountFactory, team=factory.SelfAttribute("..team"))
     amount = Decimal("25.00")  # positive = outflow, per the Plaid convention
     posted_date = factory.Faker("date_this_year")

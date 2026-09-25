@@ -1,16 +1,36 @@
 from decimal import Decimal
 
+from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.urls import reverse
 from django.utils.dateparse import parse_date
 
+from apps.books.models import BaseBookModel
 from apps.budget.models import Budget
-from apps.teams.models import BaseTeamModel
 
 
-class JournalEntry(BaseTeamModel):
+def counted_entries(path=""):
+    """
+    `Q` selecting journal entries that count toward anything: balances, reports,
+    budget actuals, net worth and the ledger.
+
+    An entry does not count when it is voided, or when a bank transaction linked to
+    it is archived -- archiving a row takes it off the books, not just out of the
+    feed. `path` is the lookup from the queried model to the entry: "" on
+    `JournalEntry`, "journal_entry__" on `JournalLine`, "journal_lines__journal_entry__"
+    on `Account` (for use in an aggregate's `filter=`, where a join would fan out --
+    hence an `__in` subquery rather than a reverse-relation lookup).
+    """
+    bank_transaction = apps.get_model("bank_feed", "BankTransaction")
+    archived_entry_ids = bank_transaction.objects.filter(is_archived=True, journal_entry__isnull=False).values(
+        "journal_entry_id"
+    )
+    return ~Q(**{f"{path}status": JournalEntry.STATUS_VOID}) & ~Q(**{f"{path}id__in": archived_entry_ids})
+
+
+class JournalEntry(BaseBookModel):
     """
     Journal Entry model for double-entry bookkeeping.
     Each entry must have balanced debits and credits across its journal lines.
@@ -30,12 +50,16 @@ class JournalEntry(BaseTeamModel):
     SOURCE_IMPORT = "import"
     SOURCE_BANK_MATCH = "bank_match"
     SOURCE_RECURRING = "recurring"
+    # An adjustment posted when a statement is finished with a difference
+    # (apps.reconciliation). Its own source so undo can find it without guessing.
+    SOURCE_RECONCILIATION = "reconciliation"
 
     SOURCE_CHOICES = [
         (SOURCE_MANUAL, "Manual Entry"),
         (SOURCE_IMPORT, "Import"),
         (SOURCE_BANK_MATCH, "Bank Match"),
         (SOURCE_RECURRING, "Recurring Entry"),
+        (SOURCE_RECONCILIATION, "Reconciliation Adjustment"),
     ]
 
     entry_date = models.DateField(help_text="Date of the journal entry")
@@ -70,7 +94,7 @@ class JournalEntry(BaseTeamModel):
         return f"JE-{self.id} - {self.entry_date} - {self.description[:50]}"
 
     def get_absolute_url(self):
-        return reverse("journal:journalentry_detail", kwargs={"team_slug": self.team.slug, "pk": self.pk})
+        return reverse("journal:journalentry_detail", args=[*self.book.url_args, self.pk])
 
     def clean(self):
         """Validate that debits equal credits."""
@@ -122,7 +146,7 @@ class JournalLineQuerySet(models.QuerySet):
         return self.bulk_create(lines, batch_size=batch_size)
 
 
-class JournalLine(BaseTeamModel):
+class JournalLine(BaseBookModel):
     """
     Journal Line model representing individual debit/credit lines in a journal entry.
     Each line must have either a debit or credit amount (not both).
@@ -159,6 +183,18 @@ class JournalLine(BaseTeamModel):
     is_cleared = models.BooleanField(default=False, help_text="Whether this line has cleared the bank")
     is_reconciled = models.BooleanField(default=False, help_text="Whether this line has been reconciled")
     is_archived = models.BooleanField(default=False, help_text="Whether this line has been archived")
+
+    # The statement that ticked (draft) or locked (completed) this line. Kept when
+    # a line is unreconciled or its statement undone, so the drift check can name
+    # the lines that moved; `is_reconciled` stays the only input to balances.
+    reconciliation = models.ForeignKey(
+        "reconciliation.Reconciliation",
+        on_delete=models.SET_NULL,
+        related_name="lines",
+        null=True,
+        blank=True,
+        help_text="Statement this line was ticked or reconciled on",
+    )
 
     # Budget foreign key - commented out until Budget model is ready
     budget = models.ForeignKey(
@@ -220,7 +256,7 @@ class JournalLine(BaseTeamModel):
         month_start = entry_date.replace(day=1)
 
         return Budget.objects.filter(
-            team=self.team,
+            book=self.book,
             category=self.account,
             month=month_start,
         ).first()

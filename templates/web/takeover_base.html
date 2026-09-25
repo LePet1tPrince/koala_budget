@@ -1,0 +1,56 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% load icons %}
+{% comment %}
+  A full-screen modal page: no sidebar, no site nav, no footer -- just a title
+  bar with a close button and the whole viewport for the task.
+
+  For flows that need the room (the YNAB wizard's tables) or that are one
+  continuous job across several pages (naming a new set of books, then
+  importing into it). Each page of the flow extends this, so moving from one
+  to the next keeps the same chrome and reads as one modal rather than a
+  series of settings pages.
+
+  Context:
+    takeover_title      the heading in the title bar
+    takeover_eyebrow    optional small line above it (the book or team name)
+    takeover_close_url  where the close button goes. A page that can lose work
+                        by leaving intercepts clicks on `a[data-takeover-close]`
+                        to confirm first (the YNAB wizard does).
+
+  Blocks:
+    takeover_size       takeover-wide (default) or takeover-narrow: how wide
+                        the title bar and content column run
+    takeover_content    the page itself
+{% endcomment %}
+
+{% block body_class %}bg-base-200{% endblock %}
+{% block top_nav %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block body %}
+  <div class="takeover {% block takeover_size %}takeover-wide{% endblock %}" data-testid="takeover">
+    <header class="sticky top-0 z-30 border-b border-base-300 bg-base-100">
+      <div class="takeover-column flex items-center gap-4 py-3">
+        <div class="min-w-0 flex-1">
+          {% if takeover_eyebrow %}
+            <p class="truncate text-xs font-semibold uppercase tracking-[0.08em] text-base-content/70">{{ takeover_eyebrow }}</p>
+          {% endif %}
+          <h1 class="truncate text-lg font-semibold tracking-tight" data-testid="takeover-title">{{ takeover_title }}</h1>
+        </div>
+        <a href="{{ takeover_close_url }}"
+           class="btn btn-ghost btn-sm btn-square"
+           aria-label="{% translate 'Close' %}"
+           title="{% translate 'Close' %}"
+           data-testid="takeover-close"
+           data-takeover-close>
+          {% icon "close" class="h-5 w-5" %}
+        </a>
+      </div>
+    </header>
+
+    <main class="takeover-column flex-1 py-6 sm:py-8">
+      {% block takeover_content %}{% endblock %}
+    </main>
+  </div>
+{% endblock %}

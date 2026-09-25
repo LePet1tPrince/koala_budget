@@ -31,19 +31,20 @@ class GateTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.team = Team.objects.create(name="Gated", slug="gated")
-        assets = AccountGroup.objects.create(team=cls.team, name="Bank Accounts", account_type="asset")
-        expenses = AccountGroup.objects.create(team=cls.team, name="Regular Expenses", account_type="expense")
+        cls.book = cls.team.default_book
+        assets = AccountGroup.objects.create(book=cls.book, name="Bank Accounts", account_type="asset")
+        expenses = AccountGroup.objects.create(book=cls.book, name="Regular Expenses", account_type="expense")
         cls.account = Account.objects.create(
-            team=cls.team, name="Chequing Account", account_group=assets, has_feed=True
+            book=cls.book, name="Chequing Account", account_group=assets, has_feed=True
         )
-        cls.category = Account.objects.create(team=cls.team, name="Groceries", account_group=expenses)
+        cls.category = Account.objects.create(book=cls.book, name="Groceries", account_group=expenses)
 
     def states(self, tasks_done=None):
-        return {t["slug"]: t["state"] for t in task_state(self.team, tasks_done)}
+        return {t["slug"]: t["state"] for t in task_state(self.book, tasks_done)}
 
     def add_transaction(self):
         return BankTransaction.objects.create(
-            team=self.team,
+            book=self.book,
             account=self.account,
             posted_date=date(2026, 9, 1),
             amount=Decimal("25.00"),
@@ -53,7 +54,7 @@ class GateTestCase(TestCase):
 
     def add_entry(self, status=JournalEntry.STATUS_POSTED):
         return JournalEntry.objects.create(
-            team=self.team, entry_date=date(2026, 9, 1), description="groceries", status=status
+            book=self.book, entry_date=date(2026, 9, 1), description="groceries", status=status
         )
 
 
@@ -67,19 +68,19 @@ class EmptyTeamTest(GateTestCase):
         self.assertEqual(states["net_worth"], LOCKED)
 
     def test_locked_tasks_say_why(self):
-        for task in task_state(self.team):
+        for task in task_state(self.book):
             with self.subTest(task=task["slug"]):
                 if task["state"] == LOCKED:
                     self.assertTrue(task["reason"], f"{task['slug']} is locked with no reason given")
 
     def test_open_tasks_carry_no_reason(self):
-        for task in task_state(self.team):
+        for task in task_state(self.book):
             if task["state"] != LOCKED:
                 with self.subTest(task=task["slug"]):
                     self.assertEqual(task["reason"], "")
 
     def test_every_task_is_reported(self):
-        self.assertEqual([t["slug"] for t in task_state(self.team)], [t.slug for t in TASKS])
+        self.assertEqual([t["slug"] for t in task_state(self.book)], [t.slug for t in TASKS])
 
 
 class AfterImportTest(GateTestCase):
@@ -102,7 +103,7 @@ class AfterImportTest(GateTestCase):
         self.assertEqual(states["net_worth"], LOCKED)
 
     def test_opening_balances_are_refused(self):
-        self.assertFalse(can_set_opening_balances(self.team))
+        self.assertFalse(can_set_opening_balances(self.book))
 
 
 class AfterCategorizingTest(GateTestCase):
@@ -117,13 +118,13 @@ class AfterCategorizingTest(GateTestCase):
         self.assertEqual(states["net_worth"], AVAILABLE)
 
     def test_opening_balances_are_allowed(self):
-        self.assertTrue(can_set_opening_balances(self.team))
+        self.assertTrue(can_set_opening_balances(self.book))
 
     def test_budget_completes_when_a_budget_row_exists(self):
         self.assertEqual(self.states()["budget"], AVAILABLE)
 
         Budget.objects.create(
-            team=self.team, month=date(2026, 9, 1), category=self.category, budget_amount=Decimal("400.00")
+            book=self.book, month=date(2026, 9, 1), category=self.category, budget_amount=Decimal("400.00")
         )
         self.assertEqual(self.states()["budget"], DONE)
 
@@ -145,7 +146,7 @@ class VoidedEntryTest(GateTestCase):
         self.assertEqual(states["net_worth"], LOCKED)
 
     def test_voided_entry_does_not_allow_opening_balances(self):
-        self.assertFalse(can_set_opening_balances(self.team))
+        self.assertFalse(can_set_opening_balances(self.book))
 
 
 class ManualCompletionTest(GateTestCase):
@@ -164,17 +165,18 @@ class ManualCompletionTest(GateTestCase):
         self.add_transaction()
         self.assertEqual(self.states()["import"], DONE)
 
-        BankTransaction.objects.filter(team=self.team).delete()
+        BankTransaction.objects.filter(book=self.book).delete()
         self.assertEqual(self.states(["import"])["import"], DONE)
 
 
 class TeamIsolationTest(GateTestCase):
     def test_another_teams_data_does_not_unlock_anything(self):
         other = Team.objects.create(name="Other", slug="other-gated")
-        group = AccountGroup.objects.create(team=other, name="Bank Accounts", account_type="asset")
-        account = Account.objects.create(team=other, name="Chequing", account_group=group, has_feed=True)
+        other_book = other.default_book
+        group = AccountGroup.objects.create(book=other_book, name="Bank Accounts", account_type="asset")
+        account = Account.objects.create(book=other_book, name="Chequing", account_group=group, has_feed=True)
         BankTransaction.objects.create(
-            team=other,
+            book=other_book,
             account=account,
             posted_date=date(2026, 9, 1),
             amount=Decimal("10.00"),
