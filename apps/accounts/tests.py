@@ -1042,6 +1042,50 @@ class AccountsBoardApiTest(TestCase):
         response = self._post("api_create_group", {"name": "Bank Accounts", "account_type": ACCOUNT_TYPE_ASSET})
         self.assertEqual(response.status_code, 400)
 
+    def test_set_feed_turns_inbox_off_and_on(self):
+        self.checking.has_feed = True
+        self.checking.save()
+        response = self._post("api_set_feed", {"account_id": self.checking.pk, "has_feed": False})
+        self.assertEqual(response.status_code, 200)
+        self.checking.refresh_from_db()
+        self.assertFalse(self.checking.has_feed)
+
+        response = self._post("api_set_feed", {"account_id": self.checking.pk, "has_feed": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["hasFeed"])
+        self.checking.refresh_from_db()
+        self.assertTrue(self.checking.has_feed)
+
+    def test_set_feed_refuses_expense_account(self):
+        response = self._post("api_set_feed", {"account_id": self.groceries.pk, "has_feed": True})
+        self.assertEqual(response.status_code, 400)
+        self.groceries.refresh_from_db()
+        self.assertFalse(self.groceries.has_feed)
+
+    def test_set_feed_rejects_bad_body_and_other_books_account(self):
+        self.assertEqual(
+            self._post("api_set_feed", {"account_id": self.checking.pk, "has_feed": "no"}).status_code, 400
+        )
+        other = Account.objects.create(
+            book=self.other_book, name="Theirs", account_group=self.other_group, has_feed=True
+        )
+        response = self._post("api_set_feed", {"account_id": other.pk, "has_feed": False})
+        self.assertEqual(response.status_code, 400)
+        other.refresh_from_db()
+        self.assertTrue(other.has_feed)
+
+    def test_set_feed_requires_membership(self):
+        self.client.login(username="other@example.com", password="testpass123")
+        response = self._post("api_set_feed", {"account_id": self.checking.pk, "has_feed": True})
+        self.assertEqual(response.status_code, 404)
+
+    def test_board_props_mark_feedable_accounts(self):
+        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
+        types = self.client.get(url).context["manage_props"]["types"]
+        rows = {a["name"]: a for t in types for g in t["groups"] for a in g["accounts"]}
+        self.assertTrue(rows["Checking"]["canHaveFeed"])
+        self.assertFalse(rows["Groceries"]["canHaveFeed"])
+
     def test_custom_order_flows_into_default_queryset(self):
         """Account.Meta.ordering follows group sort_order then account sort_order."""
         self._post(

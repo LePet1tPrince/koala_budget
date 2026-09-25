@@ -81,6 +81,7 @@ def _account_payload(account, book, goal_left=None):
         "isGoal": goal_left is not None,
         "institution": account.institution.name if account.institution else None,
         "hasFeed": account.has_feed,
+        "canHaveFeed": account.account_group.account_type in FEED_ACCOUNT_TYPES and not account.is_system,
         "isSystem": account.is_system,
         "url": account.get_absolute_url(),
         "editUrl": reverse("accounts:account_update", args=[*book.url_args, account.pk]),
@@ -127,7 +128,7 @@ class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
         accounts = (
             Account.objects.filter(book=book)
             .with_balance()
-            .select_related("institution")
+            .select_related("institution", "account_group")
             .order_by("sort_order", "name")
         )
         for account in accounts:
@@ -173,6 +174,7 @@ class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
                 "reorderGroups": reverse("accounts:api_reorder_groups", args=book.url_args),
                 "createAccount": reverse("accounts:api_create_account", args=book.url_args),
                 "createGroup": reverse("accounts:api_create_group", args=book.url_args),
+                "setFeed": reverse("accounts:api_set_feed", args=book.url_args),
                 "accountCreatePage": account_create_url,
             },
         }
@@ -1167,3 +1169,34 @@ def api_create_group(request, team_slug, book_slug):
             sort_order=0 if next_order is None else next_order + 1,
         )
     return JsonResponse({"group": _group_payload(group)}, status=201)
+
+
+@login_and_book_required
+@require_POST
+def api_set_feed(request, team_slug, book_slug):
+    """Show or hide an account in the Inbox (board checkbox).
+
+    Body: {"account_id": int, "has_feed": bool}
+
+    Only asset and liability accounts can be turned on — a feed is a bank account or
+    card. Turning one off hides its feed rows from the Inbox without touching them, so
+    turning it back on brings them back. Any account can be turned off.
+    """
+    payload = _json_body(request)
+    if payload is None or not isinstance(payload.get("has_feed"), bool):
+        return JsonResponse({"error": _("Invalid request body.")}, status=400)
+
+    account = (
+        Account.objects.filter(book=request.book, pk=payload.get("account_id")).select_related("account_group").first()
+    )
+    if account is None:
+        return JsonResponse({"error": _("Unknown account.")}, status=400)
+
+    has_feed = payload["has_feed"]
+    if has_feed and (account.is_system or account.account_group.account_type not in FEED_ACCOUNT_TYPES):
+        return JsonResponse({"error": _("Only bank accounts and credit cards can appear in the Inbox.")}, status=400)
+
+    if account.has_feed != has_feed:
+        account.has_feed = has_feed
+        account.save(update_fields=["has_feed", "updated_at"])
+    return JsonResponse({"ok": True, "hasFeed": account.has_feed})
