@@ -464,7 +464,7 @@ const EditTransactionModal = ({
             value={date}
             onChange={setDate}
             testId="transaction-date"
-            className={!canEditDate ? 'pointer-events-none opacity-60' : ''}
+            disabled={!canEditDate}
           />
           {(errors.date || (!canEditDate && !isCreateMode)) && (
             <p className={`-mt-3 text-xs ${errors.date ? 'text-error' : 'text-base-content/70'}`}>

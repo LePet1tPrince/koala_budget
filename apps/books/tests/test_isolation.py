@@ -123,6 +123,7 @@ OBJECTS = {
     "journal:journal-entry-post-entry": ("entry", "pk", "post"),
     "journal:journal-entry-void-entry": ("entry", "pk", "post"),
     "journal:line-detail": ("line", "pk", "get"),
+    "journal:transaction-detail": ("entry", "pk", "get"),
     "journal:line-recategorize": ("line", "pk", "post"),
     "audit:audit-event-detail": ("event", "pk", "get"),
     "budget:goal_detail": ("goal", "pk", "get"),
@@ -161,6 +162,11 @@ WRITES = {
     "accounts:api_create_account": lambda a, b: {"name": "Sneaky", "group_id": b.expense_group.id},
     "accounts:api_create_group": lambda a, b: {"name": "New group", "account_type": "expense"},
     "journal:journal-entry-list": None,  # placeholder, see WRITE_OVERRIDES
+    # The Transactions page's editor. Every write takes a list of ids, so book B's
+    # entry is named the same way a selection would name it.
+    "journal:transaction-edit": lambda a, b: {"ids": [b.entry.id], "description": "moved"},
+    "journal:transaction-batch-delete": lambda a, b: {"ids": [b.entry.id]},
+    "journal:transaction-batch-status": lambda a, b: {"ids": [b.entry.id], "status": "void"},
     "budget:budget_save_amount": lambda a, b: {"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"},
     "budget:budget_grid_save": lambda a, b: {
         "changes": [{"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"}]

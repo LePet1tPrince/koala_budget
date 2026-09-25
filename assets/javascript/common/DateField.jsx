@@ -16,7 +16,7 @@ import PickerPopover, { CalendarIcon, DayGrid } from './PickerPopover';
  * `value` and `onChange` speak ISO `yyyy-MM-dd` — the format the API takes and the
  * one the old `type="date"` inputs produced, so callers are unchanged.
  */
-const DateField = ({ label, value, onChange, testId, allowClear = false, className = '' }) => {
+const DateField = ({ label, value, onChange, testId, allowClear = false, disabled = false, className = '' }) => {
   const parsed = value ? parseISO(value) : null;
   const valid = parsed && !Number.isNaN(parsed.getTime());
   const [month, setMonth] = useState(() => startOfMonth(valid ? parsed : new Date()));
@@ -35,6 +35,7 @@ const DateField = ({ label, value, onChange, testId, allowClear = false, classNa
         label={valid ? format(parsed, 'MMM d, yyyy') : gettext('Select a date')}
         icon={<CalendarIcon />}
         testId={testId}
+        disabled={disabled}
         onClear={allowClear && value ? () => onChange('') : null}
         buttonClassName="input input-bordered flex w-full items-center gap-2 font-normal justify-start"
       >

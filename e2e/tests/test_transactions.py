@@ -13,11 +13,13 @@ per-column value filters and column sorting.
 """
 
 from datetime import date
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from playwright.sync_api import Page
 
+from apps.journal.models import JournalEntry
 from e2e.factories import (
     AccountFactory,
     AccountGroupFactory,
@@ -294,3 +296,180 @@ def test_ticking_a_month_narrows_to_that_month(requires_vite, authenticated_page
 
     transactions.expect_row_count(1)
     assert transactions.column_text(3) == ["Beans"]
+
+
+# ----------------------------------------------------------------------
+# The edit modal
+# ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def editable(team):
+    """
+    One plain transaction, one split, and one reconciled — the three states the
+    modal has a different answer for.
+    """
+    everyday = AccountGroupFactory(team=team, name="Everyday", account_type="expense")
+    banks = AccountGroupFactory(team=team, name="Bank Accounts", account_type="asset")
+    chequing = AccountFactory(team=team, account_group=banks, name="Chequing", has_feed=True)
+    groceries = AccountFactory(team=team, account_group=everyday, name="Groceries")
+    household = AccountFactory(team=team, account_group=everyday, name="Household Goods")
+    dining = AccountFactory(team=team, account_group=everyday, name="Dining Out")
+
+    def outflow(description, amount, *, reconciled=False):
+        entry = JournalEntryFactory(team=team, description=description, status="posted", entry_date=date(2026, 3, 4))
+        JournalLineFactory(team=team, journal_entry=entry, account=chequing, cr_amount=amount, is_reconciled=reconciled)
+        JournalLineFactory(team=team, journal_entry=entry, account=groceries, dr_amount=amount)
+        return entry
+
+    plain = outflow("Weekly shop", "84.20")
+    locked = outflow("Confirmed rent", "1200.00", reconciled=True)
+
+    split = JournalEntryFactory(team=team, description="Costco run", status="posted", entry_date=date(2026, 3, 5))
+    JournalLineFactory(team=team, journal_entry=split, account=chequing, cr_amount="210.40")
+    JournalLineFactory(team=team, journal_entry=split, account=groceries, dr_amount="160.00")
+    JournalLineFactory(team=team, journal_entry=split, account=household, dr_amount="50.40")
+
+    return SimpleNamespace(
+        chequing=chequing,
+        groceries=groceries,
+        household=household,
+        dining=dining,
+        plain=plain,
+        locked=locked,
+        split=split,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_row_click_opens_the_editor_with_the_transaction(
+    requires_vite, authenticated_page: Page, live_server, team, editable
+):
+    """The modal speaks account and category, never debit and credit."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.slug)
+    transactions.open_editor("Weekly shop")
+
+    assert "Chequing" in transactions.field_value("transaction-account")
+    assert "Groceries" in transactions.field_value("transaction-category")
+    assert transactions.field_value("transaction-outflow") == "84.20"
+    assert transactions.field_value("transaction-inflow") == ""
+    assert transactions.field_value("transaction-description") == "Weekly shop"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_changing_the_category_updates_the_row_in_place(
+    requires_vite, authenticated_page: Page, live_server, team, editable
+):
+    """No reload: the saved row is patched back into the list it came from."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.slug)
+    transactions.open_editor("Weekly shop")
+    transactions.fill_combobox("transaction-category", "Dining Out")
+    transactions.save_editor()
+
+    assert "Dining Out" in transactions.row_text("Weekly shop")
+
+    editable.plain.refresh_from_db()
+    assert editable.plain.lines.filter(account=editable.dining).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_reconciled_transaction_locks_its_amount_but_not_its_category(
+    requires_vite, authenticated_page: Page, live_server, team, editable
+):
+    """The lock the server enforces is the lock the modal shows."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.slug)
+    transactions.open_editor("Confirmed rent")
+
+    assert transactions.field_is_disabled("transaction-outflow")
+    assert transactions.field_is_disabled("transaction-account")
+    assert not transactions.field_is_disabled("transaction-category")
+    assert not transactions.can_delete()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_split_opens_with_its_legs_and_can_be_reapportioned(
+    requires_vite, authenticated_page: Page, live_server, team, editable
+):
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.slug)
+    transactions.open_editor("Costco run")
+
+    assert transactions.has_split_editor()
+    assert transactions.split_leg_count() == 2
+
+    transactions.set_split_amount(0, "120.00")
+    transactions.assign_split_remainder()
+    transactions.save_editor()
+
+    amounts = {
+        line.account.name: line.dr_amount - line.cr_amount for line in editable.split.lines.select_related("account")
+    }
+    assert amounts["Groceries"] == Decimal("120.00")
+    assert amounts["Household Goods"] == Decimal("90.40")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_split_legs_must_add_up_before_saving(requires_vite, authenticated_page: Page, live_server, team, editable):
+    """Caught in the modal, so the user fixes it without a round trip."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.slug)
+    transactions.open_editor("Costco run")
+
+    transactions.set_split_amount(0, "10.00")
+    authenticated_page.locator("[data-testid='modal-save-btn']").click()
+
+    assert "add up" in transactions.split_error()
+    assert authenticated_page.locator("[data-testid='transaction-edit-modal']").is_visible()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_plain_transaction_can_be_split(requires_vite, authenticated_page: Page, live_server, team, editable):
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.slug)
+    transactions.open_editor("Weekly shop")
+    transactions.start_split()
+
+    # The first leg is seeded with the whole total, so Remaining opens at $0.00.
+    assert transactions.field_value("split-amount-0") == "84.20"
+
+    transactions.set_split_amount(0, "50.00")
+    transactions.fill_combobox("split-category-1", "Dining Out")
+    transactions.assign_split_remainder()
+    transactions.save_editor()
+
+    assert editable.plain.lines.count() == 3
+    assert "Split" in transactions.row_text("Weekly shop")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_voiding_and_restoring_a_transaction(requires_vite, authenticated_page: Page, live_server, team, editable):
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.slug)
+
+    transactions.open_editor("Weekly shop")
+    transactions.toggle_void()
+    editable.plain.refresh_from_db()
+    assert editable.plain.status == "void"
+    assert "Void" in transactions.row_text("Weekly shop")
+
+    transactions.open_editor("Weekly shop")
+    assert transactions.void_button_label() == "Restore"
+    transactions.toggle_void()
+    editable.plain.refresh_from_db()
+    assert editable.plain.status == "posted"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deleting_a_transaction_removes_its_row(requires_vite, authenticated_page: Page, live_server, team, editable):
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.slug)
+    before = transactions.get_row_count()
+
+    transactions.open_editor("Weekly shop")
+    transactions.delete_transaction()
+
+    transactions.expect_row_count(before - 1)
+    assert not JournalEntry.objects.filter(id=editable.plain.id).exists()

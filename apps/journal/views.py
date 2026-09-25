@@ -3,6 +3,7 @@ Views for journal app.
 Provides both template views and REST API endpoints for journal entries and lines.
 """
 
+from django.db import transaction
 from django.db.models import CharField, Q
 from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404, render
@@ -16,8 +17,10 @@ from rest_framework.response import Response
 
 from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import Account, Payee
-from apps.audit.models import AuditLog
+from apps.accounts.serializers import PayeeSerializer, SimpleAccountSerializer
+from apps.audit.models import AuditEvent, AuditLog
 from apps.audit.serializers import AuditLogSerializer
+from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.books.permissions import BookModelAccessPermissions
@@ -31,7 +34,35 @@ from .filters import (
     facet_values,
 )
 from .models import JournalEntry, JournalLine, counted_entries
-from .serializers import JournalEntrySerializer, SimpleLineSerializer, TransactionRowSerializer
+from .serializers import (
+    JournalEntrySerializer,
+    SimpleLineSerializer,
+    TransactionDetailSerializer,
+    TransactionEditRequestSerializer,
+    TransactionIdsSerializer,
+    TransactionRowSerializer,
+    TransactionStatusRequestSerializer,
+)
+from .services.sides import UnsupportedEntry
+from .services.simple_edit import (
+    EditRefused,
+    TransactionEdits,
+    apply_edits_bulk,
+    delete_transaction,
+    set_status,
+)
+
+#: Payload key -> `TransactionEdits` field, for the fields that map one to one.
+#: `splits` is absent because it needs its accounts resolved first.
+TRANSACTION_EDIT_FIELDS = {
+    "date": "date",
+    "payee": "payee_name",
+    "description": "description",
+    "account_id": "account_id",
+    "category_id": "category_id",
+    "inflow": "inflow",
+    "outflow": "outflow",
+}
 
 
 @extend_schema_view(
@@ -355,9 +386,9 @@ TRANSACTION_QUERY_PARAMS = [
         parameters=TRANSACTION_QUERY_PARAMS,
     ),
 )
-class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """
-    Read-only list of journal entries flattened into transaction rows.
+    Journal entries flattened into transaction rows, and the edits made to them.
 
     Voided entries and entries behind an archived bank transaction are left out:
     they count toward no balance, so they are not on the ledger either.
@@ -373,6 +404,11 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     params so that they apply to the whole ledger, not just whatever page the
     client has fetched so far.  `facets/` lists a column's distinct values so
     the table's column menus can offer them.
+
+    The write actions all take a list of ids, including when the list has one
+    element in it.  Editing several transactions at once is then a caller change
+    rather than a second endpoint that could disagree with this one about what
+    an edit means.  All of them are all-or-nothing: a refusal writes nothing.
     """
 
     class Pagination(PageNumberPagination):
@@ -381,6 +417,27 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = TransactionRowSerializer
     permission_classes = [BookModelAccessPermissions]
     pagination_class = Pagination
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return TransactionDetailSerializer
+        return TransactionRowSerializer
+
+    @extend_schema(
+        operation_id="transactions_retrieve",
+        tags=["journal"],
+        responses={200: TransactionDetailSerializer},
+    )
+    def retrieve(self, request, team_slug=None, book_slug=None, pk=None):
+        """One transaction as the edit modal needs it, with what may be changed."""
+        entry = self.get_object()
+        try:
+            return Response(TransactionDetailSerializer(entry).data)
+        except UnsupportedEntry as exc:
+            # A shape the editor cannot present as one transaction -- a hand-built
+            # entry, say. The row still lists; it just cannot be opened, and the
+            # modal shows this reason instead of failing opaquely.
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
     def base_queryset(self, *, facet_column=None):
         """
@@ -432,7 +489,159 @@ class TransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return apply_column_filters(queryset, params, self.request.book, exclude=exclude_column)
 
     def get_queryset(self):
+        if self.action in ("retrieve", "edit", "batch_delete", "batch_status"):
+            # A detail fetch and a write carry no filter params, so none of the
+            # per-column subqueries `annotations_for` adds would be read.
+            return self.editable_queryset()
         return apply_ordering(self.filtered_queryset(), self.request.query_params)
+
+    def editable_queryset(self):
+        """
+        The entries a write may touch, with everything the editor reads loaded.
+
+        `resolve_sides` needs each line's account type and each entry's feed rows,
+        and it is called once per entry -- so a batch of two hundred would
+        otherwise be a few hundred queries.
+        """
+        return JournalEntry.for_book.select_related("payee").prefetch_related(
+            "lines__account__account_group",
+            "bank_feed_transactions",
+        )
+
+    def load_for_edit(self, ids):
+        """
+        The requested entries, in the order asked for, or a 404-shaped refusal.
+
+        An id the book cannot see is refused rather than skipped: silently
+        editing four of the five rows a user selected is worse than editing none
+        and saying why.
+        """
+        found = {entry.pk: entry for entry in self.editable_queryset().filter(pk__in=set(ids))}
+        missing = [i for i in ids if i not in found]
+        if missing:
+            raise EditRefused(_("Some of those transactions no longer exist. Reload the page and try again."))
+        return [found[i] for i in ids]
+
+    def rows_for(self, entries):
+        """Re-serialize edited entries so the table can patch itself in place."""
+        refreshed = self.editable_queryset().filter(pk__in=[e.pk for e in entries])
+        return TransactionRowSerializer(refreshed, many=True).data
+
+    @extend_schema(
+        operation_id="transactions_edit",
+        tags=["journal"],
+        request=TransactionEditRequestSerializer,
+        responses={200: TransactionRowSerializer(many=True)},
+    )
+    @action(detail=False, methods=["patch"], url_path="edit")
+    def edit(self, request, team_slug=None, book_slug=None):
+        """
+        Apply one partial edit to one or more transactions.
+
+        Omitted fields are left alone, so the same payload serves a single row's
+        full edit and a one-field change across a selection.  Nothing is written
+        unless every transaction in the list can take the edit.
+        """
+        serializer = TransactionEditRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            entries = self.load_for_edit(data["ids"])
+            edits = self._edits_from(data, book=request.book)
+            updated = apply_edits_bulk(entries, edits, book=request.book)
+        except EditRefused as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(data["ids"]) > 1:
+            log_event(
+                AuditEvent.BULK_EDIT,
+                request=request,
+                metadata={
+                    "count": len(data["ids"]),
+                    "scope": "transactions",
+                    "fields": [f for f in TRANSACTION_EDIT_FIELDS if f in data],
+                },
+            )
+        return Response({"results": self.rows_for(updated)})
+
+    @staticmethod
+    def _edits_from(data, *, book):
+        """
+        Turn a validated payload into `TransactionEdits`.
+
+        A key absent from `data` stays `UNSET`, which is what the writer reads as
+        "leave this alone" -- so this mapping is where the endpoint's
+        omission-means-unchanged contract is actually kept.
+        """
+        edits = TransactionEdits(remove_split=data.get("remove_split", False))
+        for payload_key, field_name in TRANSACTION_EDIT_FIELDS.items():
+            if payload_key in data:
+                setattr(edits, field_name, data[payload_key])
+
+        if "splits" in data:
+            wanted = [leg["category"] for leg in data["splits"]]
+            accounts = {a.id: a for a in Account.objects.filter(book=book, id__in=set(wanted))}
+            if any(i not in accounts for i in wanted):
+                # Another book's account reads as gone rather than as a refusal
+                # that confirms it exists.
+                raise EditRefused(_("That category no longer exists."))
+            edits.legs = [(accounts[leg["category"]], leg["amount"]) for leg in data["splits"]]
+
+        return edits
+
+    @extend_schema(
+        operation_id="transactions_batch_delete",
+        tags=["journal"],
+        request=TransactionIdsSerializer,
+        responses={200: {"type": "object", "properties": {"deleted": {"type": "array", "items": {"type": "integer"}}}}},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_delete")
+    def batch_delete(self, request, team_slug=None, book_slug=None):
+        """
+        Remove transactions.
+
+        A bank-backed transaction goes back to the feed as an uncategorized row
+        rather than vanishing -- the bank reported it, and the next sync would
+        only bring it back.
+        """
+        serializer = TransactionIdsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        try:
+            entries = self.load_for_edit(ids)
+            with transaction.atomic():
+                for entry in entries:
+                    delete_transaction(entry, book=request.book)
+        except EditRefused as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(ids) > 1:
+            log_event(AuditEvent.BULK_DELETE, request=request, metadata={"count": len(ids), "scope": "transactions"})
+        return Response({"deleted": ids})
+
+    @extend_schema(
+        operation_id="transactions_batch_status",
+        tags=["journal"],
+        request=TransactionStatusRequestSerializer,
+        responses={200: TransactionRowSerializer(many=True)},
+    )
+    @action(detail=False, methods=["post"], url_path="batch_status")
+    def batch_status(self, request, team_slug=None, book_slug=None):
+        """Void transactions so they drop out of every balance, or restore them."""
+        serializer = TransactionStatusRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            entries = self.load_for_edit(data["ids"])
+            with transaction.atomic():
+                updated = [set_status(entry, data["status"], book=request.book) for entry in entries]
+        except EditRefused as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"results": self.rows_for(updated)})
 
     @extend_schema(
         operation_id="transactions_facets",
@@ -507,6 +716,12 @@ def transactions_home(request, team_slug, book_slug):
         "transactions_facets": f"/a/{team_slug}/{book_slug}/journal/api/transactions/facets/",
     }
 
+    # The edit modal's account and payee pickers, served with the page the same
+    # way `bank_feed_home` serves them. A fetch on open would make the first row
+    # click wait on a round trip for a list that rarely changes.
+    all_accounts = Account.for_book.select_related("account_group", "institution").order_by("name")
+    all_payees = Payee.for_book.all().order_by("name")
+
     return render(
         request,
         "journal/transactions_home.html",
@@ -515,6 +730,8 @@ def transactions_home(request, team_slug, book_slug):
             "page_title": _("Transactions | {name}").format(name=book_display_name(request.book)),
             "api_urls": api_urls,
             "initial_filters": _initial_account_filters(request),
+            "all_accounts": SimpleAccountSerializer(all_accounts, many=True).data,
+            "all_payees": PayeeSerializer(all_payees, many=True).data,
         },
     )
 
