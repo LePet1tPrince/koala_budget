@@ -161,6 +161,7 @@ WRITES = {
     "accounts:api_reorder_groups": lambda a, b: {"account_type": "expense", "group_ids": [b.expense_group.id]},
     "accounts:api_create_account": lambda a, b: {"name": "Sneaky", "group_id": b.expense_group.id},
     "accounts:api_create_group": lambda a, b: {"name": "New group", "account_type": "expense"},
+    "accounts:api_set_feed": lambda a, b: {"account_id": b.chequing.id, "has_feed": False},
     "journal:journal-entry-list": None,  # placeholder, see WRITE_OVERRIDES
     # The Transactions page's editor. Every write takes a list of ids, so book B's
     # entry is named the same way a selection would name it.

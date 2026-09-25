@@ -19,7 +19,6 @@ import { CSS } from '@dnd-kit/utilities';
 import Cookies from 'js-cookie';
 
 import { formatCurrency } from '../../utilities/currency';
-import Icon from '../../common/Icon';
 
 // ---------------------------------------------------------------------------
 // id helpers: dnd-kit ids are strings namespaced by kind
@@ -133,7 +132,25 @@ function InlineCreateForm({ placeholder, onSubmit, onCancel, extraAction }) {
 // ---------------------------------------------------------------------------
 // Account row (sortable)
 // ---------------------------------------------------------------------------
-function AccountRowContent({ account, dragHandleProps, dragging, overlay }) {
+// Checkbox beside the name: whether the account's bank feed shows in the Inbox.
+function InboxToggle({ account, onToggleFeed }) {
+  const tip = account.hasFeed ? gettext('Shown in the Inbox') : gettext('Hidden from the Inbox');
+  return (
+    <span className="tooltip tooltip-right shrink-0 flex" data-tip={tip}>
+      <input
+        type="checkbox"
+        className="checkbox checkbox-xs checkbox-primary rounded-sm"
+        checked={account.hasFeed}
+        disabled={!onToggleFeed}
+        onChange={(e) => onToggleFeed(account, e.target.checked)}
+        aria-label={interpolate(gettext('Show %s in the Inbox'), [account.name])}
+        data-testid="account-inbox-toggle"
+      />
+    </span>
+  );
+}
+
+function AccountRowContent({ account, dragHandleProps, dragging, overlay, onToggleFeed }) {
   return (
     <div
       className={[
@@ -156,20 +173,14 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay }) {
       >
         <GripIcon />
       </button>
+      {(account.canHaveFeed || account.hasFeed) && (
+        <InboxToggle account={account} onToggleFeed={overlay ? null : onToggleFeed} />
+      )}
       <div className="min-w-0 flex-1">
         <a href={account.url} className="font-medium truncate block hover:link" data-testid="account-name" draggable={false}>
           {account.name}
         </a>
-        {(account.institution || account.hasFeed) && (
-          <div className="text-xs text-base-content/70 truncate flex items-center gap-1.5">
-            {account.institution && <span>{account.institution}</span>}
-            {account.hasFeed && (
-              <span className="tooltip tooltip-right" data-tip={gettext('Linked to a bank feed')}>
-                <Icon name="link" className="inline-block w-3.5 h-3.5 shrink-0" />
-              </span>
-            )}
-          </div>
-        )}
+        {account.institution && <div className="text-xs text-base-content/70 truncate">{account.institution}</div>}
       </div>
       <span className="font-mono text-sm shrink-0 tabular-nums" data-testid="account-balance">
         {formatCurrency(account.balance)}
@@ -179,7 +190,7 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay }) {
   );
 }
 
-function SortableAccountRow({ account, groupId, accountType }) {
+function SortableAccountRow({ account, groupId, accountType, onToggleFeed }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: accountDndId(account.id),
     data: { kind: 'account', account, groupId, accountType },
@@ -187,7 +198,12 @@ function SortableAccountRow({ account, groupId, accountType }) {
 
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform), transition }}>
-      <AccountRowContent account={account} dragging={isDragging} dragHandleProps={{ ...attributes, ...listeners }} />
+      <AccountRowContent
+        account={account}
+        dragging={isDragging}
+        dragHandleProps={{ ...attributes, ...listeners }}
+        onToggleFeed={onToggleFeed}
+      />
     </li>
   );
 }
@@ -195,7 +211,17 @@ function SortableAccountRow({ account, groupId, accountType }) {
 // ---------------------------------------------------------------------------
 // Group card (sortable within its type section, droppable for accounts)
 // ---------------------------------------------------------------------------
-function GroupCard({ group, accountType, serverType, newGoalUrl, urls, onCreateAccount, isDropTarget, draggingAccount }) {
+function GroupCard({
+  group,
+  accountType,
+  serverType,
+  newGoalUrl,
+  urls,
+  onCreateAccount,
+  onToggleFeed,
+  isDropTarget,
+  draggingAccount,
+}) {
   const [adding, setAdding] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: groupDndId(group.id),
@@ -242,7 +268,13 @@ function GroupCard({ group, accountType, serverType, newGoalUrl, urls, onCreateA
       <SortableContext items={group.accounts.map((a) => accountDndId(a.id))} strategy={verticalListSortingStrategy}>
         <ul className="px-1.5 pb-1">
           {group.accounts.map((account) => (
-            <SortableAccountRow key={account.id} account={account} groupId={group.id} accountType={accountType} />
+            <SortableAccountRow
+              key={account.id}
+              account={account}
+              groupId={group.id}
+              accountType={accountType}
+              onToggleFeed={onToggleFeed}
+            />
           ))}
           {group.accounts.length === 0 && (
             <li
@@ -300,7 +332,16 @@ function GroupCard({ group, accountType, serverType, newGoalUrl, urls, onCreateA
 // ---------------------------------------------------------------------------
 // Type section (Assets, Liabilities, …)
 // ---------------------------------------------------------------------------
-function TypeSection({ section, urls, onCreateAccount, onCreateGroup, dropTargetGroupId, draggingAccount, dimmed }) {
+function TypeSection({
+  section,
+  urls,
+  onCreateAccount,
+  onCreateGroup,
+  onToggleFeed,
+  dropTargetGroupId,
+  draggingAccount,
+  dimmed,
+}) {
   const [adding, setAdding] = useState(false);
 
   return (
@@ -321,6 +362,7 @@ function TypeSection({ section, urls, onCreateAccount, onCreateGroup, dropTarget
               newGoalUrl={section.newGoalUrl}
               urls={urls}
               onCreateAccount={onCreateAccount}
+              onToggleFeed={onToggleFeed}
               isDropTarget={dropTargetGroupId === group.id}
               draggingAccount={draggingAccount}
             />
@@ -616,6 +658,33 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
     showToast(interpolate(gettext('Group "%s" created'), [data.group.name]));
   };
 
+  // ----- Inbox checkbox ------------------------------------------------------
+  const setAccountFeed = (accountId, hasFeed) =>
+    setTypes((state) =>
+      state.map((section) => ({
+        ...section,
+        groups: section.groups.map((group) => ({
+          ...group,
+          accounts: group.accounts.map((a) => (a.id === accountId ? { ...a, hasFeed } : a)),
+        })),
+      }))
+    );
+
+  const toggleFeed = async (account, hasFeed) => {
+    setAccountFeed(account.id, hasFeed);
+    try {
+      await postJson(urls.setFeed, { account_id: account.id, has_feed: hasFeed });
+      showToast(
+        interpolate(hasFeed ? gettext('%s now shows in the Inbox') : gettext('%s hidden from the Inbox'), [
+          account.name,
+        ])
+      );
+    } catch (e) {
+      setAccountFeed(account.id, !hasFeed);
+      showToast(e.message, 'error');
+    }
+  };
+
   const draggingAccount = active?.kind === 'account';
 
   const overlayContent = useMemo(() => {
@@ -655,6 +724,7 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
             urls={urls}
             onCreateAccount={createAccount}
             onCreateGroup={createGroup}
+            onToggleFeed={toggleFeed}
             dropTargetGroupId={draggingAccount ? overGroupId : null}
             draggingAccount={draggingAccount}
             dimmed={draggingAccount && active.accountType !== section.key}

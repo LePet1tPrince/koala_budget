@@ -39,4 +39,5 @@ urlpatterns = [
     path("api/reorder-groups/", views.api_reorder_groups, name="api_reorder_groups"),
     path("api/create-account/", views.api_create_account, name="api_create_account"),
     path("api/create-group/", views.api_create_group, name="api_create_group"),
+    path("api/set-feed/", views.api_set_feed, name="api_set_feed"),
 ]
