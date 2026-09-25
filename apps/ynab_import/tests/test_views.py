@@ -57,6 +57,22 @@ class WizardTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "ynab-import-app")
 
+    def test_the_page_is_a_full_screen_takeover(self):
+        """The wizard's tables need the whole width, so no sidebar and no settings rail."""
+        response = self.client.get(self.url("home"))
+        self.assertContains(response, 'data-testid="takeover"')
+        self.assertNotContains(response, 'data-testid="settings-nav"')
+
+    def test_close_goes_home_while_the_book_is_being_set_up(self):
+        # Home sends an un-onboarded book to the welcome screen, which offers the other starts.
+        response = self.client.get(self.url("home"))
+        self.assertEqual(response.context["takeover_close_url"], reverse("web_book:home", args=self.book.url_args))
+
+    def test_close_goes_to_settings_once_the_book_is_in_use(self):
+        OnboardingState.objects.create(book=self.book, completed_at=timezone.now())
+        response = self.client.get(self.url("home"))
+        self.assertEqual(response.context["takeover_close_url"], reverse("web_team:settings", args=[self.team.slug]))
+
     def test_upload_returns_what_we_made_of_the_export(self):
         payload = self.upload()
         self.assertEqual({a["name"] for a in payload["accounts"]}, {"Chequing", "Savings", "Visa"})

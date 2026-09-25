@@ -71,7 +71,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange }) => {
                   </td>
                   <td>
                     <select
-                      className="select select-bordered select-sm"
+                      className="select select-bordered select-sm w-48"
                       value={choice.account_type ?? account.account_type}
                       onChange={(e) => update(account, { account_type: e.target.value })}
                       aria-label={gettext('Account type')}

@@ -117,14 +117,10 @@ def book_create(request, team_slug):
         "books/book_create.html",
         {
             "form": form,
-            "active_tab": "settings",
-            "settings_section": "books",
-            "settings_page_title": _("New set of books"),
             "page_title": _("New set of books"),
-            "settings_page_blurb": _(
-                "A separate chart of accounts, ledger and budget -- for a business, a rental, or anything "
-                "you want to keep apart."
-            ),
+            "takeover_title": _("New set of books"),
+            "takeover_eyebrow": request.team.name,
+            "takeover_close_url": reverse("books_team:list", args=[team_slug]),
         },
     )
 

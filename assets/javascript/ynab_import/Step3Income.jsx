@@ -61,7 +61,7 @@ const Step3Income = ({ income, suggestions, choices, onChange }) => {
                   <td className="money text-right">{money(row.total)}</td>
                   <td>
                     <select
-                      className="select select-bordered select-sm"
+                      className="select select-bordered select-sm w-36"
                       value={kind}
                       onChange={(e) => update(row, { kind: e.target.value })}
                       aria-label={gettext('Counts as')}

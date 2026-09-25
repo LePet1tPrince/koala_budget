@@ -141,10 +141,25 @@ const YnabImportWizard = ({ props }) => {
 
   const current = STEPS[step];
 
+  // The close button, Back and a closed tab all leave the page, and the choices
+  // made on the review screens live only here -- so ask before dropping them.
+  // Not on the upload screen (nothing chosen yet) nor once the import is running
+  // (it carries on in the worker without the page).
+  const hasChoices = step > 0 && step < APPLY_STEP;
+  useEffect(() => {
+    if (!hasChoices) return undefined;
+    const warn = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasChoices]);
+
   if (!canImport && !resumed && step === 0) {
     return (
       <div className="app-card max-w-xl space-y-4" data-testid="ynab-blocked">
-        <h1 className="text-xl font-semibold tracking-tight">{gettext('Import from YNAB')}</h1>
+        <h2 className="text-xl font-semibold tracking-tight">{gettext('This set of books is not empty')}</h2>
         <p className="text-base-content/70">
           {gettext(
             '{book} already has transactions. A YNAB import brings a whole set of books, so it needs an empty one — create a new set of books for it, or delete the existing transactions first.',
@@ -159,13 +174,16 @@ const YnabImportWizard = ({ props }) => {
 
   return (
     <div className="space-y-6">
-      <ul className="steps w-full" data-testid="ynab-steps">
-        {STEPS.map((item, index) => (
-          <li key={item.key} className={`step ${index <= step ? 'step-primary' : ''}`}>
-            <span className="text-xs">{item.label}</span>
-          </li>
-        ))}
-      </ul>
+      {/* Six steps do not fit a phone's width; scroll the bar, not the page. */}
+      <div className="overflow-x-auto">
+        <ul className="steps w-full" data-testid="ynab-steps">
+          {STEPS.map((item, index) => (
+            <li key={item.key} className={`step ${index <= step ? 'step-primary' : ''}`}>
+              <span className="text-xs">{item.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <div className="app-card">
         {current.key === 'upload' && <Step1Upload onUpload={upload} busy={busy} error={error} />}

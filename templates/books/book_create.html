@@ -1,7 +1,21 @@
-{% extends "web/settings/settings_base.html" %}
+{% extends "web/takeover_base.html" %}
 {% load i18n %}
 {% load form_tags %}
-{% block settings_content %}
+{% comment %}
+  A takeover rather than a settings page: starting by YNAB import or export
+  continues into another takeover, so the whole "new set of books" job reads as
+  one full-screen modal. The questionnaire path lands in the onboarding
+  takeover, which is full-screen too.
+{% endcomment %}
+{% block takeover_size %}takeover-narrow{% endblock %}
+{% block takeover_content %}
+  <p class="mb-5 text-sm text-base-content/70">
+    {% blocktranslate trimmed %}
+      A separate chart of accounts, ledger and budget — for a business, a rental, or anything
+      you want to keep apart.
+    {% endblocktranslate %}
+  </p>
+
   <form method="post" class="app-card space-y-4" data-testid="book-create-form">
     {% csrf_token %}
     {% render_text_input form.name %}
@@ -24,7 +38,7 @@
 
     <div class="flex gap-2">
       <button type="submit" class="btn btn-primary" data-testid="book-create-submit">{% translate "Create" %}</button>
-      <a href="{% url 'books_team:list' request.team.slug %}" class="btn btn-ghost">{% translate "Cancel" %}</a>
+      <a href="{{ takeover_close_url }}" class="btn btn-ghost">{% translate "Cancel" %}</a>
     </div>
   </form>
 {% endblock %}

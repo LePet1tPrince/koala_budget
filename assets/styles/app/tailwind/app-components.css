@@ -133,6 +133,27 @@
 }
 
 /*
+  Full-screen takeover pages (`templates/web/takeover_base.html`): the new-book
+  form and the YNAB import. The title bar and the content share one column, so
+  the close button lines up with the right edge of what it closes.
+*/
+.takeover {
+  @apply flex min-h-screen flex-col;
+}
+
+.takeover-column {
+  @apply mx-auto w-full px-4 sm:px-6;
+}
+
+.takeover-wide .takeover-column {
+  @apply max-w-screen-2xl;
+}
+
+.takeover-narrow .takeover-column {
+  @apply max-w-xl;
+}
+
+/*
   Guided onboarding takeover (onboarding plan §6).
 
   Only `opacity` and `transform` are animated -- no layout-triggering properties --

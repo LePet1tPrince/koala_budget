@@ -232,6 +232,15 @@ class BookCreateTest(TestCase):
         book = Book.objects.get(team=self.team, name="From Export")
         self.assertRedirects(response, reverse("portability:home", args=book.url_args), fetch_redirect_response=False)
 
+    def test_the_form_is_a_full_screen_takeover(self):
+        """No sidebar or settings rail: starting a book continues into full-screen flows."""
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("books_team:create", args=[self.team.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-testid="takeover"')
+        self.assertContains(response, f'href="{reverse("books_team:list", args=[self.team.slug])}"')
+        self.assertNotContains(response, 'data-testid="settings-nav"')
+
     def test_a_duplicate_name_is_refused(self):
         self.client.force_login(self.admin)
         response = self.create("personal")

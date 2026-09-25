@@ -14,6 +14,7 @@ import logging
 from celery.result import AsyncResult
 from celery_progress.backend import Progress
 from django.conf import settings
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -26,6 +27,7 @@ from kombu.exceptions import OperationalError
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
+from apps.onboarding.models import OnboardingState
 
 from .models import MAX_UPLOAD_BYTES, YnabImport
 from .services.apply import can_import
@@ -103,14 +105,10 @@ def ynab_import_home(request, team_slug, book_slug):
         request,
         "ynab_import/ynab_import.html",
         {
-            "active_tab": "settings",
-            "settings_section": "import",
-            "settings_page_title": _("Import from YNAB"),
-            "settings_page_blurb": _(
-                "Your accounts, your whole transaction history, your monthly budgets and your savings — "
-                "brought over and checked against YNAB’s own numbers."
-            ),
             "page_title": _("Import from YNAB"),
+            "takeover_title": _("Import from YNAB"),
+            "takeover_eyebrow": request.book.name,
+            "takeover_close_url": _close_url(request.book),
             "ynab_props": {
                 "teamSlug": team_slug,
                 "teamName": request.book.name,
@@ -130,6 +128,24 @@ def ynab_import_home(request, team_slug, book_slug):
             },
         },
     )
+
+
+def _close_url(book) -> str:
+    """
+    Where the takeover's close button goes.
+
+    A book still being set up (a new book whose owner chose "Import from YNAB",
+    or the onboarding takeover's "Coming from YNAB?") goes back to its home, which
+    sends it into the onboarding welcome -- the screen that offers the other ways
+    to start. A book already in use came here from Settings, so it goes back there.
+    """
+    if settings.ONBOARDING_ENABLED and not (
+        OnboardingState.objects.filter(book=book)
+        .filter(Q(completed_at__isnull=False) | Q(skipped_at__isnull=False))
+        .exists()
+    ):
+        return reverse("web_book:home", args=book.url_args)
+    return reverse("web_team:settings", args=[book.team.slug])
 
 
 def _json_body(request) -> dict:
