@@ -117,6 +117,7 @@ OBJECTS = {
     "accounts:payee_delete": ("payee", "pk", "post"),
     "accounts:institution_detail": ("institution", "pk", "get"),
     "accounts:institution_update": ("institution", "pk", "get"),
+    "accounts:institution_accounts": ("institution", "pk", "post"),
     "accounts:institution_delete": ("institution", "pk", "post"),
     "journal:journal-entry-detail": ("entry", "pk", "get"),
     "journal:journal-entry-audit": ("entry", "pk", "get"),

@@ -1217,6 +1217,99 @@ class ManagementPagesTest(TestCase):
                 self.assertEqual(self.client.get(self.url(name)).context["accounts_section"], section)
 
 
+class InstitutionAccountsTest(TestCase):
+    """Choosing an institution's accounts from one checklist."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from .models import ACCOUNT_TYPE_LIABILITY, Institution
+
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
+        cls.user = CustomUser.objects.create_user(username="testuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_MEMBER})
+        cls.td = Institution.objects.create(book=cls.book, name="TD")
+        cls.rbc = Institution.objects.create(book=cls.book, name="RBC")
+        cls.bank = AccountGroup.objects.create(book=cls.book, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        cls.cards = AccountGroup.objects.create(book=cls.book, name="Cards", account_type=ACCOUNT_TYPE_LIABILITY)
+        cls.food = AccountGroup.objects.create(book=cls.book, name="Food", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.chequing = Account.objects.create(
+            book=cls.book, name="Chequing", account_group=cls.bank, institution=cls.td
+        )
+        cls.savings = Account.objects.create(book=cls.book, name="Savings", account_group=cls.bank, institution=cls.rbc)
+        cls.visa = Account.objects.create(book=cls.book, name="Visa", account_group=cls.cards)
+        cls.old = Account.objects.create(book=cls.book, name="Old", account_group=cls.bank, is_archived=True)
+        cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.food)
+
+    def setUp(self):
+        self.client.login(username="testuser@example.com", password="testpass123")
+        self.url = reverse("accounts:institution_accounts", args=[*self.book.url_args, self.td.pk])
+
+    def institutions(self):
+        return dict(Account.objects.filter(book=self.book).values_list("name", "institution__name"))
+
+    def test_checklist_offers_assets_and_liabilities_only(self):
+        response = self.client.get(self.td.get_absolute_url())
+        choices = {
+            choice["account"].name: choice
+            for section in response.context["account_sections"]
+            for group in section["groups"]
+            for choice in group["choices"]
+        }
+        self.assertEqual(set(choices), {"Chequing", "Savings", "Visa"})
+        self.assertTrue(choices["Chequing"]["checked"])
+        self.assertEqual(choices["Savings"]["elsewhere"], self.rbc)
+        self.assertContains(response, "Choose accounts")
+
+    def test_ticked_accounts_are_linked_and_unticked_unlinked(self):
+        response = self.client.post(self.url, {"accounts": [self.savings.pk, self.visa.pk]})
+        self.assertRedirects(response, self.td.get_absolute_url(), fetch_redirect_response=False)
+        self.assertEqual(
+            self.institutions(),
+            {"Chequing": None, "Savings": "TD", "Visa": "TD", "Old": None, "Groceries": None},
+        )
+
+    def test_accounts_not_offered_are_left_alone(self):
+        self.groceries.institution = self.td
+        self.groceries.save()
+        self.client.post(self.url, {"accounts": [self.chequing.pk, self.groceries.pk, self.old.pk]})
+        self.assertEqual(self.institutions()["Groceries"], "TD")  # not offered: neither unlinked nor touched
+        self.assertIsNone(self.institutions()["Old"])  # archived and not linked here: not offered, not linked
+
+    def test_archived_account_linked_here_can_be_unlinked(self):
+        self.old.institution = self.td
+        self.old.save()
+        self.client.post(self.url, {"accounts": [self.chequing.pk]})
+        self.assertIsNone(self.institutions()["Old"])
+
+    def test_return_to_survives_the_save(self):
+        response = self.client.post(self.url, {"accounts": [self.chequing.pk], "return_to": "/somewhere/"})
+        self.assertIn("return_to=%2Fsomewhere%2F", response["Location"])
+
+    def test_no_js_page_renders_the_checklist(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, "Accounts at TD")
+        self.assertContains(response, 'data-testid="institution-account-choice"', count=3)
+
+    def test_another_books_accounts_cannot_be_linked(self):
+        from apps.books.models import Book
+
+        other = Book.objects.create(team=self.team, name="Other", slug="other")
+        group = AccountGroup.objects.create(book=other, name="Bank", account_type=ACCOUNT_TYPE_ASSET)
+        foreign = Account.objects.create(book=other, name="Foreign", account_group=group)
+        self.client.post(self.url, {"accounts": [foreign.pk, "not-an-id"]})
+        foreign.refresh_from_db()
+        self.assertIsNone(foreign.institution)
+
+    def test_requires_team_membership(self):
+        self.client.logout()
+        outsider = CustomUser.objects.create_user(username="outsider@example.com", password="pass12345")
+        self.client.force_login(outsider)
+        response = self.client.post(self.url, {"accounts": [self.visa.pk]})
+        self.assertIn(response.status_code, (302, 403, 404))
+        self.assertIsNone(self.institutions()["Visa"])
+
+
 class ReturnToNavigationTest(TestCase):
     """A page opened with ?return_to links back there, through edit and cancel."""
 
