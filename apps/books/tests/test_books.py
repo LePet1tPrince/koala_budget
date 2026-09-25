@@ -139,6 +139,13 @@ class RequestPlumbingTest(TestCase):
         self.assertContains(response, 'data-testid="book-switch-business"')
         self.assertContains(response, reverse("books_team:create", args=[self.team.slug]))
 
+    def test_the_switcher_lives_in_the_user_menu_without_team_settings(self):
+        response = self.client.get(reverse("web_book:home", args=self.personal.url_args))
+        self.assertNotContains(response, 'data-testid="team-switcher"')
+        self.assertContains(response, 'data-testid="my-books-toggle"')
+        self.assertContains(response, 'data-testid="theme-toggle"')
+        self.assertNotContains(response, "Team Settings")
+
     def test_a_single_book_team_sees_no_book_name_on_the_dashboard(self):
         team, user = make_team("single-book")
         finish_onboarding(team.default_book)
