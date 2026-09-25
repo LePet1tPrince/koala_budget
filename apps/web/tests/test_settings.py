@@ -69,7 +69,6 @@ class SettingsHubTest(TestCase):
     def test_moved_pages_left_the_sidebars_manage_group(self):
         """
         Asserted against the nav include itself rather than the whole page:
-        Team is still linked from the team switcher (as "Team Settings"), and
         the hub and rail link to all three, so counting occurrences on the page
         would measure the wrong thing.
         """

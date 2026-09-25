@@ -43,8 +43,13 @@
     {% comment %}
  shrink-0 matters: without it the flex row lets a wide table squeeze the
        sidebar, so the nav visibly changed width from page to page.
+       z-index: sticky makes the aside its own stacking context, so without one
+       the user menu's My books flyout (which overhangs the content column)
+       paints under the page's sticky cells (the budget grid's reach z-40). It
+       is raised only while that menu is open, so onboarding coach marks (z-40)
+       still paint over the sidebar otherwise; toasts and modals (z-50) stay on top.
     {% endcomment %}
-    <aside class="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col p-3 lg:flex">
+    <aside class="sticky top-0 z-30 has-[.dropdown:focus-within]:z-[45] hidden h-screen w-[248px] shrink-0 flex-col p-3 lg:flex">
       {% block sidebar-nav %}
         {% include "web/components/app_nav.html" %}
       {% endblock %}
