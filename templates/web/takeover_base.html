@@ -14,7 +14,9 @@
   Context:
     takeover_title      the heading in the title bar
     takeover_eyebrow    optional small line above it (the book or team name)
-    takeover_close_url  where the close button goes
+    takeover_close_url  where the close button goes. A page that can lose work
+                        by leaving intercepts clicks on `a[data-takeover-close]`
+                        to confirm first (the YNAB wizard does).
 
   Blocks:
     takeover_size       takeover-wide (default) or takeover-narrow: how wide
@@ -40,7 +42,8 @@
            class="btn btn-ghost btn-sm btn-square"
            aria-label="{% translate 'Close' %}"
            title="{% translate 'Close' %}"
-           data-testid="takeover-close">
+           data-testid="takeover-close"
+           data-takeover-close>
           {% icon "close" class="h-5 w-5" %}
         </a>
       </div>

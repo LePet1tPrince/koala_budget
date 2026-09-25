@@ -139,6 +139,19 @@ class YnabImportPage(BasePage):
     def set_goal_kind(self, name: str, value: str):
         self.goal_card(name).locator("select").select_option(value)
 
+    def click_close(self):
+        """The takeover's close button, in the title bar."""
+        self.page.locator("[data-testid='takeover-close']").click()
+
+    def leave_dialog_open(self) -> bool:
+        return self.page.locator("[data-testid='ynab-leave-dialog'][open]").count() > 0
+
+    def keep_going(self):
+        self.page.locator("[data-testid='ynab-leave-cancel']").click()
+
+    def leave_import(self):
+        self.page.locator("[data-testid='ynab-leave-confirm']").click()
+
     def click_next(self):
         self.page.locator("[data-testid='ynab-next']").click()
 

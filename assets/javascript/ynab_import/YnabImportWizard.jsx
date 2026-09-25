@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import Icon from '../common/Icon';
+import Modal from '../common/Modal';
 import Step1Upload from './Step1Upload';
 import Step2Accounts from './Step2Accounts';
 import Step3Income from './Step3Income';
@@ -150,20 +151,52 @@ const YnabImportWizard = ({ props }) => {
 
   const current = STEPS[step];
 
-  // The close button, Back and a closed tab all leave the page, and the choices
-  // made on the review screens live only here -- so ask before dropping them.
-  // Not on the upload screen (nothing chosen yet) nor once the import is running
-  // (it carries on in the worker without the page).
+  // The choices made on the review screens live only in this page, so leaving
+  // loses them. Not on the upload screen (nothing chosen yet) nor once the import
+  // is running (it carries on in the worker without the page).
   const hasChoices = step > 0 && step < APPLY_STEP;
+  // Where the user asked to go, while the "leave the import?" dialog is up.
+  const [leaveTo, setLeaveTo] = useState(null);
+  // Set once the user has confirmed, so the browser's own prompt doesn't follow ours.
+  const leaving = useRef(false);
+
   useEffect(() => {
     if (!hasChoices) return undefined;
+
+    // The takeover's close button is ours to intercept, so it gets a real dialog.
+    const onClick = (e) => {
+      const link = e.target.closest?.('a[data-takeover-close]');
+      if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      setLeaveTo(link.href);
+    };
+    // Closing the tab, reloading and the browser's Back button are not: there the
+    // browser only ever shows its own prompt, so that stays as the fallback.
     const warn = (e) => {
+      if (leaving.current) return;
       e.preventDefault();
       e.returnValue = '';
     };
+    document.addEventListener('click', onClick);
     window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
+    return () => {
+      document.removeEventListener('click', onClick);
+      window.removeEventListener('beforeunload', warn);
+    };
   }, [hasChoices]);
+
+  // `showModal()` focuses the first button, which is "Leave". Put focus on the safe
+  // choice instead; the Modal child's effect has opened the dialog by the time this
+  // parent effect runs.
+  const keepGoingRef = useRef(null);
+  useEffect(() => {
+    if (leaveTo !== null) keepGoingRef.current?.focus();
+  }, [leaveTo]);
+
+  const leave = () => {
+    leaving.current = true;
+    window.location.href = leaveTo;
+  };
 
   if (!canImport && !resumed && step === 0) {
     return (
@@ -273,6 +306,36 @@ const YnabImportWizard = ({ props }) => {
           )}
         </div>
       )}
+
+      <Modal
+        open={leaveTo !== null}
+        onClose={() => setLeaveTo(null)}
+        title={gettext('Leave the import?')}
+        size="sm"
+        testId="ynab-leave-dialog"
+        actions={
+          <>
+            <button type="button" className="btn btn-ghost" onClick={leave} data-testid="ynab-leave-confirm">
+              {gettext('Leave without importing')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setLeaveTo(null)}
+              ref={keepGoingRef}
+              data-testid="ynab-leave-cancel"
+            >
+              {gettext('Keep going')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-base-content/70">
+          {gettext(
+            'Nothing has been imported yet, and the choices you made on these screens are not saved. If you leave now, you will start again by uploading your export.',
+          )}
+        </p>
+      </Modal>
     </div>
   );
 };

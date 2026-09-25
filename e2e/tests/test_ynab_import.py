@@ -109,6 +109,26 @@ def test_accounts_are_filed_into_groups_picked_from_one_list(import_page, tiny_e
 
 
 @pytest.mark.django_db
+def test_closing_mid_review_asks_in_a_dialog_not_a_browser_prompt(import_page, tiny_export, team, requires_vite):
+    native_prompts = []
+    import_page.page.on("dialog", lambda dialog: (native_prompts.append(dialog.type), dialog.dismiss()))
+    import_page.upload(tiny_export)
+    start_url = import_page.page.url
+
+    import_page.click_close()
+    assert import_page.leave_dialog_open()
+    import_page.keep_going()
+    assert not import_page.leave_dialog_open()
+    assert import_page.page.url == start_url
+    assert import_page.account_rows() >= 1
+
+    import_page.click_close()
+    import_page.leave_import()
+    import_page.page.wait_for_url(lambda url: url != start_url, timeout=10_000)
+    assert native_prompts == []
+
+
+@pytest.mark.django_db
 def test_an_account_can_be_left_behind(import_page, tiny_export, team, requires_vite):
     import_page.upload(tiny_export)
     import_page.drop_account("Savings")
