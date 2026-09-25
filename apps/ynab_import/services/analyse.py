@@ -75,18 +75,31 @@ INVESTMENT_LOSS = "Investment Loss"
 UNCATEGORIZED_INCOME = "Uncategorized Income"
 UNCATEGORIZED_EXPENSE = "Uncategorized Expense"
 
-# Group names for the generated chart of accounts.
-GROUP_BANK = "Bank Accounts"
-GROUP_TRACKING = "Tracking Accounts"
-GROUP_CREDIT_CARDS = "Credit Cards"
-GROUP_LOANS = "Loans & Debt"
+# Group names for the generated chart of accounts. Singular nouns: a group names
+# what each account in it *is* ("Credit Card"), so they read the same whether it
+# holds one account or twelve. "Equity Adjustments" is the app's own system group
+# and keeps the name every other chart uses.
+GROUP_BANK = "Bank Account"
+GROUP_TRACKING = "Tracking Account"
+GROUP_CREDIT_CARD = "Credit Card"
+GROUP_LOAN = "Loan"
 GROUP_INCOME = "Income"
-GROUP_INVESTMENT = "Investment Activity"
+GROUP_INVESTMENT = "Investment"
 GROUP_UNCATEGORIZED = "Uncategorized"
 GROUP_EQUITY = "Equity Adjustments"
 
 ASSET = "asset"
 LIABILITY = "liability"
+
+# The groups the accounts screen always offers, whether or not an inferred account
+# landed in one: a user retyping an account as a debt needs "Loan" to pick from
+# even when the export had no loan in it.
+DEFAULT_ACCOUNT_GROUPS = (
+    (GROUP_BANK, ASSET),
+    (GROUP_TRACKING, ASSET),
+    (GROUP_CREDIT_CARD, LIABILITY),
+    (GROUP_LOAN, LIABILITY),
+)
 
 
 @dataclass(frozen=True)
@@ -381,7 +394,7 @@ def infer_accounts(register: list[RegisterRow], plan: list[PlanRow]) -> list[Acc
 
 def _suggested_group(account_type: str, name: str, cards: set[str], on_budget: bool) -> str:
     if account_type == LIABILITY:
-        return GROUP_CREDIT_CARDS if name in cards else GROUP_LOANS
+        return GROUP_CREDIT_CARD if name in cards else GROUP_LOAN
     return GROUP_BANK if on_budget else GROUP_TRACKING
 
 

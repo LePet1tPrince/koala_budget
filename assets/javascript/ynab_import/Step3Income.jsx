@@ -3,6 +3,9 @@
 import React, { useMemo } from 'react';
 
 import Icon from '../common/Icon';
+import ChipSelect from './ChipSelect';
+import NameBank from './NameBank';
+import { resolveNewName, withName } from './names';
 
 /**
  * Where each inflow came from.
@@ -15,18 +18,45 @@ import Icon from '../common/Icon';
 const money = (value) =>
   `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const Step3Income = ({ income, suggestions, choices, onChange }) => {
+const Step3Income = ({ income, suggestions, otherIncome, choices, onChange, extraAccounts, onExtraAccountsChange }) => {
   const choiceFor = (row) => choices[row.payee] || {};
   const update = (row, patch) => onChange({ ...choices, [row.payee]: { ...choiceFor(row), ...patch } });
+  const kindOf = (row) => choiceFor(row).kind ?? row.kind;
+  // A payee we suggested as "not income" has no account; switched back to income
+  // it lands where the server would put it.
+  const accountOf = (row) => choiceFor(row).account || row.account || otherIncome;
 
+  // The suggested accounts, then any a row is in, then the ones the user added.
   const accounts = useMemo(() => {
-    const names = new Set(suggestions);
-    income.forEach((row) => {
-      const chosen = (choices[row.payee] || {}).account;
-      if (chosen) names.add(chosen);
+    let names = [];
+    suggestions.forEach((name) => {
+      names = withName(names, name);
     });
-    return [...names].sort();
-  }, [income, suggestions, choices]);
+    income.forEach((row) => {
+      if (kindOf(row) === 'income') names = withName(names, accountOf(row));
+    });
+    extraAccounts.forEach((name) => {
+      names = withName(names, name);
+    });
+    return names;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [income, suggestions, choices, extraAccounts]);
+
+  const counts = useMemo(() => {
+    const tally = {};
+    income.forEach((row) => {
+      if (kindOf(row) !== 'income') return;
+      tally[accountOf(row)] = (tally[accountOf(row)] || 0) + 1;
+    });
+    return tally;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [income, choices]);
+
+  const createAccount = (raw) => {
+    const result = resolveNewName(accounts, raw);
+    if (result.created) onExtraAccountsChange([...extraAccounts, result.name]);
+    return result;
+  };
 
   return (
     <div className="space-y-5">
@@ -34,10 +64,31 @@ const Step3Income = ({ income, suggestions, choices, onChange }) => {
         <h2 className="text-xl font-semibold tracking-tight">{gettext('Where your money came from')}</h2>
         <p className="mt-2 max-w-prose text-base-content/70">
           {gettext(
-            'YNAB does not categorise income, so we grouped your deposits by who paid you. Give two payees the same account name to merge them, or mark a payee as “not income” if it was a correction rather than earnings.',
+            'YNAB does not categorise income, so we grouped your deposits by who paid you. Pick the same income account for two payees to merge them, or mark a payee as “not income” if it was a correction rather than earnings.',
           )}
         </p>
       </div>
+
+      <section className="space-y-3 rounded-box border border-base-300 p-4" data-testid="ynab-income-bank">
+        <div>
+          <h3 className="font-semibold">{gettext('Income accounts')}</h3>
+          <p className="mt-1 text-sm text-base-content/70">
+            {gettext(
+              'Each payee below goes into one of these. Add an account with + here or from any row’s menu, and it is offered on every row.',
+            )}
+          </p>
+        </div>
+        <NameBank
+          names={accounts}
+          counts={counts}
+          removable={extraAccounts.filter((name) => !counts[name])}
+          onRemove={(name) => onExtraAccountsChange(extraAccounts.filter((item) => item !== name))}
+          onAdd={(raw) => createAccount(raw).error}
+          addLabel={gettext('New income account')}
+          addPlaceholder={gettext('Account name')}
+          testId="ynab-income-accounts"
+        />
+      </section>
 
       <div className="app-surface overflow-x-auto">
         <table className="table table-sm table-quiet" data-testid="ynab-income-table">
@@ -52,8 +103,7 @@ const Step3Income = ({ income, suggestions, choices, onChange }) => {
           </thead>
           <tbody>
             {income.map((row) => {
-              const choice = choiceFor(row);
-              const kind = choice.kind ?? row.kind;
+              const kind = kindOf(row);
               return (
                 <tr key={row.payee} data-testid="ynab-income-row" data-payee={row.payee}>
                   <td className="whitespace-nowrap">{row.label}</td>
@@ -72,13 +122,15 @@ const Step3Income = ({ income, suggestions, choices, onChange }) => {
                   </td>
                   <td>
                     {kind === 'income' ? (
-                      <input
-                        type="text"
-                        className="input input-bordered input-sm w-52"
-                        list="ynab-income-accounts"
-                        value={choice.account ?? row.account}
-                        onChange={(e) => update(row, { account: e.target.value })}
-                        aria-label={gettext('Income account')}
+                      <ChipSelect
+                        value={accountOf(row)}
+                        options={accounts}
+                        onChange={(account) => update(row, { account })}
+                        onCreate={createAccount}
+                        createLabel={gettext('New income account')}
+                        createPlaceholder={gettext('Account name')}
+                        ariaLabel={gettext('Income account')}
+                        testId="ynab-income-account"
                       />
                     ) : (
                       <span className="text-sm text-base-content/70">{gettext('Bookkeeping adjustment')}</span>
@@ -89,11 +141,6 @@ const Step3Income = ({ income, suggestions, choices, onChange }) => {
             })}
           </tbody>
         </table>
-        <datalist id="ynab-income-accounts">
-          {accounts.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
       </div>
 
       <p className="flex items-start gap-2 text-sm text-base-content/70">

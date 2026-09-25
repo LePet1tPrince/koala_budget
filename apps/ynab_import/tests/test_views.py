@@ -76,6 +76,18 @@ class WizardTest(TestCase):
     def test_upload_returns_what_we_made_of_the_export(self):
         payload = self.upload()
         self.assertEqual({a["name"] for a in payload["accounts"]}, {"Chequing", "Savings", "Visa"})
+        # The groups every row picks from: typed, singular, and offered even when
+        # no inferred account is in them yet (nothing here is a loan).
+        self.assertEqual(
+            payload["groups"],
+            [
+                {"name": "Bank Account", "account_type": "asset"},
+                {"name": "Tracking Account", "account_type": "asset"},
+                {"name": "Credit Card", "account_type": "liability"},
+                {"name": "Loan", "account_type": "liability"},
+            ],
+        )
+        self.assertEqual(payload["other_income"], "Other Income")
         self.assertEqual(payload["summary"]["entries"], 5)  # plus the two opening balances
         self.assertTrue(payload["can_import"])
         self.assertTrue(YnabImport.objects.filter(book=self.book, id=payload["import_id"]).exists())

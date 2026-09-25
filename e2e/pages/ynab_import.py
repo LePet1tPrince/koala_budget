@@ -87,9 +87,48 @@ class YnabImportPage(BasePage):
     def income_row(self, payee: str):
         return self.page.locator(f"[data-testid='ynab-income-row'][data-payee='{payee}']").first
 
-    def set_income_account(self, payee: str, name: str):
-        field = self.income_row(payee).locator("input[type='text']")
+    def _choose(self, chip, test_id: str, name: str):
+        """
+        Pick `name` from a row's chip menu, creating it there if the list lacks it.
+
+        The menu is portaled out of the row, so it is found by its own testid.
+        """
+        chip.click()
+        menu = self.page.locator(f"[data-testid='{test_id}-menu']")
+        option = menu.get_by_role("option", name=name, exact=True)
+        if option.count():
+            option.click()
+            return
+        menu.locator(f"[data-testid='{test_id}-new']").click()
+        menu.locator(f"[data-testid='{test_id}-new-form'] input").fill(name)
+        menu.locator(f"[data-testid='{test_id}-new-form'] input").press("Enter")
+
+    def account_group(self, name: str) -> str:
+        return self.account_row(name).locator("[data-testid='ynab-account-group']").get_attribute("data-value")
+
+    def set_account_group(self, name: str, group: str):
+        chip = self.account_row(name).locator("[data-testid='ynab-account-group']")
+        self._choose(chip, "ynab-account-group", group)
+
+    def group_names(self, account_type: str) -> list[str]:
+        """The groups listed at the top of the accounts screen for one type."""
+        chips = self.page.locator(f"[data-testid='ynab-groups-{account_type}-chip']")
+        return [chips.nth(i).get_attribute("data-name") for i in range(chips.count())]
+
+    def add_group(self, account_type: str, name: str):
+        """Add a group with the + at the top of the accounts screen."""
+        bank = f"ynab-groups-{account_type}"
+        self.page.locator(f"[data-testid='{bank}-add']").click()
+        field = self.page.locator(f"[data-testid='{bank}-new-form'] input")
         field.fill(name)
+        field.press("Enter")
+
+    def income_account(self, payee: str) -> str:
+        return self.income_row(payee).locator("[data-testid='ynab-income-account']").get_attribute("data-value")
+
+    def set_income_account(self, payee: str, name: str):
+        chip = self.income_row(payee).locator("[data-testid='ynab-income-account']")
+        self._choose(chip, "ynab-income-account", name)
 
     def goal_cards(self) -> int:
         return self.page.locator("[data-testid='ynab-goal-card']").count()

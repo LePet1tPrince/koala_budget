@@ -49,6 +49,11 @@ const YnabImportWizard = ({ props }) => {
   const [importId, setImportId] = useState(resume?.id ?? null);
   const [analysis, setAnalysis] = useState(null);
   const [choices, setChoices] = useState({ accounts: {}, income: {}, categories: {} });
+  // Names the user added on the accounts and income screens. Held here rather than
+  // in the screens, which unmount on Back/Continue, so an added group that no row
+  // uses yet is still offered on returning to the screen.
+  const [extraGroups, setExtraGroups] = useState([]);
+  const [extraIncomeAccounts, setExtraIncomeAccounts] = useState([]);
 
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -66,6 +71,8 @@ const YnabImportWizard = ({ props }) => {
     setAnalysis(null);
     setPreview(null);
     setChoices({ accounts: {}, income: {}, categories: {} });
+    setExtraGroups([]);
+    setExtraIncomeAccounts([]);
     setError(null);
     setStep(0);
   }, []);
@@ -78,6 +85,8 @@ const YnabImportWizard = ({ props }) => {
         const result = await api.upload(files);
         setImportId(result.import_id);
         setAnalysis(result);
+        setExtraGroups([]);
+        setExtraIncomeAccounts([]);
         setPreview(result);
         setStep(1);
       } catch (e) {
@@ -194,6 +203,8 @@ const YnabImportWizard = ({ props }) => {
             groups={analysis.groups}
             choices={choices.accounts}
             onChange={(accounts) => setChoices({ ...choices, accounts })}
+            extraGroups={extraGroups}
+            onExtraGroupsChange={setExtraGroups}
           />
         )}
 
@@ -201,8 +212,11 @@ const YnabImportWizard = ({ props }) => {
           <Step3Income
             income={analysis.income}
             suggestions={analysis.income_accounts}
+            otherIncome={analysis.other_income}
             choices={choices.income}
             onChange={(income) => setChoices({ ...choices, income })}
+            extraAccounts={extraIncomeAccounts}
+            onExtraAccountsChange={setExtraIncomeAccounts}
           />
         )}
 

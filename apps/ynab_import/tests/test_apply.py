@@ -186,7 +186,8 @@ class ExistingChartApplyTest(TestCase):
         analysis = tiny_analysis()
         apply_plan(book, build(analysis), user=user)
 
-        self.assertEqual(AccountGroup.objects.filter(book=book, name="Bank Accounts").count(), 1)
+        # Both charts have an "Income" group: the import files into the stock one.
+        self.assertEqual(AccountGroup.objects.filter(book=book, name="Income").count(), 1)
         self.assertGreater(AccountGroup.objects.filter(book=book).count(), before - 1)
         self.assertTrue(Account.objects.filter(book=book, name="Chequing").exists())
 
