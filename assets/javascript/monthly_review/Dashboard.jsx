@@ -23,6 +23,7 @@ const Dashboard = ({
   currentBaseline,
   onBaselineChange,
   onWalkthrough,
+  onHealthCheck,
   urls,
 }) => {
   const { current, budget, biggest, net_worth: netWorth, health } = review;
@@ -56,12 +57,17 @@ const Dashboard = ({
       </div>
 
       <div
-        className={`app-card ${health.all_clear ? 'border-success/40' : 'border-warning/40'}`}
+        className={`app-card flex flex-wrap items-center justify-between gap-2 ${health.all_clear ? 'border-success/40' : 'border-warning/40'}`}
         data-testid="health-strip"
       >
-        {health.all_clear
-          ? "Everything's accounted for."
-          : `${health.flags.length} thing(s) need attention this month.`}
+        <span>
+          {health.all_clear
+            ? "Everything's accounted for."
+            : `${health.flags.length} thing(s) need attention this month.`}
+        </span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onHealthCheck} data-testid="health-strip-open">
+          See accounts
+        </button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

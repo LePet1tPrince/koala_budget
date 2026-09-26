@@ -46,3 +46,32 @@ class MonthlyReviewStateTests(TestCase):
         MonthlyReviewState.objects.create(book=self.book, month=date(2026, 8, 1))
         with self.assertRaises(IntegrityError):
             MonthlyReviewState.objects.create(book=self.book, month=date(2026, 8, 1))
+
+
+class HealthStepRemovedMigrationTests(TestCase):
+    """0005 shifts stored walkthrough positions down by one now the health step is a modal."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Test Team", slug="test-team")
+        cls.book = cls.team.default_book
+
+    def _migration(self):
+        import importlib
+
+        return importlib.import_module("apps.monthly_review.migrations.0005_health_step_removed")
+
+    def test_shift_down_moves_every_step_back_one(self):
+        from django.apps import apps
+
+        on_health = MonthlyReviewState.objects.create(book=self.book, month=date(2026, 7, 1), step=0, steps_seen=[0])
+        mid_way = MonthlyReviewState.objects.create(
+            book=self.book, month=date(2026, 8, 1), step=4, steps_seen=[0, 1, 2, 3, 4]
+        )
+
+        self._migration().shift_down(apps, None)
+
+        on_health.refresh_from_db()
+        mid_way.refresh_from_db()
+        self.assertEqual((on_health.step, on_health.steps_seen), (0, []))
+        self.assertEqual((mid_way.step, mid_way.steps_seen), (3, [0, 1, 2, 3]))

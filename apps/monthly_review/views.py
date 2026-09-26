@@ -147,6 +147,7 @@ def monthly_review_home(request, team_slug, book_slug):
                 "dismiss": reverse("monthly_review:api_dismiss", args=[team_slug, book_slug]),
                 "export": reverse("monthly_review:export", args=[team_slug, book_slug]) + f"?month={month.isoformat()}",
                 "reportsHome": reverse("reports:reports_home", args=[team_slug, book_slug]),
+                "inbox": reverse("bank_feed:bank_feed_home", args=[team_slug, book_slug]),
             },
         }
 
