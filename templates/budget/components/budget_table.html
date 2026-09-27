@@ -254,20 +254,40 @@
 
   // "Select all" checkbox in the header keeps in sync with the per-row checkboxes
   // used to scope the Auto-Assign actions (see budget_sidebar.html).
+  // Shift-click extends the selection to every row between the last-clicked
+  // checkbox and this one (in displayed order), as in the bank feed table.
   (function () {
     const selectAll = document.getElementById('budget-select-all');
     if (!selectAll) return;
     const rowCheckboxes = () => Array.from(document.querySelectorAll('.budget-row-checkbox'));
+    let lastChecked = null;
+
+    const syncSelectAll = function () {
+      const boxes = rowCheckboxes();
+      selectAll.checked = boxes.every(function (b) { return b.checked; });
+      selectAll.indeterminate = !selectAll.checked && boxes.some(function (b) { return b.checked; });
+    };
 
     selectAll.addEventListener('change', function () {
       rowCheckboxes().forEach(function (cb) { cb.checked = selectAll.checked; });
     });
 
     rowCheckboxes().forEach(function (cb) {
-      cb.addEventListener('change', function () {
+      // `click` rather than `change`: only the click carries shiftKey, and by
+      // the time it fires the box has already toggled to its new state.
+      cb.addEventListener('click', function (e) {
         const boxes = rowCheckboxes();
-        selectAll.checked = boxes.every(function (b) { return b.checked; });
-        selectAll.indeterminate = !selectAll.checked && boxes.some(function (b) { return b.checked; });
+        if (e.shiftKey && lastChecked) {
+          const anchorIndex = boxes.indexOf(lastChecked);
+          const targetIndex = boxes.indexOf(cb);
+          if (anchorIndex !== -1 && targetIndex !== -1) {
+            const start = Math.min(anchorIndex, targetIndex);
+            const end = Math.max(anchorIndex, targetIndex);
+            for (let i = start; i <= end; i += 1) boxes[i].checked = cb.checked;
+          }
+        }
+        lastChecked = cb;
+        syncSelectAll();
       });
     });
   })();
