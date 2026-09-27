@@ -3,7 +3,8 @@ Data for the three consolidated reports (docs/reports-consolidation.md):
 
 - spending_report: Income & Spending -- money in/out over a range (Income Statement + Cash Flow)
 - net_worth_report: Net Worth -- balances and their change over a range (Balance Sheet + Net Worth Trend)
-- budget_goals_report: Budget & Goals -- one month's plan (Budget vs Actual + Goal Progress + Dollar Map)
+- budget_goals_report: Budget & Goals -- where every dollar is going (Dollar Map + Goal Progress);
+  per-category budget progress lives on the budget page itself
 
 Each builder returns a plain dict for its template; the views only parse params.
 """
@@ -11,7 +12,7 @@ Each builder returns a plain dict for its template; the views only parse params.
 from datetime import date, timedelta
 from decimal import Decimal
 
-from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
+from django.utils.translation import gettext as _
 
 from .services import ReportService
 
@@ -133,7 +134,48 @@ def net_worth_report(book, start_date, end_date):
             "assets": [float(point["assets"]) for point in trend],
             "liabilities": [float(point["liabilities"]) for point in trend],
         }
-    return {"sections": sections, "stats": stats, "chart_data": chart_data}
+    composition_data = None
+    if trend:
+        composition_data = net_worth_composition(service, start_date, end_date)
+        composition_data["net_worth"] = chart_data["net_worth"]
+        if not composition_data["groups"]:
+            composition_data = None
+    return {"sections": sections, "stats": stats, "chart_data": chart_data, "composition_data": composition_data}
+
+
+# Band counts per side. Each side has its own validated hue order in
+# net-worth-composition-chart.js; a longer tail folds into "Other".
+COMPOSITION_ASSET_BANDS = 5
+COMPOSITION_LIABILITY_BANDS = 3
+
+
+def net_worth_composition(service, start_date, end_date):
+    """
+    Month-end balance per account group, each signed as its contribution to net
+    worth: assets as dr − cr, liabilities as −(amount owed). Summed across groups,
+    each month is exactly net worth, so the chart can stack assets above zero and
+    debts below it with the net-worth line running through. A group can cross zero
+    (an overdrawn account, a card in credit); the chart splits those values by sign.
+
+    Returns {'labels': [iso month-end, ...], 'groups': [{'name', 'type', 'values'}]},
+    assets first (largest first), then liabilities (largest debt first).
+    """
+    data = service.get_balance_composition_data(start_date, end_date)
+    assets = _fold_side(data["asset_groups"], COMPOSITION_ASSET_BANDS, _("Other assets"))
+    liabilities = _fold_side(data["liability_groups"], COMPOSITION_LIABILITY_BANDS, _("Other debts"))
+    groups = [{"name": g["name"], "type": "asset", "values": g["values"]} for g in assets]
+    groups += [{"name": g["name"], "type": "liability", "values": [-v for v in g["values"]]} for g in liabilities]
+    return {"labels": data["labels"], "groups": groups}
+
+
+def _fold_side(series, limit, other_name):
+    """Keep the `limit - 1` largest series (by latest absolute balance) and sum the rest into one."""
+    if len(series) <= limit:
+        return series
+    ranked = sorted(series, key=lambda s: abs(s["values"][-1]), reverse=True)
+    head, tail = ranked[: limit - 1], ranked[limit - 1 :]
+    other = [sum(values) for values in zip(*(s["values"] for s in tail), strict=True)]
+    return [*head, {"name": other_name, "values": other}]
 
 
 def _balance_section(key, opening_items, closing_items):
@@ -168,7 +210,11 @@ def _balance_section(key, opening_items, closing_items):
 
 
 def budget_goals_report(book, month):
-    """One month of the plan: Unassigned, goals, spending envelopes and (optionally) income."""
+    """
+    Where every dollar of net worth is going for one month: goals (each listed),
+    budget envelopes (one total -- the per-category detail lives on the budget
+    page) and what is still unassigned.
+    """
     from apps.budget.services import GoalService
     from apps.budget.unassigned import allocation_bar, compute_unassigned, waterfall
 
@@ -184,105 +230,25 @@ def budget_goals_report(book, month):
     )
     goal_totals["pct"] = _pct(goal_totals["allocated"], goal_totals["target"])
 
-    spending, income = _category_sections(book, month)
+    # Envelopes as one figure: split into what rolled in and this month's unspent
+    # budget (the two terms of the Unassigned sum), plus the overspent part carried
+    # as negative balances, which the total already nets off.
+    overspent = -sum((e["amount"] for e in unassigned.detail["envelopes"] if e["amount"] < 0), ZERO)
+    envelopes = {
+        "total": unassigned.envelopes,
+        "rollover": unassigned.rollover,
+        "this_month": unassigned.this_month,
+        "overspent": overspent,
+    }
     return {
         "unassigned": unassigned,
         "bar": allocation_bar(unassigned),
-        "steps": waterfall(unassigned),
+        "waterfall": waterfall(unassigned),
         "goal_rows": goal_rows,
         "goal_totals": goal_totals,
-        "spending": spending,
-        "income": income,
+        "envelopes": envelopes,
+        "income_due": unassigned.income_due,
     }
-
-
-def _category_sections(book, month):
-    """
-    Envelope rows for every budgeted or active category this month.
-
-    Spending rows are read as envelopes: what there was to spend is this month's
-    assignment plus what rolled in, `available` is what is left of it (the budget
-    page's figure), and the meter is spent against the former -- so a full meter
-    and a zero Available are the same thing. Income rows (books that budget income
-    before it lands) compare received against expected.
-    """
-    from apps.accounts.models import Account
-    from apps.budget.models import Budget
-    from apps.budget.services import BudgetService, budgeted_account_types
-
-    types = budgeted_account_types(book)
-    categories = list(
-        Account.objects.filter(book=book, account_group__account_type__in=types)
-        .select_related("account_group")
-        .order_by("account_group__sort_order", "account_group__name", "sort_order", "name")
-    )
-    service = BudgetService(book)
-    actuals = service.get_actuals_by_category(month)
-    available, previous = service.get_available_with_previous(month, categories)
-    budgets = dict(Budget.objects.filter(book=book, month=month).values_list("category_id", "budget_amount"))
-
-    spending = _empty_section()
-    income = _empty_section() if ACCOUNT_TYPE_INCOME in types else None
-    for account in categories:
-        assigned = budgets.get(account.pk, ZERO)
-        actual = actuals.get(account.pk, ZERO)
-        if account.account_group.account_type == ACCOUNT_TYPE_EXPENSE:
-            rolled_in = previous.get(account.pk, ZERO)
-            left = available.get(account.pk, ZERO)
-            if not (assigned or actual or left):
-                continue
-            to_spend = assigned + max(rolled_in, ZERO)
-            pct = _pct(actual, to_spend)
-            row = {
-                "account": account,
-                "assigned": assigned,
-                "rolled_in": rolled_in,
-                "spent": actual,
-                "available": left,
-                "pct": pct,
-                "pct_capped": max(min(pct, 100), 0) if pct is not None else (100 if actual > 0 else 0),
-                "overspent": left < 0,
-                "unbudgeted": not to_spend and actual > 0,
-            }
-            _add_row(spending, row, {"assigned": assigned, "spent": actual, "available": left})
-            spending["overspent_count"] += 1 if row["overspent"] else 0
-        elif income is not None:
-            if not (assigned or actual):
-                continue
-            pct = _pct(actual, assigned)
-            to_go = max(assigned - actual, ZERO)  # income beyond what was expected isn't "to go"
-            row = {
-                "account": account,
-                "expected": assigned,
-                "received": actual,
-                "to_go": to_go,
-                "pct": pct,
-                "pct_capped": max(min(pct, 100), 0) if pct is not None else (100 if actual > 0 else 0),
-            }
-            _add_row(income, row, {"expected": assigned, "received": actual, "to_go": to_go})
-    if income is not None and not income["groups"]:
-        income = None
-    return spending, income
-
-
-def _empty_section():
-    return {"groups": [], "totals": {}, "overspent_count": 0}
-
-
-def _add_row(section, row, amounts):
-    group = row["account"].account_group
-    if not section["groups"] or section["groups"][-1]["group"].pk != group.pk:
-        section["groups"].append({"group": group, "rows": [], "totals": {}})
-    group_data = section["groups"][-1]
-    group_data["rows"].append(row)
-    for key, value in amounts.items():
-        group_data["totals"][key] = group_data["totals"].get(key, ZERO) + value
-        section["totals"][key] = section["totals"].get(key, ZERO) + value
-
-
-def month_bounds(month):
-    start = month.replace(day=1)
-    return start, (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
 
 def shift_month(month, delta):

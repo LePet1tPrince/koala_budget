@@ -14,7 +14,6 @@ from apps.books.decorators import login_and_book_required
 
 from .consolidated import (
     budget_goals_report,
-    month_bounds,
     net_worth_report,
     shift_month,
     spending_report,
@@ -92,7 +91,7 @@ def net_worth(request, team_slug, book_slug):
 
 @login_and_book_required
 def budget_goals(request, team_slug, book_slug):
-    """Budget & Goals: one month of the plan -- Unassigned, goals, envelopes, income."""
+    """Budget & Goals: where every dollar is going this month -- goals, envelopes (one total), Unassigned."""
     month = date.today().replace(day=1)
     with contextlib.suppress(ValueError):
         year, month_num = map(int, request.GET.get("month", "").split("-")[:2])
@@ -109,6 +108,5 @@ def budget_goals(request, team_slug, book_slug):
             "month": month,
             "prev_month": shift_month(month, -1),
             "next_month": shift_month(month, 1),
-            "drill_qs": _drill_qs(*month_bounds(month)),
         },
     )

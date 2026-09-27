@@ -70,8 +70,24 @@
   </div>
 
   {% if chart_data %}
-  <div class="rounded-box border border-base-300 p-4 mb-4">
-    <div class="w-full" style="height: 300px;">
+  <div class="rounded-box border border-base-300 p-4 mb-4" x-data="{ view: '{% if composition_data %}groups{% else %}totals{% endif %}' }">
+    {% if composition_data %}
+    <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+      <p class="text-xs text-base-content/70 flex-1 min-w-0" x-show="view === 'groups'">
+        {% translate "What you own stacks up from zero, what you owe stacks down from it; the line is net worth. Hatched: an account on the other side of zero, like an overdraft or a card in credit." %}
+      </p>
+      <p class="text-xs text-base-content/70 flex-1 min-w-0" x-show="view === 'totals'" style="display: none;">{% translate "Assets and liabilities each month, with net worth." %}</p>
+      <div class="join" data-testid="net-worth-view-toggle">
+        <button type="button" class="btn btn-xs join-item" :class="view === 'groups' ? 'btn-active' : ''" @click="view = 'groups'" data-testid="net-worth-view-groups">{% translate "By group" %}</button>
+        <button type="button" class="btn btn-xs join-item" :class="view === 'totals' ? 'btn-active' : ''" @click="view = 'totals'" data-testid="net-worth-view-totals">{% translate "Totals" %}</button>
+      </div>
+    </div>
+    <div class="w-full" style="height: 340px;" x-show="view === 'groups'">
+      <canvas id="net-worth-composition-chart" class="w-full h-full" data-testid="net-worth-composition-chart"
+              role="img" aria-label="{% translate 'Net worth by account group, stacked above and below zero' %}"></canvas>
+    </div>
+    {% endif %}
+    <div class="w-full" style="height: 300px;{% if composition_data %} display: none;{% endif %}" x-show="view === 'totals'">
       <canvas id="net-worth-chart" class="w-full h-full" data-testid="net-worth-report-chart"></canvas>
     </div>
   </div>
@@ -146,5 +162,9 @@
 {% if chart_data %}
 {{ chart_data|json_script:'net-worth-data' }}
 {% vite_asset 'assets/javascript/reports/net-worth-chart.js' %}
+{% endif %}
+{% if composition_data %}
+{{ composition_data|json_script:'net-worth-composition-data' }}
+{% vite_asset 'assets/javascript/reports/net-worth-composition-chart.js' %}
 {% endif %}
 {% endblock %}

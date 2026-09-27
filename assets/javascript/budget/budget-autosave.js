@@ -225,6 +225,10 @@ function init() {
       if (checkbox) checkbox.dataset.budgeted = cell.value;
 
       const el = cells.get(key);
+      if (el && cell.width !== undefined) {
+        paintMeter(el, cell);
+        return;
+      }
       if (!el || el.textContent.trim() === cell.value) return;
       el.textContent = cell.value;
       el.classList.toggle('text-error', cell.tone === 'neg');
@@ -393,6 +397,15 @@ function init() {
       dialog.close();
       announce(`${current.dataset.categoryName} covered from ${goal ? goal.name : 'unassigned money'}.`);
     });
+  }
+
+  // A row's progress bar: the fill's width animates in CSS, the label is its %.
+  function paintMeter(el, cell) {
+    const fill = el.querySelector('.budget-meter-fill');
+    const label = el.querySelector('.budget-meter-label');
+    if (fill) fill.style.width = `${cell.width}%`;
+    if (label) label.textContent = cell.value;
+    if (!el.classList.contains('is-income')) el.classList.toggle('is-over', cell.tone === 'neg');
   }
 
   function flash(el) {

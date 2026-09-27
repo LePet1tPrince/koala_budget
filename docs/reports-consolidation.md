@@ -1,13 +1,15 @@
 # Reports consolidation
 
-Reference for replacing the seven standalone reports with three. The three new
-reports live beside the old ones (nothing old was changed) so the two sets can be
-compared before the old ones are deleted.
+Reference for replacing the seven standalone reports with three reports plus
+progress bars on the budget page. The new reports live beside the old ones
+(nothing old was changed) so the two sets can be compared before the old ones
+are deleted.
 
 ## 1. What exists today
 
-Reports home (`/reports/`) links nine things. Two are workflows, not reports, and
-are out of scope: **Monthly Review** and **Reconciliation Status**. The account
+Reports home (`/reports/`) linked nine things. Two are workflows, not reports:
+**Monthly Review** (stays) and **Reconciliation Status**, which moved to a
+**Reconciliations** tab in Accounts (§7). The account
 drill-down (`reports:account_activity`) is a shared detail page, not a report.
 That leaves **seven** reports:
 
@@ -67,7 +69,7 @@ not carried over.
 |---|---|---|
 | Net worth, change over period, % change | Keep | Net Worth stats |
 | Assets / liabilities bars + net worth line | Keep | Net Worth hero chart (same chart code) |
-| Composition tab (stacked areas by group) | **Cut** | the table's per-group Start→End change says what moved net worth, exactly. Monthly Review already draws composition |
+| Composition tab (two stacked-area charts: assets, liabilities) | Merge | one diverging stacked area on Net Worth → **By group** (default view): assets up from zero, debts down, net-worth line through the middle (§3B) |
 | Monthly table (assets, liabilities, NW, change) | **Cut** | every value is in the chart tooltip |
 
 ### 4. Cash Flow
@@ -80,14 +82,16 @@ not carried over.
 
 ### 5. Budget vs Actual
 
+The whole report moves onto the **budget page** (§3D); no report replaces it.
+
 | Element | Verdict | Where / why |
 |---|---|---|
-| Budgeted / Spent / over-count | Keep | Budget & Goals stats |
-| Expense rows with meters, grouped | Keep | Budget & Goals → Spending |
-| "Left" = budget − spent this month | **Replaced** | by **Available** (rollover included), the figure the budget page and Dollar Map use. The old "Left" disagrees with the budget page whenever money rolled over |
-| "Over" / "No budget" badges | Merge | one **Overspent** badge (Available < 0) + "No budget"; over-budget-but-covered-by-rollover is no longer flagged, because nothing is wrong |
-| Income section (future-income books) | Keep | Budget & Goals → Income |
-| Goals "pay yourself first" (assigned / needed / spent) | Merge | with Goal Progress rows (§6) |
+| Per-category meters (expense + income) | Keep | budget page, new progress column; they update as amounts autosave |
+| Budgeted / Spent / Left columns | Merge | the budget page's own Budgeted / Actual / Available columns |
+| "Left" = budget − spent this month | **Replaced** | by **Available** (rollover included), which the budget page already shows. The old "Left" disagreed with it whenever money rolled over |
+| "Over" / "No budget" badges | Merge | the bar turns red when Available < 0 (the page's existing Cover button appears on the same rows); over-budget-but-covered-by-rollover is not flagged, because nothing is wrong |
+| Summary stats (Budgeted / Spent / over-count) | Merge | the budget page's sidebar summary |
+| Goals "pay yourself first" (assigned / needed / spent) | Merge | with Goal Progress rows in Budget & Goals (§6) |
 
 ### 6. Goal Progress
 
@@ -100,18 +104,22 @@ not carried over.
 
 ### 7. Dollar Map
 
+Budget & Goals **is** the Dollar Map, with one change.
+
 | Element | Verdict | Where / why |
 |---|---|---|
-| Unassigned figure + state wording | Keep | Budget & Goals headline stat |
-| Allocation bar with net-worth marker | Keep | Budget & Goals, under the stats (same include) |
-| Net worth / in envelopes / in goals stats | Merge | "How this adds up" table |
-| Waterfall chart | **Cut** | kept as its table ("How this adds up", collapsed). Bars add nothing the seven-line sum doesn't |
-| Goals / envelopes / overspent / income-due lists | **Cut** | each figure is already a row: goal *Left*, envelope *Available*, *Overspent* badge, income *To go* |
+| Stats (net worth, in envelopes, in goals, Unassigned) | Keep | Budget & Goals stats |
+| Allocation bar with net-worth marker | Keep | same include |
+| Goals list | Merge | with Goal Progress into the Goals table |
+| **Envelope list** (one line per category) | **Cut → one total** | the card shows total allocated, split into rolled over / this month's unspent budget, plus overspent-carried. Per-category detail is on the budget page |
+| Overspent list | **Cut → one total** | a line on the envelopes card |
+| Income-due list | **Cut → one total** | a line on the Unassigned card |
+| Waterfall chart + table | Keep | unchanged, below the report |
 
-## 3. The three reports
+## 3. The three reports, and the budget page
 
 Each page: one header (title, one time control, one secondary action), one stats
-strip (≤4), one hero visual, one table. One page has tabs; none nests.
+strip (≤4), one hero visual, one table. Sub-views are one toggle deep.
 
 ### A. Income & Spending — `reports:spending` (`/reports/spending/`)
 
@@ -130,20 +138,44 @@ strip (≤4), one hero visual, one table. One page has tabs; none nests.
 - Control: month range, default last 12 months. Balances are as of the range end
   (today, if the range reaches it).
 - Stats: Net worth · Change over period (%) · Assets · Liabilities (debt ratio).
-- Hero: assets/liabilities bars + net-worth line.
+- Hero, two views of one chart card:
+  - **By group** (default): diverging stacked area. Each account group is a band
+    signed by its effect on net worth — assets stack up from zero, debts down —
+    and the net-worth line runs through; every month the bands sum exactly to the
+    line. A group that crosses zero (overdraft, card in credit) is split by sign
+    and the part on the unexpected side is **hatched**; legend and tooltip still
+    treat it as one group. At most 5 asset bands and 3 debt bands (tail folds into
+    "Other assets"/"Other debts"); hue order per side validated with the dataviz
+    palette checker in light and dark (`net-worth-composition-chart.js` header).
+  - **Totals**: assets/liabilities bars + net-worth line (the old chart).
 - Table: assets and liabilities by group, **Start / End / Change** per account,
   group and section; Net worth row in the footer.
 
 ### C. Budget & Goals — `reports:budget_goals` (`/reports/budget-and-goals/`)
 
-*Is the plan holding this month?* Replaces 5 + 6 + 7.
+*Where is every dollar going?* Replaces 6 + 7. It is the Dollar Map with the
+envelopes as one total.
 
 - Control: month (prev / this / next).
-- Stats: Unassigned · Spent (of budgeted; overspent count) · In envelopes · Set aside for goals (of needed).
-- Hero: allocation bar; "How this adds up" (the Unassigned sum) collapsed beneath.
-- Sections: **Goals** (saved toward target, by-date, this month assigned vs needed,
-  left) · **Spending** (assigned, spent, meter against what was available to
-  spend, Available, grouped) · **Income** (only for books that budget future income).
+- Stats: Net worth (+ income due) · In budget envelopes · In goals · Unassigned.
+- Hero: allocation bar.
+- Cards: **Budget envelopes** (total allocated; rolled over / this month's unspent;
+  overspent carried) · **Unassigned** (with income still due).
+- **Goals** table: saved toward target, by-date, this month assigned vs needed, left.
+- Waterfall (net worth → Unassigned), chart + table.
+
+### D. Budget page — progress bars (replaces 5)
+
+Every row of the budget table gets a bar between Category and Budgeted:
+
+- Expense: spent ÷ what there was to spend (this month's budget + positive rollover).
+  A full bar means Available = 0. Red once Available < 0.
+- Income: received ÷ expected (info colour).
+- No budget and some spending: full red bar, "—" instead of a percentage.
+
+`_meter()` in `apps/budget/views.py` computes it; the autosave response carries
+`row:<pk>:meter` (`{value, tone, width}`) and `budget-autosave.js` repaints the
+bar in place (width animates, off under reduced motion).
 
 ## 4. Drill-downs
 
@@ -164,15 +196,16 @@ old reports are deleted, `reports:account_activity` and its export can go with t
 | Cash flow monthly in/out/net | A · hero chart; A · Statement By period (totals rows) |
 | Balance sheet assets/liabilities by group/account | B · table (End column) |
 | Net worth trend points | B · hero chart (tooltip) |
-| Budget vs actual per category | C · Spending |
-| Budget vs actual income | C · Income |
+| Budget vs actual per category + income | D · budget page bars + its own columns |
+| Composition (assets / liabilities by group over time) | B · By group chart |
+| Dollar Map envelope list | C · envelopes total (per category: budget page) |
 | Goal allocated/spent/left/target/%/date/needed | C · Goals |
 | Unassigned, allocation bar, the Unassigned sum | C · stats, bar, "How this adds up" |
 
-Deliberately gone: Spending Trends chart, Composition charts, Goal "saved over
-time" chart, Dollar Map bucket lists and waterfall chart, Balance Sheet equity
-section, monthly tables on Cash Flow and Net Worth Trend, arbitrary as-of day,
-BvA's rollover-blind "Left".
+Deliberately gone: Spending Trends chart, Goal "saved over time" chart, Dollar
+Map per-envelope / overspent / income-due lists (now totals), Balance Sheet
+equity section, monthly tables on Cash Flow and Net Worth Trend, arbitrary as-of
+day, BvA's rollover-blind "Left".
 
 ## 6. Deleting the old reports later
 
@@ -185,18 +218,29 @@ Repoint these links first (old → new):
 | Call site | Old | New |
 |---|---|---|
 | `templates/web/components/app_nav_menu_items.html` (Reports submenu, 6 links) | all six | the three new reports |
+| `templates/web/components/app_nav_menu_items.html` (Budget vs Actual) | `budget_vs_actual` | drop (it is the budget page) |
 | `templates/web/app_home.html:36` | `dollar_map` | `budget_goals` |
 | `templates/web/app_home.html:57` | `income_statement` | `spending` |
 | `templates/web/app_home.html:71` | `net_worth_trend` | `net_worth` |
 | `templates/budget/components/unassigned_pill.html:24` | `dollar_map` | `budget_goals` |
 | `templates/budget/components/budget_table.html:125` | `account_activity?source=budget` | `accounts:account_detail` + `return_to` |
 | `apps/onboarding/services/gates.py:94,102` (task `url_name`) | `income_statement`, `net_worth_trend` | `spending`, `net_worth` |
-| tests: `apps/budget/test_unassigned.py`, `test_goals_envelopes.py`, `apps/books/tests/test_books.py`, `apps/accounts/tests.py` | old names | new names |
+| tests: `apps/budget/test_unassigned.py`, `test_goals_envelopes.py`, `apps/books/tests/test_books.py`, `apps/accounts/tests.py` | old names | new names (the `budget_vs_actual` tests in `test_goals_envelopes.py` / `test_books.py` cover future-income hiding: port them to the budget page) |
 
 Keep these JS entries — the new reports use them: `cash-flow-chart`,
-`income-statement-sankey`, `net-worth-chart`, `ReportsDateRangePicker`,
-`NetWorthTrendMonthPicker`. Safe to drop with the old reports:
-`expense-trend-chart`, `balance-composition-chart`, `goal-progress-chart`,
-`dollar-map-chart`. Keep the CSV exports (`export_*`): the new reports link them.
+`income-statement-sankey`, `net-worth-chart`, `net-worth-composition-chart`,
+`dollar-map-chart`, `ReportsDateRangePicker`, `NetWorthTrendMonthPicker`. Safe
+to drop with the old reports: `expense-trend-chart`, `balance-composition-chart`,
+`goal-progress-chart`. `ReportService.get_balance_composition_data` stays (the
+composition chart reads it). Keep the CSV exports (`export_*`): the new reports link them.
 `reports:account_activity` (+ its export) can go once `budget_table.html` is
 repointed.
+
+## 7. Reconciliations moved to Accounts
+
+Reconciliation Status left Reports home. The hub (`reconciliation:hub`, URL
+unchanged at `/reconcile/`) now renders inside the Accounts shell
+(`accounts/manage_base.html`) as a **Reconciliations** tab after Institutions,
+with a matching sidebar sub-item; the per-account workspace and statement pages
+highlight Accounts → Reconciliations in the nav. The hub keeps its
+`reconcile-hub` testid, so the E2E page object is unchanged.

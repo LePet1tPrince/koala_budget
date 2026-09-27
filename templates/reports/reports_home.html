@@ -12,7 +12,7 @@
       <h2 class="font-semibold">{% translate "Consolidated reports" %}</h2>
       <span class="badge badge-primary badge-sm">{% translate "Preview" %}</span>
     </div>
-    <p class="text-sm text-base-content/70 mb-2">{% translate "Three reports that cover the seven below. Compare them before the old ones are retired." %}</p>
+    <p class="text-sm text-base-content/70 mb-2">{% translate "Three reports (and the budget page's progress bars) that cover the seven below. Compare them before the old ones are retired." %}</p>
     <ul class="divide-y divide-base-300">
       <li>
         <a href="{% url 'reports:spending' request.team.slug request.book.slug %}" class="flex justify-between items-center py-3 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-spending">
@@ -27,7 +27,7 @@
         <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="flex justify-between items-center py-3 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-net-worth">
           <div>
             <div class="font-medium">{% translate "Net Worth" %}</div>
-            <div class="text-sm text-base-content/70">{% translate "What you own and owe, and what changed over the range. Replaces Balance Sheet and Net Worth Trend." %}</div>
+            <div class="text-sm text-base-content/70">{% translate "What you own and owe, by group, and what changed over the range. Replaces Balance Sheet and Net Worth Trend." %}</div>
           </div>
           {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
         </a>
@@ -36,7 +36,7 @@
         <a href="{% url 'reports:budget_goals' request.team.slug request.book.slug %}" class="flex justify-between items-center py-3 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-budget-goals">
           <div>
             <div class="font-medium">{% translate "Budget & Goals" %}</div>
-            <div class="text-sm text-base-content/70">{% translate "One month of the plan: unassigned money, goals and every envelope. Replaces Budget vs Actual, Goal Progress and Dollar Map." %}</div>
+            <div class="text-sm text-base-content/70">{% translate "Where every dollar is going: goals, budget envelopes in total, and what still has no job. Replaces Dollar Map and Goal Progress; Budget vs Actual moved onto the budget page as progress bars." %}</div>
           </div>
           {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
         </a>
@@ -66,15 +66,6 @@
         <div>
           <div class="font-medium">{% translate "Dollar Map" %}</div>
           <div class="text-sm text-base-content/70">{% translate "Where every dollar is going: goals, budget envelopes, and what still has no job." %}</div>
-        </div>
-        {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
-      </a>
-    </li>
-    <li>
-      <a href="{% url 'reconciliation:hub' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-reconciliation">
-        <div>
-          <div class="font-medium">{% translate "Reconciliation Status" %}</div>
-          <div class="text-sm text-base-content/70">{% translate "Every account checked against its bank or card statement, and whether each statement still holds." %}</div>
         </div>
         {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
       </a>

@@ -186,6 +186,11 @@
           {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Institutions" %}
         </a>
+        <a href="{% url 'reconciliation:hub' nav_team.slug nav_book.slug %}"
+           class="side-link side-link-sub {% if accounts_section == 'reconciliations' %}side-link-active{% endif %}" data-testid="nav-accounts-reconciliations">
+          {% icon "check-circle" class="inline-block shrink-0 w-4 h-4" %}
+          {% translate "Reconciliations" %}
+        </a>
       </div>
     </div>
   {% endif %}

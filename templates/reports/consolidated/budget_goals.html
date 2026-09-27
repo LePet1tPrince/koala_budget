@@ -1,28 +1,24 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
+{% load django_vite %}
 {% load currency_tags %}
 {% load icons %}
-{% load account_nav %}
 
 {% block page_head %}
 <style>
-  /* Envelope meter: the track is a light step of the fill's own hue. */
-  .plan-meter {
+  /* Goal progress meter: the track is a light step of the fill's own hue. */
+  .goal-meter {
     height: 0.5rem;
     min-width: 4rem;
     border-radius: 9999px;
     overflow: hidden;
-    --meter: var(--color-success);
-    background: color-mix(in oklab, var(--meter) 18%, var(--color-base-100));
+    background: color-mix(in oklab, var(--color-accent) 18%, var(--color-base-100));
   }
-  .plan-meter > div {
+  .goal-meter > div {
     height: 100%;
     border-radius: 9999px;
-    background: var(--meter);
+    background: var(--color-accent);
   }
-  .plan-meter.is-over { --meter: var(--color-error); }
-  .plan-meter.is-income { --meter: var(--color-info); }
-  .plan-meter.is-goal { --meter: var(--color-accent); }
 </style>
 {% endblock %}
 
@@ -35,7 +31,9 @@
         {% translate "Back to Reports" %}
       </a>
       <h1 class="text-3xl font-bold mb-2">{% translate "Budget & Goals" %}</h1>
-      <p class="text-sm text-base-content/70">{{ month|date:"F Y" }}</p>
+      <p class="text-sm text-base-content/70">
+        {% blocktranslate trimmed with month=month|date:"F Y" %}Where every dollar is going · {{ month }}{% endblocktranslate %}
+      </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <div class="join">
@@ -55,7 +53,27 @@
   </div>
 
   <!-- Stats -->
-  <div class="stats stats-vertical sm:stats-horizontal border border-base-300 w-full mb-4" data-testid="plan-summary">
+  <div class="stats stats-vertical sm:stats-horizontal border border-base-300 w-full mb-6" data-testid="plan-summary">
+    <div class="stat py-3">
+      <div class="stat-title">{% translate "Net worth" %}</div>
+      <div class="stat-value text-2xl money">{{ unassigned.net_worth|currency }}</div>
+      {% if income_due %}
+      <div class="stat-desc">{% blocktranslate trimmed with amount=income_due|currency %}+ {{ amount }} income still due{% endblocktranslate %}</div>
+      {% endif %}
+    </div>
+    <div class="stat py-3">
+      <div class="stat-title">{% translate "In budget envelopes" %}</div>
+      <div class="stat-value text-2xl money text-info" data-testid="plan-envelopes">{{ envelopes.total|currency }}</div>
+      <div class="stat-desc">{% blocktranslate trimmed with amount=envelopes.rollover|currency %}{{ amount }} rolled over{% endblocktranslate %}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-title">{% translate "In goals" %}</div>
+      <div class="stat-value text-2xl money">{{ unassigned.goals|currency }}</div>
+      <div class="stat-desc">
+        {% blocktranslate trimmed with amount=unassigned.goals_this_month|currency %}{{ amount }} this month{% endblocktranslate %}{% if unassigned.goals_spent %} ·
+        {% blocktranslate trimmed with amount=unassigned.goals_spent|currency %}{{ amount }} spent{% endblocktranslate %}{% endif %}
+      </div>
+    </div>
     <div class="stat py-3">
       <div class="stat-title">{{ unassigned.label }}</div>
       <div class="stat-value text-2xl money {% if unassigned.state == 'negative' %}text-error{% elif unassigned.state == 'positive' %}text-success{% endif %}" data-testid="plan-unassigned">{{ unassigned.amount|currency }}</div>
@@ -63,65 +81,73 @@
         {% if unassigned.state == 'negative' %}{% translate "promised more than you have" %}{% elif unassigned.state == 'zero' %}{% translate "every dollar has a job" %}{% else %}{% translate "waiting for a job" %}{% endif %}
       </div>
     </div>
-    <div class="stat py-3">
-      <div class="stat-title">{% translate "Spent" %}</div>
-      <div class="stat-value text-2xl money" data-testid="plan-spent">{{ spending.totals.spent|default:0|currency }}</div>
-      <div class="stat-desc {% if spending.overspent_count %}text-error{% endif %}">
-        {% if spending.overspent_count %}
-          {% blocktranslate count counter=spending.overspent_count trimmed %}{{ counter }} category overspent{% plural %}{{ counter }} categories overspent{% endblocktranslate %}
-        {% else %}
-          {% blocktranslate with amount=spending.totals.assigned|default:0|currency trimmed %}of {{ amount }} assigned{% endblocktranslate %}
-        {% endif %}
-      </div>
-    </div>
-    <div class="stat py-3">
-      <div class="stat-title">{% translate "In envelopes" %}</div>
-      <div class="stat-value text-2xl money text-info">{{ unassigned.envelopes|currency }}</div>
-      <div class="stat-desc">{% blocktranslate with amount=unassigned.rollover|currency trimmed %}{{ amount }} rolled over{% endblocktranslate %}</div>
-    </div>
-    <div class="stat py-3">
-      <div class="stat-title">{% translate "Set aside for goals" %}</div>
-      <div class="stat-value text-2xl money">{{ goal_totals.assigned|currency }}</div>
-      <div class="stat-desc">
-        {% if goal_totals.needed %}
-          {% blocktranslate with amount=goal_totals.needed|currency trimmed %}of {{ amount }} needed this month{% endblocktranslate %}
-        {% else %}
-          {% translate "this month" %}
-        {% endif %}
-      </div>
-    </div>
   </div>
 
-  <!-- Allocation bar -->
-  <div class="rounded-box border border-base-300 p-4 mb-4" data-testid="plan-allocation">
-    <h2 class="font-semibold mb-3">{% translate "Every claim on your money" %}</h2>
-    {% include "budget/components/dollar_bar.html" with show_markers=True %}
-    <details class="mt-2" data-testid="plan-adds-up">
-      <summary class="cursor-pointer text-sm text-base-content/70">
-        {% blocktranslate trimmed with label=unassigned.label %}How {{ label }} adds up{% endblocktranslate %}
-      </summary>
-      <table class="table table-sm table-quiet mt-2 max-w-md">
-        <tbody>
-          {% for step in steps %}
-          <tr {% if step.total %}class="font-semibold"{% endif %}>
-            <td>{{ step.label }}</td>
-            <td class="text-right money">{% if not step.total and step.value > 0 %}+{% endif %}{{ step.value|currency }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </details>
+  <h2 class="text-lg font-semibold mb-3">{% translate "Every claim on your money" %}</h2>
+  {% include "budget/components/dollar_bar.html" with show_markers=True %}
+
+  <!-- Envelopes (one total) and Unassigned -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+    <div class="rounded-box border border-base-300 p-4" data-testid="plan-envelopes-card">
+      <div class="flex justify-between items-baseline gap-2 mb-2">
+        <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-info inline-block"></span>{% translate "Budget envelopes" %}</h3>
+        <span class="money font-semibold">{{ envelopes.total|currency }}</span>
+      </div>
+      <ul class="space-y-1 text-sm">
+        <li class="flex justify-between gap-2">
+          <span>{% translate "Rolled over from last month" %}</span>
+          <span class="money">{{ envelopes.rollover|currency }}</span>
+        </li>
+        <li class="flex justify-between gap-2">
+          <span>{% translate "This month's budget, not yet spent" %}</span>
+          <span class="money">{{ envelopes.this_month|currency }}</span>
+        </li>
+        {% if envelopes.overspent %}
+        <li class="flex justify-between gap-2 text-error" data-testid="plan-overspent">
+          <span>{% translate "Overspent, carried (already netted off)" %}</span>
+          <span class="money">−{{ envelopes.overspent|currency }}</span>
+        </li>
+        {% endif %}
+      </ul>
+      <a href="{% url 'budget:budget_home' request.team.slug request.book.slug %}?month={{ month|date:'Y-m-d' }}" class="link link-primary text-sm mt-3 inline-block">
+        {% translate "See every category on the budget page" %}
+      </a>
+    </div>
+
+    <div class="rounded-box border p-4 {% if unassigned.state == 'negative' %}border-error bg-error/5{% elif unassigned.state == 'positive' %}border-success bg-success/5{% else %}border-base-300{% endif %}" data-testid="plan-free">
+      <div class="flex justify-between items-baseline gap-2 mb-2">
+        <h3 class="font-semibold">{{ unassigned.label }}</h3>
+        <span class="money font-semibold">{{ unassigned.amount|currency }}</span>
+      </div>
+      <p class="text-sm text-base-content/70">
+        {% if unassigned.state == 'negative' %}
+          {% translate "Envelopes and goals hold more than you have. Lower a budget or take money back from a goal to bring this to zero." %}
+        {% elif unassigned.state == 'zero' %}
+          {% translate "Every dollar has a job." %}
+        {% else %}
+          {% translate "Money with no job yet. Give it one: raise a budget or put it toward a goal." %}
+        {% endif %}
+      </p>
+      {% if income_due %}
+      <p class="text-sm mt-2 flex justify-between gap-2 border-t border-base-300 pt-2">
+        <span>{% translate "Includes income still due" %}</span>
+        <span class="money">{{ income_due|currency }}</span>
+      </p>
+      {% endif %}
+    </div>
   </div>
 
   <!-- Goals -->
-  {% if goal_rows %}
-  <div class="rounded-box border border-base-300 p-4 mb-4">
+  <div class="rounded-box border border-base-300 p-4 mt-4" data-testid="plan-goals">
     <div class="flex flex-wrap justify-between items-baseline gap-2 mb-2">
-      <h2 class="font-semibold">{% translate "Goals" %} <span class="text-sm font-normal text-base-content/70">{% translate "pay yourself first" %}</span></h2>
+      <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-accent inline-block"></span>{% translate "Goals" %}</h3>
+      {% if goal_rows %}
       <span class="text-sm text-base-content/70">
         {% blocktranslate trimmed with saved=goal_totals.allocated|currency target=goal_totals.target|currency %}{{ saved }} of {{ target }} saved{% endblocktranslate %}{% if goal_totals.pct is not None %} · {{ goal_totals.pct|floatformat:0 }}%{% endif %}
       </span>
+      {% endif %}
     </div>
+    {% if goal_rows %}
     <div class="overflow-x-auto">
       <table class="table table-sm table-quiet w-full" data-testid="plan-goals-table">
         <thead>
@@ -142,7 +168,7 @@
             </td>
             <td>
               <div class="flex items-center gap-2">
-                <div class="plan-meter is-goal flex-1"><div style="width: {{ row.goal.progress_percentage|floatformat:0 }}%;"></div></div>
+                <div class="goal-meter flex-1"><div style="width: {{ row.goal.progress_percentage|floatformat:0 }}%;"></div></div>
                 <span class="text-xs text-base-content/70 tabular-nums whitespace-nowrap">{{ row.goal.allocated|currency }} / {{ row.goal.target_amount|currency }}</span>
               </div>
             </td>
@@ -156,7 +182,7 @@
               {% endif %}
             </td>
             <td class="text-right money whitespace-nowrap {% if row.left < 0 %}text-error{% endif %}">
-              {{ row.left|currency }}
+              {{ row.left|currency }}{% if row.left < 0 %} · {% translate "carried" %}{% endif %}
               {% if row.goal.spent %}
                 <span class="block text-xs text-base-content/70">{% blocktranslate with amount=row.goal.spent|currency trimmed %}{{ amount }} spent{% endblocktranslate %}</span>
               {% endif %}
@@ -166,128 +192,39 @@
         </tbody>
       </table>
     </div>
-  </div>
-  {% endif %}
-
-  <!-- Spending envelopes -->
-  <div class="rounded-box border border-base-300 p-4 mb-4">
-    <div class="flex flex-wrap justify-between items-baseline gap-2 mb-2">
-      <h2 class="font-semibold">{% translate "Spending" %}</h2>
-      <span class="text-xs text-base-content/70">{% translate "Bar: spent against what there was to spend (assigned + rolled over)." %}</span>
-    </div>
-    {% if spending.groups %}
-    <div class="overflow-x-auto">
-      <table class="table table-sm w-full" data-testid="plan-spending-table">
-        <thead>
-          <tr>
-            <th>{% translate "Category" %}</th>
-            <th class="w-1/4"></th>
-            <th class="text-right">{% translate "Assigned" %}</th>
-            <th class="text-right">{% translate "Spent" %}</th>
-            <th class="text-right">{% translate "Available" %}</th>
-          </tr>
-        </thead>
-        {% for group_data in spending.groups %}
-        <tbody>
-          <tr class="bg-base-200 font-semibold">
-            <td>{{ group_data.group.name }}</td>
-            <td></td>
-            <td class="text-right money whitespace-nowrap">{{ group_data.totals.assigned|currency }}</td>
-            <td class="text-right money whitespace-nowrap">{{ group_data.totals.spent|currency }}</td>
-            <td class="text-right money whitespace-nowrap {% if group_data.totals.available < 0 %}text-error{% endif %}">{{ group_data.totals.available|currency }}</td>
-          </tr>
-          {% for row in group_data.rows %}
-          <tr data-testid="plan-spending-row">
-            {% url 'accounts:account_detail' request.team.slug request.book.slug row.account.pk as account_url %}
-            <td class="pl-5 whitespace-nowrap">
-              <a href="{% return_here account_url|add:'?'|add:drill_qs %}" class="link link-hover">{{ row.account.name }}</a>
-              {% if row.unbudgeted %}
-                <span class="badge badge-ghost badge-sm ml-1 align-middle">{% translate "No budget" %}</span>
-              {% elif row.overspent %}
-                <span class="badge badge-error badge-sm ml-1 align-middle">{% translate "Overspent" %}</span>
-              {% endif %}
-            </td>
-            <td>
-              <div class="flex items-center gap-2">
-                <div class="plan-meter flex-1 {% if row.overspent %}is-over{% endif %}"><div style="width: {{ row.pct_capped|floatformat:0 }}%;"></div></div>
-                <span class="text-xs text-base-content/70 tabular-nums w-10 text-right">{% if row.pct is not None %}{{ row.pct|floatformat:0 }}%{% else %}—{% endif %}</span>
-              </div>
-            </td>
-            <td class="text-right money whitespace-nowrap">
-              {{ row.assigned|currency }}
-              {% if row.rolled_in %}
-                <span class="block text-xs text-base-content/70">{% if row.rolled_in > 0 %}+{% endif %}{{ row.rolled_in|currency }} {% translate "rolled in" %}</span>
-              {% endif %}
-            </td>
-            <td class="text-right money whitespace-nowrap">{{ row.spent|currency }}</td>
-            <td class="text-right money whitespace-nowrap font-medium {% if row.available < 0 %}text-error{% endif %}">{{ row.available|currency }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        {% endfor %}
-        <tfoot>
-          <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
-            <td>{% translate "Total" %}</td>
-            <td></td>
-            <td class="text-right money whitespace-nowrap">{{ spending.totals.assigned|currency }}</td>
-            <td class="text-right money whitespace-nowrap">{{ spending.totals.spent|currency }}</td>
-            <td class="text-right money whitespace-nowrap {% if spending.totals.available < 0 %}text-error{% endif %}">{{ spending.totals.available|currency }}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
     {% else %}
-    <p class="text-base-content/70 py-2">
-      {% translate "No budget or spending for this month yet." %}
-      <a href="{% url 'budget:budget_home' request.team.slug request.book.slug %}?month={{ month|date:'Y-m-d' }}" class="link link-primary">{% translate "Set up your budget" %}</a>
+    <p class="text-sm text-base-content/70">
+      {% url 'budget:goals_list' request.team.slug request.book.slug as goals_url %}
+      {% blocktranslate trimmed %}No goals yet. <a class="link link-primary" href="{{ goals_url }}">Set one up</a>.{% endblocktranslate %}
     </p>
     {% endif %}
   </div>
-
-  <!-- Income (books that budget income before it lands) -->
-  {% if income %}
-  <div class="rounded-box border border-base-300 p-4">
-    <h2 class="font-semibold mb-2">{% translate "Income" %}</h2>
-    <div class="overflow-x-auto">
-      <table class="table table-sm w-full" data-testid="plan-income-table">
-        <thead>
-          <tr>
-            <th>{% translate "Category" %}</th>
-            <th class="w-1/4"></th>
-            <th class="text-right">{% translate "Expected" %}</th>
-            <th class="text-right">{% translate "Received" %}</th>
-            <th class="text-right">{% translate "To go" %}</th>
-          </tr>
-        </thead>
-        {% for group_data in income.groups %}
-        <tbody>
-          <tr class="bg-base-200 font-semibold">
-            <td>{{ group_data.group.name }}</td>
-            <td></td>
-            <td class="text-right money whitespace-nowrap">{{ group_data.totals.expected|currency }}</td>
-            <td class="text-right money whitespace-nowrap">{{ group_data.totals.received|currency }}</td>
-            <td class="text-right money whitespace-nowrap">{{ group_data.totals.to_go|currency }}</td>
-          </tr>
-          {% for row in group_data.rows %}
-          <tr>
-            {% url 'accounts:account_detail' request.team.slug request.book.slug row.account.pk as account_url %}
-            <td class="pl-5 whitespace-nowrap"><a href="{% return_here account_url|add:'?'|add:drill_qs %}" class="link link-hover">{{ row.account.name }}</a></td>
-            <td>
-              <div class="flex items-center gap-2">
-                <div class="plan-meter is-income flex-1"><div style="width: {{ row.pct_capped|floatformat:0 }}%;"></div></div>
-                <span class="text-xs text-base-content/70 tabular-nums w-10 text-right">{% if row.pct is not None %}{{ row.pct|floatformat:0 }}%{% else %}—{% endif %}</span>
-              </div>
-            </td>
-            <td class="text-right money whitespace-nowrap">{{ row.expected|currency }}</td>
-            <td class="text-right money whitespace-nowrap">{{ row.received|currency }}</td>
-            <td class="text-right money whitespace-nowrap {% if not row.to_go %}opacity-40{% endif %}">{{ row.to_go|currency }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        {% endfor %}
-      </table>
-    </div>
-  </div>
-  {% endif %}
 </section>
+
+<section class="app-card mt-6" data-testid="plan-waterfall">
+  <h2 class="text-lg font-semibold mb-1">
+    {% blocktranslate trimmed with label=unassigned.label %}From net worth to {{ label }}{% endblocktranslate %}
+  </h2>
+  <p class="text-sm text-base-content/70 mb-4">{% translate "Each bar is one step of the sum." %}</p>
+  <div class="w-full" style="height: 300px;">
+    <canvas id="dollar-map-chart" class="w-full h-full" aria-hidden="true"></canvas>
+  </div>
+  <div class="overflow-x-auto mt-4">
+    <table class="table table-sm table-quiet">
+      <tbody>
+        {% for step in waterfall %}
+          <tr {% if step.total %}class="font-semibold"{% endif %}>
+            <td>{{ step.label }}</td>
+            <td class="text-right money">{% if not step.total and step.value > 0 %}+{% endif %}{{ step.value|currency }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+{{ waterfall|json_script:'dollar-map-data' }}
+{% vite_asset 'assets/javascript/reports/dollar-map-chart.js' %}
 {% endblock %}

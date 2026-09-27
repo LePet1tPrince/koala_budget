@@ -110,6 +110,7 @@ def _budget_figures(book, month):
                 "budgeted": budgeted,
                 "actual": actual,
                 "available": available,
+                "meter": _meter(category.account_group.account_type, budgeted, actual, available),
             }
         )
 
@@ -144,6 +145,33 @@ def _budget_figures(book, month):
     }
 
 
+def _meter(account_type, budgeted, actual, available):
+    """The progress bar beside a budget row.
+
+    Expense: spent against what there was to spend this month -- the budget plus
+    whatever rolled in (the previous Available, which is `available − budgeted +
+    actual`), so a full bar and a zero Available are the same thing. Red once
+    Available is negative. Income: received against expected.
+    """
+    if account_type == "income":
+        whole = budgeted
+        over = False
+    else:
+        rolled_in = available - budgeted + actual
+        whole = budgeted + max(rolled_in, Decimal("0"))
+        over = available < 0
+    pct = float(actual / whole * 100) if whole > 0 else None
+    # No budget to measure against: a full bar if anything was spent, else empty.
+    width = (100 if actual > 0 else 0) if pct is None else max(min(round(pct), 100), 0)
+    return {
+        "pct": pct,
+        "width": width,
+        "over": over,
+        "income": account_type == "income",
+        "label": f"{round(pct)}%" if pct is not None else "—",
+    }
+
+
 def _tone(amount):
     """Sign class hint for a money cell; mirrors the templates' text-error/text-success."""
     if amount < 0:
@@ -169,6 +197,12 @@ def _budget_cells(figures):
             for row in group["rows"]:
                 pk = row["category"].pk
                 put(f"row:{pk}:available", row["available"], toned=True)
+                meter = row["meter"]
+                cells[f"row:{pk}:meter"] = {
+                    "value": meter["label"],
+                    "tone": "neg" if meter["over"] else "",
+                    "width": meter["width"],
+                }
                 # Not rendered — the Auto-Assign confirm dialog reads it off the row checkbox.
                 cells[f"row:{pk}:budgeted"] = {"value": f"{row['budgeted']:.2f}", "tone": ""}
             put(f"group:{section['key']}:{index}:budgeted", group["subtotals"]["budgeted"])

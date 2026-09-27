@@ -81,7 +81,7 @@ BACK_LABELS = {
     "budget:budget_home": lambda r, k: _("Back to Budget"),
     "journal:transactions_home": lambda r, k: _("Back to Transactions"),
     "bank_feed:bank_feed_home": lambda r, k: _("Back to Inbox"),
-    "reconciliation:hub": lambda r, k: _("Back to Reconcile"),
+    "reconciliation:hub": lambda r, k: _("Back to Reconciliations"),
     "reconciliation:account": lambda r, k: _("Back to Reconcile"),
 }
 

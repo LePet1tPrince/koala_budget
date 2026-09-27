@@ -149,6 +149,30 @@ class NetWorthReportTest(ConsolidatedReportsBase):
         self.assertEqual(stats["pct_change"], Decimal("270"))
         self.assertEqual(report["chart_data"]["net_worth"], [4000.0, 3700.0])
 
+    def test_composition_bands_sum_to_net_worth(self):
+        report = net_worth_report(self.book, date(2026, 1, 1), date(2026, 2, 28))
+        composition = report["composition_data"]
+        by_name = {g["name"]: g for g in composition["groups"]}
+        self.assertEqual(by_name["Zq Bank"]["type"], "asset")
+        self.assertEqual(by_name["Zq Cards"]["values"], [0.0, -300.0])  # a debt pulls net worth down
+        for month, worth in enumerate(composition["net_worth"]):
+            self.assertAlmostEqual(sum(g["values"][month] for g in composition["groups"]), worth)
+
+    def test_composition_keeps_the_sign_of_a_group_that_crosses_zero(self):
+        # The card is paid 500 on a 300 balance: 200 in credit, which adds to net worth.
+        self.post(date(2026, 3, 2), self.card, self.bank, "500.00")
+        composition = net_worth_report(self.book, date(2026, 1, 1), date(2026, 3, 31))["composition_data"]
+        card = next(g for g in composition["groups"] if g["name"] == "Zq Cards")
+        self.assertEqual(card["values"], [0.0, -300.0, 200.0])
+
+    def test_composition_folds_a_long_tail(self):
+        from .consolidated import _fold_side
+
+        series = [{"name": f"G{i}", "values": [float(i)]} for i in range(1, 8)]
+        folded = _fold_side(series, 5, "Other")
+        self.assertEqual([g["name"] for g in folded], ["G7", "G6", "G5", "G4", "Other"])
+        self.assertEqual(folded[-1]["values"], [6.0])  # 1 + 2 + 3
+
     def test_end_matches_the_balance_sheet(self):
         from .services import ReportService
 
@@ -168,7 +192,9 @@ class NetWorthReportTest(ConsolidatedReportsBase):
         self.assertNotEqual(self.client.get(self.url("net_worth")).status_code, 200)
 
 
-class BudgetGoalsReportTest(ConsolidatedReportsBase):
+class PlanFixture(ConsolidatedReportsBase):
+    """June 2026: Food over this month's budget but covered by May's rollover, Rent overspent, one goal."""
+
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
@@ -187,30 +213,18 @@ class BudgetGoalsReportTest(ConsolidatedReportsBase):
         GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=may, amount=Decimal("200"))
         GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=june, amount=Decimal("100"))
 
-    def test_envelopes_use_rollover_available(self):
-        report = budget_goals_report(self.book, date(2026, 6, 1))
-        rows = {row["account"].name: row for group in report["spending"]["groups"] for row in group["rows"]}
-        food, rent = rows["Zq Food"], rows["Zq Rent"]
-        self.assertEqual(food["rolled_in"], Decimal("300.00"))
-        self.assertEqual(food["available"], Decimal("100.00"))
-        self.assertFalse(food["overspent"])  # over this month's budget, but the rollover covered it
-        self.assertEqual(round(food["pct"]), 86)  # 600 of 700
-        self.assertTrue(rent["overspent"])
-        self.assertEqual(rent["available"], Decimal("-100.00"))
-        self.assertEqual(report["spending"]["overspent_count"], 1)
-        self.assertEqual(report["spending"]["totals"]["spent"], Decimal("1700.00"))
 
-    def test_income_expected_vs_received(self):
-        report = budget_goals_report(self.book, date(2026, 6, 1))
-        row = report["income"]["groups"][0]["rows"][0]
-        self.assertEqual(
-            (row["expected"], row["received"], row["to_go"]), (Decimal("3000"), Decimal("2500.00"), Decimal("500.00"))
-        )
+class BudgetGoalsReportTest(PlanFixture):
+    def test_envelopes_are_one_total(self):
+        from apps.budget.unassigned import compute_unassigned
 
-    def test_income_hidden_when_book_does_not_budget_it(self):
-        self.book.budget_future_income = False
-        self.book.save()
-        self.assertIsNone(budget_goals_report(self.book, date(2026, 6, 1))["income"])
+        report = budget_goals_report(self.book, date(2026, 6, 1))
+        unassigned = compute_unassigned(self.book, date(2026, 6, 1))
+        envelopes = report["envelopes"]
+        self.assertEqual(envelopes["total"], unassigned.envelopes)
+        self.assertEqual(envelopes["total"], envelopes["rollover"] + envelopes["this_month"])
+        self.assertEqual(envelopes["overspent"], Decimal("100.00"))  # Rent, carried negative
+        self.assertNotIn("spending", report)
 
     def test_goals_and_unassigned(self):
         from apps.budget.unassigned import compute_unassigned
@@ -221,14 +235,16 @@ class BudgetGoalsReportTest(ConsolidatedReportsBase):
         self.assertEqual(row["needed"], Decimal("166.67"))  # (1200 − 200) over the 6 months Jun..Nov
         self.assertEqual(report["goal_totals"]["allocated"], Decimal("300"))
         self.assertEqual(report["unassigned"].amount, compute_unassigned(self.book, date(2026, 6, 1)).amount)
-        self.assertEqual(report["steps"][-1]["value"], float(report["unassigned"].amount))
+        self.assertEqual(report["waterfall"][-1]["value"], float(report["unassigned"].amount))
 
-    def test_view_renders_month(self):
+    def test_view_renders_month_without_listing_categories(self):
         response = self.client.get(self.url("budget_goals"), {"month": "2026-06"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["prev_month"], date(2026, 5, 1))
-        self.assertContains(response, "Overspent")
         self.assertContains(response, "Zq Car")
+        self.assertContains(response, 'data-testid="plan-envelopes-card"')
+        self.assertNotContains(response, "Zq Food")
+        self.assertNotContains(response, "Zq Rent")
 
     def test_bad_month_falls_back_to_this_month(self):
         response = self.client.get(self.url("budget_goals"), {"month": "garbage"})
@@ -237,6 +253,54 @@ class BudgetGoalsReportTest(ConsolidatedReportsBase):
     def test_requires_membership(self):
         self.client.logout()
         self.assertNotEqual(self.client.get(self.url("budget_goals")).status_code, 200)
+
+
+class BudgetPageProgressBarTest(PlanFixture):
+    """The per-category bars moved from the report onto the budget page itself."""
+
+    def rows(self):
+        response = self.client.get(reverse("budget:budget_home", args=self.book.url_args), {"month": "2026-06-01"})
+        self.assertEqual(response.status_code, 200)
+        return {
+            row["category"].name: row
+            for section in response.context["sections"]
+            for group in section["groups"]
+            for row in group["rows"]
+        }, response
+
+    def test_expense_bar_counts_the_rollover(self):
+        rows, response = self.rows()
+        food = rows["Zq Food"]["meter"]
+        self.assertEqual(food["width"], 86)  # 600 of 400 budgeted + 300 rolled in
+        self.assertFalse(food["over"])  # over this month's budget, but nothing is wrong
+        self.assertContains(response, 'data-testid="budget-meter"')
+
+    def test_overspent_bar_is_full_and_red(self):
+        rent = self.rows()[0]["Zq Rent"]["meter"]
+        self.assertEqual((rent["width"], rent["over"], rent["label"]), (100, True, "110%"))
+
+    def test_income_bar_is_received_of_expected(self):
+        salary = self.rows()[0]["Zq Salary"]["meter"]
+        self.assertEqual((salary["width"], salary["income"], salary["over"]), (83, True, False))
+
+    def test_unbudgeted_category_shows_no_percentage(self):
+        from apps.budget.views import _meter
+
+        meter = _meter("expense", Decimal("0"), Decimal("40"), Decimal("-40"))
+        self.assertEqual((meter["label"], meter["width"], meter["over"]), ("—", 100, True))
+        self.assertEqual(_meter("expense", Decimal("0"), Decimal("0"), Decimal("0"))["width"], 0)
+
+    def test_autosave_returns_the_new_bar(self):
+        import json
+
+        response = self.client.post(
+            reverse("budget:budget_save_amount", args=self.book.url_args),
+            data=json.dumps({"category_id": self.rent.pk, "month": "2026-06-01", "amount": "2200"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        cell = response.json()["cells"][f"row:{self.rent.pk}:meter"]
+        self.assertEqual((cell["width"], cell["value"], cell["tone"]), (50, "50%", ""))
 
 
 class ReturnToLabelTest(ConsolidatedReportsBase):
