@@ -1,0 +1,3 @@
+{% load currency_tags %}{% comment %}
+  A signed change cell. `kind` "liabilities" flips the colour: owing more is the bad direction.
+{% endcomment %}{% if kind == "liabilities" %}<td class="text-right money whitespace-nowrap {% if change > 0 %}text-error{% elif change < 0 %}text-success{% else %}opacity-40{% endif %}">{% else %}<td class="text-right money whitespace-nowrap {% if change > 0 %}text-success{% elif change < 0 %}text-error{% else %}opacity-40{% endif %}">{% endif %}{% if change > 0 %}+{% endif %}{{ change|currency }}</td>

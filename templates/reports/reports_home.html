@@ -7,6 +7,43 @@
   <h1 class="text-2xl font-semibold mb-1">{% translate "Reports" %}</h1>
   <p class="text-sm text-base-content/70 mb-4">{% translate "Understand where your money comes from and where it goes." %}</p>
 
+  <div class="rounded-box border border-primary/40 bg-primary/5 p-4 mb-6" data-testid="consolidated-reports">
+    <div class="flex items-center gap-2 mb-1">
+      <h2 class="font-semibold">{% translate "Consolidated reports" %}</h2>
+      <span class="badge badge-primary badge-sm">{% translate "Preview" %}</span>
+    </div>
+    <p class="text-sm text-base-content/70 mb-2">{% translate "Three reports that cover the seven below. Compare them before the old ones are retired." %}</p>
+    <ul class="divide-y divide-base-300">
+      <li>
+        <a href="{% url 'reports:spending' request.team.slug request.book.slug %}" class="flex justify-between items-center py-3 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-spending">
+          <div>
+            <div class="font-medium">{% translate "Income & Spending" %}</div>
+            <div class="text-sm text-base-content/70">{% translate "Money in and out over any range, the full statement, and where it flowed. Replaces Income Statement and Cash Flow." %}</div>
+          </div>
+          {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="flex justify-between items-center py-3 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-net-worth">
+          <div>
+            <div class="font-medium">{% translate "Net Worth" %}</div>
+            <div class="text-sm text-base-content/70">{% translate "What you own and owe, and what changed over the range. Replaces Balance Sheet and Net Worth Trend." %}</div>
+          </div>
+          {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'reports:budget_goals' request.team.slug request.book.slug %}" class="flex justify-between items-center py-3 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-budget-goals">
+          <div>
+            <div class="font-medium">{% translate "Budget & Goals" %}</div>
+            <div class="text-sm text-base-content/70">{% translate "One month of the plan: unassigned money, goals and every envelope. Replaces Budget vs Actual, Goal Progress and Dollar Map." %}</div>
+          </div>
+          {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4 text-base-content/40" %}
+        </a>
+      </li>
+    </ul>
+  </div>
+
   <ul class="divide-y divide-base-300">
     <li>
       <a href="{% url 'monthly_review:home' request.team.slug request.book.slug %}" class="flex justify-between items-center py-4 gap-4 hover:bg-base-200 rounded-lg px-2 -mx-2" data-testid="report-link-monthly-review">
