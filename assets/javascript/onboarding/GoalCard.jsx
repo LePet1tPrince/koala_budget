@@ -2,6 +2,8 @@
 
 import React from 'react';
 
+import AmountInput from '../common/AmountInput';
+
 /**
  * The optional first-goal question.
  *
@@ -36,15 +38,11 @@ const GoalCard = ({ question, value, onChange }) => {
 
         <label>
           <span className="mb-1 block text-sm text-base-content/70">{gettext('Target amount')}</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
+          <AmountInput
             className="input input-bordered money w-full"
             placeholder="0.00"
-            value={goal.target_amount ?? ''}
-            onChange={set('target_amount')}
+            value={goal.target_amount}
+            onValueChange={(next) => onChange({ ...goal, target_amount: next })}
             data-testid="goal-amount"
           />
         </label>

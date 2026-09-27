@@ -21,6 +21,7 @@ from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
+from apps.utils.amounts import evaluate_amount
 from apps.web.templatetags.currency_tags import currency
 
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
@@ -1165,10 +1166,7 @@ def goal_allocation_update_view(request, team_slug, book_slug, pk):
         amount = request.POST.get("amount", "0")
         month = _parse_month(request.POST.get("month"))
 
-        try:
-            amount = Decimal(amount)
-        except (InvalidOperation, ValueError, TypeError):
-            amount = Decimal("0")
+        amount = evaluate_amount(amount) or Decimal("0")
         if amount < 0:
             messages.error(request, _("Allocation amount cannot be negative."))
             return redirect(f"/a/{team_slug}/{book_slug}/budget/goals/?month={month.isoformat()}")

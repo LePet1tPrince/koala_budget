@@ -216,7 +216,7 @@ pace/projection numbers, context-aware quick-assign.
           </span>
         </button>
         <div class="join w-full">
-          <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Custom amount' %}"
+          <input type="text" inputmode="decimal" autocomplete="off" data-amount-input placeholder="{% translate 'Custom amount' %}"
                  class="input input-bordered input-sm join-item w-full font-mono" data-custom-input>
           <button type="button" class="btn btn-outline btn-sm join-item" data-assign-custom>{% translate "Add" %}</button>
         </div>
@@ -226,7 +226,7 @@ pace/projection numbers, context-aware quick-assign.
         </button>
         <div class="w-full flex flex-col gap-2" data-withdraw-row hidden>
           <div class="join w-full">
-            <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Amount to withdraw' %}"
+            <input type="text" inputmode="decimal" autocomplete="off" data-amount-input placeholder="{% translate 'Amount to withdraw' %}"
                    class="input input-bordered input-sm join-item w-full font-mono" data-withdraw-input>
             <button type="button" class="btn btn-outline btn-error btn-sm join-item"
                     data-withdraw-btn data-testid="withdraw-btn"
@@ -247,7 +247,7 @@ pace/projection numbers, context-aware quick-assign.
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}
             <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
-            <input type="number" min="0" step="0.01" name="amount" value="{{ item.this_month }}"
+            <input type="text" inputmode="decimal" autocomplete="off" data-amount-input name="amount" value="{{ item.this_month }}"
                    class="input input-bordered input-sm join-item w-full font-mono" aria-label="{% translate 'This month' %}">
             <button type="submit" class="btn btn-outline btn-sm join-item">{% translate "Set month" %}</button>
           </form>

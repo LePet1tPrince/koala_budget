@@ -5,7 +5,8 @@ import DateField from '../common/DateField';
 import Icon from '../common/Icon';
 import Modal from '../common/Modal';
 import Spinner from '../common/Spinner';
-import { parseAmount, round2 } from '../common/amount';
+import { amountForPayload, parseAmount, round2 } from '../common/amount';
+import AmountInput from '../common/AmountInput';
 import { buildCategoryOptions } from '../common/categoryOptions';
 import SplitEditor, { MIN_LEGS } from '../bank_feed/react/SplitEditor';
 import TransactionHistory from '../bank_feed/react/TransactionHistory';
@@ -262,8 +263,10 @@ const TransactionEditModal = ({
     }
 
     if (!isBatch && can.can_edit_amount) {
-      if (changed(inflow || '0.00', (tx) => tx.inflow)) updates.inflow = inflow || '0';
-      if (changed(outflow || '0.00', (tx) => tx.outflow)) updates.outflow = outflow || '0';
+      const inflowValue = amountForPayload(inflow, '0.00');
+      const outflowValue = amountForPayload(outflow, '0.00');
+      if (changed(inflowValue, (tx) => tx.inflow)) updates.inflow = inflowValue;
+      if (changed(outflowValue, (tx) => tx.outflow)) updates.outflow = outflowValue;
     }
 
     return updates;
@@ -546,24 +549,20 @@ const TransactionEditModal = ({
               <div className="grid grid-cols-2 gap-4">
                 <label className="form-control w-full">
                   <span className="label-text mb-1 block text-sm text-base-content/70">{gettext('Money out')}</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
+                  <AmountInput
                     className="input input-bordered w-full text-right font-mono"
                     value={outflow}
-                    onChange={(e) => setOutflowOnly(e.target.value)}
+                    onValueChange={setOutflowOnly}
                     disabled={!can.can_edit_amount}
                     data-testid="transaction-outflow"
                   />
                 </label>
                 <label className="form-control w-full">
                   <span className="label-text mb-1 block text-sm text-base-content/70">{gettext('Money in')}</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
+                  <AmountInput
                     className="input input-bordered w-full text-right font-mono"
                     value={inflow}
-                    onChange={(e) => setInflowOnly(e.target.value)}
+                    onValueChange={setInflowOnly}
                     disabled={!can.can_edit_amount}
                     data-testid="transaction-inflow"
                   />

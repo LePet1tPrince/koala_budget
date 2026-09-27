@@ -1,5 +1,6 @@
 import React from 'react';
 
+import AmountInput from '../../common/AmountInput';
 import Combobox from '../../common/Combobox';
 import Icon from '../../common/Icon';
 import { formatMoney } from '../../common/amount';
@@ -67,12 +68,10 @@ const SplitEditor = ({
             </div>
             <label className="input input-bordered flex w-32 shrink-0 items-center gap-1">
               <span className="text-base-content/70">$</span>
-              <input
-                type="text"
-                inputMode="decimal"
+              <AmountInput
                 className="w-full text-right font-mono"
                 value={leg.amount}
-                onChange={(e) => onChangeLeg(index, { amount: e.target.value })}
+                onValueChange={(amount) => onChangeLeg(index, { amount })}
                 disabled={disabled}
                 aria-label={interpolate(gettext('Amount for split %s'), [index + 1])}
                 data-testid={`split-amount-${index}`}
