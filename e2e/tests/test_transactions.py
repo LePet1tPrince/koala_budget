@@ -347,7 +347,7 @@ def test_row_click_opens_the_editor_with_the_transaction(
 ):
     """The modal speaks account and category, never debit and credit."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
     transactions.open_editor("Weekly shop")
 
     assert "Chequing" in transactions.field_value("transaction-account")
@@ -363,7 +363,7 @@ def test_changing_the_category_updates_the_row_in_place(
 ):
     """No reload: the saved row is patched back into the list it came from."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
     transactions.open_editor("Weekly shop")
     transactions.fill_combobox("transaction-category", "Dining Out")
     transactions.save_editor()
@@ -380,7 +380,7 @@ def test_a_reconciled_transaction_locks_its_amount_but_not_its_category(
 ):
     """The lock the server enforces is the lock the modal shows."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
     transactions.open_editor("Confirmed rent")
 
     assert transactions.field_is_disabled("transaction-outflow")
@@ -394,7 +394,7 @@ def test_a_split_opens_with_its_legs_and_can_be_reapportioned(
     requires_vite, authenticated_page: Page, live_server, team, editable
 ):
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
     transactions.open_editor("Costco run")
 
     assert transactions.has_split_editor()
@@ -415,7 +415,7 @@ def test_a_split_opens_with_its_legs_and_can_be_reapportioned(
 def test_split_legs_must_add_up_before_saving(requires_vite, authenticated_page: Page, live_server, team, editable):
     """Caught in the modal, so the user fixes it without a round trip."""
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
     transactions.open_editor("Costco run")
 
     transactions.set_split_amount(0, "10.00")
@@ -428,7 +428,7 @@ def test_split_legs_must_add_up_before_saving(requires_vite, authenticated_page:
 @pytest.mark.django_db(transaction=True)
 def test_a_plain_transaction_can_be_split(requires_vite, authenticated_page: Page, live_server, team, editable):
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
     transactions.open_editor("Weekly shop")
     transactions.start_split()
 
@@ -447,7 +447,7 @@ def test_a_plain_transaction_can_be_split(requires_vite, authenticated_page: Pag
 @pytest.mark.django_db(transaction=True)
 def test_voiding_and_restoring_a_transaction(requires_vite, authenticated_page: Page, live_server, team, editable):
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
 
     transactions.open_editor("Weekly shop")
     transactions.toggle_void()
@@ -465,7 +465,7 @@ def test_voiding_and_restoring_a_transaction(requires_vite, authenticated_page: 
 @pytest.mark.django_db(transaction=True)
 def test_deleting_a_transaction_removes_its_row(requires_vite, authenticated_page: Page, live_server, team, editable):
     transactions = TransactionsPage(authenticated_page, live_server.url)
-    transactions.goto(team.slug)
+    transactions.goto(team.default_book)
     before = transactions.get_row_count()
 
     transactions.open_editor("Weekly shop")
