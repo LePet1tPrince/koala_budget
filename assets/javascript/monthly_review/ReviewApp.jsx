@@ -3,10 +3,10 @@ import React, { useEffect, useState } from 'react';
 import BudgetMonthPicker from '../budget/react/BudgetMonthPicker';
 import BaselineBar from './BaselineBar';
 import Dashboard from './Dashboard';
+import HealthModal from './parts/HealthModal';
 import StepBiggest from './steps/StepBiggest';
 import StepBreakdown from './steps/StepBreakdown';
 import StepGlance from './steps/StepGlance';
-import StepHealth from './steps/StepHealth';
 import StepIncome from './steps/StepIncome';
 import StepNetWorth from './steps/StepNetWorth';
 import StepOverspent from './steps/StepOverspent';
@@ -14,7 +14,6 @@ import StepRecap from './steps/StepRecap';
 import StepSaving from './steps/StepSaving';
 
 const STEPS = [
-  { key: 'health', Component: StepHealth, title: "Is this month's data complete?" },
   { key: 'glance', Component: StepGlance, title: 'The month at a glance' },
   { key: 'income', Component: StepIncome, title: 'Where the money came from' },
   { key: 'overspent', Component: StepOverspent, title: 'What blew through the budget' },
@@ -26,14 +25,18 @@ const STEPS = [
 ];
 
 /**
- * Owns { mode, step, baseline } over one already-fetched `review` payload.
+ * Owns { mode, step, baseline, healthOpen } over one already-fetched `review` payload.
  * Both the walkthrough and the dashboard render from the same data -- changing
  * the baseline is pure client-side reslicing, never a new request.
+ *
+ * The data-completeness check is not a step: it is a modal that opens whenever
+ * the walkthrough starts from the beginning, and can be reopened from either mode.
  */
 const ReviewApp = ({ props }) => {
   const { review, state, urls, api } = props;
   const [mode, setMode] = useState(state.isFinished ? 'dashboard' : 'walkthrough');
   const [step, setStep] = useState(Math.min(state.step || 0, STEPS.length - 1));
+  const [healthOpen, setHealthOpen] = useState(mode === 'walkthrough' && step === 0);
   const [baseline, setBaseline] = useState(
     state.baseline && review.baselines[state.baseline] ? state.baseline : review.default_baseline
   );
@@ -57,7 +60,7 @@ const ReviewApp = ({ props }) => {
   };
 
   useEffect(() => {
-    if (mode !== 'walkthrough') return undefined;
+    if (mode !== 'walkthrough' || healthOpen) return undefined;
     const onKeyDown = (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === 'ArrowRight') goToStep(step + 1);
@@ -66,32 +69,42 @@ const ReviewApp = ({ props }) => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, step, baseline]);
+  }, [mode, step, baseline, healthOpen]);
+
+  const healthModal = (
+    <HealthModal open={healthOpen} onClose={() => setHealthOpen(false)} review={review} inboxUrl={urls.inbox} />
+  );
 
   if (mode === 'dashboard') {
     return (
-      <Dashboard
-        review={review}
-        baselines={review.baselines}
-        baselineOrder={review.baseline_order}
-        baseline={baseline}
-        currentBaseline={currentBaseline}
-        onBaselineChange={changeBaseline}
-        onWalkthrough={() => {
-          setStep(0);
-          setMode('walkthrough');
-        }}
-        urls={urls}
-      />
+      <>
+        <Dashboard
+          review={review}
+          baselines={review.baselines}
+          baselineOrder={review.baseline_order}
+          baseline={baseline}
+          currentBaseline={currentBaseline}
+          onBaselineChange={changeBaseline}
+          onWalkthrough={() => {
+            setStep(0);
+            setMode('walkthrough');
+            setHealthOpen(true);
+          }}
+          onHealthCheck={() => setHealthOpen(true)}
+          urls={urls}
+        />
+        {healthModal}
+      </>
     );
   }
 
   const { Component, title } = STEPS[step];
-  const showBaselineBar = step >= 1 && step <= 7 && review.baseline_order.length > 0;
+  const showBaselineBar = step < STEPS.length - 1 && review.baseline_order.length > 0;
+  const { all_clear: allClear, flags } = review.health;
 
   return (
     <div className="max-w-4xl mx-auto py-6" data-testid="monthly-review-walkthrough">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex gap-2" data-testid="step-dots">
           {STEPS.map((s, i) => (
             <button
@@ -104,14 +117,25 @@ const ReviewApp = ({ props }) => {
             />
           ))}
         </div>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => setMode('dashboard')}
-          data-testid="skip-to-dashboard"
-        >
-          Skip to dashboard
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setHealthOpen(true)}
+            data-testid="open-health-check"
+          >
+            Data check
+            {!allClear && <span className="badge badge-warning badge-sm">{flags.length}</span>}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setMode('dashboard')}
+            data-testid="skip-to-dashboard"
+          >
+            Skip to dashboard
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -152,6 +176,8 @@ const ReviewApp = ({ props }) => {
           </button>
         )}
       </div>
+
+      {healthModal}
     </div>
   );
 };

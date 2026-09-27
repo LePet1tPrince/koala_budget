@@ -94,8 +94,11 @@ const FlagTooltip = ({ row, anchorRef, monthLabel }) => {
   );
 };
 
-/** Step 1: the trust gate. Never blocks -- one row per asset/liability account, flagged rows highlighted. */
-const StepHealth = ({ review }) => {
+/**
+ * The trust gate shown in the modal that opens the review. Never blocks -- one
+ * row per asset/liability account, flagged rows highlighted.
+ */
+const HealthCheck = ({ review }) => {
   const { accounts, all_clear: allClear } = review.health;
   const [activeRow, setActiveRow] = useState(null);
   const anchorRef = useRef(null);
@@ -108,10 +111,6 @@ const StepHealth = ({ review }) => {
 
   return (
     <div>
-      <p className="text-base-content/70 mb-4">
-        Before looking at numbers, let&apos;s make sure this month&apos;s data is trustworthy.
-      </p>
-
       {allClear && (
         <div
           className="rounded-box border border-success/40 bg-success/5 text-success p-3 mb-4 flex items-center gap-2 text-sm"
@@ -182,4 +181,4 @@ const StepHealth = ({ review }) => {
   );
 };
 
-export default StepHealth;
+export default HealthCheck;
