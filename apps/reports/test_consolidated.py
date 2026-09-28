@@ -223,7 +223,12 @@ class BudgetGoalsReportTest(PlanFixture):
         envelopes = report["envelopes"]
         self.assertEqual(envelopes["total"], unassigned.envelopes)
         self.assertEqual(envelopes["total"], envelopes["rollover"] + envelopes["this_month"])
+        # Food: 300 rolled in + 400 budgeted − 600 spent = 100 left, all of it rollover.
+        # Rent's −100 claims nothing: it already came out of Unassigned.
+        self.assertEqual(envelopes["total"], Decimal("100.00"))
+        self.assertEqual((envelopes["rollover"], envelopes["this_month"]), (Decimal("100.00"), Decimal("0.00")))
         self.assertEqual(envelopes["overspent"], Decimal("100.00"))  # Rent, carried negative
+        self.assertEqual(envelopes["overspent"], unassigned.overspent)
         self.assertNotIn("spending", report)
 
     def test_goals_and_unassigned(self):
@@ -243,6 +248,8 @@ class BudgetGoalsReportTest(PlanFixture):
         self.assertEqual(response.context["prev_month"], date(2026, 5, 1))
         self.assertContains(response, "Zq Car")
         self.assertContains(response, 'data-testid="plan-envelopes-card"')
+        self.assertContains(response, 'data-testid="plan-overspent"')
+        self.assertContains(response, "$100.00 this month")  # goals assigned in June
         self.assertNotContains(response, "Zq Food")
         self.assertNotContains(response, "Zq Rent")
 

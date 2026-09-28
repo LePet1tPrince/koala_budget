@@ -230,15 +230,20 @@ def budget_goals_report(book, month):
     )
     goal_totals["pct"] = _pct(goal_totals["allocated"], goal_totals["target"])
 
-    # Envelopes as one figure: split into what rolled in and this month's unspent
-    # budget (the two terms of the Unassigned sum), plus the overspent part carried
-    # as negative balances, which the total already nets off.
-    overspent = -sum((e["amount"] for e in unassigned.detail["envelopes"] if e["amount"] < 0), ZERO)
+    # Envelopes as one figure: Σ max(0, available) over expense categories, split into
+    # what rolled in from earlier months and this month's unspent budget (spending draws
+    # on this month's budget first, so an envelope's rolled part is the smaller of
+    # what rolled in and its balance). Overspent envelopes claim nothing -- that money already came out of
+    # Unassigned -- and `overspent` is the negative balance they still carry.
+    rollover = sum(
+        (min(e["amount"], max(e["rollover"], ZERO)) for e in unassigned.detail["envelopes"] if e["amount"] > 0),
+        ZERO,
+    )
     envelopes = {
         "total": unassigned.envelopes,
-        "rollover": unassigned.rollover,
-        "this_month": unassigned.this_month,
-        "overspent": overspent,
+        "rollover": rollover,
+        "this_month": unassigned.envelopes - rollover,
+        "overspent": unassigned.overspent,
     }
     return {
         "unassigned": unassigned,
