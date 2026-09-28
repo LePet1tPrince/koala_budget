@@ -4,6 +4,13 @@ Status: built (M1–M5), see §9 for what the build decided or changed. Implemen
 of `docs/unassigned-plan.md` and the "goal spending tracking" that `docs/goals_design.md`
 left out of scope.
 
+> **Superseded in part** by the v3 Unassigned formula (`docs/unassigned-plan.md` §1):
+> a goal now claims `max(0, left)`, so spending past what a goal holds lowers
+> Unassigned by the excess, and covering or paying back a negative goal is free.
+> Statements below that overspending a goal (or covering it) leaves Unassigned
+> unchanged, or that covering "from Unassigned" lowers it, describe the build as it
+> first shipped.
+
 ## 1. The idea
 
 A goal is a budget envelope that never resets. Saving is an **allocation** of

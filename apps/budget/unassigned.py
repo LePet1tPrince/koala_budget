@@ -2,39 +2,47 @@
 The Unassigned metric: money that has no job yet (see docs/unassigned-plan.md).
 
     unassigned = net worth
-               + income budgeted this month and not yet received
-               − every expense envelope's balance (unspent budget, rollover included)
-               − every goal's left (allocated − spent from it)
+               + Σ max(0, −available) over income categories   (budgeted income not yet received)
+               − Σ max(0,  available) over expense categories  (unspent budget: the envelopes)
+               − Σ max(0,  left)      over goals               (allocated − spent from it)
+
+Every "available" is the budget page's own running balance through `month`
+(`BudgetService.get_available_with_previous`: expense budget − actual + rollover,
+income actual − budget + rollover), and a goal's left counts allocations and
+spending through `month` too, so nothing dated after the month moves it.
+
+The rule behind every term: a claim is the larger of what was planned and what
+actually happened.
+
+- **Income.** Budgeted income that hasn't arrived counts as coming, and the
+  difference rolls from month to month like an envelope's: a September paycheque
+  that lands in October fills September's gap rather than arriving twice. Income
+  beyond its budget isn't "due" — it is already in net worth, so it arrives
+  unassigned. If the money isn't coming, lower the budget: the shortfall goes with it.
+- **Overspending comes out of Unassigned.** An overspent envelope or goal claims
+  nothing (its balance is floored at zero), so the money spent past it leaves net
+  worth with nothing to offset it. Money spent without a budget was not free money;
+  it's gone, and Unassigned says so as soon as the transaction is categorized. The
+  negative balance itself is carried, never reset, so budgeting into the hole next
+  month doesn't move Unassigned again: the first dollars of a budget fill the hole,
+  and only what goes past it is a new claim.
+- **Spending within a budget or a goal moves nothing**: net worth and the claim
+  fall by the same amount.
+- **Future months don't count.** Budgets, income and goal allocations dated after
+  `month` claim nothing yet.
+- **Everything else in net worth counts as it lands**: opening balances,
+  reconciliation adjustments, any equity entry.
 
 `compute_unassigned()` is the one place this is calculated. The sidebar pill, the
 dashboard, the budget/goals card (via `NetWorthService.get_net_worth_card_data`), the
 goal quick-assign clamp and the Dollar Map report all read it, so no two screens can
 disagree about the number.
-
-Income is deliberately *not* summed through the budget page's per-category income
-"available" (actual − budget + rollover). Carried forward, that figure turns every
-past month's shortfall into income still "due" forever (budget $5,000, earn $4,800,
-and $200 of phantom money joins Unassigned every month), and it holds back any
-income earned over budget instead of letting it arrive as money with no job. What
-counts is this month's budgeted income that has not landed yet, and only while the
-month is still running: once a month is over, whatever didn't arrive never will.
-
-A goal is an envelope that never resets (docs/goals-envelopes-plan.md): spending
-from it is a real transaction categorized to its account, which lowers net worth
-and the goal's claim by the same amount, so Unassigned doesn't move when you spend
-money you saved for. Spending counts through the end of `month`, like net worth.
-
-Overspending is carried, never forced: an overspent envelope keeps its negative
-balance, which (being subtracted) leaves Unassigned where it was. The shortfall
-stays visible on the envelope that caused it rather than being pulled out of
-Unassigned, and covering it is the user's choice.
 """
 
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import F, Q, Sum
 from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
@@ -56,23 +64,15 @@ class Unassigned:
 
     month: date
     net_worth: Decimal
-    income_due: Decimal
-    rollover: Decimal  # expense envelopes carried in from last month
-    this_month: Decimal  # this month's expense budget, not yet spent
-    goals_before: Decimal
-    goals_this_month: Decimal
-    goals_spent: Decimal = ZERO  # spent from goals through month end
+    income_due: Decimal  # budgeted income not yet received, rolled over
+    envelopes: Decimal  # Σ unspent expense budget (overspent envelopes count as 0)
+    goals: Decimal  # Σ left in goals (overspent goals count as 0)
+    # Not terms of the sum: overspending already left net worth, and these say how much
+    # of it is still showing as a negative balance.
+    overspent: Decimal = ZERO  # expense envelopes
+    goals_overspent: Decimal = ZERO
     # Per-account detail, filled only when asked for (the Dollar Map report).
     detail: dict = field(default_factory=dict, compare=False, repr=False)
-
-    @property
-    def envelopes(self) -> Decimal:
-        return self.rollover + self.this_month
-
-    @property
-    def goals(self) -> Decimal:
-        """Σ left over goals: what they have been given, less what was spent from them."""
-        return self.goals_before + self.goals_this_month - self.goals_spent
 
     @property
     def amount(self) -> Decimal:
@@ -99,11 +99,14 @@ def budget_categories(book):
     )
 
 
+def _positive(values) -> Decimal:
+    return sum((v for v in values if v > 0), ZERO)
+
+
 def compute_unassigned(
     book,
     month: date,
     categories=None,
-    today: date | None = None,
     detail=False,
     future_income: bool | None = None,
 ) -> Unassigned:
@@ -119,76 +122,60 @@ def compute_unassigned(
     only once it has landed, so `income_due` is zero; the budgeting settings page
     passes the opposite of the setting to show what flipping it would do.
     """
-    from apps.budget.models import Budget, Goal, GoalAllocation, month_after
+    from apps.budget.models import Goal, goal_allocated_subquery, goal_spent_subquery, month_after
     from apps.budget.services import BudgetService, NetWorthService
-    from apps.journal.models import JournalLine, counted_entries
 
     month = month.replace(day=1)
-    today = today or date.today()
     if categories is None:
         categories = budget_categories(book)
-    expense = [c for c in categories if c.account_group.account_type == ACCOUNT_TYPE_EXPENSE]
-    income = [c for c in categories if c.account_group.account_type == ACCOUNT_TYPE_INCOME]
-
-    service = BudgetService(book)
-    available, previous = service.get_available_with_previous(month, expense)
-
     if future_income is None:
         future_income = book.budget_future_income
+    expense = [c for c in categories if c.account_group.account_type == ACCOUNT_TYPE_EXPENSE]
+    income = [c for c in categories if c.account_group.account_type == ACCOUNT_TYPE_INCOME] if future_income else []
 
-    # Income still to come: only this month's, and only while the month is running.
-    income_due_by_account = {}
-    if future_income and income and month >= today.replace(day=1):
-        income_ids = {c.pk for c in income}
-        budgets = {
-            b.category_id: b.budget_amount
-            for b in Budget.objects.filter(book=book, month=month, category_id__in=income_ids)
-        }
-        actuals = service.get_actuals_by_category(month)
-        for account in income:
-            due = budgets.get(account.pk, ZERO) - actuals.get(account.pk, ZERO)
-            if due > 0:
-                income_due_by_account[account.pk] = due
+    # One pass over the budget history gives both: expense available is
+    # budget − actual + rollover, income available is actual − budget + rollover.
+    available, previous = BudgetService(book).get_available_with_previous(month, expense + income)
+    expense_available = {c.pk: available[c.pk] for c in expense}
+    income_due_by_account = {c.pk: -available[c.pk] for c in income if available[c.pk] < 0}
 
-    goal_totals = GoalAllocation.objects.filter(book=book, goal__is_archived=False).aggregate(
-        before=Sum("amount", filter=Q(month__lt=month), default=ZERO),
-        this_month=Sum("amount", filter=Q(month__gte=month), default=ZERO),
+    goals = list(
+        Goal.objects.filter(book=book, is_archived=False)
+        .annotate(
+            allocated_to_date=goal_allocated_subquery(month__lte=month),
+            spent_to_date=goal_spent_subquery(end=month_after(month)),
+        )
+        .order_by("order", "target_date", "name")
     )
-    spent = JournalLine.objects.filter(
-        counted_entries("journal_entry__"),
-        book=book,
-        account__goal__isnull=False,
-        account__goal__is_archived=False,
-        journal_entry__entry_date__lt=month_after(month),
-    ).aggregate(total=Sum(F("dr_amount") - F("cr_amount"), default=ZERO))["total"]
+    goal_left = {g.pk: g.allocated_to_date - g.spent_to_date for g in goals}
 
-    rollover = sum(previous.values(), ZERO)
     result = Unassigned(
         month=month,
         net_worth=NetWorthService(book).get_net_worth(month),
         income_due=sum(income_due_by_account.values(), ZERO),
-        rollover=rollover,
-        this_month=sum(available.values(), ZERO) - rollover,
-        goals_before=goal_totals["before"],
-        goals_this_month=goal_totals["this_month"],
-        goals_spent=spent,
+        envelopes=_positive(expense_available.values()),
+        goals=_positive(goal_left.values()),
+        overspent=-sum((v for v in expense_available.values() if v < 0), ZERO),
+        goals_overspent=-sum((v for v in goal_left.values() if v < 0), ZERO),
     )
     if not detail:
         return result
 
     by_id = {c.pk: c for c in categories}
-    goals = [
-        g
-        for g in Goal.objects.filter(book=book, is_archived=False)
-        .with_progress(month)
-        .order_by("order", "target_date", "name")
-        if g.allocated or g.spent
-    ]
     result.detail.update(
         {
-            # `amount` is the goal's claim (left); allocated and spent explain it.
+            # `amount` is the goal's left; allocated and spent explain it. A negative
+            # left claims nothing (see the module docstring).
             "goals": [
-                {"name": g.name, "amount": g.left, "allocated": g.allocated, "spent": g.spent, "goal": g} for g in goals
+                {
+                    "name": g.name,
+                    "amount": goal_left[g.pk],
+                    "allocated": g.allocated_to_date,
+                    "spent": g.spent_to_date,
+                    "goal": g,
+                }
+                for g in goals
+                if g.allocated_to_date or g.spent_to_date
             ],
             "envelopes": [
                 {
@@ -197,7 +184,7 @@ def compute_unassigned(
                     "amount": amount,
                     "rollover": previous.get(pk, ZERO),
                 }
-                for pk, amount in available.items()
+                for pk, amount in expense_available.items()
                 if amount != 0
             ],
             "income_due": [{"name": by_id[pk].name, "amount": due} for pk, due in income_due_by_account.items()],
@@ -237,26 +224,20 @@ def allocation_bar(unassigned: Unassigned) -> dict:
 
     Segments are goals, budget envelopes and (when positive) Unassigned. A marker
     sits at net worth, and a second at net worth + income still due when some is.
-    The claims can reach past what you have for two reasons, which are the only
-    ways the sum can overshoot (the identity is checked in the tests): the total
-    is over-assigned, or envelopes/goals are overspent and carried negative. That
-    overshoot is drawn hatched and explained rather than silently rescaled away.
+    Goals + envelopes + Unassigned is exactly what you have (net worth + income
+    due), so the claims only reach past it when Unassigned is negative: that
+    over-assignment is drawn hatched rather than silently rescaled away.
+    Overspending isn't a claim, so it never appears here: it has already left net worth.
     """
-    detail = unassigned.detail
-    goals_pos = sum((g["amount"] for g in detail["goals"] if g["amount"] > 0), ZERO)
-    env_pos = sum((e["amount"] for e in detail["envelopes"] if e["amount"] > 0), ZERO)
-    carried = -sum((e["amount"] for e in detail["envelopes"] if e["amount"] < 0), ZERO) - sum(
-        (g["amount"] for g in detail["goals"] if g["amount"] < 0), ZERO
-    )
     amount = unassigned.amount
     free = max(amount, ZERO)
     have = unassigned.net_worth + unassigned.income_due
-    filled = goals_pos + env_pos + free
+    filled = unassigned.goals + unassigned.envelopes + free
     scale = max(filled, have)
 
     segments = [
-        {"key": "goals", "label": _("Goals"), "amount": goals_pos},
-        {"key": "envelopes", "label": _("Budget envelopes"), "amount": env_pos},
+        {"key": "goals", "label": _("Goals"), "amount": unassigned.goals},
+        {"key": "envelopes", "label": _("Budget envelopes"), "amount": unassigned.envelopes},
         {"key": "unassigned", "label": unassigned.label, "amount": free},
     ]
     for segment in segments:
@@ -272,7 +253,6 @@ def allocation_bar(unassigned: Unassigned) -> dict:
             "start_pct": _pct(max(have, ZERO), scale),
             "width_pct": _pct(overshoot, scale),
             "over_assigned": max(-amount, ZERO),
-            "carried": carried,
         }
         if overshoot > Decimal("0.005")
         else None,
@@ -285,15 +265,8 @@ def waterfall(unassigned: Unassigned) -> list[dict]:
     if unassigned.income_due:
         steps.append(("income_due", _("Income still due"), unassigned.income_due, False))
     steps += [
-        ("rollover", _("Envelopes rolled over"), -unassigned.rollover, False),
-        ("this_month", _("This month's budget, unspent"), -unassigned.this_month, False),
-        ("goals_before", _("Goals, earlier months"), -unassigned.goals_before, False),
-        ("goals_this_month", _("Goals, this month"), -unassigned.goals_this_month, False),
-    ]
-    # Already out of net worth, so it adds back: spending from a goal moves nothing.
-    if unassigned.goals_spent:
-        steps.append(("goals_spent", _("Spent from goals"), unassigned.goals_spent, False))
-    steps += [
+        ("envelopes", _("Budget envelopes, unspent"), -unassigned.envelopes, False),
+        ("goals", _("Left in goals"), -unassigned.goals, False),
         ("unassigned", unassigned.label, unassigned.amount, True),
     ]
     bars, running = [], ZERO

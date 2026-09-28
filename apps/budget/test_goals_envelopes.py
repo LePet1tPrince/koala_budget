@@ -37,7 +37,6 @@ from .unassigned import compute_unassigned, waterfall
 AUG = date(2026, 8, 1)
 SEPT = date(2026, 9, 1)
 OCT = date(2026, 10, 1)
-TODAY = date(2026, 9, 24)
 
 
 class GoalsFixture(TestCase):
@@ -104,7 +103,7 @@ class GoalsFixture(TestCase):
         )
 
     def unassigned(self, month=SEPT):
-        return compute_unassigned(self.book, month, today=TODAY).amount
+        return compute_unassigned(self.book, month).amount
 
 
 # ---------------------------------------------------------------------------
@@ -167,33 +166,38 @@ class UnassignedInvariantTest(GoalsFixture):
         self.assertEqual(self.unassigned(), before)
 
     def test_invariant_over_random_amounts_and_months(self):
+        # Spending from a goal moves Unassigned only by what it overspends the goal:
+        # Unassigned + the goal's overspending never changes.
+        def held(month):
+            result = compute_unassigned(self.book, month)
+            return result.amount + result.goals_overspent
+
         rng = random.Random(20260924)
         for _ in range(15):
             month = rng.choice([AUG, SEPT, OCT])
             day = month.replace(day=rng.randint(1, 28))
             amount = Decimal(rng.randint(1, 900_000)) / 100
-            before = {m: self.unassigned(m) for m in (AUG, SEPT, OCT)}
+            before = {m: held(m) for m in (AUG, SEPT, OCT)}
             if rng.random() < 0.3:
                 self.post(day, self.checking, self.car.account, str(amount))  # a refund
             else:
                 self.spend_from_car(day, str(amount))
             for m in (AUG, SEPT, OCT):
-                self.assertEqual(self.unassigned(m), before[m], f"{amount} on {day}, viewed in {m}")
+                self.assertEqual(held(m), before[m], f"{amount} on {day}, viewed in {m}")
 
-    def test_overspending_a_goal_leaves_unassigned_unchanged(self):
+    def test_overspending_a_goal_takes_the_excess_from_unassigned(self):
         before = self.unassigned()
-        self.spend_from_car(date(2026, 9, 5), "7500")
-        self.assertEqual(self.unassigned(), before)
+        self.spend_from_car(date(2026, 9, 5), "7500")  # 2,500 past the 5,000 left
+        self.assertEqual(self.unassigned(), before - Decimal("2500"))
 
-    def test_goals_term_is_sum_of_left_and_the_waterfall_adds_spending_back(self):
+    def test_goals_term_is_sum_of_left(self):
         self.spend_from_car(date(2026, 9, 5), "1200")
-        result = compute_unassigned(self.book, SEPT, today=TODAY, detail=True)
-        self.assertEqual(result.goals_spent, Decimal("1200"))
+        result = compute_unassigned(self.book, SEPT, detail=True)
         self.assertEqual(result.goals, Decimal("3800"))
         self.assertEqual(result.detail["goals"][0]["amount"], Decimal("3800"))
         self.assertEqual(result.detail["goals"][0]["spent"], Decimal("1200"))
         bars = {bar["key"]: bar for bar in waterfall(result)}
-        self.assertEqual(bars["goals_spent"]["value"], 1200.0)
+        self.assertEqual(bars["goals"]["value"], -3800.0)
         self.assertEqual(bars["unassigned"]["end"], float(result.amount))
 
     def test_a_funded_goal_keeps_its_claim(self):
@@ -430,7 +434,8 @@ class GoalStatesTest(GoalsFixture):
         result = GoalService(self.book).close(self.car, SEPT, cover=True)
         self.assertEqual(result["covered"], Decimal("1000"))
         self.assertEqual(self.numbers()["left"], Decimal("0"))
-        self.assertEqual(self.unassigned(), before - Decimal("1000"))
+        # The overspending already came out of Unassigned; covering it takes nothing more.
+        self.assertEqual(self.unassigned(), before)
 
     def test_close_view_is_audited_and_closed_goals_move_to_their_filter(self):
         response = self.client.post(
@@ -516,18 +521,19 @@ class CoverOverspendingTest(GoalsFixture):
     def groceries_budget(self):
         return Budget.objects.get(book=self.book, category=self.groceries, month=SEPT).budget_amount
 
-    def test_from_a_goal_the_goal_gives_the_budget_gets_and_unassigned_is_unchanged(self):
+    def test_from_a_goal_the_goal_gives_and_unassigned_gets_it_back(self):
         self.post(date(2026, 9, 5), self.groceries, self.checking, "550")  # 150 over budget
         before = self.unassigned()
         response = self.cover()
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(self.groceries_budget(), Decimal("550"))
         self.assertEqual(self.numbers()["allocated"], Decimal("4850"))
-        self.assertEqual(self.unassigned(), before)
+        # The 150 overspent already came out of Unassigned; the goal gives it back.
+        self.assertEqual(self.unassigned(), before + Decimal("150"))
         self.assertEqual(response.json()["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
         self.assertTrue(AuditEvent.objects.filter(event_type=AuditEvent.GOAL_COVERED_BUDGET).exists())
 
-    def test_from_unassigned_the_budget_rises_and_unassigned_falls(self):
+    def test_from_unassigned_filling_the_hole_leaves_unassigned_alone(self):
         self.post(date(2026, 9, 5), self.groceries, self.checking, "550")
         before = self.unassigned()
         response = self.cover(source="unassigned", goal_id=None)
@@ -537,7 +543,7 @@ class CoverOverspendingTest(GoalsFixture):
         self.assertIsNone(data["goal_left"])
         self.assertEqual(self.groceries_budget(), Decimal("550"))
         self.assertEqual(self.numbers()["allocated"], Decimal("5000"))  # the goal is untouched
-        self.assertEqual(self.unassigned(), before - Decimal("150"))
+        self.assertEqual(self.unassigned(), before)
         self.assertEqual(data["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
 
     def test_from_unassigned_creates_the_budget_row_when_there_is_none(self):

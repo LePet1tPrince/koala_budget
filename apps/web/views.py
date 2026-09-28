@@ -131,7 +131,7 @@ def book_home(request, team_slug, book_slug):
         .exists()
     )
 
-    unassigned = compute_unassigned(book, month, today=today, detail=True)
+    unassigned = compute_unassigned(book, month, detail=True)
 
     chart_start = first_entry_date.replace(day=1) if first_entry_date else month
     trend_data = report_service.get_net_worth_trend_data_by_date_range(chart_start, today)

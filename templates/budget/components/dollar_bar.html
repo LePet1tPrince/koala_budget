@@ -38,16 +38,9 @@
     {% endif %}
     {% if bar.overshoot %}
       <p class="mt-1 text-xs text-error" data-testid="dollar-bar-overshoot-note">
-        {% if bar.overshoot.over_assigned %}
-          {% blocktranslate trimmed with amount=bar.overshoot.over_assigned|currency %}
-            Hatched: {{ amount }} more is promised than you have.
-          {% endblocktranslate %}
-        {% endif %}
-        {% if bar.overshoot.carried %}
-          {% blocktranslate trimmed with amount=bar.overshoot.carried|currency %}
-            {{ amount }} is overspent and carried as negative balances, so these claims add up to more than you have.
-          {% endblocktranslate %}
-        {% endif %}
+        {% blocktranslate trimmed with amount=bar.overshoot.over_assigned|currency %}
+          Hatched: {{ amount }} more is promised than you have.
+        {% endblocktranslate %}
       </p>
     {% endif %}
   </div>

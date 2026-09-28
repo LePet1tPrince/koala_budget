@@ -3,7 +3,8 @@
 {% comment %}
 Close a goal (docs/goals-envelopes-plan.md §4.3): a button that opens a confirmation
 dialog holding the real form. Anything left goes back to Unassigned; a negative goal
-is covered from Unassigned first, or stays open to be paid back.
+is topped back up to zero first (which doesn't move Unassigned: the overspending
+already came out of it), or stays open to be paid back.
 
 All three cases (something left / nothing left / negative) are rendered, one shown:
 the goals page changes a goal's numbers in place, and goals-app.js re-picks the case
@@ -46,8 +47,9 @@ Context: goal (annotated by with_progress), month (optional), button_class (opti
         <strong class="font-mono" data-close-num="left">{{ goal.left|currency }}</strong>.
       </p>
       <p data-close-case="neg" {% if goal.left >= 0 %}hidden{% endif %}>
-        {% translate "Spending went past what this goal held. Closing covers it from your unassigned money:" %}
+        {% translate "Spending went past what this goal held by" %}
         <strong class="font-mono" data-close-num="cover">{{ goal.cover_amount|currency }}</strong>.
+        {% translate "That has already come out of your unassigned money, so closing brings the goal back to zero without taking any more." %}
         {% translate "To pay it back over time instead, keep the goal open and keep assigning to it." %}
       </p>
       <p data-close-case="zero" {% if goal.left != 0 %}hidden{% endif %}>

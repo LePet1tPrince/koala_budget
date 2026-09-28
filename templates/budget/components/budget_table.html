@@ -60,10 +60,10 @@
                  data-testid="cover-amount" required>
         </label>
         <p class="text-xs text-base-content/70" data-cover-explain="unassigned">
-          {% translate "The category's budget rises by this amount, and your unassigned money falls by the same." %}
+          {% translate "The category's budget rises by this amount. The overspending has already come out of your unassigned money, so filling the hole takes nothing more; only an amount past it does." %}
         </p>
         <p class="text-xs text-base-content/70" data-cover-explain="goal" hidden>
-          {% translate "The goal gives up this amount and the category's budget rises by the same, so your unassigned money doesn't change." %}
+          {% translate "The goal gives up this amount and the category's budget rises by the same. The overspending has already come out of your unassigned money, so what the goal gives up goes back into it." %}
         </p>
         <p class="text-sm text-warning" data-cover-hint data-testid="cover-hint" hidden></p>
         <p class="text-sm text-error" data-cover-error hidden></p>
@@ -181,7 +181,7 @@
                 </button>
               </noscript>
               {% if section.key == "expense" %}
-                {# Overspent: cover it from Unassigned, or from a goal (an emergency fund, say). #}
+                {# Overspent: cover it from Unassigned (free: it already came out), or from a goal (an emergency fund, say). #}
                 <button type="button" class="btn btn-ghost btn-xs whitespace-nowrap" data-cover
                         data-category-id="{{ row.category.pk }}" data-category-name="{{ row.category.name }}"
                         data-month="{{ month|date:'Y-m-d' }}" data-testid="cover-btn"

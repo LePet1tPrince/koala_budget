@@ -284,6 +284,7 @@ function init() {
     const error = dialog.querySelector('[data-cover-error]');
     const intro = dialog.querySelector('[data-cover-intro]');
     let current = null;
+    let currentShortfall = 0;
 
     // The page's own figures, so the dialog can't disagree with the card beside it.
     const unassignedNow = () => parseMoney(cells.get('networth:available')?.textContent ?? '0');
@@ -304,22 +305,44 @@ function init() {
       if (richest) select.value = String(richest.id);
     };
 
+    // What covering does to Unassigned. The overspending already came out of it (an
+    // overspent envelope claims nothing), so filling the hole is free: only budget
+    // past the shortfall is a new claim, and money a goal gives up (while it has any
+    // left) is released. See apps/budget/unassigned.py.
+    const unassignedChange = (amount) => {
+      const newClaim = Math.max(0, amount - currentShortfall);
+      if (source() === 'unassigned') return -newClaim;
+      const goal = selectedGoal();
+      const released = goal ? Math.min(amount, Math.max(0, parseFloat(goal.left))) : 0;
+      return released - newClaim;
+    };
+
     // Non-blocking: both are allowed, the user should just know what they mean.
     const refreshHint = () => {
       const amount = parseAmount(amountInput.value) ?? 0;
-      let message = '';
-      if (source() === 'unassigned') {
-        const after = unassignedNow() - amount;
-        if (amount > 0 && after < 0) message = `This leaves you over-assigned by ${fmtMoney(-after)}.`;
-      } else {
-        const goal = selectedGoal();
-        const after = goal ? parseFloat(goal.left) - amount : 0;
-        if (goal && amount > 0 && after < 0) {
-          message = `${goal.name} will go to ${fmtMoney(after)} — that's fine, it's carried.`;
+      const messages = [];
+      let warn = false;
+      if (amount > 0) {
+        const before = unassignedNow();
+        const after = before + unassignedChange(amount);
+        const label = cells.get('networth:label')?.textContent.trim() || 'Unassigned';
+        if (Math.abs(after - before) >= 0.005) messages.push(`${label}: ${fmtMoney(before)} → ${fmtMoney(after)}.`);
+        if (after < 0) {
+          messages.push(`This leaves you over-assigned by ${fmtMoney(-after)}.`);
+          warn = true;
+        }
+        const goal = source() === 'goal' ? selectedGoal() : null;
+        const goalAfter = goal ? parseFloat(goal.left) - amount : 0;
+        if (goal && goalAfter < 0) {
+          messages.push(`${goal.name} will go to ${fmtMoney(goalAfter)}.`);
+          warn = true;
         }
       }
+      const message = messages.join(' ');
       hint.textContent = message;
       hint.hidden = !message;
+      hint.classList.toggle('text-warning', warn);
+      hint.classList.toggle('text-base-content/70', !warn);
       dialog.querySelectorAll('[data-cover-explain]').forEach((el) => {
         el.hidden = el.dataset.coverExplain !== source();
       });
@@ -338,6 +361,7 @@ function init() {
         const cell = cells.get(`row:${btn.dataset.categoryId}:available`);
         const shortfall = cell ? -parseMoney(cell.textContent) : 0;
         current = btn;
+        currentShortfall = Math.max(0, shortfall);
         fillGoals();
         amountInput.value = shortfall > 0 ? shortfall.toFixed(2) : '';
         intro.textContent = `${btn.dataset.categoryName} is ${fmtMoney(-shortfall)}.`;
@@ -346,15 +370,9 @@ function init() {
         unassignedEl.classList.toggle('text-error', unassigned < 0);
         const label = cells.get('networth:label')?.textContent.trim();
         if (label) unassignedLabelEl.textContent = label;
-        // Unassigned first, the way a budget is meant to absorb a surprise; a goal
-        // when Unassigned can't cover it and one of them can.
-        const coveringGoal = goals.find((g) => parseFloat(g.left) >= shortfall);
-        if (unassigned < shortfall && coveringGoal && goalRadio) {
-          goalRadio.checked = true;
-          select.value = String(coveringGoal.id);
-        } else {
-          unassignedRadio.checked = true;
-        }
+        // Unassigned first: the overspending has already come out of it, so covering
+        // from it costs nothing more.
+        unassignedRadio.checked = true;
         error.hidden = true;
         refreshHint();
         dialog.showModal();
