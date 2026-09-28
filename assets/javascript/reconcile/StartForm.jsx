@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 
+import AmountInput from '../common/AmountInput';
 import DateField from '../common/DateField';
-import { formatMoney, sanitizeAmount } from '../common/amount';
+import { evaluateAmount, formatMoney } from '../common/amount';
 import { formatDate, labelsFor } from './labels';
 
 /* globals gettext, interpolate */
@@ -14,7 +15,7 @@ const StartForm = ({ account, defaultDate, previous, reconciledBalance, preselec
   const labels = labelsFor(account);
   const [statementDate, setStatementDate] = useState(defaultDate);
   const [balance, setBalance] = useState('');
-  const parsed = sanitizeAmount(balance);
+  const parsed = evaluateAmount(balance);
 
   const submit = (e) => {
     e.preventDefault();
@@ -39,12 +40,10 @@ const StartForm = ({ account, defaultDate, previous, reconciledBalance, preselec
 
         <label className="form-control w-full">
           <span className="label-text mb-1 block text-sm text-base-content/70">{labels.balance}</span>
-          <input
-            type="text"
-            inputMode="decimal"
+          <AmountInput
             className={`input input-bordered w-full money ${balance && parsed === null ? 'input-error' : ''}`}
             value={balance}
-            onChange={(e) => setBalance(e.target.value)}
+            onValueChange={setBalance}
             placeholder="0.00"
             data-testid="statement-balance"
             autoFocus

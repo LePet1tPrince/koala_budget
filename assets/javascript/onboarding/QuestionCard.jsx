@@ -1,6 +1,8 @@
 /* globals gettext */
 
 import React from 'react';
+
+import AmountInput from '../common/AmountInput';
 import Icon from '../common/Icon';
 
 /**
@@ -87,15 +89,11 @@ const QuestionCard = ({ question, value, onChange }) => {
       {question.kind === 'currency' && (
         <label className="mt-5 flex max-w-xs items-center gap-2">
           <span className="text-base-content/70">$</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
+          <AmountInput
             className="input input-bordered w-full money"
             placeholder="0.00"
-            value={value ?? ''}
-            onChange={(e) => onChange(e.target.value)}
+            value={value}
+            onValueChange={onChange}
             data-testid={`input-${question.id}`}
           />
           <span className="text-sm text-base-content/70">{gettext('CAD')}</span>

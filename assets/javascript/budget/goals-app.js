@@ -2,6 +2,7 @@
 // celebrations (summit | koala | arcade). Server-rendered cards carry data
 // attributes; this module wires them up.
 import Cookies from 'js-cookie';
+import { parseAmount } from '../common/amount';
 import { fireConfetti } from '../common/confetti';
 
 const LEAF_COLORS = ['#4ade80', '#22c55e', '#16a34a', '#86efac', '#a3e635', '#65a30d'];
@@ -406,7 +407,7 @@ function init() {
     const customBtn = card.querySelector('[data-assign-custom]');
     const customInput = card.querySelector('[data-custom-input]');
     const submitCustom = () => {
-      const value = parseFloat(customInput?.value);
+      const value = parseAmount(customInput?.value);
       if (!value || value <= 0) {
         toast('Enter an amount above zero first.', 'warning');
         return;
@@ -438,7 +439,7 @@ function init() {
     const withdrawBtn = card.querySelector('[data-withdraw-btn]');
     const withdrawInput = card.querySelector('[data-withdraw-input]');
     const submitWithdraw = () => {
-      const value = parseFloat(withdrawInput?.value);
+      const value = parseAmount(withdrawInput?.value);
       if (!value || value <= 0) {
         toast('Enter an amount above zero first.', 'warning');
         return;

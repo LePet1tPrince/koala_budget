@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Cookies from 'js-cookie';
 
-import { sanitizeAmount } from '../../common/amount';
+import AmountInput from '../../common/AmountInput';
+import { evaluateAmount, sanitizeAmount } from '../../common/amount';
 
 const cellKey = (categoryId, monthKey) => `${categoryId}|${monthKey}`;
 
@@ -17,8 +18,8 @@ export function parseClipboardMatrix(text) {
 
 /** Numeric value of a cell for dirty comparison; empty/invalid → null. */
 const numericValue = (text) => {
-  const sanitized = sanitizeAmount(text);
-  return sanitized === null ? null : parseFloat(sanitized);
+  const evaluated = evaluateAmount(text);
+  return evaluated === null ? null : parseFloat(evaluated);
 };
 
 const currencyFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -165,7 +166,7 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
         category_id: parseInt(categoryId, 10),
         month: monthKey,
         // A cleared cell that previously had a value is saved as 0
-        amount: sanitizeAmount(values[key]) ?? '0.00',
+        amount: evaluateAmount(values[key]) ?? '0.00',
       };
     });
     setSaving(true);
@@ -302,15 +303,13 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
                         return (
                           <td key={month.key} className="p-1">
                             <div className="relative">
-                              <input
-                                type="text"
-                                inputMode="decimal"
+                              <AmountInput
                                 className={`input input-bordered input-sm w-full min-w-24 text-right font-mono ${dirty ? 'input-warning bg-warning/10' : ''}`}
                                 value={values[key]}
                                 data-row={r}
                                 data-col={colIdx}
                                 aria-label={`${row.name} ${month.label}`}
-                                onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                                onValueChange={(next) => setValues((prev) => ({ ...prev, [key]: next }))}
                                 onPaste={(e) => handlePaste(e, r, colIdx)}
                                 onKeyDown={(e) => handleKeyDown(e, r, colIdx)}
                                 onFocus={(e) => e.target.select()}

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import AmountInput from '../common/AmountInput';
 import DateField from '../common/DateField';
 import Icon from '../common/Icon';
 import Modal from '../common/Modal';
-import { formatMoney, sanitizeAmount, toCents } from '../common/amount';
+import { evaluateAmount, formatMoney, toCents } from '../common/amount';
 import DifferenceHints from './DifferenceHints';
 import { formatDate, labelsFor } from './labels';
 
@@ -177,7 +178,7 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
   };
 
   const saveStatement = async () => {
-    const balance = sanitizeAmount(editBalance);
+    const balance = evaluateAmount(editBalance);
     if (balance === null) return;
     setSaving(true);
     try {
@@ -294,12 +295,10 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
             <DateField label={gettext('Statement date')} value={editDate} onChange={setEditDate} testId="edit-statement-date" />
             <label className="form-control w-full">
               <span className="label-text mb-1 block text-sm text-base-content/70">{labels.balance}</span>
-              <input
-                type="text"
-                inputMode="decimal"
+              <AmountInput
                 className="input input-bordered w-full money"
                 value={editBalance}
-                onChange={(e) => setEditBalance(e.target.value)}
+                onValueChange={setEditBalance}
                 data-testid="edit-statement-balance"
               />
             </label>
