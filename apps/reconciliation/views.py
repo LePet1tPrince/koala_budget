@@ -239,7 +239,9 @@ def hub(request, team_slug, book_slug):
             "accounts": accounts,
             "all_intact": bool(accounts)
             and all(a["last_statement"] and a["last_statement"]["intact"] for a in accounts),
-            "active_tab": "reports",
+            # A tab of the Accounts section (templates/accounts/components/manage_tabs.html).
+            "active_tab": "accounts",
+            "accounts_section": "reconciliations",
         },
     )
 
@@ -286,7 +288,7 @@ def account_page(request, team_slug, book_slug, account_id):
     return render(
         request,
         "reconciliation/account.html",
-        {"account": account, "reconcile_props": props, "active_tab": "reports"},
+        {"account": account, "reconcile_props": props, "active_tab": "accounts", "accounts_section": "reconciliations"},
     )
 
 
@@ -298,7 +300,12 @@ def statement_page(request, team_slug, book_slug, pk):
     return render(
         request,
         "reconciliation/statement.html",
-        {"statement": presenters.completed_payload(rec), "rec": rec, "active_tab": "reports"},
+        {
+            "statement": presenters.completed_payload(rec),
+            "rec": rec,
+            "active_tab": "accounts",
+            "accounts_section": "reconciliations",
+        },
     )
 
 

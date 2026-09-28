@@ -1,7 +1,7 @@
 {% load i18n %}
 {% comment %}
 Section switcher for the chart-of-accounts pages. The active tab comes from the
-view's `accounts_section` ("accounts", "groups", "payees" or "institutions") --
+view's `accounts_section` ("accounts", "groups", "payees", "institutions" or "reconciliations") --
 the same value that highlights the matching sidebar item.
 {% endcomment %}
 <div role="tablist" class="tabs tabs-border -mx-1 mb-5 flex-nowrap overflow-x-auto border-b border-base-300 [&>.tab]:whitespace-nowrap" data-testid="manage-tabs">
@@ -9,4 +9,5 @@ the same value that highlights the matching sidebar item.
   <a role="tab" class="tab{% if accounts_section == 'groups' %} tab-active{% endif %}" href="{% url 'accounts:accountgroup_list' request.team.slug request.book.slug %}"{% if accounts_section == 'groups' %} aria-selected="true"{% endif %}>{% translate "Groups" %}</a>
   <a role="tab" class="tab{% if accounts_section == 'payees' %} tab-active{% endif %}" href="{% url 'accounts:payee_list' request.team.slug request.book.slug %}"{% if accounts_section == 'payees' %} aria-selected="true"{% endif %}>{% translate "Payees" %}</a>
   <a role="tab" class="tab{% if accounts_section == 'institutions' %} tab-active{% endif %}" href="{% url 'accounts:institution_list' request.team.slug request.book.slug %}"{% if accounts_section == 'institutions' %} aria-selected="true"{% endif %}>{% translate "Institutions" %}</a>
+  <a role="tab" class="tab{% if accounts_section == 'reconciliations' %} tab-active{% endif %}" href="{% url 'reconciliation:hub' request.team.slug request.book.slug %}"{% if accounts_section == 'reconciliations' %} aria-selected="true"{% endif %} data-testid="manage-tab-reconciliations">{% translate "Reconciliations" %}</a>
 </div>

@@ -1,0 +1,170 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+{% load currency_tags %}
+{% load icons %}
+{% load account_nav %}
+
+{% block page_head %}
+{% include "reports/consolidated/_statement_styles.html" %}
+{% endblock %}
+
+{% block app %}
+<section class="app-card" data-testid="net-worth-report">
+  <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <div>
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1" data-back-link>
+        {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
+        {% translate "Back to Reports" %}
+      </a>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Net Worth" %}</h1>
+      <p class="text-sm text-base-content/70">
+        {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" trimmed %}
+          {{ start }} – {{ end }}
+        {% endblocktranslate %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div id="month-range-picker"></div>
+      <a href="{% url 'reports:export_balance_sheet' request.team.slug request.book.slug %}?{{ export_qs }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
+        {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
+        {% translate "Export CSV" %}
+      </a>
+    </div>
+  </div>
+
+  <div class="stats stats-vertical sm:stats-horizontal border border-base-300 w-full mb-4" data-testid="net-worth-report-summary">
+    <div class="stat py-3">
+      <div class="stat-figure {% if stats.net_worth < 0 %}text-error{% endif %} hidden sm:block">{% icon "scale-balanced" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Net worth" %}</div>
+      <div class="stat-value text-2xl money {% if stats.net_worth < 0 %}text-error{% endif %}" data-testid="net-worth-value">{{ stats.net_worth|currency }}</div>
+      <div class="stat-desc">{% blocktranslate with date=end_date|date:"M j, Y" trimmed %}As of {{ date }}{% endblocktranslate %}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure {% if stats.change < 0 %}text-error{% endif %} hidden sm:block">
+        {% if stats.change >= 0 %}{% icon "arrow-trend-up" class="inline-block w-5 h-5 shrink-0" %}{% else %}{% icon "arrow-trend-down" class="inline-block w-5 h-5 shrink-0" %}{% endif %}
+      </div>
+      <div class="stat-title">{% translate "Change" %}</div>
+      <div class="stat-value text-2xl money {% if stats.change < 0 %}text-error{% endif %}" data-testid="net-worth-change">{% if stats.change >= 0 %}+{% endif %}{{ stats.change|currency }}</div>
+      <div class="stat-desc">
+        {% if stats.pct_change is not None %}
+          {% blocktranslate with pct=stats.pct_change|floatformat:1 start=stats.start_net_worth|currency trimmed %}{{ pct }}% from {{ start }}{% endblocktranslate %}
+        {% else %}
+          {% blocktranslate with start=stats.start_net_worth|currency trimmed %}from {{ start }}{% endblocktranslate %}
+        {% endif %}
+      </div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-info hidden sm:block">{% icon "coins" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Assets" %}</div>
+      <div class="stat-value text-2xl money text-info">{{ stats.assets|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-warning hidden sm:block">{% icon "credit-card" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Liabilities" %}</div>
+      <div class="stat-value text-2xl money text-warning">{{ stats.liabilities|currency }}</div>
+      {% if stats.debt_ratio is not None %}
+      <div class="stat-desc">{% blocktranslate with ratio=stats.debt_ratio|floatformat:1 trimmed %}{{ ratio }}% of assets{% endblocktranslate %}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if chart_data %}
+  <div class="rounded-box border border-base-300 p-4 mb-4" x-data="{ view: '{% if composition_data %}groups{% else %}totals{% endif %}' }">
+    {% if composition_data %}
+    <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+      <p class="text-xs text-base-content/70 flex-1 min-w-0" x-show="view === 'groups'">
+        {% translate "What you own stacks up from zero, what you owe stacks down from it; the line is net worth. Hatched: an account on the other side of zero, like an overdraft or a card in credit." %}
+      </p>
+      <p class="text-xs text-base-content/70 flex-1 min-w-0" x-show="view === 'totals'" style="display: none;">{% translate "Assets and liabilities each month, with net worth." %}</p>
+      <div class="join" data-testid="net-worth-view-toggle">
+        <button type="button" class="btn btn-xs join-item" :class="view === 'groups' ? 'btn-active' : ''" @click="view = 'groups'" data-testid="net-worth-view-groups">{% translate "By group" %}</button>
+        <button type="button" class="btn btn-xs join-item" :class="view === 'totals' ? 'btn-active' : ''" @click="view = 'totals'" data-testid="net-worth-view-totals">{% translate "Totals" %}</button>
+      </div>
+    </div>
+    <div class="w-full" style="height: 340px;" x-show="view === 'groups'">
+      <canvas id="net-worth-composition-chart" class="w-full h-full" data-testid="net-worth-composition-chart"
+              role="img" aria-label="{% translate 'Net worth by account group, stacked above and below zero' %}"></canvas>
+    </div>
+    {% endif %}
+    <div class="w-full" style="height: 300px;{% if composition_data %} display: none;{% endif %}" x-show="view === 'totals'">
+      <canvas id="net-worth-chart" class="w-full h-full" data-testid="net-worth-report-chart"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
+  <div x-data="{ open: {} }" class="rounded-box border border-base-300">
+    <div class="report-scroll overflow-auto">
+      <table class="table table-sm w-full" data-testid="net-worth-report-table">
+        <thead>
+          <tr>
+            <th>{% translate "Account" %}</th>
+            <th class="text-right whitespace-nowrap">{{ start_date|date:"M j, Y" }}</th>
+            <th class="text-right whitespace-nowrap">{{ end_date|date:"M j, Y" }}</th>
+            <th class="text-right">{% translate "Change" %}</th>
+          </tr>
+        </thead>
+        {% for section in sections %}
+        <tbody data-testid="net-worth-{{ section.key }}">
+          <tr class="{% if section.key == 'assets' %}row-assets{% else %}row-liabilities{% endif %} font-bold cursor-pointer select-none" @click="open.{{ section.key }} = !(open.{{ section.key }} ?? true)">
+            <td class="whitespace-nowrap">
+              <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="(open.{{ section.key }} ?? true) ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
+              <span class="ml-1 {% if section.key == 'assets' %}text-info{% else %}text-warning{% endif %}">{% if section.key == 'assets' %}{% translate "What you own" %}{% else %}{% translate "What you owe" %}{% endif %}</span>
+            </td>
+            <td class="text-right money whitespace-nowrap">{{ section.start|currency }}</td>
+            <td class="text-right money whitespace-nowrap">{{ section.end|currency }}</td>
+            {% include "reports/consolidated/_change_cell.html" with change=section.change kind=section.key %}
+          </tr>
+          {% for group_data in section.groups %}
+          <tr x-show="open.{{ section.key }} ?? true" class="row-group font-semibold cursor-pointer select-none" @click="open.g{{ group_data.group.pk }} = !(open.g{{ group_data.group.pk }} ?? true)">
+            <td class="pl-5 whitespace-nowrap">
+              <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="(open.g{{ group_data.group.pk }} ?? true) ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
+              <span class="ml-1">{{ group_data.group.name }}</span>
+            </td>
+            <td class="text-right money whitespace-nowrap">{{ group_data.start|currency }}</td>
+            <td class="text-right money whitespace-nowrap">{{ group_data.end|currency }}</td>
+            {% include "reports/consolidated/_change_cell.html" with change=group_data.change kind=section.key %}
+          </tr>
+          {% for row in group_data.rows %}
+          <tr x-show="(open.{{ section.key }} ?? true) && (open.g{{ group_data.group.pk }} ?? true)" class="row-account">
+            {% url 'accounts:account_detail' request.team.slug request.book.slug row.account.pk as account_url %}
+            <td class="pl-10 whitespace-nowrap"><a href="{% return_here account_url|add:'?'|add:drill_qs %}" class="link link-hover link-primary">{{ row.account.name }}</a></td>
+            <td class="text-right money whitespace-nowrap {% if not row.start %}opacity-40{% endif %}">{{ row.start|currency }}</td>
+            <td class="text-right money whitespace-nowrap {% if not row.end %}opacity-40{% endif %}">{{ row.end|currency }}</td>
+            {% include "reports/consolidated/_change_cell.html" with change=row.change kind=section.key %}
+          </tr>
+          {% endfor %}
+          {% empty %}
+          <tr x-show="open.{{ section.key }} ?? true">
+            <td colspan="4" class="text-base-content/70 py-3">{% translate "No balances." %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% endfor %}
+        <tfoot>
+          <tr class="font-bold text-sm text-base-content border-t-2 border-base-300">
+            <td>{% translate "Net worth" %}</td>
+            <td class="text-right money whitespace-nowrap">{{ stats.start_net_worth|currency }}</td>
+            <td class="text-right money whitespace-nowrap {% if stats.net_worth < 0 %}text-error{% endif %}">{{ stats.net_worth|currency }}</td>
+            {% include "reports/consolidated/_change_cell.html" with change=stats.change kind="assets" %}
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  <p class="text-xs text-base-content/70 mt-2">{% translate "Goal and equity accounts are bookkeeping, not money you hold or owe, so they are left out." %}</p>
+</section>
+{% endblock %}
+
+{% block page_js %}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/reports/NetWorthTrendMonthPicker.jsx' %}
+{% if chart_data %}
+{{ chart_data|json_script:'net-worth-data' }}
+{% vite_asset 'assets/javascript/reports/net-worth-chart.js' %}
+{% endif %}
+{% if composition_data %}
+{{ composition_data|json_script:'net-worth-composition-data' }}
+{% vite_asset 'assets/javascript/reports/net-worth-composition-chart.js' %}
+{% endif %}
+{% endblock %}

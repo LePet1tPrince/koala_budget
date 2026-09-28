@@ -83,6 +83,7 @@
                  title="{% translate 'Select all categories' %}">
         </th>
         <th>{% translate "Category" %}</th>
+        <th class="w-32"><span class="sr-only">{% translate "Progress" %}</span></th>
         <th class="text-right">{% translate "Budgeted" %}</th>
         <th class="text-right">{% translate "Actual" %}</th>
         <th class="text-right">{% translate "Available" %}</th>
@@ -92,7 +93,7 @@
     <tbody>
       {% if not has_categories %}
       <tr>
-        <td colspan="6" class="text-center text-base-content/70 py-8" data-testid="budget-empty-state">
+        <td colspan="7" class="text-center text-base-content/70 py-8" data-testid="budget-empty-state">
           {% translate "No budget categories found. Please add income or expense accounts first." %}
         </td>
       </tr>
@@ -102,13 +103,13 @@
         {% if section.groups %}
         <!-- Section Header -->
         <tr class="bg-base-300">
-          <td colspan="6" class="font-bold text-lg">{{ section.label }}</td>
+          <td colspan="7" class="font-bold text-lg">{{ section.label }}</td>
         </tr>
 
         {% for group in section.groups %}
           <!-- Group Header -->
           <tr class="bg-base-200">
-            <td colspan="6" class="font-bold">{{ group.name }}</td>
+            <td colspan="7" class="font-bold">{{ group.name }}</td>
           </tr>
 
           <!-- Group Rows -->
@@ -125,6 +126,17 @@
               <a href="{% url 'reports:account_activity' request.team.slug request.book.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget" class="link link-primary">
                 <div class="font-medium">{{ row.category.name }}</div>
               </a>
+            </td>
+
+            <td>
+              {% with meter=row.meter %}
+              <div class="budget-meter{% if meter.over %} is-over{% elif meter.income %} is-income{% endif %}"
+                   data-budget-cell="row:{{ row.category.pk }}:meter" data-testid="budget-meter"
+                   title="{% if meter.income %}{% translate 'Received of expected' %}{% else %}{% translate 'Spent of what there was to spend (budget + rolled over)' %}{% endif %}">
+                <span class="budget-meter-track"><span class="budget-meter-fill" style="width: {{ meter.width }}%"></span></span>
+                <span class="budget-meter-label">{{ meter.label }}</span>
+              </div>
+              {% endwith %}
             </td>
 
             <td class="text-right py-1">
@@ -185,6 +197,7 @@
           <tr class="bg-base-200 font-bold">
             <td></td>
             <td class="pl-8">{% translate "Subtotal" %} - {{ group.name }}</td>
+            <td></td>
             <td class="text-right">
               <span class="font-mono" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
             </td>
@@ -206,6 +219,7 @@
             data-testid="{% if section.key == 'expense' %}budget-grand-total{% else %}budget-total-income{% endif %}">
           <td></td>
           <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
+          <td></td>
           <td class="text-right">
             <span class="font-mono" data-budget-cell="section:{{ section.key }}:budgeted">{{ section.totals.budgeted|currency }}</span>
           </td>
@@ -220,7 +234,7 @@
 
         <!-- Spacer row between sections -->
         <tr class="h-2">
-          <td colspan="6"></td>
+          <td colspan="7"></td>
         </tr>
         {% endif %}
       {% endfor %}

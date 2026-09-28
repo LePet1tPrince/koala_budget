@@ -74,11 +74,14 @@ BACK_LABELS = {
     "reports:income_statement": lambda r, k: _("Back to Income Statement"),
     "reports:balance_sheet": lambda r, k: _("Back to Balance Sheet"),
     "reports:budget_vs_actual": lambda r, k: _("Back to Budget vs Actual"),
+    "reports:spending": lambda r, k: _("Back to Income & Spending"),
+    "reports:net_worth": lambda r, k: _("Back to Net Worth"),
+    "reports:budget_goals": lambda r, k: _("Back to Budget & Goals"),
     "reports:reports_home": lambda r, k: _("Back to Reports"),
     "budget:budget_home": lambda r, k: _("Back to Budget"),
     "journal:transactions_home": lambda r, k: _("Back to Transactions"),
     "bank_feed:bank_feed_home": lambda r, k: _("Back to Inbox"),
-    "reconciliation:hub": lambda r, k: _("Back to Reconcile"),
+    "reconciliation:hub": lambda r, k: _("Back to Reconciliations"),
     "reconciliation:account": lambda r, k: _("Back to Reconcile"),
 }
 

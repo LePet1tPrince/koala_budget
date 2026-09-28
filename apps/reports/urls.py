@@ -4,7 +4,7 @@ URL configuration for reports app.
 
 from django.urls import path
 
-from . import views
+from . import views, views_consolidated
 
 app_name = "reports"
 
@@ -19,6 +19,10 @@ urlpatterns = [
     path("budget-vs-actual/", views.budget_vs_actual, name="budget_vs_actual"),
     path("goal-progress/", views.goal_progress, name="goal_progress"),
     path("dollar-map/", views.dollar_map, name="dollar_map"),
+    # Consolidated reports (docs/reports-consolidation.md), beside the originals for comparison
+    path("spending/", views_consolidated.spending, name="spending"),
+    path("net-worth/", views_consolidated.net_worth, name="net_worth"),
+    path("budget-and-goals/", views_consolidated.budget_goals, name="budget_goals"),
     # CSV exports
     path("export/income-statement/", views.export_income_statement, name="export_income_statement"),
     path("export/balance-sheet/", views.export_balance_sheet, name="export_balance_sheet"),

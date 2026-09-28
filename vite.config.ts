@@ -53,6 +53,7 @@ export default defineConfig({
         'monthly-review-resume': path.resolve(__dirname, './assets/javascript/monthly_review/resume.js'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
         'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
+        'net-worth-composition-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-composition-chart.js'),
         'home-net-worth-chart': path.resolve(__dirname, './assets/javascript/dashboard/home-net-worth-chart.js'),
         'expense-trend-chart': path.resolve(__dirname, './assets/javascript/reports/expense-trend-chart.js'),
         'cash-flow-chart': path.resolve(__dirname, './assets/javascript/reports/cash-flow-chart.js'),

@@ -1,23 +1,16 @@
-{% extends "web/app/app_base.html" %}
+{% extends "accounts/manage_base.html" %}
 {% load i18n %}
 {% load icons %}
 {% load currency_tags %}
 
-{% block app %}
-<section class="app-card" data-testid="reconcile-hub">
-  <div class="flex flex-wrap items-start justify-between gap-2 mb-4">
-    <div>
-      <h1 class="text-2xl font-semibold mb-1">{% translate "Reconciliation" %}</h1>
-      <p class="text-sm text-base-content/70">
-        {% blocktranslate trimmed %}
-          Check each account against its bank or card statement. A reconciled statement locks its
-          transactions, so the balance it confirmed stays confirmed.
-        {% endblocktranslate %}
-      </p>
-    </div>
-    <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm">{% translate "Back to Reports" %}</a>
-  </div>
+{% block manage_title %}{% translate "Reconciliations" %}{% endblock %}
+{% block manage_subtitle %}{% blocktranslate trimmed %}
+  Check each account against its bank or card statement. A reconciled statement locks its
+  transactions, so the balance it confirmed stays confirmed.
+{% endblocktranslate %}{% endblock %}
 
+{% block manage_content %}
+<div data-testid="reconcile-hub">
   {% if all_intact %}
     <div role="status" class="alert alert-success mb-4" data-testid="reconcile-all-intact">
       {% icon "check-circle" class="w-5 h-5" %}
@@ -83,5 +76,5 @@
   {% else %}
     <p class="text-base-content/70">{% translate "No asset or liability accounts yet." %}</p>
   {% endif %}
-</section>
+</div>
 {% endblock %}

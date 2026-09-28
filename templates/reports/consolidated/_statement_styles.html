@@ -1,0 +1,64 @@
+<style>
+  {% comment %}
+    Frozen header, first column and footer inside a statement's scroll window.
+    Sticky cells need opaque backgrounds, so row tints are color-mix over the
+    theme vars (via --row-bg) rather than translucent utility classes.
+  {% endcomment %}
+  .report-scroll {
+    max-height: max(24rem, calc(100vh - 22rem));
+  }
+  .report-scroll table {
+    --row-bg: var(--color-base-100);
+  }
+  .report-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--color-base-100);
+  }
+  .report-scroll tfoot td {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    background: var(--color-base-100);
+  }
+  .report-scroll th:first-child,
+  .report-scroll td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: var(--row-bg);
+  }
+  .report-scroll thead th:first-child,
+  .report-scroll tfoot td:first-child {
+    z-index: 30;
+  }
+  .report-scroll .row-in {
+    --row-bg: color-mix(in oklab, var(--color-success) 10%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+  .report-scroll .row-out {
+    --row-bg: color-mix(in oklab, var(--color-error) 10%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+  .report-scroll .row-assets {
+    --row-bg: color-mix(in oklab, var(--color-info) 10%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+  .report-scroll .row-liabilities {
+    --row-bg: color-mix(in oklab, var(--color-warning) 10%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+  .report-scroll .row-goals {
+    --row-bg: color-mix(in oklab, var(--color-accent) 12%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+  .report-scroll .row-group {
+    --row-bg: var(--color-base-200);
+    background: var(--row-bg);
+  }
+  .report-scroll .row-account:hover {
+    --row-bg: color-mix(in oklab, var(--color-base-200) 50%, var(--color-base-100));
+    background: var(--row-bg);
+  }
+</style>

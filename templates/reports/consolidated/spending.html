@@ -1,0 +1,188 @@
+{% extends "web/app/app_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+{% load currency_tags %}
+{% load icons %}
+{% load account_nav %}
+
+{% block page_head %}
+{% include "reports/consolidated/_statement_styles.html" %}
+{% endblock %}
+
+{% block app %}
+<section class="app-card" data-testid="spending-report">
+  <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <div>
+      <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1" data-back-link>
+        {% icon "arrow-left" class="inline-block shrink-0 w-4 h-4 mr-2" %}
+        {% translate "Back to Reports" %}
+      </a>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Income & Spending" %}</h1>
+      <p class="text-sm text-base-content/70">
+        {% blocktranslate with start=start_date|date:"M j, Y" end=end_date|date:"M j, Y" trimmed %}
+          {{ start }} – {{ end }}
+        {% endblocktranslate %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div id="date-range-picker" data-default-range="year"></div>
+      <a href="{% url 'reports:export_income_statement' request.team.slug request.book.slug %}?{{ export_qs }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
+        {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
+        {% translate "Export CSV" %}
+      </a>
+    </div>
+  </div>
+
+  <div class="stats stats-vertical sm:stats-horizontal border border-base-300 w-full mb-4" data-testid="spending-summary">
+    <div class="stat py-3">
+      <div class="stat-figure text-success hidden sm:block">{% icon "arrow-up" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Money in" %}</div>
+      <div class="stat-value text-2xl money text-success">{{ stats.income|currency }}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-error hidden sm:block">{% icon "arrow-down" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Money out" %}</div>
+      <div class="stat-value text-2xl money text-error">{{ stats.expenses|currency }}</div>
+      {% if stats.goal_spending %}
+      <div class="stat-desc" data-testid="spending-goal-spending">
+        {% blocktranslate trimmed with amount=stats.goal_spending|currency %}+ {{ amount }} paid from goals{% endblocktranslate %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure {% if stats.net < 0 %}text-error{% endif %} hidden sm:block">{% icon "scale-balanced" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Kept" %}</div>
+      <div class="stat-value text-2xl money {% if stats.net < 0 %}text-error{% endif %}" data-testid="spending-net">{{ stats.net|currency }}</div>
+      <div class="stat-desc">
+        {% if stats.savings_rate is not None %}
+          {% blocktranslate with rate=stats.savings_rate|floatformat:1 trimmed %}{{ rate }}% of income{% endblocktranslate %}
+        {% else %}
+          {% translate "Income − expenses" %}
+        {% endif %}
+      </div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-figure text-info hidden sm:block">{% icon "calendar" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Average per month" %}</div>
+      <div class="stat-value text-2xl money {% if stats.avg_net < 0 %}text-error{% endif %}">{% if stats.avg_net >= 0 %}+{% endif %}{{ stats.avg_net|currency }}</div>
+      <div class="stat-desc">
+        {% blocktranslate count counter=stats.num_months trimmed %}
+          net, over {{ counter }} month
+        {% plural %}
+          net, over {{ counter }} months
+        {% endblocktranslate %}
+      </div>
+    </div>
+  </div>
+
+  {% if chart_data %}
+  <div class="rounded-box border border-base-300 p-4 mb-4">
+    <div class="w-full" style="height: 300px;">
+      <canvas id="cash-flow-chart" class="w-full h-full" data-testid="spending-chart"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
+  <div x-data="{ tab: 'statement', open: {} }">
+    <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+      <div role="tablist" class="tabs tabs-box w-fit">
+        <a role="tab" class="tab" :class="tab === 'statement' ? 'tab-active' : ''" @click.prevent="tab = 'statement'" data-testid="spending-tab-statement">
+          {% icon "table-list" class="inline-block shrink-0 w-4 h-4 mr-2" %}{% translate "Statement" %}
+        </a>
+        <a role="tab" class="tab" :class="tab === 'flow' ? 'tab-active' : ''" @click.prevent="tab = 'flow'" data-testid="spending-tab-flow">
+          {% icon "diagram-project" class="inline-block shrink-0 w-4 h-4 mr-2" %}{% translate "Flow" %}
+        </a>
+      </div>
+      <div class="join" x-show="tab === 'statement'" data-testid="spending-columns">
+        <a href="?{{ total_qs }}" class="btn btn-sm join-item {% if not by_period %}btn-active{% endif %}">{% translate "Total" %}</a>
+        <a href="?{{ period_qs }}" class="btn btn-sm join-item {% if by_period %}btn-active{% endif %}">
+          {% if period == "quarter" %}{% translate "By quarter" %}{% elif period == "year" %}{% translate "By year" %}{% else %}{% translate "By month" %}{% endif %}
+        </a>
+      </div>
+    </div>
+
+    <!-- Statement -->
+    <div x-show="tab === 'statement'" class="rounded-box border border-base-300">
+      <div class="report-scroll overflow-auto">
+        <table class="table table-sm w-full" data-testid="spending-statement">
+          <thead>
+            <tr>
+              <th>{% translate "Category" %}</th>
+              {% if by_period %}{% for label in data.period_labels %}<th class="text-right whitespace-nowrap">{{ label }}</th>{% endfor %}{% endif %}
+              <th class="text-right">{% translate "Total" %}</th>
+            </tr>
+          </thead>
+
+          {% include "reports/consolidated/_statement_section.html" with key="income" label=_("Income") row_class="row-in" tone="text-success" groups=data.income_groups total=data.total_income per_period=data.total_income_per_period empty=_("No income in this period") testid="spending-income" %}
+          {% include "reports/consolidated/_statement_section.html" with key="expenses" label=_("Expenses") row_class="row-out" tone="text-error" groups=data.expense_groups total=data.total_expenses per_period=data.total_expenses_per_period empty=_("No spending in this period") testid="spending-expenses" %}
+
+          {% if data.goal_spending.items %}
+          <tbody data-testid="spending-goals">
+            <tr class="font-bold border-t-2 border-base-300">
+              <td class="whitespace-nowrap">{% translate "Kept, before goal spending" %}</td>
+              {% if by_period %}{% for amount in data.net_profit_per_period %}<td class="text-right money whitespace-nowrap {% if amount < 0 %}text-error{% elif not amount %}opacity-40{% endif %}">{{ amount|currency }}</td>{% endfor %}{% endif %}
+              <td class="text-right money whitespace-nowrap {% if data.net_profit < 0 %}text-error{% endif %}">{{ data.net_profit|currency }}</td>
+            </tr>
+            <tr class="row-goals font-bold cursor-pointer select-none" @click="open.goals = !(open.goals ?? true)">
+              <td class="whitespace-nowrap">
+                <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="(open.goals ?? true) ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
+                <span class="ml-1">{% translate "Goal spending" %}</span>
+                <span class="font-normal text-xs text-base-content/70 ml-1">{% translate "planned, paid from goals" %}</span>
+              </td>
+              {% if by_period %}{% for amount in data.goal_spending.per_period %}<td class="text-right money whitespace-nowrap {% if not amount %}opacity-40{% endif %}">{{ amount|currency }}</td>{% endfor %}{% endif %}
+              <td class="text-right money whitespace-nowrap">{{ data.goal_spending.total|currency }}</td>
+            </tr>
+            {% for item in data.goal_spending.items %}
+            <tr x-show="open.goals ?? true" class="row-account">
+              {% url 'accounts:account_detail' request.team.slug request.book.slug item.account.pk as account_url %}
+              <td class="pl-10 whitespace-nowrap"><a href="{% return_here account_url|add:'?'|add:drill_qs %}" class="link link-hover link-primary">{{ item.account.goal.name }}</a></td>
+              {% if by_period %}{% for amount in item.per_period %}<td class="text-right money whitespace-nowrap {% if not amount %}opacity-40{% endif %}">{{ amount|currency }}</td>{% endfor %}{% endif %}
+              <td class="text-right money whitespace-nowrap">{{ item.amount|currency }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          {% endif %}
+
+          <tfoot>
+            <tr class="font-bold text-sm text-base-content border-t-2 border-base-300" data-testid="spending-net-row">
+              {% if data.goal_spending.items %}
+                <td class="whitespace-nowrap">{% translate "Kept, after goal spending" %}</td>
+                {% if by_period %}{% for amount in data.net_after_goal_spending_per_period %}<td class="text-right money whitespace-nowrap {% if amount < 0 %}text-error{% elif not amount %}opacity-40{% endif %}">{{ amount|currency }}</td>{% endfor %}{% endif %}
+                <td class="text-right money whitespace-nowrap {% if data.net_after_goal_spending < 0 %}text-error{% endif %}">{{ data.net_after_goal_spending|currency }}</td>
+              {% else %}
+                <td class="whitespace-nowrap">{% translate "Kept" %}</td>
+                {% if by_period %}{% for amount in data.net_profit_per_period %}<td class="text-right money whitespace-nowrap {% if amount < 0 %}text-error{% elif not amount %}opacity-40{% endif %}">{{ amount|currency }}</td>{% endfor %}{% endif %}
+                <td class="text-right money whitespace-nowrap {% if data.net_profit < 0 %}text-error{% endif %}">{{ data.net_profit|currency }}</td>
+              {% endif %}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Flow -->
+    <div x-show="tab === 'flow'" style="display: none;" class="rounded-box border border-base-300 p-4">
+      {% if sankey_data %}
+      <div class="w-full" style="height: 420px;">
+        <canvas id="sankey-chart" class="w-full h-full" data-testid="spending-flow"></canvas>
+      </div>
+      {% else %}
+      <p class="text-base-content/70 py-6 text-center">{% translate "No income or spending in this period." %}</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
+{% if chart_data %}
+{{ chart_data|json_script:'cash-flow-data' }}
+{% vite_asset 'assets/javascript/reports/cash-flow-chart.js' %}
+{% endif %}
+{% if sankey_data %}
+{{ sankey_data|json_script:'sankey-data' }}
+{% vite_asset 'assets/javascript/reports/income-statement-sankey.js' %}
+{% endif %}
+{% endblock %}
