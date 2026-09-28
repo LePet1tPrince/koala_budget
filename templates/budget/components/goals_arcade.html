@@ -239,7 +239,7 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
           </span>
         </button>
         <div class="join w-full">
-          <input type="number" min="0.01" step="0.01" placeholder="{% translate 'Place your bet…' %}"
+          <input type="text" inputmode="decimal" autocomplete="off" data-amount-input placeholder="{% translate 'Place your bet…' %}"
                  class="input input-bordered input-sm join-item w-full font-mono bg-black/40 border-purple-700 text-amber-200 placeholder:text-purple-300/50" data-custom-input>
           <button type="button" class="btn btn-outline btn-sm join-item border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-black" data-assign-custom>{% translate "DROP IN" %}</button>
         </div>
@@ -249,7 +249,7 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
         </button>
         <div class="w-full flex flex-col gap-2" data-withdraw-row hidden>
           <div class="join w-full">
-            <input type="number" min="0.01" step="0.01" placeholder="{% translate 'How much to cash out…' %}"
+            <input type="text" inputmode="decimal" autocomplete="off" data-amount-input placeholder="{% translate 'How much to cash out…' %}"
                    class="input input-bordered input-sm join-item w-full font-mono bg-black/40 border-amber-600 text-amber-200 placeholder:text-amber-200/40" data-withdraw-input>
             <button type="button" class="btn btn-outline btn-sm join-item border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-black"
                     data-withdraw-btn data-testid="withdraw-btn"
@@ -270,7 +270,7 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
           <form method="post" action="{% url 'budget:goal_allocate' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="join w-full">
             {% csrf_token %}
             <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
-            <input type="number" min="0" step="0.01" name="amount" value="{{ item.this_month }}"
+            <input type="text" inputmode="decimal" autocomplete="off" data-amount-input name="amount" value="{{ item.this_month }}"
                    class="input input-bordered input-sm join-item w-full font-mono" aria-label="{% translate 'This month' %}">
             <button type="submit" class="btn btn-outline btn-sm join-item">{% translate "Set month" %}</button>
           </form>

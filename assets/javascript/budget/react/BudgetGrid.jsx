@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Cookies from 'js-cookie';
 
-import { sanitizeAmount } from '../../common/amount';
+import AmountInput from '../../common/AmountInput';
+import Icon from '../../common/Icon';
+import Modal from '../../common/Modal';
+import { evaluateAmount, sanitizeAmount } from '../../common/amount';
 
 const cellKey = (categoryId, monthKey) => `${categoryId}|${monthKey}`;
 
@@ -17,11 +20,28 @@ export function parseClipboardMatrix(text) {
 
 /** Numeric value of a cell for dirty comparison; empty/invalid → null. */
 const numericValue = (text) => {
-  const sanitized = sanitizeAmount(text);
-  return sanitized === null ? null : parseFloat(sanitized);
+  const evaluated = evaluateAmount(text);
+  return evaluated === null ? null : parseFloat(evaluated);
 };
 
 const currencyFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// The actuals mode is a per-viewer preference; storage may be unavailable.
+const ACTUAL_MODE_STORAGE_KEY = 'budget-grid-actual-mode';
+const readStoredMode = () => {
+  try {
+    return window.localStorage.getItem(ACTUAL_MODE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+const storeMode = (mode) => {
+  try {
+    window.localStorage.setItem(ACTUAL_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Not remembered; the picker still works for this page view.
+  }
+};
 
 /**
  * Multi-month budget grid editor. Rows are budget categories (grouped by
@@ -29,7 +49,7 @@ const currencyFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, m
  * straight from Excel / Google Sheets: the paste anchors at the focused cell
  * and fills right and down, exactly like a spreadsheet.
  */
-const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }) => {
+const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, numMonths, saveUrl }) => {
   // Flat row list in display order — paste fills straight down this list,
   // skipping group header rows (which aren't data rows).
   const flatRows = useMemo(
@@ -52,7 +72,31 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null); // {type: 'success'|'error', message}
   const [menuOpenKey, setMenuOpenKey] = useState(null);
+  const [actualMode, setActualMode] = useState(() => {
+    const stored = readStoredMode();
+    return actualModes.some((mode) => mode.key === stored) ? stored : actualModes[0]?.key;
+  });
   const containerRef = useRef(null);
+  const categoryHeaderRef = useRef(null);
+  // The actuals column is frozen beside the category column, so its sticky
+  // offset is the category column's rendered width (which follows the longest name).
+  const [actualsLeft, setActualsLeft] = useState(0);
+
+  useLayoutEffect(() => {
+    const th = categoryHeaderRef.current;
+    if (!th) return undefined;
+    const measure = () => setActualsLeft(th.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(th);
+    return () => observer.disconnect();
+  }, []);
+
+  const currentMode = actualModes.find((mode) => mode.key === actualMode);
+  const changeActualMode = (mode) => {
+    setActualMode(mode);
+    storeMode(mode);
+  };
 
   const isDirty = useCallback(
     (key) => numericValue(values[key]) !== numericValue(savedValues[key]),
@@ -64,16 +108,57 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
     [values, isDirty],
   );
 
-  // Warn before leaving the page with unsaved changes
+  // Where the user asked to go while the "unsaved changes" dialog is up.
+  const [leaveTo, setLeaveTo] = useState(null);
+  // Set once the user has chosen to leave, so the browser's own prompt doesn't follow ours.
+  const leaving = useRef(false);
+  const hasChanges = dirtyKeys.length > 0;
+  // The dialog's count must not drop to 0 in the moment between "Save and continue"
+  // succeeding and the page unloading.
+  const pendingCount = useRef(0);
+  if (hasChanges) pendingCount.current = dirtyKeys.length;
+  const leaveCount = pendingCount.current;
+
   useEffect(() => {
-    if (dirtyKeys.length === 0) return undefined;
-    const handler = (e) => {
+    if (!hasChanges) return undefined;
+    // Any link on the page (Back to Budget, the sidebar, …) gets our dialog.
+    const onClick = (e) => {
+      const link = e.target.closest?.('a[href]');
+      if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (link.target && link.target !== '_self') return;
+      if (link.hasAttribute('download') || link.hasAttribute('data-dialog')) return;
+      const url = new URL(link.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      // Same-page anchors don't unload anything.
+      if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+      e.preventDefault();
+      setLeaveTo(url.toString());
+    };
+    // Closing the tab, reloading and the browser's Back button can't be intercepted:
+    // there the browser only ever shows its own prompt, so that stays as the fallback.
+    const warn = (e) => {
+      if (leaving.current) return;
       e.preventDefault();
       e.returnValue = '';
     };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [dirtyKeys.length]);
+    document.addEventListener('click', onClick);
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      document.removeEventListener('click', onClick);
+      window.removeEventListener('beforeunload', warn);
+    };
+  }, [hasChanges]);
+
+  // `showModal()` focuses the first button; put focus on the safe choice instead.
+  const keepEditingRef = useRef(null);
+  useEffect(() => {
+    if (leaveTo !== null) keepEditingRef.current?.focus();
+  }, [leaveTo]);
+
+  const goTo = (url) => {
+    leaving.current = true;
+    window.location.href = url;
+  };
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -165,7 +250,7 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
         category_id: parseInt(categoryId, 10),
         month: monthKey,
         // A cleared cell that previously had a value is saved as 0
-        amount: sanitizeAmount(values[key]) ?? '0.00',
+        amount: evaluateAmount(values[key]) ?? '0.00',
       };
     });
     setSaving(true);
@@ -194,14 +279,26 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
         return next;
       });
       setToast({ type: 'success', message: `Saved ${result.saved} budget amount${result.saved === 1 ? '' : 's'}.` });
+      return true;
     } catch (error) {
       setToast({ type: 'error', message: error.message });
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
   const handleDiscard = () => setValues(savedValues);
+
+  const saveAndLeave = async () => {
+    const target = leaveTo;
+    if (await handleSave()) {
+      goTo(target);
+    } else {
+      // The error toast says why; stay so nothing typed is lost.
+      setLeaveTo(null);
+    }
+  };
 
   // Copy a cell's value to other months in the same calendar year for the
   // same category. `mode: 'year'` fills the whole year; `mode: 'forward'`
@@ -225,11 +322,13 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
   };
 
   const navigate = (start) => {
-    if (dirtyKeys.length > 0 && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     const url = new URL(window.location);
     url.searchParams.set('start', start);
-    // beforeunload fires on navigation; the confirm above already covered it
-    window.location.href = url.toString();
+    if (hasChanges) {
+      setLeaveTo(url.toString());
+    } else {
+      window.location.href = url.toString();
+    }
   };
 
   // Live per-month totals by section (income / expense), so a big paste can
@@ -244,6 +343,35 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
     });
     return totals;
   }, [flatRows, months, values]);
+
+  // Actuals for the selected mode: null means the mode's window has no complete month.
+  const actualFor = (row) => {
+    const raw = row.actuals?.[actualMode];
+    return raw === null || raw === undefined ? null : parseFloat(raw);
+  };
+  const actualTotals = { income: null, expense: null };
+  flatRows.forEach((row) => {
+    const value = actualFor(row);
+    if (value === null) return;
+    const type = row.groupType === 'income' ? 'income' : 'expense';
+    actualTotals[type] = (actualTotals[type] ?? 0) + value;
+  });
+  // Copy a row's actual (in the selected mode) into every month on screen, which is
+  // the year the grid opens on. In-memory only, like the ⋮ menu: Save still applies it.
+  const applyActual = (row) => {
+    const raw = row.actuals?.[actualMode];
+    if (raw === null || raw === undefined) return;
+    setValues((prev) => {
+      const next = { ...prev };
+      months.forEach((month) => {
+        next[cellKey(row.id, month.key)] = raw;
+      });
+      return next;
+    });
+  };
+  const formatActual = (value) => (value === null ? '—' : currencyFmt.format(value));
+  const actualsCellClass = 'sticky text-right font-mono pr-3 border-r border-base-300 whitespace-nowrap';
+  const actualsStyle = { left: actualsLeft };
 
   const rangeLabel = `${months[0].label} – ${months[months.length - 1].label}`;
   const rowIndexById = useMemo(() => new Map(flatRows.map((row, idx) => [row.id, idx])), [flatRows]);
@@ -271,7 +399,29 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
         <table className="table table-sm w-full border-separate border-spacing-0">
           <thead>
             <tr>
-              <th className="sticky top-0 left-0 z-30 bg-base-200 min-w-48">Category</th>
+              <th ref={categoryHeaderRef} className="sticky top-0 left-0 z-30 bg-base-200 min-w-48">Category</th>
+              <th
+                className="sticky top-0 z-30 bg-base-200 text-right align-bottom border-r border-base-300 min-w-36"
+                style={actualsStyle}
+                data-testid="budget-grid-actuals-header"
+              >
+                <label className="flex flex-col items-end gap-1">
+                  <span className="sr-only">Actuals shown</span>
+                  <select
+                    className="select select-xs w-40"
+                    value={actualMode ?? ''}
+                    onChange={(e) => changeActualMode(e.target.value)}
+                    data-testid="budget-grid-actuals-mode"
+                  >
+                    {actualModes.map((mode) => (
+                      <option key={mode.key} value={mode.key}>{mode.label}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs font-normal opacity-70" data-testid="budget-grid-actuals-detail">
+                    {currentMode?.detail}
+                  </span>
+                </label>
+              </th>
               {months.map((month) => (
                 <th key={month.key} className="sticky top-0 z-20 bg-base-200 text-right min-w-28">{month.label}</th>
               ))}
@@ -280,7 +430,7 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
           <tbody>
             {flatRows.length === 0 && (
               <tr>
-                <td colSpan={months.length + 1} className="text-center opacity-60 py-8" data-testid="budget-grid-empty">
+                <td colSpan={months.length + 2} className="text-center opacity-60 py-8" data-testid="budget-grid-empty">
                   No budget categories found. Please add income or expense accounts first.
                 </td>
               </tr>
@@ -289,6 +439,7 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
               <React.Fragment key={group.name}>
                 <tr>
                   <td className="sticky left-0 z-10 bg-base-200 font-bold" data-testid="budget-grid-group">{group.name}</td>
+                  <td className="sticky z-10 bg-base-200 border-r border-base-300" style={actualsStyle} />
                   <td colSpan={months.length} className="bg-base-200" />
                 </tr>
                 {group.rows.map((row) => {
@@ -296,21 +447,40 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
                   return (
                     <tr key={row.id} data-testid="budget-grid-row">
                       <td className="sticky left-0 z-10 bg-base-100 pl-6 whitespace-nowrap">{row.name}</td>
+                      <td
+                        className={`${actualsCellClass} z-10 bg-base-100 ${actualFor(row) ? 'text-base-content/70' : 'text-base-content/40'}`}
+                        style={actualsStyle}
+                        data-testid="budget-grid-actual"
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          <span>{formatActual(actualFor(row))}</span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs btn-square text-base-content/70 hover:text-primary"
+                            onClick={() => applyActual(row)}
+                            disabled={actualFor(row) === null}
+                            title={`Use ${formatActual(actualFor(row))} for ${rangeLabel}`}
+                            aria-label={`Use ${formatActual(actualFor(row))} as the ${row.name} budget for ${rangeLabel}`}
+                            data-testid="budget-grid-apply-actual"
+                          >
+                            <Icon name="arrow-right" className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
                       {months.map((month, colIdx) => {
                         const key = cellKey(row.id, month.key);
                         const dirty = isDirty(key);
                         return (
                           <td key={month.key} className="p-1">
                             <div className="relative">
-                              <input
-                                type="text"
-                                inputMode="decimal"
+                              <AmountInput
+                                strict
                                 className={`input input-bordered input-sm w-full min-w-24 text-right font-mono ${dirty ? 'input-warning bg-warning/10' : ''}`}
                                 value={values[key]}
                                 data-row={r}
                                 data-col={colIdx}
                                 aria-label={`${row.name} ${month.label}`}
-                                onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                                onValueChange={(next) => setValues((prev) => ({ ...prev, [key]: next }))}
                                 onPaste={(e) => handlePaste(e, r, colIdx)}
                                 onKeyDown={(e) => handleKeyDown(e, r, colIdx)}
                                 onFocus={(e) => e.target.select()}
@@ -375,6 +545,9 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
                   <td className="sticky bottom-0 left-0 z-30 bg-base-200">
                     {type === 'income' ? 'Total Income' : 'Total Expenses'}
                   </td>
+                  <td className={`${actualsCellClass} bottom-0 z-30 bg-base-200`} style={actualsStyle}>
+                    {formatActual(actualTotals[type])}
+                  </td>
                   {totalsByType[type].map((total, colIdx) => (
                     <td key={months[colIdx].key} className="sticky bottom-0 z-20 bg-base-200 text-right font-mono pr-3">
                       {currencyFmt.format(total)}
@@ -404,6 +577,52 @@ const BudgetGrid = ({ months, groups, prevStart, nextStart, numMonths, saveUrl }
           </div>
         </div>
       )}
+
+      <Modal
+        open={leaveTo !== null}
+        onClose={() => !saving && setLeaveTo(null)}
+        title="Save your changes?"
+        size="sm"
+        testId="budget-grid-leave-dialog"
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => goTo(leaveTo)}
+              disabled={saving}
+              data-testid="budget-grid-leave-discard"
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setLeaveTo(null)}
+              disabled={saving}
+              ref={keepEditingRef}
+              data-testid="budget-grid-leave-cancel"
+            >
+              Keep editing
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={saveAndLeave}
+              disabled={saving}
+              data-testid="budget-grid-leave-save"
+            >
+              {saving && <span className="loading loading-spinner loading-xs" />}
+              Save and continue
+            </button>
+          </>
+        }
+      >
+        <p className="text-base-content/70">
+          You have {leaveCount} unsaved change{leaveCount === 1 ? '' : 's'} on this page. Save
+          {leaveCount === 1 ? ' it' : ' them'} before you go, or discard {leaveCount === 1 ? 'it' : 'them'}?
+        </p>
+      </Modal>
 
       {/* Toast */}
       {toast && (

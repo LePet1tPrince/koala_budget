@@ -3,3 +3,4 @@
 import './htmx';
 import './alpine';
 import './page-nav';
+import './common/amount-fields';

@@ -4,7 +4,8 @@ import DateField from '../../common/DateField';
 import Modal from '../../common/Modal';
 import { buildCategoryOptions } from '../../common/categoryOptions';
 import { goalOverspendHint } from '../../common/accountKind';
-import { parseAmount, round2 } from '../../common/amount';
+import { amountForPayload, parseAmount, round2 } from '../../common/amount';
+import AmountInput from '../../common/AmountInput';
 import { formatDateForInput } from '../utils';
 import SplitEditor, { MIN_LEGS } from './SplitEditor';
 import TransactionHistory from './TransactionHistory';
@@ -291,8 +292,8 @@ const EditTransactionModal = ({
 
     // Category is optional — a blank category leaves the transaction uncategorized.
 
-    const hasInflow = inflow && parseFloat(inflow) > 0;
-    const hasOutflow = outflow && parseFloat(outflow) > 0;
+    const hasInflow = (parseAmount(inflow) ?? 0) > 0;
+    const hasOutflow = (parseAmount(outflow) ?? 0) > 0;
 
     if (!hasInflow && !hasOutflow) {
       newErrors.amount = gettext('Either inflow or outflow is required');
@@ -333,8 +334,8 @@ const EditTransactionModal = ({
               ? { id: category.id, name: category.name, account_number: category.accountNumber }
               : null,
           splits: splitPayload,
-          inflow: inflow || '0',
-          outflow: outflow || '0',
+          inflow: amountForPayload(inflow),
+          outflow: amountForPayload(outflow),
           payee: payee,
           description: description,
         };
@@ -353,8 +354,8 @@ const EditTransactionModal = ({
           // Collapsing a split is destructive, so the server requires it to be
           // asked for rather than inferred from a payload with no legs.
           remove_split: removedSplit && !isSplit,
-          inflow: canEditAmounts ? (inflow || '0') : transaction.inflow,
-          outflow: canEditAmounts ? (outflow || '0') : transaction.outflow,
+          inflow: canEditAmounts ? amountForPayload(inflow) : transaction.inflow,
+          outflow: canEditAmounts ? amountForPayload(outflow) : transaction.outflow,
           payee: payee,
           description: description,
         };
@@ -370,19 +371,17 @@ const EditTransactionModal = ({
   };
 
   // Handle inflow change (clear outflow if inflow has value)
-  const handleInflowChange = (e) => {
-    const value = e.target.value;
+  const handleInflowChange = (value) => {
     setInflow(value);
-    if (value && parseFloat(value) > 0) {
+    if ((parseAmount(value) ?? 0) > 0) {
       setOutflow('');
     }
   };
 
   // Handle outflow change (clear inflow if outflow has value)
-  const handleOutflowChange = (e) => {
-    const value = e.target.value;
+  const handleOutflowChange = (value) => {
     setOutflow(value);
-    if (value && parseFloat(value) > 0) {
+    if ((parseAmount(value) ?? 0) > 0) {
       setInflow('');
     }
   };
@@ -533,13 +532,10 @@ const EditTransactionModal = ({
               <span className="label-text mb-1 block text-sm text-base-content/70">{gettext('Inflow')}</span>
               <label className={`input input-bordered flex w-full items-center gap-1 ${errors.amount ? 'input-error' : ''}`}>
                 <span className="text-base-content/70">$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <AmountInput
                   className="w-full"
                   value={inflow}
-                  onChange={handleInflowChange}
+                  onValueChange={handleInflowChange}
                   disabled={!canEditAmounts}
                   data-testid="transaction-inflow"
                 />
@@ -557,13 +553,10 @@ const EditTransactionModal = ({
               <span className="label-text mb-1 block text-sm text-base-content/70">{gettext('Outflow')}</span>
               <label className={`input input-bordered flex w-full items-center gap-1 ${errors.amount ? 'input-error' : ''}`}>
                 <span className="text-base-content/70">$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <AmountInput
                   className="w-full"
                   value={outflow}
-                  onChange={handleOutflowChange}
+                  onValueChange={handleOutflowChange}
                   disabled={!canEditAmounts}
                   data-testid="transaction-outflow"
                 />

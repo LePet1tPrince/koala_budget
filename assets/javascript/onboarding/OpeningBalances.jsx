@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 
+import AmountInput from '../common/AmountInput';
+import { amountForPayload } from '../common/amount';
+
 /**
  * The opening-balance step, and the net-worth reveal that follows it.
  *
@@ -118,7 +121,7 @@ const OpeningBalances = ({ url, reportUrl, csrf, onClose, onSaved }) => {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
         body: JSON.stringify({
-          rows: Object.entries(amounts).map(([id, amount]) => ({ account_id: Number(id), amount })),
+          rows: Object.entries(amounts).map(([id, amount]) => ({ account_id: Number(id), amount: amountForPayload(amount, '') })),
         }),
       });
       const data = await response.json();
@@ -150,15 +153,11 @@ const OpeningBalances = ({ url, reportUrl, csrf, onClose, onSaved }) => {
       ) : (
         <span className="flex items-center gap-1">
           <span className="text-base-content/70">$</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
+          <AmountInput
             className="input input-bordered input-sm money w-28 text-right"
             placeholder="0"
-            value={amounts[account.id] ?? ''}
-            onChange={(e) => setAmounts((prev) => ({ ...prev, [account.id]: e.target.value }))}
+            value={amounts[account.id]}
+            onValueChange={(next) => setAmounts((prev) => ({ ...prev, [account.id]: next }))}
             data-testid={`opening-${account.id}`}
           />
         </span>

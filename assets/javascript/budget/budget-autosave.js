@@ -9,6 +9,8 @@
 // The <noscript> Save buttons remain the fallback when JS is disabled.
 import Cookies from 'js-cookie';
 
+import { computeFormula, parseAmount } from '../common/amount';
+
 init();
 
 // Changing month replaces the table without reloading the page (month-swap.js),
@@ -136,7 +138,12 @@ function init() {
   }
 
   function commit(row) {
-    const value = row.input.value.trim();
+    // A formula ("120+35") is saved as its result, and shown as it.
+    // `common/amount-fields.js` normally swaps it first; this covers Up/Down,
+    // which commit without a `change` event.
+    const typed = row.input.value.trim();
+    const value = computeFormula(typed) ?? typed;
+    if (value !== typed) row.input.value = value;
     if (sameAmount(value, row.saved)) return;
 
     if (row.inFlight) {
@@ -299,7 +306,7 @@ function init() {
 
     // Non-blocking: both are allowed, the user should just know what they mean.
     const refreshHint = () => {
-      const amount = parseMoney(amountInput.value);
+      const amount = parseAmount(amountInput.value) ?? 0;
       let message = '';
       if (source() === 'unassigned') {
         const after = unassignedNow() - amount;
@@ -363,7 +370,7 @@ function init() {
       const body = {
         category_id: Number(current.dataset.categoryId),
         month: current.dataset.month,
-        amount: amountInput.value,
+        amount: computeFormula(amountInput.value) ?? amountInput.value,
         source: from,
       };
       if (from === 'goal') body.goal_id = Number(select.value);
