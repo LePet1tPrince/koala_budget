@@ -460,6 +460,80 @@ def _budget_categories(book):
     )
 
 
+# Reference figures shown beside the grid's month columns. Each mode is a window of
+# whole months measured from today (not from the grid's range), so planning next
+# year reads against this year's and last year's real spending.
+GRID_ACTUAL_MODES = ("avg_this_year", "avg_last_year", "last_month")
+CENTS = Decimal("0.01")
+
+
+def _grid_actual_windows(today):
+    """`{mode: (first_month, last_month, label, detail)}` for each actuals mode, or a
+    `None` window when the mode has no complete month yet (January's "this year").
+
+    Only complete months count: the running month would drag an average down."""
+    this_month = today.replace(day=1)
+    last_month = this_month - relativedelta(months=1)
+    year_start = this_month.replace(month=1)
+    last_year_start = year_start.replace(year=year_start.year - 1)
+    last_year_end = year_start - relativedelta(months=1)
+
+    def span(first, last):
+        if first == last:
+            return first.strftime("%b %Y")
+        return f"{first.strftime('%b')}–{last.strftime('%b %Y')}"
+
+    this_year = (year_start, last_month) if last_month >= year_start else None
+    return {
+        "avg_this_year": (
+            *(this_year or (None, None)),
+            _("Average this year"),
+            _("Monthly average, %(span)s") % {"span": span(*this_year)} if this_year else _("No complete month yet"),
+        ),
+        "avg_last_year": (
+            last_year_start,
+            last_year_end,
+            _("Average last year"),
+            _("Monthly average, %(span)s") % {"span": span(last_year_start, last_year_end)},
+        ),
+        "last_month": (last_month, last_month, _("Last month"), last_month.strftime("%b %Y")),
+    }
+
+
+def _grid_actuals(book, categories, today):
+    """Per-category actuals for every mode in `GRID_ACTUAL_MODES`.
+
+    Returns `(modes, actuals)`: `modes` is `[{key, label, detail}]` for the picker,
+    `actuals` is `{category_id: {mode: "123.45" | None}}` — None only when the mode's
+    window holds no complete month. Averages divide by every month in the window, so
+    a month with no spending counts as $0. One query covers all three windows."""
+    windows = _grid_actual_windows(today)
+    firsts = [w[0] for w in windows.values() if w[0]]
+    lasts = [w[1] for w in windows.values() if w[1]]
+    by_month = BudgetService(book).get_all_actuals_by_month_category(min(firsts), max(lasts))
+
+    actuals = {}
+    for category in categories:
+        row = {}
+        for mode in GRID_ACTUAL_MODES:
+            first, last = windows[mode][0], windows[mode][1]
+            if first is None:
+                row[mode] = None
+                continue
+            months = (last.year - first.year) * 12 + last.month - first.month + 1
+            total = sum(
+                (by_month.get((first + relativedelta(months=i), category.pk), Decimal("0")) for i in range(months)),
+                Decimal("0"),
+            )
+            row[mode] = str((total / months).quantize(CENTS, rounding=ROUND_HALF_UP))
+        actuals[category.pk] = row
+
+    modes = [
+        {"key": mode, "label": str(windows[mode][2]), "detail": str(windows[mode][3])} for mode in GRID_ACTUAL_MODES
+    ]
+    return modes, actuals
+
+
 @login_and_book_required
 def budget_grid_view(request, team_slug, book_slug):
     """Multi-month budget editor: one row per category, one column per month."""
@@ -476,6 +550,7 @@ def budget_grid_view(request, team_slug, book_slug):
     months = [start + relativedelta(months=i) for i in range(num_months)]
 
     categories = list(_budget_categories(request.book))
+    actual_modes, actuals = _grid_actuals(request.book, categories, date.today())
 
     amounts = {}
     for budget in Budget.objects.filter(book=request.book, month__gte=months[0], month__lte=months[-1]):
@@ -491,12 +566,14 @@ def budget_grid_view(request, team_slug, book_slug):
                 "id": category.pk,
                 "name": category.name,
                 "amounts": amounts.get(category.pk, {}),
+                "actuals": actuals[category.pk],
             }
         )
 
     grid_props = {
         "months": [{"key": m.isoformat(), "label": m.strftime("%b %Y")} for m in months],
         "groups": groups,
+        "actualModes": actual_modes,
         "start": start.isoformat(),
         "numMonths": num_months,
         "prevStart": (start - relativedelta(months=num_months)).isoformat(),

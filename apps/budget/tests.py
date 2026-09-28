@@ -764,6 +764,76 @@ class BudgetGridViewTest(TestCase):
         response = self.client.get(f"{self.grid_url}?start=2026-01-01&months=999")
         self.assertEqual(len(response.context["grid_props"]["months"]), 24)
 
+    def _spend(self, day, amount, account=None):
+        from apps.accounts.models import ACCOUNT_TYPE_ASSET
+
+        cash_group, _ = AccountGroup.objects.get_or_create(
+            book=self.book, name="Grid Cash", defaults={"account_type": ACCOUNT_TYPE_ASSET}
+        )
+        cash, _ = Account.objects.get_or_create(book=self.book, name="Grid Checking", account_group=cash_group)
+        entry = JournalEntry.objects.create(book=self.book, entry_date=day, description="Spend")
+        JournalLine.objects.create(
+            book=self.book, journal_entry=entry, account=account or self.groceries, dr_amount=Decimal(amount)
+        )
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=cash, cr_amount=Decimal(amount))
+        return entry
+
+    def test_grid_actuals_modes(self):
+        from .views import _grid_actuals
+
+        # Last year: $1,200 over two months → $100/month across all 12.
+        self._spend(date(2025, 3, 10), "700.00")
+        self._spend(date(2025, 11, 2), "500.00")
+        # This year (Jan–Aug complete on Sep 28): $400 → $50/month.
+        self._spend(date(2026, 1, 5), "100.00")
+        self._spend(date(2026, 8, 20), "300.00")
+        # The running month counts toward nothing.
+        self._spend(date(2026, 9, 3), "999.00")
+        # Voided entries count toward nothing.
+        void = self._spend(date(2026, 8, 21), "5000.00")
+        void.status = JournalEntry.STATUS_VOID
+        void.save()
+
+        modes, actuals = _grid_actuals(self.book, [self.groceries, self.salary], date(2026, 9, 28))
+        self.assertEqual([m["key"] for m in modes], ["avg_this_year", "avg_last_year", "last_month"])
+        self.assertEqual(modes[0]["detail"], "Monthly average, Jan–Aug 2026")
+        self.assertEqual(modes[1]["detail"], "Monthly average, Jan–Dec 2025")
+        self.assertEqual(modes[2]["detail"], "Aug 2026")
+        self.assertEqual(
+            actuals[self.groceries.pk],
+            {"avg_this_year": "50.00", "avg_last_year": "100.00", "last_month": "300.00"},
+        )
+        self.assertEqual(
+            actuals[self.salary.pk],
+            {"avg_this_year": "0.00", "avg_last_year": "0.00", "last_month": "0.00"},
+        )
+
+    def test_grid_actuals_in_january_has_no_this_year_average(self):
+        from .views import _grid_actuals
+
+        self._spend(date(2025, 12, 15), "240.00")
+        modes, actuals = _grid_actuals(self.book, [self.groceries], date(2026, 1, 15))
+        self.assertEqual(modes[2]["detail"], "Dec 2025")
+        self.assertEqual(
+            actuals[self.groceries.pk],
+            {"avg_this_year": None, "avg_last_year": "20.00", "last_month": "240.00"},
+        )
+
+    def test_grid_view_includes_actuals(self):
+        response = self.client.get(f"{self.grid_url}?start=2031-01-01")
+        props = response.context["grid_props"]
+        self.assertEqual(len(props["actualModes"]), 3)
+        row = next(row for group in props["groups"] for row in group["rows"] if row["id"] == self.groceries.pk)
+        self.assertEqual(set(row["actuals"]), {"avg_this_year", "avg_last_year", "last_month"})
+
+    def test_grid_back_link_keeps_the_budget_month(self):
+        """The grid's range must not overwrite the month picked on the budget page."""
+        self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2026-05-01")
+        response = self.client.get(f"{self.grid_url}?start=2027-01-01")
+        self.assertNotContains(response, "budget/?month=")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/")
+        self.assertEqual(response.context["month"], date(2026, 5, 1))
+
     def test_grid_view_requires_login(self):
         self.client.logout()
         response = self.client.get(self.grid_url)
