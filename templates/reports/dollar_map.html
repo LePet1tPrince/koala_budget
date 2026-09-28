@@ -42,17 +42,20 @@
     <div class="stat py-3">
       <div class="stat-title">{% translate "In budget envelopes" %}</div>
       <div class="stat-value text-2xl money text-info">{{ unassigned.envelopes|currency }}</div>
-      <div class="stat-desc">
-        {% blocktranslate trimmed with amount=unassigned.rollover|currency %}{{ amount }} rolled over{% endblocktranslate %}
-      </div>
+      {% if unassigned.overspent %}
+        <div class="stat-desc">
+          {% blocktranslate trimmed with amount=unassigned.overspent|currency %}{{ amount }} overspent, already spent{% endblocktranslate %}
+        </div>
+      {% endif %}
     </div>
     <div class="stat py-3">
       <div class="stat-title">{% translate "In goals" %}</div>
       <div class="stat-value text-2xl money">{{ unassigned.goals|currency }}</div>
-      <div class="stat-desc">
-        {% blocktranslate trimmed with amount=unassigned.goals_this_month|currency %}{{ amount }} this month{% endblocktranslate %}{% if unassigned.goals_spent %} ·
-        {% blocktranslate trimmed with amount=unassigned.goals_spent|currency %}{{ amount }} spent{% endblocktranslate %}{% endif %}
-      </div>
+      {% if unassigned.goals_overspent %}
+        <div class="stat-desc">
+          {% blocktranslate trimmed with amount=unassigned.goals_overspent|currency %}{{ amount }} overspent, already spent{% endblocktranslate %}
+        </div>
+      {% endif %}
     </div>
     <div class="stat py-3">
       <div class="stat-title">{{ unassigned.label }}</div>
@@ -79,7 +82,7 @@
           <li class="flex justify-between gap-2">
             <a href="{{ goal.goal.get_absolute_url }}" class="link link-hover truncate">{{ goal.name }}</a>
             <span class="money {% if goal.amount < 0 %}text-error{% endif %}"
-                  {% if goal.spent %}title="{% blocktranslate trimmed with allocated=goal.allocated|currency spent=goal.spent|currency %}{{ allocated }} allocated − {{ spent }} spent{% endblocktranslate %}"{% endif %}>{{ goal.amount|currency }}{% if goal.amount < 0 %} · {% translate "carried" %}{% endif %}</span>
+                  {% if goal.spent %}title="{% blocktranslate trimmed with allocated=goal.allocated|currency spent=goal.spent|currency %}{{ allocated }} allocated − {{ spent }} spent{% endblocktranslate %}"{% endif %}>{{ goal.amount|currency }}{% if goal.amount < 0 %} · {% translate "overspent" %}{% endif %}</span>
           </li>
         {% empty %}
           <li class="text-base-content/70">
@@ -114,7 +117,7 @@
       </ul>
       {% if overspent %}
         <div class="mt-3 pt-3 border-t border-base-300" data-testid="dollar-map-overspent">
-          <div class="text-xs font-semibold uppercase tracking-wide text-error mb-1">{% translate "Overspent, carried" %}</div>
+          <div class="text-xs font-semibold uppercase tracking-wide text-error mb-1">{% translate "Overspent" %}</div>
           <ul class="space-y-1 text-sm">
             {% for item in overspent %}
               <li class="flex justify-between gap-2">
@@ -123,7 +126,7 @@
               </li>
             {% endfor %}
           </ul>
-          <p class="text-xs text-base-content/70 mt-1">{% translate "Carried as negative balances. Cover them from the budget page if you want to; you don't have to." %}</p>
+          <p class="text-xs text-base-content/70 mt-1">{% translate "Spent past what was set aside, so it has already come out of your unassigned money. The negative balance stays until you cover it; covering it doesn't take any more." %}</p>
         </div>
       {% endif %}
     </div>

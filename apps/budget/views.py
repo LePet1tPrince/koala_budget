@@ -1222,7 +1222,8 @@ def _next_url(request, default):
 def goal_close_view(request, team_slug, book_slug, pk):
     """
     Close a goal (form post). Anything left is released back to Unassigned; a
-    negative goal is covered from Unassigned first when `cover` is sent, and
+    negative goal is topped back up to zero first when `cover` is sent (free: the
+    overspending already came out of Unassigned), and
     otherwise refused (it can stay open and be paid back instead).
     """
     goal = get_object_or_404(Goal.objects.filter(book=request.book, is_archived=False), pk=pk)
@@ -1265,11 +1266,13 @@ def budget_cover(request, team_slug, book_slug):
     Body: {"category_id": int, "month": "YYYY-MM-DD", "amount": "123.45",
            "source": "unassigned" | "goal", "goal_id": int (with source "goal")}.
 
-    - From Unassigned: the category's budget for the month rises by `amount`, so
-      Unassigned falls by it -- the money that had no job gets this one.
+    - From Unassigned: the category's budget for the month rises by `amount`. The
+      overspending already came out of Unassigned (an overspent envelope claims
+      nothing), so filling the hole leaves Unassigned where it is; only an amount
+      past the shortfall is a new claim on it.
     - From a goal: the goal gives up `amount` (a negative allocation this month) and
-      the budget rises by the same, so Unassigned doesn't move. The goal may go
-      negative -- overspending is carried.
+      the budget rises by the same, so the money the goal releases goes back into
+      Unassigned. The goal may go negative -- overspending is carried.
 
     Either way it is one transaction, and the response carries every figure the
     budget page shows, like `budget_save_amount`.

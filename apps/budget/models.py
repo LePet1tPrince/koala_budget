@@ -109,7 +109,7 @@ def goal_spent_subquery(start=None, end=None):
     return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
 
 
-def _allocated_subquery(**filters):
+def goal_allocated_subquery(**filters):
     total = (
         GoalAllocation.objects.filter(goal=OuterRef("pk"), **filters)
         .values("goal")
@@ -146,9 +146,9 @@ class GoalQuerySet(models.QuerySet):
         end = month_after(month)
 
         return self.annotate(
-            saved_previous=_allocated_subquery(month__lt=month),
-            saved_this_month=_allocated_subquery(month=month),
-            allocated=_allocated_subquery(),
+            saved_previous=goal_allocated_subquery(month__lt=month),
+            saved_this_month=goal_allocated_subquery(month=month),
+            allocated=goal_allocated_subquery(),
             spent=goal_spent_subquery(end=end),
             spent_this_month=goal_spent_subquery(start=month, end=end),
         ).annotate(

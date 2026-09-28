@@ -10,8 +10,8 @@ import {GRID, MONEY, compactCurrency, currency, getInk, isDarkTheme, observeThem
 // Fixed colours per term, matching the allocation bar above the chart: goals
 // ochre (the theme accent), envelopes blue, net worth neutral.
 const PALETTE = {
-  light: {net_worth: '#8b938c', rollover: '#2a78d6', this_month: '#5b9be6', goals: '#c98500', goalsSoft: '#eda100'},
-  dark: {net_worth: '#7c867e', rollover: '#3987e5', this_month: '#6fa7ee', goals: '#c98500', goalsSoft: '#e3ac52'},
+  light: {net_worth: '#8b938c', envelopes: '#2a78d6', goals: '#c98500'},
+  dark: {net_worth: '#7c867e', envelopes: '#3987e5', goals: '#c98500'},
 };
 
 function colorFor(bar) {
@@ -21,16 +21,10 @@ function colorFor(bar) {
       return p.net_worth;
     case 'income_due':
       return 'rgba(22, 163, 74, 0.45)';
-    case 'rollover':
-      return p.rollover;
-    case 'this_month':
-      return p.this_month;
-    case 'goals_before':
+    case 'envelopes':
+      return p.envelopes;
+    case 'goals':
       return p.goals;
-    case 'goals_this_month':
-      return p.goalsSoft;
-    case 'goals_spent':
-      return p.goalsSoft;
     case 'unassigned':
       return bar.value < 0 ? MONEY.out : MONEY.in;
     default:

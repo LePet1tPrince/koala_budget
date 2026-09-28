@@ -6,37 +6,74 @@ document lives at <https://claude.ai/artifact/Co2cRn5w8K8y4wXxmvwZ1g>.
 ## 1. The metric
 
 One number for the money that has no job yet: what is left of net worth once every
-goal, every budget envelope and (optionally) this month's expected income has been
+goal, every budget envelope and (optionally) budgeted income still to come has been
 accounted for.
 
 ```
   Net worth                                   $20,000
 + Budgeted income not yet received             +5,000   (only with future-income budgeting on)
-− Expense envelopes rolled over from last month −3,500
-− This month's expense budget, unspent          −4,000
-− Goals, allocated before this month           −15,000
-− Goals, allocated this month                   −1,000
+− Budget envelopes, unspent                     −7,500   (3,500 rolled over + 4,000 this month)
+− Left in goals                                −16,000
 = Unassigned                                    $1,500
 ```
 
-In code:
+In code, as of the end of the month being viewed (T):
 
 ```
-unassigned = net_worth
-           + Σ max(0, budget − actual) over income categories, this month only, while the month is running
-           − Σ available(expense categories)          # budget − actual + rollover: the envelopes
-           − Σ goal allocations (non-archived goals)
+unassigned = net_worth(T)
+           + Σ max(0, −available_T) over income categories     # budgeted, not yet received
+           − Σ max(0,  available_T) over expense categories    # unspent budget: the envelopes
+           − Σ max(0,  left_T)      over goals                 # allocated − spent
 ```
 
-**Change from the previous figure.** The budget/goals card used to compute this as
-`net_worth − goals − Σ available(income + expense categories)`, i.e. it summed income
-through the per-category income "available" (`actual − budget + rollover`). Carried
-forward, that turned every past month's income shortfall into money still "due"
-forever (budget $5,000, earn $4,800, and $200 of phantom money joined the figure every
-month), and it held back income earned over budget instead of letting it arrive
-unassigned. Only this month's not-yet-received income counts now, and only while the
-month is running. The per-category "Available" column on the budget page is
-unchanged — that is the category's own view; this is the whole-budget figure.
+`available_T` is the budget page's own running balance per category
+(`BudgetService.get_available_with_previous`): expense `budget − actual + rollover`,
+income `actual − budget + rollover`. A goal's `left_T` counts allocations dated in or
+before T and spending through the end of T. Nothing dated after T counts.
+
+**The rule behind every term: a claim is the larger of what was planned and what
+actually happened.** The effect of each action on Unassigned:
+
+| Flow | Action | Previous month | Current month | Future month |
+|---|---|---|---|---|
+| Income | Increase budget | Up | Up | – |
+| Income | Increase actual, still ≤ budget | – | – | – |
+| Income | Actual > budget | Up | Up | – |
+| Expense | Increase budget | Down | Down | – |
+| Expense | Increase actual, still ≤ available | – | – | – |
+| Expense | Actual > available | Down | Down | – |
+| Goal | Increase allocation | Down | Down | – |
+| Goal | Increase spending, still ≤ left | – | – | – |
+| Goal | Spending > left | Down | Down | – |
+
+Anything else that moves net worth moves Unassigned: opening balances, reconciliation
+adjustments, any other equity entry.
+
+- **Income rolls.** A shortfall stays "still due" into the next month; a surplus
+  offsets income still expected. A September paycheque that lands in October fills
+  September's gap rather than arriving twice. If budgeted income isn't coming, lower
+  the current month's budget; there is no need to edit history. ("Up" for last month's
+  surplus is net of what it fills: it offsets this month's income still due first.)
+- **Overspending comes out of Unassigned.** An overspent envelope or goal claims
+  nothing, so the money spent past it leaves net worth with nothing offsetting it.
+  The negative balance is **carried**, never reset, so budgeting into the hole does not
+  move Unassigned a second time: the first dollars of a budget fill the hole, and only
+  what goes past it is a new claim. A consequence: last month's overspending that this
+  month's budget already absorbs shows up as a smaller envelope, not a lower
+  Unassigned — the money is gone either way, and the invariant
+  `envelopes + goals + unassigned = net worth + income due` always holds.
+- **Covering overspending is free.** Raising the budget of an overspent row (the Cover
+  dialog's "from Unassigned") only clears the red; covering from a goal releases the
+  goal's money back into Unassigned; closing a negative goal tops it back to zero at
+  no cost.
+- **Future months don't count.** Budgets, income and goal allocations dated after T
+  claim nothing yet; they start counting on the 1st of their month.
+
+**History of the figure.** v1 summed income through per-category income available
+without a floor and carried overspending in the envelope sum, so overspending never
+moved Unassigned and income over budget was held back. v2 counted only the current
+month's unreceived income (while the month ran) and still carried overspending. v3
+(this) floors every claim at zero and lets income roll, per the table above.
 
 **Single source of truth:** `apps/budget/unassigned.py::compute_unassigned()`. The
 sidebar pill, the dashboard, the budget/goals card, the goal quick-assign clamp and
@@ -55,7 +92,7 @@ to assign (YNAB's term), Jobless dollars, Unclaimed.
 | Do illiquid assets (house, RRSP, car) count? | **Yes, for now.** Unassigned is based on full net worth. A "Holdings" bucket that absorbs illiquid accounts is parked; revisit if it bites (see §4.4). |
 | Budget with income that hasn't arrived? | **A setting: "Let me budget with future income".** On: income is budgeted and counted before it lands (current behaviour). Off: income budgeting disappears entirely (income rows hidden from the budget page, grid and Budget vs Actual; income categories excluded from the envelope sum) and money becomes unassigned only once it lands. **Decided: a setting on each set of books** — see `docs/books-plan.md`. |
 | Negative Unassigned | **An alarm on every screen.** The label changes to "Over-assigned", it renders in the error colour, and it stays that way until resolved. |
-| Overspent envelopes | **Carry the negative.** An overspent category (or goal) keeps its red negative balance into the next month. The user is never forced to cover it; covering is an offered action, not a requirement. (Deliberately unlike YNAB, which pulls overspending out of Ready to Assign.) Mathematically this means overspending does not move Unassigned — the shortfall stays visible on the envelope that caused it. |
+| Overspent envelopes | **Out of Unassigned at once, negative carried** (revised; was "carry the negative, Unassigned unchanged"). Money spent without a budget isn't free, so overspending lowers Unassigned as soon as it is categorized. The envelope (or goal) keeps its red negative balance into the next month — never reset — and budgeting into that hole doesn't move Unassigned again. Covering is an offered action, not a requirement. See §1. |
 | Goals: equity accounts or something else? | **Stay equity accounts. No migration.** Almost every equity account is a goal; the one exception is the system reconciliation/opening-balance account (`is_system=True`), which is excluded wherever goals are enumerated. |
 
 ## 3. The number everywhere (Phase 1)
@@ -80,9 +117,8 @@ to assign (YNAB's term), Jobless dollars, Unclaimed.
   - a stats strip (net worth, in envelopes, in goals, unassigned);
   - the *allocation bar* — every claim on your money side by side (goals, budget
     envelopes, unassigned), with a marker at net worth and, when income is budgeted
-    but not yet received, a marker for "with income due"; anything that extends past
-    what you have (over-assignment, or overspending carried as negative envelopes) is
-    hatched and explained;
+    but not yet received, a marker for "with income due"; over-assignment, the only
+    way the claims can extend past what you have, is hatched and explained;
   - a per-bucket breakdown (each goal; each envelope, noting what rolled over);
   - the *waterfall* — net worth stepping down to Unassigned, one bar per term above.
 
@@ -90,8 +126,8 @@ to assign (YNAB's term), Jobless dollars, Unclaimed.
 
 The pill and dashboard always show the **current calendar month**. The budget and
 goals pages show the month being viewed, and the Dollar Map report takes `?month=`.
-Known limitation: a budget amount entered for a *future* month does not reduce this
-month's Unassigned (it counts from that month on). Worth revisiting if users expect
+Budgets, income and goal allocations entered for a *future* month do not affect this
+month's Unassigned (they count from that month on). Worth revisiting if users expect
 YNAB-style "assign ahead".
 
 ## 4. Goal lifecycle (Phase 2)

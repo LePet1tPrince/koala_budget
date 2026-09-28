@@ -333,8 +333,9 @@ class BudgetService:
     def raise_budget(self, category, month, amount):
         """Add `amount` to the category's budget for `month` (creating the row), and return it.
 
-        Covering overspending from Unassigned is exactly this: the money gets a job,
-        so Unassigned falls by `amount` and the envelope rises by it.
+        Covering overspending from Unassigned is exactly this. The overspending
+        already came out of Unassigned, so filling the hole doesn't move it again;
+        only budget past the shortfall is a new claim.
         """
         budget, _created = Budget.objects.select_for_update().get_or_create(
             book=self.book, category=category, month=month.replace(day=1), defaults={"budget_amount": Decimal("0")}
@@ -537,7 +538,8 @@ class GoalService:
 
         Anything left is released back to Unassigned as a negative allocation this
         month. A goal can't close negative: with `cover` the shortfall is covered
-        from Unassigned (a positive allocation) first; without it the close is
+        (a positive allocation) first -- free, since the overspending already came out
+        of Unassigned; without it the close is
         refused, since leaving it open (e.g. paying back a loan) is the other choice.
 
         Returns {"released": Decimal, "covered": Decimal}.
@@ -551,8 +553,8 @@ class GoalService:
             if not cover:
                 raise GoalCloseError(
                     _(
-                        "%(name)s is %(amount)s. Cover it from your unassigned money to close it, "
-                        "or keep it open and keep paying it back."
+                        "%(name)s is %(amount)s. Cover it to close it (that spending has already come "
+                        "out of your unassigned money), or keep it open and keep paying it back."
                     )
                     % {"name": goal.name, "amount": f"−${-left:,.2f}"}
                 )
@@ -570,8 +572,9 @@ class GoalService:
         """
         Cover an overspent budget row from a goal: take `amount` out of the goal
         (a negative allocation this month) and raise the category's budget for the
-        month by the same amount. Unassigned is unchanged -- the money just moves
-        from one job to another. This is how buffer goals (emergency fund) get used.
+        month by the same amount. The overspending already came out of Unassigned,
+        so the money the goal releases goes back into it. This is how buffer goals
+        (emergency fund) get used.
         """
         month = month.replace(day=1)
         self.add_to_allocation(goal, month, -amount)
