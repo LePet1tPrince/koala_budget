@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import Cookies from 'js-cookie';
 
 import AmountInput from '../../common/AmountInput';
+import Icon from '../../common/Icon';
 import Modal from '../../common/Modal';
 import { evaluateAmount, sanitizeAmount } from '../../common/amount';
 
@@ -355,6 +356,19 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
     const type = row.groupType === 'income' ? 'income' : 'expense';
     actualTotals[type] = (actualTotals[type] ?? 0) + value;
   });
+  // Copy a row's actual (in the selected mode) into every month on screen, which is
+  // the year the grid opens on. In-memory only, like the ⋮ menu: Save still applies it.
+  const applyActual = (row) => {
+    const raw = row.actuals?.[actualMode];
+    if (raw === null || raw === undefined) return;
+    setValues((prev) => {
+      const next = { ...prev };
+      months.forEach((month) => {
+        next[cellKey(row.id, month.key)] = raw;
+      });
+      return next;
+    });
+  };
   const formatActual = (value) => (value === null ? '—' : currencyFmt.format(value));
   const actualsCellClass = 'sticky text-right font-mono pr-3 border-r border-base-300 whitespace-nowrap';
   const actualsStyle = { left: actualsLeft };
@@ -438,7 +452,20 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
                         style={actualsStyle}
                         data-testid="budget-grid-actual"
                       >
-                        {formatActual(actualFor(row))}
+                        <div className="flex items-center justify-end gap-1">
+                          <span>{formatActual(actualFor(row))}</span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs btn-square text-base-content/70 hover:text-primary"
+                            onClick={() => applyActual(row)}
+                            disabled={actualFor(row) === null}
+                            title={`Use ${formatActual(actualFor(row))} for ${rangeLabel}`}
+                            aria-label={`Use ${formatActual(actualFor(row))} as the ${row.name} budget for ${rangeLabel}`}
+                            data-testid="budget-grid-apply-actual"
+                          >
+                            <Icon name="arrow-right" className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                       {months.map((month, colIdx) => {
                         const key = cellKey(row.id, month.key);
