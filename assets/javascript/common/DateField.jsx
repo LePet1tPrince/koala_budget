@@ -38,6 +38,7 @@ const DateField = ({ label, value, onChange, testId, allowClear = false, disable
         disabled={disabled}
         onClear={allowClear && value ? () => onChange('') : null}
         buttonClassName="input input-bordered flex w-full items-center gap-2 font-normal justify-start"
+        rootClassName="block w-full"
       >
         {({ close }) => (
           <DayGrid

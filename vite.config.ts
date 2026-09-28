@@ -42,6 +42,7 @@ export default defineConfig({
         'budget-grid-app': path.resolve(__dirname, './assets/javascript/budget/budget-grid-app.jsx'),
         'budget-autosave': path.resolve(__dirname, './assets/javascript/budget/budget-autosave.js'),
         'goals-app': path.resolve(__dirname, './assets/javascript/budget/goals-app.js'),
+        'date-field': path.resolve(__dirname, './assets/javascript/common/date-field-mount.jsx'),
         'accounts-board-app': path.resolve(__dirname, './assets/javascript/accounts/accounts-board-app.jsx'),
         'onboarding-app': path.resolve(__dirname, './assets/javascript/onboarding/onboarding-app.jsx'),
         'task-rail-app': path.resolve(__dirname, './assets/javascript/onboarding/task-rail-app.jsx'),
