@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import Cookies from 'js-cookie';
 
 import AmountInput from '../../common/AmountInput';
+import Modal from '../../common/Modal';
 import { evaluateAmount, sanitizeAmount } from '../../common/amount';
 
 const cellKey = (categoryId, monthKey) => `${categoryId}|${monthKey}`;
@@ -106,16 +107,57 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
     [values, isDirty],
   );
 
-  // Warn before leaving the page with unsaved changes
+  // Where the user asked to go while the "unsaved changes" dialog is up.
+  const [leaveTo, setLeaveTo] = useState(null);
+  // Set once the user has chosen to leave, so the browser's own prompt doesn't follow ours.
+  const leaving = useRef(false);
+  const hasChanges = dirtyKeys.length > 0;
+  // The dialog's count must not drop to 0 in the moment between "Save and continue"
+  // succeeding and the page unloading.
+  const pendingCount = useRef(0);
+  if (hasChanges) pendingCount.current = dirtyKeys.length;
+  const leaveCount = pendingCount.current;
+
   useEffect(() => {
-    if (dirtyKeys.length === 0) return undefined;
-    const handler = (e) => {
+    if (!hasChanges) return undefined;
+    // Any link on the page (Back to Budget, the sidebar, …) gets our dialog.
+    const onClick = (e) => {
+      const link = e.target.closest?.('a[href]');
+      if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (link.target && link.target !== '_self') return;
+      if (link.hasAttribute('download') || link.hasAttribute('data-dialog')) return;
+      const url = new URL(link.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      // Same-page anchors don't unload anything.
+      if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+      e.preventDefault();
+      setLeaveTo(url.toString());
+    };
+    // Closing the tab, reloading and the browser's Back button can't be intercepted:
+    // there the browser only ever shows its own prompt, so that stays as the fallback.
+    const warn = (e) => {
+      if (leaving.current) return;
       e.preventDefault();
       e.returnValue = '';
     };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [dirtyKeys.length]);
+    document.addEventListener('click', onClick);
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      document.removeEventListener('click', onClick);
+      window.removeEventListener('beforeunload', warn);
+    };
+  }, [hasChanges]);
+
+  // `showModal()` focuses the first button; put focus on the safe choice instead.
+  const keepEditingRef = useRef(null);
+  useEffect(() => {
+    if (leaveTo !== null) keepEditingRef.current?.focus();
+  }, [leaveTo]);
+
+  const goTo = (url) => {
+    leaving.current = true;
+    window.location.href = url;
+  };
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -236,14 +278,26 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
         return next;
       });
       setToast({ type: 'success', message: `Saved ${result.saved} budget amount${result.saved === 1 ? '' : 's'}.` });
+      return true;
     } catch (error) {
       setToast({ type: 'error', message: error.message });
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
   const handleDiscard = () => setValues(savedValues);
+
+  const saveAndLeave = async () => {
+    const target = leaveTo;
+    if (await handleSave()) {
+      goTo(target);
+    } else {
+      // The error toast says why; stay so nothing typed is lost.
+      setLeaveTo(null);
+    }
+  };
 
   // Copy a cell's value to other months in the same calendar year for the
   // same category. `mode: 'year'` fills the whole year; `mode: 'forward'`
@@ -267,11 +321,13 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
   };
 
   const navigate = (start) => {
-    if (dirtyKeys.length > 0 && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     const url = new URL(window.location);
     url.searchParams.set('start', start);
-    // beforeunload fires on navigation; the confirm above already covered it
-    window.location.href = url.toString();
+    if (hasChanges) {
+      setLeaveTo(url.toString());
+    } else {
+      window.location.href = url.toString();
+    }
   };
 
   // Live per-month totals by section (income / expense), so a big paste can
@@ -391,6 +447,7 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
                           <td key={month.key} className="p-1">
                             <div className="relative">
                               <AmountInput
+                                strict
                                 className={`input input-bordered input-sm w-full min-w-24 text-right font-mono ${dirty ? 'input-warning bg-warning/10' : ''}`}
                                 value={values[key]}
                                 data-row={r}
@@ -493,6 +550,52 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
           </div>
         </div>
       )}
+
+      <Modal
+        open={leaveTo !== null}
+        onClose={() => !saving && setLeaveTo(null)}
+        title="Save your changes?"
+        size="sm"
+        testId="budget-grid-leave-dialog"
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => goTo(leaveTo)}
+              disabled={saving}
+              data-testid="budget-grid-leave-discard"
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setLeaveTo(null)}
+              disabled={saving}
+              ref={keepEditingRef}
+              data-testid="budget-grid-leave-cancel"
+            >
+              Keep editing
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={saveAndLeave}
+              disabled={saving}
+              data-testid="budget-grid-leave-save"
+            >
+              {saving && <span className="loading loading-spinner loading-xs" />}
+              Save and continue
+            </button>
+          </>
+        }
+      >
+        <p className="text-base-content/70">
+          You have {leaveCount} unsaved change{leaveCount === 1 ? '' : 's'} on this page. Save
+          {leaveCount === 1 ? ' it' : ' them'} before you go, or discard {leaveCount === 1 ? 'it' : 'them'}?
+        </p>
+      </Modal>
 
       {/* Toast */}
       {toast && (
