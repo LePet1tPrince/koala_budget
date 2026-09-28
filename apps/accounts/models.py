@@ -71,6 +71,11 @@ class Account(BaseBookModel):
     has_feed = models.BooleanField(default=False, help_text="Whether this account has a bank feed")
     is_system = models.BooleanField(default=False, help_text="System accounts cannot be deleted by users")
     sort_order = models.PositiveIntegerField(default=0, help_text="Manual display order within the account group")
+    hidden_from_budget = models.BooleanField(
+        default=False,
+        help_text="Income/expense category tucked into the budget page's collapsed Hidden group. "
+        "A display choice only: its figures still count in every total.",
+    )
 
     # Override managers to use AccountQuerySet for optimized balance queries
     objects = AccountQuerySet.as_manager()

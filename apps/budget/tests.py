@@ -1355,3 +1355,144 @@ class GoalWithdrawTest(TestCase):
 
     def test_withdraw_requires_post(self):
         self.assertEqual(self.client.get(self.withdraw_url()).status_code, 405)
+
+
+class HiddenCategoryTest(TestCase):
+    """Hiding a category from the budget is a display choice: it moves to its
+    section's collapsed Hidden group, drops off the grid and out of Auto-Assign,
+    and every figure — totals, sidebar, Unassigned — stays exactly as it was."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Hidden Team", slug="hidden-team")
+        cls.book = cls.team.default_book
+        cls.other_team = Team.objects.create(name="Hidden Other", slug="hidden-other")
+        cls.other_book = cls.other_team.default_book
+        cls.user = CustomUser.objects.create_user(username="hiddenuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        cls.expense_group = AccountGroup.objects.create(
+            book=cls.book, name="Hidden Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.groceries = Account.objects.create(book=cls.book, name="Hidden Groceries", account_group=cls.expense_group)
+        cls.gym = Account.objects.create(book=cls.book, name="Old Gym", account_group=cls.expense_group)
+        asset_group = AccountGroup.objects.create(book=cls.book, name="Hidden Assets", account_type="asset")
+        cls.checking = Account.objects.create(book=cls.book, name="Hidden Checking", account_group=asset_group)
+
+        other_group = AccountGroup.objects.create(
+            book=cls.other_book, name="Other Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        cls.foreign = Account.objects.create(book=cls.other_book, name="Other Gym", account_group=other_group)
+
+        cls.month = date(2025, 6, 1)
+        Budget.objects.create(book=cls.book, category=cls.gym, month=cls.month, budget_amount=Decimal("30.00"))
+        entry = JournalEntry.objects.create(book=cls.book, entry_date=date(2025, 6, 10), description="Gym")
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.gym, dr_amount=Decimal("50.00"))
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.checking, cr_amount=Decimal("50.00"))
+
+    def setUp(self):
+        self.client.login(username="hiddenuser@example.com", password="testpass123")
+
+    def url(self, account):
+        return f"/a/{self.team.slug}/{self.book.slug}/budget/categories/{account.pk}/visibility/"
+
+    def budget_page(self):
+        return self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01")
+
+    def hide(self, account, **headers):
+        return self.client.post(self.url(account), {"hidden": "1", "month": "2025-06-01"}, **headers)
+
+    def test_hide_answers_json_when_asked(self):
+        response = self.hide(self.gym, HTTP_ACCEPT="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"category_id": self.gym.pk, "hidden": True})
+        self.gym.refresh_from_db()
+        self.assertTrue(self.gym.hidden_from_budget)
+
+    def test_hide_without_js_redirects_back_to_the_month(self):
+        response = self.hide(self.gym)
+        self.assertRedirects(
+            response, f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01", fetch_redirect_response=False
+        )
+
+    def test_unhide(self):
+        Account.objects.filter(pk=self.gym.pk).update(hidden_from_budget=True)
+        self.client.post(self.url(self.gym), {"hidden": "0"}, HTTP_ACCEPT="application/json")
+        self.gym.refresh_from_db()
+        self.assertFalse(self.gym.hidden_from_budget)
+
+    def test_hidden_category_moves_to_the_hidden_group_and_totals_do_not_move(self):
+        before = self.budget_page().context
+
+        self.hide(self.gym)
+        after = self.budget_page().context
+
+        expense = next(s for s in after["sections"] if s["key"] == "expense")
+        visible, hidden = expense["groups"]
+        self.assertEqual([r["category"] for r in visible["rows"]], [self.groceries])
+        self.assertTrue(hidden["hidden"])
+        self.assertEqual([r["category"] for r in hidden["rows"]], [self.gym])
+        # Budgeted 30, spent 50: overspent, which the collapsed header flags.
+        self.assertEqual(hidden["overspent"], 1)
+        self.assertEqual(hidden["subtotals"]["available"], Decimal("-20.00"))
+        self.assertEqual(expense["hidden_count"], 1)
+
+        before_expense = next(s for s in before["sections"] if s["key"] == "expense")
+        self.assertEqual(expense["totals"], before_expense["totals"])
+        self.assertEqual(after["sidebar_summary"], before["sidebar_summary"])
+        self.assertEqual(after["net_worth_card"]["available"], before["net_worth_card"]["available"])
+
+    def test_hidden_rows_render_collapsed_with_an_unhide_button(self):
+        self.hide(self.gym)
+        response = self.budget_page()
+        self.assertContains(response, 'data-testid="budget-hidden-group"')
+        self.assertContains(response, 'data-testid="budget-hidden-row" data-hidden-row="expense" hidden')
+        self.assertContains(response, 'data-testid="budget-unhide-btn"')
+        # A hidden row is out of Auto-Assign's scope, so it carries no checkbox.
+        self.assertEqual(response.content.decode().count('data-testid="budget-row-checkbox"'), 1)
+
+    def test_grid_leaves_hidden_categories_out(self):
+        self.hide(self.gym)
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/grid/?start=2025-06-01")
+        rows = [row["id"] for group in response.context["grid_props"]["groups"] for row in group["rows"]]
+        self.assertEqual(rows, [self.groceries.pk])
+
+    def test_autofill_leaves_hidden_categories_alone(self):
+        self.hide(self.gym)
+        self.client.post(
+            f"/a/{self.team.slug}/{self.book.slug}/budget/autofill/",
+            {"action": "assign_zero", "month": "2025-06-01"},
+        )
+        self.assertEqual(Budget.objects.get(category=self.gym, month=self.month).budget_amount, Decimal("30.00"))
+
+    def test_hidden_category_still_takes_a_budget_amount(self):
+        self.hide(self.gym)
+        response = self.client.post(
+            f"/a/{self.team.slug}/{self.book.slug}/budget/save-amount/",
+            data=json.dumps({"category_id": self.gym.pk, "month": "2025-06-01", "amount": "50"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_only_budget_categories_can_be_hidden(self):
+        response = self.hide(self.checking)
+        self.assertEqual(response.status_code, 404)
+
+    def test_another_books_category_is_a_404(self):
+        response = self.hide(self.foreign)
+        self.assertEqual(response.status_code, 404)
+        self.foreign.refresh_from_db()
+        self.assertFalse(self.foreign.hidden_from_budget)
+
+    def test_get_is_refused(self):
+        self.assertEqual(self.client.get(self.url(self.gym)).status_code, 405)
+
+    def test_anonymous_is_sent_to_login(self):
+        self.client.logout()
+        response = self.hide(self.gym)
+        self.assertEqual(response.status_code, 302)
+        self.gym.refresh_from_db()
+        self.assertFalse(self.gym.hidden_from_budget)

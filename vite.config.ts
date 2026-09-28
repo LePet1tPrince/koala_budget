@@ -41,6 +41,7 @@ export default defineConfig({
         'budget-month-picker-app': path.resolve(__dirname, './assets/javascript/budget/budget-month-picker-app.jsx'),
         'budget-grid-app': path.resolve(__dirname, './assets/javascript/budget/budget-grid-app.jsx'),
         'budget-autosave': path.resolve(__dirname, './assets/javascript/budget/budget-autosave.js'),
+        'budget-visibility': path.resolve(__dirname, './assets/javascript/budget/budget-visibility.js'),
         'goals-app': path.resolve(__dirname, './assets/javascript/budget/goals-app.js'),
         'date-field': path.resolve(__dirname, './assets/javascript/common/date-field-mount.jsx'),
         'accounts-board-app': path.resolve(__dirname, './assets/javascript/accounts/accounts-board-app.jsx'),
