@@ -46,6 +46,16 @@ class AmountFormulaField(forms.DecimalField):
         return parsed
 
 
+class GroupedAmountInput(forms.TextInput):
+    """Text input that renders a stored amount with thousands separators
+    ("5,000.00"); the page's `data-amount-format` keeps typed values that way."""
+
+    def format_value(self, value):
+        if isinstance(value, (Decimal, int, float)):
+            return f"{Decimal(value):,.2f}"
+        return super().format_value(value)
+
+
 class BudgetAmountField(forms.DecimalField):
     """Decimal field that accepts the same input as the budget table's auto-save,
     so the <noscript> fallback isn't stricter than the JS path."""
@@ -96,11 +106,12 @@ class GoalForm(forms.ModelForm):
         decimal_places=2,
         label=_("Target amount"),
         help_text=_("Target savings amount"),
-        widget=forms.TextInput(
+        widget=GroupedAmountInput(
             attrs={
                 "inputmode": "decimal",
                 "autocomplete": "off",
                 "data-amount-input": "",
+                "data-amount-format": "",
                 "class": "input input-bordered w-full",
             }
         ),
@@ -112,5 +123,14 @@ class GoalForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"class": "input input-bordered w-full"}),
             "description": forms.Textarea(attrs={"class": "textarea textarea-bordered w-full", "rows": 3}),
-            "target_date": forms.DateInput(attrs={"class": "input input-bordered w-full", "type": "date"}),
+            # The native input is the no-JS path; `date-field` swaps in the app's DateField.
+            "target_date": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={
+                    "class": "input input-bordered w-full",
+                    "type": "date",
+                    "data-date-field": "",
+                    "data-allow-clear": "",
+                },
+            ),
         }

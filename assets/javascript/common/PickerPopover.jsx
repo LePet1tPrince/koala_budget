@@ -38,6 +38,8 @@ import { portalTarget, useAnchoredPosition } from './popoverPosition';
  * @param {boolean}  disabled     Disables the trigger, so it cannot be opened by
  *                                click *or* by keyboard — which is why this is a
  *                                real prop rather than `pointer-events-none`.
+ * @param {string}   rootClassName Layout of the wrapper: `inline-block` beside
+ *                                other toolbar buttons, `block w-full` as a form field.
  * @param {function} children     Render prop; receives `{ close }`.
  */
 const PickerPopover = ({
@@ -49,6 +51,7 @@ const PickerPopover = ({
   disabled = false,
   buttonClassName = 'btn btn-outline btn-sm font-normal',
   panelClassName = '',
+  rootClassName = 'inline-block',
   children,
 }) => {
   const [open, setOpen] = useState(false);
@@ -101,7 +104,7 @@ const PickerPopover = ({
   };
 
   return (
-    <div className="relative inline-block" ref={rootRef}>
+    <div className={`relative ${rootClassName}`} ref={rootRef}>
       <button
         type="button"
         className={`${buttonClassName} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -120,7 +123,7 @@ const PickerPopover = ({
         data-testid={testId}
       >
         {icon}
-        <span className="truncate">{label}</span>
+        <span className="grow truncate text-left">{label}</span>
         {onClear && !disabled && (
           // A <button> may not nest inside a <button>, so this is a span with a role.
           <span

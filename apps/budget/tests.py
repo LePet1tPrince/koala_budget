@@ -14,7 +14,7 @@ from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Acco
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 
-from .forms import BudgetAmountForm, parse_budget_amount
+from .forms import BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Budget, Goal, GoalAllocation
 from .services import BudgetService
 
@@ -630,6 +630,29 @@ class BudgetAmountParsingTest(TestCase):
         form = BudgetAmountForm({"budget_amount": "$1,234.56"})
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["budget_amount"], Decimal("1234.56"))
+
+
+class GoalFormTest(TestCase):
+    """The goal form shows its target with thousands separators and takes it back."""
+
+    def test_target_amount_renders_grouped(self):
+        goal = Goal(name="Car", target_amount=Decimal("25000.00"), target_date=date(2027, 3, 1))
+        html = str(GoalForm(instance=goal)["target_amount"])
+        self.assertIn('value="25,000.00"', html)
+        self.assertIn("data-amount-format", html)
+
+    def test_grouped_and_formula_amounts_parse(self):
+        for raw, expected in (("25,000.00", Decimal("25000.00")), ("1,200*12", Decimal("14400.00"))):
+            with self.subTest(raw=raw):
+                form = GoalForm({"name": "Car", "target_amount": raw, "target_date": "2027-03-01"})
+                self.assertTrue(form.is_valid(), form.errors)
+                self.assertEqual(form.cleaned_data["target_amount"], expected)
+
+    def test_target_date_renders_iso_for_the_date_picker(self):
+        goal = Goal(name="Car", target_amount=Decimal("1"), target_date=date(2027, 3, 1))
+        html = str(GoalForm(instance=goal)["target_date"])
+        self.assertIn('value="2027-03-01"', html)
+        self.assertIn("data-date-field", html)
 
 
 class BudgetAutofillViewTest(TestCase):

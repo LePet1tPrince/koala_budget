@@ -1,5 +1,6 @@
 {% extends "budget/budget_base.html" %}
 {% load static %}
+{% load django_vite %}
 {% load i18n %}
 
 {% block app %}
@@ -66,4 +67,9 @@
       </div>
     </div>
   </div>
+{% endblock %}
+
+{% block page_js %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/common/date-field-mount.jsx' %}
 {% endblock %}

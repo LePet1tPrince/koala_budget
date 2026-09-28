@@ -185,8 +185,13 @@ export const round2 = (value) => Math.round(value * 100) / 100;
 export function formatMoney(value) {
   const amount = Number(value) || 0;
   const sign = amount < 0 ? '-' : '';
-  return `${sign}$${Math.abs(amount).toLocaleString('en-CA', {
+  return `${sign}$${formatGrouped(Math.abs(amount))}`;
+}
+
+/** `1,234.50` / `-3.00` -- an amount with thousands separators and no symbol. */
+export function formatGrouped(value) {
+  return (Number(value) || 0).toLocaleString('en-CA', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })}`;
+  });
 }
