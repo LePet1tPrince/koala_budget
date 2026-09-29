@@ -79,7 +79,9 @@ def _budget_figures(book, month):
     # Rows are created lazily on first save; a category without one shows zero.
     existing_budgets = {b.category_id: b for b in Budget.objects.filter(book=book, month=month)}
     actuals_map = service.get_actuals_by_category(month)
-    available_map = service.get_available_by_category(month, categories)
+    # This month's balances and last month's (what rolled in) from one walk of
+    # the budget history.
+    available_map, prev_available_map = service.get_available_with_previous(month, categories)
 
     # Income section first, then expenses; groups within a section keep the
     # category ordering (board sort order, then group/account name).
@@ -141,8 +143,6 @@ def _budget_figures(book, month):
         for field in ("budgeted", "actual", "available")
     }
 
-    prev_month = month - relativedelta(months=1)
-    prev_available_map = service.get_available_by_category(prev_month, categories)
     leftover_last_month = sum(prev_available_map.values(), Decimal("0"))
 
     return {
@@ -281,44 +281,39 @@ def budget_month_view(request, team_slug, book_slug):
             return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}")
         messages.error(request, _("Could not save budget amount: %(errors)s") % {"errors": form.errors.as_text()})
 
-    figures = _budget_figures(request.book, month)
-
+    context = _budget_swap_context(request.book, month)
     # Every account type is a valid "Move to..." target in the Actual popup (the
     # client groups them by type); moving onto a feed account makes it a transfer.
     # System accounts (reconciliation adjustments) are bookkeeping, not destinations.
-    all_accounts_data = picker_accounts_data(request.book)
+    context["all_accounts"] = picker_accounts_data(request.book)
+    context["api_urls"] = {"lines": f"/a/{team_slug}/{book_slug}/journal/api/lines/"}
+    context["active_tab"] = "budget"
+    context["page_title"] = f"Budget | {book_display_name(request.book)}"
+    return render(request, "budget/budget_home.html", context)
 
-    # API URLs for React
-    api_urls = {
-        "lines": f"/a/{team_slug}/{book_slug}/journal/api/lines/",
+
+def _budget_swap_context(book, month):
+    """What `budget/components/budget_swap.html` renders: the month's figures and
+    the URLs its forms post to. The month view adds the page chrome around it."""
+    figures = _budget_figures(book, month)
+    return {
+        "month": month,
+        "end_date": month + relativedelta(months=1, days=-1),
+        "sections": figures["sections"],
+        "has_categories": figures["has_categories"],
+        "grand_totals": figures["grand_totals"],
+        "net_worth_card": figures["net_worth_card"],
+        "sidebar_summary": figures["sidebar_summary"],
+        "prev_month": month - relativedelta(months=1),
+        "next_month": month + relativedelta(months=1),
+        "save_amount_url": reverse("budget:budget_save_amount", args=book.url_args),
+        "cover_url": reverse("budget:budget_cover", args=book.url_args),
+        # Goals an overspent category can be covered from (emergency fund, ...), besides Unassigned.
+        "cover_goals": [
+            {"id": goal.pk, "name": goal.name, "left": f"{goal.left:.2f}"}
+            for goal in GoalService(book).get_goals_with_progress(month)
+        ],
     }
-
-    return render(
-        request,
-        "budget/budget_home.html",
-        {
-            "active_tab": "budget",
-            "page_title": f"Budget | {book_display_name(request.book)}",
-            "month": month,
-            "end_date": month + relativedelta(months=1, days=-1),
-            "sections": figures["sections"],
-            "has_categories": figures["has_categories"],
-            "grand_totals": figures["grand_totals"],
-            "net_worth_card": figures["net_worth_card"],
-            "sidebar_summary": figures["sidebar_summary"],
-            "prev_month": month - relativedelta(months=1),
-            "next_month": month + relativedelta(months=1),
-            "all_accounts": all_accounts_data,
-            "api_urls": api_urls,
-            "save_amount_url": f"/a/{team_slug}/{book_slug}/budget/save-amount/",
-            "cover_url": reverse("budget:budget_cover", args=request.book.url_args),
-            # Goals an overspent category can be covered from (emergency fund, ...), besides Unassigned.
-            "cover_goals": [
-                {"id": goal.pk, "name": goal.name, "left": f"{goal.left:.2f}"}
-                for goal in GoalService(request.book).get_goals_with_progress(month)
-            ],
-        },
-    )
 
 
 @login_and_book_required
@@ -391,11 +386,14 @@ def budget_save_amount(request, team_slug, book_slug):
 def budget_category_visibility(request, team_slug, book_slug, pk):
     """Hide a category from the budget page, or bring it back.
 
-    Form fields: `hidden` ("1" hides, anything else unhides) and `month` (where the
-    no-JS path lands afterwards). A display choice only — nothing about the
-    category's money changes, so no figure on the page moves. Answers JSON when
-    asked for it (the page then re-renders the month in place); otherwise
-    redirects back to the budget page.
+    Form fields: `hidden` ("1" hides, anything else unhides) and `month`. A display
+    choice only — nothing about the category's money changes. Three answers:
+
+    - `X-Budget-Fragment: 1` (the page's own script): the re-rendered
+      `#budget-swap` region for `month`, so the page updates in one round trip
+      instead of a POST followed by a GET of the whole page.
+    - `Accept: application/json`: `{category_id, hidden}`.
+    - otherwise (no JS): a redirect back to the budget page.
     """
     category = get_object_or_404(_budget_categories(request.book), pk=pk)
     hidden = request.POST.get("hidden") == "1"
@@ -403,12 +401,14 @@ def budget_category_visibility(request, team_slug, book_slug, pk):
         category.hidden_from_budget = hidden
         category.save(update_fields=["hidden_from_budget", "updated_at"])
 
+    month = _parse_month(request.POST.get("month"))
+    if request.headers.get("X-Budget-Fragment") == "1":
+        return render(request, "budget/components/budget_swap.html", _budget_swap_context(request.book, month))
     if "application/json" in request.headers.get("Accept", ""):
         return JsonResponse({"category_id": category.pk, "hidden": hidden})
 
     template = _("%(category)s is hidden from the budget.") if hidden else _("%(category)s is back in the budget.")
     messages.success(request, template % {"category": category.name})
-    month = _parse_month(request.POST.get("month"))
     return redirect(f"{reverse('budget:budget_home', args=request.book.url_args)}?month={month.isoformat()}")
 
 

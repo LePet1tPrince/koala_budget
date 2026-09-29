@@ -1412,6 +1412,18 @@ class HiddenCategoryTest(TestCase):
         self.gym.refresh_from_db()
         self.assertTrue(self.gym.hidden_from_budget)
 
+    def test_hide_from_the_page_answers_with_the_redrawn_region(self):
+        """The page's script asks for the `#budget-swap` partial, saving a second request."""
+        response = self.client.post(
+            self.url(self.gym), {"hidden": "1", "month": "2025-06-01"}, HTTP_X_BUDGET_FRAGMENT="1"
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertTrue(html.lstrip().startswith("<!-- Main Content"), html[:80])
+        self.assertIn('id="budget-swap"', html)
+        self.assertIn('data-testid="budget-hidden-row" data-hidden-row="expense" hidden', html)
+        self.assertNotIn("<html", html)
+
     def test_hide_without_js_redirects_back_to_the_month(self):
         response = self.hide(self.gym)
         self.assertRedirects(
