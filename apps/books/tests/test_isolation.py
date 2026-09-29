@@ -138,6 +138,7 @@ OBJECTS = {
     "budget:goal_withdraw": ("goal", "pk", "post"),
     "budget:goal_complete": ("goal", "pk", "post"),
     "budget:goal_close": ("goal", "pk", "post"),
+    "budget:category_visibility": ("account", "pk", "post"),
     "reports:account_activity": ("account", "account_id", "get"),
     "reports:export_account_activity": ("account", "account_id", "get"),
     "plaid:plaid-item-detail": ("plaid_item", "pk", "get"),

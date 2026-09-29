@@ -46,6 +46,27 @@ class BudgetPage(BasePage):
         return self.page.locator("[data-testid='budget-grand-total']").is_visible()
 
     # ------------------------------------------------------------------
+    # Hidden categories
+    # ------------------------------------------------------------------
+
+    def budget_row(self, name: str):
+        return self.page.get_by_test_id("budget-row").filter(has_text=name)
+
+    def hidden_row(self, name: str):
+        return self.page.get_by_test_id("budget-hidden-row").filter(has_text=name)
+
+    def hidden_toggle(self):
+        return self.page.get_by_test_id("budget-hidden-toggle")
+
+    def hide_category(self, name: str):
+        self.budget_row(name).get_by_test_id("budget-hide-btn").click()
+        self.hidden_row(name).wait_for(state="attached")
+
+    def unhide_category(self, name: str):
+        self.hidden_row(name).get_by_test_id("budget-unhide-btn").click()
+        self.budget_row(name).wait_for()
+
+    # ------------------------------------------------------------------
     # Goals queries
     # ------------------------------------------------------------------
 

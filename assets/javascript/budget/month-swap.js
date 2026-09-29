@@ -83,19 +83,34 @@ export async function swapToMonth(month, { push = true } = {}) {
   if (mine !== ticket) return false;
   busy.clear();
 
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const next = doc.getElementById(SWAP_ID);
-  if (!next) {
+  if (!applySwap(html, month)) {
     window.location.href = url;
     return false;
   }
+  if (push) window.history.pushState({ budgetMonth: month }, '', url);
+  return true;
+}
+
+/**
+ * Replace the budget content with `html`, markup the server already rendered —
+ * a whole budget page, or just the `#budget-swap` partial (what hiding a
+ * category answers with, saving the second round trip a fetch would cost).
+ *
+ * The caller owns ordering: a month swap still in flight would paint over this.
+ *
+ * @returns {boolean} Whether the markup held a `#budget-swap` to swap in.
+ */
+export function applySwap(html, month) {
+  const root = swapRoot();
+  if (!root) return false;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const next = doc.getElementById(SWAP_ID);
+  if (!next) return false;
 
   root.replaceWith(next);
   runScripts(next);
   syncOutside(doc);
-
   if (doc.title) document.title = doc.title;
-  if (push) window.history.pushState({ budgetMonth: month }, '', url);
 
   // Whatever binds to this markup — the autosave fields, the Actual tooltips,
   // anything added later — listens for this rather than being called by name,

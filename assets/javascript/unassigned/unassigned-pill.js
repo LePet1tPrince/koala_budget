@@ -114,6 +114,12 @@ function isWrite(input, init) {
   return method !== 'GET' && method !== 'HEAD';
 }
 
+// A write that cannot move Unassigned (hiding a budget category) says so, and
+// skips a re-read that would compute the same figure again.
+function declaresNoChange(init) {
+  return new Headers((init && init.headers) || undefined).get('X-Unassigned-Unchanged') === '1';
+}
+
 function sameOriginOther(input) {
   const target = new URL(input instanceof Request ? input.url : String(input), window.location.href);
   return target.origin === window.location.origin && target.pathname !== new URL(url, window.location.href).pathname;
@@ -125,7 +131,7 @@ function watchWrites() {
   window.fetch = async (input, init) => {
     const response = await nativeFetch(input, init);
     try {
-      if (response.ok && isWrite(input, init) && sameOriginOther(input)) schedule();
+      if (response.ok && isWrite(input, init) && !declaresNoChange(init) && sameOriginOther(input)) schedule();
     } catch {
       // Never let the watcher break the request it is watching.
     }

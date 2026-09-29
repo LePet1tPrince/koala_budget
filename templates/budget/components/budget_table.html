@@ -1,5 +1,6 @@
 {% load i18n %}
 {% load currency_tags %}
+{% load icons %}
 
 <!-- Budget Table -->
 <style>
@@ -23,7 +24,20 @@
     z-index: 20;
     background: var(--color-base-100);
   }
+
+  /* The Hide button stays out of the way until its row is pointed at or
+     reached by keyboard; on a touch screen (no hover) it is always shown. */
+  @media (hover: hover) {
+    #budget-table-card .budget-hide-btn { opacity: 0; }
+    #budget-table-card tr:hover .budget-hide-btn,
+    #budget-table-card .budget-hide-btn:focus-visible { opacity: 1; }
+  }
 </style>
+{% comment %}
+  Hidden categories start collapsed, and only script can expand them — so
+  without it they are simply shown, Unhide buttons and all.
+{% endcomment %}
+<noscript><style>#budget-table-card tr[data-hidden-row][hidden] { display: table-row; }</style></noscript>
 <div class="overflow-x-auto lg:overflow-x-visible bg-base-100 rounded-lg shadow"
      id="budget-table-card" data-budget-save-url="{{ save_amount_url }}" data-cover-url="{{ cover_url }}">
   {{ cover_goals|json_script:'cover-goals' }}
@@ -107,13 +121,63 @@
         </tr>
 
         {% for group in section.groups %}
+          {% if group.hidden %}
+          <!-- Hidden categories: collapsed, but their money still counts, so the
+               subtotals ride on the header row where they stay visible. -->
+          <tr class="bg-base-200 border-t border-dashed border-base-300" data-testid="budget-hidden-group">
+            <td></td>
+            <td>
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <button type="button" class="flex items-center gap-1.5 font-bold whitespace-nowrap text-base-content/70 hover:text-base-content"
+                        aria-expanded="false" data-hidden-toggle="{{ section.key }}" data-testid="budget-hidden-toggle">
+                  <span class="transition-transform" data-hidden-chevron>{% icon "chevron-right" class="w-4 h-4" %}</span>
+                  {% icon "eye-off" class="w-4 h-4" %}
+                  {% blocktranslate trimmed count counter=group.rows|length %}
+                    {{ counter }} hidden category
+                  {% plural %}
+                    {{ counter }} hidden categories
+                  {% endblocktranslate %}
+                </button>
+                {% if group.overspent %}
+                <span class="badge badge-error badge-sm whitespace-nowrap" data-testid="budget-hidden-overspent">
+                  {% blocktranslate trimmed count counter=group.overspent %}
+                    {{ counter }} overspent
+                  {% plural %}
+                    {{ counter }} overspent
+                  {% endblocktranslate %}
+                </span>
+                {% endif %}
+              </div>
+            </td>
+            <td></td>
+            <td class="text-right">
+              <span class="font-mono text-base-content/70" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
+            </td>
+            <td class="text-right">
+              <span class="font-mono text-base-content/70">{{ group.subtotals.actual|currency }}</span>
+            </td>
+            <td class="text-right">
+              <span class="font-mono {% if group.subtotals.available < 0 %}text-error{% elif group.subtotals.available > 0 %}text-success{% endif %}"
+                    data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:available">
+                {{ group.subtotals.available|currency }}
+              </span>
+            </td>
+            <td></td>
+          </tr>
+          {% else %}
           <!-- Group Header -->
           <tr class="bg-base-200">
             <td colspan="7" class="font-bold">{{ group.name }}</td>
           </tr>
+          {% endif %}
 
           <!-- Group Rows -->
           {% for row in group.rows %}
+          {% if group.hidden %}
+          <tr data-testid="budget-hidden-row" data-hidden-row="{{ section.key }}" hidden>
+            {# Auto-Assign never touches a hidden category, so it has no checkbox to scope it by. #}
+            <td></td>
+          {% else %}
           <tr data-testid="budget-row">
             <td class="text-center">
               <input type="checkbox" class="checkbox checkbox-sm budget-row-checkbox" checked
@@ -122,10 +186,12 @@
                      data-category-name="{{ row.category.name }}"
                      data-budgeted="{{ row.budgeted }}">
             </td>
+          {% endif %}
             <td class="pl-8">
               <a href="{% url 'reports:account_activity' request.team.slug request.book.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget" class="link link-primary">
                 <div class="font-medium">{{ row.category.name }}</div>
               </a>
+              {% if group.hidden %}<div class="text-xs text-base-content/70">{{ row.category.account_group.name }}</div>{% endif %}
             </td>
 
             <td>
@@ -189,10 +255,33 @@
                   {% translate "Cover" %}
                 </button>
               {% endif %}
+              <form method="post" class="inline" data-budget-visibility
+                    data-section="{{ section.key }}" data-category-id="{{ row.category.pk }}"
+                    data-category-name="{{ row.category.name }}"
+                    action="{% url 'budget:category_visibility' request.team.slug request.book.slug row.category.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
+                {% if group.hidden %}
+                <input type="hidden" name="hidden" value="0">
+                <button type="submit" class="btn btn-ghost btn-xs whitespace-nowrap" data-testid="budget-unhide-btn"
+                        aria-label="{% blocktranslate trimmed with category=row.category.name %}Show {{ category }} in the budget again{% endblocktranslate %}">
+                  {% icon "eye" class="w-3.5 h-3.5" %}
+                  {% translate "Unhide" %}
+                </button>
+                {% else %}
+                <input type="hidden" name="hidden" value="1">
+                <button type="submit" class="btn btn-ghost btn-xs btn-square budget-hide-btn" data-testid="budget-hide-btn"
+                        title="{% translate 'Hide from budget' %}"
+                        aria-label="{% blocktranslate trimmed with category=row.category.name %}Hide {{ category }} from the budget{% endblocktranslate %}">
+                  {% icon "eye-off" class="w-3.5 h-3.5" %}
+                </button>
+                {% endif %}
+              </form>
             </td>
           </tr>
           {% endfor %}
 
+          {% if not group.hidden %}
           <!-- Group Subtotal -->
           <tr class="bg-base-200 font-bold">
             <td></td>
@@ -212,6 +301,7 @@
             </td>
             <td></td>
           </tr>
+          {% endif %}
         {% endfor %}
 
         <!-- Section Total -->
@@ -253,6 +343,12 @@
     <h3 class="font-bold">{% translate "How it works" %}</h3>
     <div class="text-sm">
       {% translate "Available = Budget (this month) - Actual (this month) + Available (previous month). Unspent budget rolls forward to future months." %}
+    </div>
+    <div class="text-sm mt-1">
+      {% blocktranslate trimmed %}
+        Don't need a category any more? Hide it with the eye button at the end of its row. Hidden categories
+        collapse to the bottom of their section, and their money still counts in every total.
+      {% endblocktranslate %}
     </div>
     <div class="text-sm mt-1">
       {% blocktranslate trimmed %}

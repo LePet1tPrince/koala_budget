@@ -38,6 +38,7 @@ def account(account_id: int, name: str, account_type: str, group_name: str, **ov
         "has_feed": False,
         "is_system": False,
         "sort_order": 0,
+        "hidden_from_budget": False,
         "is_archived": False,
         "archived_at": None,
         "goal_name": None,

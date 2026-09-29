@@ -15,6 +15,7 @@ urlpatterns = [
     path("autofill/", views.budget_autofill_view, name="budget_autofill"),
     path("save-amount/", views.budget_save_amount, name="budget_save_amount"),
     path("cover/", views.budget_cover, name="budget_cover"),
+    path("categories/<int:pk>/visibility/", views.budget_category_visibility, name="category_visibility"),
     path("grid/", views.budget_grid_view, name="budget_grid"),
     path("grid/save/", views.budget_grid_save, name="budget_grid_save"),
     path("api/unassigned/", views.unassigned_api, name="api_unassigned"),
