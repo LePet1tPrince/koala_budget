@@ -70,8 +70,8 @@
       <div class="stat-title">{% translate "In goals" %}</div>
       <div class="stat-value text-2xl money">{{ unassigned.goals|currency }}</div>
       <div class="stat-desc">
-        {% blocktranslate trimmed with amount=unassigned.goals_this_month|currency %}{{ amount }} this month{% endblocktranslate %}{% if unassigned.goals_spent %} ·
-        {% blocktranslate trimmed with amount=unassigned.goals_spent|currency %}{{ amount }} spent{% endblocktranslate %}{% endif %}
+        {% blocktranslate trimmed with amount=goal_totals.assigned|currency %}{{ amount }} this month{% endblocktranslate %}{% if goal_totals.spent %} ·
+        {% blocktranslate trimmed with amount=goal_totals.spent|currency %}{{ amount }} spent{% endblocktranslate %}{% endif %}
       </div>
     </div>
     <div class="stat py-3">
@@ -104,7 +104,7 @@
         </li>
         {% if envelopes.overspent %}
         <li class="flex justify-between gap-2 text-error" data-testid="plan-overspent">
-          <span>{% translate "Overspent, carried (already netted off)" %}</span>
+          <span>{% translate "Overspent, carried (already out of Unassigned)" %}</span>
           <span class="money">−{{ envelopes.overspent|currency }}</span>
         </li>
         {% endif %}
