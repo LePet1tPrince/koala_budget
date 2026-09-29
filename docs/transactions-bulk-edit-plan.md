@@ -4,6 +4,8 @@ Goal: the Transactions page gets the Bank Feed's multi-select and batch actions,
 
 Status: plan. Nothing here is built.
 
+**Out of scope: reconciling and unreconciling.** The Bank Feed bar's Reconcile and Unreconcile are not ported, and this feature adds no reconciliation endpoint or button. Reconciliation stays on the reconcile page and the Bank Feed. Reconciled lines still constrain the actions that *are* ported (the existing guards in `apps.reconciliation.services.guards` refuse edits, deletes and voids that would change a reconciled line); that is unchanged.
+
 ---
 
 ## 1. Starting point
@@ -18,8 +20,8 @@ Status: plan. Nothing here is built.
 | Archive | `POST feed/batch_archive/` | `BankTransaction.is_archived` (both transfer legs) | any selected row unarchived and unreconciled |
 | Unarchive | `POST feed/batch_unarchive/` | same | any selected row archived |
 | Delete (permanent) | `POST feed/batch_delete/` | archived `BankTransaction` + its entry + mirror legs | archived view |
-| Reconcile | none; navigates to `reconcile/<account>/?entries=…` | selection → draft statement ticks | no row reconciled, all categorized |
-| Unreconcile | `POST feed/batch_unreconcile/` | bank-account line `is_reconciled=False` | all selected reconciled |
+| Reconcile *(not ported)* | none; navigates to `reconcile/<account>/?entries=…` | selection → draft statement ticks | no row reconciled, all categorized |
+| Unreconcile *(not ported)* | `POST feed/batch_unreconcile/` | bank-account line `is_reconciled=False` | all selected reconciled |
 | Duplicate | `POST feed/batch_duplicate/` | new uncategorized `BankTransaction`, no entry | no row reconciled |
 | Export | client-side CSV of selected rows | — | always |
 | Summary strip | client | In / Out / Net, reconciled balance → new | always |
@@ -35,7 +37,7 @@ Batch editing was designed in when the edit modal shipped; it is not wired to a 
 - `TransactionEditModal.jsx`: takes a `transactions` array; `shared()` yields `MIXED` for disagreeing fields; `buildUpdates()` sends only changed, non-`MIXED` fields. In batch mode it hides Date and the amounts and shows "Leave blank to keep each one" placeholders.
 - `transactions-app.jsx`: `editing` is already an array; `absorb()` patches rows in place or refetches when an edit touched a filtered/sorted column.
 
-Missing: a selection, a batch bar, the data a bar needs per row, and the actions with no journal equivalent yet (duplicate, reconcile hand-off, unreconcile, export).
+Missing: a selection, a batch bar, the data a bar needs per row, and the actions with no journal equivalent yet (duplicate, export).
 
 ### 1.3 The structural difference
 
@@ -112,24 +114,11 @@ The Bank Feed's Archive has no direct counterpart: archived entries are already 
 - **List behaviour.** `rows_for` returns voided rows and `absorb` patches them in place, so voided rows stay on screen with a Void badge until the next refetch. Keep that (it is what makes Restore reachable) and put **Undo** on the toast (`Toast` has an `action` slot) → `batch_status {status: posted}`.
 - **Audit.** `batch_status` logs no bulk event. Add `BULK_VOID` / `BULK_RESTORE` (audit migration for the choices).
 
-### 2.8 Reconcile
+### 2.8 Reconcile / Unreconcile
 
-Bank Feed hands the selection to `reconcile/<account>/?entries=…`; `account_page` ticks that account's unreconciled line on each entry and ignores entries with no line on it.
+Not ported (see scope note). The bar has no Reconcile or Unreconcile button, and no hand-off to `reconcile/<account>/`. Reconciled rows appear in a selection like any other; the guards decide what each ported action may do to them (§2.1, §2.3, §2.4, §2.6, §2.7).
 
-- A selection here spans accounts. → Enabled only when the selected entries share at least one **money account** with an unreconciled line on every entry. One such account → button "Reconcile in {account}". Several (transfers between the same pair) → split button listing them. None → disabled, tooltip "Select transactions from one account".
-- Needs per-row `money_account_ids` (unreconciled asset/liability lines) (§3.2).
-- No new endpoint. The "all categorized" rule is moot (every ledger row is categorized).
-
-### 2.9 Unreconcile
-
-Bank Feed: sets `is_reconciled=False` on the bank-account line; the line keeps its `reconciliation` FK, so the finished statement reads "Changed" (`integrity.py`).
-
-- **Which line?** A transfer row can have both sides reconciled against different statements. → Same account scoping as Reconcile: "Unreconcile in {account}" when the selection shares one reconciled account; a picker when several. `POST transactions/batch_unreconcile/ {ids, account_id}` unreconciles that account's line on each entry.
-- Confirm dialog lists the affected statement dates per account (feed rows already carry `reconciled_statement_date`; rows here need it, §3.2).
-- **One writer.** Extract the per-line loop into `apps/reconciliation/services/unreconcile.py::unreconcile_lines(lines)` (per-line `save()` so `AuditLog` records it) and have `BankFeedViewSet.batch_unreconcile` call it too.
-- Audit: `BULK_UNRECONCILE` with `scope: transactions`.
-
-### 2.10 Duplicate
+### 2.9 Duplicate
 
 Bank Feed: copies the `BankTransaction` **uncategorized, without an entry** (lands in the Inbox). A ledger duplicate must copy the **entry**.
 
@@ -141,16 +130,16 @@ Bank Feed: copies the `BankTransaction` **uncategorized, without an entry** (lan
 - **Effect:** balances, budget actuals and Unassigned move immediately. Toast: "k duplicated" + action "Edit copies" (opens the batch modal on the new ids). Single-row duplicate opens the editor on the copy.
 - Audit: `BULK_DUPLICATE` with `scope: transactions`.
 
-### 2.11 Export
+### 2.10 Export
 
 - Client-side CSV of the selected **loaded** rows (same as the Bank Feed). Columns: Date, Payee, Memo, Account, Category, Amount (signed from the account's side: out negative), Source, Status. A split exports one line per leg with the transaction's shared columns repeated.
 - Needs home account + signed legs per row (§3.2).
 - "Export everything matching the current filters" is the existing server export (`reports:export_transactions`) extended with the page's filter params — separate change, not in this plan.
 
-### 2.12 Selection summary strip
+### 2.11 Selection summary strip
 
 - In / Out / Net only mean something relative to one account (a transfer is both). → Show `k selected · Total $X` always; show In / Out / Net only when every selected row has the same home account, computed from that account's side.
-- Drop the "reconciled balance → new" preview: reconciling is done on the reconcile page against a statement.
+- Drop the "reconciled balance → new" preview: there is no reconcile action here.
 
 ---
 
@@ -176,14 +165,11 @@ edit: {
   category_id,                   # null for a split
   normal,                        # resolve_sides().normal
   bank_backed, bank_source,      # non-mirror feed row, its source
-  money_account_ids,             # asset/liability lines, unreconciled (reconcile)
-  reconciled_account_ids,        # reconciled lines' accounts (unreconcile)
-  reconciled_statement_dates,
   capabilities: {...}            # same dict as TransactionDetailSerializer
 }
 ```
 
-- Queryset: add `lines__account__account_group`, `lines__reconciliation`, `bank_feed_transactions` to the list prefetch — three extra queries per page, not per row.
+- Queryset: add `lines__account__account_group` and `bank_feed_transactions` to the list prefetch — two extra queries per page, not per row.
 - **One capability function.** Move `get_capabilities` into `simple_edit.capabilities_for(entry, sides)` and use it from both serializers, so the bar, the modal and the writer read the same predicates. Correct it to match the guards:
   - `can_delete`, `can_void`: no reconciled line **anywhere** on the entry (today: home line only — diverges from `assert_entry_removable`).
   - `can_edit_category`: false when a non-home line is reconciled (write_lines refuses dropping it).
@@ -195,14 +181,14 @@ edit: {
 Today the first failing entry aborts the batch with one message and no id, so the user cannot tell which of 80 rows to deselect.
 
 - `_plan` failures are collected, not raised one by one: `apply_edits_bulk` plans every entry, gathers `(entry_id, message)` pairs, and raises `BatchRefused(failures)` if any.
-- Response: `400 {error: "<first message>", refused: [{id, error}], refused_count}`. Same shape for `batch_delete`, `batch_status`, `batch_duplicate`, `batch_unreconcile`.
+- Response: `400 {error: "<first message>", refused: [{id, error}], refused_count}`. Same shape for `batch_delete`, `batch_status`, `batch_duplicate`.
 - Client: error line in the modal/bar reads "k of n can't take this change: <message>" with **Deselect them** (removes those ids and keeps the modal open) and highlights those rows.
 - Still all-or-nothing; nothing is written unless every row passes.
 
 ### 3.4 Bar
 
 - Extract the chrome of `BatchActionBar.jsx` (fixed bottom surface, summary strip, action row, clear ×) into `common/SelectionBar.jsx`. `BatchActionBar` keeps its buttons and props; its e2e tests address buttons by accessible name and must pass untouched.
-- New `transactions/TransactionsBatchBar.jsx`: Edit · Duplicate · Reconcile in … · Unreconcile in … · Void / Restore · Delete · Export · ×.
+- New `transactions/TransactionsBatchBar.jsx`: Edit · Duplicate · Void / Restore · Delete · Export · ×. No Reconcile / Unreconcile.
 - Availability from `edit.capabilities` across the selection: a button is enabled when **any** row can take the action, and the confirm step says how many will be refused; the server refuses the batch until they are deselected (§3.3).
 
 ### 3.5 Modal
@@ -225,9 +211,8 @@ Changes to `TransactionEditModal.jsx` in batch mode:
 | `POST transactions/batch_delete/` | collected refusals |
 | `POST transactions/batch_status/` | collected refusals; `BULK_VOID`/`BULK_RESTORE`; D1 |
 | `POST transactions/batch_duplicate/` | new → `{results: rows}` |
-| `POST transactions/batch_unreconcile/` `{ids, account_id}` | new → `{results: rows}` |
 
-New endpoints go into `apps/books/tests/test_isolation.py` (`WRITES`). `transactionsApi.js` gains `duplicate`, `unreconcile`.
+The new endpoint goes into `apps/books/tests/test_isolation.py` (`WRITES`). `transactionsApi.js` gains `duplicate`.
 
 ---
 
@@ -238,7 +223,6 @@ New endpoints go into `apps/books/tests/test_isolation.py` (`WRITES`). `transact
 | D1 | Voiding a bank-backed transaction leaves its feed row showing as categorized, while the entry counts toward nothing. | Void also **archives** the entry's feed rows (primary + mirrors); Restore unarchives them. The feed's transfer `resolve` already voids + archives together. Applies to single-row void too. |
 | D2 | Plaid rows: Transactions refuses a date change, the Bank Feed's `batch_edit` allows it; neither refuses an account move. | Refuse both on both pages: Plaid owns the date, amount and account of a Plaid row. Put the rule in `_check_bank_rules` and call it from `batch_edit`. |
 | D3 | Select-all scope. | Loaded rows only for Phases 1–3; "select all matching" in Phase 4 if asked for. |
-| D4 | Unreconcile a transfer reconciled on both sides. | Account-scoped (§2.9), never both sides implicitly. |
 
 ---
 
@@ -250,8 +234,8 @@ New endpoints go into `apps/books/tests/test_isolation.py` (`WRITES`). `transact
 **Phase 2 — selection, bar, edit, delete, void, export.**
 `useRowSelection`, `SelectionBar` extraction, `TransactionsBatchBar`, modal batch changes, summary strip, client CSV.
 
-**Phase 3 — duplicate, reconcile hand-off, unreconcile.**
-`duplicate_transaction`, `unreconcile_lines` (Bank Feed switched to it), two endpoints, bar buttons.
+**Phase 3 — duplicate.**
+`duplicate_transaction`, `batch_duplicate` endpoint, bar button.
 
 **Phase 4 (optional) — select all matching; server export of current filters.**
 
@@ -268,7 +252,6 @@ New endpoints go into `apps/books/tests/test_isolation.py` (`WRITES`). `transact
 - Delete: bank-backed → feed row uncategorized, mirrors gone; manual → entry gone; any reconciled line → refused.
 - Void/Restore: D1 archive/unarchive of feed rows; reconciled refused.
 - Duplicate: plain, split, bank-backed (new manual feed row + mirror), reconciliation adjustment refused; copy unreconciled.
-- Unreconcile: only `account_id`'s line; statement reads Changed; Bank Feed path unchanged via shared service.
 - Capabilities equal the guards: for each fixture shape, `capabilities_for` false ⇔ the writer refuses.
 - Isolation tables updated.
 
@@ -279,6 +262,6 @@ New endpoints go into `apps/books/tests/test_isolation.py` (`WRITES`). `transact
 - Mixed selection with a Plaid row → Date field explains and "Deselect them" works.
 - Delete mixed → confirm shows both counts; feed row appears in the Inbox uncategorized.
 - Void → Undo restores.
-- Reconcile → URL is `reconcile/<account>/?entries=…`.
+- Selecting reconciled rows shows no Reconcile / Unreconcile button.
 - Export → downloaded CSV has one line per split leg.
 - Existing `test_bank_feed.py` batch-bar tests pass untouched after the `SelectionBar` extraction.
