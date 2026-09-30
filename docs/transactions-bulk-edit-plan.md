@@ -8,6 +8,79 @@ Status: plan. Nothing here is built.
 
 ---
 
+## 0. Pre-step: one void state for a transaction and its bank rows
+
+Ships before any bulk-edit work (Phase 0). Everything after this section assumes it.
+
+### 0.1 The problem today
+
+Two independent flags mean "doesn't count":
+
+| | `JournalEntry.status == "void"` | `BankTransaction.is_archived` |
+|---|---|---|
+| Set by | Transactions page Void, `journal-entries/{id}/void_entry/`, reconciliation undo (adjustment entry), transfer review "resolve" | Bank Feed Archive, reconciliation undo, transfer review "resolve" |
+| Effect on balances | entry excluded | the linked entry excluded (`counted_entries()` subquery) |
+| Effect on the other flag | none | none |
+
+So a voided entry's bank row stays in the Inbox looking categorized, an archived row's entry stays `posted`, and two of the four writers already set both by hand.
+
+### 0.2 The invariant
+
+For every `BankTransaction` linked to a `JournalEntry`:
+
+> `row.is_void == (entry.status == "void")`
+
+This covers **every** row on the entry — the primary, a transfer's mirror, and each mirror of a split's transfer legs — so a transfer is void in both feeds or in neither.
+
+A row with **no** entry (uncategorized) has its own `is_void`: voiding a duplicate bank import that was never categorized is still needed. An entry with **no** row (manual, opening balance, YNAB tracking-account history) has only its status.
+
+### 0.3 Rename: `BankTransaction.is_archived` → `is_void`
+
+- `is_archived` → `is_void`, `archived_at` → `voided_at` (`RenameField`, no data copy).
+- The field is inherited from `apps.utils.models.BaseModel`. Django lets an abstract parent's field be removed in the child (`is_archived = None`, `archived_at = None`), so `BankTransaction` declares its own `is_void` / `voided_at` and removes the inherited pair. `BaseModel.archive()`, `restore()` and `is_active` read `is_archived`, so `BankTransaction` overrides them (`is_active` → `not is_void`; `archive()`/`restore()` raise, pointing at the voiding service) — the only current caller, reconciliation undo, moves to the service.
+- Other models keep `is_archived` (accounts, groups, goals — archiving those is real).
+- **Transactions are not archived either.** `JournalEntry` also inherits `is_archived`/`archived_at`, and `JournalLine` declares its own `is_archived`; nothing reads any of the three (only `apps.portability` carries them). Remove them the same way, so "void" is the only word for "doesn't count" on either model.
+- Scope of the rename (every `BankTransaction` read of `is_archived`): `bank_feed` views (feed-account activity, batch archive/unarchive/delete, transfer resolve), serializers, admin, `context_processors.inbox_count`, `services/transfer_detection`, `services/similar_transactions`, `reconciliation/services/candidates` + `session.undo`, `monthly_review/services/health` + `review`, `portability` (schema/read/export/apply). Frontend: `bank_feed.js`, `LineApp.jsx`, `LineTable.jsx`, `BatchActionBar.jsx`, `CategorizeMode.jsx`. E2E: `factories.py`, `pages/bank_feed.py`, `tests/test_books.py`.
+
+### 0.4 One writer
+
+New `apps/journal/services/voiding.py`, the only code that changes void state:
+
+- `void(entries=(), rows=())` / `restore(entries=(), rows=())`. A row resolves to its entry; an entry expands to all its rows. Uncategorized rows are handled alone.
+- Guard (unchanged rule, now applied to both): refused if any line on the entry is reconciled (`assert_entry_voidable`). Collected per row (§3.3), all-or-nothing.
+- Per-instance `save()` on entries (so `AuditLog` records the status change); rows in the same `transaction.atomic`.
+- Callers switched to it: `simple_edit.set_status`, `JournalEntryViewSet.void_entry`, `BankFeedViewSet.batch_archive`/`batch_unarchive`, `transfer_resolve`, `reconciliation.services.session.undo`.
+
+**Backstop in the models**, so a caller that skips the service cannot drift:
+
+- `BankTransaction.save()`: when linked, `is_void` is copied from the entry. For a linked row the entry's status is the truth and the row's flag is a stored copy (kept stored, not derived, because a dozen feed queries filter on it).
+- `JournalEntry.save()`: when `status` changes, `bank_feed_transactions` are updated to match.
+- Linking rules: categorizing a void row is refused ("Restore it first"); a void entry cannot be edited (already true in `simple_edit`, added to the feed's `update`/`batch_edit`/`categorize`). Unlinking (de-categorize, delete) leaves the row's flag as it was.
+- `QuerySet.update()` and `bulk_create` bypass `save()`. A structure test (like `apps/books/tests/test_structure.py`'s AST scan) refuses `.update(status=…)` on `JournalEntry` and `.update(is_void=…)` on `BankTransaction` outside `voiding.py`; the bulk writers (`apps.ynab_import` apply, `apps.portability` apply) assert the invariant over what they wrote before committing.
+
+### 0.5 Data migration
+
+Bring existing data into line, then rely on the invariant:
+
+1. Row archived, entry `posted` → entry `void`, every row on it void.
+2. Entry `void`, a row not archived → every row on it void.
+3. Transfer legs that disagree → all void.
+
+**Balance-neutral by construction:** `counted_entries()` already excludes an entry that is void *or* behind an archived row, so every entry this touches was already out of every balance. The migration asserts it: net worth and each account's balance before = after, or it aborts. It prints how many entries/rows changed and how many carry reconciled lines (already excluded; nothing moves). Reverse: rename back; the status changes stay (still excluded under the old rule).
+
+A `manage.py void_consistency [--book slug] [--fix]` command runs the same check on demand and in CI fixtures.
+
+### 0.6 Consequences
+
+- `counted_entries()` becomes `~Q(status=void)`; the `BankTransaction` subquery leaves every balance, report and budget query.
+- Bank Feed: the **Archived** view becomes **Voided** (`filter-voided`), Archive/Unarchive become **Void/Restore**, endpoints `batch_void`/`batch_restore` (renamed; the api-client is patched/regenerated). The old reconciled rule "silently skip a plain reconciled row" becomes a refusal naming it.
+- Transfer review "resolve" becomes one `void()` call.
+- Audit: new `AuditEvent` types `BULK_VOID`/`BULK_RESTORE` (audit migration); `BULK_ARCHIVE`/`BULK_UNARCHIVE` stay as choices for history.
+- Portability format **v4**: `feed_is_archived`/`feed_archived_at` → `feed_is_void`/`feed_voided_at`; `entry_is_archived` and the line `is_archived` column dropped. `upgrade_3_to_4` renames the columns and applies 0.5's rules to the imported rows, so an old archive lands consistent; the manifest checksums still match because the rules are balance-neutral.
+- Tests: the invariant holds after every write path (categorize, decategorize, split, transfer mirror create/move/remove, void, restore, resolve, reconciliation undo, CSV/Plaid/YNAB/portability import).
+
+---
+
 ## 1. Starting point
 
 ### 1.1 What the Bank Feed has
@@ -46,7 +119,7 @@ Missing: a selection, a batch bar, the data a bar needs per row, and the actions
 | Row | one `BankTransaction` in one account | one `JournalEntry`, across all accounts |
 | Uncategorized rows | yes (no entry) | no (no entry → not on the ledger) |
 | Transfer | two rows (primary + mirror), one entry | one row |
-| Void / archived | archived view; void entries still listed | both excluded by `counted_entries()` |
+| Void (after §0) | Voided view per account, incl. uncategorized rows | Voided view (§2.12) |
 | Loading | whole account client-side | 200/page, infinite scroll, server-side filters |
 | "Account" | the feed being viewed | `resolve_sides()` home line, per row |
 
@@ -105,14 +178,14 @@ Not offered in batch. Amounts and legs are per-transaction; the Bank Feed has no
 - **Bank Feed's permanent delete** (deletes the `BankTransaction`) is not ported. The ledger page does not destroy what the bank reported.
 - No undo. Audit: per-line `AuditLog` rows fire; add `BULK_DELETE` with `scope: transactions` (exists for n > 1).
 
-### 2.7 Void / Restore (the ledger's Archive)
+### 2.7 Void
 
-The Bank Feed's Archive has no direct counterpart: archived entries are already invisible here, so **Unarchive is unreachable** and **Archive would duplicate Void** (both remove the entry from every balance).
+After §0, Void on this page and Void in the Bank Feed are the same operation (`voiding.void`).
 
-- **Void is the batch "exclude" action.** `set_status`, refused for any reconciled line (`assert_entry_voidable`).
-- **Bank-backed rows.** Voiding leaves the feed row linked to a void entry; the feed does not filter void entries, so the Inbox shows it as categorized and counted-looking while it counts toward nothing. → D1.
-- **List behaviour.** `rows_for` returns voided rows and `absorb` patches them in place, so voided rows stay on screen with a Void badge until the next refetch. Keep that (it is what makes Restore reachable) and put **Undo** on the toast (`Toast` has an `action` slot) → `batch_status {status: posted}`.
-- **Audit.** `batch_status` logs no bulk event. Add `BULK_VOID` / `BULK_RESTORE` (audit migration for the choices).
+- Refused when any line on the entry is reconciled (`assert_entry_voidable`); collected per row (§3.3).
+- **Bank-backed rows** go to the Bank Feed's Voided view with the entry, in every feed they appear in (transfer mirrors, split mirrors). The confirm dialog says so: "m of these came from your bank and will leave the Inbox too."
+- **List behaviour.** Voided rows leave the active list at once (they belong to the Voided view, §2.12), and the Voided count rises. Toast with **Undo** (`Toast` `action` slot) → `restore`.
+- Audit: `BULK_VOID` with `scope: transactions`.
 
 ### 2.8 Reconcile / Unreconcile
 
@@ -140,6 +213,21 @@ Bank Feed: copies the `BankTransaction` **uncategorized, without an entry** (lan
 
 - In / Out / Net only mean something relative to one account (a transfer is both). → Show `k selected · Total $X` always; show In / Out / Net only when every selected row has the same home account, computed from that account's side.
 - Drop the "reconciled balance → new" preview: there is no reconcile action here.
+
+### 2.12 Voided view and Restore
+
+Today a voided transaction is unreachable once the page reloads: `TransactionViewSet` lists only `counted_entries()`, so Restore works only on a row still on screen.
+
+- **Server.** `GET transactions/?view=voided` swaps the base queryset to `status=void`. Search, date range, column filters, sort and `facets/` all apply unchanged, scoped to the view. After §0 the two views partition every entry: each is in exactly one.
+- **UI.** A **Voided** toggle beside the search box with a count badge (the list response's `count` for `view=voided`, fetched once on load and adjusted locally after void/restore). Switching views clears the selection. The Status column is hidden in the Voided view (every row is void).
+- **Actions in the Voided view:** Restore and Export only. Edit, Duplicate, Delete and Void are hidden; clicking a row opens the modal read-only (Details + History) with a Restore button.
+- **Restore** = `voiding.restore`: entry → `posted`, every linked row un-voided, so bank-backed rows return to their feeds (categorized, so the Inbox badge does not move). Balances, budget actuals and Unassigned move immediately. Rows leave the Voided list; toast with **Undo** → `void`.
+- **Implications of restoring:**
+  - A transfer duplicate voided by transfer review comes back and is double-counted again; `find_transfer_candidates` will suggest it again (it skips only void rows and dismissed pairs). The confirm dialog flags rows whose void came from transfer review (audit event `TRANSFER_DUP_RESOLVED` on the entry's row).
+  - A reconciliation adjustment voided by undoing its statement comes back as an unmatched adjustment. Refused: `SOURCE_RECONCILIATION` entries are restored only by re-finishing the statement.
+  - No reconciled-line guard is needed: a void entry has no reconciled line (void refuses them), except legacy data from §0.5, whose restore puts those lines back where they were before archiving.
+- **Not in this view:** uncategorized voided bank rows. They have no entry, so they are not transactions; they stay in the Bank Feed's per-account Voided view, where Restore returns them to the Inbox.
+- Audit: `BULK_RESTORE` with `scope: transactions`.
 
 ---
 
@@ -188,7 +276,7 @@ Today the first failing entry aborts the batch with one message and no id, so th
 ### 3.4 Bar
 
 - Extract the chrome of `BatchActionBar.jsx` (fixed bottom surface, summary strip, action row, clear ×) into `common/SelectionBar.jsx`. `BatchActionBar` keeps its buttons and props; its e2e tests address buttons by accessible name and must pass untouched.
-- New `transactions/TransactionsBatchBar.jsx`: Edit · Duplicate · Void / Restore · Delete · Export · ×. No Reconcile / Unreconcile.
+- New `transactions/TransactionsBatchBar.jsx`. Active view: Edit · Duplicate · Void · Delete · Export · ×. Voided view: Restore · Export · ×. No Reconcile / Unreconcile.
 - Availability from `edit.capabilities` across the selection: a button is enabled when **any** row can take the action, and the confirm step says how many will be refused; the server refuses the batch until they are deselected (§3.3).
 
 ### 3.5 Modal
@@ -206,10 +294,11 @@ Changes to `TransactionEditModal.jsx` in batch mode:
 
 | Endpoint | New / changed |
 |---|---|
-| `GET transactions/` | rows gain `edit` block |
+| `GET transactions/` | rows gain `edit` block; `?view=voided` |
+| `GET transactions/facets/` | honours `view` |
 | `PATCH transactions/edit/` | collected refusals; `max_length` |
 | `POST transactions/batch_delete/` | collected refusals |
-| `POST transactions/batch_status/` | collected refusals; `BULK_VOID`/`BULK_RESTORE`; D1 |
+| `POST transactions/batch_status/` | calls `voiding.void`/`restore`; collected refusals; `BULK_VOID`/`BULK_RESTORE` |
 | `POST transactions/batch_duplicate/` | new → `{results: rows}` |
 
 The new endpoint goes into `apps/books/tests/test_isolation.py` (`WRITES`). `transactionsApi.js` gains `duplicate`.
@@ -220,7 +309,7 @@ The new endpoint goes into `apps/books/tests/test_isolation.py` (`WRITES`). `tra
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | Voiding a bank-backed transaction leaves its feed row showing as categorized, while the entry counts toward nothing. | Void also **archives** the entry's feed rows (primary + mirrors); Restore unarchives them. The feed's transfer `resolve` already voids + archives together. Applies to single-row void too. |
+| D1 | ~~Voiding a bank-backed transaction leaves its feed row looking categorized.~~ | **Decided:** §0 — one void state for an entry and its rows. |
 | D2 | Plaid rows: Transactions refuses a date change, the Bank Feed's `batch_edit` allows it; neither refuses an account move. | Refuse both on both pages: Plaid owns the date, amount and account of a Plaid row. Put the rule in `_check_bank_rules` and call it from `batch_edit`. |
 | D3 | Select-all scope. | Loaded rows only for Phases 1–3; "select all matching" in Phase 4 if asked for. |
 
@@ -228,11 +317,14 @@ The new endpoint goes into `apps/books/tests/test_isolation.py` (`WRITES`). `tra
 
 ## 5. Phases
 
-**Phase 1 — rules and row data (backend only).**
-`capabilities_for` shared + corrected; `edit` block on rows; collected refusals (`BatchRefused`); self-transfer check (both pages); D1, D2; `MAX_BATCH_IDS`; audit event types + migration. Tests first for each divergence (they fail on `develop`).
+**Phase 0 — one void state (§0).**
+Rename + field removals + migrations (schema, then the §0.5 data migration with its balance assertion); `voiding.py` and the model backstops; every caller switched; `counted_entries()` simplified; Bank Feed Archived → Voided; portability v4; `void_consistency` command; invariant tests. Ships on its own; the Bank Feed is the only UI that changes.
 
-**Phase 2 — selection, bar, edit, delete, void, export.**
-`useRowSelection`, `SelectionBar` extraction, `TransactionsBatchBar`, modal batch changes, summary strip, client CSV.
+**Phase 1 — rules and row data (backend only).**
+`capabilities_for` shared + corrected; `edit` block on rows; collected refusals (`BatchRefused`); self-transfer check (both pages); D2; `MAX_BATCH_IDS`; `?view=voided` on list + facets. Tests first for each divergence (they fail on `develop`).
+
+**Phase 2 — selection, bar, edit, delete, void, voided view + restore, export.**
+`useRowSelection`, `SelectionBar` extraction, `TransactionsBatchBar`, modal batch changes and read-only void mode, Voided toggle, summary strip, client CSV.
 
 **Phase 3 — duplicate.**
 `duplicate_transaction`, `batch_duplicate` endpoint, bar button.
@@ -243,6 +335,18 @@ The new endpoint goes into `apps/books/tests/test_isolation.py` (`WRITES`). `tra
 
 ## 6. Tests
 
+**Phase 0** (`apps/journal/tests/test_voiding.py`):
+
+- Void an entry → every linked row void (plain, transfer primary + mirror, split + its transfer-leg mirrors); restore reverses all of it.
+- Void a row → its entry and sibling rows void; void an uncategorized row → only the row.
+- Reconciled line anywhere → refused, nothing written.
+- `row.save()` with a flag that disagrees with its entry → corrected; `entry.save()` with a new status → rows follow.
+- Categorizing a void row refused; editing a void entry refused from the feed and the Transactions page.
+- Data migration: each inconsistent shape fixed; per-account balances and net worth identical before/after.
+- Invariant holds after each write path listed in §0.6.
+- Portability: v3 archive with archived rows imports as v4 with consistent void state; checksums pass.
+- Structure test: no `.update(status=…)` / `.update(is_void=…)` outside `voiding.py`.
+
 **Backend** (`apps/journal/tests/`, `TestCase` + `setUpTestData`):
 
 - Each action: happy path on 2+ entries; all-or-nothing with one refusable row (nothing written; `refused` names it); another book's id → refused as missing.
@@ -250,7 +354,8 @@ The new endpoint goes into `apps/books/tests/test_isolation.py` (`WRITES`). `tra
 - Account: self-transfer refused (both pages); bank-backed → non-feed target refused; `normal=False` refused in batch.
 - Category: split without `remove_split` refused, with it collapsed; to-feed-account creates one mirror per entry; off a transfer with a reconciled counterpart refused.
 - Delete: bank-backed → feed row uncategorized, mirrors gone; manual → entry gone; any reconciled line → refused.
-- Void/Restore: D1 archive/unarchive of feed rows; reconciled refused.
+- Void/Restore via `batch_status`: feed rows follow; reconciled refused; restore of a `SOURCE_RECONCILIATION` entry refused.
+- `?view=voided`: returns only void entries; filters and facets scoped to it; another book's void entries never listed.
 - Duplicate: plain, split, bank-backed (new manual feed row + mirror), reconciliation adjustment refused; copy unreconciled.
 - Capabilities equal the guards: for each fixture shape, `capabilities_for` false ⇔ the writer refuses.
 - Isolation tables updated.
@@ -261,7 +366,9 @@ The new endpoint goes into `apps/books/tests/test_isolation.py` (`WRITES`). `tra
 - Bulk category on 3 rows → rows patched in place.
 - Mixed selection with a Plaid row → Date field explains and "Deselect them" works.
 - Delete mixed → confirm shows both counts; feed row appears in the Inbox uncategorized.
-- Void → Undo restores.
+- Void → row leaves the list, Voided count +1, Undo restores.
+- Voided view: toggle shows the row; Restore returns it to the active list and its bank row to the Bank Feed.
+- Bank Feed: Void a row → its transaction is in the Transactions page's Voided view.
 - Selecting reconciled rows shows no Reconcile / Unreconcile button.
 - Export → downloaded CSV has one line per split leg.
 - Existing `test_bank_feed.py` batch-bar tests pass untouched after the `SelectionBar` extraction.
