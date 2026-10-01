@@ -413,12 +413,6 @@ class GoalService:
             qs = qs.filter(closed_at__isnull=not closed)
         return qs.with_progress(month).select_related("account")
 
-    def get_total_saved(self):
-        """Get the total amount allocated across all active goals."""
-        return GoalAllocation.objects.filter(book=self.book, goal__is_archived=False).aggregate(total=Sum("amount"))[
-            "total"
-        ] or Decimal("0")
-
     def get_goal_summary(self, month, closed=False):
         """Get summary data for the goals page: the goals plus their totals."""
         goals = list(self.get_goals_with_progress(month, closed=closed))
@@ -584,6 +578,66 @@ class GoalService:
         month = month.replace(day=1)
         self.add_to_allocation(goal, month, -amount)
         return BudgetService(self.book).raise_budget(category, month, amount)
+
+
+def goal_monthly(book, goals, start=None, end=None):
+    """
+    Each goal's month-by-month figures: {goal id: {month: {...}}} with
+
+    - assigned: manual allocations (`GoalAllocation`; withdrawals negative)
+    - linked: what linked accounts brought in (starting balances, flows)
+    - saved: assigned + linked -- the month's share of `allocated`
+    - spent: lines on the goal's own account plus linked spending
+
+    Months from `start` (inclusive) to `end` (exclusive), first-of-month keys.
+    Every per-month read of goal allocations goes through here, so a month's
+    "saved" can never leave out what a linked account brought in.
+    """
+    from django.db.models import F
+    from django.db.models.functions import TruncMonth
+
+    from .linked import monthly_linked
+
+    goals = list(goals)
+    goal_ids = [g.pk for g in goals]
+    by_account = {g.account_id: g.pk for g in goals if g.account_id}
+    zero = Decimal("0")
+    result = {pk: {} for pk in goal_ids}
+
+    def cell(goal_id, month):
+        month = month.date() if hasattr(month, "date") else month
+        return result[goal_id].setdefault(month, {"assigned": zero, "linked": zero, "saved": zero, "spent": zero})
+
+    allocations = GoalAllocation.objects.filter(book=book, goal_id__in=goal_ids)
+    if start is not None:
+        allocations = allocations.filter(month__gte=start.replace(day=1))
+    if end is not None:
+        allocations = allocations.filter(month__lt=end)
+    for row in allocations.values("goal_id", "month").annotate(total=Sum("amount")):
+        cell(row["goal_id"], row["month"])["assigned"] += row["total"]
+
+    lines = _active_lines().filter(book=book, account_id__in=list(by_account))
+    if start is not None:
+        lines = lines.filter(journal_entry__entry_date__gte=start)
+    if end is not None:
+        lines = lines.filter(journal_entry__entry_date__lt=end)
+    for row in (
+        lines.annotate(month=TruncMonth("journal_entry__entry_date"))
+        .values("account_id", "month")
+        .annotate(total=Sum(F("dr_amount") - F("cr_amount")))
+    ):
+        cell(by_account[row["account_id"]], row["month"])["spent"] += row["total"]
+
+    for goal_id, months in monthly_linked(goal_ids, start, end).items():
+        for month, values in months.items():
+            target = cell(goal_id, month)
+            target["linked"] += values["linked"]
+            target["spent"] += values["spent"]
+
+    for months in result.values():
+        for values in months.values():
+            values["saved"] = values["assigned"] + values["linked"]
+    return result
 
 
 def goal_left_by_account(book, month=None):

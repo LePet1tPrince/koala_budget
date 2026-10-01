@@ -23,7 +23,6 @@ from django.utils.translation import gettext as _
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_LIABILITY
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.reports.services import ReportService
 
@@ -96,18 +95,18 @@ def _stream_series(book, window_start, month_end):
 
 
 def _goal_series(book, window_start, month_end):
-    rows = (
-        GoalAllocation.objects.filter(book=book, goal__is_archived=False, month__range=(window_start, month_end))
-        .values("goal_id", "goal__name", "month")
-        .annotate(total=Sum("amount"))
-    )
-    goals = {}
-    for row in rows:
-        entry = goals.setdefault(
-            row["goal_id"], {"goal": {"id": row["goal_id"], "name": row["goal__name"]}, "by_month": {}}
-        )
-        entry["by_month"][row["month"]] = row["total"]
-    return goals
+    from apps.budget.models import Goal, month_after
+    from apps.budget.services import goal_monthly
+
+    goals = list(Goal.objects.filter(book=book, is_archived=False))
+    monthly = goal_monthly(book, goals, window_start, month_after(month_end))
+    series = {}
+    for goal in goals:
+        months = monthly.get(goal.pk) or {}
+        by_month = {m: v["saved"] for m, v in months.items() if v["saved"]}
+        if by_month:
+            series[goal.pk] = {"goal": {"id": goal.pk, "name": goal.name}, "by_month": by_month}
+    return series
 
 
 def _saved_by_month(goals: dict, months: list) -> dict:
@@ -390,11 +389,14 @@ def _goal_spending(book, month: date) -> list:
     aside, never overspending. Each: name, amount, months_funded (months with a
     positive allocation up to this one).
     """
-    from apps.budget.models import Goal, GoalAllocation
+    from apps.budget.models import Goal, month_after
+    from apps.budget.services import goal_monthly
 
     rows = []
-    for goal in Goal.objects.filter(book=book).with_progress(month).exclude(spent_this_month=0):
-        months_funded = GoalAllocation.objects.filter(goal=goal, month__lte=month, amount__gt=0).count()
+    goals = list(Goal.objects.filter(book=book).with_progress(month).exclude(spent_this_month=0))
+    monthly = goal_monthly(book, goals, end=month_after(month))
+    for goal in goals:
+        months_funded = sum(1 for v in monthly[goal.pk].values() if v["saved"] > 0)
         rows.append({"name": goal.name, "amount": goal.spent_this_month, "months_funded": months_funded})
     rows.sort(key=lambda r: r["amount"], reverse=True)
     return rows

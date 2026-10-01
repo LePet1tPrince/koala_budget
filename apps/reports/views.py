@@ -629,34 +629,20 @@ def goal_progress(request, team_slug, book_slug):
     Goal Progress report: cumulative allocations per goal over time, with a
     projected path to each goal's target, and what was spent from each goal.
     """
-    from django.db.models import F, Sum
-    from django.db.models.functions import TruncMonth
-
-    from apps.budget.models import Goal, GoalAllocation
-    from apps.journal.models import JournalLine, counted_entries
+    from apps.budget.models import Goal
+    from apps.budget.services import goal_monthly
 
     goals = list(Goal.objects.filter(book=request.book).active().with_progress())
 
-    spent = {}  # account id -> {month: Decimal}
-    for row in (
-        JournalLine.objects.filter(book=request.book, account__goal__in=goals)
-        .filter(counted_entries("journal_entry__"))
-        .annotate(month=TruncMonth("journal_entry__entry_date"))
-        .values("account_id", "month")
-        .annotate(total=Sum(F("dr_amount") - F("cr_amount")))
-    ):
-        month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
-        spent.setdefault(row["account_id"], {})[month] = row["total"]
-
-    allocation_rows = (
-        GoalAllocation.objects.filter(book=request.book, goal__in=goals)
-        .values("goal_id", "month")
-        .annotate(total=Sum("amount"))
-        .order_by("month")
-    )
-    allocations = {}  # goal id -> {month: Decimal}
-    for row in allocation_rows:
-        allocations.setdefault(row["goal_id"], {})[row["month"]] = row["total"]
+    # goal id -> {month: Decimal}: what each goal was given (assigned + from
+    # linked accounts) and what was spent from it.
+    allocations, spent = {}, {}
+    for goal_id, months in goal_monthly(request.book, goals).items():
+        for month, values in sorted(months.items()):
+            if values["saved"]:
+                allocations.setdefault(goal_id, {})[month] = values["saved"]
+            if values["spent"]:
+                spent.setdefault(goal_id, {})[month] = values["spent"]
 
     today_month = date.today().replace(day=1)
 
@@ -697,7 +683,7 @@ def goal_progress(request, team_slug, book_slug):
                 projection[month_index[target_month]] = float(goal.target_amount)
 
         # Cumulative spending from the goal, only for goals that have any.
-        goal_spent = spent.get(goal.account_id, {})
+        goal_spent = spent.get(goal.pk, {})
         spent_series = None
         if goal_spent:
             spent_series = []

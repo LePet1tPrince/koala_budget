@@ -1,6 +1,5 @@
 import json
 import math
-from collections import defaultdict
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import urlencode
@@ -32,6 +31,7 @@ from .services import (
     GoalService,
     NetWorthService,
     budgeted_account_types,
+    goal_monthly,
     picker_accounts_data,
 )
 from .unassigned import OVER_ASSIGNED_LABEL, UNASSIGNED_LABEL, compute_unassigned, pill_context
@@ -840,12 +840,12 @@ def goals_list_view(request, team_slug, book_slug):
     goals = summary["goals"]
     closed_count = Goal.objects.filter(book=request.book, is_archived=False, closed_at__isnull=False).count()
 
-    # Every allocation for these goals in one query; used for streaks and pace
-    amounts_by_goal = defaultdict(dict)
-    for goal_id, alloc_month, amount in GoalAllocation.objects.filter(book=request.book, goal__in=goals).values_list(
-        "goal_id", "month", "amount"
-    ):
-        amounts_by_goal[goal_id][alloc_month] = amount
+    # What each goal was given per month (assigned + from linked accounts);
+    # used for streaks and pace.
+    amounts_by_goal = {
+        goal_id: {m: values["saved"] for m, values in months.items()}
+        for goal_id, months in goal_monthly(request.book, goals).items()
+    }
 
     goal_items = []
     any_streak_3 = False

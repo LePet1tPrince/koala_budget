@@ -426,3 +426,49 @@ class SetLinksTest(LinkedFixture):
         self.assertEqual(set(accounts), {"Checking", "Savings", "Savings Two", "Vault"})
         self.assertEqual(accounts["Vault"].feeds_goal_name, "Trip")
         self.assertIsNone(accounts["Savings"].feeds_goal_id)
+
+
+class GoalMonthlyTest(LinkedFixture):
+    def test_saved_and_spent_include_linked(self):
+        from .services import goal_monthly
+
+        self.link()
+        self.set_outflow(Goal.OUTFLOW_SPEND)
+        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=SEPT, amount=D("50"))
+        self.post(date(2026, 9, 5), self.savings, self.checking, "300")
+        self.post(date(2026, 9, 6), self.goal.account, self.checking, "20")
+        self.post(date(2026, 10, 6), self.checking, self.savings, "40")
+        result = goal_monthly(self.book, [self.goal])[self.goal.pk]
+        self.assertEqual(result[SEPT], {"assigned": D("50"), "linked": D("300"), "saved": D("350"), "spent": D("20")})
+        self.assertEqual(result[OCT]["spent"], D("40"))
+
+
+class AllocationReadsTest(TestCase):
+    """
+    Per-month goal figures go through `goal_monthly` (or `with_progress`), never a
+    direct `GoalAllocation` read, or a month's "saved" would leave out what a
+    linked account brought in. Writers and raw data exports are the exceptions.
+    """
+
+    ALLOWED = {
+        "apps/budget/models.py",  # goal_assigned_subquery
+        "apps/budget/services.py",  # writers + goal_monthly
+        "apps/budget/views.py",  # assign/withdraw writers
+        "apps/ynab_import/services/apply.py",  # bulk import
+        "apps/portability/services/apply.py",  # import
+        "apps/portability/services/export.py",  # raw export
+        "apps/users/services.py",  # raw user data export
+    }
+
+    def test_no_new_direct_reads(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        offenders = []
+        for path in (root / "apps").rglob("*.py"):
+            rel = path.relative_to(root).as_posix()
+            if "test" in path.name or "/tests/" in rel or rel in self.ALLOWED:
+                continue
+            if "GoalAllocation.objects" in path.read_text():
+                offenders.append(rel)
+        self.assertEqual(offenders, [])
