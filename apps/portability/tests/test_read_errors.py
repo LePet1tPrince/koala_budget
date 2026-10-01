@@ -137,7 +137,8 @@ class VersionTests(SimpleTestCase):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
             zf_out.writestr("manifest.json", json.dumps(manifest))
-            zf_out.writestr("accounts.csv", _drop_column(zf_in.read("accounts.csv"), "goal_closed_at"))
+            accounts_v1 = _drop_column(zf_in.read("accounts.csv"), "goal_closed_at")
+            zf_out.writestr("accounts.csv", _drop_column(accounts_v1, "hidden_from_budget"))
             zf_out.writestr("journal.csv", (journal_v1 + "\r\n").encode("utf-8-sig"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
 

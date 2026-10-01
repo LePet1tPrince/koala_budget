@@ -89,3 +89,37 @@ def test_new_goal_button_navigates_to_form(authenticated_page: Page, live_server
 
     assert f"{team.default_book.base_url}budget/goals/new/" in authenticated_page.url
     assert authenticated_page.locator("[data-testid='goal-form']").is_visible()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_hide_and_unhide_a_budget_category(authenticated_page: Page, live_server, team):
+    """A category hidden from the budget folds into a collapsed group and comes back with Unhide.
+
+    Requires the Vite dev server (the hide/unhide buttons re-render the month in place).
+    """
+    from playwright.sync_api import expect
+
+    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, Account
+
+    group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
+    gym = AccountFactory(team=team, account_group=group, name="Zed Old Gym")
+    AccountFactory(team=team, account_group=group, name="Zed Groceries")
+
+    budget = BudgetPage(authenticated_page, live_server.url)
+    budget.goto_budget(team.default_book)
+    budget.hide_category("Zed Old Gym")
+
+    expect(budget.budget_row("Zed Old Gym")).to_have_count(0)
+    expect(budget.hidden_row("Zed Old Gym")).to_be_hidden()
+    expect(budget.hidden_toggle()).to_have_text("1 hidden category")
+    gym.refresh_from_db()
+    assert gym.hidden_from_budget
+
+    budget.hidden_toggle().click()
+    expect(budget.hidden_toggle()).to_have_attribute("aria-expanded", "true")
+    expect(budget.hidden_row("Zed Old Gym")).to_be_visible()
+
+    budget.unhide_category("Zed Old Gym")
+    expect(budget.hidden_toggle()).to_have_count(0)
+    expect(budget.budget_row("Zed Groceries")).to_be_visible()
+    assert not Account.objects.get(pk=gym.pk).hidden_from_budget

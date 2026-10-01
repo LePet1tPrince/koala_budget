@@ -79,7 +79,9 @@ def _budget_figures(book, month):
     # Rows are created lazily on first save; a category without one shows zero.
     existing_budgets = {b.category_id: b for b in Budget.objects.filter(book=book, month=month)}
     actuals_map = service.get_actuals_by_category(month)
-    available_map = service.get_available_by_category(month, categories)
+    # This month's balances and last month's (what rolled in) from one walk of
+    # the budget history.
+    available_map, prev_available_map = service.get_available_with_previous(month, categories)
 
     # Income section first, then expenses; groups within a section keep the
     # category ordering (board sort order, then group/account name).
@@ -88,17 +90,26 @@ def _budget_figures(book, month):
         "expense": {"key": "expense", "label": _("Expenses"), "groups": [], "totals": _zero_totals()},
     }
 
+    # A hidden category is a display choice, not an accounting one: it leaves its
+    # account group for a collapsed "Hidden" group at the end of its section, and
+    # its figures keep counting in the section totals, the sidebar and Unassigned.
+    hidden_groups = {}
+
     for category in categories:
         budget = existing_budgets.get(category.pk)
         budgeted = budget.budget_amount if budget else Decimal("0")
         actual = actuals_map.get(category.pk, Decimal("0"))
         available = available_map.get(category.pk, Decimal("0"))
 
-        section = sections["income" if category.account_group.account_type == "income" else "expense"]
-        group_name = category.account_group.name
-        if not section["groups"] or section["groups"][-1]["name"] != group_name:
-            section["groups"].append({"name": group_name, "rows": [], "subtotals": _zero_totals()})
-        group = section["groups"][-1]
+        section_key = "income" if category.account_group.account_type == "income" else "expense"
+        section = sections[section_key]
+        if category.hidden_from_budget:
+            group = hidden_groups.setdefault(section_key, _hidden_group())
+        else:
+            group_name = category.account_group.name
+            if not section["groups"] or section["groups"][-1]["name"] != group_name:
+                section["groups"].append({"name": group_name, "rows": [], "subtotals": _zero_totals()})
+            group = section["groups"][-1]
 
         # The input has no visible label — the category is its row header.
         form = BudgetAmountForm(instance=budget)
@@ -119,6 +130,11 @@ def _budget_figures(book, month):
             group["subtotals"][field] += amount
             section["totals"][field] += amount
 
+    for section_key, group in hidden_groups.items():
+        group["overspent"] = sum(1 for row in group["rows"] if row["available"] < 0)
+        sections[section_key]["groups"].append(group)
+        sections[section_key]["hidden_count"] = len(group["rows"])
+
     section_list = [sections["income"], sections["expense"]]
 
     # Grand totals across both sections (sidebar summary)
@@ -127,8 +143,6 @@ def _budget_figures(book, month):
         for field in ("budgeted", "actual", "available")
     }
 
-    prev_month = month - relativedelta(months=1)
-    prev_available_map = service.get_available_by_category(prev_month, categories)
     leftover_last_month = sum(prev_available_map.values(), Decimal("0"))
 
     return {
@@ -144,6 +158,10 @@ def _budget_figures(book, month):
         },
         "net_worth_card": NetWorthService(book).get_net_worth_card_data(month, categories),
     }
+
+
+def _hidden_group():
+    return {"name": _("Hidden"), "hidden": True, "rows": [], "subtotals": _zero_totals()}
 
 
 def _meter(account_type, budgeted, actual, available):
@@ -263,44 +281,39 @@ def budget_month_view(request, team_slug, book_slug):
             return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}")
         messages.error(request, _("Could not save budget amount: %(errors)s") % {"errors": form.errors.as_text()})
 
-    figures = _budget_figures(request.book, month)
-
+    context = _budget_swap_context(request.book, month)
     # Every account type is a valid "Move to..." target in the Actual popup (the
     # client groups them by type); moving onto a feed account makes it a transfer.
     # System accounts (reconciliation adjustments) are bookkeeping, not destinations.
-    all_accounts_data = picker_accounts_data(request.book)
+    context["all_accounts"] = picker_accounts_data(request.book)
+    context["api_urls"] = {"lines": f"/a/{team_slug}/{book_slug}/journal/api/lines/"}
+    context["active_tab"] = "budget"
+    context["page_title"] = f"Budget | {book_display_name(request.book)}"
+    return render(request, "budget/budget_home.html", context)
 
-    # API URLs for React
-    api_urls = {
-        "lines": f"/a/{team_slug}/{book_slug}/journal/api/lines/",
+
+def _budget_swap_context(book, month):
+    """What `budget/components/budget_swap.html` renders: the month's figures and
+    the URLs its forms post to. The month view adds the page chrome around it."""
+    figures = _budget_figures(book, month)
+    return {
+        "month": month,
+        "end_date": month + relativedelta(months=1, days=-1),
+        "sections": figures["sections"],
+        "has_categories": figures["has_categories"],
+        "grand_totals": figures["grand_totals"],
+        "net_worth_card": figures["net_worth_card"],
+        "sidebar_summary": figures["sidebar_summary"],
+        "prev_month": month - relativedelta(months=1),
+        "next_month": month + relativedelta(months=1),
+        "save_amount_url": reverse("budget:budget_save_amount", args=book.url_args),
+        "cover_url": reverse("budget:budget_cover", args=book.url_args),
+        # Goals an overspent category can be covered from (emergency fund, ...), besides Unassigned.
+        "cover_goals": [
+            {"id": goal.pk, "name": goal.name, "left": f"{goal.left:.2f}"}
+            for goal in GoalService(book).get_goals_with_progress(month)
+        ],
     }
-
-    return render(
-        request,
-        "budget/budget_home.html",
-        {
-            "active_tab": "budget",
-            "page_title": f"Budget | {book_display_name(request.book)}",
-            "month": month,
-            "end_date": month + relativedelta(months=1, days=-1),
-            "sections": figures["sections"],
-            "has_categories": figures["has_categories"],
-            "grand_totals": figures["grand_totals"],
-            "net_worth_card": figures["net_worth_card"],
-            "sidebar_summary": figures["sidebar_summary"],
-            "prev_month": month - relativedelta(months=1),
-            "next_month": month + relativedelta(months=1),
-            "all_accounts": all_accounts_data,
-            "api_urls": api_urls,
-            "save_amount_url": f"/a/{team_slug}/{book_slug}/budget/save-amount/",
-            "cover_url": reverse("budget:budget_cover", args=request.book.url_args),
-            # Goals an overspent category can be covered from (emergency fund, ...), besides Unassigned.
-            "cover_goals": [
-                {"id": goal.pk, "name": goal.name, "left": f"{goal.left:.2f}"}
-                for goal in GoalService(request.book).get_goals_with_progress(month)
-            ],
-        },
-    )
 
 
 @login_and_book_required
@@ -369,6 +382,37 @@ def budget_save_amount(request, team_slug, book_slug):
 
 
 @login_and_book_required
+@require_POST
+def budget_category_visibility(request, team_slug, book_slug, pk):
+    """Hide a category from the budget page, or bring it back.
+
+    Form fields: `hidden` ("1" hides, anything else unhides) and `month`. A display
+    choice only — nothing about the category's money changes. Three answers:
+
+    - `X-Budget-Fragment: 1` (the page's own script): the re-rendered
+      `#budget-swap` region for `month`, so the page updates in one round trip
+      instead of a POST followed by a GET of the whole page.
+    - `Accept: application/json`: `{category_id, hidden}`.
+    - otherwise (no JS): a redirect back to the budget page.
+    """
+    category = get_object_or_404(_budget_categories(request.book), pk=pk)
+    hidden = request.POST.get("hidden") == "1"
+    if category.hidden_from_budget != hidden:
+        category.hidden_from_budget = hidden
+        category.save(update_fields=["hidden_from_budget", "updated_at"])
+
+    month = _parse_month(request.POST.get("month"))
+    if request.headers.get("X-Budget-Fragment") == "1":
+        return render(request, "budget/components/budget_swap.html", _budget_swap_context(request.book, month))
+    if "application/json" in request.headers.get("Accept", ""):
+        return JsonResponse({"category_id": category.pk, "hidden": hidden})
+
+    template = _("%(category)s is hidden from the budget.") if hidden else _("%(category)s is back in the budget.")
+    messages.success(request, template % {"category": category.name})
+    return redirect(f"{reverse('budget:budget_home', args=request.book.url_args)}?month={month.isoformat()}")
+
+
+@login_and_book_required
 def budget_autofill_view(request, team_slug, book_slug):
     """Handle auto-fill budget actions from the sidebar."""
     if request.method != "POST":
@@ -380,9 +424,11 @@ def budget_autofill_view(request, team_slug, book_slug):
     prev_month = month - relativedelta(months=1)
     service = BudgetService(request.book)
 
+    # Hidden categories are left alone: a bulk fill is aimed at what is on screen.
     categories = list(
         Account.for_book.filter(
             account_group__account_type__in=budgeted_account_types(request.book),
+            hidden_from_budget=False,
         )
         .select_related("account_group")
         .order_by("account_group__name", "name")
@@ -583,7 +629,8 @@ def budget_grid_view(request, team_slug, book_slug):
 
     months = [start + relativedelta(months=i) for i in range(num_months)]
 
-    categories = list(_budget_categories(request.book))
+    # Hidden categories stay off the grid as they stay collapsed on the month page.
+    categories = list(_budget_categories(request.book).filter(hidden_from_budget=False))
     actual_modes, actuals = _grid_actuals(request.book, categories, date.today())
 
     amounts = {}

@@ -37,8 +37,15 @@ def upgrade_2_to_3(tables: dict) -> dict:
     return tables
 
 
+def upgrade_3_to_4(tables: dict) -> dict:
+    """Version 4 added `hidden_from_budget`. Before it, no category could be hidden."""
+    for row in tables["accounts"]:
+        row.setdefault("hidden_from_budget", False)
+    return tables
+
+
 # {from_version: fn(tables) -> tables at from_version + 1}
-CHAIN: dict[int, Callable[[dict], dict]] = {1: upgrade_1_to_2, 2: upgrade_2_to_3}
+CHAIN: dict[int, Callable[[dict], dict]] = {1: upgrade_1_to_2, 2: upgrade_2_to_3, 3: upgrade_3_to_4}
 
 
 def check_path(from_version: int) -> None:

@@ -98,15 +98,15 @@ function init() {
       if (event.key === 'Enter') {
         event.preventDefault();
         commit(row);
-        focusRow(index + (event.shiftKey ? -1 : 1));
+        focusRow(index, event.shiftKey ? -1 : 1);
       } else if (event.key === 'ArrowDown') {
         event.preventDefault();
         commit(row);
-        focusRow(index + 1);
+        focusRow(index, 1);
       } else if (event.key === 'ArrowUp') {
         event.preventDefault();
         commit(row);
-        focusRow(index - 1);
+        focusRow(index, -1);
       } else if (event.key === 'Escape') {
         event.preventDefault();
         input.value = row.saved;
@@ -116,11 +116,16 @@ function init() {
     });
   }
 
-  function focusRow(index) {
-    const target = rows[index];
-    if (!target) return;
-    target.input.focus();
-    target.input.select();
+  // The next row in `step`'s direction that is on screen: a collapsed hidden
+  // category's field is still in the list but cannot take focus.
+  function focusRow(index, step) {
+    for (let i = index + step; i >= 0 && i < rows.length; i += step) {
+      const target = rows[i];
+      if (target.input.closest('tr[hidden]')) continue;
+      target.input.focus();
+      target.input.select();
+      return;
+    }
   }
 
   // -------------------------------------------------------------------------

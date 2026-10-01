@@ -1,0 +1,18 @@
+{% comment %}
+  Everything that changes when the month changes lives inside #budget-swap, so
+  switching months can replace just this and leave the header, the scroll
+  position and the page itself alone. See budget/month-swap.js. Hiding or
+  unhiding a category answers with this same partial (budget_category_visibility),
+  so the page and that response cannot render the region two different ways.
+{% endcomment %}
+<!-- Main Content: Budget Table + Sidebar -->
+<div class="flex gap-6 items-start" id="budget-swap">
+  <!-- Budget Table (left, takes remaining space) -->
+  <div class="flex-1 min-w-0">
+    {% include "budget/components/net_worth_card.html" %}
+    {% include "budget/components/budget_table.html" %}
+  </div>
+
+  <!-- Sidebar (right, fixed width) -->
+  {% include "budget/components/budget_sidebar.html" %}
+</div>

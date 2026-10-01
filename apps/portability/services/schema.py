@@ -39,7 +39,8 @@ FORMAT = "koala-budget-export"
 # lines). A version-1 archive still imports -- see `upgrade.py` -- with no
 # statements, since it never had any to carry.
 # 3: `goal_closed_at` on accounts.csv (goals as envelopes: a goal can be closed).
-FORMAT_VERSION = 3
+# 4: `hidden_from_budget` on accounts.csv (a category can be hidden from the budget).
+FORMAT_VERSION = 4
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
@@ -52,7 +53,11 @@ DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE, RECONCILIATIONS_FILE)
 #: is read without them and `upgrade.py` fills them in, so adding a file or a
 #: column is not a reason to refuse every export made before it.
 FILES_ADDED_IN = {RECONCILIATIONS_FILE: 2}
-COLUMNS_ADDED_IN = {(JOURNAL_FILE, "reconciliation_id"): 2, (ACCOUNTS_FILE, "goal_closed_at"): 3}
+COLUMNS_ADDED_IN = {
+    (JOURNAL_FILE, "reconciliation_id"): 2,
+    (ACCOUNTS_FILE, "goal_closed_at"): 3,
+    (ACCOUNTS_FILE, "hidden_from_budget"): 4,
+}
 
 # journal.csv's `status` column carries every `JournalEntry.status` value plus
 # this one, file-level sentinel for a pending bank-feed row that belongs to no
@@ -340,6 +345,7 @@ ACCOUNT = FieldMap(
         "has_feed": ColumnSpec("has_feed", KIND_BOOL),
         "is_system": ColumnSpec("is_system", KIND_BOOL),
         "sort_order": ColumnSpec("sort_order", KIND_INT),
+        "hidden_from_budget": ColumnSpec("hidden_from_budget", KIND_BOOL),
         "is_archived": ColumnSpec("is_archived", KIND_BOOL),
         "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
     },
@@ -454,6 +460,7 @@ ACCOUNTS_COLUMNS = (
     Column("has_feed", KIND_BOOL),
     Column("is_system", KIND_BOOL),
     Column("sort_order", KIND_INT),
+    Column("hidden_from_budget", KIND_BOOL),
     Column("is_archived", KIND_BOOL),
     Column("archived_at", KIND_DATETIME),
     Column("goal_name", KIND_STR_OR_NONE),
