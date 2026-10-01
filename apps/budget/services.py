@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
 from apps.budget.models import Budget, Goal, GoalAllocation
@@ -448,10 +449,10 @@ class GoalService:
         """
         Pay yourself first: one row per open goal for `month`, for Budget vs Actual.
 
-        - needed: the pace to hit the target date, (target − allocated before
-          this month) / months left including this one -- measured from the start
-          of the month so assigning doesn't shrink the bar you're filling. None
-          with no target date or once funded (`note` says which).
+        - needed: the goal's plan for the month (`goal_plan`): its monthly
+          contribution, or the pace to hit the target date -- measured from the
+          start of the month so assigning doesn't shrink the bar you're filling.
+          None with no plan or once funded (`note` says which).
         - assigned: this month's net allocation (the row's "actual").
         - spent: spent from the goal this month, so a month you bought the car
           reads as planned spending rather than a gap.
@@ -463,14 +464,13 @@ class GoalService:
             before = goal.saved_previous
             needed = None
             note = ""
+            plan = goal_plan(goal, month)
             if goal.is_complete or (goal.target_amount > 0 and before >= goal.target_amount):
                 note = "funded"
-            elif not goal.target_date:
+            elif plan is None:
                 note = "no_target_date"
             else:
-                target_month = goal.target_date.replace(day=1)
-                months_left = max((target_month.year - month.year) * 12 + target_month.month - month.month + 1, 1)
-                needed = ((goal.target_amount - before) / months_left).quantize(Decimal("0.01"))
+                needed = plan["needed"]
             assigned = goal.saved_this_month
             pct = None
             if needed:
@@ -578,6 +578,79 @@ class GoalService:
         month = month.replace(day=1)
         self.add_to_allocation(goal, month, -amount)
         return BudgetService(self.book).raise_budget(category, month, amount)
+
+
+PLAN_AHEAD = "ahead"
+PLAN_ON_TRACK = "on_track"
+PLAN_BEHIND = "behind"
+PLAN_LABELS = {
+    PLAN_AHEAD: gettext_lazy("Ahead"),
+    PLAN_ON_TRACK: gettext_lazy("On track"),
+    PLAN_BEHIND: gettext_lazy("Behind"),
+}
+
+
+def _months_between(start, end):
+    """Whole months from `start`'s month to `end`'s month (0 when the same month)."""
+    return (end.year - start.year) * 12 + end.month - start.month
+
+
+def goal_plan(goal, month):
+    """
+    The goal's plan for `month` (docs/goal-linked-accounts-plan.md §9), from a goal
+    annotated by `with_progress(month)`: a monthly contribution, or else the pace
+    to reach the target by the target date. None without either.
+
+    - rate: the plan's monthly amount
+    - needed: what the plan asks for this month (never more than is still to fund,
+      measured from the start of the month)
+    - finish: the month the plan reaches the target (`rate` from this month on)
+    - status: ahead / on_track / behind against the plan's straight line from the
+      goal's first month -- *ahead* is a full month past it, *on track* is on it
+      or this month's plan met; None once funded
+    """
+    from math import ceil
+
+    month = month.replace(day=1)
+    target = goal.target_amount or Decimal("0")
+    before = goal.saved_previous or Decimal("0")
+    to_fund_before = max(target - before, Decimal("0"))
+    started = timezone.localtime(goal.created_at).date().replace(day=1) if goal.created_at else month
+
+    if goal.monthly_contribution:
+        rate = goal.monthly_contribution
+        line_rate = rate
+    elif goal.target_date:
+        target_month = goal.target_date.replace(day=1)
+        rate = (to_fund_before / max(_months_between(month, target_month) + 1, 1)).quantize(Decimal("0.01"))
+        line_rate = target / max(_months_between(started, target_month) + 1, 1)
+    else:
+        return None
+
+    needed = min(rate, to_fund_before)
+    finish = None
+    if rate > 0 and to_fund_before > 0:
+        finish = month + relativedelta(months=ceil(to_fund_before / rate) - 1)
+
+    status = None
+    if not goal.is_funded and target > 0:
+        elapsed = max(_months_between(started, month) + 1, 0)
+        expected = min(target, line_rate * elapsed)
+        allocated = goal.allocated or Decimal("0")
+        if allocated >= min(target, expected + line_rate):
+            status = PLAN_AHEAD
+        elif allocated >= expected or (needed > 0 and (goal.saved_this_month or 0) >= needed):
+            status = PLAN_ON_TRACK
+        else:
+            status = PLAN_BEHIND
+    return {
+        "rate": rate,
+        "needed": needed,
+        "finish": finish,
+        "status": status,
+        "status_label": PLAN_LABELS.get(status),
+        "late": bool(finish and goal.target_date and finish > goal.target_date.replace(day=1)),
+    }
 
 
 def goal_monthly(book, goals, start=None, end=None):

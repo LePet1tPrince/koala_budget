@@ -472,3 +472,136 @@ class AllocationReadsTest(TestCase):
             if "GoalAllocation.objects" in path.read_text():
                 offenders.append(rel)
         self.assertEqual(offenders, [])
+
+
+class GoalLinkViewsTest(LinkedFixture):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.user = CustomUser.objects.create_user(username="linker@example.com", password="pass")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def url(self, name, *args):
+        from django.urls import reverse
+
+        return reverse(name, args=[*self.book.url_args, *args])
+
+    def goal_post(self, **extra):
+        data = {"name": "Emergency", "target_amount": "10,000", "outflow": "spend", "description": ""}
+        data.update(extra)
+        return data
+
+    def test_create_with_linked_accounts(self):
+        today = timezone.localdate().isoformat()
+        response = self.client.post(
+            self.url("budget:goal_create"),
+            self.goal_post(
+                link_account=[self.savings.pk, self.savings2.pk],
+                **{f"link_start_{self.savings.pk}": today, f"link_include_{self.savings.pk}": "on"},
+            ),
+        )
+        self.assertEqual(response.status_code, 302)
+        goal = Goal.objects.get(name="Emergency")
+        self.assertEqual(goal.outflow, Goal.OUTFLOW_SPEND)
+        links = {link.account_id: link for link in goal.account_links.all()}
+        self.assertTrue(links[self.savings.pk].include_starting_balance)
+        self.assertFalse(links[self.savings2.pk].include_starting_balance)
+        from apps.audit.models import AuditEvent
+
+        self.assertEqual(AuditEvent.objects.filter(event_type=AuditEvent.GOAL_ACCOUNT_LINKED).count(), 2)
+        # Savings held 1,000 before today.
+        self.assertEqual(Goal.objects.filter(pk=goal.pk).with_progress().get().allocated, D("1000"))
+
+    def test_a_refused_link_saves_nothing(self):
+        self.link(account=self.vault, goal=self.other_goal)
+        response = self.client.post(self.url("budget:goal_create"), self.goal_post(link_account=[self.vault.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already feeds Trip")
+        self.assertFalse(Goal.objects.filter(name="Emergency").exists())
+
+    def test_another_books_account_is_refused(self):
+        other_team = Team.objects.create(name="Other", slug="other-view")
+        group = AccountGroup.objects.create(book=other_team.default_book, name="Cash", account_type="asset")
+        foreign = Account.objects.create(book=other_team.default_book, name="Foreign", account_group=group)
+        response = self.client.post(self.url("budget:goal_create"), self.goal_post(link_account=[foreign.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(GoalAccountLink.objects.filter(account=foreign).exists())
+
+    def test_edit_unlinks_an_account_left_unticked(self):
+        link = self.link()
+        GoalAccountLink.objects.filter(pk=link.pk).update(created_at=timezone.now() - timedelta(days=5))
+        response = self.client.post(
+            self.url("budget:goal_update", self.goal.pk),
+            {"name": "Rainy Day", "target_amount": "5000", "outflow": "withdraw", "description": ""},
+        )
+        self.assertEqual(response.status_code, 302)
+        link.refresh_from_db()
+        self.assertEqual(link.end_date, timezone.localdate())
+
+    def test_form_lists_accounts(self):
+        self.link(account=self.vault, goal=self.other_goal)
+        response = self.client.get(self.url("budget:goal_create"))
+        self.assertContains(response, 'data-testid="goal-link-row"', count=4)
+        self.assertContains(response, "Feeds Trip")
+
+    def test_preview(self):
+        response = self.client.get(
+            self.url("budget:goal_link_preview"),
+            {
+                "goal": self.goal.pk,
+                "outflow": "withdraw",
+                "link_account": self.savings.pk,
+                f"link_start_{self.savings.pk}": timezone.localdate().isoformat(),
+                f"link_include_{self.savings.pk}": "on",
+            },
+        )
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["adds"], 1000.0)
+        self.assertFalse(GoalAccountLink.objects.exists())
+
+    def test_preview_refusal(self):
+        self.link(account=self.vault, goal=self.other_goal)
+        response = self.client.get(
+            self.url("budget:goal_link_preview"), {"goal": self.goal.pk, "link_account": self.vault.pk}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("already feeds", response.json()["error"])
+
+    def test_unlink(self):
+        link = self.link()
+        GoalAccountLink.objects.filter(pk=link.pk).update(created_at=timezone.now() - timedelta(days=5))
+        response = self.client.post(self.url("budget:goal_unlink", link.pk))
+        self.assertRedirects(response, self.url("budget:goal_detail", self.goal.pk), fetch_redirect_response=False)
+        link.refresh_from_db()
+        self.assertIsNotNone(link.end_date)
+
+    def test_detail_page(self):
+        self.link(include=True)
+        self.post(date(2026, 9, 5), self.savings, self.checking, "300")
+        response = self.client.get(self.url("budget:goal_detail", self.goal.pk), {"month": "2026-09-01"})
+        self.assertContains(response, 'data-testid="goal-link"')
+        self.assertContains(response, "Starting balance from Savings")
+        self.assertContains(response, "From Savings")
+
+    def test_account_detail_names_the_goal(self):
+        self.link()
+        response = self.client.get(self.url("accounts:account_detail", self.savings.pk))
+        self.assertContains(response, 'data-testid="account-feeds-goal"')
+        self.assertContains(response, "Rainy Day")
+
+    def test_goals_page_shows_links(self):
+        self.link()
+        response = self.client.get(self.url("budget:goals_list"))
+        self.assertContains(response, 'data-testid="goal-card-links"')
+
+    def test_anonymous_is_redirected(self):
+        self.client.logout()
+        response = self.client.get(self.url("budget:goal_link_preview"))
+        self.assertEqual(response.status_code, 302)

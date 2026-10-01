@@ -596,6 +596,10 @@ class AccountDetailView(AccountViewMixin, DetailView):
             context["statements"] = presenters.history_payload(account)[:6]
             context["reconcilable"] = True
 
+        from apps.budget.models import GoalAccountLink
+
+        context["feeds_goal"] = GoalAccountLink.objects.open().filter(account=account).select_related("goal").first()
+
         return_to = get_return_to(self.request)
         context["back"] = back_link(
             self.request, reverse("accounts:accounts_home", args=book.url_args), _("Back to Accounts")

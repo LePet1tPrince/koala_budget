@@ -16,7 +16,7 @@ from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.books.helpers import create_book
 from apps.books.migration_utils import BOOK_MODELS
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.monthly_review.models import MonthlyReviewState
 from apps.onboarding.models import OnboardingState
@@ -49,6 +49,7 @@ class BookData:
     budget: Budget
     goal: Goal
     allocation: GoalAllocation
+    goal_link: GoalAccountLink
     reconciliation: Reconciliation
     plaid_item: PlaidItem
     plaid_account: PlaidAccount
@@ -68,6 +69,7 @@ class BookData:
             "line": self.bank_line,
             "bank_transaction": self.categorized_tx,
             "goal": self.goal,
+            "goal_link": self.goal_link,
             "reconciliation": self.reconciliation,
             "plaid_item": self.plaid_item,
             "plaid_account": self.plaid_account,
@@ -133,6 +135,7 @@ def build_book_data(book, marker: str, user=None) -> BookData:
     budget = Budget.objects.create(book=book, month=MONTH, category=groceries, budget_amount=Decimal("300.00"))
     goal = Goal.objects.create(book=book, name=f"Trip {marker}", target_amount=Decimal("1000"))
     allocation = GoalAllocation.objects.create(book=book, goal=goal, month=MONTH, amount=Decimal("50"))
+    goal_link = GoalAccountLink.objects.create(book=book, goal=goal, account=savings, start_date=MONTH)
     reconciliation = Reconciliation.objects.create(
         book=book, account=savings, statement_date=MONTH.replace(day=28), statement_balance=Decimal("0")
     )
@@ -188,6 +191,7 @@ def build_book_data(book, marker: str, user=None) -> BookData:
         budget=budget,
         goal=goal,
         allocation=allocation,
+        goal_link=goal_link,
         reconciliation=reconciliation,
         plaid_item=plaid_item,
         plaid_account=plaid_account,

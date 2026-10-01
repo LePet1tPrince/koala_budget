@@ -223,3 +223,218 @@ def preview(book, goal, rows, outflow, month=None, today=None):
         unassigned_before=unassigned_before,
     )
     return result
+
+
+# --- The goal form ---------------------------------------------------------------
+#
+# Field names (the form posts them; the preview endpoint reads the same ones):
+#   link_account          one per ticked account (its id)
+#   link_start_<id>       the account's "count from" date
+#   link_include_<id>     present when its existing balance counts
+
+
+def parse_link_rows(book, data, today=None):
+    """`LinkRow`s from the goal form's fields. Raises `LinkError` on a bad id or date."""
+    from django.utils.dateparse import parse_date
+
+    today = today or timezone.localdate()
+    ids = []
+    for raw in data.getlist("link_account"):
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            raise LinkError(_("That account isn't in this set of books.")) from None
+    accounts = {a.pk: a for a in Account.objects.filter(book=book, pk__in=ids).select_related("account_group")}
+    rows = []
+    for pk in ids:
+        account = accounts.get(pk)
+        if account is None:
+            raise LinkError(_("That account isn't in this set of books."))
+        raw_start = (data.get(f"link_start_{pk}") or "").strip()
+        start = parse_date(raw_start) if raw_start else today
+        if start is None:
+            raise LinkError(_("Enter a valid start date for %(account)s.") % {"account": account})
+        rows.append(
+            LinkRow(account=account, start_date=start, include_starting_balance=bool(data.get(f"link_include_{pk}")))
+        )
+    return rows
+
+
+def link_options(book, goal=None, data=None, today=None):
+    """
+    The accounts the goal form offers, each a dict: account, balance, checked,
+    start (ISO date), include, feeds (the other goal it feeds, if any) and
+    disabled. With `data` (a re-rendered post) the user's choices win.
+    """
+    today = today or timezone.localdate()
+    current = {}
+    if goal is not None and goal.pk:
+        current = {link.account_id: link for link in GoalAccountLink.objects.open().filter(goal=goal)}
+    ticked = set(data.getlist("link_account")) if data is not None else None
+    options = []
+    for account in eligible_accounts(book, goal).with_balance():
+        link = current.get(account.pk)
+        feeds = account.feeds_goal_name if account.is_linked and link is None else None
+        if ticked is not None:
+            checked = str(account.pk) in ticked
+            start = data.get(f"link_start_{account.pk}") or today.isoformat()
+            include = bool(data.get(f"link_include_{account.pk}")) if checked else True
+        else:
+            checked = link is not None
+            start = (link.start_date if link else today).isoformat()
+            include = link.include_starting_balance if link else True
+        options.append(
+            {
+                "account": account,
+                "balance": account.balance,
+                "checked": checked,
+                "start": start,
+                "include": include,
+                "feeds": feeds,
+                "disabled": bool(feeds),
+            }
+        )
+    return options
+
+
+# --- The goal page ---------------------------------------------------------------
+
+ACTIVITY_ASSIGNED = "assigned"
+ACTIVITY_WITHDRAWN = "withdrawn"
+ACTIVITY_STARTING = "starting"
+ACTIVITY_IN = "in"
+ACTIVITY_OUT = "out"
+ACTIVITY_SPENT = "spent"
+
+
+def goal_activity(goal, limit=100):
+    """
+    Everything that moved the goal, newest first: manual allocations (by month),
+    starting balances, each linked line that counted, and spending from the goal's
+    own account. Each event: date, kind, account (for linked events), payee, memo
+    and amount -- its effect on what's left in the goal (spending negative).
+    """
+    from apps.journal.models import JournalLine, counted_entries
+
+    from .linked import linked_lines, starting_balances
+
+    events = []
+    for allocation in goal.allocations.exclude(amount=0):
+        events.append(
+            {
+                "date": allocation.month,
+                "kind": ACTIVITY_ASSIGNED if allocation.amount > 0 else ACTIVITY_WITHDRAWN,
+                "account": None,
+                "payee": "",
+                "memo": allocation.notes,
+                "amount": allocation.amount,
+                "month_only": True,
+            }
+        )
+    for link in starting_balances().filter(goal=goal).select_related("account").exclude(amount=0):
+        events.append(
+            {
+                "date": link.start_date,
+                "kind": ACTIVITY_STARTING,
+                "account": link.account,
+                "payee": "",
+                "memo": "",
+                "amount": link.amount,
+                "month_only": False,
+            }
+        )
+    lines = (
+        linked_lines()
+        .filter(link_goal=goal.pk)
+        .filter(Q(alloc_delta__lt=0) | Q(alloc_delta__gt=0) | Q(spent_delta__gt=0) | Q(spent_delta__lt=0))
+        .select_related("journal_entry", "journal_entry__payee", "account")
+    )
+    for line in lines:
+        entry = line.journal_entry
+        common = {
+            "date": entry.entry_date,
+            "account": line.account,
+            "payee": entry.payee.name if entry.payee else "",
+            "memo": entry.description,
+            "month_only": False,
+        }
+        if line.alloc_delta:
+            kind = ACTIVITY_IN if line.alloc_delta > 0 else ACTIVITY_OUT
+            events.append({**common, "kind": kind, "amount": line.alloc_delta})
+        if line.spent_delta:
+            events.append({**common, "kind": ACTIVITY_SPENT, "amount": -line.spent_delta})
+    if goal.account_id:
+        own = (
+            JournalLine.objects.filter(counted_entries("journal_entry__"), account_id=goal.account_id)
+            .select_related("journal_entry", "journal_entry__payee")
+            .order_by("-journal_entry__entry_date")[:limit]
+        )
+        for line in own:
+            entry = line.journal_entry
+            events.append(
+                {
+                    "date": entry.entry_date,
+                    "kind": ACTIVITY_SPENT,
+                    "account": None,
+                    "payee": entry.payee.name if entry.payee else "",
+                    "memo": entry.description,
+                    "amount": line.cr_amount - line.dr_amount,
+                    "month_only": False,
+                }
+            )
+    events.sort(key=lambda e: e["date"], reverse=True)
+    return events[:limit]
+
+
+def link_drift(goal, left):
+    """
+    How far the goal's `left` is from the balance of the accounts it is linked to
+    now, with the reasons that apply. None when the goal has no open link or the
+    two agree.
+    """
+    from apps.bank_feed.models import BankTransaction
+
+    from .linked import starting_balances
+
+    links = list(GoalAccountLink.objects.open().filter(goal=goal).select_related("account"))
+    if not links:
+        return None
+    accounts = Account.objects.filter(pk__in=[link.account_id for link in links]).with_balance()
+    held = sum((a.balance for a in accounts), ZERO)
+    gap = held - left
+    if not gap:
+        return None
+
+    reasons = []
+    assigned = sum((a.amount for a in goal.allocations.all()), ZERO)
+    if assigned:
+        reasons.append(_("You assigned or withdrew %(amount)s by hand.") % {"amount": _money(assigned)})
+    counted_start = {link.pk for link in starting_balances().filter(goal=goal)}
+    for link in links:
+        if link.pk not in counted_start:
+            reasons.append(
+                _("What %(account)s held before %(date)s isn't counted.")
+                % {"account": link.account, "date": link.start_date.strftime("%b %-d, %Y")}
+            )
+    for link in links:
+        waiting = BankTransaction.objects.filter(
+            account=link.account, journal_entry__isnull=True, is_archived=False
+        ).count()
+        if waiting:
+            reasons.append(
+                _("%(count)s transactions in %(account)s aren't categorized yet.")
+                % {"count": waiting, "account": link.account}
+            )
+    reasons.append(
+        _(
+            "Purchases and refunds in these accounts belong to their budget categories, and spending "
+            "from the goal through other accounts comes out of the goal but not these accounts."
+        )
+    )
+    return {"held": held, "left": left, "gap": gap, "reasons": reasons}
+
+
+def _money(amount):
+    from apps.web.templatetags.currency_tags import currency
+
+    return currency(amount)

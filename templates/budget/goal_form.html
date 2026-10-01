@@ -2,6 +2,7 @@
 {% load static %}
 {% load django_vite %}
 {% load i18n %}
+{% load currency_tags %}
 
 {% block app %}
 
@@ -10,66 +11,185 @@
       {% if is_new %}{% translate "Create New Goal" %}{% else %}{% translate "Edit Goal" %}{% endif %}
     </h1>
 
-    <div class="card bg-base-100 shadow-xl">
-      <div class="card-body">
-        <form method="post" data-testid="goal-form">
-          {% csrf_token %}
+    {{ form_props|json_script:'goal-form-props' }}
 
-          <div class="form-control mb-4">
-            <label class="label">
-              <span class="label-text">{% translate "Goal Name" %}</span>
+    <form method="post" data-testid="goal-form" id="goal-form" class="space-y-6">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="alert alert-error">{{ form.non_field_errors.0 }}</div>
+      {% endif %}
+
+      {# 1. The goal #}
+      <section class="app-card space-y-4">
+        <h2 class="text-lg font-semibold">{% translate "Goal" %}</h2>
+
+        <div class="form-control">
+          <label class="label" for="{{ form.name.id_for_label }}">
+            <span class="label-text">{% translate "Goal Name" %}</span>
+          </label>
+          {{ form.name }}
+          {% if form.name.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error">{{ form.name.errors.0 }}</span>
+          </label>
+          {% endif %}
+        </div>
+
+        <div class="form-control">
+          <label class="label" for="{{ form.target_amount.id_for_label }}">
+            <span class="label-text">{% translate "Target Amount" %}</span>
+          </label>
+          {{ form.target_amount }}
+          {% if form.target_amount.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error">{{ form.target_amount.errors.0 }}</span>
+          </label>
+          {% endif %}
+        </div>
+
+        <div class="form-control">
+          <label class="label" for="{{ form.description.id_for_label }}">
+            <span class="label-text">{% translate "Description" %}</span>
+          </label>
+          {{ form.description }}
+        </div>
+      </section>
+
+      {# 2. The plan: a date or a monthly amount, the other one computed #}
+      <section class="app-card space-y-4" data-testid="goal-plan-section">
+        <div>
+          <h2 class="text-lg font-semibold">{% translate "Plan" %}</h2>
+          <p class="text-sm text-base-content/70">
+            {% translate "Pick a target date or a monthly amount. We'll work out the other." %}
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="form-control">
+            <label class="label" for="{{ form.target_date.id_for_label }}">
+              <span class="label-text">{% translate "Target Date" %}</span>
             </label>
-            {{ form.name }}
-            {% if form.name.errors %}
+            {{ form.target_date }}
+          </div>
+          <div class="form-control">
+            <label class="label" for="{{ form.monthly_contribution.id_for_label }}">
+              <span class="label-text">{% translate "Monthly contribution" %}</span>
+            </label>
+            {{ form.monthly_contribution }}
+            {% if form.monthly_contribution.errors %}
             <label class="label">
-              <span class="label-text-alt text-error">{{ form.name.errors.0 }}</span>
+              <span class="label-text-alt text-error">{{ form.monthly_contribution.errors.0 }}</span>
             </label>
             {% endif %}
           </div>
+        </div>
+        <p class="text-sm text-base-content/70 min-h-5" data-plan-summary data-testid="goal-plan-summary" aria-live="polite"></p>
+      </section>
 
-          <div class="form-control mb-4">
-            <label class="label">
-              <span class="label-text">{% translate "Description" %}</span>
-            </label>
-            {{ form.description }}
-          </div>
+      {# 3. Where the money lives #}
+      <section class="app-card space-y-4" data-testid="goal-accounts-section">
+        <div>
+          <h2 class="text-lg font-semibold">{% translate "Where the money lives" %}</h2>
+          <p class="text-sm text-base-content/70">
+            {% blocktranslate trimmed %}
+              Optional. Money arriving in these accounts goes to this goal automatically.
+              Assigning or withdrawing by hand never moves money between accounts.
+            {% endblocktranslate %}
+          </p>
+        </div>
 
-          <div class="grid grid-cols-2 gap-4 mb-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{% translate "Target Amount" %}</span>
+        {% if link_error %}
+          <div class="alert alert-error" role="alert" data-testid="goal-link-error">{{ link_error }}</div>
+        {% endif %}
+
+        {% if link_options %}
+          <ul class="divide-y divide-base-300 border border-base-300 rounded-box">
+            {% for option in link_options %}
+              {% with account=option.account %}
+              <li class="p-3 space-y-3" data-link-row data-account-id="{{ account.pk }}" data-testid="goal-link-row">
+                <label class="flex items-center gap-3 {% if option.disabled %}opacity-60{% else %}cursor-pointer{% endif %}">
+                  <input type="checkbox" class="checkbox checkbox-sm rounded-sm" name="link_account" value="{{ account.pk }}"
+                         data-link-toggle data-testid="goal-link-checkbox"
+                         {% if option.checked %}checked{% endif %} {% if option.disabled %}disabled{% endif %}>
+                  <span class="flex-1 min-w-0">
+                    <span class="font-medium">{{ account.name }}</span>
+                    <span class="text-xs text-base-content/70">
+                      {{ account.account_group.name }}{% if account.institution %} · {{ account.institution.name }}{% endif %}
+                    </span>
+                    {% if option.feeds %}
+                      <span class="block text-xs text-base-content/70">
+                        {% blocktranslate trimmed with goal=option.feeds %}Feeds {{ goal }}{% endblocktranslate %}
+                      </span>
+                    {% endif %}
+                  </span>
+                  <span class="money text-sm">{{ option.balance|currency }}</span>
+                </label>
+
+                {% if not option.disabled %}
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-8" data-link-details>
+                  <div class="form-control">
+                    <label class="label py-1" for="link_start_{{ account.pk }}">
+                      <span class="label-text text-sm">{% translate "Count from" %}</span>
+                    </label>
+                    <input type="date" class="input input-bordered input-sm w-full" id="link_start_{{ account.pk }}"
+                           name="link_start_{{ account.pk }}" value="{{ option.start }}" data-date-field
+                           data-testid="goal-link-start">
+                  </div>
+                  <label class="flex items-center gap-2 self-end pb-1 cursor-pointer text-sm">
+                    <input type="checkbox" class="checkbox checkbox-sm rounded-sm" name="link_include_{{ account.pk }}"
+                           data-testid="goal-link-include" {% if option.include %}checked{% endif %}>
+                    {% translate "Include the balance already there" %}
+                  </label>
+                </div>
+                {% endif %}
+              </li>
+              {% endwith %}
+            {% endfor %}
+          </ul>
+
+          <fieldset class="space-y-2" data-outflow-section data-testid="goal-outflow">
+            <legend class="font-medium mb-1">{% translate "When money moves out of these accounts to your other accounts" %}</legend>
+            {% for radio in form.outflow %}
+              <label class="flex items-start gap-3 cursor-pointer">
+                {{ radio.tag }}
+                <span>
+                  <span class="block">{{ radio.choice_label }}</span>
+                  <span class="block text-xs text-base-content/70">
+                    {% if radio.data.value == "withdraw" %}
+                      {% translate "Progress goes down. For goals you refill, like an emergency fund." %}
+                    {% elif radio.data.value == "spend" %}
+                      {% translate "Progress stays. For goals you spend once, like a trip or a car." %}
+                    {% else %}
+                      {% translate "Nothing changes. Choose this if you categorize what you buy to the goal, including on a credit card you then pay from these accounts." %}
+                    {% endif %}
+                  </span>
+                </span>
               </label>
-              {{ form.target_amount }}
-              {% if form.target_amount.errors %}
-              <label class="label">
-                <span class="label-text-alt text-error">{{ form.target_amount.errors.0 }}</span>
-              </label>
-              {% endif %}
-            </div>
+            {% endfor %}
+          </fieldset>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{% translate "Target Date" %}</span>
-              </label>
-              {{ form.target_date }}
-            </div>
-          </div>
+          <div class="alert hidden" data-link-preview data-testid="goal-link-preview" aria-live="polite"></div>
+        {% else %}
+          <p class="text-sm text-base-content/70">{% translate "No asset accounts to link yet." %}</p>
+        {% endif %}
+      </section>
 
-          <div class="card-actions justify-end mt-6">
-            <a href="{% url 'budget:goals_list' team_slug=request.team.slug book_slug=request.book.slug %}" class="btn btn-ghost" data-testid="goal-cancel-btn">
-              {% translate "Cancel" %}
-            </a>
-            <button type="submit" class="btn btn-primary" data-testid="goal-submit-btn">
-              {% if is_new %}{% translate "Create Goal" %}{% else %}{% translate "Save Changes" %}{% endif %}
-            </button>
-          </div>
-        </form>
+      <div class="flex justify-end gap-2">
+        <a href="{% if goal %}{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}{% else %}{% url 'budget:goals_list' team_slug=request.team.slug book_slug=request.book.slug %}{% endif %}"
+           class="btn btn-ghost" data-testid="goal-cancel-btn">
+          {% translate "Cancel" %}
+        </a>
+        <button type="submit" class="btn btn-primary" data-testid="goal-submit-btn">
+          {% if is_new %}{% translate "Create Goal" %}{% else %}{% translate "Save Changes" %}{% endif %}
+        </button>
       </div>
-    </div>
+    </form>
   </div>
 {% endblock %}
 
 {% block page_js %}
   {% vite_react_refresh %}
   {% vite_asset 'assets/javascript/common/date-field-mount.jsx' %}
+  {% vite_asset 'assets/javascript/budget/goal-form.js' %}
 {% endblock %}
