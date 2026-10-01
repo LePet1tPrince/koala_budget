@@ -185,6 +185,18 @@ class SimilarCategorySuggestionSerializer(serializers.Serializer):
     )
 
 
+class TransferProposalSerializer(serializers.Serializer):
+    """What Match would do with a suggested pair (decided server-side)."""
+
+    status = serializers.ChoiceField(choices=["ready", "blocked"], help_text="ready: Match is available")
+    code = serializers.CharField(help_text="Machine-readable reason (e.g. reconciled, split, outflow)")
+    message = serializers.CharField(
+        help_text="Why this leg is kept (a clause, when ready) or why Match is unavailable (when blocked)"
+    )
+    keep_id = serializers.IntegerField(allow_null=True, help_text="BankTransaction id Match keeps")
+    archive_id = serializers.IntegerField(allow_null=True, help_text="BankTransaction id Match archives")
+
+
 class TransferSuggestionSerializer(serializers.Serializer):
     """A suggested pair of bank transactions that look like two legs of one transfer."""
 
@@ -192,6 +204,7 @@ class TransferSuggestionSerializer(serializers.Serializer):
     inflow = serializers.SerializerMethodField(help_text="The destination-account leg (money in)")
     amount = serializers.DecimalField(max_digits=12, decimal_places=2, help_text="Transfer amount (magnitude)")
     date_gap_days = serializers.IntegerField(help_text="Days between the two legs' posted dates")
+    proposal = TransferProposalSerializer(help_text="What Match would do with this pair")
 
     def get_outflow(self, obj):
         return BankFeedRowSerializer(bank_transaction_to_feed_row(obj["outflow"])).data
@@ -200,16 +213,34 @@ class TransferSuggestionSerializer(serializers.Serializer):
         return BankFeedRowSerializer(bank_transaction_to_feed_row(obj["inflow"])).data
 
 
-class TransferResolveRequestSerializer(serializers.Serializer):
-    """Resolve a duplicate transfer by archiving one leg and keeping the other."""
+class TransferMatchRequestSerializer(serializers.Serializer):
+    """Match a suggested pair: keep one leg, archive the other."""
 
-    archive_id = serializers.IntegerField(help_text="BankTransaction id of the duplicate leg to archive")
-    keep_id = serializers.IntegerField(help_text="BankTransaction id of the leg to keep")
+    transaction_a = serializers.IntegerField(help_text="BankTransaction id of one leg")
+    transaction_b = serializers.IntegerField(help_text="BankTransaction id of the other leg")
+    expected_archive_id = serializers.IntegerField(
+        help_text="The leg the client was shown would be archived; a mismatch is refused with 409"
+    )
 
     def validate(self, data):
-        if data["archive_id"] == data["keep_id"]:
-            raise serializers.ValidationError("archive_id and keep_id must be different transactions.")
+        if data["transaction_a"] == data["transaction_b"]:
+            raise serializers.ValidationError("transaction_a and transaction_b must be different transactions.")
+        if data["expected_archive_id"] not in (data["transaction_a"], data["transaction_b"]):
+            raise serializers.ValidationError("expected_archive_id must be one of the two transactions.")
         return data
+
+
+class TransferMatchResponseSerializer(serializers.Serializer):
+    kept_id = serializers.IntegerField(help_text="BankTransaction id kept")
+    archived_id = serializers.IntegerField(help_text="BankTransaction id archived")
+    kept_journal_entry_id = serializers.IntegerField(help_text="The one journal entry the transfer now lives on")
+    previous_category_id = serializers.IntegerField(
+        allow_null=True, help_text="The kept leg's category before matching (null if uncategorized)"
+    )
+    voided_entry_id = serializers.IntegerField(
+        allow_null=True, help_text="The archived leg's entry, now void (null if it was uncategorized)"
+    )
+    reason_code = serializers.CharField(help_text="Which rule chose the kept leg")
 
 
 class TransferDismissRequestSerializer(serializers.Serializer):

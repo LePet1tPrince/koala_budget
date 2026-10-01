@@ -27,7 +27,8 @@ import type {
   SimilarCategorySuggestion,
   SimpleAccount,
   TransferDismissRequest,
-  TransferResolveRequest,
+  TransferMatchRequest,
+  TransferMatchResponse,
   TransferSuggestion,
   UploadConfirmRequest,
   UploadConfirmResponse,
@@ -60,8 +61,10 @@ import {
     SimpleAccountToJSON,
     TransferDismissRequestFromJSON,
     TransferDismissRequestToJSON,
-    TransferResolveRequestFromJSON,
-    TransferResolveRequestToJSON,
+    TransferMatchRequestFromJSON,
+    TransferMatchRequestToJSON,
+    TransferMatchResponseFromJSON,
+    TransferMatchResponseToJSON,
     TransferSuggestionFromJSON,
     TransferSuggestionToJSON,
     UploadConfirmRequestFromJSON,
@@ -179,15 +182,16 @@ export interface BankFeedTransferDismissRequest {
     transferDismissRequest: TransferDismissRequest;
 }
 
-export interface BankFeedTransferResolveRequest {
+export interface BankFeedTransferMatchRequest {
     bookSlug: string;
     teamSlug: string;
-    transferResolveRequest: TransferResolveRequest;
+    transferMatchRequest: TransferMatchRequest;
 }
 
 export interface BankFeedTransferSuggestionsRequest {
     bookSlug: string;
     teamSlug: string;
+    account?: number;
 }
 
 export interface BankFeedUploadConfirmRequest {
@@ -1163,27 +1167,27 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Resolve a duplicate transfer: archive one leg, keep the other.  Archiving the duplicate leg also voids its journal entry (if categorized) so the movement stops double-counting. The kept leg is left untouched for the user to categorize as a transfer. Reconciled legs are refused.
+     * Match a duplicate transfer: keep one leg, archive the other.  The server picks the leg to archive (see `transfer_match.propose`); the client sends the one it was shown, and a mismatch is a 409 carrying the current proposal. The archived leg\'s entry is voided and the kept leg is categorized as a transfer to the archived leg\'s account, so one entry books both accounts.
      */
-    async bankFeedTransferResolveRaw(requestParameters: BankFeedTransferResolveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+    async bankFeedTransferMatchRaw(requestParameters: BankFeedTransferMatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransferMatchResponse>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling bankFeedTransferResolve().'
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedTransferMatch().'
             );
         }
 
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedTransferResolve().'
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedTransferMatch().'
             );
         }
 
-        if (requestParameters['transferResolveRequest'] == null) {
+        if (requestParameters['transferMatchRequest'] == null) {
             throw new runtime.RequiredError(
-                'transferResolveRequest',
-                'Required parameter "transferResolveRequest" was null or undefined when calling bankFeedTransferResolve().'
+                'transferMatchRequest',
+                'Required parameter "transferMatchRequest" was null or undefined when calling bankFeedTransferMatch().'
             );
         }
 
@@ -1201,25 +1205,26 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/resolve/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/transfers/match/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: TransferResolveRequestToJSON(requestParameters['transferResolveRequest']),
+            body: TransferMatchRequestToJSON(requestParameters['transferMatchRequest']),
         }, initOverrides);
 
-        return new runtime.VoidApiResponse(response);
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransferMatchResponseFromJSON(jsonValue));
     }
 
     /**
-     * Resolve a duplicate transfer: archive one leg, keep the other.  Archiving the duplicate leg also voids its journal entry (if categorized) so the movement stops double-counting. The kept leg is left untouched for the user to categorize as a transfer. Reconciled legs are refused.
+     * Match a duplicate transfer: keep one leg, archive the other.  The server picks the leg to archive (see `transfer_match.propose`); the client sends the one it was shown, and a mismatch is a 409 carrying the current proposal. The archived leg\'s entry is voided and the kept leg is categorized as a transfer to the archived leg\'s account, so one entry books both accounts.
      */
-    async bankFeedTransferResolve(requestParameters: BankFeedTransferResolveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedTransferResolveRaw(requestParameters, initOverrides);
+    async bankFeedTransferMatch(requestParameters: BankFeedTransferMatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransferMatchResponse> {
+        const response = await this.bankFeedTransferMatchRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**
-     * List likely-duplicate transfer pairs (a transfer reported by both banks).  Each pair shows both legs so the user can archive the duplicate, archive the other side, or dismiss the suggestion. Read-only; nothing is changed.
+     * List likely-duplicate transfer pairs (a transfer reported by both banks).  Each pair carries both legs and a `proposal`: which leg Match would keep and archive, or why Match is unavailable. Read-only; nothing is changed.
      */
     async bankFeedTransferSuggestionsRaw(requestParameters: BankFeedTransferSuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TransferSuggestion>>> {
         if (requestParameters['bookSlug'] == null) {
@@ -1237,6 +1242,10 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
@@ -1258,7 +1267,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * List likely-duplicate transfer pairs (a transfer reported by both banks).  Each pair shows both legs so the user can archive the duplicate, archive the other side, or dismiss the suggestion. Read-only; nothing is changed.
+     * List likely-duplicate transfer pairs (a transfer reported by both banks).  Each pair carries both legs and a `proposal`: which leg Match would keep and archive, or why Match is unavailable. Read-only; nothing is changed.
      */
     async bankFeedTransferSuggestions(requestParameters: BankFeedTransferSuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TransferSuggestion>> {
         const response = await this.bankFeedTransferSuggestionsRaw(requestParameters, initOverrides);

@@ -9,7 +9,7 @@ import Icon from '../../common/Icon';
  * AccountCard component - a compact, scannable row for the account picker.
  * Shows account name, institution, balance, and a badge when transactions need review.
  */
-const AccountCard = ({ account, isSelected, onClick }) => {
+const AccountCard = ({ account, isSelected, onClick, matchCount = 0 }) => {
   const isLiability = account.account_type === 'liability';
   const uncategorizedCount = account.uncategorized_count || 0;
 
@@ -55,8 +55,18 @@ const AccountCard = ({ account, isSelected, onClick }) => {
 
       <div className="min-w-0 flex-1">
         <p className="font-medium text-sm truncate">{account.name}</p>
-        <p className="text-xs text-base-content/70 truncate">
-          {account.institution_name || account.account_group_name}
+        <p className="flex items-center gap-1.5 min-w-0 text-xs text-base-content/70">
+          <span className="truncate">{account.institution_name || account.account_group_name}</span>
+          {matchCount > 0 && (
+            <span
+              className="badge badge-warning badge-soft badge-xs shrink-0 gap-0.5"
+              title={gettext('Possible duplicate transfers to review in this account')}
+              data-testid="card-match-count"
+            >
+              <Icon name="arrow-right-left" className="w-2.5 h-2.5" />
+              {matchCount}
+            </span>
+          )}
         </p>
       </div>
 

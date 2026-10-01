@@ -1,5 +1,7 @@
 # Inline transfer matching in the bank feed — plan
 
+**Status: built.** §10 lists where the build differs from the plan below.
+
 Replace the "Review transfers" button + modal (`TransferSuggestions.jsx`) with a
 per-row chip in the bank feed table. The chip opens an inline panel showing the
 counterpart transaction; one **Match** click keeps one leg, archives the other,
@@ -68,8 +70,9 @@ Ordered; first rule that decides wins:
 
 Post-check on the chosen kept leg: if its category line must be re-pointed and
 that line is reconciled (a transfer to a *third* feed account, reconciled there —
-`assert_line_mutable` would refuse), swap to the other leg when rules 1–3 allow
-it; otherwise **blocked** with the guard's message.
+`assert_line_mutable` would refuse), **blocked** (`category_reconciled`). A swap
+is never possible here: a reconciled category line makes the leg locked, and a
+locked leg cannot be archived.
 
 Output: `{status: "ready", keep_id, archive_id, reason_code, reason}` or
 `{status: "blocked", code, message}`. `reason` is the user-facing clause shown in
@@ -275,3 +278,31 @@ POM: replace `transfer_review_button`/`open_transfer_review`/
    so it is recoverable, not silent).
 3. **Edit modal.** Show "Possible transfer with …" in `EditTransactionModal`?
    Recommend no — the row chip is visible behind it.
+
+## 10. As built
+
+- Services: `apps/bank_feed/services/categorize.py` (`categorize_single`,
+  `create_entry`, `repoint_category`; the viewset's two methods are wrappers) and
+  `apps/bank_feed/services/transfer_match.py` (`propose`, `propose_pairs`,
+  `validate_pair`, `archive_duplicate`, `match_transfer`). `propose_pairs` loads
+  the lines of every paired entry in one query rather than prefetching lines for
+  the whole book.
+- Endpoint name is `match_transfer` in the service; the route is
+  `POST transfers/match` as planned. Proposal shape:
+  `{status, code, message, keep_id, archive_id}` (`message` is the reason
+  clause when ready, the full refusal when blocked).
+- Chip label is **"Match found"** (shorter than "Possible transfer", which
+  truncated the description column to a few characters); its tooltip and
+  accessible name name the other account. The quick filter is **"Possible
+  transfers"** (`filter-transfers`); the card badge is an icon + count on the
+  institution line (`card-match-count`; not `account-card-…`, which would
+  collide with the cards' own `account-card-<id>` prefix).
+- The panel row is pinned to the left of the table's horizontal scroll area and
+  sized to its visible width, so on a phone the buttons stay on screen.
+- After Match the kept transfer (the kept row, or its new mirror in this
+  account) is flashed without clearing the user's filters (`focusRequest`
+  `keepFilters`); "Go to other side" locates an uncategorized counterpart by
+  bank transaction id (`focusRequest.importedTransactionId`).
+- `api-client/` regenerated (it was also missing the transaction-edit models).
+- Undo, categorize mode and the edit modal (§9) were not built.
+

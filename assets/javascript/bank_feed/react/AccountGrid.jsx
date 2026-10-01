@@ -32,7 +32,7 @@ function InstitutionFilter({ options, selected, onSelect }) {
   )
 }
 
-function AccountSection({ title, icon, accounts, selectedAccount, handleAccountSelect }) {
+function AccountSection({ title, icon, accounts, selectedAccount, handleAccountSelect, matchCountByAccount }) {
   const reviewCount = useMemo(
     () => accounts.reduce((sum, a) => sum + (a.uncategorized_count || 0), 0),
     [accounts]
@@ -57,6 +57,7 @@ function AccountSection({ title, icon, accounts, selectedAccount, handleAccountS
             account={account}
             isSelected={selectedAccount?.id === account.id}
             onClick={handleAccountSelect}
+            matchCount={matchCountByAccount?.get(account.id) || 0}
           />
         ))}
       </div>
@@ -64,7 +65,7 @@ function AccountSection({ title, icon, accounts, selectedAccount, handleAccountS
   )
 }
 
-function AccountGrid({ accounts, selectedAccount, handleAccountSelect }) {
+function AccountGrid({ accounts, selectedAccount, handleAccountSelect, matchCountByAccount }) {
   const [selectedInstitution, setSelectedInstitution] = useState(null)
 
   const institutionOptions = useMemo(() => (
@@ -111,6 +112,7 @@ function AccountGrid({ accounts, selectedAccount, handleAccountSelect }) {
           accounts={section.accounts}
           selectedAccount={selectedAccount}
           handleAccountSelect={handleAccountSelect}
+          matchCountByAccount={matchCountByAccount}
         />
       ))}
     </div>

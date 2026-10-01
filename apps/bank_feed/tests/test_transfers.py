@@ -3,8 +3,8 @@ Tests for transfer duplicate detection and resolution.
 
 A transfer between two of the user's own accounts is reported by both banks, so
 it appears in the feed twice. These tests cover the detector that flags those
-pairs and the endpoints that let the user resolve (archive one leg) or dismiss
-(not a duplicate) a suggestion.
+pairs and the endpoints that list and dismiss (not a duplicate) a suggestion.
+Matching a pair is covered by test_transfer_match.py.
 """
 
 from datetime import date
@@ -240,119 +240,6 @@ class TransferSuggestionsEndpointTest(TransferTestBase):
         with current_book(self.book):
             resp = self.client.get(self.url)
         self.assertIn(resp.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
-
-
-class TransferResolveEndpointTest(TransferTestBase):
-    def setUp(self):
-        super().setUp()
-        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/transfers/resolve/"
-
-    def test_resolve_removes_double_count(self):
-        out_tx = self._tx(self.checking, "100.00")
-        in_tx = self._tx(self.savings, "-100.00")
-        self._categorize_as_transfer(out_tx, self.savings)
-        in_entry = self._categorize_as_transfer(in_tx, self.checking)
-
-        # Both legs categorized -> balances are doubled.
-        self.checking.refresh_from_db()
-        self.savings.refresh_from_db()
-        self.assertEqual(self.checking.balance, Decimal("-200.00"))
-        self.assertEqual(self.savings.balance, Decimal("200.00"))
-
-        with current_book(self.book):
-            resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
-
-        in_tx.refresh_from_db()
-        in_entry.refresh_from_db()
-        self.assertTrue(in_tx.is_archived)
-        self.assertEqual(in_entry.status, JournalEntry.STATUS_VOID)
-
-        # Exactly one transfer now books each account.
-        self.assertEqual(self.checking.balance, Decimal("-100.00"))
-        self.assertEqual(self.savings.balance, Decimal("100.00"))
-
-    def test_resolve_uncategorized_leg_just_archives(self):
-        out_tx = self._tx(self.checking, "100.00")
-        in_tx = self._tx(self.savings, "-100.00")  # uncategorized duplicate
-        with current_book(self.book):
-            resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
-        in_tx.refresh_from_db()
-        self.assertTrue(in_tx.is_archived)
-
-    def test_cannot_archive_reconciled_leg(self):
-        out_tx = self._tx(self.checking, "100.00")
-        in_tx = self._tx(self.savings, "-100.00")
-        entry = self._categorize_as_transfer(in_tx, self.checking)
-        line = entry.lines.get(account=in_tx.account)
-        line.is_reconciled = True
-        line.save()
-
-        with current_book(self.book):
-            resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        in_tx.refresh_from_db()
-        self.assertFalse(in_tx.is_archived)
-        entry.refresh_from_db()
-        self.assertEqual(entry.status, JournalEntry.STATUS_POSTED)
-
-    def test_cannot_archive_leg_whose_mirror_is_reconciled(self):
-        # Resolving would void the entry and archive the mirror counterpart too,
-        # so a reconciled counterpart blocks the resolve just like a reconciled
-        # archive leg does.
-        out_tx = self._tx(self.checking, "100.00")
-        in_tx = self._tx(self.savings, "-100.00")
-        entry = self._categorize_as_transfer(in_tx, self.checking)
-        sync_transfer(in_tx)  # creates the mirror leg in checking
-        counterpart_line = entry.lines.get(account=self.checking)
-        counterpart_line.is_reconciled = True
-        counterpart_line.save()
-
-        with current_book(self.book):
-            resp = self.client.post(self.url, {"archive_id": in_tx.id, "keep_id": out_tx.id}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("reconciled", resp.json()["error"])
-        in_tx.refresh_from_db()
-        self.assertFalse(in_tx.is_archived)
-        entry.refresh_from_db()
-        self.assertEqual(entry.status, JournalEntry.STATUS_POSTED)
-
-    def test_archive_and_keep_must_differ(self):
-        tx = self._tx(self.checking, "100.00")
-        with current_book(self.book):
-            resp = self.client.post(self.url, {"archive_id": tx.id, "keep_id": tx.id}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_missing_transaction_returns_404(self):
-        tx = self._tx(self.checking, "100.00")
-        with current_book(self.book):
-            resp = self.client.post(self.url, {"archive_id": 999999, "keep_id": tx.id}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_cannot_resolve_other_teams_transactions(self):
-        other_team = Team.objects.create(name="Other", slug="other")
-        other_book = other_team.default_book
-        other_group = AccountGroup.objects.create(
-            book=other_book, name="Bank Accounts", account_type=ACCOUNT_TYPE_ASSET
-        )
-        other_account = Account.objects.create(
-            book=other_book, name="Checking", account_group=other_group, has_feed=True
-        )
-        other_tx = BankTransaction.objects.create(
-            book=other_book,
-            account=other_account,
-            amount=Decimal("100.00"),
-            posted_date=date(2026, 6, 1),
-            description="x",
-            source=BankTransaction.SOURCE_CSV,
-        )
-        keep = self._tx(self.checking, "100.00")
-        with current_book(self.book):
-            resp = self.client.post(self.url, {"archive_id": other_tx.id, "keep_id": keep.id}, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-        other_tx.refresh_from_db()
-        self.assertFalse(other_tx.is_archived)
 
 
 class TransferDismissEndpointTest(TransferTestBase):

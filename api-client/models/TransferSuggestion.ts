@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { TransferProposal } from './TransferProposal';
+import {
+    TransferProposalFromJSON,
+    TransferProposalFromJSONTyped,
+    TransferProposalToJSON,
+    TransferProposalToJSONTyped,
+} from './TransferProposal';
+
 /**
  * A suggested pair of bank transactions that look like two legs of one transfer.
  * @export
@@ -43,6 +51,12 @@ export interface TransferSuggestion {
      * @memberof TransferSuggestion
      */
     dateGapDays: number;
+    /**
+     * What Match would do with this pair
+     * @type {TransferProposal}
+     * @memberof TransferSuggestion
+     */
+    proposal: TransferProposal;
 }
 
 /**
@@ -53,6 +67,7 @@ export function instanceOfTransferSuggestion(value: object): value is TransferSu
     if (!('inflow' in value) || value['inflow'] === undefined) return false;
     if (!('amount' in value) || value['amount'] === undefined) return false;
     if (!('dateGapDays' in value) || value['dateGapDays'] === undefined) return false;
+    if (!('proposal' in value) || value['proposal'] === undefined) return false;
     return true;
 }
 
@@ -70,6 +85,7 @@ export function TransferSuggestionFromJSONTyped(json: any, ignoreDiscriminator: 
         'inflow': json['inflow'],
         'amount': json['amount'],
         'dateGapDays': json['date_gap_days'],
+        'proposal': TransferProposalFromJSON(json['proposal']),
     };
 }
 
@@ -86,6 +102,7 @@ export function TransferSuggestionFromJSONTyped(json: any, ignoreDiscriminator: 
         
         'amount': value['amount'],
         'date_gap_days': value['dateGapDays'],
+        'proposal': TransferProposalToJSON(value['proposal']),
     };
 }
 

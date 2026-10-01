@@ -200,9 +200,10 @@ WRITES = {
         "category_id": b.groceries.id,
     },
     "bank_feed:bank-feed-create-account": lambda a, b: {"name": "Sneaky", "account_group_id": b.expense_group.id},
-    "bank_feed:bank-feed-transfer-resolve": lambda a, b: {
-        "archive_id": b.uncategorized_tx.id,
-        "keep_id": b.other_tx.id,
+    "bank_feed:bank-feed-transfer-match": lambda a, b: {
+        "transaction_a": b.uncategorized_tx.id,
+        "transaction_b": b.other_tx.id,
+        "expected_archive_id": b.uncategorized_tx.id,
     },
     "bank_feed:bank-feed-transfer-dismiss": lambda a, b: {
         "transaction_a": b.uncategorized_tx.id,
