@@ -516,9 +516,9 @@ class SplitEditTest(TransactionEditTestCase):
         )
         self.assertBalanced(entry)
 
-    def test_editing_a_split_does_not_grow_a_mirror_leg(self):
+    def test_a_split_leg_to_another_feed_account_is_mirrored_for_its_own_amount(self):
         entry = self.make_split()
-        BankTransaction.objects.create(
+        primary = BankTransaction.objects.create(
             book=self.book,
             account=self.chequing,
             amount=Decimal("210.40"),
@@ -527,10 +527,22 @@ class SplitEditTest(TransactionEditTestCase):
             source=BankTransaction.SOURCE_CSV,
             journal_entry=entry,
         )
-        # A leg on another feed account is the shape that used to spawn a mirror.
+        # A leg on another feed account is a transfer, so it shows in that account's
+        # feed -- for the leg's own amount, never the split's whole total (the
+        # phantom mirror this shape used to spawn).
         self.edit(entry, legs=[(self.groceries, Decimal("160.00")), (self.savings, Decimal("50.40"))])
 
-        self.assertEqual(BankTransaction.objects.filter(journal_entry=entry).count(), 1)
+        mirror = BankTransaction.objects.get(journal_entry=entry, is_transfer_mirror=True)
+        self.assertEqual(mirror.account, self.savings)
+        self.assertEqual(mirror.amount, Decimal("-50.40"))  # money arriving in savings
+        self.assertEqual(
+            set(BankTransaction.objects.filter(journal_entry=entry).values_list("id", flat=True)),
+            {primary.id, mirror.id},
+        )
+
+        # Moving that leg off the feed account drops the mirror again.
+        self.edit(entry, legs=[(self.groceries, Decimal("160.00")), (self.household, Decimal("50.40"))])
+        self.assertEqual(list(BankTransaction.objects.filter(journal_entry=entry)), [primary])
 
 
 class BankSyncTest(TransactionEditTestCase):
