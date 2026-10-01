@@ -28,6 +28,7 @@ from .schema import (
     FILE_COLUMNS,
     FORMAT,
     FORMAT_VERSION,
+    GOAL_LINKS_FILE,
     JOURNAL_FILE,
     MANIFEST_FILE,
     RECONCILIATIONS_FILE,
@@ -72,6 +73,7 @@ def build_archive_bytes(
     journal: list[dict],
     budget: list[dict],
     reconciliations: list[dict] = (),
+    goal_links: list[dict] = (),
     source: dict,
     checks: dict,
     omitted: dict,
@@ -79,8 +81,8 @@ def build_archive_bytes(
 ) -> bytes:
     """
     Assemble the zip: the data CSVs plus `manifest.json` (§3.1). A caller with
-    no statements to carry may leave `reconciliations` out; the file is still
-    written, header only. `checks` and
+    no statements (or goal links) to carry may leave `reconciliations` (or
+    `goal_links`) out; the file is still written, header only. `checks` and
     `omitted` are written through as-is -- Phase 2's `export.py` is what
     computes them from the database (§6); this function only serialises
     whatever it is given.
@@ -92,6 +94,7 @@ def build_archive_bytes(
         JOURNAL_FILE: journal,
         BUDGET_FILE: budget,
         RECONCILIATIONS_FILE: list(reconciliations),
+        GOAL_LINKS_FILE: list(goal_links),
     }
     file_bytes = {filename: write_csv(FILE_COLUMN_LISTS[filename], rows_by_file[filename]) for filename in DATA_FILES}
 

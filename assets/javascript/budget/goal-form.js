@@ -49,10 +49,7 @@ function planSummary() {
   if (dateValue) {
     const [y, m] = dateValue.split('-').map(Number);
     const monthsLeft = Math.max(y * 12 + (m - 1) - (now.getFullYear() * 12 + now.getMonth()) + 1, 1);
-    return `About ${formatMoney(toFund / monthsLeft)}/month reaches ${formatMoney(target)} by ${monthLabel(
-      y,
-      m - 1,
-    )}.`;
+    return `About ${formatMoney(toFund / monthsLeft)}/month reaches ${formatMoney(target)} by ${monthLabel(y, m - 1)}.`;
   }
   return '';
 }

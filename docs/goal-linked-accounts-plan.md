@@ -1,6 +1,7 @@
 # Goal-linked accounts
 
-Status: plan, revision 2. Builds on `docs/goals-envelopes-plan.md` (allocated / spent /
+Status: built (M1–M5), revision 2. D6 ("Leave the goal alone") was approved with the
+plan and is built. Builds on `docs/goals-envelopes-plan.md` (allocated / spent /
 left) and the v3 Unassigned formula (`docs/unassigned-plan.md` §1). Inspired by
 Monarch's Save Up goal (Goals 3.0), trimmed to fewer options (§9).
 
@@ -356,3 +357,18 @@ move; switch the outflow setting; unlink.
 - A "match goal to account balance" action.
 - Goal actions moving money between accounts.
 - Suggesting links during onboarding or the YNAB import.
+
+## 14. What the build changed
+
+- **Format version 5, not 4**: version 4 was taken by `hidden_from_budget` while this
+  was being planned.
+- **Unlink URL** is `POST goals/links/<link_pk>/unlink/` (the link names its goal), so
+  the isolation suite's one-id `OBJECTS` table covers it.
+- **Unlinking an account linked the same day drops the link** instead of ending it,
+  so a mistake fixed straight away leaves nothing behind.
+- **Plan status** measures from the goal's creation month, or the viewed month when
+  that is earlier.
+- Not built: splitting assigned vs linked in Budget vs Actual's tooltip, and a separate
+  `linked` figure in the Dollar Map (both already include linked money in their totals).
+- `BOOK_MODELS` is now the frozen `BACKFILLED_BOOK_MODELS` (what `books.0003`
+  backfills) plus models created with a `book` column from the start.

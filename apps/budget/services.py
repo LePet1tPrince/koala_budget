@@ -616,6 +616,8 @@ def goal_plan(goal, month):
     before = goal.saved_previous or Decimal("0")
     to_fund_before = max(target - before, Decimal("0"))
     started = timezone.localtime(goal.created_at).date().replace(day=1) if goal.created_at else month
+    # A goal viewed in a month before it was created is measured from that month.
+    started = min(started, month)
 
     if goal.monthly_contribution:
         rate = goal.monthly_contribution

@@ -151,9 +151,10 @@
           <fieldset class="space-y-2" data-outflow-section data-testid="goal-outflow">
             <legend class="font-medium mb-1">{% translate "When money moves out of these accounts to your other accounts" %}</legend>
             {% for radio in form.outflow %}
-              <label class="flex items-start gap-3 cursor-pointer">
-                {{ radio.tag }}
-                <span>
+              <label class="flex items-start gap-3 cursor-pointer" for="{{ radio.id_for_label }}">
+                <input type="radio" class="radio radio-sm radio-primary shrink-0 mt-0.5" name="{{ radio.data.name }}"
+                       id="{{ radio.id_for_label }}" value="{{ radio.data.value }}" {% if radio.data.selected %}checked{% endif %}>
+                <span class="flex-1 min-w-0">
                   <span class="block">{{ radio.choice_label }}</span>
                   <span class="block text-xs text-base-content/70">
                     {% if radio.data.value == "withdraw" %}
