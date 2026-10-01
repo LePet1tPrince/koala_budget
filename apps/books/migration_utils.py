@@ -9,7 +9,10 @@ the live models no longer have a `team` column at all.
 from django.db.models import OuterRef, Subquery
 
 # Every model that moved from `BaseTeamModel` to `BaseBookModel`.
-BOOK_MODELS = [
+# The models that existed when the `book` column was backfilled
+# (`books.0003_backfill_books`). Frozen: that migration runs against this list, and
+# a model added later doesn't exist at that point in the migration graph.
+BACKFILLED_BOOK_MODELS = [
     ("accounts", "accountgroup"),
     ("accounts", "account"),
     ("accounts", "institution"),
@@ -29,6 +32,13 @@ BOOK_MODELS = [
     ("onboarding", "onboardingstate"),
     ("portability", "dataimport"),
     ("ynab_import", "ynabimport"),
+]
+
+# Every book-scoped model: the backfilled ones plus any created since with a `book`
+# column from the start. Drives the isolation snapshots and the structure test.
+BOOK_MODELS = [
+    *BACKFILLED_BOOK_MODELS,
+    ("budget", "goalaccountlink"),
 ]
 
 # Audit events that belong to the team rather than to its books.

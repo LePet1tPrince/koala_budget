@@ -547,6 +547,11 @@ class GoalService:
         goal = Goal.objects.select_for_update().get(pk=goal.pk)
         if goal.closed_at is not None:
             raise GoalCloseError(_("This goal is already closed."))
+        # Linked accounts stop feeding the goal first, so what's released is final.
+        # Rolled back with everything else if the close is refused.
+        from .goal_links import end_all
+
+        end_all(goal, timezone.localdate())
         left = self.left(goal, month)
         released = covered = Decimal("0")
         if left < 0:
