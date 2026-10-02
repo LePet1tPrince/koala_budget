@@ -39,6 +39,7 @@ def export_bytes(book) -> bytes:
         journal=journal_rows,
         budget=budget_rows,
         reconciliations=export.build_reconciliation_rows(book),
+        goal_links=export.build_goal_link_rows(book),
         source={"team_name": book.name},
         checks=checks,
         omitted=omitted,
@@ -235,6 +236,45 @@ class GoalLifecycleRoundTripTests(TestCase):
         self.assertEqual(goal.closed_at, closed_at)
         self.assertFalse(Goal.objects.filter(book=dest_team.default_book, account__isnull=True).exists())
         self.assertFalse(goal.account.account_group.is_system)
+
+
+class GoalLinksRoundTripTests(TestCase):
+    """Linked accounts, the outflow setting and the monthly plan travel with the goal."""
+
+    def test_links_survive(self):
+        from apps.budget.models import GoalAccountLink
+
+        source_team, _user, _handles = build_db_fixture_team("Links Source", "links-source")
+        dest_team, dest_user = make_team("Links Destination", "links-destination")
+        book = source_team.default_book
+        goal = Goal.objects.get(book=book, name="New Deck")
+        goal.outflow = Goal.OUTFLOW_SPEND
+        goal.monthly_contribution = Decimal("250.00")
+        goal.save()
+        account = Account.objects.filter(book=book, account_group__account_type="asset").first()
+        GoalAccountLink.objects.create(
+            book=book, goal=goal, account=account, start_date=date(2026, 1, 1), end_date=date(2026, 3, 31)
+        )
+        GoalAccountLink.objects.create(
+            book=book, goal=goal, account=account, start_date=date(2026, 4, 1), include_starting_balance=False
+        )
+        before = Goal.objects.filter(pk=goal.pk).with_progress().values("allocated", "spent").get()
+
+        apply.apply_archive(dest_team.default_book, export_bytes(book), user=dest_user)
+
+        copied = Goal.objects.get(book=dest_team.default_book, name="New Deck")
+        self.assertEqual(copied.outflow, Goal.OUTFLOW_SPEND)
+        self.assertEqual(copied.monthly_contribution, Decimal("250.00"))
+        links = list(copied.account_links.order_by("start_date").select_related("account"))
+        self.assertEqual(
+            [(link.account.name, link.start_date, link.end_date, link.include_starting_balance) for link in links],
+            [
+                (account.name, date(2026, 1, 1), date(2026, 3, 31), True),
+                (account.name, date(2026, 4, 1), None, False),
+            ],
+        )
+        after = Goal.objects.filter(pk=copied.pk).with_progress().values("allocated", "spent").get()
+        self.assertEqual(after, before)
 
 
 class ImportIntoNonEmptyTeamTests(TestCase):

@@ -35,7 +35,7 @@ def _rezip_with_manifest(data: bytes, manifest: dict) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
         zf_out.writestr("manifest.json", json.dumps(manifest))
-        for name in ("accounts.csv", "journal.csv", "budget.csv", "reconciliations.csv"):
+        for name in ("accounts.csv", "journal.csv", "budget.csv", "reconciliations.csv", "goal_links.csv"):
             zf_out.writestr(name, zf_in.read(name))
     return buf.getvalue()
 
@@ -78,6 +78,7 @@ class StructuralErrorTests(SimpleTestCase):
             zf_out.writestr("accounts.csv", zf_in.read("accounts.csv"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
             zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
+            zf_out.writestr("goal_links.csv", zf_in.read("goal_links.csv"))
             # journal.csv omitted
         with self.assertRaises(DocumentError) as ctx:
             read.read_archive(buf.getvalue())
@@ -100,6 +101,7 @@ class StructuralErrorTests(SimpleTestCase):
             zf_out.writestr("journal.csv", zf_in.read("journal.csv"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
             zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
+            zf_out.writestr("goal_links.csv", zf_in.read("goal_links.csv"))
 
         with self.assertRaises(DocumentError) as ctx:
             read.read_archive(buf.getvalue())
@@ -137,8 +139,10 @@ class VersionTests(SimpleTestCase):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
             zf_out.writestr("manifest.json", json.dumps(manifest))
-            accounts_v1 = _drop_column(zf_in.read("accounts.csv"), "goal_closed_at")
-            zf_out.writestr("accounts.csv", _drop_column(accounts_v1, "hidden_from_budget"))
+            accounts_v1 = zf_in.read("accounts.csv")
+            for column in ("goal_closed_at", "hidden_from_budget", "goal_outflow", "goal_monthly_contribution"):
+                accounts_v1 = _drop_column(accounts_v1, column)
+            zf_out.writestr("accounts.csv", accounts_v1)
             zf_out.writestr("journal.csv", (journal_v1 + "\r\n").encode("utf-8-sig"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
 
@@ -268,6 +272,7 @@ class HashWarningTests(SimpleTestCase):
             zf_out.writestr("journal.csv", zf_in.read("journal.csv"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
             zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
+            zf_out.writestr("goal_links.csv", zf_in.read("goal_links.csv"))
 
         tables = read.read_archive(buf.getvalue())  # must not raise
         self.assertEqual(len(tables.hash_warnings), 1)
@@ -287,6 +292,7 @@ class HashWarningTests(SimpleTestCase):
             zf_out.writestr("journal.csv", zf_in.read("journal.csv"))
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
             zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
+            zf_out.writestr("goal_links.csv", zf_in.read("goal_links.csv"))
 
         tables = read.read_archive(buf.getvalue())
         self.assertEqual(len(tables.hash_warnings), 1)  # only accounts.csv, not journal/budget

@@ -123,5 +123,40 @@ class BudgetPage(BasePage):
         self.page.locator("[data-testid='goal-submit-btn']").click()
         self.page.wait_for_url(f"**{book.base_url}budget/goals/**", timeout=10_000)
 
+    # ------------------------------------------------------------------
+    # Linked accounts (docs/goal-linked-accounts-plan.md)
+    # ------------------------------------------------------------------
+
+    def goal_link_row(self, account_name: str):
+        return self.page.locator("[data-testid='goal-link-row']", has_text=account_name)
+
+    def tick_link_account(self, account_name: str):
+        self.goal_link_row(account_name).locator("[data-testid='goal-link-checkbox']").check()
+
+    def link_preview(self):
+        return self.page.locator("[data-testid='goal-link-preview']")
+
+    def choose_outflow(self, value: str):
+        self.page.locator(f"[data-testid='goal-outflow'] input[value='{value}']").check()
+
+    def submit_goal_form(self):
+        self.page.locator("[data-testid='goal-submit-btn']").click()
+
+    def goal_card_links(self, name: str) -> str:
+        return self.goal_card(name).locator("[data-testid='goal-card-links']").inner_text().strip()
+
+    def goal_saved(self, name: str) -> str:
+        return self.goal_card(name).locator("[data-num='allocated']").inner_text().strip()
+
+    def goto_goal_detail(self, book, goal):
+        self.goto(f"{book.base_url}budget/goals/{goal.pk}/", wait_for="[data-testid='goal-accounts']")
+
+    def detail_links(self):
+        return self.page.locator("[data-testid='goal-link']")
+
+    def unlink_first(self):
+        self.page.locator("[data-testid='goal-unlink-btn']").first.click()
+        self.page.wait_for_load_state()
+
     def cancel_goal_form(self):
         self.page.locator("[data-testid='goal-cancel-btn']").click()

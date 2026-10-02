@@ -11,6 +11,9 @@
         <h1 class="text-3xl font-bold flex items-center gap-3">
           {{ goal.name }}
           <span class="badge {% if goal.state == 'closed' %}badge-neutral{% elif goal.state == 'spending' %}badge-info{% elif goal.state == 'funded' %}badge-success{% else %}badge-ghost{% endif %}" data-testid="goal-state">{{ goal.state_label }}</span>
+          {% if plan.status and not goal.is_closed %}
+            {% include "budget/components/goal_plan_status.html" with status=plan.status label=plan.status_label %}
+          {% endif %}
         </h1>
         {% if goal.description %}
         <p class="text-base-content/70 mt-2">{{ goal.description }}</p>
@@ -77,6 +80,20 @@
         </div>
         {% endif %}
 
+        {% if plan and not goal.is_closed %}
+        <div class="mt-2 text-sm text-base-content/70" data-testid="goal-plan">
+          {% if goal.monthly_contribution %}
+            {% blocktranslate trimmed with amount=plan.rate|currency %}Plan: {{ amount }} a month.{% endblocktranslate %}
+          {% else %}
+            {% blocktranslate trimmed with amount=plan.rate|currency %}Plan: about {{ amount }} a month to reach the target on time.{% endblocktranslate %}
+          {% endif %}
+          {% if plan.finish %}
+            {% blocktranslate trimmed with month=plan.finish|date:"F Y" %}Reaches the target in {{ month }}.{% endblocktranslate %}
+            {% if plan.late %}<span class="text-warning">{% translate "That's after the target date." %}</span>{% endif %}
+          {% endif %}
+        </div>
+        {% endif %}
+
         {% if goal.remaining and goal.remaining > 0 %}
         <div class="mt-2 text-sm text-base-content/70">
           {% translate "Remaining:" %} {{ goal.remaining|currency }}
@@ -94,6 +111,69 @@
           </svg>
           <span>{% translate "Funded — this goal no longer asks for money." %}</span>
         </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Where the money lives -->
+    <div class="card bg-base-100 border border-base-300 mb-6" data-testid="goal-accounts">
+      <div class="card-body">
+        <div class="flex justify-between items-baseline gap-2">
+          <h2 class="card-title">{% translate "Where the money lives" %}</h2>
+          {% if not goal.is_closed %}
+            <a href="{% url 'budget:goal_update' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}" class="link link-primary text-sm">
+              {% if open_links %}{% translate "Change" %}{% else %}{% translate "Link an account" %}{% endif %}
+            </a>
+          {% endif %}
+        </div>
+        {% if open_links %}
+          <ul class="divide-y divide-base-300">
+            {% for link in open_links %}
+              <li class="py-2 flex items-center gap-3" data-testid="goal-link">
+                <div class="flex-1 min-w-0">
+                  <a class="link link-hover font-medium" href="{% url 'accounts:account_detail' team_slug=request.team.slug book_slug=request.book.slug pk=link.account_id %}">{{ link.account.name }}</a>
+                  <div class="text-xs text-base-content/70">
+                    {% blocktranslate trimmed with date=link.start_date|date:"M j, Y" %}Counting since {{ date }}{% endblocktranslate %}{% if link.include_starting_balance %} · {% translate "including the balance already there" %}{% endif %}
+                  </div>
+                </div>
+                <form method="post" action="{% url 'budget:goal_unlink' team_slug=request.team.slug book_slug=request.book.slug link_pk=link.pk %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-ghost btn-xs" data-testid="goal-unlink-btn">{% translate "Unlink" %}</button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+          <p class="text-sm text-base-content/70" data-testid="goal-outflow-setting">
+            {% translate "When money moves out to your other accounts:" %} <span class="font-medium">{{ goal.get_outflow_display }}</span>
+          </p>
+          {% if drift %}
+            <div class="alert mt-2 items-start" data-testid="goal-drift">
+              <div>
+                <p>
+                  {% blocktranslate trimmed with held=drift.held|currency left=drift.left|currency %}
+                    These accounts hold {{ held }}; this goal has {{ left }} left.
+                  {% endblocktranslate %}
+                </p>
+                <ul class="list-disc pl-5 text-sm text-base-content/70 mt-1">
+                  {% for reason in drift.reasons %}<li>{{ reason }}</li>{% endfor %}
+                </ul>
+              </div>
+            </div>
+          {% endif %}
+        {% else %}
+          <p class="text-sm text-base-content/70">
+            {% translate "No account is linked. Link one and money arriving in it goes to this goal automatically." %}
+          </p>
+        {% endif %}
+        {% if past_links %}
+          <details class="text-sm mt-2">
+            <summary class="cursor-pointer text-base-content/70">{% translate "Previously linked" %}</summary>
+            <ul class="mt-1 space-y-1">
+              {% for link in past_links %}
+                <li>{{ link.account.name }} · {{ link.start_date|date:"M j, Y" }} – {{ link.end_date|date:"M j, Y" }}</li>
+              {% endfor %}
+            </ul>
+          </details>
         {% endif %}
       </div>
     </div>
@@ -140,31 +220,41 @@
       </div>
     </div>
 
-    <!-- Allocation History -->
-    <div class="card bg-base-100 shadow-xl">
+    <!-- Activity: everything that moved the goal -->
+    <div class="card bg-base-100 border border-base-300">
       <div class="card-body">
-        <h2 class="card-title">{% translate "Allocation History" %}</h2>
+        <h2 class="card-title">{% translate "Activity" %}</h2>
 
         <div class="overflow-x-auto">
-          <table class="table w-full">
+          <table class="table table-sm table-quiet w-full" data-testid="goal-activity">
             <thead>
               <tr>
-                <th>{% translate "Month" %}</th>
+                <th>{% translate "Date" %}</th>
+                <th>{% translate "What" %}</th>
+                <th>{% translate "Details" %}</th>
                 <th class="text-right">{% translate "Amount" %}</th>
-                <th>{% translate "Notes" %}</th>
               </tr>
             </thead>
             <tbody>
-              {% for allocation in allocations %}
-              <tr>
-                <td>{{ allocation.month|date:"F Y" }}</td>
-                <td class="text-right font-mono">{{ allocation.amount|currency }}</td>
-                <td>{{ allocation.notes|default:"-" }}</td>
+              {% for event in activity %}
+              <tr data-testid="goal-activity-row" data-kind="{{ event.kind }}">
+                <td class="whitespace-nowrap">{% if event.month_only %}{{ event.date|date:"M Y" }}{% else %}{{ event.date|date:"M j, Y" }}{% endif %}</td>
+                <td class="whitespace-nowrap">
+                  {% if event.kind == "assigned" %}{% translate "Assigned" %}
+                  {% elif event.kind == "withdrawn" %}{% translate "Withdrawn" %}
+                  {% elif event.kind == "starting" %}{% blocktranslate trimmed with account=event.account.name %}Starting balance from {{ account }}{% endblocktranslate %}
+                  {% elif event.kind == "in" %}{% blocktranslate trimmed with account=event.account.name %}From {{ account }}{% endblocktranslate %}
+                  {% elif event.kind == "out" %}{% blocktranslate trimmed with account=event.account.name %}Moved out of {{ account }}{% endblocktranslate %}
+                  {% elif event.account %}{% blocktranslate trimmed with account=event.account.name %}Spent from {{ account }}{% endblocktranslate %}
+                  {% else %}{% translate "Spent" %}{% endif %}
+                </td>
+                <td class="text-base-content/70">{{ event.payee|default:"" }}{% if event.payee and event.memo %} · {% endif %}{{ event.memo|default:"" }}</td>
+                <td class="text-right money {% if event.amount < 0 %}text-error{% endif %}">{{ event.amount|currency }}</td>
               </tr>
               {% empty %}
               <tr>
-                <td colspan="3" class="text-center text-base-content/70">
-                  {% translate "No allocations yet." %}
+                <td colspan="4" class="text-center text-base-content/70">
+                  {% translate "Nothing yet. Assign money, link an account, or spend from the goal and it shows up here." %}
                 </td>
               </tr>
               {% endfor %}

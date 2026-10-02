@@ -516,7 +516,12 @@ class SplitEditTest(TransactionEditTestCase):
         )
         self.assertBalanced(entry)
 
-    def test_editing_a_split_does_not_grow_a_mirror_leg(self):
+    def test_editing_a_split_mirrors_only_its_transfer_leg(self):
+        """
+        A split's leg on another feed account gets a mirror for that leg's own
+        amount (`transfer_mirror._sync_split_mirrors`) -- never one for the
+        split's whole total, the phantom row a two-line assumption used to make.
+        """
         entry = self.make_split()
         BankTransaction.objects.create(
             book=self.book,
@@ -527,10 +532,13 @@ class SplitEditTest(TransactionEditTestCase):
             source=BankTransaction.SOURCE_CSV,
             journal_entry=entry,
         )
-        # A leg on another feed account is the shape that used to spawn a mirror.
         self.edit(entry, legs=[(self.groceries, Decimal("160.00")), (self.savings, Decimal("50.40"))])
 
-        self.assertEqual(BankTransaction.objects.filter(journal_entry=entry).count(), 1)
+        rows = BankTransaction.objects.filter(journal_entry=entry)
+        self.assertEqual(rows.count(), 2)
+        mirror = rows.get(is_transfer_mirror=True)
+        self.assertEqual((mirror.account, mirror.amount), (self.savings, Decimal("-50.40")))
+        self.assertEqual(rows.get(is_transfer_mirror=False).amount, Decimal("210.40"))
 
 
 class BankSyncTest(TransactionEditTestCase):

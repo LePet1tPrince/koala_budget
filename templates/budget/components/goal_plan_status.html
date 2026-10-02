@@ -1,0 +1,2 @@
+{% comment %}A goal's plan status pill: ahead / on_track / behind (apps.budget.services.goal_plan).{% endcomment %}
+<span class="badge badge-sm {% if status == 'ahead' %}badge-success{% elif status == 'on_track' %}badge-info{% else %}badge-warning{% endif %} badge-soft whitespace-nowrap" data-testid="goal-plan-status" data-status="{{ status }}">{{ label }}</span>

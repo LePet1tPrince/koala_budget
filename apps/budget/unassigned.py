@@ -142,7 +142,7 @@ def compute_unassigned(
     goals = list(
         Goal.objects.filter(book=book, is_archived=False)
         .annotate(
-            allocated_to_date=goal_allocated_subquery(month__lte=month),
+            allocated_to_date=goal_allocated_subquery(end=month_after(month)),
             spent_to_date=goal_spent_subquery(end=month_after(month)),
         )
         .order_by("order", "target_date", "name")

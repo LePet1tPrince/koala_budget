@@ -117,10 +117,30 @@ class GoalForm(forms.ModelForm):
         ),
     )
 
+    monthly_contribution = AmountFormulaField(
+        max_digits=15,
+        decimal_places=2,
+        required=False,
+        min_value=0,
+        label=_("Monthly contribution"),
+        help_text=_("How much you plan to put towards the goal each month"),
+        widget=GroupedAmountInput(
+            attrs={
+                "inputmode": "decimal",
+                "autocomplete": "off",
+                "data-amount-input": "",
+                "data-amount-format": "",
+                "class": "input input-bordered w-full",
+                "data-testid": "goal-monthly-input",
+            }
+        ),
+    )
+
     class Meta:
         model = Goal
-        fields = ["name", "description", "target_amount", "target_date"]
+        fields = ["name", "description", "target_amount", "target_date", "monthly_contribution", "outflow"]
         widgets = {
+            "outflow": forms.RadioSelect(attrs={"class": "radio radio-sm radio-primary"}),
             "name": forms.TextInput(attrs={"class": "input input-bordered w-full"}),
             "description": forms.Textarea(attrs={"class": "textarea textarea-bordered w-full", "rows": 3}),
             # The native input is the no-JS path; `date-field` swaps in the app's DateField.
@@ -134,3 +154,12 @@ class GoalForm(forms.ModelForm):
                 },
             ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Only meaningful with a linked account; a form without the choice keeps
+        # what the goal has (the model default for a new one).
+        self.fields["outflow"].required = False
+
+    def clean_outflow(self):
+        return self.cleaned_data.get("outflow") or self.instance.outflow or Goal.OUTFLOW_WITHDRAW

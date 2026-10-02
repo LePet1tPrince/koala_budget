@@ -22,6 +22,7 @@ urlpatterns = [
     # Goal views
     path("goals/", views.goals_list_view, name="goals_list"),
     path("goals/new/", views.goal_create_view, name="goal_create"),
+    path("goals/link-preview/", views.goal_link_preview, name="goal_link_preview"),
     path("goals/<int:pk>/", views.goal_detail_view, name="goal_detail"),
     path("goals/<int:pk>/edit/", views.goal_update_view, name="goal_update"),
     path("goals/<int:pk>/delete/", views.goal_delete_view, name="goal_delete"),
@@ -30,4 +31,5 @@ urlpatterns = [
     path("goals/<int:pk>/withdraw/", views.goal_withdraw, name="goal_withdraw"),
     path("goals/<int:pk>/complete/", views.goal_complete_view, name="goal_complete"),
     path("goals/<int:pk>/close/", views.goal_close_view, name="goal_close"),
+    path("goals/links/<int:link_pk>/unlink/", views.goal_unlink, name="goal_unlink"),
 ]

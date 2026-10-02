@@ -1,0 +1,12 @@
+{% load i18n %}
+{% comment %}Under a goal card's title (every page style): plan status and the accounts the goal's money lives in.{% endcomment %}
+{% if item.plan_status and not item.funded or item.links %}
+  <div class="flex flex-wrap items-center gap-2 text-xs text-base-content/70 -mt-1">
+    {% if item.plan_status and not item.funded %}
+      {% include "budget/components/goal_plan_status.html" with status=item.plan_status label=item.plan_status_label %}
+    {% endif %}
+    {% if item.links %}
+      <span data-testid="goal-card-links">{% translate "Linked" %} · {{ item.links|join:", " }}</span>
+    {% endif %}
+  </div>
+{% endif %}

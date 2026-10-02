@@ -5,7 +5,7 @@ import zipfile
 
 from apps.accounts.models import Account, AccountGroup, Payee
 from apps.books.models import Book
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
 from apps.teams.models import Membership
@@ -172,6 +172,25 @@ def export_user_data(user):
                 _build_csv(
                     ["goal", "month", "amount", "notes"],
                     [[a.goal.name, a.month.isoformat(), str(a.amount), a.notes] for a in allocations],
+                ),
+            )
+
+            # Goal-linked accounts
+            goal_links = GoalAccountLink.objects.filter(book=book).select_related("goal", "account")
+            zf.writestr(
+                f"{prefix}/goal_links.csv",
+                _build_csv(
+                    ["goal", "account", "start_date", "end_date", "include_starting_balance"],
+                    [
+                        [
+                            link.goal.name,
+                            link.account.name,
+                            link.start_date.isoformat(),
+                            link.end_date.isoformat() if link.end_date else "",
+                            link.include_starting_balance,
+                        ]
+                        for link in goal_links
+                    ],
                 ),
             )
 

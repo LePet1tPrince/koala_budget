@@ -17,7 +17,7 @@ from django.db.models import Max, Min
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
-from apps.budget.models import Budget, GoalAllocation
+from apps.budget.models import Budget, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.models import Reconciliation
 
@@ -257,6 +257,12 @@ def build_reconciliation_rows(book) -> list[dict]:
     return [
         schema.build_row((schema.RECONCILIATION, rec), columns=schema.RECONCILIATIONS_COLUMNS) for rec in statements
     ]
+
+
+def build_goal_link_rows(book) -> list[dict]:
+    """One row per goal-linked account range (`goal_links.csv`), ended ones included."""
+    links = GoalAccountLink.objects.filter(book=book).select_related("goal").order_by("account_id", "start_date", "id")
+    return [schema.build_row((schema.GOAL_LINK, link), columns=schema.GOAL_LINKS_COLUMNS) for link in links]
 
 
 def _build_budget_rows(book) -> list[dict]:

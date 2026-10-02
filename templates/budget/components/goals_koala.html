@@ -134,6 +134,8 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
         <span class="badge badge-success gap-1" data-funded-badge {% if not item.funded %}hidden{% endif %}>🎉 {% translate "Treetop!" %}</span>
       </div>
 
+      {% include "budget/components/goal_card_meta.html" %}
+
       <div class="flex gap-4 items-end mt-2">
         <div class="koala-tree">
           <div class="koala-canopy">🌳</div>
@@ -185,7 +187,7 @@ tree the koala climbs; milestone leaves pop as progress crosses them.
           </div>
           {% if item.needed_per_month and not item.funded %}
             <div class="text-xs text-base-content/70 mt-1">
-              {{ item.needed_per_month|currency }}{% translate "/mo reaches the top by" %} {{ item.goal.target_date|date:"M Y" }}
+              {{ item.needed_per_month|currency }}{% translate "/mo reaches the top by" %} {{ item.plan_finish|date:"M Y" }}
             </div>
           {% endif %}
         </div>

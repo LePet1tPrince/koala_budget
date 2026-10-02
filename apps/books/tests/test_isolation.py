@@ -99,6 +99,8 @@ READS = {
     "accounts:payee_create": {},
     "accounts:institution_create": {},
     "budget:goal_create": {},
+    # Book B's goal is a 404; book B's account is refused like any unknown id.
+    "budget:goal_link_preview": lambda a, b: {"link_account": b.savings.id, "outflow": "withdraw"},
 }
 
 # Looked up by an id in the query string rather than the path: B's id is a 404.
@@ -138,6 +140,7 @@ OBJECTS = {
     "budget:goal_withdraw": ("goal", "pk", "post"),
     "budget:goal_complete": ("goal", "pk", "post"),
     "budget:goal_close": ("goal", "pk", "post"),
+    "budget:goal_unlink": ("goal_link", "link_pk", "post"),
     "budget:category_visibility": ("account", "pk", "post"),
     "reports:account_activity": ("account", "account_id", "get"),
     "reports:export_account_activity": ("account", "account_id", "get"),

@@ -522,32 +522,18 @@ class ReportService:
         line (allocated − spent, all time up to each month). Same shape as the
         budget chart, so the same chart draws it.
         """
-        from django.db.models import F, Sum
-        from django.db.models.functions import TruncMonth
-
-        from apps.budget.models import GoalAllocation
+        from apps.budget.models import Goal
+        from apps.budget.services import goal_monthly
 
         months = self._period_range(start_date, end_date, "month")
         if not months:
             return None
         month_after_last = (months[-1] + timedelta(days=32)).replace(day=1)
 
-        allocated = {
-            row["month"]: row["total"]
-            for row in GoalAllocation.objects.filter(book=self.book, goal__account=account, month__lt=month_after_last)
-            .values("month")
-            .annotate(total=Sum("amount"))
-        }
-        spent = {
-            (row["month"].date() if hasattr(row["month"], "date") else row["month"]): row["total"]
-            for row in JournalLine.objects.filter(
-                book=self.book, account=account, journal_entry__entry_date__lt=month_after_last
-            )
-            .filter(counted_entries("journal_entry__"))
-            .annotate(month=TruncMonth("journal_entry__entry_date"))
-            .values("month")
-            .annotate(total=Sum(F("dr_amount") - F("cr_amount")))
-        }
+        goal = Goal.objects.filter(book=self.book, account=account).first()
+        monthly = goal_monthly(self.book, [goal], end=month_after_last)[goal.pk] if goal else {}
+        allocated = {m: v["saved"] for m, v in monthly.items()}
+        spent = {m: v["spent"] for m, v in monthly.items()}
 
         first_month = min([months[0], *allocated, *spent])
         displayed = set(months)

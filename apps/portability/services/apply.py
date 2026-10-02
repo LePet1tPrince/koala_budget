@@ -22,7 +22,7 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.models import Reconciliation
 
@@ -51,6 +51,7 @@ class ApplyResult:
     lines: int
     bank_transactions: int
     reconciliations: int = 0
+    goal_links: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -66,6 +67,7 @@ class ApplyResult:
             "lines": self.lines,
             "bank_transactions": self.bank_transactions,
             "reconciliations": self.reconciliations,
+            "goal_links": self.goal_links,
         }
 
 
@@ -94,6 +96,7 @@ def build_safety_archive(book) -> bytes:
         journal=journal_rows,
         budget=budget_rows,
         reconciliations=export.build_reconciliation_rows(book),
+        goal_links=export.build_goal_link_rows(book),
         source={"team_name": book.team.name, "book_name": book.name},
         checks=checks,
         omitted=omitted,
@@ -135,6 +138,8 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
     _insert_budgets(book, tables.budget_rows, account_id_map)
     _insert_goal_allocations(book, tables.budget_rows, account_id_map, goal_id_by_account_id)
 
+    goal_links_created = _insert_goal_links(book, tables.goal_links, account_id_map, goal_id_by_account_id)
+
     report(55, "Writing statements")
     reconciliation_id_map = _insert_reconciliations(book, tables.reconciliations, account_id_map)
 
@@ -164,6 +169,7 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
         lines=lines_created,
         bank_transactions=bank_transactions_created,
         reconciliations=len(reconciliation_id_map),
+        goal_links=goal_links_created,
     )
     log_event(AuditEvent.DATA_IMPORTED, user=user, book=book, metadata={"result": result.as_dict()})
     report(100, "Done")
@@ -250,7 +256,8 @@ def _insert_goals(book, account_rows, account_id_map) -> dict[int, int]:
             is_complete=bool(row["goal_is_complete"]),
             is_archived=bool(row["goal_is_archived"]),
             order=row["goal_order"] or 0,
-            **schema.model_kwargs(schema.GOAL, row, skip={"is_complete", "is_archived", "order"}),
+            outflow=row.get("goal_outflow") or Goal.OUTFLOW_WITHDRAW,
+            **schema.model_kwargs(schema.GOAL, row, skip={"is_complete", "is_archived", "order", "outflow"}),
         )
         for row in goal_rows
     ]
@@ -285,6 +292,24 @@ def _insert_goal_allocations(book, budget_rows, account_id_map, goal_id_by_accou
             )
         )
     GoalAllocation.objects.bulk_create(objs)
+
+
+def _insert_goal_links(book, rows, account_id_map, goal_id_by_account_id) -> int:
+    objs = [
+        GoalAccountLink(
+            book=book,
+            goal_id=goal_id_by_account_id[account_id_map[row["goal_account_id"]]],
+            account_id=account_id_map[row["account_id"]],
+            include_starting_balance=bool(row["include_starting_balance"]),
+            is_archived=bool(row["is_archived"]),
+            **schema.model_kwargs(
+                schema.GOAL_LINK, row, skip={"goal", "account", "include_starting_balance", "is_archived"}
+            ),
+        )
+        for row in rows
+    ]
+    GoalAccountLink.objects.bulk_create(objs)
+    return len(objs)
 
 
 def _insert_reconciliations(book, rows, account_id_map) -> dict[int, int]:

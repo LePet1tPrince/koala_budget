@@ -2,7 +2,7 @@
 The `format_version` upgrade chain (§3.7 of `docs/export-import-plan.md`).
 
 Each step is a pure function over already-*parsed* rows -- a dict of
-`{"accounts", "journal_rows", "budget_rows", "reconciliations"}` lists, in the
+`{"accounts", "journal_rows", "budget_rows", "reconciliations", "goal_links"}` lists, in the
 shape `read.py` produces -- never over raw CSV/zip bytes, so steps compose and
 are testable in isolation from parsing. `read.py` reads an older archive with
 only the files and columns that version had (`schema.FILES_ADDED_IN`,
@@ -44,8 +44,26 @@ def upgrade_3_to_4(tables: dict) -> dict:
     return tables
 
 
+def upgrade_4_to_5(tables: dict) -> dict:
+    """
+    Version 5 added goal-linked accounts. Before it no account fed a goal, every
+    goal took money out when it left (the model default) and none had a monthly
+    plan.
+    """
+    for row in tables["accounts"]:
+        row.setdefault("goal_outflow", None)
+        row.setdefault("goal_monthly_contribution", None)
+    tables["goal_links"] = []
+    return tables
+
+
 # {from_version: fn(tables) -> tables at from_version + 1}
-CHAIN: dict[int, Callable[[dict], dict]] = {1: upgrade_1_to_2, 2: upgrade_2_to_3, 3: upgrade_3_to_4}
+CHAIN: dict[int, Callable[[dict], dict]] = {
+    1: upgrade_1_to_2,
+    2: upgrade_2_to_3,
+    3: upgrade_3_to_4,
+    4: upgrade_4_to_5,
+}
 
 
 def check_path(from_version: int) -> None:

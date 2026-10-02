@@ -54,7 +54,7 @@ class ExportViewTests(TestCase):
         with zipfile.ZipFile(BytesIO(response.content)) as zf:
             self.assertEqual(
                 set(zf.namelist()),
-                {"manifest.json", "accounts.csv", "journal.csv", "budget.csv", "reconciliations.csv"},
+                {"manifest.json", "accounts.csv", "journal.csv", "budget.csv", "reconciliations.csv", "goal_links.csv"},
             )
 
     def test_a_plain_member_can_export_their_own_team(self):

@@ -102,6 +102,7 @@ def export_view(request, team_slug, book_slug):
         journal=journal_rows,
         budget=budget_rows,
         reconciliations=export.build_reconciliation_rows(request.book),
+        goal_links=export.build_goal_link_rows(request.book),
         source=_source(request.book),
         checks=checks,
         omitted=omitted,
