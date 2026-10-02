@@ -69,29 +69,15 @@ const TransferMatchPanel = ({ id, match, onMatch, onDismiss, onGoTo, onClose }) 
       data-testid="transfer-match-panel"
     >
       <p className="text-sm">
-        {gettext(
-          'This looks like one transfer between your accounts, reported by both banks. Matching keeps one copy so it is counted once.',
-        )}
+        {gettext('Both banks seem to have reported the same transfer. Matching keeps one copy so it is counted once.')}
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <Leg leg={self} title={gettext('This transaction')} kept={ready && keepsThis} archived={ready && !keepsThis} />
-        <Leg
-          leg={other}
-          title={interpolate(gettext('Other side in %s'), [otherAccount])}
-          note={
-            pair.date_gap_days > 0
-              ? interpolate(
-                  ngettext('%s day apart', '%s days apart', pair.date_gap_days),
-                  [pair.date_gap_days],
-                )
-              : gettext('Same day')
-          }
-          kept={ready && !keepsThis}
-          archived={ready && keepsThis}
-          testId="transfer-match-counterpart"
-        />
-      </div>
+      <Comparison
+        self={self}
+        other={other}
+        dateGap={pair.date_gap_days}
+        keep={ready ? (keepsThis ? 'self' : 'other') : null}
+      />
 
       {ready ? (
         <p className="text-sm" data-testid="transfer-match-outcome">
@@ -133,50 +119,146 @@ const TransferMatchPanel = ({ id, match, onMatch, onDismiss, onGoTo, onClose }) 
   );
 };
 
-/** One leg of the pair, as a compact card. */
-const Leg = ({ leg, title, note, kept, archived, testId }) => {
-  const inflow = Number(leg.inflow) > 0;
-  const amount = inflow ? leg.inflow : leg.outflow;
-  const category = leg.is_split
-    ? interpolate(gettext('Split (%s)'), [leg.split_count])
-    : leg.category?.name || gettext('Uncategorized');
-  return (
-    <div
-      className={`rounded-lg border bg-base-100 p-2.5 text-sm ${archived ? 'border-base-300 opacity-70' : 'border-base-300'}`}
-      data-testid={testId}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-base-content/70 truncate">{title}</span>
-        {kept && <span className="badge badge-success badge-soft badge-xs">{gettext('Kept')}</span>}
-        {archived && <span className="badge badge-ghost badge-xs">{gettext('Archived')}</span>}
-      </div>
-      <div className="flex items-baseline justify-between gap-2 mt-1">
-        <span className="money font-semibold">
-          {inflow ? '+' : '−'}
-          {formatCurrency(amount)}
-        </span>
-        <span className="text-xs text-base-content/70 tabular-nums">
-          {formatDate(leg.posted_date)}
-          {note ? ` · ${note}` : ''}
-        </span>
-      </div>
-      {leg.payee && <div className="truncate" title={leg.payee}>{leg.payee}</div>}
-      {leg.description && (
-        <div className="text-xs text-base-content/70 truncate" title={leg.description}>
-          {leg.description}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-1 mt-1">
-        <span className={`badge badge-xs ${leg.category || leg.is_split ? 'badge-ghost' : 'badge-outline'}`}>
-          {category}
-        </span>
-        {leg.is_reconciled && (
-          <span className="badge badge-info badge-soft badge-xs gap-1">
-            <Icon name="lock" className="w-3 h-3" />
-            {gettext('Reconciled')}
+/**
+ * What a leg's category says, read from this pair's point of view: a leg already
+ * categorized to the other leg's account is that transfer, so it says so
+ * ("Transfer to Savings") rather than just naming the account.
+ */
+const categoryText = (leg, counterpart) => {
+  if (leg.is_split) return interpolate(gettext('Split (%s)'), [leg.split_count]);
+  if (!leg.category) return gettext('Uncategorized');
+  if (leg.category.id === counterpart.account?.id) {
+    const outflow = Number(leg.outflow) > 0;
+    return interpolate(outflow ? gettext('Transfer to %s') : gettext('Transfer from %s'), [leg.category.name]);
+  }
+  return leg.category.name;
+};
+
+const amountText = (leg) =>
+  Number(leg.inflow) > 0
+    ? interpolate(gettext('%s in'), [formatCurrency(leg.inflow)])
+    : interpolate(gettext('%s out'), [formatCurrency(leg.outflow)]);
+
+/**
+ * The two legs side by side, one row per attribute, so a difference (dates two
+ * days apart, one side categorized and the other not) reads across a single line.
+ * The first column is the row the panel opened under; the second the other bank's.
+ */
+const Comparison = ({ self, other, dateGap, keep }) => {
+  const sides = [
+    { key: 'self', leg: self, counterpart: other },
+    { key: 'other', leg: other, counterpart: self },
+  ];
+  const gapNote =
+    dateGap > 0
+      ? interpolate(ngettext('%s day later', '%s days later', dateGap), [dateGap])
+      : gettext('same day');
+  // The later of the two dates carries the gap ("2 days later"); on the same day
+  // the other side says so.
+  const laterKey = other.posted_date > self.posted_date ? 'other' : 'self';
+
+  const rows = [
+    {
+      label: gettext('Date'),
+      render: (s) => (
+        <>
+          <span className="tabular-nums whitespace-nowrap">{formatDate(s.leg.posted_date)}</span>
+          {(dateGap > 0 ? s.key === laterKey : s.key === 'other') && (
+            <span className="block text-xs text-base-content/70">{gapNote}</span>
+          )}
+        </>
+      ),
+    },
+    { label: gettext('Amount'), render: (s) => <span className="money">{amountText(s.leg)}</span> },
+    {
+      label: gettext('Category'),
+      render: (s) => {
+        const uncategorized = !s.leg.category && !s.leg.is_split;
+        return (
+          <span className={uncategorized ? 'italic text-base-content/70' : ''}>
+            {categoryText(s.leg, s.counterpart)}
           </span>
-        )}
-      </div>
+        );
+      },
+    },
+    { label: gettext('Payee'), render: (s) => s.leg.payee || <span className="text-base-content/70">—</span> },
+    {
+      label: gettext('Description'),
+      render: (s) => <span className="break-words">{s.leg.description || '—'}</span>,
+    },
+    {
+      label: gettext('Reconciled'),
+      render: (s) =>
+        s.leg.is_reconciled ? (
+          <span className="inline-flex items-center gap-1 text-info">
+            <Icon name="lock" className="w-3.5 h-3.5" />
+            {gettext('Yes')}
+          </span>
+        ) : (
+          <span className="text-base-content/70">{gettext('No')}</span>
+        ),
+    },
+  ];
+
+  return (
+    <div className="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
+      <table className="w-full table-fixed text-xs sm:text-sm" data-testid="transfer-match-comparison">
+        <caption className="sr-only">{gettext('The two transactions compared')}</caption>
+        <colgroup>
+          <col className="w-[4.75rem] sm:w-28" />
+          <col />
+          <col />
+        </colgroup>
+        <thead>
+          <tr className="border-b border-base-300">
+            <td />
+            {sides.map((s) => (
+              <th
+                key={s.key}
+                scope="col"
+                // Explicit colour and size: this table sits inside a feed-table cell,
+                // whose header styles would otherwise reach these cells and grey them.
+                className="px-1.5 sm:px-3 py-2 text-left align-top font-semibold text-sm text-base-content normal-case whitespace-normal"
+                data-testid={s.key === 'other' ? 'transfer-match-counterpart' : undefined}
+              >
+                <span className="block break-words">{s.leg.account?.name}</span>
+                <span className="flex flex-wrap items-center gap-1 mt-0.5 font-normal">
+                  {s.key === 'self' && (
+                    <span className="text-xs text-base-content/70">{gettext('This row')}</span>
+                  )}
+                  {keep === s.key && (
+                    <span className="badge badge-success badge-soft badge-xs">{gettext('Kept')}</span>
+                  )}
+                  {keep && keep !== s.key && (
+                    <span className="badge badge-ghost badge-xs">{gettext('Archived')}</span>
+                  )}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label} className="border-b border-base-300 last:border-b-0">
+              <th
+                scope="row"
+                className="px-1.5 sm:px-3 py-1.5 text-left align-top text-xs font-medium text-base-content/70 normal-case whitespace-normal"
+              >
+                {row.label}
+              </th>
+              {sides.map((s) => (
+                <td
+                  key={s.key}
+                  className="px-1.5 sm:px-3 py-1.5 align-top break-words whitespace-normal"
+                  data-testid={s.key === 'other' ? 'transfer-match-counterpart' : undefined}
+                >
+                  {row.render(s)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 };

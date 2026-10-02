@@ -170,7 +170,7 @@ class BankFeedPage(BasePage):
         return self.page.locator("[data-testid='transfer-match-panel']")
 
     def match_counterpart_text(self) -> str:
-        return self.match_panel().locator("[data-testid='transfer-match-counterpart']").inner_text()
+        return " ".join(self.match_panel().locator("[data-testid='transfer-match-counterpart']").all_inner_texts())
 
     def match_outcome_text(self) -> str:
         """What Match will do, or (when it can't) why not."""

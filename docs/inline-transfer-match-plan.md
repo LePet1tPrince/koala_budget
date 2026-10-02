@@ -305,4 +305,9 @@ POM: replace `transfer_review_button`/`open_transfer_review`/
   bank transaction id (`focusRequest.importedTransactionId`).
 - `api-client/` regenerated (it was also missing the transaction-edit models).
 - Undo, categorize mode and the edit modal (§9) were not built.
+- Panel layout revised after review: a comparison table (one column per
+  account, one row per attribute: Date, Amount, Category, Payee, Description,
+  Reconciled) instead of two leg cards; a category pointing at the other leg's
+  account reads "Transfer to/from {account}". The feed table has a 56rem
+  minimum width so the chip keeps room at phone width.
 

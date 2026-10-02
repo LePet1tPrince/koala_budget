@@ -616,7 +616,10 @@ const LineTable = ({
           </div>
 
           <div className="overflow-x-auto" ref={scrollRef}>
-            <table className="table table-sm table-quiet table-fixed w-full">
+            {/* The fixed columns add up to ~45rem; the floor keeps ~10rem for Description
+                (and its "Match found" chip) when the screen is narrower, where the
+                table scrolls sideways instead of squeezing that column to nothing. */}
+            <table className="table table-sm table-quiet table-fixed w-full min-w-[56rem]">
               <thead>
                 <tr>
                   {COLUMNS.map((col) => (
