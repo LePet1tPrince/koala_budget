@@ -185,6 +185,8 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
         <span class="badge badge-success font-mono" data-funded-badge {% if not item.funded %}hidden{% endif %}>🏆 {% translate "WINNER" %}</span>
       </div>
 
+      {% include "budget/components/goal_card_meta.html" %}
+
       <div class="flex gap-4 items-center mt-1">
         <div class="striker">
           <div class="striker-bell" data-bell>🔔</div>
@@ -217,7 +219,7 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
           </div>
           {% if item.needed_per_month and not item.funded %}
             <div class="text-xs font-mono opacity-60 mt-1">
-              {% translate "PACE:" %} {{ item.needed_per_month|currency }}/mo → {{ item.goal.target_date|date:"M Y" }}
+              {% translate "PACE:" %} {{ item.needed_per_month|currency }}/mo → {{ item.plan_finish|date:"M Y" }}
             </div>
           {% endif %}
         </div>

@@ -24,14 +24,17 @@ from apps.books.helpers import book_display_name
 from apps.utils.amounts import evaluate_amount
 from apps.web.templatetags.currency_tags import currency
 
+from . import goal_links
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
-from .models import Budget, Goal, GoalAllocation
+from .models import Budget, Goal, GoalAccountLink, GoalAllocation
 from .services import (
     BudgetService,
     GoalCloseError,
     GoalService,
     NetWorthService,
     budgeted_account_types,
+    goal_monthly,
+    goal_plan,
     picker_accounts_data,
 )
 from .unassigned import OVER_ASSIGNED_LABEL, UNASSIGNED_LABEL, compute_unassigned, pill_context
@@ -840,12 +843,16 @@ def goals_list_view(request, team_slug, book_slug):
     goals = summary["goals"]
     closed_count = Goal.objects.filter(book=request.book, is_archived=False, closed_at__isnull=False).count()
 
-    # Every allocation for these goals in one query; used for streaks and pace
-    amounts_by_goal = defaultdict(dict)
-    for goal_id, alloc_month, amount in GoalAllocation.objects.filter(book=request.book, goal__in=goals).values_list(
-        "goal_id", "month", "amount"
-    ):
-        amounts_by_goal[goal_id][alloc_month] = amount
+    # What each goal was given per month (assigned + from linked accounts);
+    # used for streaks and pace.
+    amounts_by_goal = {
+        goal_id: {m: values["saved"] for m, values in months.items()}
+        for goal_id, months in goal_monthly(request.book, goals).items()
+    }
+
+    links_by_goal = defaultdict(list)
+    for link in GoalAccountLink.objects.open().filter(goal__in=goals).select_related("account"):
+        links_by_goal[link.goal_id].append(link.account.name)
 
     goal_items = []
     any_streak_3 = False
@@ -862,14 +869,15 @@ def goals_list_view(request, team_slug, book_slug):
         saved_months = {m for m, amt in amounts.items() if amt > 0}
         streak = _goal_streak(saved_months, month)
 
-        # Pace to hit the target date, from the selected month
+        # The plan: a monthly contribution, or the pace to hit the target date.
+        plan = goal_plan(goal, month)
         months_left = None
         needed_per_month = None
-        if goal.target_date and remaining > 0:
-            target_month = goal.target_date.replace(day=1)
-            if target_month >= month:
-                months_left = max((target_month.year - month.year) * 12 + target_month.month - month.month, 1)
-                needed_per_month = remaining / months_left
+        if plan and remaining > 0 and plan["rate"] > 0:
+            needed_per_month = plan["rate"]
+            if plan["finish"]:
+                finish = plan["finish"]
+                months_left = max((finish.year - month.year) * 12 + finish.month - month.month, 1)
 
         # Projection from the recent saving rate (average of the last 3 months)
         recent = [amounts.get(month - relativedelta(months=i), Decimal("0")) for i in range(3)]
@@ -877,11 +885,7 @@ def goals_list_view(request, team_slug, book_slug):
         projected_date = None
         if remaining > 0 and recent_avg > 0:
             projected_date = month + relativedelta(months=math.ceil(remaining / recent_avg))
-        behind_pace = bool(
-            goal.target_date
-            and remaining > 0
-            and (projected_date is None or projected_date > goal.target_date.replace(day=1))
-        )
+        behind_pace = bool(plan and plan["status"] == "behind")
 
         any_streak_3 = any_streak_3 or streak >= 3
         any_half_way = any_half_way or pct >= 50
@@ -897,6 +901,10 @@ def goals_list_view(request, team_slug, book_slug):
                 "streak": streak,
                 "months_left": months_left,
                 "needed_per_month": needed_per_month,
+                "plan_finish": plan["finish"] if plan else None,
+                "plan_status": plan["status"] if plan else None,
+                "plan_status_label": plan["status_label"] if plan else None,
+                "links": links_by_goal.get(goal.pk, []),
                 "projected_date": projected_date,
                 "behind_pace": behind_pace,
                 "funded": goal.is_funded,
@@ -1209,38 +1217,134 @@ def goal_withdraw(request, team_slug, book_slug, pk):
     )
 
 
-@login_and_book_required
-def goal_create_view(request, team_slug, book_slug):
-    """Create a new goal."""
-    if request.method == "POST":
-        form = GoalForm(request.POST)
-        if form.is_valid():
-            goal = form.save(commit=False)
-            goal.book = request.book
-            goal.save()
-            messages.success(request, _("Goal created successfully."))
-            return redirect("budget:goals_list", team_slug=team_slug, book_slug=book_slug)
-    else:
-        form = GoalForm()
+def _log_link_changes(request, goal, changes, outflow_before=None):
+    """Audit what saving the goal form did to its linked accounts and outflow setting."""
+    for link in changes.linked:
+        log_event(
+            AuditEvent.GOAL_ACCOUNT_LINKED,
+            request=request,
+            metadata={
+                "goal_id": goal.pk,
+                "goal_name": goal.name,
+                "account_id": link.account_id,
+                "account_name": link.account.name,
+                "start_date": link.start_date.isoformat(),
+                "include_starting_balance": link.include_starting_balance,
+            },
+        )
+    for link in changes.updated:
+        log_event(
+            AuditEvent.GOAL_ACCOUNT_LINKED,
+            request=request,
+            metadata={
+                "goal_id": goal.pk,
+                "goal_name": goal.name,
+                "account_id": link.account_id,
+                "account_name": link.account.name,
+                "start_date": link.start_date.isoformat(),
+                "include_starting_balance": link.include_starting_balance,
+                "updated": True,
+            },
+        )
+    for link in changes.unlinked:
+        _log_unlinked(request, goal, link)
+    if outflow_before is not None and outflow_before != goal.outflow:
+        log_event(
+            AuditEvent.GOAL_OUTFLOW_CHANGED,
+            request=request,
+            metadata={"goal_id": goal.pk, "goal_name": goal.name, "from": outflow_before, "to": goal.outflow},
+        )
 
+
+def _log_unlinked(request, goal, link):
+    log_event(
+        AuditEvent.GOAL_ACCOUNT_UNLINKED,
+        request=request,
+        metadata={
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "account_id": link.account_id,
+            "account_name": link.account.name,
+            "end_date": link.end_date.isoformat() if link.end_date else None,
+        },
+    )
+
+
+def _goal_form_view(request, goal=None):
+    """Create (`goal` None) or edit a goal, with the accounts its money lives in."""
+    is_new = goal is None
+    book = request.book
+    link_error = None
+    if request.method == "POST":
+        form = GoalForm(request.POST, instance=goal)
+        outflow_before = None if is_new else goal.outflow
+        try:
+            rows = goal_links.parse_link_rows(book, request.POST)
+        except goal_links.LinkError as e:
+            rows, link_error = None, str(e)
+        if form.is_valid() and link_error is None:
+            try:
+                with transaction.atomic():
+                    saved = form.save(commit=False)
+                    saved.book = book
+                    saved.save()
+                    changes = goal_links.set_links(saved, rows)
+            except goal_links.LinkError as e:
+                link_error = str(e)
+                if is_new:
+                    # The rolled-back save left a pk on the unsaved instance.
+                    form.instance.pk = None
+            else:
+                _log_link_changes(request, saved, changes, outflow_before)
+                if is_new:
+                    messages.success(request, _("Goal created successfully."))
+                    return redirect("budget:goals_list", *book.url_args)
+                messages.success(request, _("Goal updated successfully."))
+                return redirect("budget:goal_detail", *book.url_args, saved.pk)
+        options = goal_links.link_options(book, goal, request.POST)
+    else:
+        form = GoalForm(instance=goal)
+        options = goal_links.link_options(book, goal)
+
+    allocated = Decimal("0")
+    if not is_new:
+        allocated = Goal.objects.filter(pk=goal.pk).with_progress().values_list("allocated", flat=True).get()
+    form_props = {
+        "previewUrl": reverse("budget:goal_link_preview", args=book.url_args),
+        "goalId": None if is_new else goal.pk,
+        "allocated": float(allocated),
+    }
     return render(
         request,
         "budget/goal_form.html",
         {
             "active_tab": "goals",
-            "page_title": f"New Goal | {book_display_name(request.book)}",
+            "page_title": (
+                f"New Goal | {book_display_name(book)}" if is_new else f"Edit {goal.name} | {book_display_name(book)}"
+            ),
             "form": form,
-            "is_new": True,
+            "goal": goal,
+            "is_new": is_new,
+            "link_options": options,
+            "link_error": link_error,
+            "any_linked": any(option["checked"] for option in options),
+            "form_props": form_props,
         },
     )
 
 
 @login_and_book_required
-def goal_detail_view(request, team_slug, book_slug, pk):
-    """View a single goal with full details and allocation history."""
-    goal = get_object_or_404(Goal.objects.filter(book=request.book).with_progress(), pk=pk)
+def goal_create_view(request, team_slug, book_slug):
+    """Create a new goal."""
+    return _goal_form_view(request)
 
-    allocations = goal.allocations.all()[:12]  # Last 12 months
+
+@login_and_book_required
+def goal_detail_view(request, team_slug, book_slug, pk):
+    """View a single goal: its numbers, plan, linked accounts and activity."""
+    month = _month_from_request(request)
+    goal = get_object_or_404(Goal.objects.filter(book=request.book).with_progress(month), pk=pk)
+    links = list(goal.account_links.select_related("account").order_by("end_date", "start_date"))
 
     return render(
         request,
@@ -1249,8 +1353,12 @@ def goal_detail_view(request, team_slug, book_slug, pk):
             "active_tab": "goals",
             "page_title": f"{goal.name} | {book_display_name(request.book)}",
             "goal": goal,
-            "allocations": allocations,
+            "plan": goal_plan(goal, month),
+            "open_links": [link for link in links if link.is_open],
+            "past_links": [link for link in links if not link.is_open],
+            "activity": goal_links.goal_activity(goal),
             "spending": GoalService(request.book).spending_lines(goal, limit=50),
+            "drift": goal_links.link_drift(goal, goal.left),
             "spending_url": _goal_spending_url(goal, request.book),
         },
     )
@@ -1260,27 +1368,64 @@ def goal_detail_view(request, team_slug, book_slug, pk):
 def goal_update_view(request, team_slug, book_slug, pk):
     """Update an existing goal."""
     goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
+    return _goal_form_view(request, goal)
 
-    if request.method == "POST":
-        form = GoalForm(request.POST, instance=goal)
-        if form.is_valid():
-            form.save()
-            messages.success(request, _("Goal updated successfully."))
-            return redirect("budget:goal_detail", team_slug=team_slug, book_slug=book_slug, pk=pk)
-    else:
-        form = GoalForm(instance=goal)
 
-    return render(
-        request,
-        "budget/goal_form.html",
+@login_and_book_required
+@require_GET
+def goal_link_preview(request, team_slug, book_slug):
+    """
+    What saving the goal form's linked accounts and outflow setting would do, for
+    the form's live preview: takes the form's own fields as a query string.
+    """
+    book = request.book
+    goal = None
+    goal_id = request.GET.get("goal")
+    if goal_id:
+        goal = get_object_or_404(Goal.objects.filter(book=book), pk=goal_id)
+    outflow = request.GET.get("outflow") or Goal.OUTFLOW_WITHDRAW
+    if outflow not in dict(Goal.OUTFLOW_CHOICES):
+        return JsonResponse({"ok": False, "error": _("Choose what money moving out does.")}, status=400)
+    try:
+        rows = goal_links.parse_link_rows(book, request.GET)
+        result = goal_links.preview(book, goal, rows, outflow)
+    except goal_links.LinkError as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=400)
+    return JsonResponse(
         {
-            "active_tab": "goals",
-            "page_title": f"Edit {goal.name} | {book_display_name(request.book)}",
-            "form": form,
-            "goal": goal,
-            "is_new": False,
-        },
+            "ok": True,
+            "adds": float(result["adds"]),
+            "addsDisplay": currency(result["adds"]),
+            "leftBefore": float(result["left_before"]),
+            "leftAfter": float(result["left_after"]),
+            "unassignedBefore": float(result["unassigned_before"]),
+            "unassignedAfter": float(result["unassigned_after"]),
+            "unassignedBeforeDisplay": currency(result["unassigned_before"]),
+            "unassignedAfterDisplay": currency(result["unassigned_after"]),
+        }
     )
+
+
+@login_and_book_required
+@require_POST
+def goal_unlink(request, team_slug, book_slug, link_pk):
+    """Stop an account feeding a goal. What it already brought in stays."""
+    link = get_object_or_404(GoalAccountLink.objects.filter(book=request.book).select_related("goal"), pk=link_pk)
+    goal = link.goal
+    try:
+        goal_links.unlink(link)
+    except goal_links.LinkError as e:
+        messages.error(request, str(e))
+    else:
+        if link.pk:
+            link.refresh_from_db()
+        _log_unlinked(request, goal, link)
+        messages.success(
+            request,
+            _("%(account)s no longer feeds %(goal)s. What it already brought in stays.")
+            % {"account": link.account.name, "goal": goal.name},
+        )
+    return redirect("budget:goal_detail", *request.book.url_args, goal.pk)
 
 
 @login_and_book_required

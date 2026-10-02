@@ -30,7 +30,7 @@ from apps.accounts.models import (
     Payee,
 )
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.models import Reconciliation
 
@@ -40,23 +40,28 @@ FORMAT = "koala-budget-export"
 # statements, since it never had any to carry.
 # 3: `goal_closed_at` on accounts.csv (goals as envelopes: a goal can be closed).
 # 4: `hidden_from_budget` on accounts.csv (a category can be hidden from the budget).
-FORMAT_VERSION = 4
+# 5: goal-linked accounts -- `goal_links.csv`, and `goal_outflow` /
+# `goal_monthly_contribution` on accounts.csv.
+FORMAT_VERSION = 5
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
 JOURNAL_FILE = "journal.csv"
 BUDGET_FILE = "budget.csv"
 RECONCILIATIONS_FILE = "reconciliations.csv"
-DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE, RECONCILIATIONS_FILE)
+GOAL_LINKS_FILE = "goal_links.csv"
+DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE, RECONCILIATIONS_FILE, GOAL_LINKS_FILE)
 
 #: The format version each file / column first appeared in. An older archive
 #: is read without them and `upgrade.py` fills them in, so adding a file or a
 #: column is not a reason to refuse every export made before it.
-FILES_ADDED_IN = {RECONCILIATIONS_FILE: 2}
+FILES_ADDED_IN = {RECONCILIATIONS_FILE: 2, GOAL_LINKS_FILE: 5}
 COLUMNS_ADDED_IN = {
     (JOURNAL_FILE, "reconciliation_id"): 2,
     (ACCOUNTS_FILE, "goal_closed_at"): 3,
     (ACCOUNTS_FILE, "hidden_from_budget"): 4,
+    (ACCOUNTS_FILE, "goal_outflow"): 5,
+    (ACCOUNTS_FILE, "goal_monthly_contribution"): 5,
 }
 
 # journal.csv's `status` column carries every `JournalEntry.status` value plus
@@ -69,6 +74,7 @@ ENTRY_SOURCES = frozenset(dict(JournalEntry.SOURCE_CHOICES))
 RECONCILIATION_STATUSES = frozenset(dict(Reconciliation.STATUS_CHOICES))
 FEED_SOURCES = frozenset(dict(BankTransaction.SOURCE_CHOICES))
 ACCOUNT_TYPES = frozenset(dict(ACCOUNT_TYPE_CHOICES))
+GOAL_OUTFLOWS = frozenset(dict(Goal.OUTFLOW_CHOICES))
 
 # budget.csv's `kind` column: which of the two models a row represents.
 KIND_BUDGET = "budget"
@@ -434,6 +440,9 @@ GOAL = FieldMap(
         "archived_at": ColumnSpec("goal_archived_at", KIND_DATETIME),
         "closed_at": ColumnSpec("goal_closed_at", KIND_DATETIME),
         "order": ColumnSpec("goal_order", KIND_INT),
+        # Blank on an account that backs no goal, hence _OR_NONE.
+        "outflow": ColumnSpec("goal_outflow", KIND_STR_OR_NONE),
+        "monthly_contribution": ColumnSpec("goal_monthly_contribution", KIND_DECIMAL),
     },
     omitted={
         "id": "a goal has no handle of its own; it is identified by the account it backs (§2.1)",
@@ -472,6 +481,8 @@ ACCOUNTS_COLUMNS = (
     Column("goal_archived_at", KIND_DATETIME),
     Column("goal_closed_at", KIND_DATETIME),
     Column("goal_order", KIND_INT),
+    Column("goal_outflow", KIND_STR_OR_NONE),
+    Column("goal_monthly_contribution", KIND_DECIMAL),
 )
 
 # --- journal.csv --------------------------------------------------------
@@ -704,6 +715,41 @@ RECONCILIATIONS_COLUMNS = (
     Column("archived_at", KIND_DATETIME),
 )
 
+# --- goal_links.csv ---------------------------------------------------------
+#
+# One row per GoalAccountLink: "this goal's money lives in this account" for a
+# date range. Its goal is named by the goal's backing account, as everywhere
+# else in the format (a goal has no handle of its own, §2.1).
+
+GOAL_LINK = FieldMap(
+    model=GoalAccountLink,
+    columns={
+        "goal": ColumnSpec("goal_account_id", KIND_INT, read=lambda link: link.goal.account_id),
+        "account": ColumnSpec("account_id", KIND_INT, read=lambda link: link.account_id),
+        "start_date": ColumnSpec("start_date", KIND_DATE),
+        "end_date": ColumnSpec("end_date", KIND_DATE),
+        "include_starting_balance": ColumnSpec("include_starting_balance", KIND_BOOL),
+        "is_archived": ColumnSpec("is_archived", KIND_BOOL),
+        "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
+    },
+    omitted={
+        "id": "nothing points at a link; it is identified by its goal, account and dates",
+        "book": _TENANT,
+        "created_at": _TIMESTAMP,
+        "updated_at": _TIMESTAMP,
+    },
+)
+
+GOAL_LINKS_COLUMNS = (
+    Column("goal_account_id", KIND_INT),
+    Column("account_id", KIND_INT),
+    Column("start_date", KIND_DATE),
+    Column("end_date", KIND_DATE),
+    Column("include_starting_balance", KIND_BOOL),
+    Column("is_archived", KIND_BOOL),
+    Column("archived_at", KIND_DATETIME),
+)
+
 # Every model this format exports, and the field maps that describe it. Used
 # by the completeness test; iteration order does not matter.
 FIELD_MAPS = (
@@ -718,6 +764,7 @@ FIELD_MAPS = (
     BUDGET,
     GOAL_ALLOCATION,
     RECONCILIATION,
+    GOAL_LINK,
 )
 
 #: Which field maps compose one row, per file. `export.py` builds rows against
@@ -736,6 +783,7 @@ ROW_COMPOSITIONS = {
         (GOAL_ALLOCATION,),
     ),
     RECONCILIATIONS_FILE: ((RECONCILIATION,),),
+    GOAL_LINKS_FILE: ((GOAL_LINK,),),
 }
 
 FILE_COLUMNS = {
@@ -743,6 +791,7 @@ FILE_COLUMNS = {
     JOURNAL_FILE: JOURNAL_COLUMNS,
     BUDGET_FILE: BUDGET_COLUMNS,
     RECONCILIATIONS_FILE: RECONCILIATIONS_COLUMNS,
+    GOAL_LINKS_FILE: GOAL_LINKS_COLUMNS,
 }
 
 

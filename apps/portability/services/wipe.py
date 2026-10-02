@@ -34,6 +34,7 @@ from dataclasses import dataclass
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction
+from apps.budget.models import GoalAccountLink
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
 
@@ -48,6 +49,7 @@ class WipeCounts:
     budgets: int = 0
     goals: int = 0
     goal_allocations: int = 0
+    goal_links: int = 0
     plaid_accounts: int = 0
     plaid_items: int = 0
     accounts: int = 0
@@ -66,6 +68,7 @@ class WipeCounts:
             "budgets": self.budgets,
             "goals": self.goals,
             "goal_allocations": self.goal_allocations,
+            "goal_links": self.goal_links,
             "plaid_accounts": self.plaid_accounts,
             "plaid_items": self.plaid_items,
             "accounts": self.accounts,
@@ -98,6 +101,11 @@ def wipe_book(book) -> WipeCounts:
     plaid_items = PlaidItem.objects.filter(book=book)
     counts.plaid_items = plaid_items.count()
     plaid_items.delete()
+
+    # A goal's link to an account protects the account; drop the links first.
+    goal_links = GoalAccountLink.objects.filter(book=book)
+    counts.goal_links = goal_links.count()
+    goal_links.delete()
 
     # One call, one cascade: BankTransaction (-> PlaidTransaction,
     # TransferMatchDismissal), Budget, Goal (-> GoalAllocation), Reconciliation

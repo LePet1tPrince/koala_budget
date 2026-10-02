@@ -153,7 +153,17 @@ const guessAllMappings = (headers) => {
  * - onBack: Callback to go back
  * - onCancel: Callback when user cancels
  */
-const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, onComplete, onBack, onCancel }) => {
+const Step2ColumnMapping = ({
+  headers,
+  sampleRows,
+  totalRows,
+  file,
+  uploadApi,
+  accountType,
+  onComplete,
+  onBack,
+  onCancel,
+}) => {
   const [hasHeaders, setHasHeaders] = useState(true);
   const [mapping, setMapping] = useState({
     date: null,
@@ -167,8 +177,11 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
   const [amountType, setAmountType] = useState('single'); // 'single' or 'dual'
   // Single-column files disagree on sign: some banks write a purchase as -50,
   // others as 50. Flipping this negates every amount, so the file's inflows land
-  // as outflows and vice versa.
-  const [invertAmounts, setInvertAmounts] = useState(false);
+  // as outflows and vice versa. The default follows the account: a bank account's
+  // export writes a deposit as positive (so it is flipped into the app's
+  // positive = outflow), a credit card's writes a charge as positive (left as is).
+  const defaultInvertAmounts = accountType === 'asset';
+  const [invertAmounts, setInvertAmounts] = useState(defaultInvertAmounts);
   const [dateFormat, setDateFormat] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -271,6 +284,7 @@ const Step2ColumnMapping = ({ headers, sampleRows, totalRows, file, uploadApi, o
     setAmountType(type);
     // Clear amount-related mappings when switching type
     if (type === 'single') {
+      setInvertAmounts(defaultInvertAmounts);
       setMapping((prev) => ({
         ...prev,
         inflow: null,

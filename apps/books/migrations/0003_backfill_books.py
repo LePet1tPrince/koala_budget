@@ -8,12 +8,12 @@ rather than to its books (logins, membership changes).
 
 from django.db import migrations
 
-from apps.books.migration_utils import BOOK_MODELS, TEAM_LEVEL_AUDIT_EVENTS, default_book_subquery
+from apps.books.migration_utils import BACKFILLED_BOOK_MODELS, TEAM_LEVEL_AUDIT_EVENTS, default_book_subquery
 
 
 def backfill(apps, schema_editor):
     default_book = default_book_subquery(apps)
-    for app_label, model_name in BOOK_MODELS:
+    for app_label, model_name in BACKFILLED_BOOK_MODELS:
         model = apps.get_model(app_label, model_name)
         model._base_manager.filter(book__isnull=True).update(book_id=default_book)
 

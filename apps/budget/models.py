@@ -92,12 +92,15 @@ def month_after(month):
 
 def goal_spent_subquery(start=None, end=None):
     """
-    Σ (dr − cr) of counted lines on the goal's account, as a scalar subquery.
+    What a goal has spent, as a scalar subquery on `Goal`.
 
-    Entries dated from `start` (inclusive) to `end` (exclusive). Refunds (credits)
-    reduce it. Void entries and entries behind an archived bank transaction don't
+    Σ (dr − cr) of counted lines on the goal's own account (refunds reduce it),
+    plus what its linked accounts sent out under the "count it as spent" outflow
+    setting (`apps.budget.linked`). Entries dated from `start` (inclusive) to `end`
+    (exclusive). Void entries and entries behind an archived bank transaction don't
     count, the same as everywhere else.
     """
+    from apps.budget.linked import linked_spent_subquery
     from apps.journal.models import JournalLine, counted_entries
 
     lines = JournalLine.objects.filter(counted_entries("journal_entry__"), account=OuterRef("account"))
@@ -106,10 +109,17 @@ def goal_spent_subquery(start=None, end=None):
     if end is not None:
         lines = lines.filter(journal_entry__entry_date__lt=end)
     total = lines.values("account").annotate(total=Sum(F("dr_amount") - F("cr_amount"))).values("total")
-    return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
+    own = Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
+    return own + linked_spent_subquery(start, end)
 
 
-def goal_allocated_subquery(**filters):
+def goal_assigned_subquery(start=None, end=None):
+    """Σ manual allocations (`GoalAllocation`) for months from `start` to `end` (exclusive)."""
+    filters = {}
+    if start is not None:
+        filters["month__gte"] = start.replace(day=1)
+    if end is not None:
+        filters["month__lt"] = end
     total = (
         GoalAllocation.objects.filter(goal=OuterRef("pk"), **filters)
         .values("goal")
@@ -117,6 +127,19 @@ def goal_allocated_subquery(**filters):
         .values("total")
     )
     return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
+
+
+def goal_allocated_subquery(start=None, end=None):
+    """
+    What a goal has been given, as a scalar subquery on `Goal`: manual allocations
+    plus everything its linked accounts brought in (starting balances and linked
+    flows, `apps.budget.linked`), dated from `start` (inclusive) to `end`
+    (exclusive). Months are first-of-month dates, so a month range is
+    `(month, month_after(month))`.
+    """
+    from apps.budget.linked import linked_allocated_subquery
+
+    return goal_assigned_subquery(start, end) + linked_allocated_subquery(start, end)
 
 
 class GoalQuerySet(models.QuerySet):
@@ -132,8 +155,10 @@ class GoalQuerySet(models.QuerySet):
         Annotate each goal with its three numbers as of the end of `month`
         (default: the current month). See docs/goals-envelopes-plan.md §3.
 
-        - allocated: Σ allocations, all months (withdrawals are negative allocations)
-        - spent: Σ (dr − cr) of counted lines on the goal's account through month end
+        - allocated: Σ allocations, all months (withdrawals are negative allocations),
+          plus what linked accounts brought in (docs/goal-linked-accounts-plan.md)
+        - spent: Σ (dr − cr) of counted lines on the goal's account through month end,
+          plus linked spending
         - left: allocated − spent — the goal's claim on your money
 
         `total_saved` is an alias of `allocated`, kept while templates move over.
@@ -146,8 +171,8 @@ class GoalQuerySet(models.QuerySet):
         end = month_after(month)
 
         return self.annotate(
-            saved_previous=goal_allocated_subquery(month__lt=month),
-            saved_this_month=goal_allocated_subquery(month=month),
+            saved_previous=goal_allocated_subquery(end=month),
+            saved_this_month=goal_allocated_subquery(month, end),
             allocated=goal_allocated_subquery(),
             spent=goal_spent_subquery(end=end),
             spent_this_month=goal_spent_subquery(start=month, end=end),
@@ -202,6 +227,34 @@ class Goal(BaseBookModel):
     )
 
     order = models.IntegerField(default=0, verbose_name=_("Order"), help_text=_("Display order for goals"))
+
+    # What money leaving a linked account for one of your other accounts does to
+    # the goal (docs/goal-linked-accounts-plan.md §3).
+    OUTFLOW_WITHDRAW = "withdraw"
+    OUTFLOW_SPEND = "spend"
+    OUTFLOW_IGNORE = "ignore"
+    OUTFLOW_CHOICES = [
+        (OUTFLOW_WITHDRAW, _("Take it out of the goal")),
+        (OUTFLOW_SPEND, _("Count it as spent from the goal")),
+        (OUTFLOW_IGNORE, _("Leave the goal alone")),
+    ]
+    outflow = models.CharField(
+        max_length=10,
+        choices=OUTFLOW_CHOICES,
+        default=OUTFLOW_WITHDRAW,
+        verbose_name=_("When money moves out"),
+        help_text=_("What money leaving a linked account for one of your other accounts does to the goal"),
+    )
+
+    # The plan: a target date or a monthly contribution, the other one computed.
+    monthly_contribution = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name=_("Monthly contribution"),
+        help_text=_("How much you plan to put towards the goal each month"),
+    )
 
     objects = GoalQuerySet.as_manager()
 
@@ -325,3 +378,59 @@ class GoalAllocation(BaseBookModel):
         # Ensure month is always first day of month
         self.month = self.month.replace(day=1)
         super().save(*args, **kwargs)
+
+
+class GoalAccountLinkQuerySet(models.QuerySet):
+    def open(self):
+        return self.filter(end_date__isnull=True)
+
+    def covering(self, day):
+        """Links whose range includes `day`."""
+        return self.filter(start_date__lte=day).filter(models.Q(end_date__isnull=True) | models.Q(end_date__gte=day))
+
+
+class GoalAccountLink(BaseBookModel):
+    """
+    "The money for this goal lives in this account" (docs/goal-linked-accounts-plan.md).
+
+    From `start_date` to `end_date` (both inclusive; open while `end_date` is null)
+    money arriving in the account adds to the goal's allocation and money leaving
+    it does what the goal's `outflow` says. Nothing is stored per transaction: the
+    flows are derived from journal lines (`apps.budget.linked`). Unlinking sets
+    `end_date`, so the months already counted keep what the account brought in.
+    """
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="account_links", verbose_name=_("Goal"))
+    account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="goal_links", verbose_name=_("Account"))
+    start_date = models.DateField(verbose_name=_("Count from"), help_text=_("First day counted"))
+    end_date = models.DateField(null=True, blank=True, verbose_name=_("Until"), help_text=_("Last day counted"))
+    include_starting_balance = models.BooleanField(
+        default=True,
+        verbose_name=_("Include the balance already there"),
+        help_text=_("Count the account's balance on the day before the start date towards the goal"),
+    )
+
+    objects = GoalAccountLinkQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["start_date", "pk"]
+        default_related_name = "budget_goal_account_links"
+        constraints = [
+            # An account's whole balance belongs to one goal at a time.
+            models.UniqueConstraint(
+                fields=["book", "account"],
+                condition=models.Q(end_date__isnull=True),
+                name="goal_account_link_one_open_per_account",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(end_date__isnull=True) | models.Q(end_date__gte=models.F("start_date")),
+                name="goal_account_link_end_after_start",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.goal.name} ← {self.account.name}"
+
+    @property
+    def is_open(self):
+        return self.end_date is None

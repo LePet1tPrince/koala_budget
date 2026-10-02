@@ -43,3 +43,17 @@ class UpgradeChainTests(SimpleTestCase):
         result = upgrade.upgrade_to_current(tables, from_version=1)
         self.assertEqual(result["reconciliations"], [])
         self.assertIsNone(result["journal_rows"][0]["reconciliation_id"])
+
+
+class GoalLinksUpgradeTests(SimpleTestCase):
+    def test_v4_gains_no_links_and_default_goal_settings(self):
+        tables = {
+            "accounts": [{"name": "Goal: Car"}],
+            "journal_rows": [],
+            "budget_rows": [],
+            "reconciliations": [],
+        }
+        result = upgrade.upgrade_to_current(tables, from_version=4)
+        self.assertEqual(result["goal_links"], [])
+        self.assertIsNone(result["accounts"][0]["goal_outflow"])
+        self.assertIsNone(result["accounts"][0]["goal_monthly_contribution"])

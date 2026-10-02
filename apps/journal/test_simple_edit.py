@@ -516,7 +516,12 @@ class SplitEditTest(TransactionEditTestCase):
         )
         self.assertBalanced(entry)
 
-    def test_a_split_leg_to_another_feed_account_is_mirrored_for_its_own_amount(self):
+    def test_editing_a_split_mirrors_only_its_transfer_leg(self):
+        """
+        A split's leg on another feed account gets a mirror for that leg's own
+        amount (`transfer_mirror._sync_split_mirrors`) -- never one for the
+        split's whole total, the phantom row a two-line assumption used to make.
+        """
         entry = self.make_split()
         primary = BankTransaction.objects.create(
             book=self.book,
@@ -527,18 +532,13 @@ class SplitEditTest(TransactionEditTestCase):
             source=BankTransaction.SOURCE_CSV,
             journal_entry=entry,
         )
-        # A leg on another feed account is a transfer, so it shows in that account's
-        # feed -- for the leg's own amount, never the split's whole total (the
-        # phantom mirror this shape used to spawn).
         self.edit(entry, legs=[(self.groceries, Decimal("160.00")), (self.savings, Decimal("50.40"))])
 
-        mirror = BankTransaction.objects.get(journal_entry=entry, is_transfer_mirror=True)
-        self.assertEqual(mirror.account, self.savings)
-        self.assertEqual(mirror.amount, Decimal("-50.40"))  # money arriving in savings
-        self.assertEqual(
-            set(BankTransaction.objects.filter(journal_entry=entry).values_list("id", flat=True)),
-            {primary.id, mirror.id},
-        )
+        rows = BankTransaction.objects.filter(journal_entry=entry)
+        self.assertEqual(rows.count(), 2)
+        mirror = rows.get(is_transfer_mirror=True)
+        self.assertEqual((mirror.account, mirror.amount), (self.savings, Decimal("-50.40")))
+        self.assertEqual(rows.get(is_transfer_mirror=False).amount, Decimal("210.40"))
 
         # Moving that leg off the feed account drops the mirror again.
         self.edit(entry, legs=[(self.groceries, Decimal("160.00")), (self.household, Decimal("50.40"))])

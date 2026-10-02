@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
 from apps.budget.models import Budget, Goal, GoalAllocation
@@ -413,12 +414,6 @@ class GoalService:
             qs = qs.filter(closed_at__isnull=not closed)
         return qs.with_progress(month).select_related("account")
 
-    def get_total_saved(self):
-        """Get the total amount allocated across all active goals."""
-        return GoalAllocation.objects.filter(book=self.book, goal__is_archived=False).aggregate(total=Sum("amount"))[
-            "total"
-        ] or Decimal("0")
-
     def get_goal_summary(self, month, closed=False):
         """Get summary data for the goals page: the goals plus their totals."""
         goals = list(self.get_goals_with_progress(month, closed=closed))
@@ -454,10 +449,10 @@ class GoalService:
         """
         Pay yourself first: one row per open goal for `month`, for Budget vs Actual.
 
-        - needed: the pace to hit the target date, (target − allocated before
-          this month) / months left including this one -- measured from the start
-          of the month so assigning doesn't shrink the bar you're filling. None
-          with no target date or once funded (`note` says which).
+        - needed: the goal's plan for the month (`goal_plan`): its monthly
+          contribution, or the pace to hit the target date -- measured from the
+          start of the month so assigning doesn't shrink the bar you're filling.
+          None with no plan or once funded (`note` says which).
         - assigned: this month's net allocation (the row's "actual").
         - spent: spent from the goal this month, so a month you bought the car
           reads as planned spending rather than a gap.
@@ -469,14 +464,13 @@ class GoalService:
             before = goal.saved_previous
             needed = None
             note = ""
+            plan = goal_plan(goal, month)
             if goal.is_complete or (goal.target_amount > 0 and before >= goal.target_amount):
                 note = "funded"
-            elif not goal.target_date:
+            elif plan is None:
                 note = "no_target_date"
             else:
-                target_month = goal.target_date.replace(day=1)
-                months_left = max((target_month.year - month.year) * 12 + target_month.month - month.month + 1, 1)
-                needed = ((goal.target_amount - before) / months_left).quantize(Decimal("0.01"))
+                needed = plan["needed"]
             assigned = goal.saved_this_month
             pct = None
             if needed:
@@ -547,6 +541,11 @@ class GoalService:
         goal = Goal.objects.select_for_update().get(pk=goal.pk)
         if goal.closed_at is not None:
             raise GoalCloseError(_("This goal is already closed."))
+        # Linked accounts stop feeding the goal first, so what's released is final.
+        # Rolled back with everything else if the close is refused.
+        from .goal_links import end_all
+
+        end_all(goal, timezone.localdate())
         left = self.left(goal, month)
         released = covered = Decimal("0")
         if left < 0:
@@ -579,6 +578,141 @@ class GoalService:
         month = month.replace(day=1)
         self.add_to_allocation(goal, month, -amount)
         return BudgetService(self.book).raise_budget(category, month, amount)
+
+
+PLAN_AHEAD = "ahead"
+PLAN_ON_TRACK = "on_track"
+PLAN_BEHIND = "behind"
+PLAN_LABELS = {
+    PLAN_AHEAD: gettext_lazy("Ahead"),
+    PLAN_ON_TRACK: gettext_lazy("On track"),
+    PLAN_BEHIND: gettext_lazy("Behind"),
+}
+
+
+def _months_between(start, end):
+    """Whole months from `start`'s month to `end`'s month (0 when the same month)."""
+    return (end.year - start.year) * 12 + end.month - start.month
+
+
+def goal_plan(goal, month):
+    """
+    The goal's plan for `month` (docs/goal-linked-accounts-plan.md §9), from a goal
+    annotated by `with_progress(month)`: a monthly contribution, or else the pace
+    to reach the target by the target date. None without either.
+
+    - rate: the plan's monthly amount
+    - needed: what the plan asks for this month (never more than is still to fund,
+      measured from the start of the month)
+    - finish: the month the plan reaches the target (`rate` from this month on)
+    - status: ahead / on_track / behind against the plan's straight line from the
+      goal's first month -- *ahead* is a full month past it, *on track* is on it
+      or this month's plan met; None once funded
+    """
+    from math import ceil
+
+    month = month.replace(day=1)
+    target = goal.target_amount or Decimal("0")
+    before = goal.saved_previous or Decimal("0")
+    to_fund_before = max(target - before, Decimal("0"))
+    started = timezone.localtime(goal.created_at).date().replace(day=1) if goal.created_at else month
+    # A goal viewed in a month before it was created is measured from that month.
+    started = min(started, month)
+
+    if goal.monthly_contribution:
+        rate = goal.monthly_contribution
+        line_rate = rate
+    elif goal.target_date:
+        target_month = goal.target_date.replace(day=1)
+        rate = (to_fund_before / max(_months_between(month, target_month) + 1, 1)).quantize(Decimal("0.01"))
+        line_rate = target / max(_months_between(started, target_month) + 1, 1)
+    else:
+        return None
+
+    needed = min(rate, to_fund_before)
+    finish = None
+    if rate > 0 and to_fund_before > 0:
+        finish = month + relativedelta(months=ceil(to_fund_before / rate) - 1)
+
+    status = None
+    if not goal.is_funded and target > 0:
+        elapsed = max(_months_between(started, month) + 1, 0)
+        expected = min(target, line_rate * elapsed)
+        allocated = goal.allocated or Decimal("0")
+        if allocated >= min(target, expected + line_rate):
+            status = PLAN_AHEAD
+        elif allocated >= expected or (needed > 0 and (goal.saved_this_month or 0) >= needed):
+            status = PLAN_ON_TRACK
+        else:
+            status = PLAN_BEHIND
+    return {
+        "rate": rate,
+        "needed": needed,
+        "finish": finish,
+        "status": status,
+        "status_label": PLAN_LABELS.get(status),
+        "late": bool(finish and goal.target_date and finish > goal.target_date.replace(day=1)),
+    }
+
+
+def goal_monthly(book, goals, start=None, end=None):
+    """
+    Each goal's month-by-month figures: {goal id: {month: {...}}} with
+
+    - assigned: manual allocations (`GoalAllocation`; withdrawals negative)
+    - linked: what linked accounts brought in (starting balances, flows)
+    - saved: assigned + linked -- the month's share of `allocated`
+    - spent: lines on the goal's own account plus linked spending
+
+    Months from `start` (inclusive) to `end` (exclusive), first-of-month keys.
+    Every per-month read of goal allocations goes through here, so a month's
+    "saved" can never leave out what a linked account brought in.
+    """
+    from django.db.models import F
+    from django.db.models.functions import TruncMonth
+
+    from .linked import monthly_linked
+
+    goals = list(goals)
+    goal_ids = [g.pk for g in goals]
+    by_account = {g.account_id: g.pk for g in goals if g.account_id}
+    zero = Decimal("0")
+    result = {pk: {} for pk in goal_ids}
+
+    def cell(goal_id, month):
+        month = month.date() if hasattr(month, "date") else month
+        return result[goal_id].setdefault(month, {"assigned": zero, "linked": zero, "saved": zero, "spent": zero})
+
+    allocations = GoalAllocation.objects.filter(book=book, goal_id__in=goal_ids)
+    if start is not None:
+        allocations = allocations.filter(month__gte=start.replace(day=1))
+    if end is not None:
+        allocations = allocations.filter(month__lt=end)
+    for row in allocations.values("goal_id", "month").annotate(total=Sum("amount")):
+        cell(row["goal_id"], row["month"])["assigned"] += row["total"]
+
+    lines = _active_lines().filter(book=book, account_id__in=list(by_account))
+    if start is not None:
+        lines = lines.filter(journal_entry__entry_date__gte=start)
+    if end is not None:
+        lines = lines.filter(journal_entry__entry_date__lt=end)
+    for row in (
+        lines.annotate(month=TruncMonth("journal_entry__entry_date"))
+        .values("account_id", "month")
+        .annotate(total=Sum(F("dr_amount") - F("cr_amount")))
+    ):
+        cell(by_account[row["account_id"]], row["month"])["spent"] += row["total"]
+
+    for goal_id, months in monthly_linked(goal_ids, start, end).items():
+        for month, values in months.items():
+            target = cell(goal_id, month)
+            target["linked"] += values["linked"]
+            target["spent"] += values["spent"]
+
+    for months in result.values():
+        for values in months.values():
+            values["saved"] = values["assigned"] + values["linked"]
+    return result
 
 
 def goal_left_by_account(book, month=None):

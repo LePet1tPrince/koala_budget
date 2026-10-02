@@ -14,6 +14,14 @@
   {% endif %}
   {% if account.has_feed %}<span class="badge badge-ghost badge-sm">{% translate "Bank feed" %}</span>{% endif %}
   {% if account.is_system %}<span class="badge badge-ghost badge-sm">{% translate "System" %}</span>{% endif %}
+  {% if feeds_goal %}
+    <span aria-hidden="true">·</span>
+    <span data-testid="account-feeds-goal">
+      {% translate "Feeds goal:" %}
+      <a href="{% return_here feeds_goal.goal.get_absolute_url %}" class="link link-hover">{{ feeds_goal.goal.name }}</a>
+      {% blocktranslate trimmed with date=feeds_goal.start_date|date:"M j, Y" %}since {{ date }}{% endblocktranslate %}
+    </span>
+  {% endif %}
 {% endblock %}
 {% block detail_actions %}
   {% if feed_url %}

@@ -48,6 +48,8 @@ from .schema import (
     FILES_ADDED_IN,
     FORMAT,
     FORMAT_VERSION,
+    GOAL_LINKS_FILE,
+    GOAL_OUTFLOWS,
     JOURNAL_FILE,
     MANIFEST_FILE,
     RECONCILIATION_STATUSES,
@@ -113,6 +115,7 @@ class Tables:
     journal_rows: list = field(default_factory=list)
     budget_rows: list = field(default_factory=list)
     reconciliations: list = field(default_factory=list)
+    goal_links: list = field(default_factory=list)
     # Non-fatal: a per-file sha256 in the manifest did not match the file's
     # actual contents (§3.1) -- shown to the user, does not block the import.
     hash_warnings: list = field(default_factory=list)
@@ -150,6 +153,7 @@ def read_archive(data: bytes) -> Tables:
             "journal_rows": read_file(JOURNAL_FILE),
             "budget_rows": read_file(BUDGET_FILE),
             "reconciliations": read_file(RECONCILIATIONS_FILE),
+            "goal_links": read_file(GOAL_LINKS_FILE),
         },
         from_version=version,
     )
@@ -157,6 +161,7 @@ def read_archive(data: bytes) -> Tables:
     journal_rows = parsed["journal_rows"]
     budget_rows = parsed["budget_rows"]
     reconciliations = parsed["reconciliations"]
+    goal_links = parsed["goal_links"]
 
     _validate_enums(accounts, journal_rows, budget_rows)
     _validate_journal_row_shape(journal_rows)
@@ -167,6 +172,7 @@ def read_archive(data: bytes) -> Tables:
     _validate_account_references(journal_rows, budget_rows, account_ids)
     _validate_months(budget_rows)
     _validate_reconciliations(reconciliations, journal_rows, account_ids)
+    _validate_goal_links(goal_links, accounts)
 
     return Tables(
         manifest=manifest,
@@ -174,6 +180,7 @@ def read_archive(data: bytes) -> Tables:
         journal_rows=journal_rows,
         budget_rows=budget_rows,
         reconciliations=reconciliations,
+        goal_links=goal_links,
         hash_warnings=hash_warnings,
     )
 
@@ -285,6 +292,12 @@ def _validate_enums(accounts: list[dict], journal_rows: list[dict], budget_rows:
         if row["account_type"] not in ACCOUNT_TYPES:
             raise DocumentError(
                 f"{ACCOUNTS_FILE}: account_id {row['account_id']} has an unknown account_type '{row['account_type']}'."
+            )
+
+    for row in accounts:
+        if row.get("goal_outflow") is not None and row["goal_outflow"] not in GOAL_OUTFLOWS:
+            raise DocumentError(
+                f"{ACCOUNTS_FILE}: account_id {row['account_id']} has an unknown goal_outflow '{row['goal_outflow']}'."
             )
 
     for row in journal_rows:
@@ -426,3 +439,34 @@ def _validate_reconciliations(reconciliations: list[dict], journal_rows: list[di
                 f"{JOURNAL_FILE}, row {row_number}: reconciliation_id {row['reconciliation_id']} does not appear "
                 f"in {RECONCILIATIONS_FILE}."
             )
+
+
+def _validate_goal_links(goal_links: list[dict], accounts: list[dict]) -> None:
+    """
+    Each link names a goal (by its backing account) and an asset account in this
+    file, with a start date; an account's ranges never overlap and it feeds at
+    most one goal at a time -- the same rules `apps.budget.goal_links` enforces.
+    """
+    goal_account_ids = {row["account_id"] for row in accounts if row["goal_name"] is not None}
+    types = {row["account_id"]: row["account_type"] for row in accounts}
+    by_account = {}
+    for row_number, row in enumerate(goal_links, start=2):
+        where = f"{GOAL_LINKS_FILE}, row {row_number}"
+        if row["goal_account_id"] not in goal_account_ids:
+            raise DocumentError(f"{where}: goal_account_id {row['goal_account_id']} is not a goal's account.")
+        if types.get(row["account_id"]) != "asset":
+            raise DocumentError(f"{where}: account_id {row['account_id']} is not an asset account in {ACCOUNTS_FILE}.")
+        if row["start_date"] is None:
+            raise DocumentError(f"{where}: start_date is required.")
+        if row["end_date"] is not None and row["end_date"] < row["start_date"]:
+            raise DocumentError(f"{where}: end_date is before start_date.")
+        by_account.setdefault(row["account_id"], []).append((row_number, row))
+
+    for ranges in by_account.values():
+        ranges.sort(key=lambda item: item[1]["start_date"])
+        for (_, earlier), (row_number, later) in zip(ranges, ranges[1:], strict=False):
+            if earlier["end_date"] is None or later["start_date"] <= earlier["end_date"]:
+                raise DocumentError(
+                    f"{GOAL_LINKS_FILE}, row {row_number}: account_id {later['account_id']} is linked twice "
+                    "over the same dates."
+                )

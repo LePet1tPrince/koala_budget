@@ -127,6 +127,8 @@ pace/projection numbers, context-aware quick-assign.
         </div>
       </div>
 
+      {% include "budget/components/goal_card_meta.html" %}
+
       <div class="flex gap-5 items-center mt-2">
         <div class="thermo">
           <div class="thermo-track">
@@ -169,7 +171,7 @@ pace/projection numbers, context-aware quick-assign.
               <div class="text-success font-medium">{% translate "Target reached — nice work!" %}</div>
             {% else %}
               {% if item.needed_per_month %}
-                <div>{{ item.needed_per_month|currency }}{% translate "/mo to hit" %} {{ item.goal.target_date|date:"M Y" }}</div>
+                <div>{{ item.needed_per_month|currency }}{% translate "/mo to hit" %} {{ item.plan_finish|date:"M Y" }}</div>
               {% endif %}
               {% if item.behind_pace %}
                 <div class="badge badge-outline badge-warning badge-sm">⚠ {% translate "Behind pace" %}</div>

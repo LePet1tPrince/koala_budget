@@ -41,7 +41,7 @@ class RoundTripTests(SimpleTestCase):
 
     def test_manifest_format_and_version(self):
         self.assertEqual(self.tables.manifest.format, "koala-budget-export")
-        self.assertEqual(self.tables.manifest.format_version, 4)
+        self.assertEqual(self.tables.manifest.format_version, 5)
 
     def test_manifest_file_row_counts(self):
         self.assertEqual(self.tables.manifest.files["accounts.csv"]["rows"], len(self.accounts))
@@ -165,6 +165,8 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "goal_archived_at": None,
                 "goal_closed_at": None,
                 "goal_order": None,
+                "goal_outflow": None,
+                "goal_monthly_contribution": None,
             },
             {
                 "account_id": 2,
@@ -194,6 +196,8 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "goal_archived_at": None,
                 "goal_closed_at": None,
                 "goal_order": None,
+                "goal_outflow": None,
+                "goal_monthly_contribution": None,
             },
         ]
         journal_rows = [
