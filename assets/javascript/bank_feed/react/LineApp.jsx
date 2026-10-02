@@ -12,6 +12,67 @@ import TransferSuggestions from './TransferSuggestions';
 import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
 import { formatCurrency } from '../../utilities/currency';
 import Icon from '../../common/Icon';
+import { BankFeedRowFromJSON } from 'api-client';
+
+/** How long the feed waits after its last write settles before re-reading it. */
+const QUIET_REFRESH_DELAY_MS = 500;
+
+/**
+ * A date as the generated client parses one: `YYYY-MM-DD` at UTC midnight, which
+ * is what `formatDateForInput` reads back as the same calendar day.
+ */
+const asRowDate = (value) => {
+  if (!value) return value;
+  return value instanceof Date ? value : new Date(String(value).slice(0, 10));
+};
+
+/**
+ * The row as it will look once the edit lands, built from what the modal sent.
+ *
+ * Only what the table shows has to be right: the server's own row replaces this
+ * one as soon as the save returns, and a quiet re-read follows that.
+ */
+const optimisticEditedRow = (row, data, accountsById) => {
+  const legs = Array.isArray(data.splits) && data.splits.length > 0 ? data.splits : null;
+  let category = null;
+  if (!legs && data.category) {
+    const id = data.category.id ?? data.category;
+    category =
+      row.category?.id === id
+        ? row.category
+        : { id, name: data.category.name ?? accountsById.get(id)?.name ?? '' };
+  }
+  return {
+    ...row,
+    postedDate: asRowDate(data.date) ?? row.postedDate,
+    payee: data.payee ?? '',
+    description: data.description ?? '',
+    inflow: data.inflow || '0.00',
+    outflow: data.outflow || '0.00',
+    category,
+    isSplit: Boolean(legs),
+    splitCount: legs ? legs.length : 0,
+    splits: legs
+      ? legs.map((leg) => ({
+          categoryId: leg.category,
+          categoryName: accountsById.get(leg.category)?.name ?? '',
+          amount: leg.amount,
+        }))
+      : [],
+  };
+};
+
+/** Fields a bulk edit changes on a row that stays in this account's feed. */
+const optimisticBulkEditedRow = (row, updates, accountsById) => {
+  const next = { ...row };
+  if (updates.payee) next.payee = updates.payee;
+  if (updates.description) next.description = updates.description;
+  if (updates.date) next.postedDate = asRowDate(updates.date);
+  if (updates.category_id) {
+    next.category = { id: updates.category_id, name: accountsById.get(updates.category_id)?.name ?? '' };
+  }
+  return next;
+};
 
 /**
  * LineApp - Main application component for managing lines
@@ -46,6 +107,23 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // A row the table should page to and flash, set when jumping to the other leg
   // of a transfer: {journalEntryId, nonce}
   const [focusRequest, setFocusRequest] = useState(null);
+
+  // Rows with a write still on its way to the server, which the table marks as
+  // saving. Counted, because the same row can carry more than one write.
+  const pendingCountsRef = useRef(new Map());
+  const [pendingIds, setPendingIds] = useState(() => new Set());
+  // Writes in flight, and a counter bumped as each one starts: a background
+  // re-read is only applied if nothing was written after it was requested,
+  // or a slow read would undo an edit the user just made.
+  const inFlightRef = useRef(0);
+  const writeEpochRef = useRef(0);
+  // Each row's last queued write, so two quick edits to one row reach the
+  // server in the order they were made.
+  const rowQueueRef = useRef(new Map());
+  const quietRefreshTimerRef = useRef(null);
+  const quietLoadSeqRef = useRef(0);
+
+  const accountsById = useMemo(() => new Map((allAccounts || []).map((a) => [a.id, a])), [allAccounts]);
 
   // Snackbar state for batch operations
   const [snackbar, setSnackbar] = useState({
@@ -135,39 +213,51 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       .catch((err) => console.error('Failed to load category suggestions:', err));
   }, [bankFeedClient, book]);
 
-  // Load lines when account is selected
+  // Load lines when an account is selected. Keyed on the id: refreshing the
+  // balances hands back a new object for the same account, which must not
+  // reload (and hide) the whole feed.
   useEffect(() => {
     if (selectedAccount) {
       loadLines(selectedAccount);
     } else {
       setLines([]);
     }
-  }, [selectedAccount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccount?.id]);
 
+  // Every row of an account's feed, following pagination if the server returns
+  // more than one page
+  const fetchAllLines = async (account) => {
+    const results = [];
+    let data = await bankFeedClient.bankFeedFeedList({
+      ...book.params,
+      account: account.id,
+    });
+    results.push(...(data.results || []));
+    while (data.next) {
+      const nextPage = Number(new URL(data.next, window.location.origin).searchParams.get('page'));
+      if (!nextPage) break;
+      data = await bankFeedClient.bankFeedFeedList({
+        ...book.params,
+        account: account.id,
+        page: nextPage,
+      });
+      results.push(...(data.results || []));
+    }
+    return results;
+  };
+
+  /**
+   * Load an account's feed with the table hidden behind a spinner. Only for
+   * opening an account, where there is nothing on screen to keep.
+   */
   const loadLines = async (account = selectedAccountRef.current) => {
     if (!account) return;
     const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError(null);
     try {
-      // Use the bank feed API client, following pagination if the server
-      // returns more than one page
-      const results = [];
-      let data = await bankFeedClient.bankFeedFeedList({
-        ...book.params,
-        account: account.id,
-      });
-      results.push(...(data.results || []));
-      while (data.next) {
-        const nextPage = Number(new URL(data.next, window.location.origin).searchParams.get('page'));
-        if (!nextPage) break;
-        data = await bankFeedClient.bankFeedFeedList({
-          ...book.params,
-          account: account.id,
-          page: nextPage,
-        });
-        results.push(...(data.results || []));
-      }
+      const results = await fetchAllLines(account);
       if (loadRequestRef.current === requestId) {
         setLines(results);
       }
@@ -181,6 +271,143 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         setLoading(false);
       }
     }
+  };
+
+  /**
+   * Re-read the open feed without hiding it, after writes have settled.
+   *
+   * A write changes more than the rows it names -- the other leg of a transfer,
+   * a split's mirror rows -- so the feed is re-read once things go quiet, but in
+   * the background: the table stays up and usable, and the result is dropped if
+   * the user has written anything since it was requested, or switched account.
+   */
+  const refreshLinesQuietly = async () => {
+    const account = selectedAccountRef.current;
+    if (!account) return;
+    const loadId = loadRequestRef.current;
+    const epoch = writeEpochRef.current;
+    const seq = ++quietLoadSeqRef.current;
+    try {
+      const results = await fetchAllLines(account);
+      const stillCurrent =
+        seq === quietLoadSeqRef.current &&
+        loadId === loadRequestRef.current &&
+        epoch === writeEpochRef.current &&
+        inFlightRef.current === 0 &&
+        selectedAccountRef.current?.id === account.id;
+      if (stillCurrent) setLines(results);
+    } catch (err) {
+      console.error('Failed to refresh lines:', err);
+    }
+  };
+
+  /** Re-read the feed and the account balances once no write is in flight. */
+  const scheduleQuietRefresh = () => {
+    clearTimeout(quietRefreshTimerRef.current);
+    quietRefreshTimerRef.current = setTimeout(() => {
+      if (inFlightRef.current > 0) return;
+      loadAccounts();
+      refreshLinesQuietly();
+    }, QUIET_REFRESH_DELAY_MS);
+  };
+
+  useEffect(() => () => clearTimeout(quietRefreshTimerRef.current), []);
+
+  const markPending = (ids, delta) => {
+    const counts = pendingCountsRef.current;
+    ids.forEach((id) => {
+      const next = (counts.get(id) || 0) + delta;
+      if (next > 0) counts.set(id, next);
+      else counts.delete(id);
+    });
+    setPendingIds(new Set(counts.keys()));
+  };
+
+  /**
+   * Apply a write to the table now and send it to the server in the background.
+   *
+   * `apply(row)` returns the row as it will look once the write lands, or null
+   * when the row leaves this feed. The table shows that at once; the rows stay
+   * marked as saving until the server answers. On success `onSuccess` may hand
+   * back the server's own rows; on failure every row this write changed -- and
+   * nothing has changed since -- goes back to how it was, and the server's
+   * reason is shown. Either way the feed is quietly re-read once writes settle.
+   *
+   * Resolves once the write has settled; nothing has to wait for it.
+   */
+  const runWrite = ({ rowIds = [], apply = null, request, onSuccess = null, successMessage = null, errorMessage }) => {
+    writeEpochRef.current += 1;
+    inFlightRef.current += 1;
+    const ids = new Set(rowIds);
+
+    // The rows this write replaced, and what it replaced them with, so a
+    // rollback only touches rows still showing this write's version.
+    const before = new Map();
+    const written = new Map();
+    if (apply && ids.size > 0) {
+      // Computed against the latest rows (an earlier write may not have
+      // rendered yet), and once per row, so a re-run updater keeps identities.
+      setLines((prev) =>
+        prev.flatMap((row) => {
+          if (!ids.has(row.id)) return [row];
+          if (!written.has(row.id)) {
+            before.set(row.id, row);
+            written.set(row.id, apply(row));
+          }
+          const next = written.get(row.id);
+          return next ? [next] : [];
+        })
+      );
+    }
+    markPending([...ids], 1);
+
+    // Queue behind earlier writes to the same rows
+    const queue = rowQueueRef.current;
+    const ahead = Promise.all([...ids].map((id) => queue.get(id))).catch(() => {});
+    const sent = ahead.then(() => request());
+    const settled = sent.catch(() => {});
+    ids.forEach((id) => queue.set(id, settled));
+
+    return sent
+      .then((result) => {
+        const fresh = onSuccess ? onSuccess(result) : null;
+        if (fresh && fresh.length) {
+          const byId = new Map(fresh.map((row) => [row.id, row]));
+          setLines((prev) =>
+            prev.map((row) => {
+              const server = byId.get(row.id);
+              // A later write to this row is already on screen; its own
+              // answer will bring the server's row.
+              if (!server || (written.has(row.id) && written.get(row.id) !== row)) return row;
+              return server;
+            })
+          );
+        }
+        if (successMessage) showSnackbar(successMessage, 'success');
+      })
+      .catch((err) => {
+        console.error(errorMessage, err);
+        setLines((prev) => {
+          const present = new Set(prev.map((row) => row.id));
+          const restored = prev.map((row) =>
+            written.has(row.id) && written.get(row.id) === row ? before.get(row.id) : row
+          );
+          // Rows this write removed from the feed come back
+          before.forEach((row, id) => {
+            if (written.get(id) === null && !present.has(id)) restored.push(row);
+          });
+          return restored;
+        });
+        showSnackbar(err.message || errorMessage, 'error');
+      })
+      .finally(() => {
+        inFlightRef.current -= 1;
+        markPending([...ids], -1);
+        ids.forEach((id) => {
+          if (queue.get(id) === settled) queue.delete(id);
+        });
+        scheduleQuietRefresh();
+      });
   };
 
   /**
@@ -300,8 +527,8 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         },
       });
 
-      // Reload the bank feed and account balances
-      await Promise.all([loadLines(), loadAccounts()]);
+      // Re-read the bank feed and account balances in the background
+      scheduleQuietRefresh();
     } catch (err) {
       console.error('Failed to categorize:', err);
       throw err;
@@ -325,8 +552,10 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
    */
   const handleAddLine = async (lineData) => {
     try {
-      // Use the new transaction API which creates BankTransaction + JournalEntry
-      await transactionApi.createTransaction({
+      // Use the new transaction API which creates BankTransaction + JournalEntry.
+      // The modal waits for this one request -- a new row has no id to edit
+      // until the server gives it one -- but not for the feed to be re-read.
+      const created = await transactionApi.createTransaction({
         date: lineData.date,
         category: lineData.category,
         splits: lineData.splits ?? null,
@@ -337,7 +566,12 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         account: selectedAccount.id,
       });
 
-      await Promise.all([loadLines(), loadAccounts()]);
+      if (created) {
+        const row = BankFeedRowFromJSON(created);
+        setLines((prev) => (prev.some((l) => l.id === row.id) ? prev : [row, ...prev]));
+      }
+      writeEpochRef.current += 1;
+      scheduleQuietRefresh();
     } catch (err) {
       console.error('Failed to add line:', err);
       throw err;
@@ -345,32 +579,33 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   };
 
   /**
-   * Handle editing a transaction from the edit modal
-   * Uses the transaction API to update the BankTransaction and associated JournalEntry
+   * Handle editing a transaction from the edit modal.
+   *
+   * The row shows the edit straight away and the modal closes without waiting;
+   * the update goes to the server in the background. A refused edit puts the row
+   * back and says why.
    */
-  const handleEditTransaction = async (updatedData) => {
-    try {
-      const { id, date, category, splits, remove_split, inflow, outflow, payee, description } = updatedData;
-
-      // Use the transaction API to update the transaction
-      await transactionApi.updateTransaction(id, {
-        date: date,
-        category: category,
-        splits: splits ?? null,
-        remove_split: remove_split ?? false,
-        inflow: inflow || '0',
-        outflow: outflow || '0',
-        payee: payee || '',
-        description: description || '',
-        account: selectedAccount.id,
-      });
-
-      await Promise.all([loadLines(), loadAccounts()]);
-    } catch (err) {
-      console.error('Failed to update transaction:', err);
-      showSnackbar(err.message || gettext('Failed to update transaction'), 'error');
-      throw err;
-    }
+  const handleEditTransaction = (updatedData) => {
+    const { id, date, category, splits, remove_split, inflow, outflow, payee, description } = updatedData;
+    const accountId = selectedAccount.id;
+    return runWrite({
+      rowIds: [id],
+      apply: (row) => optimisticEditedRow(row, updatedData, accountsById),
+      request: () =>
+        transactionApi.updateTransaction(id, {
+          date: date,
+          category: category,
+          splits: splits ?? null,
+          remove_split: remove_split ?? false,
+          inflow: inflow || '0',
+          outflow: outflow || '0',
+          payee: payee || '',
+          description: description || '',
+          account: accountId,
+        }),
+      onSuccess: (json) => (json ? [BankFeedRowFromJSON(json)] : null),
+      errorMessage: gettext('Failed to update transaction'),
+    });
   };
 
   /**
@@ -405,77 +640,81 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
    * Bulk edit selected transactions via the unified batch_edit endpoint.
    * @param {Object} updates - Fields to update (category_id, account_id, payee, description, date)
    */
-  const handleBulkEdit = async (updates) => {
-    try {
-      await batchApi.batchEdit([...selectedIds], updates);
-      setSelectedIds(new Set());
-      await Promise.all([loadLines(), loadAccounts()]);
-      showSnackbar(gettext('Transactions updated successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to bulk edit:', err);
-      showSnackbar(err.message || gettext('Failed to update transactions'), 'error');
-      throw err;
-    }
+  const handleBulkEdit = (updates) => {
+    const ids = [...selectedIds];
+    const accountId = selectedAccountRef.current?.id;
+    setSelectedIds(new Set());
+    runWrite({
+      rowIds: ids,
+      // Moved to another account, the rows leave this feed
+      apply: (row) =>
+        updates.account_id && updates.account_id !== accountId
+          ? null
+          : optimisticBulkEditedRow(row, updates, accountsById),
+      request: () => batchApi.batchEdit(ids, updates),
+      successMessage: gettext('Transactions updated successfully'),
+      errorMessage: gettext('Failed to update transactions'),
+    });
   };
 
   /**
    * Batch archive selected transactions
    */
-  const handleBatchArchive = async () => {
-    try {
-      await batchApi.batchArchive([...selectedIds]);
-      setSelectedIds(new Set());
-      await Promise.all([loadLines(), loadAccounts()]);
-      showSnackbar(gettext('Transactions archived successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch archive:', err);
-      showSnackbar(err.message || gettext('Failed to archive transactions'), 'error');
-    }
+  const handleBatchArchive = () => {
+    const ids = [...selectedIds];
+    setSelectedIds(new Set());
+    runWrite({
+      rowIds: ids,
+      apply: (row) => ({ ...row, isArchived: true }),
+      request: () => batchApi.batchArchive(ids),
+      successMessage: gettext('Transactions archived successfully'),
+      errorMessage: gettext('Failed to archive transactions'),
+    });
   };
 
   /**
    * Batch unarchive selected transactions
    */
-  const handleBatchUnarchive = async () => {
-    try {
-      await batchApi.batchUnarchive([...selectedIds]);
-      setSelectedIds(new Set());
-      await Promise.all([loadLines(), loadAccounts()]);
-      showSnackbar(gettext('Transactions unarchived successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch unarchive:', err);
-      showSnackbar(err.message || gettext('Failed to unarchive transactions'), 'error');
-    }
+  const handleBatchUnarchive = () => {
+    const ids = [...selectedIds];
+    setSelectedIds(new Set());
+    runWrite({
+      rowIds: ids,
+      apply: (row) => ({ ...row, isArchived: false }),
+      request: () => batchApi.batchUnarchive(ids),
+      successMessage: gettext('Transactions unarchived successfully'),
+      errorMessage: gettext('Failed to unarchive transactions'),
+    });
   };
 
   /**
    * Permanently delete selected archived transactions
    */
-  const handleBatchDelete = async () => {
-    try {
-      await batchApi.batchDelete([...selectedIds]);
-      setSelectedIds(new Set());
-      await Promise.all([loadLines(), loadAccounts()]);
-      showSnackbar(gettext('Transactions permanently deleted'), 'success');
-    } catch (err) {
-      console.error('Failed to batch delete:', err);
-      showSnackbar(err.message || gettext('Failed to delete transactions'), 'error');
-    }
+  const handleBatchDelete = () => {
+    const ids = [...selectedIds];
+    setSelectedIds(new Set());
+    runWrite({
+      rowIds: ids,
+      apply: () => null,
+      request: () => batchApi.batchDelete(ids),
+      successMessage: gettext('Transactions permanently deleted'),
+      errorMessage: gettext('Failed to delete transactions'),
+    });
   };
 
   /**
    * Batch duplicate selected transactions
    */
-  const handleBatchDuplicate = async () => {
-    try {
-      await batchApi.batchDuplicate([...selectedIds]);
-      setSelectedIds(new Set());
-      await Promise.all([loadLines(), loadAccounts()]);
-      showSnackbar(gettext('Transactions duplicated successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch duplicate:', err);
-      showSnackbar(err.message || gettext('Failed to duplicate transactions'), 'error');
-    }
+  const handleBatchDuplicate = () => {
+    const ids = [...selectedIds];
+    setSelectedIds(new Set());
+    runWrite({
+      rowIds: ids,
+      // The copies have no ids until the server makes them; the re-read brings them in
+      request: () => batchApi.batchDuplicate(ids),
+      successMessage: gettext('Transactions duplicated successfully'),
+      errorMessage: gettext('Failed to duplicate transactions'),
+    });
   };
 
   /**
@@ -495,17 +734,16 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   /**
    * Batch unreconcile selected transactions
    */
-  const handleBatchUnreconcile = async () => {
-    try {
-      await batchApi.batchUnreconcile([...selectedIds]);
-      setSelectedIds(new Set());
-      await Promise.all([loadLines(), loadAccounts()]);
-
-      showSnackbar(gettext('Transactions unreconciled successfully'), 'success');
-    } catch (err) {
-      console.error('Failed to batch unreconcile:', err);
-      showSnackbar(err.message || gettext('Failed to unreconcile transactions'), 'error');
-    }
+  const handleBatchUnreconcile = () => {
+    const ids = [...selectedIds];
+    setSelectedIds(new Set());
+    runWrite({
+      rowIds: ids,
+      apply: (row) => ({ ...row, isReconciled: false, reconciledStatementDate: undefined }),
+      request: () => batchApi.batchUnreconcile(ids),
+      successMessage: gettext('Transactions unreconciled successfully'),
+      errorMessage: gettext('Failed to unreconcile transactions'),
+    });
   };
 
   /**
@@ -581,7 +819,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               batchApi={batchApi}
               showSnackbar={showSnackbar}
               onResolved={() => {
-                if (selectedAccountRef.current) loadLines();
+                if (selectedAccountRef.current) scheduleQuietRefresh();
               }}
             />
             <a
@@ -622,6 +860,16 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             <h2 className="text-xl mb-1">
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
+            {pendingIds.size > 0 && (
+              <span
+                className="ml-auto mr-3 inline-flex items-center gap-1.5 text-xs text-base-content/70"
+                role="status"
+                data-testid="feed-saving"
+              >
+                <span className="loading loading-spinner loading-xs" aria-hidden="true" />
+                {gettext('Saving…')}
+              </span>
+            )}
             {selectedPlaidItem && (
               <span className="text-xs text-base-content/70" title={selectedPlaidItem.institutionName}>
                 {refreshing
@@ -702,6 +950,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             onOpenTransferLeg={handleOpenTransferLeg}
             feedAccountIds={feedAccountIds}
             focusRequest={focusRequest}
+            pendingIds={pendingIds}
           />
         </section>
       )}
@@ -715,8 +964,9 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           uploadApi={uploadApi}
           onComplete={(result) => {
             setShowUploadWizard(false);
-            // Reload lines to show newly imported transactions
-            loadLines();
+            // Bring in the newly imported transactions without hiding the feed
+            writeEpochRef.current += 1;
+            scheduleQuietRefresh();
             if (result) {
               const created = result.created_count ?? result.createdCount ?? 0;
               const skipped = result.skipped_count ?? result.skippedCount ?? 0;

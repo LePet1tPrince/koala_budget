@@ -13,6 +13,9 @@ import Icon from '../../common/Icon';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200];
 
+// Stable default, so the rows don't re-render for a fresh `new Set()` each time
+const NO_PENDING = new Set();
+
 // Column widths are fixed (the table is `table-fixed`) so the Description column
 // absorbs whatever the others leave behind, and long payees or categories
 // ellipsis rather than wrapping the row height.
@@ -98,6 +101,7 @@ const LineTable = ({
   onOpenTransferLeg,
   feedAccountIds = new Set(),
   focusRequest = null,
+  pendingIds = NO_PENDING,
 }) => {
   // Date range filter state (YYYY-MM-DD strings)
   const [filterStart, setFilterStart] = useState('');
@@ -203,8 +207,9 @@ const LineTable = ({
         showSnackbar(gettext('Transaction added successfully'), 'success');
       }
     } else if (onEditTransaction) {
-      await onEditTransaction(data);
-      showSnackbar(gettext('Transaction updated successfully'), 'success');
+      // Not awaited: the row already shows the edit and is marked as saving,
+      // so the modal closes at once. A refusal is reported by the feed.
+      onEditTransaction(data);
     }
   };
 
@@ -293,9 +298,12 @@ const LineTable = ({
   const safePage = Math.min(page, pageCount - 1);
   const pageRows = sortedLines.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
+  // Back to the first page when what is being looked at changes -- not when the
+  // row count does, or every categorize or archive would throw the user off the
+  // page they are working through. `safePage` clamps a page that shrank.
   useEffect(() => {
     setPage(0);
-  }, [filteredLines.length, pageSize]);
+  }, [filterStart, filterEnd, showArchived, quickFilters, pageSize, selectedAccount?.id]);
 
   // Arriving from the other side of a transfer: the counterpart row is the one
   // carrying the same journal entry id. It only exists once the new account's
@@ -591,6 +599,7 @@ const LineTable = ({
                   // A row categorized to another feed account is a transfer: the
                   // same journal entry also has a row in that account's feed.
                   const isTransfer = !!row.category && feedAccountIds.has(row.category.id) && !!row.journalEntryId;
+                  const saving = pendingIds.has(row.id);
                   return (
                     <tr
                       key={row.id}
@@ -598,6 +607,7 @@ const LineTable = ({
                         row.id === highlightId ? 'feed-row-flash' : ''
                       }`}
                       onClick={() => handleEditClick(row)}
+                      aria-busy={saving || undefined}
                       data-testid={`feed-row-${row.id}`}
                     >
                       <td className="w-12" onClick={(e) => e.stopPropagation()}>
@@ -656,7 +666,15 @@ const LineTable = ({
                         {row.description || ''}
                       </td>
                       <td className="text-center">
-                        <ReconciledLock reconciled={reconciled} />
+                        {saving ? (
+                          <span
+                            className="loading loading-spinner loading-xs text-base-content/50"
+                            title={gettext('Saving…')}
+                            data-testid={`row-saving-${row.id}`}
+                          />
+                        ) : (
+                          <ReconciledLock reconciled={reconciled} />
+                        )}
                       </td>
                     </tr>
                   );
