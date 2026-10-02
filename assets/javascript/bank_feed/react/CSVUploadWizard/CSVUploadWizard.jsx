@@ -283,6 +283,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
             totalRows={parseResult.total_rows}
             file={file}
             uploadApi={uploadApi}
+            accountType={selectedAccount.account_type}
             onComplete={handleColumnMappingComplete}
             onBack={handleBack}
             onCancel={onCancel}

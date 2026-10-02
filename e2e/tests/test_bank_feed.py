@@ -14,6 +14,7 @@ from decimal import Decimal
 import pytest
 from playwright.sync_api import Page
 
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
 from e2e.pages.bank_feed import BankFeedPage
 
@@ -448,3 +449,34 @@ def test_csv_category_picker_is_keyboard_driven(requires_vite, authenticated_pag
     search.press("ArrowDown")
     search.press("Enter")
     assert page.get_by_role("button", name="Zed Groceries").is_visible()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("account_type", "inverted", "hint"),
+    [
+        (ACCOUNT_TYPE_ASSET, True, "Positive amounts are money in, negative are money out."),
+        (ACCOUNT_TYPE_LIABILITY, False, "Positive amounts are money out, negative are money in."),
+    ],
+)
+def test_csv_sign_convention_defaults_by_account_type(
+    requires_vite, authenticated_page: Page, live_server, team, tmp_path, account_type, inverted, hint
+):
+    """
+    A single amount column defaults to the account's usual export convention: a bank
+    account writes a deposit as positive (money in), a credit card writes a charge as
+    positive (money out).
+    """
+    group = AccountGroupFactory(team=team, name=f"Zed {account_type}", account_type=account_type)
+    feed_account = AccountFactory(team=team, account_group=group, has_feed=True)
+    csv_file = tmp_path / "statement.csv"
+    csv_file.write_text("Date,Description,Amount\n2026-01-05,Grocer,-40.00\n")
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.click_account_card(feed_account.id)
+    feed.open_csv_upload(str(csv_file))
+
+    checkbox = authenticated_page.locator("[data-testid='invert-amounts']")
+    assert checkbox.is_checked() is inverted
+    assert authenticated_page.get_by_text(hint, exact=True).is_visible()
