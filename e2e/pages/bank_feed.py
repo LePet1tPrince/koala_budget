@@ -244,3 +244,13 @@ class BankFeedPage(BasePage):
     def save_modal(self):
         self.page.locator("[data-testid='modal-save-btn']").click()
         self.page.wait_for_selector("[data-testid='edit-transaction-modal']", state="detached", timeout=10_000)
+        self.wait_for_saves()
+
+    def wait_for_saves(self):
+        """Wait for the feed's background writes to reach the server.
+
+        An edit closes the modal and shows in the row at once, then saves in the
+        background behind a "Saving…" marker. A test that reads the database
+        must wait for that marker to go.
+        """
+        self.page.wait_for_selector("[data-testid='feed-saving']", state="detached", timeout=10_000)
