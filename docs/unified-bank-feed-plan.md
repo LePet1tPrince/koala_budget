@@ -72,7 +72,7 @@ A row with **no** entry (uncategorized) has its own `is_void`: voiding a duplica
 New `apps/journal/services/voiding.py`, the only code that changes void state:
 
 - `void(entries=(), rows=())` / `restore(entries=(), rows=())`. A row resolves to its entry; an entry expands to all its rows. Uncategorized rows are handled alone.
-- Guard (unchanged rule, now applied to both): refused if any line on the entry is reconciled (`assert_entry_voidable`). All-or-nothing; the refusal names the rows (§2.8).
+- Guard (unchanged rule, now applied to both): refused if any line on the entry is reconciled (`assert_entry_voidable`). All-or-nothing; the refusal names the rows (§2.9).
 - Per-instance `save()` on entries (so `AuditLog` records the status change); rows in the same `transaction.atomic`.
 - Callers switched to it: `simple_edit.set_status`, `JournalEntryViewSet.void_entry`, `BankFeedViewSet.batch_archive`/`batch_unarchive`, `transfer_resolve`, `reconciliation.services.session.undo`.
 
@@ -109,20 +109,50 @@ A `manage.py void_consistency [--book slug] [--fix]` command runs the same check
 
 ## 2. The unified table
 
-### 2.1 Rows
+### 2.1 One query, paged on the server
 
-- **All feed accounts, one list.** `GET feed/` with no `account` returns rows for accounts with `has_feed=False` too (accounts hidden from the Inbox by the accounts board checkbox keep their rows). → Server: without `account`, filter `account__has_feed=True`. With `account`, unchanged.
-- **Multi-account filter.** `?account=1,2` (comma list). Single id keeps working, so the nav's `?account=<id>` links and the account page's "Open in Inbox" still land filtered.
-- **Ordering.** `-posted_date, -created_at`, then `account` sort order, then `pk` — deterministic across pages.
+Today the client fetches **every** page of an account's rows (200 per request) and then filters, counts, sorts and pages in memory. Across all accounts that is the whole book on every visit (the YNAB sample: 6,860 rows, ~35 requests). Instead the table becomes a window onto **one queryset**, the same pattern as the Transactions page: the client asks for one page, the server does the rest.
 
-### 2.2 Loading — the measured risk
+`GET bankfeed/api/feed/` — one `BankTransaction` queryset for the book:
 
-The client loads every page before showing anything. Per account that was hundreds to a few thousand rows; the YNAB sample book has **6,860** feed rows across its accounts (~35 pages).
+```
+BankTransaction.objects.filter(book=book, account__has_feed=True)   # accounts hidden from the Inbox drop out
+  .filter(account_id__in=…)                                         # ?account=1,2  (absent = all)
+  .filter(is_void=…)                                                # ?view=active|voided
+  .annotate(row_reconciled=Exists(JournalLine: same entry, same account, is_reconciled))
+  .filter(<quick filters>, <date range>)
+  .order_by(<sort>, "-created_at", "-pk")                            # pk tie-break: no row on two pages
+  [offset:offset + page_size]
+```
 
-- Phase 1 first step: time `GET feed/` for all pages on the YNAB sample (server time per page, total wall time, JS heap).
-- Change loading regardless: render page 1 as soon as it arrives, fetch pages 2..N **in parallel** (the first response's `count` gives N), show "Loading 1,200 of 6,860…" in the toolbar, and keep counts/filters marked provisional until done.
-- **Budget:** first rows < 1 s, full load < 3 s on the sample. If missed → D1 (move filtering/sorting/counting server-side, as the Transactions page did). Not built speculatively: it rewrites the filter, count and selection logic the e2e suite pins.
-- **Reload after actions.** Every batch action calls `loadLines()` — today one account, after the pivot the whole book. Replace with a targeted refresh: new `GET feed/?ids=…` (cap 500) re-reads the affected rows plus their transfer siblings (`linked_legs`), patched into state; deletes drop ids; duplicates append. Full reload only for CSV upload, Plaid refresh and transfer-review resolve.
+| Param | Values | Replaces (client-side today) |
+|---|---|---|
+| `account` | comma list of ids; absent = all feed accounts | the selected card |
+| `view` | `active` (default) · `voided` | the Archived toggle |
+| `to_review` / `reconciled` | `1` (mutually exclusive, 400 if both) | Quick Filters |
+| `uncategorized` | `1` → `journal_entry IS NULL` | Quick Filters |
+| `start_date` / `end_date` | ISO dates on `posted_date` | date range picker |
+| `sort` / `dir` | `date`, `account`, `payee`, `category`, `inflow`, `outflow`, `description` · `asc`/`desc` | column header sort |
+| `page` / `page_size` | `page_size` ∈ 10, 25, 50, 100, 200 (default 25) | `TablePager` |
+
+Response: `{count, next, previous, results, counts}`.
+
+- **`counts`** = `{to_review, reconciled, uncategorized, voided}` for the account filter alone, ignoring quick filters, date range and view — exactly what the menu badges show today. One `aggregate()` with `Count(filter=…)` per key, on the same base queryset.
+- **Sort keys that need annotation**, applied only when that column is sorted (as `apps/journal/filters.py::annotations_for` does):
+  - `category`: uncategorized → `""`; a split → `"Split"`; a transfer mirror → the primary row's account name; otherwise the name of the entry's line whose account is not the row's account (scalar `Subquery`). Matches what the cell renders.
+  - `inflow` / `outflow`: `Case` on the sign of `amount`.
+  - `account`: board order (`account__account_group__sort_order`, `account__sort_order`), not alphabetical.
+- **Cost per request is constant**, not proportional to the book: one `COUNT`, one page query, the existing prefetches (lines, reconciliation, sibling rows), one counts aggregate — about ten queries for 25 rows or 200. Pinned by an `assertNumQueries` test that runs against 10 and 1,000 rows.
+- **Index.** Run `EXPLAIN` on the YNAB sample for the default order; if Postgres sorts the whole book, add `Index(fields=["book", "is_void", "-posted_date", "-created_at"])`.
+- Backward compatible: `?account=<id>` alone still works, and Categorize Mode does not use this endpoint.
+
+### 2.2 The client
+
+- `LineTable.jsx` stops filtering, counting, sorting and paging: `filteredLines`, `filterCounts`, `sortedLines` and the page slice go. Filter, sort and page state lift into `LineApp`, which requests one page whenever any of them changes (the Transactions page's `transactions-app.jsx` shape). A request token drops out-of-order responses.
+- Changing a filter or the sort returns to page 1. Filters, sort and page go in the URL (`history.replaceState`), so reload and Back land on the same page of the same view.
+- **After an action** (edit, bulk edit, void/restore, delete, duplicate, unreconcile, categorize): refetch the current page and its counts — one request — plus the account cards' balances, as today. If the page is now past the last one (rows deleted or voided away), step back to the last page.
+- `TablePager` reads `count` from the server instead of `sortedLines.length`.
+- Paging moves from instant to one round trip. Show the previous page dimmed with a spinner rather than blanking the table.
 
 ### 2.3 Account column and filter
 
@@ -148,9 +178,8 @@ The client loads every page before showing anything. Per account that was hundre
 
 ### 2.6 Views and filters across accounts
 
-- Quick Filters (To Review / Reconciled / Uncategorized) and their counts span the filtered accounts. With all accounts, the Uncategorized count equals the Inbox badge (both: `has_feed` accounts, no entry, not void) — tested.
-- **Voided view** (after Phase 0; "Archived" today) spans the filtered accounts: every voided bank row in the book in one list. Restore lives here.
-- Date range, sort and paging unchanged.
+- Quick Filters (To Review / Reconciled / Uncategorized) and their counts are server-side (§2.1) and span the filtered accounts. With all accounts, the Uncategorized count equals the Inbox badge (both: `has_feed` accounts, no entry, not void) — tested.
+- **Voided view** (`view=voided`; "Archived" today) spans the filtered accounts: every voided bank row in the book in one paged list. Restore lives here.
 
 ### 2.7 Transfers: both legs in one table
 
@@ -158,7 +187,7 @@ A transfer between two feed accounts is one entry with a row in each account (pr
 
 - **Shown twice, deliberately.** Each row is a fact about its own account and reconciles independently. Collapsing them would break the per-account reading of the table and the per-row reconcile flag.
 - **Totals.** With both legs selected, In and Out each include the transfer; Net is unaffected (the legs cancel). The summary strip shows that as is.
-- **Transfer link (⇄).** If the counterpart row is under the current filters: scroll and flash it in place, no account switch. Otherwise: add the counterpart's account to the filter, then the existing clear-filters → page → flash logic.
+- **Transfer link (⇄).** The counterpart may be on another page. New `GET feed/locate/?journal_entry=<id>&account=<counterpart account>&<current filters, sort, page_size>` returns `{id, page}`, computed with `Window(RowNumber(), order_by=<the list's ordering>)` over the same queryset — or `{id, page: null}` when the current filters hide it. Found → go to that page, scroll, flash. Hidden → the existing behaviour: switch the account filter to the counterpart, clear quick filters and dates, view from the row's void state, then locate again.
 - **Batch actions with both legs selected:**
   - Bulk category: re-pointing a mirror to a non-feed category is refused (`would_orphan_primary`), so "set category" on a selection that includes mirrors fails. → `BulkEditModal` says "k transfer mirror rows selected — they follow their original" and the request **skips** mirror rows whose primary is also selected; mirrors selected alone are still refused.
   - Void/Restore: legs already move together (`linked_legs`); a selected sibling is skipped as already done.
@@ -166,13 +195,23 @@ A transfer between two feed accounts is one entry with a row in each account (pr
   - **Duplicate: skip mirror rows.** Duplicating a mirror creates an uncategorized copy in the counterpart account; categorizing both copies double-counts the transfer. A mirror is not something the bank reported.
   - Bulk move account: a row moved into the account its category already is gets both lines on one account (self-transfer). `_apply_batch_edit` does not catch this. → Refuse it: "A transaction cannot be moved to the account it is categorized to."
 
-### 2.8 Batch bar across accounts
+### 2.8 Selection across pages
+
+With server paging the client only holds the page on screen, so selection can no longer be "every filtered row in memory".
+
+- **Selection is a map of id → row summary**, kept across page changes; it is what `BatchActionBar` reads (In/Out/Net, reconciled state, which buttons apply), so rows selected on page 1 still count while viewing page 3.
+- **Header checkbox = this page.** When the whole page is ticked and `count` exceeds it, a strip offers **"Select all 1,240 matching"** → `GET feed/selection/?<current filters>` returns the summary fields (`id, account_id, inflow, outflow, is_reconciled, is_void, category_id, is_split, is_transfer_mirror, journal_entry_id, reconciled_statement_date`) for every match via `values()` — no serializer, no prefetch. Cap 1,000; above it the strip reads "Narrow the filters to select more than 1,000".
+- Cleared when a filter or the view changes (as today); kept across sort and page changes (the set of rows is the same).
+- Batch write endpoints get `max_length=1,000` on `ids`; each row is a per-instance save with audit signals, so this bounds the request time.
+- Shift-click ranges stay within the page.
+
+### 2.9 Batch bar across accounts
 
 - **Bulk Edit, Void/Restore, Delete, Duplicate, Export, Unreconcile:** unchanged, per row.
 - **Reconcile:** no change to what it does. It needs one account for the hand-off URL → enabled only when every selected row is in one account; otherwise disabled with "Select rows from one account to reconcile".
 - **Reconciled balance → new** preview: shown only when the selection is in one account, using that account.
-- **Export:** gains an Account column.
-- **Refusals name rows.** Every batch endpoint is all-or-nothing and returns the first error without saying which row. Across accounts that is harder to act on. → `400 {error, refused: [{id, error}]}`; the bar shows "k of n can't …" with **Deselect them**.
+- **Export:** CSV of the selected rows. Rows selected on other pages are only summaries, so export fetches them in full first (`GET feed/?ids=…`, same cap); the CSV gains an Account column.
+- **Refusals name rows.** Every batch endpoint is all-or-nothing and returns the first error without saying which row. Across accounts and pages that is harder to act on. → `400 {error, refused: [{id, error}]}`; the bar shows "k of n can't …" with **Deselect them**.
 
 ---
 
@@ -180,7 +219,7 @@ A transfer between two feed accounts is one entry with a row in each account (pr
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | Full load misses the budget on the YNAB sample. | Then move filtering, sorting, counts and paging server-side (the Transactions page pattern) and keep the client contract; decide only after measuring. |
+| D1 | ~~Load every row client-side, or page on the server?~~ | **Decided:** one server-side queryset, paged (§2.1). |
 | D2 | Default view on arrival: all accounts, or the last account viewed? | All accounts. Remember the filter per book in `localStorage` only if users ask. |
 | D3 | Voided entries with no bank row have no restore view. | Remove Void from the Transactions edit modal for entries with no bank row (Delete covers manual entries); the feed is the one place for void/restore. |
 
@@ -190,11 +229,9 @@ A transfer between two feed accounts is one entry with a row in each account (pr
 
 **Phase 0 — one void state (§1).** Rename, field removals, data migration with balance assertion, `voiding.py`, model backstops, callers switched, `counted_entries()` simplified, Archived → Voided in the feed, portability v4, `void_consistency`.
 
-**Phase 1 — server + loading.** `has_feed` filter and multi-id `account`; deterministic ordering; `?ids=` refresh; refusals that name rows; self-transfer move refused; mirror skipping in bulk category and duplicate. Measure §2.2 → settles D1.
+**Phase 1 — server.** List endpoint params, sort annotations, `counts`, pagination (§2.1); `feed/selection/`, `feed/locate/`, `?ids=`; id caps; refusals that name rows; self-transfer move refused; mirror skipping in bulk category and duplicate; `EXPLAIN` and index. Old client keeps working throughout (`?account=<id>` with every page still returns the same rows).
 
-**Phase 2 — the unified page.** Account column + filter, cards as filter, URL state, per-account controls (§2.4), `row.account.id` on edit, parallel loading, targeted refresh, transfer link in place, batch bar rules (§2.8).
-
-**Phase 3 (only if D1 says so) — server-side filtering.**
+**Phase 2 — the unified page.** `LineTable` made presentational, state in `LineApp` + URL, Account column + filter, cards as filter, per-account controls (§2.4), `row.account.id` on edit, page refetch after actions, transfer locate, cross-page selection + "select all matching", batch bar rules (§2.9).
 
 ---
 
@@ -202,18 +239,27 @@ A transfer between two feed accounts is one entry with a row in each account (pr
 
 **Backend:**
 - Phase 0: as in §1.6 — invariant after every write path, migration balance-neutral, portability v3 → v4, structure test.
-- `GET feed/` without `account`: only `has_feed` accounts; `?account=1,2`; ordering stable across pages; `?ids=` returns those rows and their siblings; another book's ids never returned (isolation tables).
+- `GET feed/` without `account`: only `has_feed` accounts; `?account=1,2`.
+- **Filter semantics ported from the client:** the cases `e2e/tests/test_bank_feed.py`'s filter matrix pins (to review, reconciled, uncategorized, split counted as categorized, voided view, date range) as a server `TestCase` table, so the move off the client changes no row's membership.
+- `counts` ignore quick filters, dates and view; equal the old client counts on the same data.
+- Every sort key, including `category` for uncategorized / split / mirror rows, matches the rendered cell; `asc` and `desc`.
+- Paging: walking every page returns every row exactly once, for each sort; `page_size` outside the allowed set → 400.
+- `assertNumQueries` constant at 10 and 1,000 rows.
+- `feed/selection/` returns all matches up to 1,000 and refuses above; `feed/locate/` returns the right page under each sort and `null` when filtered out; `?ids=` capped.
+- Another book's rows never returned by any of them (isolation tables).
 - `batch_edit` move into the category account → refused; category on primary + mirror → mirror skipped; mirror alone → refused.
 - `batch_duplicate` skips mirrors.
 - Refusal payload names every refused row; nothing written.
 - Uncategorized count (all accounts) == `inbox_count`.
 
 **E2E** (`e2e/tests/test_bank_feed.py`, POM `e2e/pages/bank_feed.py`), contract-first:
-- Existing 21 tests keep passing: `click_account_card` becomes "filter to this account", which is what they rely on.
+- Existing 21 tests keep passing untouched: `click_account_card` becomes "filter to this account", and the filter-matrix tests now exercise the server filters through the same UI.
+- Paging: next page shows the next rows; page size change; filter change returns to page 1; URL restores the page on reload.
+- Select rows on page 1 and page 2 → bar counts both; "Select all N matching" → bulk edit applies to rows never shown.
 - Landing shows rows from two accounts with the Account column; filtering to one hides the column and shows the header balances.
 - Select rows in two accounts → Bulk Edit category → both updated, each in its own account.
 - Edit a row while viewing all accounts → it stays in its account (guards §2.5).
-- Transfer: both legs visible; ⇄ flashes the other leg without changing the filter.
+- Transfer: ⇄ on a leg whose counterpart is on another page goes to that page and flashes it, without changing the filter.
 - Reconcile disabled for a two-account selection, enabled for one.
 - Add Transaction with all accounts requires an account; CSV upload asks for one.
 - Voided view lists voided rows from every account; Restore returns them.
