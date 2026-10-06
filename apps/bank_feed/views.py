@@ -51,7 +51,8 @@ from .serializers import (
     FeedAccountSerializer,
     SimilarCategorySuggestionSerializer,
     TransferDismissRequestSerializer,
-    TransferResolveRequestSerializer,
+    TransferMatchRequestSerializer,
+    TransferMatchResponseSerializer,
     TransferSuggestionSerializer,
     UploadConfirmRequestSerializer,
     UploadConfirmResponseSerializer,
@@ -60,11 +61,13 @@ from .serializers import (
     UploadValidateDatesResponseSerializer,
     bank_transaction_to_feed_row,
 )
+from .services.categorize import create_entry, repoint_category
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.sample_csv import build_sample_csv
 from .services.similar_transactions import suggest_categories
 from .services.splits import SplitError, apply_splits, check_legs_total, is_split, parse_legs
 from .services.transfer_detection import find_transfer_candidates
+from .services.transfer_match import MatchError, ProposalChanged, match_transfer, propose_pairs
 from .services.transfer_mirror import is_split_mirror, linked_legs, sync_transfer, would_orphan_primary
 
 # Upper bound on how many transactions one similar-category request may ask about.
@@ -384,84 +387,10 @@ class BankFeedViewSet(
         log_event(AuditEvent.BULK_CATEGORIZE, request=request, metadata={"count": len(transactions)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @transaction.atomic
     def _create_journal_from_bank_transaction(self, transaction_id: int, category_account: Account, book):
-        """
-        Create a JournalEntry from a BankTransaction.
-        Links the transaction to the journal entry.
-
-        Raises:
-            ValueError: If the transaction doesn't have a linked account
-        """
-        # Get the bank transaction
-        bank_tx = BankTransaction.objects.select_related(
-            "account",
-            "plaid_transaction",
-            "plaid_transaction__plaid_account",
-            "plaid_transaction__plaid_account__account",
-        ).get(id=transaction_id, book=book)
-
-        # Get the bank account - BankTransaction always has a direct account FK
-        if not bank_tx.account:
-            raise ValueError("Cannot categorize transaction: No bank account linked.")
-        bank_account = bank_tx.account
-
-        # Create journal entry
-        journal_entry = JournalEntry.objects.create(
-            book=book,
-            entry_date=bank_tx.posted_date,
-            description=bank_tx.description,
-            source=bank_tx.journal_source,
-            status=JournalEntry.STATUS_POSTED,
-        )
-
-        # Calculate amounts (Plaid convention: positive = outflow, negative = inflow)
-        amount = abs(bank_tx.amount)
-        is_inflow = bank_tx.amount < 0
-
-        # Create journal lines
-        if is_inflow:
-            # Money coming in: debit bank account, credit category
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                book=book,
-                account=bank_account,
-                dr_amount=amount,
-                cr_amount=Decimal("0"),
-            )
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                book=book,
-                account=category_account,
-                dr_amount=Decimal("0"),
-                cr_amount=amount,
-            )
-        else:
-            # Money going out: credit bank account, debit category
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                book=book,
-                account=bank_account,
-                dr_amount=Decimal("0"),
-                cr_amount=amount,
-            )
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
-                book=book,
-                account=category_account,
-                dr_amount=amount,
-                cr_amount=Decimal("0"),
-            )
-
-        # Link the bank transaction to the journal entry
-        bank_tx.journal_entry = journal_entry
-        bank_tx.save()
-
-        # If this is a transfer to another feed account, surface the counterpart
-        # leg in that account's feed (linked to this same entry).
-        sync_transfer(bank_tx)
-
-        return journal_entry
+        """Create and link the journal entry for an uncategorized BankTransaction."""
+        bank_tx = BankTransaction.objects.select_related("account").get(id=transaction_id, book=book)
+        return create_entry(bank_tx, category_account)
 
     def list(self, request, team_slug=None, book_slug=None):
         """
@@ -1454,33 +1383,7 @@ class BankFeedViewSet(
     @transaction.atomic
     def _update_journal_category(self, bank_tx, new_category_account):
         """Update the category line of an existing journal entry."""
-        # Re-pointing the mirror leg to a non-feed category would orphan the real
-        # primary transaction; reject it (the user must edit the original instead).
-        if would_orphan_primary(bank_tx, new_category_account):
-            raise ValueError(
-                "This is the mirror side of a transfer. Edit the original transaction to change its category."
-            )
-
-        # A split has several category lines, and this method re-points one. Doing
-        # that to a split would leave the other legs alone -- balanced, and quietly
-        # not what the user apportioned. Collapsing a split is a real action, but it
-        # has to be asked for in the editor, not implied by a bulk categorize.
-        if is_split(bank_tx.journal_entry):
-            raise SplitError("This is a split transaction. Open it to edit its categories, or remove the split first.")
-
-        journal_entry = bank_tx.journal_entry
-        # Find the category line (the one that's not the bank account)
-        for line in journal_entry.lines.all():
-            if line.account != bank_tx.account:
-                # On a transfer this line is the other feed's bank line.
-                assert_line_mutable(line, new_account=new_category_account, own=False)
-                line.account = new_category_account
-                line.save()
-                break
-
-        # The category drives whether this is a transfer: add/move/remove the
-        # counterpart leg (and move the primary if the mirror was re-pointed).
-        sync_transfer(bank_tx)
+        repoint_category(bank_tx, new_category_account)
 
     @transaction.atomic
     def _decategorize(self, bank_tx):
@@ -1752,6 +1655,14 @@ class BankFeedViewSet(
     @extend_schema(
         operation_id="bank_feed_transfer_suggestions",
         tags=["bank-feed"],
+        parameters=[
+            OpenApiParameter(
+                "account",
+                OpenApiTypes.INT,
+                required=False,
+                description="Only pairs with a leg in this account",
+            )
+        ],
         responses={200: TransferSuggestionSerializer(many=True)},
     )
     @action(detail=False, methods=["get"], url_path="transfers", pagination_class=None)
@@ -1759,91 +1670,64 @@ class BankFeedViewSet(
         """
         List likely-duplicate transfer pairs (a transfer reported by both banks).
 
-        Each pair shows both legs so the user can archive the duplicate, archive
-        the other side, or dismiss the suggestion. Read-only; nothing is changed.
+        Each pair carries both legs and a `proposal`: which leg Match would keep
+        and archive, or why Match is unavailable. Read-only; nothing is changed.
         """
         candidates = find_transfer_candidates(request.book)
-        serializer = TransferSuggestionSerializer(candidates, many=True)
+        # Filter after the book-wide pass: pairing is greedy, so filtering first
+        # could pair a leg with a different counterpart than the other feed shows.
+        account_id = request.query_params.get("account")
+        if account_id:
+            try:
+                account_id = int(account_id)
+            except ValueError:
+                return Response({"error": "account must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+            candidates = [p for p in candidates if account_id in (p["outflow"].account_id, p["inflow"].account_id)]
+        serializer = TransferSuggestionSerializer(propose_pairs(candidates), many=True)
         return Response(serializer.data)
 
     @extend_schema(
-        operation_id="bank_feed_transfer_resolve",
+        operation_id="bank_feed_transfer_match",
         tags=["bank-feed"],
-        request=TransferResolveRequestSerializer,
-        responses={204: None},
+        request=TransferMatchRequestSerializer,
+        responses={200: TransferMatchResponseSerializer},
     )
-    @action(detail=False, methods=["post"], url_path="transfers/resolve")
-    def transfer_resolve(self, request, team_slug=None, book_slug=None):
+    @action(detail=False, methods=["post"], url_path="transfers/match")
+    def transfer_match(self, request, team_slug=None, book_slug=None):
         """
-        Resolve a duplicate transfer: archive one leg, keep the other.
+        Match a duplicate transfer: keep one leg, archive the other.
 
-        Archiving the duplicate leg also voids its journal entry (if categorized)
-        so the movement stops double-counting. The kept leg is left untouched for
-        the user to categorize as a transfer. Reconciled legs are refused.
+        The server picks the leg to archive (see `transfer_match.propose`); the
+        client sends the one it was shown, and a mismatch is a 409 carrying the
+        current proposal. The archived leg's entry is voided and the kept leg is
+        categorized as a transfer to the archived leg's account, so one entry
+        books both accounts.
         """
-        serializer = TransferResolveRequestSerializer(data=request.data)
+        serializer = TransferMatchRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
 
-        archive_id = serializer.validated_data["archive_id"]
-        keep_id = serializer.validated_data["keep_id"]
-
-        # Both legs must belong to this book (the kept leg is validated but not mutated).
-        if not BankTransaction.objects.filter(id=keep_id, book=request.book).exists():
-            return Response(
-                {"error": "One or both transactions not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
         try:
-            archive_tx = BankTransaction.objects.select_related("journal_entry").get(id=archive_id, book=request.book)
-        except BankTransaction.DoesNotExist:
-            return Response(
-                {"error": "One or both transactions not found."},
-                status=status.HTTP_404_NOT_FOUND,
+            result = match_transfer(
+                request.book,
+                data["transaction_a"],
+                data["transaction_b"],
+                expected_archive_id=data["expected_archive_id"],
             )
-
-        # A reconciled leg has been confirmed against a statement; refuse rather
-        # than silently voiding reconciled history. This covers both the leg
-        # being archived and its mirror counterpart on the same entry (which
-        # gets voided and archived along with it).
-        if archive_tx.journal_entry:
-            if archive_tx.journal_entry.lines.filter(account=archive_tx.account, is_reconciled=True).exists():
-                return Response(
-                    {"error": "This transaction is reconciled. Unreconcile it before archiving."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if archive_tx.journal_entry.lines.filter(is_reconciled=True).exists():
-                return Response(
-                    {
-                        "error": "The other side of this transfer is already reconciled. "
-                        "Unreconcile the other transaction before archiving it."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        with transaction.atomic():
-            # Void the duplicate leg's journal entry so it no longer affects any
-            # balance (voided entries are excluded everywhere via NOT_VOID).
-            entry = archive_tx.journal_entry
-            if entry and entry.status != JournalEntry.STATUS_VOID:
-                entry.status = JournalEntry.STATUS_VOID
-                entry.save(update_fields=["status", "updated_at"])
-
-            archive_tx.archive()
-
-            # If the voided leg had a mirror counterpart on the same entry, archive
-            # it too so the voided transfer disappears from both feeds.
-            if entry:
-                for leg in BankTransaction.objects.filter(journal_entry=entry).exclude(id=archive_tx.id):
-                    if not leg.is_archived:
-                        leg.archive()
+        except BankTransaction.DoesNotExist:
+            return Response({"error": "One or both transactions not found."}, status=status.HTTP_404_NOT_FOUND)
+        except ProposalChanged as e:
+            return Response({"error": str(e), "proposal": e.proposal.as_dict()}, status=status.HTTP_409_CONFLICT)
+        except (MatchError, ValueError) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         log_event(
             AuditEvent.TRANSFER_DUP_RESOLVED,
             request=request,
-            metadata={"archived_id": archive_id, "kept_id": keep_id},
+            metadata={"mode": "match", **result},
         )
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(TransferMatchResponseSerializer(result).data)
 
     @extend_schema(
         operation_id="bank_feed_transfer_dismiss",

@@ -152,32 +152,51 @@ class BankFeedPage(BasePage):
         return self.page.get_by_text("selected", exact=False).last.locator("xpath=ancestor::*[3]").inner_text()
 
     # ------------------------------------------------------------------
-    # Transfer duplicate review
+    # Possible duplicate transfers (inline chip + panel)
     # ------------------------------------------------------------------
 
-    def transfer_review_button(self):
-        return self.page.locator("[data-testid='transfer-review-button']")
+    def match_chip(self, transaction_id: int):
+        return self.page.locator(f"[data-testid='transfer-match-chip-{transaction_id}']")
 
-    def open_transfer_review(self):
-        self.transfer_review_button().click()
-        self.page.get_by_text("Possible duplicate transfers").wait_for(timeout=5_000)
+    def has_match_chip(self, transaction_id: int) -> bool:
+        return self.match_chip(transaction_id).count() > 0
 
-    def transfer_suggestion_count(self) -> int:
-        return self.page.locator("[data-testid^='transfer-suggestion-']").count()
+    def open_match(self, transaction_id: int):
+        """Open the inline possible-transfer panel under a row."""
+        self.match_chip(transaction_id).click()
+        self.match_panel().wait_for(timeout=5_000)
 
-    def transfer_suggestion_containing(self, needle: str):
-        """The one suggestion card whose text contains `needle`.
+    def match_panel(self):
+        return self.page.locator("[data-testid='transfer-match-panel']")
 
-        Several pairs can share an account, so a button label alone is ambiguous
-        across the modal — scope to the card first.
-        """
-        return self.page.locator("[data-testid^='transfer-suggestion-']").filter(has_text=needle).first
+    def match_counterpart_text(self) -> str:
+        return " ".join(self.match_panel().locator("[data-testid='transfer-match-counterpart']").all_inner_texts())
 
-    def transfer_archive_button(self, account_name: str):
-        return self.page.get_by_role("button", name=f"Duplicate — archive {account_name}", exact=True)
+    def match_outcome_text(self) -> str:
+        """What Match will do, or (when it can't) why not."""
+        outcome = self.match_panel().locator(
+            "[data-testid='transfer-match-outcome'], [data-testid='transfer-match-blocked']"
+        )
+        return outcome.inner_text()
 
-    def transfer_dismiss_button(self):
-        return self.page.get_by_role("button", name="Not a duplicate", exact=True)
+    def match_button(self):
+        return self.match_panel().locator("[data-testid='transfer-match-btn']")
+
+    def not_a_match_button(self):
+        return self.match_panel().locator("[data-testid='transfer-dismiss-btn']")
+
+    def goto_counterpart_button(self):
+        return self.match_panel().get_by_role("button", name="Go to other side")
+
+    def account_card_match_count(self, account_id: int) -> str:
+        """The card's possible-transfer badge text ('' when it has none)."""
+        badge = self.page.locator(f"[data-testid='account-card-{account_id}'] [data-testid='card-match-count']")
+        return badge.inner_text().strip() if badge.count() else ""
+
+    def open_account_picker(self):
+        """Re-open the collapsed account picker (it collapses once an account is chosen)."""
+        if not self.page.locator("[data-testid^='account-card-']").count():
+            self.page.locator("[data-testid='account-picker-toggle']").click()
 
     # ------------------------------------------------------------------
     # Split transactions

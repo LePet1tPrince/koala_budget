@@ -267,8 +267,13 @@ export function getBatchOperationsApi(bookBase) {
       ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Operation failed');
+      const data = await response.json().catch(() => ({}));
+      const error = new Error(data.error || 'Operation failed');
+      // Callers that act on a specific refusal (a 409 carrying the current
+      // transfer-match proposal) read the status and body from the error.
+      error.status = response.status;
+      error.data = data;
+      throw error;
     }
     return response.status === 204 ? null : response.json();
   };
@@ -286,9 +291,16 @@ export function getBatchOperationsApi(bookBase) {
     batchDuplicate: (ids) => fetchJson('batch_duplicate', { ids }),
     batchUnreconcile: (ids) => fetchJson('batch_unreconcile', { ids }),
 
-    // Transfer duplicate review: list suggested pairs, archive one leg, or dismiss.
+    // Transfer matching: list suggested pairs (each with the server's proposal),
+    // match one (the server picks the leg to archive; `expectedArchiveId` is the
+    // one the user was shown, refused with 409 if it no longer holds), or dismiss.
     transferSuggestions: () => fetchJson('transfers', null, 'GET'),
-    transferResolve: (archiveId, keepId) => fetchJson('transfers/resolve', { archive_id: archiveId, keep_id: keepId }),
+    transferMatch: (transactionA, transactionB, expectedArchiveId) =>
+      fetchJson('transfers/match', {
+        transaction_a: transactionA,
+        transaction_b: transactionB,
+        expected_archive_id: expectedArchiveId,
+      }),
     transferDismiss: (transactionA, transactionB) => fetchJson('transfers/dismiss', { transaction_a: transactionA, transaction_b: transactionB }),
 
     fetchFeedAccounts: () => fetchJson('feed_accounts', null, 'GET'),

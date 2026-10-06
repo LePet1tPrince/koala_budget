@@ -22,9 +22,14 @@ import type {
   PaginatedTransactionRowList,
   PatchedJournalEntry,
   PatchedSimpleLine,
+  PatchedTransactionEditRequest,
   SimpleLine,
   SimpleLinesRecategorize200Response,
   SimpleLinesRecategorizeRequest,
+  TransactionDetail,
+  TransactionIds,
+  TransactionStatusRequest,
+  TransactionsBatchDelete200Response,
   TransactionsFacets200Response,
 } from '../models/index';
 import {
@@ -42,12 +47,22 @@ import {
     PatchedJournalEntryToJSON,
     PatchedSimpleLineFromJSON,
     PatchedSimpleLineToJSON,
+    PatchedTransactionEditRequestFromJSON,
+    PatchedTransactionEditRequestToJSON,
     SimpleLineFromJSON,
     SimpleLineToJSON,
     SimpleLinesRecategorize200ResponseFromJSON,
     SimpleLinesRecategorize200ResponseToJSON,
     SimpleLinesRecategorizeRequestFromJSON,
     SimpleLinesRecategorizeRequestToJSON,
+    TransactionDetailFromJSON,
+    TransactionDetailToJSON,
+    TransactionIdsFromJSON,
+    TransactionIdsToJSON,
+    TransactionStatusRequestFromJSON,
+    TransactionStatusRequestToJSON,
+    TransactionsBatchDelete200ResponseFromJSON,
+    TransactionsBatchDelete200ResponseToJSON,
     TransactionsFacets200ResponseFromJSON,
     TransactionsFacets200ResponseToJSON,
 } from '../models/index';
@@ -144,6 +159,26 @@ export interface SimpleLinesUpdateRequest {
     simpleLine: Omit<SimpleLine, 'line_id'|'journal_id'|'account_name'|'category_name'|'payee_name'|'source'|'status'|'created_at'|'updated_at'>;
 }
 
+export interface TransactionsBatchDeleteRequest {
+    bookSlug: string;
+    teamSlug: string;
+    transactionIds: TransactionIds;
+}
+
+export interface TransactionsBatchStatusRequest {
+    bookSlug: string;
+    teamSlug: string;
+    transactionStatusRequest: TransactionStatusRequest;
+    page?: number;
+}
+
+export interface TransactionsEditRequest {
+    bookSlug: string;
+    teamSlug: string;
+    page?: number;
+    patchedTransactionEditRequest?: PatchedTransactionEditRequest;
+}
+
 export interface TransactionsFacetsRequest {
     bookSlug: string;
     column: string;
@@ -167,6 +202,12 @@ export interface TransactionsListRequest {
     search?: string;
     sort?: string;
     startDate?: string;
+}
+
+export interface TransactionsRetrieveRequest {
+    bookSlug: string;
+    id: string;
+    teamSlug: string;
 }
 
 /**
@@ -970,6 +1011,178 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
+     * Remove transactions.  A bank-backed transaction goes back to the feed as an uncategorized row rather than vanishing -- the bank reported it, and the next sync would only bring it back.
+     */
+    async transactionsBatchDeleteRaw(requestParameters: TransactionsBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionsBatchDelete200Response>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling transactionsBatchDelete().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling transactionsBatchDelete().'
+            );
+        }
+
+        if (requestParameters['transactionIds'] == null) {
+            throw new runtime.RequiredError(
+                'transactionIds',
+                'Required parameter "transactionIds" was null or undefined when calling transactionsBatchDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/journal/api/transactions/batch_delete/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: TransactionIdsToJSON(requestParameters['transactionIds']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionsBatchDelete200ResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Remove transactions.  A bank-backed transaction goes back to the feed as an uncategorized row rather than vanishing -- the bank reported it, and the next sync would only bring it back.
+     */
+    async transactionsBatchDelete(requestParameters: TransactionsBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionsBatchDelete200Response> {
+        const response = await this.transactionsBatchDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Void transactions so they drop out of every balance, or restore them.
+     */
+    async transactionsBatchStatusRaw(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling transactionsBatchStatus().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling transactionsBatchStatus().'
+            );
+        }
+
+        if (requestParameters['transactionStatusRequest'] == null) {
+            throw new runtime.RequiredError(
+                'transactionStatusRequest',
+                'Required parameter "transactionStatusRequest" was null or undefined when calling transactionsBatchStatus().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/journal/api/transactions/batch_status/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: TransactionStatusRequestToJSON(requestParameters['transactionStatusRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedTransactionRowListFromJSON(jsonValue));
+    }
+
+    /**
+     * Void transactions so they drop out of every balance, or restore them.
+     */
+    async transactionsBatchStatus(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
+        const response = await this.transactionsBatchStatusRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Apply one partial edit to one or more transactions.  Omitted fields are left alone, so the same payload serves a single row\'s full edit and a one-field change across a selection.  Nothing is written unless every transaction in the list can take the edit.
+     */
+    async transactionsEditRaw(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling transactionsEdit().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling transactionsEdit().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/journal/api/transactions/edit/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedTransactionEditRequestToJSON(requestParameters['patchedTransactionEditRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedTransactionRowListFromJSON(jsonValue));
+    }
+
+    /**
+     * Apply one partial edit to one or more transactions.  Omitted fields are left alone, so the same payload serves a single row\'s full edit and a one-field change across a selection.  Nothing is written unless every transaction in the list can take the edit.
+     */
+    async transactionsEdit(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
+        const response = await this.transactionsEditRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * List the values one column offers, with the row count behind each.  The counts reflect the search, date range and *other* columns\' filters that are currently applied, so they say what ticking a value would actually show.  A hierarchical column (dates, the two account columns) nests them under `children`, and a branch is selectable in its own right -- ticking a year means every date in it.
      */
     async transactionsFacetsRaw(requestParameters: TransactionsFacetsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionsFacets200Response>> {
@@ -1056,7 +1269,7 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * Read-only list of journal entries flattened into transaction rows.  Voided entries and entries behind an archived bank transaction are left out: they count toward no balance, so they are not on the ledger either.  Every other entry is returned, including splits -- an entry apportioned across several categories, which has one line on one side and several on the other. This list used to filter to ``line_count=2``, which silently hid every split from the page that presents itself as the ledger, and from its filters, facet counts and CSV export.  A split row reports ``Split (N)`` on its many-line side and carries its ``legs`` for the table\'s disclosure.  Search, date range, per-column value filters and sorting all run as query params so that they apply to the whole ledger, not just whatever page the client has fetched so far.  `facets/` lists a column\'s distinct values so the table\'s column menus can offer them.
+     * Journal entries flattened into transaction rows, and the edits made to them.  Voided entries and entries behind an archived bank transaction are left out: they count toward no balance, so they are not on the ledger either.  Every other entry is returned, including splits -- an entry apportioned across several categories, which has one line on one side and several on the other. This list used to filter to ``line_count=2``, which silently hid every split from the page that presents itself as the ledger, and from its filters, facet counts and CSV export.  A split row reports ``Split (N)`` on its many-line side and carries its ``legs`` for the table\'s disclosure.  Search, date range, per-column value filters and sorting all run as query params so that they apply to the whole ledger, not just whatever page the client has fetched so far.  `facets/` lists a column\'s distinct values so the table\'s column menus can offer them.  The write actions all take a list of ids, including when the list has one element in it.  Editing several transactions at once is then a caller change rather than a second endpoint that could disagree with this one about what an edit means.  All of them are all-or-nothing: a refusal writes nothing.
      */
     async transactionsListRaw(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
         if (requestParameters['bookSlug'] == null) {
@@ -1123,10 +1336,64 @@ export class JournalApi extends runtime.BaseAPI {
     }
 
     /**
-     * Read-only list of journal entries flattened into transaction rows.  Voided entries and entries behind an archived bank transaction are left out: they count toward no balance, so they are not on the ledger either.  Every other entry is returned, including splits -- an entry apportioned across several categories, which has one line on one side and several on the other. This list used to filter to ``line_count=2``, which silently hid every split from the page that presents itself as the ledger, and from its filters, facet counts and CSV export.  A split row reports ``Split (N)`` on its many-line side and carries its ``legs`` for the table\'s disclosure.  Search, date range, per-column value filters and sorting all run as query params so that they apply to the whole ledger, not just whatever page the client has fetched so far.  `facets/` lists a column\'s distinct values so the table\'s column menus can offer them.
+     * Journal entries flattened into transaction rows, and the edits made to them.  Voided entries and entries behind an archived bank transaction are left out: they count toward no balance, so they are not on the ledger either.  Every other entry is returned, including splits -- an entry apportioned across several categories, which has one line on one side and several on the other. This list used to filter to ``line_count=2``, which silently hid every split from the page that presents itself as the ledger, and from its filters, facet counts and CSV export.  A split row reports ``Split (N)`` on its many-line side and carries its ``legs`` for the table\'s disclosure.  Search, date range, per-column value filters and sorting all run as query params so that they apply to the whole ledger, not just whatever page the client has fetched so far.  `facets/` lists a column\'s distinct values so the table\'s column menus can offer them.  The write actions all take a list of ids, including when the list has one element in it.  Editing several transactions at once is then a caller change rather than a second endpoint that could disagree with this one about what an edit means.  All of them are all-or-nothing: a refusal writes nothing.
      */
     async transactionsList(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
         const response = await this.transactionsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * One transaction as the edit modal needs it, with what may be changed.
+     */
+    async transactionsRetrieveRaw(requestParameters: TransactionsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionDetail>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling transactionsRetrieve().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling transactionsRetrieve().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling transactionsRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/journal/api/transactions/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionDetailFromJSON(jsonValue));
+    }
+
+    /**
+     * One transaction as the edit modal needs it, with what may be changed.
+     */
+    async transactionsRetrieve(requestParameters: TransactionsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionDetail> {
+        const response = await this.transactionsRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -523,7 +523,7 @@ class SplitEditTest(TransactionEditTestCase):
         split's whole total, the phantom row a two-line assumption used to make.
         """
         entry = self.make_split()
-        BankTransaction.objects.create(
+        primary = BankTransaction.objects.create(
             book=self.book,
             account=self.chequing,
             amount=Decimal("210.40"),
@@ -539,6 +539,10 @@ class SplitEditTest(TransactionEditTestCase):
         mirror = rows.get(is_transfer_mirror=True)
         self.assertEqual((mirror.account, mirror.amount), (self.savings, Decimal("-50.40")))
         self.assertEqual(rows.get(is_transfer_mirror=False).amount, Decimal("210.40"))
+
+        # Moving that leg off the feed account drops the mirror again.
+        self.edit(entry, legs=[(self.groceries, Decimal("160.00")), (self.household, Decimal("50.40"))])
+        self.assertEqual(list(BankTransaction.objects.filter(journal_entry=entry)), [primary])
 
 
 class BankSyncTest(TransactionEditTestCase):

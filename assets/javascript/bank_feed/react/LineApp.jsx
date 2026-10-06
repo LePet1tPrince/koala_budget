@@ -1,4 +1,4 @@
-/* globals gettext */
+/* globals gettext, interpolate */
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Toast } from '../../common/Toast';
@@ -8,7 +8,6 @@ import LineTable from './LineTable';
 import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
-import TransferSuggestions from './TransferSuggestions';
 import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
 import { formatCurrency } from '../../utilities/currency';
 import Icon from '../../common/Icon';
@@ -105,8 +104,13 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   const [viewMode, setViewMode] = useState('active');
 
   // A row the table should page to and flash, set when jumping to the other leg
-  // of a transfer: {journalEntryId, nonce}
+  // of a transfer: {journalEntryId | importedTransactionId, nonce, keepFilters?}
   const [focusRequest, setFocusRequest] = useState(null);
+
+  // Possible duplicate transfers across the whole book (a pair has a leg in two
+  // accounts, and the account cards count both), each with the server's
+  // proposal for which leg Match keeps.
+  const [matches, setMatches] = useState([]);
 
   // Rows with a write still on its way to the server, which the table marks as
   // saving. Counted, because the same row can carry more than one write.
@@ -138,6 +142,42 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
 
   // Batch operations API
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
+
+  const loadMatches = useCallback(async () => {
+    try {
+      const data = await batchApi.transferSuggestions();
+      setMatches(Array.isArray(data) ? data : []);
+    } catch (err) {
+      // A failed load shouldn't break the feed; the rows just show no chips.
+      console.error('Failed to load possible transfers:', err);
+    }
+  }, [batchApi]);
+
+  useEffect(() => {
+    loadMatches();
+  }, [loadMatches]);
+
+  // Bank transaction id -> {pair, self, other}, for the row chips
+  const matchByTxId = useMemo(() => {
+    const map = new Map();
+    matches.forEach((pair) => {
+      map.set(pair.outflow.imported_transaction_id, { pair, self: pair.outflow, other: pair.inflow });
+      map.set(pair.inflow.imported_transaction_id, { pair, self: pair.inflow, other: pair.outflow });
+    });
+    return map;
+  }, [matches]);
+
+  // Account id -> number of possible transfers with a leg there, for the cards
+  const matchCountByAccount = useMemo(() => {
+    const counts = new Map();
+    matches.forEach((pair) => {
+      [pair.outflow, pair.inflow].forEach((leg) => {
+        const id = leg.account?.id;
+        if (id != null) counts.set(id, (counts.get(id) || 0) + 1);
+      });
+    });
+    return counts;
+  }, [matches]);
 
   // Transaction API (create/update)
   const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
@@ -301,12 +341,17 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     }
   };
 
-  /** Re-read the feed and the account balances once no write is in flight. */
+  /**
+   * Re-read the feed, the account balances and the possible transfers once no
+   * write is in flight -- categorizing, editing, archiving or importing can each
+   * create or dissolve a pair.
+   */
   const scheduleQuietRefresh = () => {
     clearTimeout(quietRefreshTimerRef.current);
     quietRefreshTimerRef.current = setTimeout(() => {
       if (inFlightRef.current > 0) return;
       loadAccounts();
+      loadMatches();
       refreshLinesQuietly();
     }, QUIET_REFRESH_DELAY_MS);
   };
@@ -434,6 +479,100 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     [accounts]
   );
 
+  /**
+   * Match a possible duplicate transfer: the server keeps one leg, archives the
+   * other, and makes the kept one the transfer between both accounts.
+   *
+   * Goes through `runWrite` like every other feed write: this account's leg
+   * shows the outcome at once (archived, or categorized as the transfer) and
+   * comes back if the server refuses. The leg the server archives must be the
+   * one the panel showed, or it answers 409 with the current proposal, which
+   * replaces the stale one so the panel redraws with the new outcome.
+   */
+  const handleMatch = ({ pair, self, other }) => {
+    const proposal = pair.proposal || {};
+    const row = lines.find((l) => (l.importedTransactionId ?? l.imported_transaction_id) === self.imported_transaction_id);
+    const archivesThis = proposal.archive_id === self.imported_transaction_id;
+    return runWrite({
+      rowIds: row ? [row.id] : [],
+      apply: (r) =>
+        archivesThis
+          ? { ...r, isArchived: true }
+          : { ...r, category: { id: other.account?.id, name: other.account?.name ?? '' }, isSplit: false },
+      request: async () => {
+        try {
+          return await batchApi.transferMatch(
+            self.imported_transaction_id,
+            other.imported_transaction_id,
+            proposal.archive_id
+          );
+        } catch (err) {
+          if (err.status === 409 && err.data?.proposal) {
+            const fresh = err.data.proposal;
+            setMatches((prev) => prev.map((p) => (p === pair ? { ...p, proposal: fresh } : p)));
+          }
+          throw err;
+        }
+      },
+      onSuccess: (result) => {
+        const kept = result.kept_id === self.imported_transaction_id ? self : other;
+        const archived = kept === self ? other : self;
+        setMatches((prev) => prev.filter((p) => p !== pair));
+        // In this account the transfer is now either the kept row or its mirror;
+        // both carry the kept entry, so flash whichever is here once the quiet
+        // re-read brings it in.
+        setFocusRequest({
+          journalEntryId: result.kept_journal_entry_id,
+          nonce: `match-${result.kept_id}-${Date.now()}`,
+          keepFilters: true,
+        });
+        showSnackbar(
+          interpolate(gettext('Matched — kept the one in %s, archived the one in %s.'), [
+            kept.account?.name ?? '',
+            archived.account?.name ?? '',
+          ]),
+          'success'
+        );
+        return null;
+      },
+      errorMessage: gettext('Could not match these transactions.'),
+    });
+  };
+
+  /** Not the same transfer: stop suggesting the pair, in both feeds. */
+  const handleDismissMatch = async ({ self, other }) => {
+    try {
+      await batchApi.transferDismiss(self.imported_transaction_id, other.imported_transaction_id);
+      setMatches((prev) =>
+        prev.filter(
+          (p) =>
+            p.outflow.imported_transaction_id !== self.imported_transaction_id &&
+            p.inflow.imported_transaction_id !== self.imported_transaction_id
+        )
+      );
+      showSnackbar(gettext('Marked as not a match.'), 'info');
+    } catch (err) {
+      showSnackbar(err.message || gettext('Could not dismiss this suggestion.'), 'error');
+    }
+  };
+
+  /** Open the other leg of a possible transfer in its own account's feed. */
+  const handleOpenMatchCounterpart = useCallback(
+    ({ other }) => {
+      const target = accounts.find((a) => a.id === other.account?.id);
+      if (!target) return;
+      setFocusRequest({
+        importedTransactionId: other.imported_transaction_id,
+        nonce: `goto-${other.imported_transaction_id}-${Date.now()}`,
+      });
+      if (selectedAccountRef.current?.id === target.id) return;
+      setSelectedIds(new Set());
+      setSelectedAccount(target);
+      setIsAccountPickerOpen(false);
+    },
+    [accounts]
+  );
+
   const handleAccountSelect = (account) => {
     // Selection refers to rows of the previous account; don't let the batch
     // bar keep acting on rows that are no longer visible
@@ -493,7 +632,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           if (selectedAccountRef.current?.id !== accountId) break;
           await loadLines();
         }
-        await loadPlaidStatus();
+        await Promise.all([loadPlaidStatus(), loadMatches()]);
         setRefreshing(false);
       } else {
         // No Plaid account linked to this ledger account
@@ -815,13 +954,6 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             )}
           </button>
           <div className="flex gap-2 items-center">
-            <TransferSuggestions
-              batchApi={batchApi}
-              showSnackbar={showSnackbar}
-              onResolved={() => {
-                if (selectedAccountRef.current) scheduleQuietRefresh();
-              }}
-            />
             <a
               href={`${book.base}bankfeed/categorize/`}
               className="btn btn-primary btn-sm gap-1"
@@ -848,7 +980,8 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           ) : (
             <AccountGrid accounts={accounts}
                selectedAccount={selectedAccount}
-               handleAccountSelect={handleAccountSelect}  />
+               handleAccountSelect={handleAccountSelect}
+               matchCountByAccount={matchCountByAccount} />
           )
         )}
       </section>
@@ -951,6 +1084,10 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             feedAccountIds={feedAccountIds}
             focusRequest={focusRequest}
             pendingIds={pendingIds}
+            matchByTxId={matchByTxId}
+            onMatch={handleMatch}
+            onDismissMatch={handleDismissMatch}
+            onOpenMatchCounterpart={handleOpenMatchCounterpart}
           />
         </section>
       )}

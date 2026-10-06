@@ -318,18 +318,20 @@ def test_bulk_edit_opens_from_the_bar(requires_vite, authenticated_page, live_se
 
 
 # ----------------------------------------------------------------------
-# Transfer duplicate review contract
+# Possible duplicate transfers, matched inline
 #
-# The review modal's archive buttons mirror a server guard: a reconciled
-# leg cannot be archived, because resolving voids the shared journal
-# entry. Locked here before the modal is rewritten off MUI.
+# A transfer between two of the user's own accounts is reported by both
+# banks. Each leg's row carries a chip; its panel shows the other leg and
+# what Match will do. The server picks the leg to archive (a reconciled leg
+# is always kept), so the panel's sentence is what the click does.
 # ----------------------------------------------------------------------
 
 
 @pytest.fixture
 def transfer_pair(team):
-    """Two accounts reporting the same movement — the double-count the review modal exists for."""
-    group = AccountGroupFactory(team=team)
+    """Two accounts reporting the same movement — the double-count matching exists for."""
+    # An asset group: a transfer only mirrors into the other feed between asset/liability accounts.
+    group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_ASSET)
     chequing = AssetAccountFactory(team=team, account_group=group, has_feed=True, name="Chequing")
     savings = AssetAccountFactory(team=team, account_group=group, has_feed=True, name="Savings")
 
@@ -343,28 +345,62 @@ def transfer_pair(team):
     return {"chequing": chequing, "savings": savings, "out_leg": out_leg, "in_leg": in_leg}
 
 
+def _open_feed(page, live_server, account):
+    feed = BankFeedPage(page, live_server.url)
+    feed.goto(account.book)
+    feed.click_account_card(account.id)
+    feed.wait_for_table()
+    return feed
+
+
+def _switch_account(feed, account):
+    feed.open_account_picker()
+    feed.click_account_card(account.id)
+    feed.wait_for_table()
+
+
 @pytest.mark.django_db(transaction=True)
-def test_transfer_review_surfaces_a_candidate_pair(requires_vite, authenticated_page, live_server, transfer_pair):
+def test_possible_transfer_chip_shows_in_both_feeds(requires_vite, authenticated_page, live_server, transfer_pair):
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(transfer_pair["chequing"].book)
+    # Each account's card counts the pairs with a leg there.
+    authenticated_page.locator("[data-testid='card-match-count']").first.wait_for(timeout=10_000)
+    assert feed.account_card_match_count(transfer_pair["chequing"].id) == "1"
+    assert feed.account_card_match_count(transfer_pair["savings"].id) == "1"
+
     feed.click_account_card(transfer_pair["chequing"].id)
     feed.wait_for_table()
-    feed.open_transfer_review()
+    feed.match_chip(transfer_pair["out_leg"].id).wait_for(timeout=10_000)
 
-    assert feed.transfer_suggestion_count() == 1
-    assert feed.transfer_archive_button("Chequing").is_enabled()
-    assert feed.transfer_archive_button("Savings").is_enabled()
-    assert feed.transfer_dismiss_button().is_enabled()
+    _switch_account(feed, transfer_pair["savings"])
+    feed.match_chip(transfer_pair["in_leg"].id).wait_for(timeout=10_000)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_reconciled_leg_cannot_be_archived_from_the_review(
-    requires_vite, authenticated_page, live_server, transfer_pair, team
-):
-    """The button for a reconciled leg is disabled, mirroring the server's refusal."""
+def test_panel_shows_the_other_side_and_the_outcome(requires_vite, authenticated_page, live_server, transfer_pair):
+    feed = _open_feed(authenticated_page, live_server, transfer_pair["chequing"])
+    feed.match_chip(transfer_pair["out_leg"].id).wait_for(timeout=10_000)
+    feed.open_match(transfer_pair["out_leg"].id)
+
+    counterpart = feed.match_counterpart_text()
+    assert "Savings" in counterpart
+    assert "PAIR-A-IN" in counterpart
+    # Nothing reconciled or categorized, same source: the outflow (this row) is kept.
+    assert "keeps this transaction and archives the one in Savings" in feed.match_outcome_text()
+    assert feed.match_button().is_enabled()
+
+    # Escape closes the panel without changing anything.
+    authenticated_page.keyboard.press("Escape")
+    feed.match_panel().wait_for(state="detached", timeout=5_000)
+    assert feed.has_match_chip(transfer_pair["out_leg"].id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_match_keeps_the_reconciled_leg(requires_vite, authenticated_page, live_server, transfer_pair, team):
+    """With one side reconciled, Match archives the other and the transfer shows in both feeds."""
     expense_group = AccountGroupFactory(team=team)
     category = AccountFactory(team=team, account_group=expense_group)
-    reconciled_leg = feed_transaction(
+    feed_transaction(
         team,
         transfer_pair["savings"],
         category=category,
@@ -373,49 +409,111 @@ def test_reconciled_leg_cannot_be_archived_from_the_review(
         posted_date="2026-04-02",
         description="PAIR-B-IN-RECONCILED",
     )
-    feed_transaction(
+    out_b = feed_transaction(
         team,
         transfer_pair["chequing"],
         amount=Decimal("750.00"),
         posted_date="2026-04-02",
         description="PAIR-B-OUT",
     )
-    assert reconciled_leg.pk  # the pair only surfaces once both legs exist
 
-    feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(transfer_pair["chequing"].book)
-    feed.click_account_card(transfer_pair["chequing"].id)
-    feed.wait_for_table()
-    feed.open_transfer_review()
+    feed = _open_feed(authenticated_page, live_server, transfer_pair["chequing"])
+    feed.match_chip(out_b.id).wait_for(timeout=10_000)
+    feed.open_match(out_b.id)
+    outcome = feed.match_outcome_text()
+    assert "keeps the one in Savings and archives this transaction" in outcome
+    assert "reconciled" in outcome
 
-    # Two pairs now: the plain one from the fixture and the reconciled one. Both
-    # involve Savings, so the buttons have to be scoped to the right card rather
-    # than looked up by label across the whole modal.
-    assert feed.transfer_suggestion_count() == 2
-    card = feed.transfer_suggestion_containing("PAIR-B-IN-RECONCILED")
-    assert card.get_by_text("Reconciled", exact=True).count() == 1
+    feed.match_button().click()
+    authenticated_page.get_by_text("Matched — kept the one in Savings", exact=False).wait_for(timeout=10_000)
 
-    # The reconciled leg cannot be archived; its unreconciled counterpart still can.
-    assert card.get_by_role("button", name="Duplicate — archive Savings").is_disabled()
-    assert card.get_by_role("button", name="Duplicate — archive Chequing").is_enabled()
-
-    # The other pair, with nothing reconciled, is unaffected.
-    plain = feed.transfer_suggestion_containing("PAIR-A-OUT")
-    assert plain.get_by_role("button", name="Duplicate — archive Savings").is_enabled()
+    # PAIR-B-OUT is archived (at once -- feed writes apply optimistically); the
+    # kept leg's transfer shows here as its mirror once the background re-read lands.
+    authenticated_page.locator(f"[data-testid='feed-row-{out_b.id}']").wait_for(state="detached", timeout=10_000)
+    authenticated_page.locator("table tbody tr", has_text="PAIR-B-IN-RECONCILED").first.wait_for(timeout=10_000)
+    assert not feed.has_match_chip(out_b.id)
+    # The other pair is untouched.
+    assert feed.has_match_chip(transfer_pair["out_leg"].id)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_dismissing_a_pair_removes_it_from_the_review(requires_vite, authenticated_page, live_server, transfer_pair):
-    """'Not a duplicate' records a dismissal, so the pair stops being suggested."""
-    feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(transfer_pair["chequing"].book)
-    feed.click_account_card(transfer_pair["chequing"].id)
-    feed.wait_for_table()
-    feed.open_transfer_review()
-    feed.transfer_dismiss_button().click()
-    authenticated_page.get_by_text("All transfers reviewed.").wait_for(timeout=10_000)
+def test_match_is_unavailable_when_both_sides_are_reconciled(
+    requires_vite, authenticated_page, live_server, transfer_pair, team
+):
+    expense_group = AccountGroupFactory(team=team)
+    category = AccountFactory(team=team, account_group=expense_group)
+    for account, amount, description in (
+        (transfer_pair["savings"], "-750.00", "PAIR-C-IN"),
+        (transfer_pair["chequing"], "750.00", "PAIR-C-OUT"),
+    ):
+        tx = feed_transaction(
+            team,
+            account,
+            category=category,
+            reconciled=True,
+            amount=Decimal(amount),
+            posted_date="2026-05-02",
+            description=description,
+        )
+    out_c = tx
 
-    assert feed.transfer_suggestion_count() == 0
+    feed = _open_feed(authenticated_page, live_server, transfer_pair["chequing"])
+    feed.match_chip(out_c.id).wait_for(timeout=10_000)
+    feed.open_match(out_c.id)
+
+    assert "Both sides are reconciled" in feed.match_outcome_text()
+    assert feed.match_button().is_disabled()
+    assert feed.not_a_match_button().is_enabled()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_not_a_match_removes_the_chip_from_both_feeds(requires_vite, authenticated_page, live_server, transfer_pair):
+    feed = _open_feed(authenticated_page, live_server, transfer_pair["chequing"])
+    feed.match_chip(transfer_pair["out_leg"].id).wait_for(timeout=10_000)
+    feed.open_match(transfer_pair["out_leg"].id)
+    feed.not_a_match_button().click()
+    feed.match_chip(transfer_pair["out_leg"].id).wait_for(state="detached", timeout=10_000)
+
+    _switch_account(feed, transfer_pair["savings"])
+    assert feed.has_row_matching("PAIR-A-IN")
+    assert not feed.has_match_chip(transfer_pair["in_leg"].id)
+
+    # Recorded server-side, so it survives a reload.
+    feed = _open_feed(authenticated_page, live_server, transfer_pair["chequing"])
+    assert feed.has_row_matching("PAIR-A-OUT")
+    assert not feed.has_match_chip(transfer_pair["out_leg"].id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_go_to_other_side_opens_the_counterpart(requires_vite, authenticated_page, live_server, transfer_pair):
+    feed = _open_feed(authenticated_page, live_server, transfer_pair["chequing"])
+    feed.match_chip(transfer_pair["out_leg"].id).wait_for(timeout=10_000)
+    feed.open_match(transfer_pair["out_leg"].id)
+    feed.goto_counterpart_button().click()
+
+    authenticated_page.get_by_text("Lines for Savings").wait_for(timeout=10_000)
+    row = authenticated_page.locator(f"[data-testid='feed-row-{transfer_pair['in_leg'].id}']")
+    row.wait_for(timeout=10_000)
+    assert "feed-row-flash" in (row.get_attribute("class") or "")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_possible_transfers_quick_filter(requires_vite, authenticated_page, live_server, transfer_pair, team):
+    feed_transaction(
+        team,
+        transfer_pair["chequing"],
+        amount=Decimal("12.34"),
+        posted_date="2026-03-03",
+        description="NOT-A-TRANSFER",
+    )
+    feed = _open_feed(authenticated_page, live_server, transfer_pair["chequing"])
+    feed.match_chip(transfer_pair["out_leg"].id).wait_for(timeout=10_000)
+    assert feed.has_row_matching("NOT-A-TRANSFER")
+
+    feed.click_filter("transfers")
+
+    assert feed.has_row_matching("PAIR-A-OUT")
+    assert not feed.has_row_matching("NOT-A-TRANSFER")
 
 
 @pytest.mark.django_db(transaction=True)

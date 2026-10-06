@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import DateRangePicker from '../../common/DateRangePicker';
 import EditTransactionModal from './EditTransactionModal';
+import TransferMatchPanel from './TransferMatchPanel';
 import { Toast } from '../../common/Toast';
 import { Dropdown, MenuRow, ReconciledLock, SortArrow, TablePager } from './LineTableParts';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
@@ -13,6 +14,13 @@ import Icon from '../../common/Icon';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200];
 
+// "To Review" and "Reconciled" are mutually exclusive (opposite states);
+// "Uncategorized" and "Possible transfers" are orthogonal to them and each other.
+const NO_QUICK_FILTERS = { toReview: false, reconciled: false, uncategorized: false, transfers: false };
+const NO_MATCHES = new Map();
+
+/** The possible-transfer suggestion a row belongs to, if any. */
+const matchFor = (matchByTxId, row) => matchByTxId.get(row.importedTransactionId ?? row.imported_transaction_id);
 // Stable default, so the rows don't re-render for a fresh `new Set()` each time
 const NO_PENDING = new Set();
 
@@ -101,6 +109,10 @@ const LineTable = ({
   onOpenTransferLeg,
   feedAccountIds = new Set(),
   focusRequest = null,
+  matchByTxId = NO_MATCHES,
+  onMatch,
+  onDismissMatch,
+  onOpenMatchCounterpart,
   pendingIds = NO_PENDING,
 }) => {
   // Date range filter state (YYYY-MM-DD strings)
@@ -126,8 +138,11 @@ const LineTable = ({
   // Archived is its own view, separate from the quick filters below
   const [showArchived, setShowArchived] = useState(false);
   // Quick filters: independently toggleable, applied only outside the archived view.
-  // "To Review" and "Reconciled" are mutually exclusive (opposite states); "Uncategorized" is orthogonal.
-  const [quickFilters, setQuickFilters] = useState({ toReview: false, reconciled: false, uncategorized: false });
+  const [quickFilters, setQuickFilters] = useState(NO_QUICK_FILTERS);
+
+  // The feed row whose possible-transfer panel is open (one at a time)
+  const [openMatchId, setOpenMatchId] = useState(null);
+  useEffect(() => setOpenMatchId(null), [selectedAccount?.id]);
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -146,6 +161,19 @@ const LineTable = ({
   const [highlightId, setHighlightId] = useState(null);
   const handledFocusRef = useRef(null);
   const tableBodyRef = useRef(null);
+
+  // The table scrolls sideways on narrow screens, but a possible-transfer panel
+  // under a row must stay readable: it is pinned to the left edge and sized to
+  // the visible width of the scroll area, not the full width of the table.
+  const scrollRef = useRef(null);
+  const [scrollWidth, setScrollWidth] = useState(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => setScrollWidth(el.clientWidth));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [selectedAccount?.id]);
 
   const toggleQuickFilter = (key) => {
     setQuickFilters((prev) => {
@@ -235,6 +263,9 @@ const LineTable = ({
       if (quickFilters.uncategorized) {
         filtered = filtered.filter((l) => !isCategorized(l));
       }
+      if (quickFilters.transfers) {
+        filtered = filtered.filter((l) => matchFor(matchByTxId, l));
+      }
     }
 
     // Apply date range filter. Compare YYYY-MM-DD strings so UTC-parsed
@@ -252,12 +283,12 @@ const LineTable = ({
     }
 
     return filtered;
-  }, [lines, filterStart, filterEnd, showArchived, quickFilters]);
+  }, [lines, filterStart, filterEnd, showArchived, quickFilters, matchByTxId]);
 
   // Counts (independent of the active filter/date range) for the badges shown
   // on the Quick Filters menu items and the Archived button
   const filterCounts = useMemo(() => {
-    if (!Array.isArray(lines)) return { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0 };
+    if (!Array.isArray(lines)) return { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0, transfers: 0 };
     const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
     const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
     return lines.reduce(
@@ -274,11 +305,14 @@ const LineTable = ({
         if (!isCategorized(l)) {
           acc.uncategorized += 1;
         }
+        if (matchFor(matchByTxId, l)) {
+          acc.transfers += 1;
+        }
         return acc;
       },
-      { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0 }
+      { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0, transfers: 0 }
     );
-  }, [lines]);
+  }, [lines, matchByTxId]);
 
   const sortedLines = useMemo(() => {
     const rows = [...filteredLines];
@@ -306,19 +340,31 @@ const LineTable = ({
   }, [filterStart, filterEnd, showArchived, quickFilters, pageSize, selectedAccount?.id]);
 
   // Arriving from the other side of a transfer: the counterpart row is the one
-  // carrying the same journal entry id. It only exists once the new account's
-  // lines have loaded, hence the dependency on `lines`. It may also be archived
-  // or hidden by a filter, so clear whatever would keep it off screen.
+  // carrying the same journal entry id (or, for a possible-transfer leg that has
+  // no entry yet, the same bank transaction id). It only exists once the new
+  // account's lines have loaded, hence the dependency on `lines`. It may also be
+  // archived or hidden by a filter, so clear whatever would keep it off screen --
+  // unless the request asks to keep the filters (the flash after a match is a
+  // courtesy, not worth undoing the user's view for).
   useEffect(() => {
     if (!focusRequest || handledFocusRef.current === focusRequest.nonce) return;
-    const target = (Array.isArray(lines) ? lines : []).find((l) => l.journalEntryId === focusRequest.journalEntryId);
+    const target = (Array.isArray(lines) ? lines : []).find((l) =>
+      focusRequest.importedTransactionId != null
+        ? (l.importedTransactionId ?? l.imported_transaction_id) === focusRequest.importedTransactionId
+        : l.journalEntryId === focusRequest.journalEntryId
+    );
     if (!target) return;
     handledFocusRef.current = focusRequest.nonce;
+    if (focusRequest.keepFilters) {
+      if (sortedLines.some((l) => l.id === target.id)) setPendingFocusId(target.id);
+      return;
+    }
     setShowArchived(target.isArchived ?? target.is_archived ?? false);
-    setQuickFilters({ toReview: false, reconciled: false, uncategorized: false });
+    setQuickFilters(NO_QUICK_FILTERS);
     setFilterStart('');
     setFilterEnd('');
     setPendingFocusId(target.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequest, lines]);
 
   // Then page to that row and flash it, once clearing the filters has put it
@@ -449,13 +495,21 @@ const LineTable = ({
                   countClass="badge-outline"
                   onClick={() => toggleQuickFilter('uncategorized')}
                 />
+                <MenuRow
+                  testId="filter-transfers"
+                  checked={quickFilters.transfers}
+                  label={gettext('Possible transfers')}
+                  count={filterCounts.transfers}
+                  countClass="badge-warning badge-outline"
+                  onClick={() => toggleQuickFilter('transfers')}
+                />
                 {activeQuickFilterCount > 0 && (
                   <>
                     <div className="my-1 border-t border-base-300" />
                     <MenuRow
                       label={gettext('Clear filters')}
                       onClick={() => {
-                        setQuickFilters({ toReview: false, reconciled: false, uncategorized: false });
+                        setQuickFilters(NO_QUICK_FILTERS);
                         close();
                       }}
                     />
@@ -568,8 +622,11 @@ const LineTable = ({
             )}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="table table-sm table-quiet table-fixed w-full">
+          <div className="overflow-x-auto" ref={scrollRef}>
+            {/* The fixed columns add up to ~45rem; the floor keeps ~10rem for Description
+                (and its "Match found" chip) when the screen is narrower, where the
+                table scrolls sideways instead of squeezing that column to nothing. */}
+            <table className="table table-sm table-quiet table-fixed w-full min-w-[56rem]">
               <thead>
                 <tr>
                   {COLUMNS.map((col) => (
@@ -599,10 +656,15 @@ const LineTable = ({
                   // A row categorized to another feed account is a transfer: the
                   // same journal entry also has a row in that account's feed.
                   const isTransfer = !!row.category && feedAccountIds.has(row.category.id) && !!row.journalEntryId;
+                  // A possible duplicate transfer: the archived view never has one
+                  // (archived rows aren't candidates), so no chip there.
+                  const match = showArchived ? null : matchFor(matchByTxId, row);
+                  const matchOpen = !!match && openMatchId === row.id;
+                  const panelId = `transfer-match-panel-${row.id}`;
                   const saving = pendingIds.has(row.id);
                   return (
+                    <Fragment key={row.id}>
                     <tr
-                      key={row.id}
                       className={`cursor-pointer ${muted ? 'text-base-content/50' : ''} ${
                         row.id === highlightId ? 'feed-row-flash' : ''
                       }`}
@@ -657,13 +719,39 @@ const LineTable = ({
                       <td className="money whitespace-nowrap text-right">
                         {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
                       </td>
-                      <td className="truncate" title={row.description || ''}>
-                        {/* A split has no per-leg memo, so the marker beside the
-                            description is what identifies one without opening it. */}
-                        {row.isSplit && (
-                          <span className="badge badge-ghost badge-sm mr-1 shrink-0">{gettext('Split')}</span>
-                        )}
-                        {row.description || ''}
+                      <td title={row.description || ''}>
+                        <span className="flex min-w-0 items-center gap-1">
+                          {match && (
+                            <button
+                              type="button"
+                              className={`badge badge-sm shrink-0 gap-1 cursor-pointer ${
+                                matchOpen ? 'badge-warning' : 'badge-warning badge-soft'
+                              }`}
+                              title={interpolate(gettext('Possible transfer with %s — review'), [
+                                match.other.account?.name ?? '',
+                              ])}
+                              aria-label={interpolate(gettext('Possible transfer with %s'), [
+                                match.other.account?.name ?? '',
+                              ])}
+                              aria-expanded={matchOpen}
+                              aria-controls={matchOpen ? panelId : undefined}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMatchId(matchOpen ? null : row.id);
+                              }}
+                              data-testid={`transfer-match-chip-${row.id}`}
+                            >
+                              <Icon name="arrow-right-left" className="h-3 w-3" />
+                              {gettext('Match found')}
+                            </button>
+                          )}
+                          {/* A split has no per-leg memo, so the marker beside the
+                              description is what identifies one without opening it. */}
+                          {row.isSplit && (
+                            <span className="badge badge-ghost badge-sm shrink-0">{gettext('Split')}</span>
+                          )}
+                          <span className="truncate">{row.description || ''}</span>
+                        </span>
                       </td>
                       <td className="text-center">
                         {saving ? (
@@ -677,6 +765,31 @@ const LineTable = ({
                         )}
                       </td>
                     </tr>
+                    {matchOpen && (
+                      <tr className="cursor-default">
+                        <td colSpan={COLUMNS.length} className="bg-base-100 p-2">
+                          <div
+                            className="sticky left-0"
+                            style={scrollWidth ? { width: `${scrollWidth - 16}px` } : undefined}
+                          >
+                          <TransferMatchPanel
+                            id={panelId}
+                            match={match}
+                            onMatch={onMatch}
+                            onDismiss={onDismissMatch}
+                            onGoTo={onOpenMatchCounterpart}
+                            onClose={() => {
+                              setOpenMatchId(null);
+                              tableBodyRef.current
+                                ?.querySelector(`[data-testid="transfer-match-chip-${row.id}"]`)
+                                ?.focus();
+                            }}
+                          />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
                 {pageRows.length === 0 && (
