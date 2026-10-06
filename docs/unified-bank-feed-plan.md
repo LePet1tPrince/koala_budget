@@ -4,7 +4,7 @@ Goal: the Inbox (`/a/{team}/{book}/bankfeed/`) shows **one table of every bank-f
 
 Supersedes the earlier "bulk edit on the Transactions page" plan: editing the ledger directly is dropped. The Transactions page is unchanged.
 
-Status: plan. Nothing here is built.
+Status: in progress. Rebased on `develop` at `9b98927` (#247); §0.1 lists what landed there since the plan was written and what it changed here.
 
 ---
 
@@ -12,7 +12,11 @@ Status: plan. Nothing here is built.
 
 **Page.** `LineApp.jsx` shows the account cards (`AccountGrid`) as a picker; choosing one loads that account's rows and renders `LineTable.jsx`. Nothing shows until an account is chosen.
 
-**Rows.** `GET bankfeed/api/feed/?account=<id>` (`BankFeedViewSet.list`, page size 200). The client follows every `next` page, then filters, counts, sorts and paginates in memory. `account` is already optional server-side: without it the endpoint returns every `BankTransaction` in the book. Each row already carries `account {id, name, institution}`.
+**Rows.** `GET bankfeed/api/feed/?account=<id>` (`BankFeedViewSet.list`, page size 200). `LineApp.fetchAllLines` shows page 1 at once, then fetches every remaining page four at a time (#247) and the table filters, counts, sorts and paginates them in memory. `account` is already optional server-side: without it the endpoint returns every `BankTransaction` in the book. Each row already carries `account {id, name, institution}`. `?uncategorized=1` exists and Categorize Mode uses it with the default page size.
+
+**Writes** (#246). `LineApp.runWrite()` applies a write to the rows on screen at once, sends it in the background, swaps in the server's row or rolls back on refusal, and `scheduleQuietRefresh()` re-reads balances, possible transfers and the feed once writes settle (`refreshLinesQuietly`, which re-fetches every page).
+
+**Possible transfers** (#245). `GET transfers/` loads candidate pairs book-wide with the server's proposal; a row in a pair gets a "Match found" chip and `TransferMatchPanel`; a "Possible transfers" quick filter (`filter-transfers`) and a count on each account card are computed client-side from that list. `POST transfers/match` replaced `transfers/resolve`; `services/transfer_match.py::archive_duplicate` voids the duplicate's entry and archives its rows.
 
 **Batch.** `BatchActionBar.jsx` + `BulkEditModal.jsx` over `batch_edit`, `batch_archive`, `batch_unarchive`, `batch_delete`, `batch_duplicate`, `batch_unreconcile` — all take row ids, none take an account. Reconcile navigates to `reconcile/<selectedAccount>/?entries=…`.
 
@@ -24,12 +28,26 @@ Status: plan. Nothing here is built.
 | `LineApp.handleEditTransaction` | sends `account: selectedAccount.id` to `PUT feed/{id}/` |
 | `LineApp.handleAddLine` | `account` of the new row |
 | `LineApp.handleRefresh` | which Plaid item to sync |
+| `LineApp.handleOpenMatchCounterpart`, `handleMatch` (focus after match) | switches to the other leg's account |
+| `LineApp.handleBulkEdit` | whether a moved row leaves the view |
 | `LineApp` header | "Lines for X", categorized + reconciled balance, "reconciled through", Reconcile statement link, Plaid last-synced |
 | `LineApp.handleBatchReconcile` | reconcile URL |
 | `LineApp.handleOpenTransferLeg` | switches to the counterpart account |
 | `CSVUploadWizard` | target account of the upload |
 | `BatchActionBar` | reconciled balance → new preview |
 | `LineTable` | renders nothing without it |
+
+### 0.1 Changes on `develop` since the plan (#243–#247) and their effect
+
+| Change | Effect on this plan |
+|---|---|
+| #247 first page early + parallel page fetch | Superseded by server paging (§2.1): `fetchAllLines`, `loadingMore` and the append logic go. |
+| #246 background writes (`runWrite`, quiet refresh) | Kept. Optimistic updates apply to the page on screen; the quiet refresh re-reads **that page** and its counts instead of the whole feed (§2.2). |
+| #245 inline transfer match | Phase 0: `archive_duplicate` becomes a `voiding.void` caller (`transfers/resolve` no longer exists). §2.1: "Possible transfers" becomes a server filter. §2.7: "Go to other side" and the post-match flash use `feed/locate/`. |
+| `?uncategorized=1` used by Categorize Mode | §2.1 keeps the endpoint's default page size at 200 so Categorize Mode is untouched; the Inbox sends `page_size` explicitly. |
+| Portability format is v4 (`hidden_from_budget`, #242) | Phase 0's format bump is **v5** (`upgrade_4_to_5`). |
+| Audit migration `0012` (#243) | Phase 0's audit migration is `0013`. |
+| #243 goal-linked accounts, #244 CSV sign default | No effect. |
 
 ---
 
@@ -43,7 +61,7 @@ Two independent flags mean "doesn't count":
 
 | | `JournalEntry.status == "void"` | `BankTransaction.is_archived` |
 |---|---|---|
-| Set by | Transactions page Void (edit modal), `journal-entries/{id}/void_entry/`, reconciliation undo (adjustment entry), transfer review "resolve" | Bank Feed Archive, reconciliation undo, transfer review "resolve" |
+| Set by | Transactions page Void (edit modal), `journal-entries/{id}/void_entry/`, reconciliation undo (adjustment entry), transfer match (`archive_duplicate`) | Bank Feed Archive, reconciliation undo, transfer match (`archive_duplicate`) |
 | Effect on balances | entry excluded | the linked entry excluded (`counted_entries()` subquery) |
 | Effect on the other flag | none | none |
 
@@ -74,7 +92,7 @@ New `apps/journal/services/voiding.py`, the only code that changes void state:
 - `void(entries=(), rows=())` / `restore(entries=(), rows=())`. A row resolves to its entry; an entry expands to all its rows. Uncategorized rows are handled alone.
 - Guard (unchanged rule, now applied to both): refused if any line on the entry is reconciled (`assert_entry_voidable`). All-or-nothing; the refusal names the rows (§2.9).
 - Per-instance `save()` on entries (so `AuditLog` records the status change); rows in the same `transaction.atomic`.
-- Callers switched to it: `simple_edit.set_status`, `JournalEntryViewSet.void_entry`, `BankFeedViewSet.batch_archive`/`batch_unarchive`, `transfer_resolve`, `reconciliation.services.session.undo`.
+- Callers switched to it: `simple_edit.set_status`, `JournalEntryViewSet.void_entry`, `BankFeedViewSet.batch_archive`/`batch_unarchive`, `transfer_match.archive_duplicate`, `reconciliation.services.session.undo`.
 
 **Backstop in the models**, so a caller that skips the service cannot drift:
 
@@ -99,9 +117,9 @@ A `manage.py void_consistency [--book slug] [--fix]` command runs the same check
 
 - `counted_entries()` becomes `~Q(status=void)`; the `BankTransaction` subquery leaves every balance, report and budget query.
 - Bank Feed: the **Archived** view becomes **Voided** (`filter-voided`), Archive/Unarchive become **Void/Restore**, endpoints `batch_void`/`batch_restore` (renamed; the api-client is patched/regenerated). The old reconciled rule "silently skip a plain reconciled row" becomes a refusal naming it.
-- Transfer review "resolve" becomes one `void()` call.
-- Audit: new `AuditEvent` types `BULK_VOID`/`BULK_RESTORE` (audit migration); `BULK_ARCHIVE`/`BULK_UNARCHIVE` stay as choices for history.
-- Portability format **v4**: `feed_is_archived`/`feed_archived_at` → `feed_is_void`/`feed_voided_at`; `entry_is_archived` and the line `is_archived` column dropped. `upgrade_3_to_4` renames the columns and applies 1.5's rules to the imported rows, so an old archive lands consistent; the manifest checksums still match because the rules are balance-neutral.
+- Transfer match's `archive_duplicate` becomes one `void()` call.
+- Audit: new `AuditEvent` types `BULK_VOID`/`BULK_RESTORE` (audit migration `0013`); `BULK_ARCHIVE`/`BULK_UNARCHIVE` stay as choices for history.
+- Portability format **v5**: `feed_is_archived`/`feed_archived_at` → `feed_is_void`/`feed_voided_at`; `entry_is_archived` and the line `is_archived` column dropped. `upgrade_4_to_5` renames the columns and applies 1.5's rules to the imported rows, so an old archive lands consistent; the manifest checksums still match because the rules are balance-neutral.
 - Tests: the invariant holds after every write path (categorize, decategorize, split, transfer mirror create/move/remove, void, restore, resolve, reconciliation undo, CSV/Plaid/YNAB/portability import).
 - **Restore view.** The unified feed's Voided view (§2.6) lists every voided bank row in the book, categorized or not; Restore there calls `voiding.restore`. Entries with **no** bank row (voided from the Transactions edit modal: manual entries, opening balances, tracking-account history) are in no feed → D3.
 
@@ -131,26 +149,27 @@ BankTransaction.objects.filter(book=book, account__has_feed=True)   # accounts h
 | `view` | `active` (default) · `voided` | the Archived toggle |
 | `to_review` / `reconciled` | `1` (mutually exclusive, 400 if both) | Quick Filters |
 | `uncategorized` | `1` → `journal_entry IS NULL` | Quick Filters |
+| `transfers` | `1` → rows in a possible-transfer pair (`find_transfer_candidates`, computed only when this filter is on) | "Possible transfers" quick filter |
 | `start_date` / `end_date` | ISO dates on `posted_date` | date range picker |
 | `sort` / `dir` | `date`, `account`, `payee`, `category`, `inflow`, `outflow`, `description` · `asc`/`desc` | column header sort |
-| `page` / `page_size` | `page_size` ∈ 10, 25, 50, 100, 200 (default 25) | `TablePager` |
+| `page` / `page_size` | `page_size` ∈ 10, 25, 50, 100, 200; default stays 200 for Categorize Mode, the Inbox always sends it | `TablePager` |
 
 Response: `{count, next, previous, results, counts}`.
 
-- **`counts`** = `{to_review, reconciled, uncategorized, voided}` for the account filter alone, ignoring quick filters, date range and view — exactly what the menu badges show today. One `aggregate()` with `Count(filter=…)` per key, on the same base queryset.
+- **`counts`** = `{to_review, reconciled, uncategorized, voided}` for the account filter alone, ignoring quick filters, date range and view — exactly what the menu badges show today. One `aggregate()` with `Count(filter=…)` per key, on the same base queryset. Sent only with `?counts=1`, so Categorize Mode does not pay for it. The "Possible transfers" badge stays client-side: it is derived from the book-wide pair list the page already loads for the chips.
 - **Sort keys that need annotation**, applied only when that column is sorted (as `apps/journal/filters.py::annotations_for` does):
   - `category`: uncategorized → `""`; a split → `"Split"`; a transfer mirror → the primary row's account name; otherwise the name of the entry's line whose account is not the row's account (scalar `Subquery`). Matches what the cell renders.
   - `inflow` / `outflow`: `Case` on the sign of `amount`.
   - `account`: board order (`account__account_group__sort_order`, `account__sort_order`), not alphabetical.
 - **Cost per request is constant**, not proportional to the book: one `COUNT`, one page query, the existing prefetches (lines, reconciliation, sibling rows), one counts aggregate — about ten queries for 25 rows or 200. Pinned by an `assertNumQueries` test that runs against 10 and 1,000 rows.
 - **Index.** Run `EXPLAIN` on the YNAB sample for the default order; if Postgres sorts the whole book, add `Index(fields=["book", "is_void", "-posted_date", "-created_at"])`.
-- Backward compatible: `?account=<id>` alone still works, and Categorize Mode does not use this endpoint.
+- Backward compatible: `?account=<id>` alone and Categorize Mode's `?uncategorized=1` return what they do today.
 
 ### 2.2 The client
 
 - `LineTable.jsx` stops filtering, counting, sorting and paging: `filteredLines`, `filterCounts`, `sortedLines` and the page slice go. Filter, sort and page state lift into `LineApp`, which requests one page whenever any of them changes (the Transactions page's `transactions-app.jsx` shape). A request token drops out-of-order responses.
 - Changing a filter or the sort returns to page 1. Filters, sort and page go in the URL (`history.replaceState`), so reload and Back land on the same page of the same view.
-- **After an action** (edit, bulk edit, void/restore, delete, duplicate, unreconcile, categorize): refetch the current page and its counts — one request — plus the account cards' balances, as today. If the page is now past the last one (rows deleted or voided away), step back to the last page.
+- **After an action**: `runWrite` (#246) is kept — the row on screen changes at once and rolls back on refusal. `refreshLinesQuietly` re-reads the current page and its counts (one request) instead of every page; `scheduleQuietRefresh` still re-reads balances and possible transfers too. If the page is now past the last one (rows voided or deleted away), step back to the last page. A row an edit moves out of the current filters leaves the page optimistically, as a bulk move does today.
 - `TablePager` reads `count` from the server instead of `sortedLines.length`.
 - Paging moves from instant to one round trip. Show the previous page dimmed with a spinner rather than blanking the table.
 
@@ -187,7 +206,7 @@ A transfer between two feed accounts is one entry with a row in each account (pr
 
 - **Shown twice, deliberately.** Each row is a fact about its own account and reconciles independently. Collapsing them would break the per-account reading of the table and the per-row reconcile flag.
 - **Totals.** With both legs selected, In and Out each include the transfer; Net is unaffected (the legs cancel). The summary strip shows that as is.
-- **Transfer link (⇄).** The counterpart may be on another page. New `GET feed/locate/?journal_entry=<id>&account=<counterpart account>&<current filters, sort, page_size>` returns `{id, page}`, computed with `Window(RowNumber(), order_by=<the list's ordering>)` over the same queryset — or `{id, page: null}` when the current filters hide it. Found → go to that page, scroll, flash. Hidden → the existing behaviour: switch the account filter to the counterpart, clear quick filters and dates, view from the row's void state, then locate again.
+- **Transfer link (⇄), match panel "Go to other side", and the flash after Match.** The counterpart may be on another page. New `GET feed/locate/?journal_entry=<id>&account=<counterpart account>&<current filters, sort, page_size>` returns `{id, page}`, computed with `Window(RowNumber(), order_by=<the list's ordering>)` over the same queryset — or `{id, page: null}` when the current filters hide it. Found → go to that page, scroll, flash. Hidden → the existing behaviour: switch the account filter to the counterpart, clear quick filters and dates, view from the row's void state, then locate again.
 - **Batch actions with both legs selected:**
   - Bulk category: re-pointing a mirror to a non-feed category is refused (`would_orphan_primary`), so "set category" on a selection that includes mirrors fails. → `BulkEditModal` says "k transfer mirror rows selected — they follow their original" and the request **skips** mirror rows whose primary is also selected; mirrors selected alone are still refused.
   - Void/Restore: legs already move together (`linked_legs`); a selected sibling is skipped as already done.
