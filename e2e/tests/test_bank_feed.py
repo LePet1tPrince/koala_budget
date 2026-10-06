@@ -9,12 +9,14 @@ Covers: account cards displayed, selecting an account, filter toggles,
 add-transaction modal opens.
 """
 
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 from playwright.sync_api import Page
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY
+from apps.bank_feed.models import BankTransaction
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
 from e2e.pages.bank_feed import BankFeedPage
 
@@ -480,3 +482,30 @@ def test_csv_sign_convention_defaults_by_account_type(
     checkbox = authenticated_page.locator("[data-testid='invert-amounts']")
     assert checkbox.is_checked() is inverted
     assert authenticated_page.get_by_text(hint, exact=True).is_visible()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_long_feed_shows_first_page_then_loads_the_rest(requires_vite, authenticated_page, live_server, team):
+    """A feed longer than one API page renders early and ends with every row, once."""
+    group = AccountGroupFactory(team=team)
+    account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
+    # 450 rows = three API pages of 200, so the older two load behind the table.
+    BankTransaction.objects.bulk_create(
+        BankTransaction(
+            book=team.default_book,
+            account=account,
+            posted_date=date(2026, 1, 1) + timedelta(days=i),
+            description=f"LONG-ROW-{i:03d}",
+            amount=Decimal("10.00"),
+            source=BankTransaction.SOURCE_CSV,
+        )
+        for i in range(450)
+    )
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.click_account_card(account.id)
+    feed.wait_for_table()
+    feed.wait_for_all_rows()
+
+    assert feed.pager_total() == 450

@@ -16,6 +16,8 @@ import { BankFeedRowFromJSON } from 'api-client';
 
 /** How long the feed waits after its last write settles before re-reading it. */
 const QUIET_REFRESH_DELAY_MS = 500;
+// Feed pages requested at once when reading a whole account.
+const PAGE_FETCH_CONCURRENCY = 4;
 
 /**
  * A date as the generated client parses one: `YYYY-MM-DD` at UTC midnight, which
@@ -84,6 +86,8 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(false);
+  // Older pages still arriving behind a table that is already showing page 1
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showUploadWizard, setShowUploadWizard] = useState(false);
@@ -225,41 +229,75 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccount?.id]);
 
-  // Every row of an account's feed, following pagination if the server returns
-  // more than one page
-  const fetchAllLines = async (account) => {
-    const results = [];
-    let data = await bankFeedClient.bankFeedFeedList({
-      ...book.params,
-      account: account.id,
-    });
-    results.push(...(data.results || []));
-    while (data.next) {
-      const nextPage = Number(new URL(data.next, window.location.origin).searchParams.get('page'));
-      if (!nextPage) break;
-      data = await bankFeedClient.bankFeedFeedList({
-        ...book.params,
-        account: account.id,
-        page: nextPage,
-      });
-      results.push(...(data.results || []));
-    }
-    return results;
+  /**
+   * Every row of an account's feed. Page 1 goes to `onFirstPage` as soon as it
+   * arrives, so the table can show it; the rest are fetched a few at a time in
+   * parallel rather than one after another (a 2,600-row account is 14 pages).
+   */
+  const fetchAllLines = async (account, { onFirstPage } = {}) => {
+    const params = { ...book.params, account: account.id };
+    const first = await bankFeedClient.bankFeedFeedList(params);
+    const firstRows = first.results || [];
+    const pageCount = first.next && firstRows.length ? Math.ceil(first.count / firstRows.length) : 1;
+    onFirstPage?.(firstRows, pageCount > 1);
+
+    const pages = new Array(pageCount - 1);
+    let nextPage = 2;
+    const worker = async () => {
+      while (nextPage <= pageCount) {
+        const page = nextPage++;
+        try {
+          const data = await bankFeedClient.bankFeedFeedList({ ...params, page });
+          pages[page - 2] = data.results || [];
+        } catch (err) {
+          // The feed shrank while it was being read (rows deleted in the
+          // meantime), so the last page no longer exists.
+          if (err?.response?.status !== 404) throw err;
+          pages[page - 2] = [];
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PAGE_FETCH_CONCURRENCY, pageCount - 1) }, worker));
+
+    // Pages are offsets, so a row written between two page reads can shift
+    // onto both of them: keep the first copy.
+    const seen = new Set();
+    return [firstRows, ...pages].flat().filter((row) => !seen.has(row.id) && seen.add(row.id));
   };
 
   /**
-   * Load an account's feed with the table hidden behind a spinner. Only for
-   * opening an account, where there is nothing on screen to keep.
+   * Open an account's feed. The spinner covers only the first page; older
+   * pages are appended behind the table while it is already in use.
    */
   const loadLines = async (account = selectedAccountRef.current) => {
     if (!account) return;
     const requestId = ++loadRequestRef.current;
+    const epoch = writeEpochRef.current;
     setLoading(true);
+    setLoadingMore(false);
     setError(null);
+    let firstIds = new Set();
     try {
-      const results = await fetchAllLines(account);
+      const results = await fetchAllLines(account, {
+        onFirstPage: (rows, more) => {
+          firstIds = new Set(rows.map((row) => row.id));
+          if (loadRequestRef.current !== requestId) return;
+          setLines(rows);
+          setLoading(false);
+          setLoadingMore(more);
+        },
+      });
       if (loadRequestRef.current === requestId) {
-        setLines(results);
+        // Page 1 may have been edited, added to or trimmed since it arrived, so
+        // keep the rows on screen and append only what the older pages add --
+        // never a page-1 row, which may have been deleted in the meantime.
+        setLines((prev) => {
+          const shown = new Set(prev.map((row) => row.id));
+          return [...prev, ...results.filter((row) => !firstIds.has(row.id) && !shown.has(row.id))];
+        });
+        // A row written while the older pages were in flight can arrive here
+        // in its old state; a quiet re-read settles it.
+        if (writeEpochRef.current !== epoch) scheduleQuietRefresh();
       }
     } catch (err) {
       console.error('Failed to load lines:', err);
@@ -269,6 +307,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     } finally {
       if (loadRequestRef.current === requestId) {
         setLoading(false);
+        setLoadingMore(false);
       }
     }
   };
@@ -860,6 +899,16 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             <h2 className="text-xl mb-1">
               {gettext('Lines for')} {selectedAccount.name}
             </h2>
+            {loadingMore && pendingIds.size === 0 && (
+              <span
+                className="ml-auto mr-3 inline-flex items-center gap-1.5 text-xs text-base-content/70"
+                role="status"
+                data-testid="feed-loading-more"
+              >
+                <span className="loading loading-spinner loading-xs" aria-hidden="true" />
+                {gettext('Loading older transactions…')}
+              </span>
+            )}
             {pendingIds.size > 0 && (
               <span
                 className="ml-auto mr-3 inline-flex items-center gap-1.5 text-xs text-base-content/70"
