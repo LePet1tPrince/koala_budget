@@ -5,7 +5,9 @@ Tests for BankFeedViewSet.list endpoint.
 from datetime import date
 from decimal import Decimal
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -17,6 +19,7 @@ from apps.accounts.models import (
 )
 from apps.bank_feed.models import BankTransaction
 from apps.books.context import current_book
+from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -180,3 +183,87 @@ class BankFeedViewSetListTest(TestCase):
             # Should not include other team's transaction
             descriptions = [r["description"] for r in response.data["results"]]
             self.assertNotIn("Other team transaction", descriptions)
+
+
+class BankFeedListUncategorizedAndQueryCountTest(TestCase):
+    """`?uncategorized=1` (categorize mode's queue) and a query count that does not grow per row."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.team = Team.objects.create(name="Queue Team", slug="queue-team")
+        cls.book = cls.team.default_book
+        cls.user = CustomUser.objects.create_user(username="queueuser", password="pass")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        asset_group = AccountGroup.objects.create(book=cls.book, name="Banks", account_type=ACCOUNT_TYPE_ASSET)
+        expense_group = AccountGroup.objects.create(book=cls.book, name="Spending", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.bank = Account.objects.create(book=cls.book, name="Chequing", account_group=asset_group, has_feed=True)
+        cls.expenses = [
+            Account.objects.create(book=cls.book, name=f"Expense {i}", account_group=expense_group) for i in range(3)
+        ]
+        cls.waiting = BankTransaction.objects.create(
+            book=cls.book,
+            account=cls.bank,
+            posted_date=date(2026, 1, 5),
+            description="Waiting",
+            amount=Decimal("12.00"),
+            source=BankTransaction.SOURCE_CSV,
+        )
+        cls.archived = BankTransaction.objects.create(
+            book=cls.book,
+            account=cls.bank,
+            posted_date=date(2026, 1, 6),
+            description="Archived",
+            amount=Decimal("13.00"),
+            source=BankTransaction.SOURCE_CSV,
+            is_archived=True,
+        )
+        cls.categorized = cls._categorized("Filed", [(cls.expenses[0], Decimal("14.00"))])
+        cls.split = cls._categorized("Split", [(cls.expenses[1], Decimal("10.00")), (cls.expenses[2], Decimal("5.00"))])
+
+    @classmethod
+    def _categorized(cls, description, legs, day=7):
+        total = sum(amount for _, amount in legs)
+        entry = JournalEntry.objects.create(book=cls.book, entry_date=date(2026, 1, day), description=description)
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.bank, cr_amount=total)
+        for account, amount in legs:
+            JournalLine.objects.create(book=cls.book, journal_entry=entry, account=account, dr_amount=amount)
+        return BankTransaction.objects.create(
+            book=cls.book,
+            account=cls.bank,
+            posted_date=date(2026, 1, day),
+            description=description,
+            amount=total,
+            source=BankTransaction.SOURCE_CSV,
+            journal_entry=entry,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/"
+
+    def test_uncategorized_returns_only_rows_waiting_to_be_categorized(self):
+        response = self.client.get(self.url, {"uncategorized": "1"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Not the categorized row, not the split (category null, but filed), not the archived one.
+        self.assertEqual([r["id"] for r in response.data["results"]], [str(self.waiting.id)])
+
+    def test_without_the_flag_every_row_is_listed(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.data["count"], 4)
+
+    def test_query_count_does_not_grow_with_rows(self):
+        def queries_for_list():
+            with CaptureQueriesContext(connection) as ctx:
+                response = self.client.get(self.url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            return len(ctx.captured_queries)
+
+        before = queries_for_list()
+        for day in range(10, 20):
+            self._categorized(f"More {day}", [(self.expenses[day % 3], Decimal("1.00"))], day=day)
+        # Each row serializes its account and category with their group; loading
+        # those per row cost a query each (about 250 per 200-row page).
+        self.assertEqual(queries_for_list(), before)
