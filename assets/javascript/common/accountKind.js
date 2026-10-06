@@ -23,9 +23,14 @@ export const ACCOUNT_KIND_LABELS = {
   equity: gettext('Equity'),
 };
 
-/** System accounts are bookkeeping, never a category; the server refuses them too. */
+/**
+ * System accounts are bookkeeping, never a category; the server refuses them too.
+ * Hidden accounts (the accounts board's eye) are left out of every picker.
+ */
 export function pickableAccounts(accounts) {
-  return (accounts || []).filter((account) => !(account.is_system || account.isSystem));
+  return (accounts || []).filter(
+    (account) => !(account.is_system || account.isSystem || account.is_hidden || account.isHidden),
+  );
 }
 
 function formatMoney(value) {

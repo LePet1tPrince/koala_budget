@@ -97,6 +97,7 @@ class SimpleAccountSerializer(serializers.ModelSerializer):
             "institution_name",
             "has_feed",
             "is_system",
+            "is_hidden",
             "is_archived",
             "archived_at",
         ]

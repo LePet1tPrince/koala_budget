@@ -42,7 +42,8 @@ FORMAT = "koala-budget-export"
 # 4: `hidden_from_budget` on accounts.csv (a category can be hidden from the budget).
 # 5: goal-linked accounts -- `goal_links.csv`, and `goal_outflow` /
 # `goal_monthly_contribution` on accounts.csv.
-FORMAT_VERSION = 5
+# 6: `is_hidden` on accounts.csv (an account can be hidden from pickers and the Inbox).
+FORMAT_VERSION = 6
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
@@ -62,6 +63,7 @@ COLUMNS_ADDED_IN = {
     (ACCOUNTS_FILE, "hidden_from_budget"): 4,
     (ACCOUNTS_FILE, "goal_outflow"): 5,
     (ACCOUNTS_FILE, "goal_monthly_contribution"): 5,
+    (ACCOUNTS_FILE, "is_hidden"): 6,
 }
 
 # journal.csv's `status` column carries every `JournalEntry.status` value plus
@@ -352,6 +354,7 @@ ACCOUNT = FieldMap(
         "is_system": ColumnSpec("is_system", KIND_BOOL),
         "sort_order": ColumnSpec("sort_order", KIND_INT),
         "hidden_from_budget": ColumnSpec("hidden_from_budget", KIND_BOOL),
+        "is_hidden": ColumnSpec("is_hidden", KIND_BOOL),
         "is_archived": ColumnSpec("is_archived", KIND_BOOL),
         "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
     },
@@ -470,6 +473,7 @@ ACCOUNTS_COLUMNS = (
     Column("is_system", KIND_BOOL),
     Column("sort_order", KIND_INT),
     Column("hidden_from_budget", KIND_BOOL),
+    Column("is_hidden", KIND_BOOL),
     Column("is_archived", KIND_BOOL),
     Column("archived_at", KIND_DATETIME),
     Column("goal_name", KIND_STR_OR_NONE),

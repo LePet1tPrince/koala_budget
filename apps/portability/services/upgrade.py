@@ -57,12 +57,20 @@ def upgrade_4_to_5(tables: dict) -> dict:
     return tables
 
 
+def upgrade_5_to_6(tables: dict) -> dict:
+    """Version 6 added `is_hidden`. Before it, no account could be hidden."""
+    for row in tables["accounts"]:
+        row.setdefault("is_hidden", False)
+    return tables
+
+
 # {from_version: fn(tables) -> tables at from_version + 1}
 CHAIN: dict[int, Callable[[dict], dict]] = {
     1: upgrade_1_to_2,
     2: upgrade_2_to_3,
     3: upgrade_3_to_4,
     4: upgrade_4_to_5,
+    5: upgrade_5_to_6,
 }
 
 

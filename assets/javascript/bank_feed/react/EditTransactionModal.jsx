@@ -101,8 +101,17 @@ const EditTransactionModal = ({
   const [removedSplit, setRemovedSplit] = useState(false);
 
   // Create options array for category Autocomplete (grouped by account type)
+  // Categories the transaction already uses (its category, or a split's legs)
+  // stay on offer even when hidden or system, so opening it never blanks one.
   const categoryOptions = useMemo(() => {
-    return buildCategoryOptions(allAccounts, { keep: transaction?.category ? [transaction.category] : [] });
+    const legIds = new Set(
+      (transaction?.splits ?? transaction?.split_legs ?? []).map((leg) => leg.categoryId ?? leg.category_id)
+    );
+    const keep = [
+      ...(transaction?.category ? [transaction.category] : []),
+      ...(allAccounts || []).filter((a) => legIds.has(a.id)),
+    ];
+    return buildCategoryOptions(allAccounts, { keep });
   }, [allAccounts, transaction]);
 
   // Payee names for the free-text autocomplete

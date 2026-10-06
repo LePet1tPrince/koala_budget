@@ -93,6 +93,7 @@ def _annotate_feed_account_activity(accounts, book):
         BankTransaction.objects.filter(
             book=book,
             account__has_feed=True,
+            account__is_hidden=False,
             journal_entry__isnull=True,
             is_archived=False,
         )
@@ -104,6 +105,7 @@ def _annotate_feed_account_activity(accounts, book):
         BankTransaction.objects.filter(
             book=book,
             account__has_feed=True,
+            account__is_hidden=False,
             is_archived=False,
         )
         .values("account_id")
@@ -114,6 +116,7 @@ def _annotate_feed_account_activity(accounts, book):
         BankTransaction.objects.filter(
             book=book,
             account__has_feed=True,
+            account__is_hidden=False,
             is_archived=False,
             journal_entry__isnull=False,
             journal_entry__lines__account_id=F("account_id"),
@@ -301,8 +304,9 @@ class BankFeedViewSet(
 
         # Only what is waiting to be categorized -- the same set the Inbox badge
         # counts. Categorize mode asks for this rather than walking the whole feed.
+        # A hidden account is out of the Inbox, so its rows are not queued either.
         if self.request.query_params.get("uncategorized") in ("1", "true"):
-            queryset = queryset.filter(journal_entry__isnull=True, is_archived=False)
+            queryset = queryset.filter(journal_entry__isnull=True, is_archived=False, account__is_hidden=False)
 
         return queryset
 
@@ -315,7 +319,7 @@ class BankFeedViewSet(
     def feed_accounts(self, request, team_slug=None, book_slug=None):
         """Return feed accounts with up-to-date balances and review counts."""
         accounts = list(
-            Account.for_book.filter(has_feed=True)
+            Account.for_book.filter(has_feed=True, is_hidden=False)
             .with_balance()
             .with_reconciled_balance()
             .select_related("account_group", "institution")
@@ -1786,7 +1790,7 @@ def bank_feed_home(request, team_slug, book_slug):
     """
     # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
     accounts_with_feeds = list(
-        Account.for_book.filter(has_feed=True)
+        Account.for_book.filter(has_feed=True, is_hidden=False)
         .with_balance()
         .with_reconciled_balance()
         .select_related("account_group", "institution")

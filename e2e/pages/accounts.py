@@ -37,9 +37,26 @@ class AccountsPage(BasePage):
     def get_group_names(self) -> list[str]:
         return self.page.locator("[data-testid='group-name']").all_text_contents()
 
+    def selected_tab(self) -> str:
+        tab = self.page.locator("[data-testid^='account-type-tab-'][aria-selected='true']")
+        return tab.get_attribute("data-testid").removeprefix("account-type-tab-")
+
+    def account_row(self, name: str):
+        return self.page.locator("[data-testid='account-row']", has=self.page.locator(f"text='{name}'"))
+
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
+
+    def select_tab(self, key: str):
+        """Show one account type: asset, liability, income, expense or goal (goals + equity)."""
+        self.page.locator(f"[data-testid='account-type-tab-{key}']").click()
+        self.page.wait_for_selector(f"[data-testid='account-type-tab-{key}'][aria-selected='true']")
+
+    def toggle_hidden(self, name: str):
+        """Click an account's eye and wait for the board to confirm the save."""
+        self.account_row(name).locator("[data-testid='account-visibility-toggle']").click()
+        self.page.wait_for_selector("[data-testid='board-toast']")
 
     def click_new_account(self):
         self.page.locator("[data-testid='new-account-btn']").click()
