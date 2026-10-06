@@ -43,6 +43,6 @@ def inbox_count(request):
         "inbox_count": BankTransaction.objects.filter(
             book=book,
             journal_entry__isnull=True,
-            is_archived=False,
+            is_void=False,
         ).count()
     }

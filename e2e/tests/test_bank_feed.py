@@ -70,7 +70,7 @@ def test_add_transaction_modal_opens(requires_vite, authenticated_page: Page, li
 # ----------------------------------------------------------------------
 # Filter contract
 #
-# These lock the behaviour of the Quick Filters menu and the Archived view
+# These lock the behaviour of the Quick Filters menu and the Voided view
 # BEFORE the table is rewritten off MUI (restyle plan Phase 5b), so the
 # rewrite has to match what the table does today rather than what the
 # rewrite's author believes it does. They read rows out of a plain <table>,
@@ -92,14 +92,14 @@ def feed_fixture(team):
             team, account, category=category, reconciled=False, description="ROW-UNRECONCILED"
         ),
         "reconciled": feed_transaction(team, account, category=category, reconciled=True, description="ROW-RECONCILED"),
-        "archived": feed_transaction(team, account, archived=True, description="ROW-ARCHIVED"),
+        "voided": feed_transaction(team, account, void=True, description="ROW-VOIDED"),
     }
     return {"account": account, "category": category, "rows": rows}
 
 
 @pytest.mark.django_db(transaction=True)
-def test_default_view_shows_every_unarchived_row(requires_vite, authenticated_page, live_server, feed_fixture):
-    """No filter selected: categorized and uncategorized, reconciled and not — but never archived."""
+def test_default_view_shows_every_row_that_is_not_void(requires_vite, authenticated_page, live_server, feed_fixture):
+    """No filter selected: categorized and uncategorized, reconciled and not — but never void."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
@@ -108,7 +108,7 @@ def test_default_view_shows_every_unarchived_row(requires_vite, authenticated_pa
     assert feed.has_row_matching("ROW-UNCATEGORIZED")
     assert feed.has_row_matching("ROW-UNRECONCILED")
     assert feed.has_row_matching("ROW-RECONCILED")
-    assert not feed.has_row_matching("ROW-ARCHIVED")
+    assert not feed.has_row_matching("ROW-VOIDED")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -123,7 +123,7 @@ def test_to_review_filter_hides_reconciled(requires_vite, authenticated_page, li
     assert feed.has_row_matching("ROW-UNRECONCILED")
     assert feed.has_row_matching("ROW-UNCATEGORIZED")  # uncategorized is unreconciled too
     assert not feed.has_row_matching("ROW-RECONCILED")
-    assert not feed.has_row_matching("ROW-ARCHIVED")
+    assert not feed.has_row_matching("ROW-VOIDED")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -176,23 +176,23 @@ def test_uncategorized_filter_is_independent(requires_vite, authenticated_page, 
 
 
 @pytest.mark.django_db(transaction=True)
-def test_archived_is_a_separate_view(requires_vite, authenticated_page, live_server, feed_fixture):
-    """Archived shows only archived rows and disables the quick filters entirely."""
+def test_voided_is_a_separate_view(requires_vite, authenticated_page, live_server, feed_fixture):
+    """Voided shows only void rows and disables the quick filters entirely."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
 
-    feed.click_filter("archived")
+    feed.click_filter("voided")
 
-    assert feed.has_row_matching("ROW-ARCHIVED")
+    assert feed.has_row_matching("ROW-VOIDED")
     assert not feed.has_row_matching("ROW-UNCATEGORIZED")
     assert not feed.has_row_matching("ROW-RECONCILED")
     assert feed.quick_filters_disabled()
 
-    # Leaving the archived view restores the active one.
-    feed.click_filter("archived")
-    assert not feed.has_row_matching("ROW-ARCHIVED")
+    # Leaving the voided view restores the active one.
+    feed.click_filter("voided")
+    assert not feed.has_row_matching("ROW-VOIDED")
     assert feed.has_row_matching("ROW-UNCATEGORIZED")
     assert not feed.quick_filters_disabled()
 
@@ -228,7 +228,7 @@ def test_uncategorized_selection_cannot_reconcile(requires_vite, authenticated_p
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["uncategorized"].id)
 
-    assert feed.batch_buttons() == ["Bulk Edit", "Archive", "Reconcile", "Duplicate", "Export"]
+    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Reconcile", "Duplicate", "Export"]
     assert feed.batch_button("Reconcile").is_disabled()
 
 
@@ -240,7 +240,7 @@ def test_categorized_unreconciled_selection_can_reconcile(requires_vite, authent
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["unreconciled"].id)
 
-    assert feed.batch_buttons() == ["Bulk Edit", "Archive", "Reconcile", "Duplicate", "Export"]
+    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Reconcile", "Duplicate", "Export"]
     assert feed.batch_button("Reconcile").is_enabled()
 
 
@@ -250,10 +250,10 @@ def test_reconciled_selection_offers_unreconcile_not_reconcile(
 ):
     """A reconciled row can be undone, but not re-reconciled or duplicated.
 
-    Archive is withheld too: `showArchiveButton` in `LineApp` requires *some*
-    selected row to be neither archived nor reconciled, which mirrors the server
-    guard that refuses to archive a reconciled transfer leg. A mixed selection
-    does show Archive — see the next test.
+    Void is withheld too: `showVoidButton` in `LineApp` requires *some*
+    selected row to be neither void nor reconciled, which mirrors the server
+    guard that refuses to void a reconciled transfer leg. A mixed selection
+    does show Void — see the next test.
     """
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
@@ -277,20 +277,20 @@ def test_mixed_selection_withholds_both_reconcile_and_unreconcile(
     feed.select_row(feed_fixture["rows"]["reconciled"].id)
     feed.select_row(feed_fixture["rows"]["unreconciled"].id)
 
-    assert feed.batch_buttons() == ["Bulk Edit", "Archive", "Export"]
+    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Export"]
 
 
 @pytest.mark.django_db(transaction=True)
-def test_archived_view_offers_unarchive_and_delete_only(requires_vite, authenticated_page, live_server, feed_fixture):
-    """The archived view is a different set of verbs: nothing to edit, reconcile or duplicate."""
+def test_voided_view_offers_restore_and_delete_only(requires_vite, authenticated_page, live_server, feed_fixture):
+    """The voided view is a different set of verbs: nothing to edit, reconcile or duplicate."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
-    feed.click_filter("archived")
-    feed.select_row(feed_fixture["rows"]["archived"].id)
+    feed.click_filter("voided")
+    feed.select_row(feed_fixture["rows"]["voided"].id)
 
-    assert feed.batch_buttons() == ["Unarchive", "Delete", "Export"]
+    assert feed.batch_buttons() == ["Restore", "Delete", "Export"]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -324,7 +324,7 @@ def test_bulk_edit_opens_from_the_bar(requires_vite, authenticated_page, live_se
 #
 # A transfer between two of the user's own accounts is reported by both
 # banks. Each leg's row carries a chip; its panel shows the other leg and
-# what Match will do. The server picks the leg to archive (a reconciled leg
+# what Match will do. The server picks the leg to void (a reconciled leg
 # is always kept), so the panel's sentence is what the click does.
 # ----------------------------------------------------------------------
 
@@ -388,7 +388,7 @@ def test_panel_shows_the_other_side_and_the_outcome(requires_vite, authenticated
     assert "Savings" in counterpart
     assert "PAIR-A-IN" in counterpart
     # Nothing reconciled or categorized, same source: the outflow (this row) is kept.
-    assert "keeps this transaction and archives the one in Savings" in feed.match_outcome_text()
+    assert "keeps this transaction and voids the one in Savings" in feed.match_outcome_text()
     assert feed.match_button().is_enabled()
 
     # Escape closes the panel without changing anything.
@@ -399,7 +399,7 @@ def test_panel_shows_the_other_side_and_the_outcome(requires_vite, authenticated
 
 @pytest.mark.django_db(transaction=True)
 def test_match_keeps_the_reconciled_leg(requires_vite, authenticated_page, live_server, transfer_pair, team):
-    """With one side reconciled, Match archives the other and the transfer shows in both feeds."""
+    """With one side reconciled, Match voids the other and the transfer shows in both feeds."""
     expense_group = AccountGroupFactory(team=team)
     category = AccountFactory(team=team, account_group=expense_group)
     feed_transaction(
@@ -423,13 +423,13 @@ def test_match_keeps_the_reconciled_leg(requires_vite, authenticated_page, live_
     feed.match_chip(out_b.id).wait_for(timeout=10_000)
     feed.open_match(out_b.id)
     outcome = feed.match_outcome_text()
-    assert "keeps the one in Savings and archives this transaction" in outcome
+    assert "keeps the one in Savings and voids this transaction" in outcome
     assert "reconciled" in outcome
 
     feed.match_button().click()
     authenticated_page.get_by_text("Matched — kept the one in Savings", exact=False).wait_for(timeout=10_000)
 
-    # PAIR-B-OUT is archived (at once -- feed writes apply optimistically); the
+    # PAIR-B-OUT is voided (at once -- feed writes apply optimistically); the
     # kept leg's transfer shows here as its mirror once the background re-read lands.
     authenticated_page.locator(f"[data-testid='feed-row-{out_b.id}']").wait_for(state="detached", timeout=10_000)
     authenticated_page.locator("table tbody tr", has_text="PAIR-B-IN-RECONCILED").first.wait_for(timeout=10_000)

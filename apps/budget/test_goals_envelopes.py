@@ -16,6 +16,7 @@ from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
 from apps.books.context import current_book
 from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.services import voiding
 from apps.onboarding.models import OnboardingState
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
@@ -127,20 +128,20 @@ class GoalMathsTest(GoalsFixture):
         GoalAllocation.objects.create(book=self.book, goal=self.car, month=OCT, amount=Decimal("-500"))
         self.assertEqual(self.numbers(OCT)["allocated"], Decimal("4500"))
 
-    def test_void_and_archived_feed_entries_do_not_count(self):
+    def test_void_and_feed_voided_entries_do_not_count(self):
         self.spend_from_car(date(2026, 9, 5), "100")
         self.post(date(2026, 9, 5), self.car.account, self.checking, "300", status=JournalEntry.STATUS_VOID)
-        archived = self.spend_from_car(date(2026, 9, 5), "700")
-        BankTransaction.objects.create(
+        voided_in_feed = self.spend_from_car(date(2026, 9, 5), "700")
+        row = BankTransaction.objects.create(
             book=self.book,
             account=self.checking,
             posted_date=date(2026, 9, 5),
             amount=Decimal("700"),
-            description="archived",
+            description="voided in the feed",
             source=BankTransaction.SOURCE_CSV,
-            journal_entry=archived,
-            is_archived=True,
+            journal_entry=voided_in_feed,
         )
+        voiding.void(rows=[row])
         self.assertEqual(self.numbers()["spent"], Decimal("100"))
 
     def test_spending_after_month_end_is_excluded_from_that_month(self):

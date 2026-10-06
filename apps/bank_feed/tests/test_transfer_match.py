@@ -156,14 +156,14 @@ class TransferMatchEndpointTest(MatchTestBase):
         """One posted entry books the movement once, in both accounts and both feeds."""
         kept.refresh_from_db()
         archived.refresh_from_db()
-        self.assertFalse(kept.is_archived)
-        self.assertTrue(archived.is_archived)
+        self.assertFalse(kept.is_void)
+        self.assertTrue(archived.is_void)
         entry = kept.journal_entry
         self.assertEqual(entry.status, JournalEntry.STATUS_POSTED)
         self.assertEqual({line.account_id for line in entry.lines.all()}, {kept.account_id, archived.account_id})
         mirror = BankTransaction.objects.get(journal_entry=entry, is_transfer_mirror=True)
         self.assertEqual(mirror.account_id, archived.account_id)
-        self.assertFalse(mirror.is_archived)
+        self.assertFalse(mirror.is_void)
         self.assertEqual(self.checking.balance, Decimal("-100.00"))
         self.assertEqual(self.savings.balance, Decimal("100.00"))
 
@@ -206,7 +206,7 @@ class TransferMatchEndpointTest(MatchTestBase):
         in_entry.refresh_from_db()
         self.assertEqual(in_entry.status, JournalEntry.STATUS_VOID)
         # The archived leg's own mirror (in checking) goes with it.
-        self.assertTrue(BankTransaction.objects.get(journal_entry=in_entry, is_transfer_mirror=True).is_archived)
+        self.assertTrue(BankTransaction.objects.get(journal_entry=in_entry, is_transfer_mirror=True).is_void)
         self.assert_one_transfer(out_tx, in_tx)
 
     def test_keeps_the_reconciled_leg_untouched(self):
@@ -235,7 +235,7 @@ class TransferMatchEndpointTest(MatchTestBase):
         self.assertEqual(resp.data["proposal"]["archive_id"], out_tx.id)
         out_tx.refresh_from_db()
         in_tx.refresh_from_db()
-        self.assertFalse(out_tx.is_archived or in_tx.is_archived)
+        self.assertFalse(out_tx.is_void or in_tx.is_void)
 
     def test_blocked_pair_is_400(self):
         out_tx = self._tx(self.checking, "100.00")
@@ -253,9 +253,9 @@ class TransferMatchEndpointTest(MatchTestBase):
             "same account": lambda: (self._tx(self.checking, "100.00"), self._tx(self.checking, "-100.00")),
             "unequal": lambda: (self._tx(self.checking, "100.00"), self._tx(self.savings, "-99.00")),
             "same sign": lambda: (self._tx(self.checking, "100.00"), self._tx(self.savings, "100.00")),
-            "archived": lambda: (
+            "void": lambda: (
                 self._tx(self.checking, "100.00"),
-                self._tx(self.savings, "-100.00", is_archived=True),
+                self._tx(self.savings, "-100.00", is_void=True),
             ),
             "too far apart": lambda: (
                 self._tx(self.checking, "100.00", posted_date=date(2026, 6, 1)),
@@ -310,7 +310,7 @@ class TransferMatchEndpointTest(MatchTestBase):
         resp = self.post(ours, theirs, expected_archive_id=theirs)
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         theirs.refresh_from_db()
-        self.assertFalse(theirs.is_archived)
+        self.assertFalse(theirs.is_void)
 
     def test_expected_leg_must_be_one_of_the_pair(self):
         out_tx = self._tx(self.checking, "100.00")

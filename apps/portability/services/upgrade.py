@@ -57,12 +57,52 @@ def upgrade_4_to_5(tables: dict) -> dict:
     return tables
 
 
+def upgrade_5_to_6(tables: dict) -> dict:
+    """
+    Version 6 has one void state. Before it a feed row could be archived while
+    its entry stayed posted (the entry then counted toward nothing anyway), and
+    entries and lines carried archive flags nothing read.
+
+    `feed_is_archived` becomes `feed_is_void`; an entry with any archived row is
+    voided, and every row on a void entry is void. The entry and row counts
+    this changes are kept in `void_upgrade`, so the integrity gate can still
+    compare against the manifest the archive was written with.
+    """
+    rows = tables["journal_rows"]
+    for row in rows:
+        row["feed_is_void"] = bool(row.pop("feed_is_archived", False))
+        row["feed_voided_at"] = row.pop("feed_archived_at", None)
+        for retired in ("entry_is_archived", "entry_archived_at", "is_archived", "archived_at"):
+            row.pop(retired, None)
+
+    void_entries = {
+        row["entry_id"]
+        for row in rows
+        if row.get("entry_id") is not None
+        and (row.get("status") == "void" or (row.get("feed_source") is not None and row["feed_is_void"]))
+    }
+    newly_voided_entries = {
+        row["entry_id"] for row in rows if row.get("entry_id") in void_entries and row.get("status") != "void"
+    }
+    newly_voided_rows = 0
+    for row in rows:
+        if row.get("entry_id") in void_entries:
+            row["status"] = "void"
+            if row.get("feed_source") is not None and not row["feed_is_void"]:
+                row["feed_is_void"] = True
+                newly_voided_rows += 1
+
+    tables["void_upgrade"] = {"entry_ids": newly_voided_entries, "rows": newly_voided_rows}
+    return tables
+
+
 # {from_version: fn(tables) -> tables at from_version + 1}
 CHAIN: dict[int, Callable[[dict], dict]] = {
     1: upgrade_1_to_2,
     2: upgrade_2_to_3,
     3: upgrade_3_to_4,
     4: upgrade_4_to_5,
+    5: upgrade_5_to_6,
 }
 
 

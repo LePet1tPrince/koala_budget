@@ -104,7 +104,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // Category suggestions: merchant/payee name -> {id, name} of last-used category
   const [categorySuggestions, setCategorySuggestions] = useState({});
 
-  // View mode state (synced from LineTable): 'active' | 'archived'
+  // View mode state (synced from LineTable): 'active' | 'voided'
   const [viewMode, setViewMode] = useState('active');
 
   // A row the table should page to and flash, set when jumping to the other leg
@@ -382,7 +382,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
 
   /**
    * Re-read the feed, the account balances and the possible transfers once no
-   * write is in flight -- categorizing, editing, archiving or importing can each
+   * write is in flight -- categorizing, editing, voiding or importing can each
    * create or dissolve a pair.
    */
   const scheduleQuietRefresh = () => {
@@ -519,12 +519,12 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   );
 
   /**
-   * Match a possible duplicate transfer: the server keeps one leg, archives the
+   * Match a possible duplicate transfer: the server keeps one leg, voids the
    * other, and makes the kept one the transfer between both accounts.
    *
    * Goes through `runWrite` like every other feed write: this account's leg
-   * shows the outcome at once (archived, or categorized as the transfer) and
-   * comes back if the server refuses. The leg the server archives must be the
+   * shows the outcome at once (voided, or categorized as the transfer) and
+   * comes back if the server refuses. The leg the server voids must be the
    * one the panel showed, or it answers 409 with the current proposal, which
    * replaces the stale one so the panel redraws with the new outcome.
    */
@@ -536,7 +536,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       rowIds: row ? [row.id] : [],
       apply: (r) =>
         archivesThis
-          ? { ...r, isArchived: true }
+          ? { ...r, isVoid: true }
           : { ...r, category: { id: other.account?.id, name: other.account?.name ?? '' }, isSplit: false },
       request: async () => {
         try {
@@ -555,7 +555,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       },
       onSuccess: (result) => {
         const kept = result.kept_id === self.imported_transaction_id ? self : other;
-        const archived = kept === self ? other : self;
+        const voided = kept === self ? other : self;
         setMatches((prev) => prev.filter((p) => p !== pair));
         // In this account the transfer is now either the kept row or its mirror;
         // both carry the kept entry, so flash whichever is here once the quiet
@@ -566,9 +566,9 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           keepFilters: true,
         });
         showSnackbar(
-          interpolate(gettext('Matched — kept the one in %s, archived the one in %s.'), [
+          interpolate(gettext('Matched — kept the one in %s, voided the one in %s.'), [
             kept.account?.name ?? '',
-            archived.account?.name ?? '',
+            voided.account?.name ?? '',
           ]),
           'success'
         );
@@ -836,37 +836,37 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   };
 
   /**
-   * Batch archive selected transactions
+   * Void the selected transactions: they (and their transfers' other legs) stop counting
    */
-  const handleBatchArchive = () => {
+  const handleBatchVoid = () => {
     const ids = [...selectedIds];
     setSelectedIds(new Set());
     runWrite({
       rowIds: ids,
-      apply: (row) => ({ ...row, isArchived: true }),
-      request: () => batchApi.batchArchive(ids),
-      successMessage: gettext('Transactions archived successfully'),
-      errorMessage: gettext('Failed to archive transactions'),
+      apply: (row) => ({ ...row, isVoid: true }),
+      request: () => batchApi.batchVoid(ids),
+      successMessage: gettext('Transactions voided'),
+      errorMessage: gettext('Failed to void transactions'),
     });
   };
 
   /**
-   * Batch unarchive selected transactions
+   * Restore the selected voided transactions
    */
-  const handleBatchUnarchive = () => {
+  const handleBatchRestore = () => {
     const ids = [...selectedIds];
     setSelectedIds(new Set());
     runWrite({
       rowIds: ids,
-      apply: (row) => ({ ...row, isArchived: false }),
-      request: () => batchApi.batchUnarchive(ids),
-      successMessage: gettext('Transactions unarchived successfully'),
-      errorMessage: gettext('Failed to unarchive transactions'),
+      apply: (row) => ({ ...row, isVoid: false }),
+      request: () => batchApi.batchRestore(ids),
+      successMessage: gettext('Transactions restored'),
+      errorMessage: gettext('Failed to restore transactions'),
     });
   };
 
   /**
-   * Permanently delete selected archived transactions
+   * Permanently delete selected voided transactions
    */
   const handleBatchDelete = () => {
     const ids = [...selectedIds];
@@ -956,20 +956,20 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   }, [lines, selectedIds]);
 
   /**
-   * Determine which archive/unarchive button to show based on selection
+   * Determine which void/restore button to show based on selection
    */
   // Handle both camelCase (from generated API client) and snake_case (raw API)
-  const isArchived = (r) => r.isArchived ?? r.is_archived ?? false;
+  const isVoid = (r) => r.isVoid ?? r.is_void ?? false;
   const isReconciled = (r) => r.isReconciled ?? r.is_reconciled ?? false;
 
-  const showArchiveButton = useMemo(() => {
-    // Show archive only if any selected row is not archived and not reconciled
-    return selectedRows.some(r => !isArchived(r) && !isReconciled(r));
+  const showVoidButton = useMemo(() => {
+    // Show void only if any selected row is not void and not reconciled
+    return selectedRows.some(r => !isVoid(r) && !isReconciled(r));
   }, [selectedRows]);
 
-  const showUnarchiveButton = useMemo(() => {
-    // Show unarchive if any selected row is archived
-    return selectedRows.some(r => isArchived(r));
+  const showRestoreButton = useMemo(() => {
+    // Show restore if any selected row is void
+    return selectedRows.some(r => isVoid(r));
   }, [selectedRows]);
 
   return (
@@ -1175,15 +1175,15 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         allPayees={allPayees}
         bankFeedAccounts={accounts}
         onBulkEdit={handleBulkEdit}
-        onArchive={handleBatchArchive}
-        onUnarchive={handleBatchUnarchive}
+        onVoid={handleBatchVoid}
+        onRestore={handleBatchRestore}
         onDelete={handleBatchDelete}
         onDuplicate={handleBatchDuplicate}
         onReconcile={handleBatchReconcile}
         onUnreconcile={handleBatchUnreconcile}
         onClearSelection={() => setSelectedIds(new Set())}
-        showArchive={showArchiveButton}
-        showUnarchive={showUnarchiveButton}
+        showVoid={showVoidButton}
+        showRestore={showRestoreButton}
         viewMode={viewMode}
         selectedAccount={selectedAccount}
       />

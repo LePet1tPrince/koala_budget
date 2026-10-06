@@ -41,7 +41,7 @@ class RoundTripTests(SimpleTestCase):
 
     def test_manifest_format_and_version(self):
         self.assertEqual(self.tables.manifest.format, "koala-budget-export")
-        self.assertEqual(self.tables.manifest.format_version, 5)
+        self.assertEqual(self.tables.manifest.format_version, 6)
 
     def test_manifest_file_row_counts(self):
         self.assertEqual(self.tables.manifest.files["accounts.csv"]["rows"], len(self.accounts))
@@ -58,12 +58,12 @@ class RoundTripTests(SimpleTestCase):
         self.assertTrue(all(r["status"] == "void" for r in void_rows))
         self.assertEqual(sum(r["dr_amount"] for r in void_rows), sum(r["cr_amount"] for r in void_rows))
 
-    def test_archived_line_is_distinct_from_archived_entry_and_archived_feed_row(self):
+    def test_feed_void_flag_rides_on_the_bank_line_and_no_archive_columns_remain(self):
         line = next(r for r in self.tables.journal_rows if r["entry_id"] == 400 and r["account_id"] == 4)
-        self.assertTrue(line["is_archived"])  # the JournalLine's own flag
-        self.assertFalse(line["entry_is_archived"])  # the JournalEntry is not archived
-        other_line = next(r for r in self.tables.journal_rows if r["entry_id"] == 400 and r["account_id"] == 1)
-        self.assertFalse(other_line["feed_is_archived"])  # nor is its feed row
+        for retired in ("is_archived", "entry_is_archived", "feed_is_archived"):
+            self.assertNotIn(retired, line)
+        bank_line = next(r for r in self.tables.journal_rows if r["entry_id"] == 400 and r["account_id"] == 1)
+        self.assertFalse(bank_line["feed_is_void"])
 
     def test_reconciled_transfer_has_two_feed_legs_one_marked_mirror(self):
         legs = [r for r in self.tables.journal_rows if r["entry_id"] == 200]
@@ -210,14 +210,10 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "status": "posted",
                 "account_id": 2,
                 "account_name": "Café expenses",
-                "entry_is_archived": False,
-                "entry_archived_at": None,
                 "dr_amount": Decimal("5.50"),
                 "cr_amount": Decimal("0.00"),
                 "is_cleared": False,
                 "is_reconciled": False,
-                "is_archived": False,
-                "archived_at": None,
                 "reconciliation_id": None,
                 "feed_source": None,
                 "feed_amount": None,
@@ -225,8 +221,8 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "feed_description": "",
                 "feed_merchant": None,
                 "feed_is_mirror": False,
-                "feed_is_archived": False,
-                "feed_archived_at": None,
+                "feed_is_void": False,
+                "feed_voided_at": None,
             },
             {
                 "entry_id": 1,
@@ -237,14 +233,10 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "status": "posted",
                 "account_id": 1,
                 "account_name": "Chequing",
-                "entry_is_archived": False,
-                "entry_archived_at": None,
                 "dr_amount": Decimal("0.00"),
                 "cr_amount": Decimal("5.50"),
                 "is_cleared": False,
                 "is_reconciled": False,
-                "is_archived": False,
-                "archived_at": None,
                 "reconciliation_id": None,
                 "feed_source": None,
                 "feed_amount": None,
@@ -252,8 +244,8 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "feed_description": "",
                 "feed_merchant": None,
                 "feed_is_mirror": False,
-                "feed_is_archived": False,
-                "feed_archived_at": None,
+                "feed_is_void": False,
+                "feed_voided_at": None,
             },
         ]
         data = write.build_archive_bytes(

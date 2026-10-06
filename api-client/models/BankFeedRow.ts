@@ -121,11 +121,11 @@ export interface BankFeedRow {
      */
     isCleared: boolean;
     /**
-     * Whether transaction is archived
+     * Whether transaction is void (counts toward nothing)
      * @type {boolean}
      * @memberof BankFeedRow
      */
-    isArchived: boolean;
+    isVoid: boolean;
     /**
      * Whether transaction is reconciled
      * @type {boolean}
@@ -212,7 +212,7 @@ export function instanceOfBankFeedRow(value: object): value is BankFeedRow {
     if (!('outflow' in value) || value['outflow'] === undefined) return false;
     if (!('isPending' in value) || value['isPending'] === undefined) return false;
     if (!('isCleared' in value) || value['isCleared'] === undefined) return false;
-    if (!('isArchived' in value) || value['isArchived'] === undefined) return false;
+    if (!('isVoid' in value) || value['isVoid'] === undefined) return false;
     if (!('isReconciled' in value) || value['isReconciled'] === undefined) return false;
     if (!('payee' in value) || value['payee'] === undefined) return false;
     if (!('paymentChannel' in value) || value['paymentChannel'] === undefined) return false;
@@ -248,7 +248,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'outflow': json['outflow'],
         'isPending': json['is_pending'],
         'isCleared': json['is_cleared'],
-        'isArchived': json['is_archived'],
+        'isVoid': json['is_void'],
         'isReconciled': json['is_reconciled'],
         'reconciledStatementDate': json['reconciled_statement_date'] == null ? undefined : (new Date(json['reconciled_statement_date'])),
         'payee': json['payee'],
@@ -286,7 +286,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'outflow': value['outflow'],
         'is_pending': value['isPending'],
         'is_cleared': value['isCleared'],
-        'is_archived': value['isArchived'],
+        'is_void': value['isVoid'],
         'is_reconciled': value['isReconciled'],
         'reconciled_statement_date': value['reconciledStatementDate'] == null ? undefined : ((value['reconciledStatementDate'] as any).toISOString().substring(0,10)),
         'payee': value['payee'],

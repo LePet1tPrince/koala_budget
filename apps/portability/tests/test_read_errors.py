@@ -15,7 +15,7 @@ from django.test import SimpleTestCase
 
 from apps.portability.services import read, write
 from apps.portability.services.schema import FORMAT_VERSION, DocumentError
-from apps.portability.tests.fixtures import build_fixture_tables
+from apps.portability.tests.fixtures import build_fixture_tables, to_pre_void_journal
 
 
 def _archive(accounts=None, journal=None, budget=None):
@@ -132,7 +132,7 @@ class VersionTests(SimpleTestCase):
         zf_in = zipfile.ZipFile(io.BytesIO(data))
         manifest = json.loads(zf_in.read("manifest.json"))
         manifest["format_version"] = 1
-        lines = zf_in.read("journal.csv").decode("utf-8-sig").splitlines()
+        lines = to_pre_void_journal(zf_in.read("journal.csv")).decode("utf-8-sig").splitlines()
         header = lines[0].split(",")
         drop = header.index("reconciliation_id")
         journal_v1 = "\r\n".join(",".join(c for i, c in enumerate(line.split(",")) if i != drop) for line in lines)
@@ -343,10 +343,10 @@ class FeedRowCompletenessTests(SimpleTestCase):
             read.read_archive(_archive(journal=self._journal_with(feed_posted_date=None)))
         self.assertIn("feed_posted_date", str(ctx.exception))
 
-    def test_a_missing_archived_flag_is_still_refused(self):
+    def test_a_missing_void_flag_is_still_refused(self):
         with self.assertRaises(DocumentError) as ctx:
-            read.read_archive(_archive(journal=self._journal_with(feed_is_archived=None)))
-        self.assertIn("feed_is_archived", str(ctx.exception))
+            read.read_archive(_archive(journal=self._journal_with(feed_is_void=None)))
+        self.assertIn("feed_is_void", str(ctx.exception))
 
     def test_a_blank_merchant_name_is_accepted(self):
         # merchant_name IS nullable, so None is the honest value here.

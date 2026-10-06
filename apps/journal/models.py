@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q, Sum
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 
 from apps.books.models import BaseBookModel
@@ -14,20 +15,14 @@ from apps.budget.models import Budget
 def counted_entries(path=""):
     """
     `Q` selecting journal entries that count toward anything: balances, reports,
-    budget actuals, net worth and the ledger.
+    budget actuals, net worth and the ledger -- every entry that is not void.
 
-    An entry does not count when it is voided, or when a bank transaction linked to
-    it is archived -- archiving a row takes it off the books, not just out of the
-    feed. `path` is the lookup from the queried model to the entry: "" on
-    `JournalEntry`, "journal_entry__" on `JournalLine`, "journal_lines__journal_entry__"
-    on `Account` (for use in an aggregate's `filter=`, where a join would fan out --
-    hence an `__in` subquery rather than a reverse-relation lookup).
+    A void bank row always has a void entry (`apps.journal.services.voiding`), so
+    voiding a row in the feed takes its entry off the books through this one test.
+    `path` is the lookup from the queried model to the entry: "" on `JournalEntry`,
+    "journal_entry__" on `JournalLine`, "journal_lines__journal_entry__" on `Account`.
     """
-    bank_transaction = apps.get_model("bank_feed", "BankTransaction")
-    archived_entry_ids = bank_transaction.objects.filter(is_archived=True, journal_entry__isnull=False).values(
-        "journal_entry_id"
-    )
-    return ~Q(**{f"{path}status": JournalEntry.STATUS_VOID}) & ~Q(**{f"{path}id__in": archived_entry_ids})
+    return ~Q(**{f"{path}status": JournalEntry.STATUS_VOID})
 
 
 class JournalEntry(BaseBookModel):
@@ -85,6 +80,12 @@ class JournalEntry(BaseBookModel):
         help_text="Status of the journal entry",
     )
 
+    # A transaction is voided, never archived: `status` is the one "doesn't count"
+    # state, and the flags inherited from BaseModel are removed so there is no
+    # second one to disagree with it.
+    is_archived = None
+    archived_at = None
+
     class Meta:
         ordering = ["-entry_date", "-created_at"]
         verbose_name = "Journal Entry"
@@ -92,6 +93,34 @@ class JournalEntry(BaseBookModel):
 
     def __str__(self):
         return f"JE-{self.id} - {self.entry_date} - {self.description[:50]}"
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        instance._loaded_status = instance.__dict__.get("status")
+        return instance
+
+    def save(self, *args, **kwargs):
+        """
+        Save, and carry a change of void state to every bank row on this entry.
+
+        A row linked to an entry is void exactly when the entry is. Written with
+        `QuerySet.update()`, which skips `BankTransaction.save()` -- the rows are
+        being brought in line with this entry, which is what that save would do.
+        """
+        # A new entry has no rows yet. An instance not read from the database
+        # (no `_loaded_status`) may have changed status unseen, so it syncs too.
+        adding = self._state.adding
+        known = hasattr(self, "_loaded_status")
+        changed = not known or (self._loaded_status == self.STATUS_VOID) != (self.status == self.STATUS_VOID)
+        super().save(*args, **kwargs)
+        self._loaded_status = self.status
+        if not adding and changed:
+            voided = self.status == self.STATUS_VOID
+            bank_transaction = apps.get_model("bank_feed", "BankTransaction")
+            bank_transaction.objects.filter(journal_entry=self).exclude(is_void=voided).update(
+                is_void=voided, voided_at=timezone.now() if voided else None
+            )
 
     def get_absolute_url(self):
         return reverse("journal:journalentry_detail", args=[*self.book.url_args, self.pk])
@@ -182,7 +211,9 @@ class JournalLine(BaseBookModel):
 
     is_cleared = models.BooleanField(default=False, help_text="Whether this line has cleared the bank")
     is_reconciled = models.BooleanField(default=False, help_text="Whether this line has been reconciled")
-    is_archived = models.BooleanField(default=False, help_text="Whether this line has been archived")
+    # Lines are never archived; the entry's status is what takes them out of balances.
+    is_archived = None
+    archived_at = None
 
     # The statement that ticked (draft) or locked (completed) this line. Kept when
     # a line is unreconciled or its statement undone, so the drift check can name

@@ -39,7 +39,6 @@ from apps.reconciliation.services.guards import (
     ReconciledLineError,
     assert_date_change_allowed,
     assert_entry_removable,
-    assert_entry_voidable,
     assert_line_mutable,
 )
 
@@ -166,26 +165,25 @@ def set_status(entry, new_status, *, book):
     """
     Void a transaction, or restore a voided one.
 
-    Restoring goes to `posted`, not `draft`: every path that writes an entry in
-    this app posts it, and a draft is excluded from balances exactly as a void
-    is, so restoring to draft would look like the void had not lifted.
+    Both go through `voiding`, so the entry's bank rows follow it into (or out
+    of) the Bank Feed's Voided view. Restoring goes to `posted`.
     """
+    from . import voiding
+
     if new_status not in (JournalEntry.STATUS_VOID, JournalEntry.STATUS_POSTED):
         raise EditRefused(_("A transaction can only be voided or restored."))
 
-    if entry.status == new_status:
+    if (entry.status == JournalEntry.STATUS_VOID) == (new_status == JournalEntry.STATUS_VOID):
         return entry
 
-    if new_status == JournalEntry.STATUS_VOID:
-        # Voiding drops every line out of every balance, a reconciled one
-        # included -- so it is refused on the same terms as a delete.
-        try:
-            assert_entry_voidable(entry)
-        except ReconciledLineError as exc:
-            raise EditRefused(str(exc)) from exc
-
-    entry.status = new_status
-    entry.save()
+    try:
+        if new_status == JournalEntry.STATUS_VOID:
+            voiding.void(entries=[entry])
+        else:
+            voiding.restore(entries=[entry])
+    except voiding.VoidRefused as exc:
+        raise EditRefused(str(exc)) from exc
+    entry.refresh_from_db()
     return entry
 
 

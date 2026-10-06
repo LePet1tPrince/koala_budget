@@ -16,21 +16,21 @@ const BatchActionBar = ({
   allPayees = [],
   bankFeedAccounts,
   onBulkEdit,
-  onArchive,
-  onUnarchive,
+  onVoid,
+  onRestore,
   onDelete,
   onDuplicate,
   onExport,
   onClearSelection,
   onReconcile,
   onUnreconcile,
-  showArchive = true,
-  showUnarchive = false,
+  showVoid = true,
+  showRestore = false,
   viewMode = 'active',
   selectedAccount = null,
 }) => {
-  // In archived view, only allow unarchive, export, and delete
-  const isArchivedView = viewMode === 'archived';
+  // In the voided view, only allow restore, export, and delete
+  const isVoidedView = viewMode === 'voided';
 
   // Bulk edit modal state
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
@@ -175,7 +175,7 @@ const BatchActionBar = ({
             <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>
           </span>
 
-          {!isArchivedView && selectedAccount && (
+          {!isVoidedView && selectedAccount && (
             <>
               <span className="h-4 w-px bg-base-300" aria-hidden="true" />
               <span className="flex items-center gap-1">
@@ -192,35 +192,35 @@ const BatchActionBar = ({
 
         <div className="mb-1 h-px w-full bg-base-300" aria-hidden="true" />
 
-        {!isArchivedView && (
+        {!isVoidedView && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBulkEditOpen(true)}>
             <Icon name="edit" className="w-4 h-4 shrink-0" />
             {gettext('Bulk Edit')}
           </button>
         )}
 
-        {showArchive && !isArchivedView && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onArchive}>
-            <Icon name="archive" className="w-4 h-4 shrink-0" />
-            {gettext('Archive')}
+        {showVoid && !isVoidedView && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onVoid}>
+            <Icon name="ban" className="w-4 h-4 shrink-0" />
+            {gettext('Void')}
           </button>
         )}
 
-        {showUnarchive && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onUnarchive}>
-            <Icon name="unarchive" className="w-4 h-4 shrink-0" />
-            {gettext('Unarchive')}
+        {showRestore && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onRestore}>
+            <Icon name="rotate-ccw" className="w-4 h-4 shrink-0" />
+            {gettext('Restore')}
           </button>
         )}
 
-        {isArchivedView && (
+        {isVoidedView && (
           <button type="button" className="btn btn-ghost btn-sm text-error" onClick={() => setDeleteDialogOpen(true)}>
             <Icon name="trash" className="w-4 h-4 shrink-0" />
             {gettext('Delete')}
           </button>
         )}
 
-        {!isArchivedView && !anyReconciled && (
+        {!isVoidedView && !anyReconciled && (
           // The tooltip has to sit on a wrapper: a disabled button fires no
           // pointer events, so a tip on the button itself never shows.
           <span
@@ -246,7 +246,7 @@ const BatchActionBar = ({
           </button>
         )}
 
-        {!isArchivedView && !anyReconciled && (
+        {!isVoidedView && !anyReconciled && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={onDuplicate}>
             <Icon name="copy" className="w-4 h-4 shrink-0" />
             {gettext('Duplicate')}

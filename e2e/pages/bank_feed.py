@@ -66,13 +66,13 @@ class BankFeedPage(BasePage):
         self.page.locator("[data-testid='modal-cancel-btn']").click()
 
     def click_filter(self, mode: str):
-        """Click a filter toggle. mode is one of: to-review, reconciled, uncategorized, archived.
+        """Click a filter toggle. mode is one of: to-review, reconciled, uncategorized, voided.
 
-        "archived" is a standalone toggle button; the others live inside the
+        "voided" is a standalone toggle button; the others live inside the
         "Quick Filters" dropdown menu and require opening it first.
         """
-        if mode == "archived":
-            self.page.locator("[data-testid='filter-archived']").click()
+        if mode == "voided":
+            self.page.locator("[data-testid='filter-voided']").click()
         else:
             self.page.locator("[data-testid='quick-filters-btn']").click()
             self.page.locator(f"[data-testid='filter-{mode}']").click()
@@ -144,7 +144,7 @@ class BankFeedPage(BasePage):
 
     def batch_buttons(self) -> list[str]:
         """Labels of every enabled-or-disabled button the bar is showing."""
-        candidates = ["Bulk Edit", "Archive", "Unarchive", "Delete", "Reconcile", "Unreconcile", "Duplicate", "Export"]
+        candidates = ["Bulk Edit", "Void", "Restore", "Delete", "Reconcile", "Unreconcile", "Duplicate", "Export"]
         return [name for name in candidates if self.batch_button(name).count() and self.batch_button(name).is_visible()]
 
     def batch_bar_text(self) -> str:

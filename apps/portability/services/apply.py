@@ -24,6 +24,7 @@ from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.services import voiding
 from apps.reconciliation.models import Reconciliation
 
 from . import export, read, schema, write
@@ -154,7 +155,7 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
     )
 
     report(95, "Checking the numbers")
-    _verify(tables, account_id_map, book)
+    _verify(tables, account_id_map, book, entry_id_map)
 
     result = ApplyResult(
         wipe_counts=wipe_counts,
@@ -414,7 +415,7 @@ def _insert_bank_transactions(book, journal_rows, uncategorized_rows, account_id
 # --- the integrity gate (§6) -------------------------------------------
 
 
-def _verify(tables: read.Tables, account_id_map: dict[int, int], book) -> None:
+def _verify(tables: read.Tables, account_id_map: dict[int, int], book, entry_id_map: dict[int, int]) -> None:
     """
     Recompute `checks` from the destination and compare against what the file
     said before anything was deleted. Any mismatch raises -- which, inside
@@ -422,13 +423,34 @@ def _verify(tables: read.Tables, account_id_map: dict[int, int], book) -> None:
     included. Money is compared as the canonical strings `schema.py` already
     produces, so this is a plain equality, not a tolerance.
     """
+    # One void state (apps.journal.services.voiding): a bank row is void exactly
+    # when its entry is. The writes above are bulk inserts, which skip the models'
+    # own enforcement, so check it here.
+    if voiding.inconsistent_rows(book).exists():
+        raise ApplyError(
+            "The import did not verify (a bank transaction's void state disagreed with its entry's). Nothing was "
+            "changed -- the whole import ran in one transaction and it has been rolled back."
+        )
+
     expected = tables.manifest.checks
     if not expected:
         # An archive built without checks (e.g. a hand-assembled test file)
         # has nothing to verify against; nothing to compare is not a failure.
         return
 
-    actual = export.build_checks(book)
+    # An archive from before one void state (format < 6) had entries that sat
+    # behind an archived bank row while still `posted`; its checks count them.
+    # The upgrade voided them, so count them back in -- and its "archived" feed
+    # count becomes "voided", plus the rows the upgrade voided with them.
+    upgraded = tables.void_upgrade
+    if upgraded is not None:
+        actual = export.build_checks(book, count_entry_ids={entry_id_map[i] for i in upgraded["entry_ids"]})
+        feed = dict(expected.get("feed_counts") or {})
+        if "archived" in feed:
+            feed["voided"] = feed.pop("archived") + upgraded["rows"]
+        expected = {**expected, "feed_counts": feed}
+    else:
+        actual = export.build_checks(book)
 
     _require_equal("trial_balance", expected.get("trial_balance"), actual["trial_balance"])
     _require_equal("net_worth", expected.get("net_worth"), actual["net_worth"])

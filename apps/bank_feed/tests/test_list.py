@@ -208,14 +208,14 @@ class BankFeedListUncategorizedAndQueryCountTest(TestCase):
             amount=Decimal("12.00"),
             source=BankTransaction.SOURCE_CSV,
         )
-        cls.archived = BankTransaction.objects.create(
+        cls.void = BankTransaction.objects.create(
             book=cls.book,
             account=cls.bank,
             posted_date=date(2026, 1, 6),
-            description="Archived",
+            description="Void",
             amount=Decimal("13.00"),
             source=BankTransaction.SOURCE_CSV,
-            is_archived=True,
+            is_void=True,
         )
         cls.categorized = cls._categorized("Filed", [(cls.expenses[0], Decimal("14.00"))])
         cls.split = cls._categorized("Split", [(cls.expenses[1], Decimal("10.00")), (cls.expenses[2], Decimal("5.00"))])
@@ -246,7 +246,7 @@ class BankFeedListUncategorizedAndQueryCountTest(TestCase):
         response = self.client.get(self.url, {"uncategorized": "1"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Not the categorized row, not the split (category null, but filed), not the archived one.
+        # Not the categorized row, not the split (category null, but filed), not the void one.
         self.assertEqual([r["id"] for r in response.data["results"]], [str(self.waiting.id)])
 
     def test_without_the_flag_every_row_is_listed(self):

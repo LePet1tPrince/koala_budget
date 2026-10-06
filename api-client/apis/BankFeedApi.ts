@@ -85,7 +85,7 @@ export interface BankFeedAccountGroupsRequest {
     page?: number;
 }
 
-export interface BankFeedBatchArchiveRequest {
+export interface BankFeedBatchVoidRequest {
     bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
@@ -110,7 +110,7 @@ export interface BankFeedBatchEditRequest {
     patchedBatchEditRequest?: PatchedBatchEditRequest;
 }
 
-export interface BankFeedBatchUnarchiveRequest {
+export interface BankFeedBatchRestoreRequest {
     bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
@@ -281,27 +281,27 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch archive multiple bank transactions. Sets is_archived=True on BankTransaction.
+     * Void bank transactions: they and their journal entries count toward nothing.  A categorized row voids its entry and every row on it (a transfer\'s other leg too); an uncategorized row is voided on its own. All or nothing: a row whose entry holds a reconciled line refuses the batch, naming it.
      */
-    async bankFeedBatchArchiveRaw(requestParameters: BankFeedBatchArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+    async bankFeedBatchVoidRaw(requestParameters: BankFeedBatchVoidRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchArchive().'
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchVoid().'
             );
         }
 
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchArchive().'
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchVoid().'
             );
         }
 
         if (requestParameters['batchIds'] == null) {
             throw new runtime.RequiredError(
                 'batchIds',
-                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchArchive().'
+                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchVoid().'
             );
         }
 
@@ -319,7 +319,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_archive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_void/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -330,14 +330,14 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch archive multiple bank transactions. Sets is_archived=True on BankTransaction.
+     * Void bank transactions: they and their journal entries count toward nothing.  A categorized row voids its entry and every row on it (a transfer\'s other leg too); an uncategorized row is voided on its own. All or nothing: a row whose entry holds a reconciled line refuses the batch, naming it.
      */
-    async bankFeedBatchArchive(requestParameters: BankFeedBatchArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchArchiveRaw(requestParameters, initOverrides);
+    async bankFeedBatchVoid(requestParameters: BankFeedBatchVoidRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchVoidRaw(requestParameters, initOverrides);
     }
 
     /**
-     * Permanently delete multiple archived bank transactions. Also deletes any linked journal entries.
+     * Permanently delete voided bank transactions. Also deletes any linked journal entries.
      */
     async bankFeedBatchDeleteRaw(requestParameters: BankFeedBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['bookSlug'] == null) {
@@ -386,7 +386,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Permanently delete multiple archived bank transactions. Also deletes any linked journal entries.
+     * Permanently delete voided bank transactions. Also deletes any linked journal entries.
      */
     async bankFeedBatchDelete(requestParameters: BankFeedBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedBatchDeleteRaw(requestParameters, initOverrides);
@@ -503,27 +503,27 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch unarchive multiple bank transactions. Sets is_archived=False on BankTransaction.
+     * Restore voided bank transactions, with their entries and their transfers\' other legs.
      */
-    async bankFeedBatchUnarchiveRaw(requestParameters: BankFeedBatchUnarchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+    async bankFeedBatchRestoreRaw(requestParameters: BankFeedBatchRestoreRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchUnarchive().'
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchRestore().'
             );
         }
 
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchUnarchive().'
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchRestore().'
             );
         }
 
         if (requestParameters['batchIds'] == null) {
             throw new runtime.RequiredError(
                 'batchIds',
-                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchUnarchive().'
+                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchRestore().'
             );
         }
 
@@ -541,7 +541,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unarchive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_restore/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -552,10 +552,10 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch unarchive multiple bank transactions. Sets is_archived=False on BankTransaction.
+     * Restore voided bank transactions, with their entries and their transfers\' other legs.
      */
-    async bankFeedBatchUnarchive(requestParameters: BankFeedBatchUnarchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchUnarchiveRaw(requestParameters, initOverrides);
+    async bankFeedBatchRestore(requestParameters: BankFeedBatchRestoreRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchRestoreRaw(requestParameters, initOverrides);
     }
 
     /**

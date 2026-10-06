@@ -1599,9 +1599,9 @@ class TransactionHierarchicalFilterAPITest(TestCase):
         self.assertEqual(response.data["count"], 5)
 
 
-class ArchivedAndVoidedEntriesExcludedTest(TestCase):
+class VoidedEntriesExcludedTest(TestCase):
     """
-    Voided entries and entries behind an archived bank transaction count toward
+    Voided entries -- including those voided from the bank feed -- count toward
     nothing: account balances, reconciled balances, reports, budget actuals, net
     worth, and the transactions ledger.
     """
@@ -1620,7 +1620,7 @@ class ArchivedAndVoidedEntriesExcludedTest(TestCase):
         cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=expense_group)
         cls.day = date(2026, 8, 10)
 
-        def spend(amount, description, *, status_=JournalEntry.STATUS_POSTED, archived=False):
+        def spend(amount, description, *, status_=JournalEntry.STATUS_POSTED):
             entry = JournalEntry.objects.create(
                 book=cls.book, entry_date=cls.day, description=description, status=status_
             )
@@ -1637,11 +1637,11 @@ class ArchivedAndVoidedEntriesExcludedTest(TestCase):
                 posted_date=cls.day,
                 description=description,
                 journal_entry=entry,
-                is_archived=archived,
             )
 
         spend("10.00", "Kept")
-        spend("500.00", "Archived", archived=True)
+        # Voided from the bank feed: the row and its entry are void together.
+        spend("500.00", "Voided in the feed", status_=JournalEntry.STATUS_VOID)
         spend("7000.00", "Voided", status_=JournalEntry.STATUS_VOID)
 
     def test_account_balances(self):

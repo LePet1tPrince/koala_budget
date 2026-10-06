@@ -40,6 +40,7 @@ from .schema import (
     BUDGET_FILE,
     BUDGET_ROW_KINDS,
     COLUMNS_ADDED_IN,
+    COLUMNS_RETIRED_IN,
     DATA_FILES,
     ENTRY_SOURCES,
     ENTRY_STATUSES,
@@ -55,6 +56,7 @@ from .schema import (
     RECONCILIATION_STATUSES,
     RECONCILIATIONS_FILE,
     UNCATEGORIZED_STATUS,
+    Column,
     DocumentError,
     decode_cell,
 )
@@ -67,8 +69,6 @@ _REPEATED_ENTRY_COLUMNS = (
     "description",
     "source",
     "status",
-    "entry_is_archived",
-    "entry_archived_at",
 )
 
 # feed_* columns that must be present together whenever a line has a feed row
@@ -92,7 +92,7 @@ _REPEATED_ENTRY_COLUMNS = (
 # KIND_STR_OR_NONE, so an empty description decoded to None and this check
 # rejected it as missing -- making the exporter capable of producing an
 # archive its own importer refused. See BANK_TRANSACTION in schema.py.
-_REQUIRED_WITH_FEED_SOURCE = ("feed_amount", "feed_posted_date", "feed_is_archived")
+_REQUIRED_WITH_FEED_SOURCE = ("feed_amount", "feed_posted_date", "feed_is_void")
 
 ZERO = Decimal("0")
 
@@ -119,6 +119,10 @@ class Tables:
     # Non-fatal: a per-file sha256 in the manifest did not match the file's
     # actual contents (§3.1) -- shown to the user, does not block the import.
     hash_warnings: list = field(default_factory=list)
+    # What `upgrade_5_to_6` voided to bring an older archive's void state into
+    # line, so the integrity gate can compare against the manifest it was
+    # written with (`apply._verify`). None for a current archive.
+    void_upgrade: dict | None = None
 
 
 def read_archive(data: bytes) -> Tables:
@@ -182,14 +186,25 @@ def read_archive(data: bytes) -> Tables:
         reconciliations=reconciliations,
         goal_links=goal_links,
         hash_warnings=hash_warnings,
+        void_upgrade=parsed.get("void_upgrade"),
     )
 
 
 def _columns_for(filename: str, version: int) -> tuple:
-    """The columns an archive of `version` has for `filename` -- later ones are `upgrade.py`'s to fill."""
-    return tuple(
+    """
+    The columns an archive of `version` has for `filename`: current ones it
+    already had, plus ones dropped since. Later columns are `upgrade.py`'s to
+    fill, and dropped ones are its to translate.
+    """
+    current = tuple(
         column for column in FILE_COLUMNS[filename] if COLUMNS_ADDED_IN.get((filename, column.name), 1) <= version
     )
+    retired = tuple(
+        Column(name, kind)
+        for (file, name), (kind, retired_in) in COLUMNS_RETIRED_IN.items()
+        if file == filename and retired_in > version
+    )
+    return current + retired
 
 
 # --- manifest ----------------------------------------------------------

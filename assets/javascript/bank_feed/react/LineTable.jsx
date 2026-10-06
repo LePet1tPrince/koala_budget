@@ -135,9 +135,9 @@ const LineTable = ({
 
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
 
-  // Archived is its own view, separate from the quick filters below
-  const [showArchived, setShowArchived] = useState(false);
-  // Quick filters: independently toggleable, applied only outside the archived view.
+  // Voided is its own view, separate from the quick filters below
+  const [showVoided, setShowVoided] = useState(false);
+  // Quick filters: independently toggleable, applied only outside the voided view.
   const [quickFilters, setQuickFilters] = useState(NO_QUICK_FILTERS);
 
   // The feed row whose possible-transfer panel is open (one at a time)
@@ -185,16 +185,16 @@ const LineTable = ({
   };
   const activeQuickFilterCount = Object.values(quickFilters).filter(Boolean).length;
 
-  // Clear selection and notify parent when switching between the active and archived views
+  // Clear selection and notify parent when switching between the active and voided views
   useEffect(() => {
     setLastCheckedId(null);
     if (onSelectionChange) {
       onSelectionChange(new Set());
     }
     if (onFilterModeChange) {
-      onFilterModeChange(showArchived ? 'archived' : 'active');
+      onFilterModeChange(showVoided ? 'voided' : 'active');
     }
-  }, [showArchived]);
+  }, [showVoided]);
 
   // Clear selection when quick filters change so the batch bar doesn't act on rows that scrolled out of view
   useEffect(() => {
@@ -241,20 +241,20 @@ const LineTable = ({
     }
   };
 
-  // Filter lines by selected date range, view (active/archived), and quick filters
+  // Filter lines by selected date range, view (active/voided), and quick filters
   const filteredLines = useMemo(() => {
     if (!Array.isArray(lines)) return [];
     let filtered = lines;
 
     // Handle both camelCase (from generated API client) and snake_case (raw API)
-    const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
+    const isVoid = (l) => l.isVoid ?? l.is_void ?? false;
     const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
 
-    if (showArchived) {
-      filtered = filtered.filter((l) => isArchived(l));
+    if (showVoided) {
+      filtered = filtered.filter((l) => isVoid(l));
     } else {
-      // Default: everything not archived, regardless of categorized/reconciled state
-      filtered = filtered.filter((l) => !isArchived(l));
+      // Default: everything not void, regardless of categorized/reconciled state
+      filtered = filtered.filter((l) => !isVoid(l));
       if (quickFilters.toReview) {
         filtered = filtered.filter((l) => !isReconciled(l));
       } else if (quickFilters.reconciled) {
@@ -283,18 +283,18 @@ const LineTable = ({
     }
 
     return filtered;
-  }, [lines, filterStart, filterEnd, showArchived, quickFilters, matchByTxId]);
+  }, [lines, filterStart, filterEnd, showVoided, quickFilters, matchByTxId]);
 
   // Counts (independent of the active filter/date range) for the badges shown
-  // on the Quick Filters menu items and the Archived button
+  // on the Quick Filters menu items and the Voided button
   const filterCounts = useMemo(() => {
-    if (!Array.isArray(lines)) return { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0, transfers: 0 };
-    const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
+    if (!Array.isArray(lines)) return { to_review: 0, reconciled: 0, voided: 0, uncategorized: 0, transfers: 0 };
+    const isVoid = (l) => l.isVoid ?? l.is_void ?? false;
     const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
     return lines.reduce(
       (acc, l) => {
-        if (isArchived(l)) {
-          acc.archived += 1;
+        if (isVoid(l)) {
+          acc.voided += 1;
           return acc;
         }
         if (isReconciled(l)) {
@@ -310,7 +310,7 @@ const LineTable = ({
         }
         return acc;
       },
-      { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0, transfers: 0 }
+      { to_review: 0, reconciled: 0, voided: 0, uncategorized: 0, transfers: 0 }
     );
   }, [lines, matchByTxId]);
 
@@ -333,17 +333,17 @@ const LineTable = ({
   const pageRows = sortedLines.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
   // Back to the first page when what is being looked at changes -- not when the
-  // row count does, or every categorize or archive would throw the user off the
+  // row count does, or every categorize or void would throw the user off the
   // page they are working through. `safePage` clamps a page that shrank.
   useEffect(() => {
     setPage(0);
-  }, [filterStart, filterEnd, showArchived, quickFilters, pageSize, selectedAccount?.id]);
+  }, [filterStart, filterEnd, showVoided, quickFilters, pageSize, selectedAccount?.id]);
 
   // Arriving from the other side of a transfer: the counterpart row is the one
   // carrying the same journal entry id (or, for a possible-transfer leg that has
   // no entry yet, the same bank transaction id). It only exists once the new
   // account's lines have loaded, hence the dependency on `lines`. It may also be
-  // archived or hidden by a filter, so clear whatever would keep it off screen --
+  // void or hidden by a filter, so clear whatever would keep it off screen --
   // unless the request asks to keep the filters (the flash after a match is a
   // courtesy, not worth undoing the user's view for).
   useEffect(() => {
@@ -359,7 +359,7 @@ const LineTable = ({
       if (sortedLines.some((l) => l.id === target.id)) setPendingFocusId(target.id);
       return;
     }
-    setShowArchived(target.isArchived ?? target.is_archived ?? false);
+    setShowVoided(target.isVoid ?? target.is_void ?? false);
     setQuickFilters(NO_QUICK_FILTERS);
     setFilterStart('');
     setFilterEnd('');
@@ -446,7 +446,7 @@ const LineTable = ({
   return (
     <div style={hidden ? { display: 'none' } : undefined}>
       <div className="space-y-4">
-        {/* Toolbar: quick filters, archived view, date filter, and actions */}
+        {/* Toolbar: quick filters, voided view, date filter, and actions */}
         <div className="flex flex-wrap items-center gap-2">
           <Dropdown
             open={quickFiltersOpen}
@@ -455,7 +455,7 @@ const LineTable = ({
               <button
                 type="button"
                 className={`btn btn-sm ${activeQuickFilterCount > 0 ? 'btn-primary' : 'btn-outline'}`}
-                disabled={showArchived}
+                disabled={showVoided}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 onClick={toggle}
@@ -521,13 +521,13 @@ const LineTable = ({
 
           <button
             type="button"
-            className={`btn btn-sm ${showArchived ? 'btn-neutral' : 'btn-outline'}`}
-            onClick={() => setShowArchived((v) => !v)}
-            aria-pressed={showArchived}
-            data-testid="filter-archived"
+            className={`btn btn-sm ${showVoided ? 'btn-neutral' : 'btn-outline'}`}
+            onClick={() => setShowVoided((v) => !v)}
+            aria-pressed={showVoided}
+            data-testid="filter-voided"
           >
-            {gettext('Archived')}
-            <span className="badge badge-sm badge-ghost">{filterCounts.archived}</span>
+            {gettext('Voided')}
+            <span className="badge badge-sm badge-ghost">{filterCounts.voided}</span>
           </button>
 
           <div className="mx-1 h-6 w-px bg-base-300" />
@@ -649,16 +649,16 @@ const LineTable = ({
               </thead>
               <tbody ref={tableBodyRef}>
                 {pageRows.map((row) => {
-                  // Uncategorized rows are muted outside the archived view. This was a
+                  // Uncategorized rows are muted outside the voided view. This was a
                   // hardcoded #9CA3AF, which did not follow the theme.
-                  const muted = !showArchived && !isCategorized(row);
+                  const muted = !showVoided && !isCategorized(row);
                   const reconciled = row.isReconciled ?? row.is_reconciled ?? false;
                   // A row categorized to another feed account is a transfer: the
                   // same journal entry also has a row in that account's feed.
                   const isTransfer = !!row.category && feedAccountIds.has(row.category.id) && !!row.journalEntryId;
-                  // A possible duplicate transfer: the archived view never has one
-                  // (archived rows aren't candidates), so no chip there.
-                  const match = showArchived ? null : matchFor(matchByTxId, row);
+                  // A possible duplicate transfer: the voided view never has one
+                  // (void rows aren't candidates), so no chip there.
+                  const match = showVoided ? null : matchFor(matchByTxId, row);
                   const matchOpen = !!match && openMatchId === row.id;
                   const panelId = `transfer-match-panel-${row.id}`;
                   const saving = pendingIds.has(row.id);

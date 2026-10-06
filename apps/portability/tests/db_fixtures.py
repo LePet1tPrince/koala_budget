@@ -179,7 +179,7 @@ def build_db_fixture_team(name: str = "Fixture Team", slug: str = "fixture-team"
     JournalLine.objects.create(book=book, journal_entry=entry5, account=chequing, dr_amount=Decimal("20.00"))
     JournalLine.objects.create(book=book, journal_entry=entry5, account=groceries, cr_amount=Decimal("20.00"))
 
-    # An entry with one archived line.
+    # A bank-matched entry with a feed row on its bank line.
     entry6 = JournalEntry.objects.create(
         book=book,
         entry_date=date(2026, 1, 15),
@@ -188,9 +188,7 @@ def build_db_fixture_team(name: str = "Fixture Team", slug: str = "fixture-team"
         source=JournalEntry.SOURCE_BANK_MATCH,
         status=JournalEntry.STATUS_POSTED,
     )
-    JournalLine.objects.create(
-        book=book, journal_entry=entry6, account=groceries, dr_amount=Decimal("15.00"), is_archived=True
-    )
+    JournalLine.objects.create(book=book, journal_entry=entry6, account=groceries, dr_amount=Decimal("15.00"))
     JournalLine.objects.create(book=book, journal_entry=entry6, account=chequing, cr_amount=Decimal("15.00"))
     BankTransaction.objects.create(
         book=book,

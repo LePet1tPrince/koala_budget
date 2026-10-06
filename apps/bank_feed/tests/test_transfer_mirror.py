@@ -25,6 +25,7 @@ from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.transfer_detection import find_transfer_candidates
 from apps.books.context import current_book
 from apps.journal.models import JournalEntry
+from apps.journal.services import voiding
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -192,9 +193,8 @@ class TransferMirrorTest(TestCase):
         entry_id = tx.journal_entry_id
         mirror = self._mirror_of(tx.journal_entry)
 
-        # Archive then delete the primary leg.
-        tx.is_archived = True
-        tx.save(update_fields=["is_archived"])
+        # Void then delete the primary leg.
+        voiding.void(rows=[tx])
         url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_delete/"
         with current_book(self.book):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
@@ -280,62 +280,60 @@ class TransferMirrorTest(TestCase):
         self.assertEqual(tx.account_id, self.checking.id)
         self.assertTrue(BankTransaction.objects.filter(id=mirror.id).exists())
 
-    def test_archiving_primary_archives_mirror(self):
+    def test_voiding_primary_voids_mirror_and_entry(self):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
         mirror = self._mirror_of(tx.journal_entry)
 
-        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_void/"
         with current_book(self.book):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
         tx.refresh_from_db()
         mirror.refresh_from_db()
-        self.assertTrue(tx.is_archived)
-        self.assertTrue(mirror.is_archived)
+        self.assertTrue(tx.is_void)
+        self.assertTrue(mirror.is_void)
+        self.assertEqual(tx.journal_entry.status, JournalEntry.STATUS_VOID)
 
-    def test_archiving_mirror_archives_primary(self):
+    def test_voiding_mirror_voids_primary(self):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
         mirror = self._mirror_of(tx.journal_entry)
 
-        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_void/"
         with current_book(self.book):
             resp = self.client.post(url, {"ids": [mirror.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
         tx.refresh_from_db()
         mirror.refresh_from_db()
-        self.assertTrue(tx.is_archived)
-        self.assertTrue(mirror.is_archived)
+        self.assertTrue(tx.is_void)
+        self.assertTrue(mirror.is_void)
 
-    def test_unarchiving_one_leg_unarchives_the_other(self):
+    def test_restoring_one_leg_restores_the_other(self):
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
         mirror = self._mirror_of(tx.journal_entry)
-        tx.is_archived = True
-        tx.save(update_fields=["is_archived"])
-        mirror.is_archived = True
-        mirror.save(update_fields=["is_archived"])
+        voiding.void(rows=[tx])
 
-        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_unarchive/"
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_restore/"
         with current_book(self.book):
             resp = self.client.post(url, {"ids": [mirror.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
         tx.refresh_from_db()
         mirror.refresh_from_db()
-        self.assertFalse(tx.is_archived)
-        self.assertFalse(mirror.is_archived)
+        self.assertFalse(tx.is_void)
+        self.assertFalse(mirror.is_void)
 
-    def test_archiving_primary_with_reconciled_mirror_is_rejected(self):
-        # The two legs archive together and a reconciled leg must never be
-        # archived — so archiving the primary while the mirror is reconciled is
-        # refused outright (instead of archiving one leg and stranding the other).
+    def test_voiding_primary_with_reconciled_mirror_is_rejected(self):
+        # The two legs void together and a reconciled leg must never be
+        # voided — so voiding the primary while the mirror is reconciled is
+        # refused outright (instead of voiding one leg and stranding the other).
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
         tx.refresh_from_db()
@@ -344,7 +342,7 @@ class TransferMirrorTest(TestCase):
         cc_line.is_reconciled = True
         cc_line.save(update_fields=["is_reconciled"])
 
-        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_void/"
         with current_book(self.book):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
@@ -352,11 +350,11 @@ class TransferMirrorTest(TestCase):
 
         tx.refresh_from_db()
         mirror.refresh_from_db()
-        self.assertFalse(tx.is_archived)
-        self.assertFalse(mirror.is_archived)
+        self.assertFalse(tx.is_void)
+        self.assertFalse(mirror.is_void)
 
-    def test_archiving_reconciled_leg_of_transfer_is_rejected(self):
-        # Archiving the reconciled leg itself is refused with an explicit error
+    def test_voiding_reconciled_leg_of_transfer_is_rejected(self):
+        # Voiding the reconciled leg itself is refused with an explicit error
         # (not silently skipped) so the user knows to unreconcile first.
         tx = self._tx(self.checking, "100.00")
         self._categorize(tx, self.credit_card)
@@ -366,7 +364,7 @@ class TransferMirrorTest(TestCase):
         checking_line.is_reconciled = True
         checking_line.save(update_fields=["is_reconciled"])
 
-        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_void/"
         with current_book(self.book):
             resp = self.client.post(url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
@@ -374,11 +372,11 @@ class TransferMirrorTest(TestCase):
 
         tx.refresh_from_db()
         mirror.refresh_from_db()
-        self.assertFalse(tx.is_archived)
-        self.assertFalse(mirror.is_archived)
+        self.assertFalse(tx.is_void)
+        self.assertFalse(mirror.is_void)
 
     def test_blocked_transfer_rejects_whole_batch(self):
-        # A batch containing a blocked transfer archives nothing — all-or-nothing
+        # A batch containing a blocked transfer voids nothing — all-or-nothing
         # so the user isn't left guessing which rows went through.
         blocked = self._tx(self.checking, "100.00")
         self._categorize(blocked, self.credit_card)
@@ -389,15 +387,15 @@ class TransferMirrorTest(TestCase):
 
         plain = self._tx(self.checking, "25.00")
 
-        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_archive/"
+        url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_void/"
         with current_book(self.book):
             resp = self.client.post(url, {"ids": [plain.id, blocked.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
         plain.refresh_from_db()
         blocked.refresh_from_db()
-        self.assertFalse(plain.is_archived)
-        self.assertFalse(blocked.is_archived)
+        self.assertFalse(plain.is_void)
+        self.assertFalse(blocked.is_void)
 
     def test_detector_does_not_flag_the_two_legs(self):
         tx = self._tx(self.checking, "100.00")

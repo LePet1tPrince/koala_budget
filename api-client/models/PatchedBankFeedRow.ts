@@ -121,11 +121,11 @@ export interface PatchedBankFeedRow {
      */
     isCleared?: boolean;
     /**
-     * Whether transaction is archived
+     * Whether transaction is void (counts toward nothing)
      * @type {boolean}
      * @memberof PatchedBankFeedRow
      */
-    isArchived?: boolean;
+    isVoid?: boolean;
     /**
      * Whether transaction is reconciled
      * @type {boolean}
@@ -225,7 +225,7 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'outflow': json['outflow'] == null ? undefined : json['outflow'],
         'isPending': json['is_pending'] == null ? undefined : json['is_pending'],
         'isCleared': json['is_cleared'] == null ? undefined : json['is_cleared'],
-        'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
+        'isVoid': json['is_void'] == null ? undefined : json['is_void'],
         'isReconciled': json['is_reconciled'] == null ? undefined : json['is_reconciled'],
         'reconciledStatementDate': json['reconciled_statement_date'] == null ? undefined : (new Date(json['reconciled_statement_date'])),
         'payee': json['payee'] == null ? undefined : json['payee'],
@@ -263,7 +263,7 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'outflow': value['outflow'],
         'is_pending': value['isPending'],
         'is_cleared': value['isCleared'],
-        'is_archived': value['isArchived'],
+        'is_void': value['isVoid'],
         'is_reconciled': value['isReconciled'],
         'reconciled_statement_date': value['reconciledStatementDate'] == null ? undefined : ((value['reconciledStatementDate'] as any).toISOString().substring(0,10)),
         'payee': value['payee'],
