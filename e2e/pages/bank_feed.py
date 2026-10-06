@@ -265,6 +265,14 @@ class BankFeedPage(BasePage):
         self.page.wait_for_selector("[data-testid='edit-transaction-modal']", state="detached", timeout=10_000)
         self.wait_for_saves()
 
+    def wait_for_all_rows(self):
+        """Wait for the older pages of a long feed, which load behind the table."""
+        self.page.wait_for_selector("[data-testid='feed-loading-more']", state="detached", timeout=20_000)
+
+    def pager_total(self) -> int:
+        """The row count the pager reports ("1–10 of 450" -> 450)."""
+        return int(self.page.locator("[data-testid='pager-range']").inner_text().rsplit(" ", 1)[-1])
+
     def wait_for_saves(self):
         """Wait for the feed's background writes to reach the server.
 

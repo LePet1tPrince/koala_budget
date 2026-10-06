@@ -274,8 +274,11 @@ class BankFeedViewSet(
             BankTransaction.objects.filter(
                 book=self.request.book,
             )
+            # Every account a row serializes (its own, its category, a mirror's
+            # primary) reads `account_group` for its name and type: load it here,
+            # or each row costs a query of its own.
             .select_related(
-                "account",
+                "account__account_group",
                 "account__institution",
                 "journal_entry",
                 "plaid_transaction",
@@ -283,9 +286,11 @@ class BankFeedViewSet(
                 "plaid_transaction__plaid_account__account",
             )
             .prefetch_related(
+                "journal_entry__lines__account__account_group",
                 "journal_entry__lines__account__institution",
                 "journal_entry__lines__reconciliation",
-                "journal_entry__bank_feed_transactions__account",
+                "journal_entry__bank_feed_transactions__account__account_group",
+                "journal_entry__bank_feed_transactions__account__institution",
             )
         )
 
@@ -293,6 +298,11 @@ class BankFeedViewSet(
         account_id = self.request.query_params.get("account")
         if account_id:
             queryset = queryset.filter(account_id=account_id)
+
+        # Only what is waiting to be categorized -- the same set the Inbox badge
+        # counts. Categorize mode asks for this rather than walking the whole feed.
+        if self.request.query_params.get("uncategorized") in ("1", "true"):
+            queryset = queryset.filter(journal_entry__isnull=True, is_archived=False)
 
         return queryset
 
@@ -397,6 +407,7 @@ class BankFeedViewSet(
         Get unified bank feed, optionally filtered by account.
         Query params:
         - account: Account ID to filter by (optional)
+        - uncategorized: "1" for only uncategorized, unarchived rows (optional)
         - page: Page number (optional)
         """
         # Model Meta ordering (-posted_date, -created_at) gives most-recent-first

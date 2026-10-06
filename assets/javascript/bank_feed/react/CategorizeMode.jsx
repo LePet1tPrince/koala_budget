@@ -987,16 +987,14 @@ export default function CategorizeMode({
     setLoading(true);
     try {
       let allRows = [];
-      let url = `${book.base}bankfeed/api/feed/`;
+      // The server narrows to uncategorized rows; walking the whole feed to
+      // filter it here cost one request per 200 rows of history.
+      let url = `${book.base}bankfeed/api/feed/?uncategorized=1`;
       while (url) {
         const resp = await fetch(url, { credentials: 'include', headers });
+        if (!resp.ok) throw new Error(`Feed request failed: ${resp.status}`);
         const data = await resp.json();
-        // A split reports `category: null` because it has several, not none —
-        // the same shape an uncategorized row has. Without the `is_split` test
-        // a transaction split here would come straight back into the queue on
-        // the next visit, asking to be categorized again.
-        const rows = (data.results || []).filter(r => r.category === null && !r.is_split && !r.is_archived);
-        allRows = allRows.concat(rows);
+        allRows = allRows.concat(data.results || []);
         url = data.next || null;
       }
       setTransactions(allRows);
