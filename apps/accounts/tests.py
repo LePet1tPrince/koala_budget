@@ -22,6 +22,7 @@ from .models import (
     ACCOUNT_TYPE_ASSET,
     ACCOUNT_TYPE_EQUITY,
     ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_TYPE_INCOME,
     Account,
     AccountGroup,
     Payee,
@@ -1042,49 +1043,73 @@ class AccountsBoardApiTest(TestCase):
         response = self._post("api_create_group", {"name": "Bank Accounts", "account_type": ACCOUNT_TYPE_ASSET})
         self.assertEqual(response.status_code, 400)
 
-    def test_set_feed_turns_inbox_off_and_on(self):
-        self.checking.has_feed = True
-        self.checking.save()
-        response = self._post("api_set_feed", {"account_id": self.checking.pk, "has_feed": False})
-        self.assertEqual(response.status_code, 200)
-        self.checking.refresh_from_db()
-        self.assertFalse(self.checking.has_feed)
+    def test_set_hidden_hides_and_shows_any_account(self):
+        for account in (self.checking, self.groceries):
+            response = self._post("api_set_hidden", {"account_id": account.pk, "is_hidden": True})
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()["isHidden"])
+            account.refresh_from_db()
+            self.assertTrue(account.is_hidden)
 
-        response = self._post("api_set_feed", {"account_id": self.checking.pk, "has_feed": True})
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["hasFeed"])
-        self.checking.refresh_from_db()
-        self.assertTrue(self.checking.has_feed)
+            response = self._post("api_set_hidden", {"account_id": account.pk, "is_hidden": False})
+            self.assertEqual(response.status_code, 200)
+            account.refresh_from_db()
+            self.assertFalse(account.is_hidden)
 
-    def test_set_feed_refuses_expense_account(self):
-        response = self._post("api_set_feed", {"account_id": self.groceries.pk, "has_feed": True})
-        self.assertEqual(response.status_code, 400)
-        self.groceries.refresh_from_db()
-        self.assertFalse(self.groceries.has_feed)
-
-    def test_set_feed_rejects_bad_body_and_other_books_account(self):
+    def test_set_hidden_rejects_bad_body_and_other_books_account(self):
         self.assertEqual(
-            self._post("api_set_feed", {"account_id": self.checking.pk, "has_feed": "no"}).status_code, 400
+            self._post("api_set_hidden", {"account_id": self.checking.pk, "is_hidden": "yes"}).status_code, 400
         )
-        other = Account.objects.create(
-            book=self.other_book, name="Theirs", account_group=self.other_group, has_feed=True
-        )
-        response = self._post("api_set_feed", {"account_id": other.pk, "has_feed": False})
+        other = Account.objects.create(book=self.other_book, name="Theirs", account_group=self.other_group)
+        response = self._post("api_set_hidden", {"account_id": other.pk, "is_hidden": True})
         self.assertEqual(response.status_code, 400)
         other.refresh_from_db()
-        self.assertTrue(other.has_feed)
+        self.assertFalse(other.is_hidden)
 
-    def test_set_feed_requires_membership(self):
+    def test_set_hidden_requires_membership(self):
         self.client.login(username="other@example.com", password="testpass123")
-        response = self._post("api_set_feed", {"account_id": self.checking.pk, "has_feed": True})
+        response = self._post("api_set_hidden", {"account_id": self.checking.pk, "is_hidden": True})
         self.assertEqual(response.status_code, 404)
+        self.checking.refresh_from_db()
+        self.assertFalse(self.checking.is_hidden)
 
-    def test_board_props_mark_feedable_accounts(self):
+    def _board_rows(self):
         url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         types = self.client.get(url).context["manage_props"]["types"]
-        rows = {a["name"]: a for t in types for g in t["groups"] for a in g["accounts"]}
-        self.assertTrue(rows["Checking"]["canHaveFeed"])
-        self.assertFalse(rows["Groceries"]["canHaveFeed"])
+        return {a["name"]: a for t in types for g in t["groups"] for a in g["accounts"]}
+
+    def test_board_props_carry_hidden_state(self):
+        self.groceries.is_hidden = True
+        self.groceries.save()
+        rows = self._board_rows()
+        self.assertTrue(rows["Groceries"]["isHidden"])
+        self.assertFalse(rows["Checking"]["isHidden"])
+
+    def test_board_shows_income_balance_positive(self):
+        income_group = AccountGroup.objects.create(book=self.book, name="Earnings", account_type=ACCOUNT_TYPE_INCOME)
+        salary = Account.objects.create(book=self.book, name="Salary", account_group=income_group)
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2026, 3, 1), description="Pay")
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=self.checking, dr_amount=Decimal("500"))
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=salary, cr_amount=Decimal("500"))
+        rows = self._board_rows()
+        self.assertEqual(Decimal(rows["Salary"]["balance"]), Decimal("500"))
+        self.assertEqual(Decimal(rows["Checking"]["balance"]), Decimal("500"))
+
+    def test_hidden_account_leaves_the_inbox_and_pickers(self):
+        from apps.budget.services import picker_accounts_data
+
+        self.checking.has_feed = True
+        self.checking.save()
+        feed_url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/feed_accounts/"
+        self.assertIn(self.checking.pk, [a["id"] for a in self.client.get(feed_url).json()])
+
+        self.checking.is_hidden = True
+        self.checking.save()
+        self.assertNotIn(self.checking.pk, [a["id"] for a in self.client.get(feed_url).json()])
+        # Pickers are served every account with its flag; the client leaves hidden ones out.
+        flags = {a["id"]: a["is_hidden"] for a in picker_accounts_data(self.book)}
+        self.assertTrue(flags[self.checking.pk])
+        self.assertFalse(flags[self.groceries.pk])
 
     def test_custom_order_flows_into_default_queryset(self):
         """Account.Meta.ordering follows group sort_order then account sort_order."""

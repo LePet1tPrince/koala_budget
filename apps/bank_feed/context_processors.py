@@ -14,7 +14,7 @@ def nav_feed_accounts(request):
     if not book:
         return {}
     feed_accounts = (
-        Account.objects.filter(book=book, has_feed=True)
+        Account.objects.filter(book=book, has_feed=True, is_hidden=False)
         .select_related("account_group", "institution")
         .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
     )
@@ -44,5 +44,6 @@ def inbox_count(request):
             book=book,
             journal_entry__isnull=True,
             is_archived=False,
+            account__is_hidden=False,
         ).count()
     }

@@ -38,6 +38,11 @@ class UpgradeChainTests(SimpleTestCase):
         result = upgrade.upgrade_to_current(tables, from_version=3)
         self.assertFalse(result["accounts"][0]["hidden_from_budget"])
 
+    def test_v5_accounts_arrive_shown(self):
+        tables = {"accounts": [{"name": "Chequing"}], "journal_rows": [], "budget_rows": [], "reconciliations": []}
+        result = upgrade.upgrade_to_current(tables, from_version=5)
+        self.assertFalse(result["accounts"][0]["is_hidden"])
+
     def test_v1_gains_an_empty_statement_table_and_unlinked_lines(self):
         tables = {"accounts": [], "journal_rows": [{"entry_id": 1}], "budget_rows": [], "reconciliations": []}
         result = upgrade.upgrade_to_current(tables, from_version=1)

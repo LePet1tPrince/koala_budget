@@ -11,6 +11,7 @@ import {
 import {
   SortableContext,
   arrayMove,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   useSortable,
@@ -18,7 +19,36 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import Cookies from 'js-cookie';
 
+import Icon from '../../common/Icon';
 import { formatCurrency } from '../../utilities/currency';
+
+// Tabs over the type sections: one account type on screen at a time. Goals
+// also shows plain equity, which is the same stored type.
+const TABS = [
+  { key: 'asset', label: gettext('Assets'), sections: ['asset'] },
+  { key: 'liability', label: gettext('Liabilities'), sections: ['liability'] },
+  { key: 'income', label: gettext('Income'), sections: ['income'] },
+  { key: 'expense', label: gettext('Expenses'), sections: ['expense'] },
+  { key: 'goal', label: gettext('Goals'), sections: ['goal', 'equity'] },
+];
+const TAB_STORAGE_KEY = 'accounts-board-tab';
+
+function readStoredTab() {
+  try {
+    const stored = window.localStorage.getItem(TAB_STORAGE_KEY);
+    return TABS.some((t) => t.key === stored) ? stored : TABS[0].key;
+  } catch {
+    return TABS[0].key;
+  }
+}
+
+function storeTab(key) {
+  try {
+    window.localStorage.setItem(TAB_STORAGE_KEY, key);
+  } catch {
+    // storage unavailable: the tab just isn't remembered
+  }
+}
 
 // ---------------------------------------------------------------------------
 // id helpers: dnd-kit ids are strings namespaced by kind
@@ -132,25 +162,33 @@ function InlineCreateForm({ placeholder, onSubmit, onCancel, extraAction }) {
 // ---------------------------------------------------------------------------
 // Account row (sortable)
 // ---------------------------------------------------------------------------
-// Checkbox beside the name: whether the account's bank feed shows in the Inbox.
-function InboxToggle({ account, onToggleFeed }) {
-  const tip = account.hasFeed ? gettext('Shown in the Inbox') : gettext('Hidden from the Inbox');
+// Eye beside the name: a hidden account is left out of account pickers and the Inbox.
+function VisibilityToggle({ account, onToggleHidden }) {
+  const tip = account.isHidden
+    ? gettext('Hidden from account pickers and the Inbox — click to show')
+    : gettext('Shown in account pickers and the Inbox — click to hide');
   return (
     <span className="tooltip tooltip-right shrink-0 flex" data-tip={tip}>
-      <input
-        type="checkbox"
-        className="checkbox checkbox-xs checkbox-primary rounded-sm"
-        checked={account.hasFeed}
-        disabled={!onToggleFeed}
-        onChange={(e) => onToggleFeed(account, e.target.checked)}
-        aria-label={interpolate(gettext('Show %s in the Inbox'), [account.name])}
-        data-testid="account-inbox-toggle"
-      />
+      <button
+        type="button"
+        className={[
+          'rounded p-1 transition-colors hover:bg-base-300 hover:text-base-content',
+          account.isHidden ? 'text-base-content/70' : 'text-base-content/40',
+        ].join(' ')}
+        disabled={!onToggleHidden}
+        onClick={() => onToggleHidden(account, !account.isHidden)}
+        aria-pressed={account.isHidden}
+        aria-label={interpolate(gettext('Hide %s'), [account.name])}
+        data-testid="account-visibility-toggle"
+        data-hidden={account.isHidden ? 'true' : 'false'}
+      >
+        <Icon name={account.isHidden ? 'eye-off' : 'eye'} className="block w-4 h-4" />
+      </button>
     </span>
   );
 }
 
-function AccountRowContent({ account, dragHandleProps, dragging, overlay, onToggleFeed }) {
+function AccountRowContent({ account, dragHandleProps, dragging, overlay, onToggleHidden }) {
   return (
     <div
       className={[
@@ -173,16 +211,17 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay, onTogg
       >
         <GripIcon />
       </button>
-      {(account.canHaveFeed || account.hasFeed) && (
-        <InboxToggle account={account} onToggleFeed={overlay ? null : onToggleFeed} />
-      )}
-      <div className="min-w-0 flex-1">
+      <VisibilityToggle account={account} onToggleHidden={overlay ? null : onToggleHidden} />
+      <div className={['min-w-0 flex-1', account.isHidden ? 'opacity-60' : ''].join(' ')}>
         <a href={account.url} className="font-medium truncate block hover:link" data-testid="account-name" draggable={false}>
           {account.name}
         </a>
         {account.institution && <div className="text-xs text-base-content/70 truncate">{account.institution}</div>}
       </div>
-      <span className="font-mono text-sm shrink-0 tabular-nums" data-testid="account-balance">
+      <span
+        className={['font-mono text-sm shrink-0 tabular-nums', account.isHidden ? 'opacity-60' : ''].join(' ')}
+        data-testid="account-balance"
+      >
         {formatCurrency(account.balance)}
         {account.isGoal && <span className="ml-1 font-sans text-xs text-base-content/70">{gettext('left')}</span>}
       </span>
@@ -190,7 +229,7 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay, onTogg
   );
 }
 
-function SortableAccountRow({ account, groupId, accountType, onToggleFeed }) {
+function SortableAccountRow({ account, groupId, accountType, onToggleHidden }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: accountDndId(account.id),
     data: { kind: 'account', account, groupId, accountType },
@@ -202,7 +241,7 @@ function SortableAccountRow({ account, groupId, accountType, onToggleFeed }) {
         account={account}
         dragging={isDragging}
         dragHandleProps={{ ...attributes, ...listeners }}
-        onToggleFeed={onToggleFeed}
+        onToggleHidden={onToggleHidden}
       />
     </li>
   );
@@ -218,7 +257,7 @@ function GroupCard({
   newGoalUrl,
   urls,
   onCreateAccount,
-  onToggleFeed,
+  onToggleHidden,
   isDropTarget,
   draggingAccount,
 }) {
@@ -273,7 +312,7 @@ function GroupCard({
               account={account}
               groupId={group.id}
               accountType={accountType}
-              onToggleFeed={onToggleFeed}
+              onToggleHidden={onToggleHidden}
             />
           ))}
           {group.accounts.length === 0 && (
@@ -337,10 +376,11 @@ function TypeSection({
   urls,
   onCreateAccount,
   onCreateGroup,
-  onToggleFeed,
+  onToggleHidden,
   dropTargetGroupId,
   draggingAccount,
   dimmed,
+  showHeading,
 }) {
   const [adding, setAdding] = useState(false);
 
@@ -350,9 +390,11 @@ function TypeSection({
       data-testid="account-type-section"
       data-account-type={section.key}
     >
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-base-content/70 mb-2">{section.label}</h2>
-      <SortableContext items={section.groups.map((g) => groupDndId(g.id))} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col gap-3">
+      {showHeading && (
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-base-content/70 mb-2">{section.label}</h2>
+      )}
+      <SortableContext items={section.groups.map((g) => groupDndId(g.id))} strategy={rectSortingStrategy}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
           {section.groups.map((group) => (
             <GroupCard
               key={group.id}
@@ -362,7 +404,7 @@ function TypeSection({
               newGoalUrl={section.newGoalUrl}
               urls={urls}
               onCreateAccount={onCreateAccount}
-              onToggleFeed={onToggleFeed}
+              onToggleHidden={onToggleHidden}
               isDropTarget={dropTargetGroupId === group.id}
               draggingAccount={draggingAccount}
             />
@@ -658,32 +700,59 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
     showToast(interpolate(gettext('Group "%s" created'), [data.group.name]));
   };
 
-  // ----- Inbox checkbox ------------------------------------------------------
-  const setAccountFeed = (accountId, hasFeed) =>
+  // ----- Eye toggle ----------------------------------------------------------
+  const setAccountHidden = (accountId, isHidden) =>
     setTypes((state) =>
       state.map((section) => ({
         ...section,
         groups: section.groups.map((group) => ({
           ...group,
-          accounts: group.accounts.map((a) => (a.id === accountId ? { ...a, hasFeed } : a)),
+          accounts: group.accounts.map((a) => (a.id === accountId ? { ...a, isHidden } : a)),
         })),
       }))
     );
 
-  const toggleFeed = async (account, hasFeed) => {
-    setAccountFeed(account.id, hasFeed);
+  const toggleHidden = async (account, isHidden) => {
+    setAccountHidden(account.id, isHidden);
     try {
-      await postJson(urls.setFeed, { account_id: account.id, has_feed: hasFeed });
+      await postJson(urls.setHidden, { account_id: account.id, is_hidden: isHidden });
       showToast(
-        interpolate(hasFeed ? gettext('%s now shows in the Inbox') : gettext('%s hidden from the Inbox'), [
-          account.name,
-        ])
+        interpolate(
+          isHidden
+            ? gettext('%s hidden from account pickers and the Inbox')
+            : gettext('%s shown in account pickers and the Inbox'),
+          [account.name]
+        )
       );
     } catch (e) {
-      setAccountFeed(account.id, !hasFeed);
+      setAccountHidden(account.id, !isHidden);
       showToast(e.message, 'error');
     }
   };
+
+  // ----- Tabs -----------------------------------------------------------------
+  const [tab, setTab] = useState(readStoredTab);
+  const selectTab = (key) => {
+    setTab(key);
+    storeTab(key);
+  };
+  const activeTab = TABS.find((t) => t.key === tab) || TABS[0];
+  // At phone width the tab row scrolls; keep the selected tab in view.
+  const tabListRef = useRef(null);
+  useEffect(() => {
+    const list = tabListRef.current;
+    const selected = list?.querySelector('[aria-selected="true"]');
+    if (!list || !selected) return;
+    const left = selected.offsetLeft - list.offsetLeft;
+    if (left < list.scrollLeft || left + selected.offsetWidth > list.scrollLeft + list.clientWidth) {
+      list.scrollLeft = left - (list.clientWidth - selected.offsetWidth) / 2;
+    }
+  }, [tab]);
+  const accountCount = (sectionKeys) =>
+    types
+      .filter((section) => sectionKeys.includes(section.key))
+      .reduce((n, section) => n + section.groups.reduce((m, group) => m + group.accounts.length, 0), 0);
+  const visibleSections = types.filter((section) => activeTab.sections.includes(section.key));
 
   const draggingAccount = active?.kind === 'account';
 
@@ -716,15 +785,33 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-8 items-start">
-        {types.map((section) => (
+      <div ref={tabListRef} role="tablist" className="tabs tabs-box mb-5 w-fit max-w-full overflow-x-auto flex-nowrap" data-testid="account-type-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={t.key === activeTab.key}
+            className={['tab shrink-0 gap-2 whitespace-nowrap', t.key === activeTab.key ? 'tab-active' : ''].join(' ')}
+            onClick={() => selectTab(t.key)}
+            data-testid={`account-type-tab-${t.key}`}
+          >
+            {t.label}
+            <span className="badge badge-ghost badge-sm">{accountCount(t.sections)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-8" role="tabpanel">
+        {visibleSections.map((section) => (
           <TypeSection
             key={section.key}
             section={section}
             urls={urls}
             onCreateAccount={createAccount}
             onCreateGroup={createGroup}
-            onToggleFeed={toggleFeed}
+            onToggleHidden={toggleHidden}
+            showHeading={visibleSections.length > 1}
             dropTargetGroupId={draggingAccount ? overGroupId : null}
             draggingAccount={draggingAccount}
             dimmed={draggingAccount && active.accountType !== section.key}

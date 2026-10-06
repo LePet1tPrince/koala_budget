@@ -22,6 +22,7 @@ def test_accounts_board_shows_existing_accounts(authenticated_page: Page, live_s
 
     accounts = AccountsPage(authenticated_page, live_server.url)
     accounts.goto_home(team.default_book)
+    accounts.select_tab("expense")
 
     names = accounts.get_account_names()
     assert "Checking Account" in names
@@ -48,16 +49,25 @@ def test_create_account(authenticated_page: Page, live_server, team):
 
 @pytest.mark.django_db(transaction=True)
 def test_accounts_board_empty_state(authenticated_page: Page, live_server, team):
-    """With no accounts, the board shows all type sections with add-group buttons."""
+    """With no accounts, each type tab shows its section with an add-group button."""
     accounts = AccountsPage(authenticated_page, live_server.url)
     accounts.goto_home(team.default_book)
 
-    assert accounts.get_row_count() == 0
-    # Six sections: the equity type is shown as Goals and Equity. Five offer a
-    # "new group"; Goals offers "New goal" instead, since the Goals page makes
-    # a goal's account (a group added there would hold plain equity).
-    assert authenticated_page.locator("[data-testid='account-type-section']").count() == 6
-    assert authenticated_page.locator("[data-testid='add-group-btn']").count() == 5
+    assert accounts.selected_tab() == "asset"
+    assert authenticated_page.locator("[data-testid^='account-type-tab-']").count() == 5
+    sections = authenticated_page.locator("[data-testid='account-type-section']")
+    for key in ("asset", "liability", "income", "expense"):
+        accounts.select_tab(key)
+        assert accounts.get_row_count() == 0
+        assert sections.count() == 1
+        assert sections.first.get_attribute("data-account-type") == key
+        assert authenticated_page.locator("[data-testid='add-group-btn']").count() == 1
+
+    # The equity type is shown under Goals as two sections: Goals offers "New goal"
+    # (the Goals page makes a goal's account), plain Equity a "new group".
+    accounts.select_tab("goal")
+    assert sections.count() == 2
+    assert authenticated_page.locator("[data-testid='add-group-btn']").count() == 1
     assert authenticated_page.locator("[data-testid='add-goal-section-link']").count() == 1
 
 
@@ -79,6 +89,7 @@ def test_add_account_inline_from_group(authenticated_page: Page, live_server, te
 
     accounts = AccountsPage(authenticated_page, live_server.url)
     accounts.goto_home(team.default_book)
+    accounts.select_tab("expense")
 
     authenticated_page.locator("[data-testid='add-account-btn']").first.click()
     authenticated_page.locator("input[placeholder='New account name']").fill("Inline Chequing")
@@ -158,3 +169,68 @@ def test_account_opened_from_a_report_leads_back_to_it(authenticated_page: Page,
     page.wait_for_url(drill_down)
     page.go_back()
     page.wait_for_url(statement)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_board_tab_is_remembered(authenticated_page: Page, live_server, team):
+    """The selected type tab survives a reload."""
+    accounts = AccountsPage(authenticated_page, live_server.url)
+    accounts.goto_home(team.default_book)
+    accounts.select_tab("liability")
+
+    accounts.goto_home(team.default_book)
+    assert accounts.selected_tab() == "liability"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_income_balance_reads_positive(authenticated_page: Page, live_server, team):
+    """An income account's balance is credit-normal, so earnings show as a positive amount."""
+    from datetime import date
+
+    from apps.accounts.models import ACCOUNT_TYPE_INCOME
+    from e2e.factories import AssetAccountFactory, JournalEntryFactory, JournalLineFactory
+
+    salary = AccountFactory(
+        team=team, name="Zed Salary", account_group=AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_INCOME)
+    )
+    bank = AssetAccountFactory(team=team, name="Zed Chequing")
+    entry = JournalEntryFactory(team=team, entry_date=date.today(), description="Pay")
+    JournalLineFactory(team=team, journal_entry=entry, account=bank, dr_amount=1200, cr_amount=0)
+    JournalLineFactory(team=team, journal_entry=entry, account=salary, dr_amount=0, cr_amount=1200)
+
+    accounts = AccountsPage(authenticated_page, live_server.url)
+    accounts.goto_home(team.default_book)
+    accounts.select_tab("income")
+
+    balance = accounts.account_row("Zed Salary").locator("[data-testid='account-balance']").inner_text()
+    assert balance.strip() == "$1,200.00"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_hidden_account_leaves_the_inbox(authenticated_page: Page, live_server, team):
+    """The eye hides an account from the Inbox account list (pickers filter it client-side)."""
+    from e2e.factories import AssetAccountFactory
+
+    AssetAccountFactory(team=team, name="Zed Chequing", has_feed=True)
+    AssetAccountFactory(team=team, name="Zed Savings", has_feed=True)
+
+    page = authenticated_page
+    accounts = AccountsPage(page, live_server.url)
+    accounts.goto_home(team.default_book)
+    accounts.toggle_hidden("Zed Savings")
+
+    toggle = accounts.account_row("Zed Savings").locator("[data-testid='account-visibility-toggle']")
+    assert toggle.get_attribute("data-hidden") == "true"
+    accounts.goto_home(team.default_book)
+    assert toggle.get_attribute("data-hidden") == "true"
+
+    from apps.accounts.models import Account
+
+    flags = dict(Account.objects.filter(name__startswith="Zed ").values_list("name", "is_hidden"))
+    assert flags == {"Zed Chequing": False, "Zed Savings": True}
+
+    page.goto(f"{live_server.url}{team.default_book.base_url}bankfeed/")
+    page.wait_for_selector("[data-testid^='account-card']")
+    cards = " ".join(page.locator("[data-testid^='account-card']").all_inner_texts())
+    assert "Zed Chequing" in cards
+    assert "Zed Savings" not in cards
