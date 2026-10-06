@@ -14,7 +14,7 @@
 
 import { mapValues } from '../runtime';
 /**
- * Match a suggested pair: keep one leg, archive the other.
+ * Match a suggested pair: keep one leg, void the other.
  * @export
  * @interface TransferMatchRequest
  */
@@ -32,7 +32,7 @@ export interface TransferMatchRequest {
      */
     transactionB: number;
     /**
-     * The leg the client was shown would be archived; a mismatch is refused with 409
+     * The leg the client was shown would be voided; a mismatch is refused with 409
      * @type {number}
      * @memberof TransferMatchRequest
      */

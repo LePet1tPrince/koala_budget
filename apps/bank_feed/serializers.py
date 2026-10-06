@@ -113,7 +113,8 @@ class BatchIdsSerializer(serializers.Serializer):
 
     ids = serializers.ListField(
         child=serializers.IntegerField(),
-        help_text="List of BankTransaction IDs to operate on",
+        max_length=1000,
+        help_text="List of BankTransaction IDs to operate on (at most 1000)",
     )
 
 

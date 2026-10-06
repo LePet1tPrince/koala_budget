@@ -29,6 +29,8 @@
  * * `bulk_unreconcile` - Bulk Unreconcile
  * * `bulk_archive` - Bulk Archive
  * * `bulk_unarchive` - Bulk Unarchive
+ * * `bulk_void` - Bulk Void
+ * * `bulk_restore` - Bulk Restore
  * * `bulk_delete` - Bulk Delete
  * * `bulk_duplicate` - Bulk Duplicate
  * * `transfer_dup_resolved` - Transfer Duplicate Resolved
@@ -39,6 +41,9 @@
  * * `goal_funds_withdrawn` - Goal Funds Withdrawn
  * * `goal_closed` - Goal Closed
  * * `goal_covered_budget` - Budget Covered From Goal
+ * * `goal_account_linked` - Account Linked To Goal
+ * * `goal_account_unlinked` - Account Unlinked From Goal
+ * * `goal_outflow_changed` - Goal Outflow Setting Changed
  * * `onboarding_started` - Onboarding Started
  * * `onboarding_phase_completed` - Onboarding Phase Completed
  * * `onboarding_completed` - Onboarding Questionnaire Completed
@@ -81,6 +86,8 @@ export const EventTypeEnum = {
     BulkUnreconcile: 'bulk_unreconcile',
     BulkArchive: 'bulk_archive',
     BulkUnarchive: 'bulk_unarchive',
+    BulkVoid: 'bulk_void',
+    BulkRestore: 'bulk_restore',
     BulkDelete: 'bulk_delete',
     BulkDuplicate: 'bulk_duplicate',
     TransferDupResolved: 'transfer_dup_resolved',
@@ -91,6 +98,9 @@ export const EventTypeEnum = {
     GoalFundsWithdrawn: 'goal_funds_withdrawn',
     GoalClosed: 'goal_closed',
     GoalCoveredBudget: 'goal_covered_budget',
+    GoalAccountLinked: 'goal_account_linked',
+    GoalAccountUnlinked: 'goal_account_unlinked',
+    GoalOutflowChanged: 'goal_outflow_changed',
     OnboardingStarted: 'onboarding_started',
     OnboardingPhaseCompleted: 'onboarding_phase_completed',
     OnboardingCompleted: 'onboarding_completed',

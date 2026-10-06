@@ -83,6 +83,9 @@ READS = {
     "bank_feed:bank-feed-sample-csv": {},
     "bank_feed:bank-feed-similar-categories": lambda a, b: {"ids": f"{b.uncategorized_tx.id},{a.uncategorized_tx.id}"},
     "bank_feed:bank-feed-transfer-suggestions": {},
+    # Another book's account ids and row ids select and locate nothing.
+    "bank_feed:bank-feed-selection": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
+    "bank_feed:bank-feed-locate": lambda a, b: {"row": b.uncategorized_tx.id},
     "bank_feed:api-root": {},
     "onboarding:home": {},
     "onboarding:api_tasks": {},
