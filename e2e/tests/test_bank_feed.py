@@ -427,9 +427,10 @@ def test_match_keeps_the_reconciled_leg(requires_vite, authenticated_page, live_
     feed.match_button().click()
     authenticated_page.get_by_text("Matched — kept the one in Savings", exact=False).wait_for(timeout=10_000)
 
-    # PAIR-B-OUT is archived; the kept leg's transfer now shows here as its mirror.
+    # PAIR-B-OUT is archived (at once -- feed writes apply optimistically); the
+    # kept leg's transfer shows here as its mirror once the background re-read lands.
     authenticated_page.locator(f"[data-testid='feed-row-{out_b.id}']").wait_for(state="detached", timeout=10_000)
-    assert feed.has_row_matching("PAIR-B-IN-RECONCILED")
+    authenticated_page.locator("table tbody tr", has_text="PAIR-B-IN-RECONCILED").first.wait_for(timeout=10_000)
     assert not feed.has_match_chip(out_b.id)
     # The other pair is untouched.
     assert feed.has_match_chip(transfer_pair["out_leg"].id)
