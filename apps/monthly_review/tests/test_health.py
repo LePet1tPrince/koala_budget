@@ -6,6 +6,7 @@ from django.test import TestCase
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EQUITY, Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
 from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.services import voiding
 from apps.monthly_review.services.health import (
     NO_TRANSACTIONS,
     STALE_ACCOUNT,
@@ -174,23 +175,23 @@ class AccountHealthTests(TestCase):
         health = account_health(self.book, self.month)
         self.assertEqual(health["accounts"], [])
 
-    def test_archived_transactions_ignored(self):
+    def test_void_transactions_ignored(self):
         account = self._account("Chequing")
         BankTransaction.objects.create(
             book=self.book,
             account=account,
             amount=Decimal("10.00"),
             posted_date=date(2026, 8, 5),
-            description="Archived",
-            is_archived=True,
+            description="Void",
+            is_void=True,
         )
         health = account_health(self.book, self.month)
         row = health["accounts"][0]
         self.assertEqual(row["transaction_count"], 0)
         self.assertIn(NO_TRANSACTIONS, [f["kind"] for f in row["flags"]])
 
-    def test_archived_categorized_transaction_does_not_create_balance_gap(self):
-        # Matches the Inbox: an archived row's journal entry is excluded from the
+    def test_void_categorized_transaction_does_not_create_balance_gap(self):
+        # Matches the Inbox: a void row's journal entry is excluded from the
         # categorized balance, so it must not surface as a gap to the reconciled one.
         account = self._account("Chequing")
         category = Account.objects.create(book=self.book, name="Groceries", account_group=self.equity_group)
@@ -210,8 +211,8 @@ class AccountHealthTests(TestCase):
             description="Archived duplicate",
         )
         self._categorize(archived, category)
-        archived.is_archived = True
-        archived.save()
+        archived.refresh_from_db()
+        voiding.void(rows=[archived])
 
         health = account_health(self.book, self.month)
         row = health["accounts"][0]

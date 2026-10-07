@@ -202,8 +202,10 @@ Individual debit or credit line within an entry.
 | `cr_amount` | DecimalField | Credit amount (default 0) |
 | `is_cleared` | BooleanField | Bank cleared |
 | `is_reconciled` | BooleanField | User reconciled |
-| `is_archived` | BooleanField | Archived from view |
 | `budget` | FK(Budget) | Auto-linked budget (editable=False) |
+
+Lines and entries carry no archive flag: an entry's `status == "void"` is the one
+state that takes it out of every balance.
 
 **Properties:**
 - `amount` - The non-zero amount (dr or cr)
@@ -303,6 +305,12 @@ Staging table for imported transactions.
 | `merchant_name` | CharField | Merchant (nullable) |
 | `source` | CharField | Import source |
 | `raw` | JSONField | Original source data |
+| `is_void` | BooleanField | Counts toward nothing. On a linked row, always equal to `journal_entry.status == "void"` |
+| `voided_at` | DateTimeField | When it was voided (nullable) |
+
+Void state changes only through `apps.journal.services.voiding` (`void()` / `restore()`):
+a row stands for its entry, and an entry takes every row on it (a transfer's mirror
+too). `BankTransaction` removes the inherited `is_archived`/`archived_at`.
 
 **Source choices:**
 ```python

@@ -24,7 +24,7 @@ from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.books.permissions import BookModelAccessPermissions
-from apps.reconciliation.services.guards import ReconciledLineError, assert_entry_voidable, assert_line_mutable
+from apps.reconciliation.services.guards import ReconciledLineError, assert_line_mutable
 
 from .filters import (
     COLUMNS,
@@ -43,6 +43,7 @@ from .serializers import (
     TransactionRowSerializer,
     TransactionStatusRequestSerializer,
 )
+from .services import voiding
 from .services.sides import UnsupportedEntry
 from .services.simple_edit import (
     EditRefused,
@@ -131,14 +132,12 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Voiding drops every line out of every balance, reconciled ones included.
+        # Voiding drops every line out of every balance, reconciled ones included,
+        # and takes the entry's bank rows with it.
         try:
-            assert_entry_voidable(journal_entry)
-        except ReconciledLineError as e:
+            voiding.void(entries=[journal_entry])
+        except voiding.VoidRefused as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        journal_entry.status = JournalEntry.STATUS_VOID
-        journal_entry.save()
 
         serializer = self.get_serializer(journal_entry)
         return Response(serializer.data)
@@ -225,7 +224,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
             .prefetch_related("journal_entry__lines__account")
         )
         if self.action == "list":
-            # A listing mirrors the balances it explains: voided and archived entries count nowhere.
+            # A listing mirrors the balances it explains: voided entries count nowhere.
             qs = qs.filter(counted_entries("journal_entry__"))
 
         # Filter by account (category) if provided
@@ -390,7 +389,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
     """
     Journal entries flattened into transaction rows, and the edits made to them.
 
-    Voided entries and entries behind an archived bank transaction are left out:
+    Voided entries (including those voided from the bank feed) are left out:
     they count toward no balance, so they are not on the ledger either.
 
     Every other entry is returned, including splits -- an entry apportioned across

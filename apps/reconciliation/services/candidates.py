@@ -42,9 +42,8 @@ def candidate_lines(reconciliation):
     """
     Every line on the account this draft may tick, ticked or not, with no date window.
 
-    Excludes reconciled lines, entries that count toward nothing (void, or
-    behind an archived bank transaction -- `counted_entries`, the ledger-wide
-    rule), and lines another draft holds (there is only ever one draft per
+    Excludes reconciled lines, entries that count toward nothing (void --
+    `counted_entries`, the ledger-wide rule), and lines another draft holds (there is only ever one draft per
     account, so this is belt and braces).
     """
     return (
@@ -109,7 +108,7 @@ def uncategorized_rows(reconciliation):
         book=reconciliation.book,
         account=reconciliation.account,
         journal_entry__isnull=True,
-        is_archived=False,
+        is_void=False,
         posted_date__lte=reconciliation.statement_date,
     ).order_by("posted_date", "pk")
 

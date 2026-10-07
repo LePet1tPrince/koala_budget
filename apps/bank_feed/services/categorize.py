@@ -14,6 +14,7 @@ from django.db import transaction
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.services.guards import assert_line_mutable
 
+from ..models import VOID_ROW_MESSAGE, VoidRowError
 from .splits import SplitError, is_split
 from .transfer_mirror import sync_transfer, would_orphan_primary
 
@@ -38,6 +39,8 @@ def create_entry(bank_tx, category_account):
     """
     if not bank_tx.account_id:
         raise ValueError("Cannot categorize transaction: No bank account linked.")
+    if bank_tx.is_void:
+        raise VoidRowError(VOID_ROW_MESSAGE)
 
     book = bank_tx.book
     journal_entry = JournalEntry.objects.create(
@@ -72,6 +75,8 @@ def create_entry(bank_tx, category_account):
 @transaction.atomic
 def repoint_category(bank_tx, category_account):
     """Move the category line of an already-categorized feed transaction."""
+    if bank_tx.is_void:
+        raise VoidRowError(VOID_ROW_MESSAGE)
     # Re-pointing the mirror leg to a non-feed category would orphan the real
     # primary transaction; reject it (the user must edit the original instead).
     if would_orphan_primary(bank_tx, category_account):

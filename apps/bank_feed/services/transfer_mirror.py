@@ -70,8 +70,9 @@ def linked_legs(tx):
     """
     The other BankTransaction leg(s) sharing this transfer's journal entry, if any.
 
-    A transfer's two legs are archived/restored together — archiving one side of
-    a transfer without the other would leave it half-hidden in one feed. A split
+    A transfer's legs share one entry, so they are voided and restored together
+    (`apps.journal.services.voiding`) — voiding one side alone would leave it
+    half-hidden in one feed. A split
     with transfer legs has one row per feed account it touches; they go together too.
     """
     if tx.journal_entry_id is None:

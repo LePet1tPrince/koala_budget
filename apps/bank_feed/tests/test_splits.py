@@ -967,17 +967,17 @@ class SplitTransferMirrorTest(SplitTestCase):
         self.assertEqual(mirror.description, "Paycheque split")
         self.assertEqual(tx.journal_entry.lines.count(), 3)
 
-    def test_archiving_the_split_archives_its_mirror(self):
+    def test_voiding_the_split_voids_its_mirror(self):
         tx = self.make_plain(amount="500.00")
         self.put_split(tx, [(self.groceries, "420.00"), (self.savings, "80.00")])
         (mirror,) = self.mirrors_of(tx)
 
         with current_book(self.book):
-            resp = self.client.post(self.feed_url("batch_archive/"), {"ids": [tx.id]}, format="json")
+            resp = self.client.post(self.feed_url("batch_void/"), {"ids": [tx.id]}, format="json")
 
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         mirror.refresh_from_db()
-        self.assertTrue(mirror.is_archived)
+        self.assertTrue(mirror.is_void)
 
     def test_decategorizing_the_split_removes_its_mirror(self):
         tx = self.make_plain(amount="500.00")

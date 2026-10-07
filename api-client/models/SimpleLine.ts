@@ -123,12 +123,6 @@ export interface SimpleLine {
     isReconciled?: boolean;
     /**
      * 
-     * @type {boolean}
-     * @memberof SimpleLine
-     */
-    isArchived?: boolean;
-    /**
-     * 
      * @type {string}
      * @memberof SimpleLine
      */
@@ -197,7 +191,6 @@ export function SimpleLineFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'payeeName': json['payee_name'],
         'isCleared': json['is_cleared'] == null ? undefined : json['is_cleared'],
         'isReconciled': json['is_reconciled'] == null ? undefined : json['is_reconciled'],
-        'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
         'source': json['source'],
         'status': json['status'],
         'createdAt': (new Date(json['created_at'])),
@@ -225,7 +218,6 @@ export function SimpleLineFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'payee': value['payee'],
         'is_cleared': value['isCleared'],
         'is_reconciled': value['isReconciled'],
-        'is_archived': value['isArchived'],
     };
 }
 

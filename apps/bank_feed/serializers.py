@@ -113,7 +113,8 @@ class BatchIdsSerializer(serializers.Serializer):
 
     ids = serializers.ListField(
         child=serializers.IntegerField(),
-        help_text="List of BankTransaction IDs to operate on",
+        max_length=1000,
+        help_text="List of BankTransaction IDs to operate on (at most 1000)",
     )
 
 
@@ -194,7 +195,7 @@ class TransferProposalSerializer(serializers.Serializer):
         help_text="Why this leg is kept (a clause, when ready) or why Match is unavailable (when blocked)"
     )
     keep_id = serializers.IntegerField(allow_null=True, help_text="BankTransaction id Match keeps")
-    archive_id = serializers.IntegerField(allow_null=True, help_text="BankTransaction id Match archives")
+    archive_id = serializers.IntegerField(allow_null=True, help_text="BankTransaction id Match voids")
 
 
 class TransferSuggestionSerializer(serializers.Serializer):
@@ -214,12 +215,12 @@ class TransferSuggestionSerializer(serializers.Serializer):
 
 
 class TransferMatchRequestSerializer(serializers.Serializer):
-    """Match a suggested pair: keep one leg, archive the other."""
+    """Match a suggested pair: keep one leg, void the other."""
 
     transaction_a = serializers.IntegerField(help_text="BankTransaction id of one leg")
     transaction_b = serializers.IntegerField(help_text="BankTransaction id of the other leg")
     expected_archive_id = serializers.IntegerField(
-        help_text="The leg the client was shown would be archived; a mismatch is refused with 409"
+        help_text="The leg the client was shown would be voided; a mismatch is refused with 409"
     )
 
     def validate(self, data):
@@ -232,13 +233,13 @@ class TransferMatchRequestSerializer(serializers.Serializer):
 
 class TransferMatchResponseSerializer(serializers.Serializer):
     kept_id = serializers.IntegerField(help_text="BankTransaction id kept")
-    archived_id = serializers.IntegerField(help_text="BankTransaction id archived")
+    archived_id = serializers.IntegerField(help_text="BankTransaction id voided")
     kept_journal_entry_id = serializers.IntegerField(help_text="The one journal entry the transfer now lives on")
     previous_category_id = serializers.IntegerField(
         allow_null=True, help_text="The kept leg's category before matching (null if uncategorized)"
     )
     voided_entry_id = serializers.IntegerField(
-        allow_null=True, help_text="The archived leg's entry, now void (null if it was uncategorized)"
+        allow_null=True, help_text="The voided leg's entry, now void (null if it was uncategorized)"
     )
     reason_code = serializers.CharField(help_text="Which rule chose the kept leg")
 
@@ -309,7 +310,7 @@ class BankFeedRowSerializer(serializers.Serializer):
 
     is_pending = serializers.BooleanField(help_text="Whether transaction is pending")
     is_cleared = serializers.BooleanField(help_text="Whether transaction is cleared")
-    is_archived = serializers.BooleanField(help_text="Whether transaction is archived")
+    is_void = serializers.BooleanField(help_text="Whether transaction is void (counts toward nothing)")
     is_reconciled = serializers.BooleanField(help_text="Whether transaction is reconciled")
     reconciled_statement_date = serializers.DateField(
         allow_null=True,
@@ -644,7 +645,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "outflow": outflow,
         "is_pending": is_pending,
         "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
-        "is_archived": tx.is_archived,
+        "is_void": tx.is_void,
         "is_reconciled": is_reconciled,  # From the bank account's journal line
         "reconciled_statement_date": statement_date,
         "payee": tx.merchant_name,  # Map merchant_name to payee

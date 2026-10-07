@@ -16,21 +16,22 @@ const BatchActionBar = ({
   allPayees = [],
   bankFeedAccounts,
   onBulkEdit,
-  onArchive,
-  onUnarchive,
+  onVoid,
+  onRestore,
   onDelete,
   onDuplicate,
   onExport,
   onClearSelection,
   onReconcile,
   onUnreconcile,
-  showArchive = true,
-  showUnarchive = false,
+  showVoid = true,
+  showRestore = false,
   viewMode = 'active',
   selectedAccount = null,
+  getExportRows = null,
 }) => {
-  // In archived view, only allow unarchive, export, and delete
-  const isArchivedView = viewMode === 'archived';
+  // In the voided view, only allow restore, export, and delete
+  const isVoidedView = viewMode === 'voided';
 
   // Bulk edit modal state
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
@@ -59,6 +60,13 @@ const BatchActionBar = ({
   const allCategorized = useMemo(() => {
     return selectedRows.every(row => row.category);
   }, [selectedRows]);
+
+  // Reconciling happens on one account's statement, so the selection must be in one account.
+  const reconcileBlocked = !selectedAccount
+    ? gettext('Select rows from one account to reconcile')
+    : !allCategorized
+      ? gettext('Categorize all transactions to reconcile')
+      : null;
 
   // Check if any/all selected rows are reconciled. The quick filters no longer guarantee
   // a homogeneous selection, so reconcile/unreconcile availability is derived from the
@@ -110,20 +118,22 @@ const BatchActionBar = ({
     }).format(amount);
   };
 
-  // Export to CSV
-  const handleExport = () => {
+  // Export to CSV. Rows selected on other pages (or by "select all matching")
+  // are summaries, so the caller fetches them in full first.
+  const handleExport = async () => {
+    const rows = getExportRows ? await getExportRows() : selectedRows;
     const headers = ['Date', 'Description', 'Merchant', 'Inflow', 'Outflow', 'Category', 'Account'];
     const csvRows = [headers.join(',')];
 
-    selectedRows.forEach(row => {
+    rows.forEach(row => {
       csvRows.push([
         row.postedDate,
         `"${(row.description || '').replace(/"/g, '""')}"`,
         `"${(row.merchantName || '').replace(/"/g, '""')}"`,
         row.inflow || '',
         row.outflow || '',
-        row.category?.name || '',
-        row.account?.name || '',
+        `"${(row.category?.name || '').replace(/"/g, '""')}"`,
+        `"${(row.account?.name || '').replace(/"/g, '""')}"`,
       ].join(','));
     });
 
@@ -175,7 +185,7 @@ const BatchActionBar = ({
             <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>
           </span>
 
-          {!isArchivedView && selectedAccount && (
+          {!isVoidedView && selectedAccount && (
             <>
               <span className="h-4 w-px bg-base-300" aria-hidden="true" />
               <span className="flex items-center gap-1">
@@ -192,45 +202,45 @@ const BatchActionBar = ({
 
         <div className="mb-1 h-px w-full bg-base-300" aria-hidden="true" />
 
-        {!isArchivedView && (
+        {!isVoidedView && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBulkEditOpen(true)}>
             <Icon name="edit" className="w-4 h-4 shrink-0" />
             {gettext('Bulk Edit')}
           </button>
         )}
 
-        {showArchive && !isArchivedView && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onArchive}>
-            <Icon name="archive" className="w-4 h-4 shrink-0" />
-            {gettext('Archive')}
+        {showVoid && !isVoidedView && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onVoid}>
+            <Icon name="ban" className="w-4 h-4 shrink-0" />
+            {gettext('Void')}
           </button>
         )}
 
-        {showUnarchive && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onUnarchive}>
-            <Icon name="unarchive" className="w-4 h-4 shrink-0" />
-            {gettext('Unarchive')}
+        {showRestore && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onRestore}>
+            <Icon name="rotate-ccw" className="w-4 h-4 shrink-0" />
+            {gettext('Restore')}
           </button>
         )}
 
-        {isArchivedView && (
+        {isVoidedView && (
           <button type="button" className="btn btn-ghost btn-sm text-error" onClick={() => setDeleteDialogOpen(true)}>
             <Icon name="trash" className="w-4 h-4 shrink-0" />
             {gettext('Delete')}
           </button>
         )}
 
-        {!isArchivedView && !anyReconciled && (
+        {!isVoidedView && !anyReconciled && (
           // The tooltip has to sit on a wrapper: a disabled button fires no
           // pointer events, so a tip on the button itself never shows.
           <span
-            className={!allCategorized ? 'tooltip' : undefined}
-            data-tip={!allCategorized ? gettext('Categorize all transactions to reconcile') : undefined}
+            className={reconcileBlocked ? 'tooltip' : undefined}
+            data-tip={reconcileBlocked || undefined}
           >
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              disabled={!allCategorized}
+              disabled={Boolean(reconcileBlocked)}
               onClick={() => onReconcile?.(selectedRows)}
             >
               <Icon name="check-circle" className="w-4 h-4 shrink-0" />
@@ -246,7 +256,7 @@ const BatchActionBar = ({
           </button>
         )}
 
-        {!isArchivedView && !anyReconciled && (
+        {!isVoidedView && !anyReconciled && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={onDuplicate}>
             <Icon name="copy" className="w-4 h-4 shrink-0" />
             {gettext('Duplicate')}

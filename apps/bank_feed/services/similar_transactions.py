@@ -198,7 +198,7 @@ def build_history_index(book, limit=HISTORY_LIMIT):
         BankTransaction.objects.filter(
             book=book,
             journal_entry__isnull=False,
-            is_archived=False,
+            is_void=False,
             is_transfer_mirror=False,
         )
         .filter(counted_entries("journal_entry__"))

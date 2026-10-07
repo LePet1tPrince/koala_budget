@@ -83,12 +83,7 @@ export interface BankFeedAccountGroupsRequest {
     bookSlug: string;
     teamSlug: string;
     page?: number;
-}
-
-export interface BankFeedBatchArchiveRequest {
-    bookSlug: string;
-    teamSlug: string;
-    batchIds: BatchIds;
+    pageSize?: number;
 }
 
 export interface BankFeedBatchDeleteRequest {
@@ -102,6 +97,7 @@ export interface BankFeedBatchDuplicateRequest {
     teamSlug: string;
     batchIds: BatchIds;
     page?: number;
+    pageSize?: number;
 }
 
 export interface BankFeedBatchEditRequest {
@@ -110,13 +106,19 @@ export interface BankFeedBatchEditRequest {
     patchedBatchEditRequest?: PatchedBatchEditRequest;
 }
 
-export interface BankFeedBatchUnarchiveRequest {
+export interface BankFeedBatchRestoreRequest {
     bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
 }
 
 export interface BankFeedBatchUnreconcileRequest {
+    bookSlug: string;
+    teamSlug: string;
+    batchIds: BatchIds;
+}
+
+export interface BankFeedBatchVoidRequest {
     bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
@@ -137,6 +139,7 @@ export interface BankFeedFeedAccountsRequest {
     bookSlug: string;
     teamSlug: string;
     page?: number;
+    pageSize?: number;
 }
 
 export interface BankFeedFeedCreateRequest {
@@ -148,8 +151,20 @@ export interface BankFeedFeedCreateRequest {
 export interface BankFeedFeedListRequest {
     bookSlug: string;
     teamSlug: string;
-    account?: number;
+    account?: string;
+    counts?: boolean;
+    dir?: BankFeedFeedListDirEnum;
+    endDate?: Date;
+    ids?: string;
     page?: number;
+    pageSize?: BankFeedFeedListPageSizeEnum;
+    reconciled?: boolean;
+    sort?: BankFeedFeedListSortEnum;
+    startDate?: Date;
+    toReview?: boolean;
+    transfers?: boolean;
+    uncategorized?: boolean;
+    view?: BankFeedFeedListViewEnum;
 }
 
 export interface BankFeedFeedUpdateRequest {
@@ -159,9 +174,48 @@ export interface BankFeedFeedUpdateRequest {
     manualTransaction: ManualTransaction;
 }
 
+export interface BankFeedLocateRequest {
+    bookSlug: string;
+    teamSlug: string;
+    account?: string;
+    counts?: boolean;
+    dir?: BankFeedLocateDirEnum;
+    endDate?: Date;
+    ids?: string;
+    inAccount?: number;
+    journalEntry?: number;
+    pageSize?: BankFeedLocatePageSizeEnum;
+    reconciled?: boolean;
+    row?: number;
+    sort?: BankFeedLocateSortEnum;
+    startDate?: Date;
+    toReview?: boolean;
+    transfers?: boolean;
+    uncategorized?: boolean;
+    view?: BankFeedLocateViewEnum;
+}
+
 export interface BankFeedSampleCsvRequest {
     bookSlug: string;
     teamSlug: string;
+}
+
+export interface BankFeedSelectionRequest {
+    bookSlug: string;
+    teamSlug: string;
+    account?: string;
+    counts?: boolean;
+    dir?: BankFeedSelectionDirEnum;
+    endDate?: Date;
+    ids?: string;
+    pageSize?: BankFeedSelectionPageSizeEnum;
+    reconciled?: boolean;
+    sort?: BankFeedSelectionSortEnum;
+    startDate?: Date;
+    toReview?: boolean;
+    transfers?: boolean;
+    uncategorized?: boolean;
+    view?: BankFeedSelectionViewEnum;
 }
 
 export interface BankFeedSimilarCategoriesRequest {
@@ -253,6 +307,10 @@ export class BankFeedApi extends runtime.BaseAPI {
             queryParameters['page'] = requestParameters['page'];
         }
 
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
@@ -281,63 +339,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch archive multiple bank transactions. Sets is_archived=True on BankTransaction.
-     */
-    async bankFeedBatchArchiveRaw(requestParameters: BankFeedBatchArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchArchive().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchArchive().'
-            );
-        }
-
-        if (requestParameters['batchIds'] == null) {
-            throw new runtime.RequiredError(
-                'batchIds',
-                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchArchive().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_archive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: BatchIdsToJSON(requestParameters['batchIds']),
-        }, initOverrides);
-
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * Batch archive multiple bank transactions. Sets is_archived=True on BankTransaction.
-     */
-    async bankFeedBatchArchive(requestParameters: BankFeedBatchArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchArchiveRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     * Permanently delete multiple archived bank transactions. Also deletes any linked journal entries.
+     * Permanently delete voided bank transactions. Also deletes any linked journal entries.
      */
     async bankFeedBatchDeleteRaw(requestParameters: BankFeedBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['bookSlug'] == null) {
@@ -386,7 +388,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Permanently delete multiple archived bank transactions. Also deletes any linked journal entries.
+     * Permanently delete voided bank transactions. Also deletes any linked journal entries.
      */
     async bankFeedBatchDelete(requestParameters: BankFeedBatchDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedBatchDeleteRaw(requestParameters, initOverrides);
@@ -421,6 +423,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         if (requestParameters['page'] != null) {
             queryParameters['page'] = requestParameters['page'];
+        }
+
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -503,27 +509,27 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch unarchive multiple bank transactions. Sets is_archived=False on BankTransaction.
+     * Restore voided bank transactions, with their entries and their transfers\' other legs.
      */
-    async bankFeedBatchUnarchiveRaw(requestParameters: BankFeedBatchUnarchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+    async bankFeedBatchRestoreRaw(requestParameters: BankFeedBatchRestoreRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchUnarchive().'
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchRestore().'
             );
         }
 
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchUnarchive().'
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchRestore().'
             );
         }
 
         if (requestParameters['batchIds'] == null) {
             throw new runtime.RequiredError(
                 'batchIds',
-                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchUnarchive().'
+                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchRestore().'
             );
         }
 
@@ -541,7 +547,7 @@ export class BankFeedApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unarchive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_restore/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -552,10 +558,10 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch unarchive multiple bank transactions. Sets is_archived=False on BankTransaction.
+     * Restore voided bank transactions, with their entries and their transfers\' other legs.
      */
-    async bankFeedBatchUnarchive(requestParameters: BankFeedBatchUnarchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchUnarchiveRaw(requestParameters, initOverrides);
+    async bankFeedBatchRestore(requestParameters: BankFeedBatchRestoreRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchRestoreRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -612,6 +618,62 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedBatchUnreconcile(requestParameters: BankFeedBatchUnreconcileRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedBatchUnreconcileRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Void bank transactions: they and their journal entries count toward nothing.  A categorized row voids its entry and every row on it (a transfer\'s other leg too); an uncategorized row is voided on its own. All or nothing: a row whose entry holds a reconciled line refuses the batch, naming it.
+     */
+    async bankFeedBatchVoidRaw(requestParameters: BankFeedBatchVoidRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchVoid().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchVoid().'
+            );
+        }
+
+        if (requestParameters['batchIds'] == null) {
+            throw new runtime.RequiredError(
+                'batchIds',
+                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchVoid().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_void/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchIdsToJSON(requestParameters['batchIds']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Void bank transactions: they and their journal entries count toward nothing.  A categorized row voids its entry and every row on it (a transfer\'s other leg too); an uncategorized row is voided on its own. All or nothing: a row whose entry holds a reconciled line refuses the batch, naming it.
+     */
+    async bankFeedBatchVoid(requestParameters: BankFeedBatchVoidRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedBatchVoidRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -742,6 +804,10 @@ export class BankFeedApi extends runtime.BaseAPI {
             queryParameters['page'] = requestParameters['page'];
         }
 
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
@@ -827,7 +893,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional) - page: Page number (optional)
+     * Get unified bank feed, optionally filtered by account. One page of the Inbox table: filtered, sorted and paged on the server (`services/feed_query.py`). With `counts=1` the response also carries the quick-filter badge counts for the request\'s accounts.
      */
     async bankFeedFeedListRaw(requestParameters: BankFeedFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
         if (requestParameters['bookSlug'] == null) {
@@ -850,8 +916,56 @@ export class BankFeedApi extends runtime.BaseAPI {
             queryParameters['account'] = requestParameters['account'];
         }
 
+        if (requestParameters['counts'] != null) {
+            queryParameters['counts'] = requestParameters['counts'];
+        }
+
+        if (requestParameters['dir'] != null) {
+            queryParameters['dir'] = requestParameters['dir'];
+        }
+
+        if (requestParameters['endDate'] != null) {
+            queryParameters['end_date'] = (requestParameters['endDate'] as any).toISOString().substring(0,10);
+        }
+
+        if (requestParameters['ids'] != null) {
+            queryParameters['ids'] = requestParameters['ids'];
+        }
+
         if (requestParameters['page'] != null) {
             queryParameters['page'] = requestParameters['page'];
+        }
+
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
+        }
+
+        if (requestParameters['reconciled'] != null) {
+            queryParameters['reconciled'] = requestParameters['reconciled'];
+        }
+
+        if (requestParameters['sort'] != null) {
+            queryParameters['sort'] = requestParameters['sort'];
+        }
+
+        if (requestParameters['startDate'] != null) {
+            queryParameters['start_date'] = (requestParameters['startDate'] as any).toISOString().substring(0,10);
+        }
+
+        if (requestParameters['toReview'] != null) {
+            queryParameters['to_review'] = requestParameters['toReview'];
+        }
+
+        if (requestParameters['transfers'] != null) {
+            queryParameters['transfers'] = requestParameters['transfers'];
+        }
+
+        if (requestParameters['uncategorized'] != null) {
+            queryParameters['uncategorized'] = requestParameters['uncategorized'];
+        }
+
+        if (requestParameters['view'] != null) {
+            queryParameters['view'] = requestParameters['view'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -874,7 +988,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Get unified bank feed, optionally filtered by account. Query params: - account: Account ID to filter by (optional) - page: Page number (optional)
+     * Get unified bank feed, optionally filtered by account. One page of the Inbox table: filtered, sorted and paged on the server (`services/feed_query.py`). With `counts=1` the response also carries the quick-filter badge counts for the request\'s accounts.
      */
     async bankFeedFeedList(requestParameters: BankFeedFeedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedBankFeedRowList> {
         const response = await this.bankFeedFeedListRaw(requestParameters, initOverrides);
@@ -946,6 +1060,117 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
+     * Which page of the current list a row is on, or `page: null` when the filters hide it.  Name the row by `row`, or by `journal_entry` + `in_account` (the other leg of a transfer: the same entry\'s row in the other account). Answers `{id, page, is_void}` -- `id` null when no such row exists at all.
+     */
+    async bankFeedLocateRaw(requestParameters: BankFeedLocateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedLocate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedLocate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        if (requestParameters['counts'] != null) {
+            queryParameters['counts'] = requestParameters['counts'];
+        }
+
+        if (requestParameters['dir'] != null) {
+            queryParameters['dir'] = requestParameters['dir'];
+        }
+
+        if (requestParameters['endDate'] != null) {
+            queryParameters['end_date'] = (requestParameters['endDate'] as any).toISOString().substring(0,10);
+        }
+
+        if (requestParameters['ids'] != null) {
+            queryParameters['ids'] = requestParameters['ids'];
+        }
+
+        if (requestParameters['inAccount'] != null) {
+            queryParameters['in_account'] = requestParameters['inAccount'];
+        }
+
+        if (requestParameters['journalEntry'] != null) {
+            queryParameters['journal_entry'] = requestParameters['journalEntry'];
+        }
+
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
+        }
+
+        if (requestParameters['reconciled'] != null) {
+            queryParameters['reconciled'] = requestParameters['reconciled'];
+        }
+
+        if (requestParameters['row'] != null) {
+            queryParameters['row'] = requestParameters['row'];
+        }
+
+        if (requestParameters['sort'] != null) {
+            queryParameters['sort'] = requestParameters['sort'];
+        }
+
+        if (requestParameters['startDate'] != null) {
+            queryParameters['start_date'] = (requestParameters['startDate'] as any).toISOString().substring(0,10);
+        }
+
+        if (requestParameters['toReview'] != null) {
+            queryParameters['to_review'] = requestParameters['toReview'];
+        }
+
+        if (requestParameters['transfers'] != null) {
+            queryParameters['transfers'] = requestParameters['transfers'];
+        }
+
+        if (requestParameters['uncategorized'] != null) {
+            queryParameters['uncategorized'] = requestParameters['uncategorized'];
+        }
+
+        if (requestParameters['view'] != null) {
+            queryParameters['view'] = requestParameters['view'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/locate/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Which page of the current list a row is on, or `page: null` when the filters hide it.  Name the row by `row`, or by `journal_entry` + `in_account` (the other leg of a transfer: the same entry\'s row in the other account). Answers `{id, page, is_void}` -- `id` null when no such row exists at all.
+     */
+    async bankFeedLocate(requestParameters: BankFeedLocateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
+        const response = await this.bankFeedLocateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Download a sample bank statement CSV.  For users who want to try the import before they have a statement of their own. Nothing is created here -- the file is downloaded and then uploaded through the ordinary wizard, so the rows that land in the book\'s books are ones the user knowingly imported.
      */
     async bankFeedSampleCsvRaw(requestParameters: BankFeedSampleCsvRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
@@ -993,6 +1218,105 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedSampleCsv(requestParameters: BankFeedSampleCsvRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
         const response = await this.bankFeedSampleCsvRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Every row matching the filters, as the batch bar reads it: \"select all N matching\".  Refused above `MAX_IDS` matches -- a batch write that large is one this app does not attempt -- with the count, so the page can say so.
+     */
+    async bankFeedSelectionRaw(requestParameters: BankFeedSelectionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedSelection().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedSelection().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        if (requestParameters['counts'] != null) {
+            queryParameters['counts'] = requestParameters['counts'];
+        }
+
+        if (requestParameters['dir'] != null) {
+            queryParameters['dir'] = requestParameters['dir'];
+        }
+
+        if (requestParameters['endDate'] != null) {
+            queryParameters['end_date'] = (requestParameters['endDate'] as any).toISOString().substring(0,10);
+        }
+
+        if (requestParameters['ids'] != null) {
+            queryParameters['ids'] = requestParameters['ids'];
+        }
+
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
+        }
+
+        if (requestParameters['reconciled'] != null) {
+            queryParameters['reconciled'] = requestParameters['reconciled'];
+        }
+
+        if (requestParameters['sort'] != null) {
+            queryParameters['sort'] = requestParameters['sort'];
+        }
+
+        if (requestParameters['startDate'] != null) {
+            queryParameters['start_date'] = (requestParameters['startDate'] as any).toISOString().substring(0,10);
+        }
+
+        if (requestParameters['toReview'] != null) {
+            queryParameters['to_review'] = requestParameters['toReview'];
+        }
+
+        if (requestParameters['transfers'] != null) {
+            queryParameters['transfers'] = requestParameters['transfers'];
+        }
+
+        if (requestParameters['uncategorized'] != null) {
+            queryParameters['uncategorized'] = requestParameters['uncategorized'];
+        }
+
+        if (requestParameters['view'] != null) {
+            queryParameters['view'] = requestParameters['view'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/selection/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Every row matching the filters, as the batch bar reads it: \"select all N matching\".  Refused above `MAX_IDS` matches -- a batch write that large is one this app does not attempt -- with the count, so the page can say so.
+     */
+    async bankFeedSelection(requestParameters: BankFeedSelectionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
+        const response = await this.bankFeedSelectionRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1560,3 +1884,124 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
 }
+
+/**
+ * @export
+ */
+export const BankFeedFeedListDirEnum = {
+    Asc: 'asc',
+    Desc: 'desc'
+} as const;
+export type BankFeedFeedListDirEnum = typeof BankFeedFeedListDirEnum[keyof typeof BankFeedFeedListDirEnum];
+/**
+ * @export
+ */
+export const BankFeedFeedListPageSizeEnum = {
+    NUMBER_10: 10,
+    NUMBER_100: 100,
+    NUMBER_200: 200,
+    NUMBER_25: 25,
+    NUMBER_50: 50
+} as const;
+export type BankFeedFeedListPageSizeEnum = typeof BankFeedFeedListPageSizeEnum[keyof typeof BankFeedFeedListPageSizeEnum];
+/**
+ * @export
+ */
+export const BankFeedFeedListSortEnum = {
+    Account: 'account',
+    Category: 'category',
+    Date: 'date',
+    Description: 'description',
+    Inflow: 'inflow',
+    Outflow: 'outflow',
+    Payee: 'payee'
+} as const;
+export type BankFeedFeedListSortEnum = typeof BankFeedFeedListSortEnum[keyof typeof BankFeedFeedListSortEnum];
+/**
+ * @export
+ */
+export const BankFeedFeedListViewEnum = {
+    Active: 'active',
+    Voided: 'voided'
+} as const;
+export type BankFeedFeedListViewEnum = typeof BankFeedFeedListViewEnum[keyof typeof BankFeedFeedListViewEnum];
+/**
+ * @export
+ */
+export const BankFeedLocateDirEnum = {
+    Asc: 'asc',
+    Desc: 'desc'
+} as const;
+export type BankFeedLocateDirEnum = typeof BankFeedLocateDirEnum[keyof typeof BankFeedLocateDirEnum];
+/**
+ * @export
+ */
+export const BankFeedLocatePageSizeEnum = {
+    NUMBER_10: 10,
+    NUMBER_100: 100,
+    NUMBER_200: 200,
+    NUMBER_25: 25,
+    NUMBER_50: 50
+} as const;
+export type BankFeedLocatePageSizeEnum = typeof BankFeedLocatePageSizeEnum[keyof typeof BankFeedLocatePageSizeEnum];
+/**
+ * @export
+ */
+export const BankFeedLocateSortEnum = {
+    Account: 'account',
+    Category: 'category',
+    Date: 'date',
+    Description: 'description',
+    Inflow: 'inflow',
+    Outflow: 'outflow',
+    Payee: 'payee'
+} as const;
+export type BankFeedLocateSortEnum = typeof BankFeedLocateSortEnum[keyof typeof BankFeedLocateSortEnum];
+/**
+ * @export
+ */
+export const BankFeedLocateViewEnum = {
+    Active: 'active',
+    Voided: 'voided'
+} as const;
+export type BankFeedLocateViewEnum = typeof BankFeedLocateViewEnum[keyof typeof BankFeedLocateViewEnum];
+/**
+ * @export
+ */
+export const BankFeedSelectionDirEnum = {
+    Asc: 'asc',
+    Desc: 'desc'
+} as const;
+export type BankFeedSelectionDirEnum = typeof BankFeedSelectionDirEnum[keyof typeof BankFeedSelectionDirEnum];
+/**
+ * @export
+ */
+export const BankFeedSelectionPageSizeEnum = {
+    NUMBER_10: 10,
+    NUMBER_100: 100,
+    NUMBER_200: 200,
+    NUMBER_25: 25,
+    NUMBER_50: 50
+} as const;
+export type BankFeedSelectionPageSizeEnum = typeof BankFeedSelectionPageSizeEnum[keyof typeof BankFeedSelectionPageSizeEnum];
+/**
+ * @export
+ */
+export const BankFeedSelectionSortEnum = {
+    Account: 'account',
+    Category: 'category',
+    Date: 'date',
+    Description: 'description',
+    Inflow: 'inflow',
+    Outflow: 'outflow',
+    Payee: 'payee'
+} as const;
+export type BankFeedSelectionSortEnum = typeof BankFeedSelectionSortEnum[keyof typeof BankFeedSelectionSortEnum];
+/**
+ * @export
+ */
+export const BankFeedSelectionViewEnum = {
+    Active: 'active',
+    Voided: 'voided'
+} as const;
+export type BankFeedSelectionViewEnum = typeof BankFeedSelectionViewEnum[keyof typeof BankFeedSelectionViewEnum];

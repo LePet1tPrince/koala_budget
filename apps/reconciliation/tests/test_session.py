@@ -8,6 +8,7 @@ from django.db import IntegrityError, transaction
 from apps.audit.models import AuditEvent, AuditLog
 from apps.bank_feed.models import BankTransaction
 from apps.journal.models import JournalEntry
+from apps.journal.services import voiding
 from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services import candidates, integrity, session
 from apps.reconciliation.services.adjustment import OFFSET_ACCOUNT_NAME
@@ -159,7 +160,7 @@ class ChequingExampleTests(ReconciliationTestCase):
         self.assertEqual(self.pay.reconciliation_id, rec.id)
         adjustment = JournalEntry.objects.get(source=JournalEntry.SOURCE_RECONCILIATION)
         self.assertEqual(adjustment.status, JournalEntry.STATUS_VOID)
-        self.assertTrue(BankTransaction.objects.get(journal_entry=adjustment).is_archived)
+        self.assertTrue(BankTransaction.objects.get(journal_entry=adjustment).is_void)
         self.assertEqual(candidates.reconciled_balance(self.chequing), D("3904.11"))
 
     def test_undoing_an_older_statement_names_its_lines_but_not_its_voided_adjustment(self):
@@ -224,7 +225,7 @@ class CandidateTests(ReconciliationTestCase):
         voided = self.entry(self.chequing, self.groceries, "-13.00")
         JournalEntry.objects.filter(pk=voided.journal_entry_id).update(status=JournalEntry.STATUS_VOID)
         archived = self.entry(self.chequing, self.groceries, "-14.00", feed=True)
-        BankTransaction.objects.filter(journal_entry=archived.journal_entry).update(is_archived=True)
+        voiding.void(rows=list(BankTransaction.objects.filter(journal_entry=archived.journal_entry)))
 
         ids = self._candidate_ids()
         self.assertIn(keep.id, ids)

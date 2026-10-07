@@ -414,7 +414,7 @@ def build_review(book, month: date) -> dict:
     baselines, baseline_order, default_baseline = build_baselines(matrix, month, baseline_months)
 
     transaction_count = BankTransaction.objects.filter(
-        book=book, is_archived=False, posted_date__range=(month_start, month_end)
+        book=book, is_void=False, posted_date__range=(month_start, month_end)
     ).count()
 
     health = account_health(book, month)

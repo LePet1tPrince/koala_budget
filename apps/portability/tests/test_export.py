@@ -105,13 +105,14 @@ class BuildArchiveTests(TestCase):
         void_rows = [r for r in self.journal_rows if r["status"] == "void"]
         self.assertEqual(len(void_rows), 2)
 
-    def test_archived_line_flag_is_carried(self):
+    def test_lines_carry_no_archive_flags(self):
         line = next(
             r
             for r in self.journal_rows
             if r["account_id"] == self.handles["groceries"] and r["dr_amount"] == Decimal("15.00")
         )
-        self.assertTrue(line["is_archived"])
+        self.assertNotIn("is_archived", line)
+        self.assertNotIn("entry_is_archived", line)
 
     def test_zero_amount_entry_is_carried(self):
         zero_rows = [r for r in self.journal_rows if r.get("description") == "Zero-amount correction"]

@@ -45,7 +45,7 @@ class BankTransactionAdmin(admin.ModelAdmin):
         "book",
         "journal_entry",  # ✅ now editable
         "is_categorized",
-        "is_archived",
+        "is_void",
     ]
 
     def account_name(self, obj):

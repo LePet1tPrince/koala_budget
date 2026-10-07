@@ -418,7 +418,7 @@ def link_drift(goal, left):
             )
     for link in links:
         waiting = BankTransaction.objects.filter(
-            account=link.account, journal_entry__isnull=True, is_archived=False
+            account=link.account, journal_entry__isnull=True, is_void=False
         ).count()
         if waiting:
             reasons.append(

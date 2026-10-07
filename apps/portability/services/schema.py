@@ -43,7 +43,11 @@ FORMAT = "koala-budget-export"
 # 5: goal-linked accounts -- `goal_links.csv`, and `goal_outflow` /
 # `goal_monthly_contribution` on accounts.csv.
 # 6: `is_hidden` on accounts.csv (an account can be hidden from pickers and the Inbox).
-FORMAT_VERSION = 6
+# 7: one void state -- `feed_is_archived`/`feed_archived_at` become
+# `feed_is_void`/`feed_voided_at`, and the unused archive flags on entries and
+# lines (`entry_is_archived`, `entry_archived_at`, `is_archived`, `archived_at`)
+# are gone. `upgrade_6_to_7` voids the entry behind any archived row.
+FORMAT_VERSION = 7
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
@@ -64,6 +68,20 @@ COLUMNS_ADDED_IN = {
     (ACCOUNTS_FILE, "goal_outflow"): 5,
     (ACCOUNTS_FILE, "goal_monthly_contribution"): 5,
     (ACCOUNTS_FILE, "is_hidden"): 6,
+    (JOURNAL_FILE, "feed_is_void"): 7,
+    (JOURNAL_FILE, "feed_voided_at"): 7,
+}
+
+#: Columns an older archive has that the current format dropped:
+#: `{(file, column): (kind, version it was dropped in)}`. Read from archives
+#: older than that version so `upgrade.py` can carry what they held.
+COLUMNS_RETIRED_IN = {
+    ("journal.csv", "entry_is_archived"): ("bool", 7),
+    ("journal.csv", "entry_archived_at"): ("datetime", 7),
+    ("journal.csv", "is_archived"): ("bool", 7),
+    ("journal.csv", "archived_at"): ("datetime", 7),
+    ("journal.csv", "feed_is_archived"): ("bool", 7),
+    ("journal.csv", "feed_archived_at"): ("datetime", 7),
 }
 
 # journal.csv's `status` column carries every `JournalEntry.status` value plus
@@ -509,8 +527,6 @@ JOURNAL_ENTRY = FieldMap(
         "description": ColumnSpec("description", KIND_STR),
         "source": ColumnSpec("source", KIND_STR),
         "status": ColumnSpec("status", KIND_STR),
-        "is_archived": ColumnSpec("entry_is_archived", KIND_BOOL),
-        "archived_at": ColumnSpec("entry_archived_at", KIND_DATETIME),
     },
     omitted={
         "book": _TENANT,
@@ -527,8 +543,6 @@ JOURNAL_LINE = FieldMap(
         "cr_amount": ColumnSpec("cr_amount", KIND_DECIMAL),
         "is_cleared": ColumnSpec("is_cleared", KIND_BOOL),
         "is_reconciled": ColumnSpec("is_reconciled", KIND_BOOL),
-        "is_archived": ColumnSpec("is_archived", KIND_BOOL),
-        "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
         # The statement that ticked or locked the line: a handle into
         # reconciliations.csv, remapped on import like account_id.
         "reconciliation": ColumnSpec("reconciliation_id", KIND_INT, read=lambda line: line.reconciliation_id),
@@ -572,11 +586,11 @@ BANK_TRANSACTION = FieldMap(
         # merchant_name IS nullable, so None stays the honest value here.
         "merchant_name": ColumnSpec("feed_merchant", KIND_STR_OR_NONE),
         # `absent=False`, not a blank: a line with no feed row is not a line
-        # whose feed row has an unknown mirror/archived state, and the file
-        # reads better saying so.
+        # whose feed row has an unknown mirror/void state, and the file reads
+        # better saying so.
         "is_transfer_mirror": ColumnSpec("feed_is_mirror", KIND_BOOL, absent=False),
-        "is_archived": ColumnSpec("feed_is_archived", KIND_BOOL, absent=False),
-        "archived_at": ColumnSpec("feed_archived_at", KIND_DATETIME),
+        "is_void": ColumnSpec("feed_is_void", KIND_BOOL, absent=False),
+        "voided_at": ColumnSpec("feed_voided_at", KIND_DATETIME),
     },
     omitted={
         "id": "a feed row has no handle of its own; it is identified by the line it belongs to, or by being an "
@@ -597,14 +611,10 @@ JOURNAL_COLUMNS = (
     Column("status", KIND_STR),
     Column("account_id", KIND_INT),
     Column("account_name", KIND_STR),
-    Column("entry_is_archived", KIND_BOOL),
-    Column("entry_archived_at", KIND_DATETIME),
     Column("dr_amount", KIND_DECIMAL),
     Column("cr_amount", KIND_DECIMAL),
     Column("is_cleared", KIND_BOOL),
     Column("is_reconciled", KIND_BOOL),
-    Column("is_archived", KIND_BOOL),
-    Column("archived_at", KIND_DATETIME),
     Column("reconciliation_id", KIND_INT),
     Column("feed_source", KIND_STR_OR_NONE),
     Column("feed_amount", KIND_DECIMAL),
@@ -612,8 +622,8 @@ JOURNAL_COLUMNS = (
     Column("feed_description", KIND_STR),
     Column("feed_merchant", KIND_STR_OR_NONE),
     Column("feed_is_mirror", KIND_BOOL),
-    Column("feed_is_archived", KIND_BOOL),
-    Column("feed_archived_at", KIND_DATETIME),
+    Column("feed_is_void", KIND_BOOL),
+    Column("feed_voided_at", KIND_DATETIME),
 )
 
 # --- budget.csv ---------------------------------------------------------

@@ -5,8 +5,15 @@ These become JournalEntry records when the user categorizes them.
 """
 
 from django.db import models
+from django.utils import timezone
 
 from apps.books.models import BaseBookModel
+
+VOID_ROW_MESSAGE = "This transaction is void. Restore it before categorizing it."
+
+
+class VoidRowError(ValueError):
+    """A void bank row was about to be linked to an entry that counts."""
 
 
 class BankTransaction(BaseBookModel):
@@ -81,6 +88,19 @@ class BankTransaction(BaseBookModel):
     )
     raw = models.JSONField(null=True, blank=True, help_text="Raw transaction data from source")
 
+    # Void, not "archived": a void row counts toward nothing. While the row is
+    # linked to a journal entry this is a stored copy of `entry.status == void`,
+    # kept in step by `save()` here and by `JournalEntry.save()`; only an
+    # uncategorized row's flag is its own. Change it through
+    # `apps.journal.services.voiding`, never directly.
+    is_void = models.BooleanField(default=False, help_text="Whether this transaction is void (counts toward nothing)")
+    voided_at = models.DateTimeField(null=True, blank=True, help_text="When this transaction was voided")
+
+    # The flags inherited from BaseModel would be a second, competing "doesn't
+    # count" state; `is_void` replaces them.
+    is_archived = None
+    archived_at = None
+
     # When a transaction is categorized as a transfer to another feed account, a
     # linked "mirror" leg is created in that account so the transfer shows up in
     # both feeds. Both legs point at the same JournalEntry (no double-counting).
@@ -101,6 +121,43 @@ class BankTransaction(BaseBookModel):
 
     def __str__(self):
         return f"{self.posted_date} - {self.description} - ${self.amount}"
+
+    @property
+    def is_active(self):
+        return not self.is_void
+
+    def archive(self):
+        raise NotImplementedError("Bank transactions are voided, not archived: use apps.journal.services.voiding.")
+
+    def restore(self):
+        raise NotImplementedError("Restore a bank transaction with apps.journal.services.voiding.restore.")
+
+    def save(self, *args, **kwargs):
+        """
+        Keep a linked row's void flag equal to its entry's status.
+
+        The entry is the truth for a linked row, read fresh from the database so a
+        stale in-memory entry cannot write a stale flag. Linking a *void* row to an
+        entry that is not void is refused: it would silently restore the row.
+        """
+        if self.journal_entry_id:
+            from apps.journal.models import JournalEntry
+
+            entry_status = (
+                JournalEntry.objects.filter(pk=self.journal_entry_id).values_list("status", flat=True).first()
+            )
+            entry_void = entry_status == JournalEntry.STATUS_VOID
+            if self.is_void and not entry_void and not self._state.adding:
+                previous = BankTransaction.objects.filter(pk=self.pk).values_list("journal_entry_id", flat=True).first()
+                if previous != self.journal_entry_id:
+                    raise VoidRowError(VOID_ROW_MESSAGE)
+            if self.is_void != entry_void:
+                self.is_void = entry_void
+                self.voided_at = timezone.now() if entry_void else None
+                update_fields = kwargs.get("update_fields")
+                if update_fields is not None:
+                    kwargs["update_fields"] = {*update_fields, "is_void", "voided_at"}
+        super().save(*args, **kwargs)
 
     @property
     def is_categorized(self):

@@ -20,7 +20,7 @@ import { mapValues } from '../runtime';
  */
 export interface BatchIds {
     /**
-     * List of BankTransaction IDs to operate on
+     * List of BankTransaction IDs to operate on (at most 1000)
      * @type {Array<number>}
      * @memberof BatchIds
      */

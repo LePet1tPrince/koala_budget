@@ -154,9 +154,9 @@ class TransferDetectionTest(TransferTestBase):
         self.assertEqual(len(pairs), 1)
         self.assertEqual(pairs[0]["date_gap_days"], 3)
 
-    def test_ignores_archived(self):
+    def test_ignores_void(self):
         self._tx(self.checking, "100.00")
-        self._tx(self.savings, "-100.00", is_archived=True)
+        self._tx(self.savings, "-100.00", is_void=True)
         self.assertEqual(self.candidates(), [])
 
     def test_includes_already_categorized_pairs(self):

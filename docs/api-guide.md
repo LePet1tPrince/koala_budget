@@ -139,8 +139,8 @@ POST /a/acme/journal/api/lines/123/recategorize/
 | PATCH | `/feed/batch_edit/` | Bulk edit multiple (category, account, payee, description, date) |
 | POST | `/feed/batch_reconcile/` | Reconcile multiple |
 | POST | `/feed/batch_unreconcile/` | Unreconcile multiple |
-| POST | `/feed/batch_archive/` | Archive multiple |
-| POST | `/feed/batch_unarchive/` | Unarchive multiple |
+| POST | `/feed/batch_void/` | Void rows (and their entries, and transfer legs); 400 `{error, refused}` names refused rows |
+| POST | `/feed/batch_restore/` | Restore voided rows |
 | POST | `/feed/batch_duplicate/` | Duplicate transactions |
 
 **Categorize transaction:**
