@@ -69,32 +69,64 @@ def start(account, statement_date: date, statement_balance: Decimal, user, prese
     the page joins the work rather than resetting it -- but still takes any
     preselected lines.
     """
-    _check_account(account)
-    draft = draft_for(account)
-    if draft is None:
-        _check_statement_date(account, statement_date)
-        try:
-            with transaction.atomic():
-                draft = Reconciliation.objects.create(
-                    book=account.book,
-                    account=account,
-                    statement_date=statement_date,
-                    statement_balance=to_ledger(account, statement_balance),
-                    started_by=user,
-                )
-        except IntegrityError:
-            # Two starts raced; the constraint let one through. Join it.
-            draft = draft_for(account)
-        else:
-            log_event(
-                AuditEvent.RECONCILIATION_STARTED,
-                request=request,
-                book=account.book,
-                metadata={"account": account.id, "statement_date": statement_date.isoformat()},
-            )
+    draft, _created = _open(account, statement_date, statement_balance, user, request)
     if preselect_line_ids:
         tick(draft, preselect_line_ids, True)
     return draft
+
+
+def start_ticked(account, statement_date: date, statement_balance: Decimal, user, preselect_line_ids=(), request=None):
+    """
+    `start`, but a NEW draft with no preselection opens with every candidate
+    dated on or before the statement date ticked (`tick_through`): most of
+    them are on the statement, and unticking the few that aren't is less work
+    than ticking the many that are. A joined draft keeps its own ticks, and a
+    preselection (the feed's Reconcile button) is the user's own choice, so
+    neither is auto-ticked. Nor is a line that left an earlier statement
+    (unreconciled after it was finished, or its statement undone): someone took
+    it out on purpose, and the drift banner names it for a deliberate re-tick.
+    Returns `(draft, auto_ticked_ids)`.
+    """
+    draft, created = _open(account, statement_date, statement_balance, user, request)
+    if preselect_line_ids:
+        tick(draft, preselect_line_ids, True)
+        return draft, []
+    if not created:
+        return draft, []
+    queryset = candidates.candidate_lines(draft).filter(
+        journal_entry__entry_date__lte=draft.statement_date, reconciliation__isnull=True
+    )
+    ids = list(queryset.values_list("id", flat=True))
+    queryset.update(reconciliation=draft)
+    return draft, ids
+
+
+def _open(account, statement_date, statement_balance, user, request):
+    """The account's open draft, creating it if there is none. Returns `(draft, created)`."""
+    _check_account(account)
+    draft = draft_for(account)
+    if draft is not None:
+        return draft, False
+    _check_statement_date(account, statement_date)
+    try:
+        with transaction.atomic():
+            draft = Reconciliation.objects.create(
+                book=account.book,
+                account=account,
+                statement_date=statement_date,
+                statement_balance=to_ledger(account, statement_balance),
+                started_by=user,
+            )
+    except IntegrityError:
+        # Two starts raced; the constraint let one through. Join it.
+        return draft_for(account), False
+    log_event(
+        AuditEvent.RECONCILIATION_STARTED,
+        request=request,
+        book=account.book,
+        metadata={"account": account.id, "statement_date": statement_date.isoformat()},
+    )
+    return draft, True
 
 
 def update_statement(draft, *, statement_date=None, statement_balance=None):

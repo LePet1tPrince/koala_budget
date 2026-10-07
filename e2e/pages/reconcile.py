@@ -28,6 +28,10 @@ class ReconcilePage(BasePage):
         self.row(line_id).click()
         expect(self.row(line_id)).to_have_attribute("data-ticked", "true")
 
+    def untick(self, line_id: int):
+        self.row(line_id).click()
+        expect(self.row(line_id)).to_have_attribute("data-ticked", "false")
+
     def is_ticked(self, line_id: int) -> bool:
         return self.row(line_id).get_attribute("data-ticked") == "true"
 

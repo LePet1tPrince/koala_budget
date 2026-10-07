@@ -85,11 +85,10 @@ def test_statement_that_balances_finishes_and_shows_intact(
     page = ReconcilePage(authenticated_page, live_server.url)
     page.goto(team.default_book, account.id)
     page.start("650.00")
-    expect(page.difference()).to_have_text("$650.00")
-    page.tick(pay.id)
-    page.tick(rent.id)
+    # Both are dated within the statement, so they arrive ticked.
+    expect(page.row(pay.id)).to_have_attribute("data-ticked", "true")
+    expect(page.row(rent.id)).to_have_attribute("data-ticked", "true")
     expect(page.difference()).to_have_text("$0.00")
-    page.wait_saved()
     page.finish()
     expect(page.done()).to_contain_text("You’re clear")
 
@@ -134,7 +133,7 @@ def test_credit_card_balance_owed_is_typed_as_printed(requires_vite, authenticat
     page.goto(team.default_book, card.id)
     expect(page.page.get_by_text("Balance owed")).to_be_visible()
     page.start("284.56")
-    page.tick(charge.id)
+    expect(page.row(charge.id)).to_have_attribute("data-ticked", "true")
     expect(page.difference()).to_have_text("$0.00")
 
 
@@ -148,7 +147,7 @@ def test_finish_with_adjustment_posts_a_reconciled_feed_row(
     page = ReconcilePage(authenticated_page, live_server.url)
     page.goto(team.default_book, account.id)
     page.start("-42.50")
-    page.tick(line.id)
+    expect(page.row(line.id)).to_have_attribute("data-ticked", "true")
     expect(page.difference()).to_have_text("-$2.50")
     page.wait_saved()
     page.finish_with_adjustment()
@@ -167,12 +166,13 @@ def test_draft_resumes_after_reload(requires_vite, authenticated_page: Page, liv
     page = ReconcilePage(authenticated_page, live_server.url)
     page.goto(team.default_book, account.id)
     page.start("-40.00")
-    page.tick(line.id)
+    page.untick(line.id)
+    expect(page.difference()).to_have_text("-$40.00")
     page.wait_saved()
 
     page.goto(team.default_book, account.id)
-    expect(page.row(line.id)).to_have_attribute("data-ticked", "true")
-    expect(page.difference()).to_have_text("$0.00")
+    expect(page.row(line.id)).to_have_attribute("data-ticked", "false")
+    expect(page.difference()).to_have_text("-$40.00")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -289,6 +289,10 @@ def test_long_statement_is_paginated_and_totals_cover_every_page(
     page = ReconcilePage(authenticated_page, live_server.url)
     page.goto(book, account.id)
     page.start("-150.00")
+    # Every line is in the window, so the difference is zero from the start.
+    expect(page.difference()).to_have_text("$0.00")
+    page.page.locator("[data-testid='untick-all-btn']").click()
+    expect(page.difference()).to_have_text("-$150.00")
     expect(page.pager_range()).to_have_text("1–100 of 150")
     assert len(page.row_ids()) == 100
     page.next_page()
@@ -310,8 +314,7 @@ def test_discard_asks_in_a_dialog(requires_vite, authenticated_page: Page, live_
     page = ReconcilePage(authenticated_page, live_server.url)
     page.goto(team.default_book, account.id)
     page.start("-40.00")
-    page.tick(line.id)
-    page.wait_saved()
+    expect(page.row(line.id)).to_have_attribute("data-ticked", "true")
 
     page.discard()
     authenticated_page.locator("[data-testid='discard-dialog']").get_by_role("button", name="Keep working").click()
@@ -332,8 +335,7 @@ def test_undo_asks_in_a_dialog(requires_vite, authenticated_page: Page, live_ser
     page = ReconcilePage(authenticated_page, live_server.url)
     page.goto(team.default_book, account.id)
     page.start("-40.00")
-    page.tick(line.id)
-    page.wait_saved()
+    expect(page.difference()).to_have_text("$0.00")
     page.finish()
     expect(page.history_statuses()).to_have_text(["Intact"])
 
@@ -342,3 +344,23 @@ def test_undo_asks_in_a_dialog(requires_vite, authenticated_page: Page, live_ser
     expect(page.history_statuses()).to_have_text(["Undone"])
     line.refresh_from_db()
     assert not line.is_reconciled
+
+
+@pytest.mark.django_db(transaction=True)
+def test_new_statement_ticks_everything_through_its_date(
+    requires_vite, authenticated_page: Page, live_server, chequing
+):
+    team, account = chequing["team"], chequing["account"]
+    inside, _ = entry(team, account, chequing["groceries"], "-10.00", on=_in_period(5), description="Inside")
+    later, _ = entry(
+        team, account, chequing["groceries"], "-20.00", on=_statement_date() + timedelta(days=2), description="Later"
+    )
+
+    page = ReconcilePage(authenticated_page, live_server.url)
+    page.goto(team.default_book, account.id)
+    page.start("-10.00")
+    expect(page.row(inside.id)).to_have_attribute("data-ticked", "true")
+    expect(page.row(later.id)).to_have_attribute("data-ticked", "false")
+    expect(page.difference()).to_have_text("$0.00")
+    toast = authenticated_page.locator("[data-testid='reconcile-toast']")
+    expect(toast).to_contain_text("Ticked 1 transaction dated on or before")

@@ -86,14 +86,23 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
   const [page, setPage] = useState(0);
 
   const pending = useRef(new Map());
+  // Ticks sent but not yet answered: with `pending`, what a reload must not undo.
+  const sent = useRef(new Map());
   const timer = useRef(null);
   const ticket = useRef(0);
   const inFlight = useRef(Promise.resolve());
   const tableRef = useRef(null);
 
-  // A new draft payload (reload, edit, include-later) replaces local state.
+  // A new draft payload (reload, edit, include-later) replaces local state --
+  // except ticks the server hasn't answered yet: a reload requested before a
+  // click can land after it, and must not put the row back.
   useEffect(() => {
-    setLines(draft.lines);
+    const unsaved = new Map([...sent.current, ...pending.current]);
+    setLines(
+      unsaved.size
+        ? draft.lines.map((line) => (unsaved.has(line.id) ? { ...line, ticked: unsaved.get(line.id) } : line))
+        : draft.lines,
+    );
     setHints(draft.hints);
     setUncategorized(draft.uncategorized);
     setEditDate(draft.statement_date);
@@ -117,6 +126,7 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
     if (pending.current.size === 0) return inFlight.current;
     const batch = new Map(pending.current);
     pending.current.clear();
+    batch.forEach((value, id) => sent.current.set(id, value));
     const mine = ++ticket.current;
     const on = [...batch].filter(([, v]) => v).map(([id]) => id);
     const off = [...batch].filter(([, v]) => !v).map(([id]) => id);
@@ -135,7 +145,13 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
         notify(err.message || gettext('Could not save your ticks.'), 'error');
         onReload();
       })
-      .finally(() => setPendingCount(pending.current.size));
+      .finally(() => {
+        // A newer tick of the same row may have been sent since; keep that one.
+        batch.forEach((value, id) => {
+          if (sent.current.get(id) === value) sent.current.delete(id);
+        });
+        setPendingCount(pending.current.size);
+      });
     return inFlight.current;
   }, [api, draft.id, notify, onReload]);
 
@@ -429,20 +445,13 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
 
       <section className="app-surface p-3">
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <div role="tablist" className="join">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                role="tab"
-                aria-selected={filter === f.key}
-                className={`join-item btn btn-sm ${filter === f.key ? 'btn-active' : ''}`}
-                onClick={() => setFilter(f.key)}
-                data-testid={`filter-${f.key}`}
-              >
-                {f.label(labels)}
-              </button>
-            ))}
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-outline btn-sm" onClick={tickThrough} data-testid="tick-through-btn">
+              {interpolate(gettext('Tick all through %s'), [formatDate(draft.statement_date)])}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={untickAll} data-testid="untick-all-btn">
+              {gettext('Untick all')}
+            </button>
           </div>
           <label className="input input-bordered input-sm flex items-center gap-2 w-full sm:w-56">
             <Icon name="search" className="w-4 h-4 text-base-content/40" />
@@ -470,13 +479,20 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
             <Icon name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} className="w-4 h-4" />
             {sortDir === 'desc' ? gettext('Newest first') : gettext('Oldest first')}
           </button>
-          <div className="flex gap-2 sm:ml-auto">
-            <button type="button" className="btn btn-outline btn-sm" onClick={tickThrough} data-testid="tick-through-btn">
-              {interpolate(gettext('Tick all through %s'), [formatDate(draft.statement_date)])}
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={untickAll} data-testid="untick-all-btn">
-              {gettext('Untick all')}
-            </button>
+          <div role="tablist" className="join sm:ml-auto">
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                role="tab"
+                aria-selected={filter === f.key}
+                className={`join-item btn btn-sm ${filter === f.key ? 'btn-active' : ''}`}
+                onClick={() => setFilter(f.key)}
+                data-testid={`filter-${f.key}`}
+              >
+                {f.label(labels)}
+              </button>
+            ))}
           </div>
         </div>
 

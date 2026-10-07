@@ -12,7 +12,7 @@ import StartForm from './StartForm';
 import Workspace from './Workspace';
 import { formatDate } from './labels';
 
-/* globals gettext, interpolate */
+/* globals gettext, ngettext, interpolate */
 
 /**
  * The per-account reconciliation page: start form → workspace → result, with
@@ -108,6 +108,19 @@ const ReconcileApp = ({ props, api }) => {
       });
       setDraft(payload);
       setView('work');
+      if (payload.auto_ticked > 0) {
+        notify(
+          interpolate(
+            ngettext(
+              'Ticked %s transaction dated on or before %s. Untick it if it isn’t on your statement.',
+              'Ticked %s transactions dated on or before %s. Untick any that aren’t on your statement.',
+              payload.auto_ticked,
+            ),
+            [payload.auto_ticked, formatDate(payload.statement_date)],
+          ),
+          'info',
+        );
+      }
     } catch (err) {
       setStartError(err.message);
     } finally {

@@ -126,7 +126,7 @@ class ReconciliationViewSet(viewsets.ViewSet):
         data = serializer.validated_data
         account = _account(request.book, data["account"])
         try:
-            draft = session.start(
+            draft, auto_ticked = session.start_ticked(
                 account,
                 data["statement_date"],
                 data["statement_balance"],
@@ -136,7 +136,9 @@ class ReconciliationViewSet(viewsets.ViewSet):
             )
         except ReconciliationError as exc:
             return _error(exc)
-        return Response(presenters.draft_payload(draft), status=status.HTTP_201_CREATED)
+        return Response(
+            {**presenters.draft_payload(draft), "auto_ticked": len(auto_ticked)}, status=status.HTTP_201_CREATED
+        )
 
     def retrieve(self, request, pk=None, team_slug=None, book_slug=None):
         rec = _reconciliation(request.book, pk)
