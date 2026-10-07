@@ -315,13 +315,32 @@ class SelectionTest(FeedFixture):
 
 
 class LocateTest(FeedFixture):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        # Enough rows that the fixture's spread over several pages of 10, whatever the sort.
+        BankTransaction.objects.bulk_create(
+            BankTransaction(
+                book=cls.book,
+                account=cls.savings,
+                amount=D(f"{i + 1}.00"),
+                posted_date=date(2026, 3, 1) + timedelta(days=i % 20),
+                description=f"Filler {i:02d}",
+                merchant_name=f"Filler {i:02d}",
+                source=BankTransaction.SOURCE_CSV,
+            )
+            for i in range(25)
+        )
+
     def test_the_page_a_row_is_on_matches_the_list(self):
-        for params in ({}, {"sort": "payee"}, {"sort": "category", "dir": "desc"}):
+        for params in ({}, {"sort": "payee"}, {"sort": "category", "dir": "desc"}, {"sort": "inflow"}):
             order = self.ids(view="active", **params)
-            for target in (self.pair_in, self.split, self.uncategorized):
+            for target in (self.pair_in, self.split, self.uncategorized, self.groceries_tx):
                 with self.subTest(params=params, row=target.description):
                     resp = self.get("locate/", view="active", page_size=10, row=target.id, **params)
                     self.assertEqual(resp.data["page"], order.index(target.id) // 10 + 1)
+        # The fixture really is spread: a row past the first page is located past it.
+        self.assertGreater(self.get("locate/", view="active", page_size=10, row=self.uncategorized.id).data["page"], 1)
 
     def test_the_other_leg_of_a_transfer(self):
         resp = self.get(

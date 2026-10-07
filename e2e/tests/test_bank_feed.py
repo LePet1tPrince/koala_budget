@@ -15,7 +15,7 @@ from decimal import Decimal
 import pytest
 from playwright.sync_api import Page
 
-from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY
 from apps.bank_feed.models import BankTransaction
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
 from e2e.pages.bank_feed import BankFeedPage
@@ -582,28 +582,276 @@ def test_csv_sign_convention_defaults_by_account_type(
     assert authenticated_page.get_by_text(hint, exact=True).is_visible()
 
 
-@pytest.mark.django_db(transaction=True)
-def test_long_feed_shows_first_page_then_loads_the_rest(requires_vite, authenticated_page, live_server, team):
-    """A feed longer than one API page renders early and ends with every row, once."""
-    group = AccountGroupFactory(team=team)
-    account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
-    # 450 rows = three API pages of 200, so the older two load behind the table.
-    BankTransaction.objects.bulk_create(
-        BankTransaction(
-            book=team.default_book,
-            account=account,
-            posted_date=date(2026, 1, 1) + timedelta(days=i),
-            description=f"LONG-ROW-{i:03d}",
+# ----------------------------------------------------------------------
+# One Inbox for every account (unified bank feed plan, Phase 2)
+#
+# The table is one server-side queryset over every feed account: the cards
+# and the account filter narrow it, and paging, "select all matching" and
+# the jump to a transfer's other leg all run against that one ordered set.
+# ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def two_accounts(team):
+    group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_ASSET, name="Zed Banks")
+    chequing = AssetAccountFactory(team=team, account_group=group, has_feed=True, name="Zed Chequing")
+    savings = AssetAccountFactory(team=team, account_group=group, has_feed=True, name="Zed Savings")
+    expense_group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE, name="Zed Spending")
+    groceries = AccountFactory(team=team, account_group=expense_group, name="Zed Groceries")
+    return {"chequing": chequing, "savings": savings, "groceries": groceries}
+
+
+def _rows(team, account, prefix, count, *, start=date(2026, 1, 1), **kwargs):
+    return [
+        feed_transaction(
+            team,
+            account,
             amount=Decimal("10.00"),
-            source=BankTransaction.SOURCE_CSV,
+            posted_date=start + timedelta(days=i),
+            description=f"{prefix}-{i:02d}",
+            **kwargs,
         )
-        for i in range(450)
-    )
+        for i in range(count)
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_inbox_opens_on_every_account_with_an_account_column(
+    requires_vite, authenticated_page, live_server, team, two_accounts
+):
+    (chq,) = _rows(team, two_accounts["chequing"], "CHQ", 1)
+    (sav,) = _rows(team, two_accounts["savings"], "SAV", 1)
 
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(team.default_book)
-    feed.click_account_card(account.id)
     feed.wait_for_table()
-    feed.wait_for_all_rows()
 
-    assert feed.pager_total() == 450
+    assert feed.heading() == "All accounts"
+    assert feed.has_account_column()
+    assert feed.row_account(chq.id) == "Zed Chequing"
+    assert feed.row_account(sav.id) == "Zed Savings"
+
+    # A card narrows the table to its account; the column has nothing left to say.
+    feed.click_account_card(two_accounts["savings"].id)
+    assert feed.heading() == "Lines for Zed Savings"
+    assert not feed.has_account_column()
+    assert feed.has_row(sav.id) and not feed.has_row(chq.id)
+
+    # Clicking the same card again shows every account.
+    feed.open_account_picker()
+    feed.click_account_card(two_accounts["savings"].id)
+    assert feed.heading() == "All accounts"
+    assert feed.has_row(chq.id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_account_filter_takes_several_accounts(requires_vite, authenticated_page, live_server, team, two_accounts):
+    group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_ASSET, name="Zed Cards")
+    visa = AssetAccountFactory(team=team, account_group=group, has_feed=True, name="Zed Visa")
+    (chq,) = _rows(team, two_accounts["chequing"], "CHQ", 1)
+    (sav,) = _rows(team, two_accounts["savings"], "SAV", 1)
+    (card,) = _rows(team, visa, "VISA", 1)
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    feed.toggle_account_filter(two_accounts["chequing"].id)
+    feed.toggle_account_filter(visa.id)
+
+    assert feed.heading() == "2 accounts"
+    assert feed.has_row(chq.id) and feed.has_row(card.id)
+    assert not feed.has_row(sav.id)
+    assert "account=" in authenticated_page.url
+
+    # The filter lives in the URL, so a reload lands on the same view.
+    authenticated_page.reload()
+    feed.wait_for_table()
+    feed.wait_for_rows()
+    assert feed.heading() == "2 accounts"
+    assert not feed.has_row(sav.id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_bulk_edit_across_accounts_keeps_each_row_in_its_own_account(
+    requires_vite, authenticated_page, live_server, team, two_accounts
+):
+    (chq,) = _rows(team, two_accounts["chequing"], "CHQ", 1)
+    (sav,) = _rows(team, two_accounts["savings"], "SAV", 1)
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    feed.select_row(chq.id)
+    feed.select_row(sav.id)
+    feed.batch_button("Bulk Edit").click()
+    authenticated_page.locator("[data-testid='bulk-edit-category']").click()
+    authenticated_page.locator("[data-testid='bulk-edit-category']").fill("Zed Groceries")
+    authenticated_page.get_by_role("option", name="Zed Groceries", exact=False).first.click()
+    authenticated_page.locator("[data-testid='bulk-edit-apply']").click()
+    feed.wait_for_saves()
+
+    for row, home in ((chq, two_accounts["chequing"]), (sav, two_accounts["savings"])):
+        row.refresh_from_db()
+        assert row.account_id == home.id
+        accounts = set(row.journal_entry.lines.values_list("account_id", flat=True))
+        assert accounts == {home.id, two_accounts["groceries"].id}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_editing_a_row_across_accounts_keeps_it_in_its_account(
+    requires_vite, authenticated_page, live_server, team, two_accounts
+):
+    """The save names the row's own account, not whichever account the page last showed."""
+    (sav,) = _rows(team, two_accounts["savings"], "SAV", 1, category=two_accounts["groceries"])
+    _rows(team, two_accounts["chequing"], "CHQ", 1)
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    feed.open_row(sav.id)
+    authenticated_page.locator("[data-testid='transaction-description']").fill("SAV-RENAMED")
+    feed.save_modal()
+
+    sav.refresh_from_db()
+    assert sav.description == "SAV-RENAMED"
+    assert sav.account_id == two_accounts["savings"].id
+    assert feed.row_account(sav.id) == "Zed Savings"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_reconcile_needs_rows_from_one_account(requires_vite, authenticated_page, live_server, team, two_accounts):
+    (chq,) = _rows(team, two_accounts["chequing"], "CHQ", 1, category=two_accounts["groceries"])
+    (sav,) = _rows(team, two_accounts["savings"], "SAV", 1, category=two_accounts["groceries"])
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    feed.select_row(chq.id)
+    assert feed.batch_button("Reconcile").is_enabled()
+
+    feed.select_row(sav.id)
+    assert feed.batch_button("Reconcile").is_disabled()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_adding_a_transaction_asks_for_its_account(requires_vite, authenticated_page, live_server, team, two_accounts):
+    """Blank across several accounts (Save refuses until one is chosen); preset to the filtered one."""
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    feed.click_add_transaction()
+    account_field = authenticated_page.locator("[data-testid='transaction-account']")
+    assert account_field.input_value() == ""
+    feed.save_modal_expecting_error()
+    assert authenticated_page.get_by_text("Choose the account this transaction is in").is_visible()
+    feed.close_modal()
+
+    feed.click_account_card(two_accounts["chequing"].id)
+    feed.click_add_transaction()
+    assert account_field.input_value() == "Zed Chequing"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_csv_upload_asks_for_the_account_when_several_are_shown(
+    requires_vite, authenticated_page, live_server, team, two_accounts
+):
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    authenticated_page.get_by_role("button", name="More actions").click()
+    authenticated_page.get_by_text("Upload CSV/Excel", exact=True).click()
+
+    assert authenticated_page.locator("[data-testid='upload-account-dialog']").is_visible()
+    assert authenticated_page.locator("[data-testid='upload-account-continue']").is_disabled()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_voided_view_spans_accounts_and_restores(requires_vite, authenticated_page, live_server, team, two_accounts):
+    (chq,) = _rows(team, two_accounts["chequing"], "CHQ", 1, void=True)
+    (sav,) = _rows(team, two_accounts["savings"], "SAV", 1, category=two_accounts["groceries"], void=True)
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    assert not feed.has_row(chq.id)
+
+    feed.click_filter("voided")
+    feed.wait_for_rows()
+    assert feed.has_row(chq.id) and feed.has_row(sav.id)
+
+    feed.select_row(sav.id)
+    feed.batch_button("Restore").click()
+    feed.wait_for_saves()
+
+    sav.refresh_from_db()
+    assert not sav.is_void
+    assert sav.journal_entry.status != "void"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_feed_is_paged_on_the_server(requires_vite, authenticated_page, live_server, team, two_accounts):
+    rows = _rows(team, two_accounts["chequing"], "PAGED", 30)
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+
+    assert feed.pager_total() == 30
+    # Newest first, 25 to a page: the oldest five are on page 2.
+    assert feed.has_row(rows[-1].id) and not feed.has_row(rows[0].id)
+
+    feed.next_page()
+    assert feed.has_row(rows[0].id) and not feed.has_row(rows[-1].id)
+    assert "page=2" in authenticated_page.url
+
+    authenticated_page.reload()
+    feed.wait_for_table()
+    feed.wait_for_rows()
+    assert feed.has_row(rows[0].id)
+
+    feed.set_page_size(50)
+    assert feed.has_row(rows[0].id) and feed.has_row(rows[-1].id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_select_all_matching_reaches_past_the_page(requires_vite, authenticated_page, live_server, team, two_accounts):
+    _rows(team, two_accounts["chequing"], "CHQ", 20)
+    _rows(team, two_accounts["savings"], "SAV", 10)
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    feed.select_all_rows()
+    assert feed.selected_count() == 25
+
+    feed.select_all_matching()
+    assert feed.selected_count() == 30
+
+    # A new filter is a new set of rows: the selection does not carry over.
+    feed.toggle_account_filter(two_accounts["savings"].id)
+    assert authenticated_page.locator("[data-testid='selected-count']").count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_transfer_link_opens_the_other_leg_on_its_page(
+    requires_vite, authenticated_page, live_server, team, two_accounts
+):
+    from apps.bank_feed.services.transfer_mirror import sync_transfer
+
+    chequing, savings = two_accounts["chequing"], two_accounts["savings"]
+    # The transfer is the oldest row in Savings, so its mirror sits on page 2 there.
+    primary = feed_transaction(
+        team, chequing, category=savings, amount=Decimal("25.00"), posted_date="2026-01-01", description="XFER-OUT"
+    )
+    sync_transfer(primary)
+    mirror = BankTransaction.objects.get(journal_entry=primary.journal_entry, account=savings)
+    _rows(team, savings, "SAV", 30, start=date(2026, 2, 1))
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.click_account_card(chequing.id)
+    authenticated_page.locator(f"[data-testid='transfer-link-{primary.id}']").click()
+    authenticated_page.wait_for_selector(f"[data-testid='feed-row-{mirror.id}']", timeout=10_000)
+
+    assert feed.heading() == "Lines for Zed Savings"
+    assert "page=2" in authenticated_page.url

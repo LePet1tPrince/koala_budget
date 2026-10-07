@@ -502,9 +502,6 @@ class BankFeedViewSet(
         of a transfer: the same entry's row in the other account). Answers
         `{id, page, is_void}` -- `id` null when no such row exists at all.
         """
-        from django.db.models import Window
-        from django.db.models.functions import RowNumber
-
         params = self.feed_params
         target = BankTransaction.objects.filter(book=request.book)
         try:
@@ -526,10 +523,7 @@ class BankFeedViewSet(
             params,
             transfer_ids=feed_query.transfer_candidate_ids(request.book) if params.transfers else None,
         )
-        if params.sort == "category":
-            rows = rows.annotate(_lines=feed_query._line_count()).annotate(_category_sort=feed_query._category_sort())
-        numbered = rows.annotate(position=Window(RowNumber(), order_by=feed_query.order_expressions(params)))
-        position = numbered.filter(pk=found["pk"]).values_list("position", flat=True).first()
+        position = feed_query.position_of(rows, params, found["pk"])
         page = None if position is None else (position - 1) // params.page_size + 1
         return Response({"id": found["pk"], "page": page, "is_void": found["is_void"]})
 

@@ -28,6 +28,7 @@ const BatchActionBar = ({
   showRestore = false,
   viewMode = 'active',
   selectedAccount = null,
+  getExportRows = null,
 }) => {
   // In the voided view, only allow restore, export, and delete
   const isVoidedView = viewMode === 'voided';
@@ -59,6 +60,13 @@ const BatchActionBar = ({
   const allCategorized = useMemo(() => {
     return selectedRows.every(row => row.category);
   }, [selectedRows]);
+
+  // Reconciling happens on one account's statement, so the selection must be in one account.
+  const reconcileBlocked = !selectedAccount
+    ? gettext('Select rows from one account to reconcile')
+    : !allCategorized
+      ? gettext('Categorize all transactions to reconcile')
+      : null;
 
   // Check if any/all selected rows are reconciled. The quick filters no longer guarantee
   // a homogeneous selection, so reconcile/unreconcile availability is derived from the
@@ -110,20 +118,22 @@ const BatchActionBar = ({
     }).format(amount);
   };
 
-  // Export to CSV
-  const handleExport = () => {
+  // Export to CSV. Rows selected on other pages (or by "select all matching")
+  // are summaries, so the caller fetches them in full first.
+  const handleExport = async () => {
+    const rows = getExportRows ? await getExportRows() : selectedRows;
     const headers = ['Date', 'Description', 'Merchant', 'Inflow', 'Outflow', 'Category', 'Account'];
     const csvRows = [headers.join(',')];
 
-    selectedRows.forEach(row => {
+    rows.forEach(row => {
       csvRows.push([
         row.postedDate,
         `"${(row.description || '').replace(/"/g, '""')}"`,
         `"${(row.merchantName || '').replace(/"/g, '""')}"`,
         row.inflow || '',
         row.outflow || '',
-        row.category?.name || '',
-        row.account?.name || '',
+        `"${(row.category?.name || '').replace(/"/g, '""')}"`,
+        `"${(row.account?.name || '').replace(/"/g, '""')}"`,
       ].join(','));
     });
 
@@ -224,13 +234,13 @@ const BatchActionBar = ({
           // The tooltip has to sit on a wrapper: a disabled button fires no
           // pointer events, so a tip on the button itself never shows.
           <span
-            className={!allCategorized ? 'tooltip' : undefined}
-            data-tip={!allCategorized ? gettext('Categorize all transactions to reconcile') : undefined}
+            className={reconcileBlocked ? 'tooltip' : undefined}
+            data-tip={reconcileBlocked || undefined}
           >
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              disabled={!allCategorized}
+              disabled={Boolean(reconcileBlocked)}
               onClick={() => onReconcile?.(selectedRows)}
             >
               <Icon name="check-circle" className="w-4 h-4 shrink-0" />

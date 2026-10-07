@@ -4,7 +4,7 @@ Goal: the Inbox (`/a/{team}/{book}/bankfeed/`) shows **one table of every bank-f
 
 Supersedes the earlier "bulk edit on the Transactions page" plan: editing the ledger directly is dropped. The Transactions page is unchanged.
 
-Status: in progress. Rebased on `develop` at `9b98927` (#247); §0.1 lists what landed there since the plan was written and what it changed here.
+Status: Phases 0–2 built. Rebased on `develop` at `9b98927` (#247); §0.1 lists what landed there since the plan was written and what it changed here. §6 lists where the build departed from this plan. Open: the `EXPLAIN`/index check (§2.1) and D3.
 
 ---
 
@@ -239,14 +239,14 @@ With server paging the client only holds the page on screen, so selection can no
 | # | Question | Recommendation |
 |---|---|---|
 | D1 | ~~Load every row client-side, or page on the server?~~ | **Decided:** one server-side queryset, paged (§2.1). |
-| D2 | Default view on arrival: all accounts, or the last account viewed? | All accounts. Remember the filter per book in `localStorage` only if users ask. |
+| D2 | ~~Default view on arrival: all accounts, or the last account viewed?~~ | **Decided:** all accounts; the URL carries the filter, so a bookmark or Back keeps it. |
 | D3 | Voided entries with no bank row have no restore view. | Remove Void from the Transactions edit modal for entries with no bank row (Delete covers manual entries); the feed is the one place for void/restore. |
 
 ---
 
 ## 4. Phases
 
-**Phase 0 — one void state (§1).** Rename, field removals, data migration with balance assertion, `voiding.py`, model backstops, callers switched, `counted_entries()` simplified, Archived → Voided in the feed, portability v4, `void_consistency`.
+**Phase 0 — one void state (§1).** Rename, field removals, data migration with balance assertion, `voiding.py`, model backstops, callers switched, `counted_entries()` simplified, Archived → Voided in the feed, portability v6, `void_consistency`.
 
 **Phase 1 — server.** List endpoint params, sort annotations, `counts`, pagination (§2.1); `feed/selection/`, `feed/locate/`, `?ids=`; id caps; refusals that name rows; self-transfer move refused; mirror skipping in bulk category and duplicate; `EXPLAIN` and index. Old client keeps working throughout (`?account=<id>` with every page still returns the same rows).
 
@@ -282,3 +282,13 @@ With server paging the client only holds the page on screen, so selection can no
 - Reconcile disabled for a two-account selection, enabled for one.
 - Add Transaction with all accounts requires an account; CSV upload asks for one.
 - Voided view lists voided rows from every account; Restore returns them.
+
+---
+
+## 6. What the build changed
+
+- **`locate/` numbered the wrong set.** Filtering the window-annotated queryset by `pk` puts the `pk` condition in the same `WHERE` the `ROW_NUMBER()` runs over, so every row was "row 1" and every jump landed on page 1. Phase 1's test missed it because its fixture fit on one page of 10. `feed_query.position_of()` now numbers the whole list in an inner query and picks the row in an outer one (raw SQL over `QuerySet.query.sql_with_params()`; Django's QUALIFY emulation moves only window conditions out). The test now spreads the fixture over several pages and checks four sorts.
+- **Add Transaction always shows the Account picker**, preset to the filtered account when there is exactly one — rather than hiding it then. One form for both cases, and the account a new row lands in is always visible.
+- **CSV upload** with several accounts shown opens an "Upload to which account?" dialog (`upload-account-dialog`) before the wizard, instead of a wizard step; with one account filtered it goes straight to the wizard.
+- **Bulk edit with mirrors selected**: the server skips a mirror whose primary is also selected (Phase 1); a mirror selected alone is refused and named, and the batch bar's toast offers **Deselect them**. `BulkEditModal` does not count mirrors up front.
+- Default page size **25** (`DEFAULT_PAGE_SIZE` in `assets/javascript/bank_feed/feedQuery.js`); the server's default stays 200 so Categorize Mode's request is unchanged.

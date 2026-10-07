@@ -307,6 +307,33 @@ def order_expressions(params):
     return [*head, *tail]
 
 
+def position_of(rows, params, pk):
+    """
+    The 1-based position of row `pk` in `rows` as `params` orders them, or None.
+
+    The row number has to be computed over every row before picking one out:
+    filtering on `pk` in the same query (as `QuerySet.filter` would, even on a
+    window-annotated queryset) numbers a one-row result and always answers 1.
+    So the numbered list is the inner query and the pick is the outer one.
+    """
+    from django.db import connection
+    from django.db.models import Window
+    from django.db.models.functions import RowNumber
+
+    if params.sort == "category":
+        rows = rows.annotate(_lines=_line_count()).annotate(_category_sort=_category_sort())
+    numbered = rows.annotate(row_id=F("pk"), position=Window(RowNumber(), order_by=order_expressions(params))).values(
+        "row_id", "position"
+    )
+    sql, sql_params = numbered.query.sql_with_params()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT numbered.position FROM ({sql}) AS numbered WHERE numbered.row_id = %s", [*sql_params, pk]
+        )
+        found = cursor.fetchone()
+    return found[0] if found else None
+
+
 def counts(book, params):
     """
     The menu badges for the request's accounts, whatever else is filtered.
