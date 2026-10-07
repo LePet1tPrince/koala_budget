@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+import Modal from '../common/Modal';
 import { Toast } from '../common/Toast';
 import { formatMoney } from '../common/amount';
 import { fireConfetti } from '../common/confetti';
@@ -11,7 +12,7 @@ import StartForm from './StartForm';
 import Workspace from './Workspace';
 import { formatDate } from './labels';
 
-/* globals gettext, interpolate */
+/* globals gettext, ngettext, interpolate */
 
 /**
  * The per-account reconciliation page: start form → workspace → result, with
@@ -29,6 +30,7 @@ const ReconcileApp = ({ props, api }) => {
   const [startError, setStartError] = useState('');
   const [busy, setBusy] = useState(false);
   const [undoing, setUndoing] = useState(null);
+  const [confirmUndo, setConfirmUndo] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const includeLater = useRef(false);
@@ -106,6 +108,19 @@ const ReconcileApp = ({ props, api }) => {
       });
       setDraft(payload);
       setView('work');
+      if (payload.auto_ticked > 0) {
+        notify(
+          interpolate(
+            ngettext(
+              'Ticked %s transaction dated on or before %s. Untick it if it isn’t on your statement.',
+              'Ticked %s transactions dated on or before %s. Untick any that aren’t on your statement.',
+              payload.auto_ticked,
+            ),
+            [payload.auto_ticked, formatDate(payload.statement_date)],
+          ),
+          'info',
+        );
+      }
     } catch (err) {
       setStartError(err.message);
     } finally {
@@ -122,14 +137,10 @@ const ReconcileApp = ({ props, api }) => {
   };
 
   const undo = async (rec) => {
-    const message = interpolate(
-      gettext('Undo the %s statement? Its transactions become unreconciled and any adjustment is voided.'),
-      [formatDate(rec.statement_date)],
-    );
-    if (!window.confirm(message)) return;
     setUndoing(rec.id);
     try {
       await api.undo(rec.id);
+      setConfirmUndo(null);
       notify(gettext('Statement undone. Its transactions can be reconciled again.'), 'success');
       await refreshHistory();
       if (draft) await reload();
@@ -235,7 +246,52 @@ const ReconcileApp = ({ props, api }) => {
         </section>
       )}
 
-      <History history={history} onUndo={undo} busyId={undoing} />
+      <History history={history} onUndo={setConfirmUndo} busyId={undoing} />
+
+      <Modal
+        open={!!confirmUndo}
+        onClose={() => setConfirmUndo(null)}
+        size="sm"
+        title={
+          confirmUndo ? interpolate(gettext('Undo the %s statement?'), [formatDate(confirmUndo.statement_date)]) : ''
+        }
+        testId="undo-dialog"
+        actions={
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmUndo(null)} autoFocus>
+              {gettext('Keep it')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-warning btn-sm"
+              onClick={() => undo(confirmUndo)}
+              disabled={undoing !== null}
+              data-testid="undo-confirm-btn"
+            >
+              {undoing !== null && <span className="loading loading-spinner loading-xs" />}
+              {gettext('Undo statement')}
+            </button>
+          </>
+        }
+      >
+        {confirmUndo && (
+          <div className="space-y-2 text-sm">
+            <p>
+              {gettext(
+                'Its transactions become unreconciled, so they can be ticked again on this or a later statement.',
+              )}
+            </p>
+            {Number(confirmUndo.adjustment_amount) !== 0 && (
+              <p>
+                {interpolate(gettext('Its %s adjustment is voided.'), [formatMoney(confirmUndo.adjustment_amount)])}
+              </p>
+            )}
+            <p className="text-base-content/70">
+              {interpolate(gettext('Statement balance: %s.'), [formatMoney(confirmUndo.statement_balance)])}
+            </p>
+          </div>
+        )}
+      </Modal>
 
       {account.has_feed && addOpen && (
         <EditTransactionModal

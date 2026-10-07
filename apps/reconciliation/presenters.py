@@ -9,7 +9,7 @@ import calendar
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, prefetch_related_objects
 from django.urls import reverse
 
 from apps.accounts.models import Account
@@ -98,10 +98,12 @@ def _category_label(line) -> str:
     return ""
 
 
+def _entry_lines_prefetch():
+    return Prefetch("journal_entry__lines", queryset=JournalLine.objects.select_related("account"))
+
+
 def _with_entry_lines(queryset):
-    return queryset.prefetch_related(
-        Prefetch("journal_entry__lines", queryset=JournalLine.objects.select_related("account"))
-    )
+    return queryset.prefetch_related(_entry_lines_prefetch())
 
 
 def line_payload(account, line, *, ticked, feed_entry_ids, statement_date) -> dict:
@@ -184,7 +186,9 @@ def _drift_payload(account) -> dict | None:
 def draft_numbers(rec, *, include_later=False) -> dict:
     """Summary, hints and (optionally) lines for a draft -- what every tick response carries."""
     account = rec.account
-    lines = list(_with_entry_lines(candidates.visible_lines(rec, include_later=include_later)))
+    # No category prefetch here: a tick response carries no lines, and the labels
+    # are fetched only by `draft_payload`, which does.
+    lines = list(candidates.visible_lines(rec, include_later=include_later))
     current = candidates.summary(rec)
     numbers = current.as_statement(account)
     uncategorized, uncategorized_rows = _uncategorized(rec)
@@ -213,6 +217,7 @@ def draft_payload(rec, *, include_later=False) -> dict:
     account = rec.account
     numbers = draft_numbers(rec, include_later=include_later)
     lines = numbers.pop("lines")
+    prefetch_related_objects(lines, _entry_lines_prefetch())
     feed_ids = _feed_entry_ids(account, [line.journal_entry_id for line in lines])
     previous = last_completed(account)
     return {

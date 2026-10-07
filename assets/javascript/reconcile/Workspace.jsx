@@ -4,6 +4,7 @@ import AmountInput from '../common/AmountInput';
 import DateField from '../common/DateField';
 import Icon from '../common/Icon';
 import Modal from '../common/Modal';
+import { SortArrow, TablePager } from '../common/TablePager';
 import { evaluateAmount, formatMoney, toCents } from '../common/amount';
 import DifferenceHints from './DifferenceHints';
 import { formatDate, labelsFor } from './labels';
@@ -12,6 +13,29 @@ import { formatDate, labelsFor } from './labels';
 
 // Ticks are collected for this long and sent as one request.
 const TICK_BATCH_MS = 250;
+
+const PAGE_SIZES = [50, 100, 250, 500];
+const DEFAULT_PAGE_SIZE = 100;
+
+// Per-viewer preferences; storage can throw (private window, blocked site data).
+const SORT_KEY = 'reconcile-sort-dir';
+const PAGE_SIZE_KEY = 'reconcile-page-size';
+const readPref = (key, fallback, allowed) => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    const value = typeof fallback === 'number' ? Number(raw) : raw;
+    return allowed.includes(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const writePref = (key, value) => {
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    /* not remembered; the page still works */
+  }
+};
 
 const FILTERS = [
   { key: 'all', label: () => gettext('All') },
@@ -55,16 +79,30 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
   const [editBalance, setEditBalance] = useState(draft.statement_balance);
   const [saving, setSaving] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [sortDir, setSortDir] = useState(() => readPref(SORT_KEY, 'desc', ['asc', 'desc']));
+  const [pageSize, setPageSize] = useState(() => readPref(PAGE_SIZE_KEY, DEFAULT_PAGE_SIZE, PAGE_SIZES));
+  const [page, setPage] = useState(0);
 
   const pending = useRef(new Map());
+  // Ticks sent but not yet answered: with `pending`, what a reload must not undo.
+  const sent = useRef(new Map());
   const timer = useRef(null);
   const ticket = useRef(0);
   const inFlight = useRef(Promise.resolve());
   const tableRef = useRef(null);
 
-  // A new draft payload (reload, edit, include-later) replaces local state.
+  // A new draft payload (reload, edit, include-later) replaces local state --
+  // except ticks the server hasn't answered yet: a reload requested before a
+  // click can land after it, and must not put the row back.
   useEffect(() => {
-    setLines(draft.lines);
+    const unsaved = new Map([...sent.current, ...pending.current]);
+    setLines(
+      unsaved.size
+        ? draft.lines.map((line) => (unsaved.has(line.id) ? { ...line, ticked: unsaved.get(line.id) } : line))
+        : draft.lines,
+    );
     setHints(draft.hints);
     setUncategorized(draft.uncategorized);
     setEditDate(draft.statement_date);
@@ -88,6 +126,7 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
     if (pending.current.size === 0) return inFlight.current;
     const batch = new Map(pending.current);
     pending.current.clear();
+    batch.forEach((value, id) => sent.current.set(id, value));
     const mine = ++ticket.current;
     const on = [...batch].filter(([, v]) => v).map(([id]) => id);
     const off = [...batch].filter(([, v]) => !v).map(([id]) => id);
@@ -106,7 +145,13 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
         notify(err.message || gettext('Could not save your ticks.'), 'error');
         onReload();
       })
-      .finally(() => setPendingCount(pending.current.size));
+      .finally(() => {
+        // A newer tick of the same row may have been sent since; keep that one.
+        batch.forEach((value, id) => {
+          if (sent.current.get(id) === value) sent.current.delete(id);
+        });
+        setPendingCount(pending.current.size);
+      });
     return inFlight.current;
   }, [api, draft.id, notify, onReload]);
 
@@ -126,17 +171,46 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
 
   const toggle = (line) => setTicked([line.id], !line.ticked);
 
-  const visible = useMemo(
-    () =>
-      lines.filter((line) => {
-        const cents = toCents(line.amount);
-        if (filter === 'plus' && cents <= 0) return false;
-        if (filter === 'minus' && cents >= 0) return false;
-        if (filter === 'unticked' && line.ticked) return false;
-        return matchesQuery(line, query);
-      }),
-    [lines, filter, query],
-  );
+  // The server sends lines oldest first (date, entry, line), so newest first is
+  // that order reversed -- deterministic, so rows never shuffle between pages.
+  const visible = useMemo(() => {
+    const kept = lines.filter((line) => {
+      const cents = toCents(line.amount);
+      if (filter === 'plus' && cents <= 0) return false;
+      if (filter === 'minus' && cents >= 0) return false;
+      if (filter === 'unticked' && line.ticked) return false;
+      return matchesQuery(line, query);
+    });
+    return sortDir === 'desc' ? kept.reverse() : kept;
+  }, [lines, filter, query, sortDir]);
+
+  // Only one page is rendered: a 2,000-line statement re-rendered in full on
+  // every tick. The totals above still cover every line. The page is clamped
+  // where it is read, since ticking under the "Unticked" filter shrinks the list.
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageRows = visible.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
+  useEffect(() => setPage(0), [filter, query, sortDir, pageSize, draft]);
+
+  const toggleSort = () => {
+    const next = sortDir === 'desc' ? 'asc' : 'desc';
+    setSortDir(next);
+    writePref(SORT_KEY, next);
+  };
+
+  const changePageSize = (size) => {
+    setPageSize(size);
+    writePref(PAGE_SIZE_KEY, size);
+  };
+
+  // A hint's rows may sit on another page; show the page holding the first one.
+  const focusHint = (ids) => {
+    setHighlight(ids);
+    if (!ids.length) return;
+    const index = visible.findIndex((line) => line.id === ids[0]);
+    if (index >= 0) setPage(Math.floor(index / pageSize));
+  };
 
   const moveFocus = (from, delta) => {
     const rows = [...(tableRef.current?.querySelectorAll('[data-row]') || [])];
@@ -194,14 +268,18 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
   };
 
   const discard = async () => {
-    if (!window.confirm(gettext('Discard this reconciliation? Your ticks are thrown away; nothing is reconciled.'))) {
-      return;
-    }
+    setDiscarding(true);
     try {
+      clearTimeout(timer.current);
+      pending.current.clear();
+      await inFlight.current.catch(() => {});
       await api.discard(draft.id);
+      setDiscardOpen(false);
       onDiscarded();
     } catch (err) {
       notify(err.message, 'error');
+    } finally {
+      setDiscarding(false);
     }
   };
 
@@ -283,7 +361,7 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing((v) => !v)} data-testid="edit-statement-btn">
             {gettext('Edit statement')}
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={discard} data-testid="discard-draft-btn">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDiscardOpen(true)} data-testid="discard-draft-btn">
             {gettext('Discard')}
           </button>
           <span className="text-xs text-base-content/70 ml-auto" aria-live="polite">
@@ -361,13 +439,47 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
         <DifferenceHints
           hints={hints}
           onAction={(hint) => setTicked(hint.action_ids || hint.line_ids, hint.action === 'tick')}
-          onFocus={setHighlight}
+          onFocus={focusHint}
         />
       )}
 
       <section className="app-surface p-3">
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <div role="tablist" className="join">
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-outline btn-sm" onClick={tickThrough} data-testid="tick-through-btn">
+              {interpolate(gettext('Tick all through %s'), [formatDate(draft.statement_date)])}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={untickAll} data-testid="untick-all-btn">
+              {gettext('Untick all')}
+            </button>
+          </div>
+          <label className="input input-bordered input-sm flex items-center gap-2 w-full sm:w-56">
+            <Icon name="search" className="w-4 h-4 text-base-content/40" />
+            <input
+              type="search"
+              className="grow"
+              placeholder={gettext('Search or type an amount')}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              data-testid="line-search"
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={toggleSort}
+            aria-label={
+              sortDir === 'desc'
+                ? gettext('Sorted newest first. Sort oldest first')
+                : gettext('Sorted oldest first. Sort newest first')
+            }
+            data-testid="sort-toggle"
+            data-sort={sortDir}
+          >
+            <Icon name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} className="w-4 h-4" />
+            {sortDir === 'desc' ? gettext('Newest first') : gettext('Oldest first')}
+          </button>
+          <div role="tablist" className="join sm:ml-auto">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
@@ -382,25 +494,6 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
               </button>
             ))}
           </div>
-          <label className="input input-bordered input-sm flex items-center gap-2 w-full sm:w-56">
-            <Icon name="search" className="w-4 h-4 text-base-content/40" />
-            <input
-              type="search"
-              className="grow"
-              placeholder={gettext('Search or type an amount')}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              data-testid="line-search"
-            />
-          </label>
-          <div className="flex gap-2 sm:ml-auto">
-            <button type="button" className="btn btn-outline btn-sm" onClick={tickThrough} data-testid="tick-through-btn">
-              {interpolate(gettext('Tick all through %s'), [formatDate(draft.statement_date)])}
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={untickAll} data-testid="untick-all-btn">
-              {gettext('Untick all')}
-            </button>
-          </div>
         </div>
 
         <div className="overflow-x-auto" ref={tableRef}>
@@ -410,7 +503,20 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
                 <th className="w-8">
                   <span className="sr-only">{gettext('Ticked')}</span>
                 </th>
-                <th className="hidden sm:table-cell">{gettext('Date')}</th>
+                <th
+                  className="hidden sm:table-cell"
+                  aria-sort={sortDir === 'desc' ? 'descending' : 'ascending'}
+                >
+                  <button
+                    type="button"
+                    className="group inline-flex items-center gap-1"
+                    onClick={toggleSort}
+                    data-testid="sort-date-header"
+                  >
+                    {gettext('Date')}
+                    <SortArrow active direction={sortDir} />
+                  </button>
+                </th>
                 <th>{gettext('Payee / Description')}</th>
                 <th className="hidden md:table-cell">{gettext('Category')}</th>
                 <th className="text-right hidden sm:table-cell">{labels.plus}</th>
@@ -419,7 +525,7 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
               </tr>
             </thead>
             <tbody>
-              {visible.map((line) => {
+              {pageRows.map((line) => {
                 const cents = toCents(line.amount);
                 return (
                   <tr
@@ -487,6 +593,17 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
             </tbody>
           </table>
         </div>
+        {visible.length > PAGE_SIZES[0] && (
+          <TablePager
+            page={currentPage}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            pageSizeOptions={PAGE_SIZES}
+            total={visible.length}
+            onPageChange={setPage}
+            onPageSizeChange={changePageSize}
+          />
+        )}
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
           {draft.include_later ? (
@@ -508,6 +625,40 @@ const Workspace = ({ draft, api, onReload, onFinished, onDiscarded, onAddMissing
           </span>
         </div>
       </section>
+
+      <Modal
+        open={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        size="sm"
+        title={gettext('Discard this reconciliation?')}
+        testId="discard-dialog"
+        actions={
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDiscardOpen(false)} autoFocus>
+              {gettext('Keep working')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-error btn-sm"
+              onClick={discard}
+              disabled={discarding}
+              data-testid="discard-confirm-btn"
+            >
+              {discarding && <span className="loading loading-spinner loading-xs" />}
+              {gettext('Discard')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm">
+          {interpolate(
+            gettext(
+              'Your %s ticks on the %s statement are thrown away and nothing is reconciled. You can start the statement again afterwards.',
+            ),
+            [tickedCount, formatDate(draft.statement_date)],
+          )}
+        </p>
+      </Modal>
 
       <Modal
         open={finishOpen}

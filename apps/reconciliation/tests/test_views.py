@@ -33,11 +33,15 @@ class ApiHappyPathTests(ReconciliationTestCase):
         )
         self.assertEqual(resp.status_code, 201, resp.content)
         draft = resp.json()
-        self.assertEqual(draft["summary"]["difference"], "60.00")
+        # Both are dated within the statement, so a new draft opens with them ticked.
+        self.assertEqual(draft["auto_ticked"], 2)
+        self.assertEqual(draft["summary"]["difference"], "0.00")
         self.assertEqual({line["id"] for line in draft["lines"]}, {pay.id, rent.id})
 
-        resp = self.api("post", f"{API}{draft['id']}/tick/", {"line_ids": [pay.id, rent.id], "ticked": True})
+        resp = self.api("post", f"{API}{draft['id']}/tick/", {"line_ids": [rent.id], "ticked": False})
         self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["summary"]["difference"], "-40.00")
+        resp = self.api("post", f"{API}{draft['id']}/tick/", {"line_ids": [rent.id], "ticked": True})
         self.assertEqual(resp.json()["summary"]["difference"], "0.00")
 
         resp = self.api("post", f"{API}{draft['id']}/finish/", {})
@@ -60,6 +64,64 @@ class ApiHappyPathTests(ReconciliationTestCase):
         )
         self.assertEqual(resp.json()["summary"]["difference"], "0.00")
         self.assertTrue(resp.json()["lines"][0]["ticked"])
+
+    def test_new_draft_ticks_lines_through_the_statement_date(self):
+        inside = self.entry(self.chequing, self.salary, "100.00", on=date(2026, 8, 31))
+        older = self.entry(self.chequing, self.groceries, "-5.00", on=date(2026, 6, 2))
+        later = self.entry(self.chequing, self.groceries, "-40.00", on=date(2026, 9, 2))
+        resp = self.api(
+            "post", API, {"account": self.chequing.id, "statement_date": "2026-08-31", "statement_balance": "95.00"}
+        )
+        body = resp.json()
+        ticked = {line["id"]: line["ticked"] for line in body["lines"]}
+        self.assertEqual(ticked, {inside.id: True, older.id: True, later.id: False})
+        self.assertEqual(body["auto_ticked"], 2)
+        self.assertEqual(body["summary"]["difference"], "0.00")
+
+    def test_preselection_is_not_auto_ticked_around(self):
+        chosen = self.entry(self.chequing, self.salary, "100.00", on=date(2026, 8, 3))
+        other = self.entry(self.chequing, self.groceries, "-5.00", on=date(2026, 8, 4))
+        body = self.api(
+            "post",
+            API,
+            {
+                "account": self.chequing.id,
+                "statement_date": "2026-08-31",
+                "statement_balance": "100.00",
+                "line_ids": [chosen.id],
+            },
+        ).json()
+        ticked = {line["id"]: line["ticked"] for line in body["lines"]}
+        self.assertEqual(ticked, {chosen.id: True, other.id: False})
+        self.assertEqual(body["auto_ticked"], 0)
+
+    def test_line_that_left_a_finished_statement_is_not_auto_ticked(self):
+        kept = self.entry(self.chequing, self.salary, "100.00", on=date(2026, 7, 10))
+        pulled = self.entry(self.chequing, self.groceries, "-5.00", on=date(2026, 7, 11))
+        july = session.start(self.chequing, date(2026, 7, 31), Decimal("95.00"), self.user, [kept.id, pulled.id])
+        session.finish(july, self.user)
+        pulled.refresh_from_db()
+        pulled.is_reconciled = False  # unreconciled after the statement was finished
+        pulled.save()
+        fresh = self.entry(self.chequing, self.groceries, "-1.00", on=date(2026, 8, 3))
+
+        body = self.api(
+            "post", API, {"account": self.chequing.id, "statement_date": "2026-08-31", "statement_balance": "94.00"}
+        ).json()
+        ticked = {line["id"]: line["ticked"] for line in body["lines"]}
+        self.assertEqual(ticked, {pulled.id: False, fresh.id: True})
+        self.assertEqual(body["auto_ticked"], 1)
+
+    def test_joining_an_open_draft_keeps_its_ticks(self):
+        line = self.entry(self.chequing, self.salary, "100.00", on=date(2026, 8, 3))
+        draft = session.start(self.chequing, date(2026, 8, 31), Decimal("100.00"), self.user)
+        body = self.api(
+            "post", API, {"account": self.chequing.id, "statement_date": "2026-08-31", "statement_balance": "1.00"}
+        ).json()
+        self.assertEqual(body["id"], draft.id)
+        self.assertEqual(body["auto_ticked"], 0)
+        self.assertFalse(body["lines"][0]["ticked"])
+        self.assertEqual(line.id, body["lines"][0]["id"])
 
     def test_card_payload_is_in_statement_sign(self):
         charge = self.entry(self.card, self.groceries, "-284.56", on=date(2026, 8, 5))
