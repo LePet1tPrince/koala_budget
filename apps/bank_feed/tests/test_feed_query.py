@@ -133,6 +133,16 @@ class FilterTest(FeedFixture):
     def test_a_named_account_is_shown_even_when_hidden_from_the_inbox(self):
         self.assertEqual(self.ids(account=self.hidden.id), [self.hidden_tx.id])
 
+    def test_an_account_hidden_with_the_eye_toggle_leaves_the_inbox(self):
+        """`is_hidden` (the accounts board's eye) takes a feed account's rows out of the list, its counts and the
+        Categorize Mode queue; naming the account still lists them."""
+        Account.objects.filter(pk=self.savings.pk).update(is_hidden=True)
+        savings_rows = {self.income.id, self.pair_in.id}
+        self.assertFalse(savings_rows & set(self.ids()))
+        self.assertNotIn(self.pair_in.id, self.ids(uncategorized=1))
+        self.assertEqual(self.get(counts=1).data["counts"]["uncategorized"], 2)
+        self.assertEqual(set(self.ids(account=self.savings.id)), savings_rows)
+
     def test_views_and_quick_filters(self):
         active = {
             self.uncategorized.id,

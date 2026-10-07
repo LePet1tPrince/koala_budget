@@ -49,16 +49,16 @@ class LinkChanges:
 
 def eligible_accounts(book, goal=None):
     """
-    Accounts that can be offered for linking: this book's non-system, open asset
-    accounts, plus any archived account `goal` is still linked to (so it can be
-    unlinked). Each carries `feeds_goal_id`/`feeds_goal_name`: the goal it is
+    Accounts that can be offered for linking: this book's non-system, open, shown
+    asset accounts, plus any archived or hidden account `goal` is still linked to (so
+    it can be unlinked). Each carries `feeds_goal_id`/`feeds_goal_name`: the goal it is
     linked to now, if any.
     """
     open_links = GoalAccountLink.objects.open().filter(account=OuterRef("pk"))
     accounts = Account.objects.filter(
         book=book, is_system=False, account_group__account_type=ACCOUNT_TYPE_ASSET
     ).select_related("account_group", "institution")
-    keep = Q(is_archived=False)
+    keep = Q(is_archived=False, is_hidden=False)
     if goal is not None and goal.pk:
         keep |= Exists(GoalAccountLink.objects.open().filter(account=OuterRef("pk"), goal=goal))
     accounts = accounts.filter(keep)

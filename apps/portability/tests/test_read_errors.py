@@ -140,7 +140,13 @@ class VersionTests(SimpleTestCase):
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
             zf_out.writestr("manifest.json", json.dumps(manifest))
             accounts_v1 = zf_in.read("accounts.csv")
-            for column in ("goal_closed_at", "hidden_from_budget", "goal_outflow", "goal_monthly_contribution"):
+            for column in (
+                "goal_closed_at",
+                "hidden_from_budget",
+                "goal_outflow",
+                "goal_monthly_contribution",
+                "is_hidden",
+            ):
                 accounts_v1 = _drop_column(accounts_v1, column)
             zf_out.writestr("accounts.csv", accounts_v1)
             zf_out.writestr("journal.csv", (journal_v1 + "\r\n").encode("utf-8-sig"))

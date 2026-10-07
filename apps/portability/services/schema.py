@@ -42,11 +42,12 @@ FORMAT = "koala-budget-export"
 # 4: `hidden_from_budget` on accounts.csv (a category can be hidden from the budget).
 # 5: goal-linked accounts -- `goal_links.csv`, and `goal_outflow` /
 # `goal_monthly_contribution` on accounts.csv.
-# 6: one void state -- `feed_is_archived`/`feed_archived_at` become
+# 6: `is_hidden` on accounts.csv (an account can be hidden from pickers and the Inbox).
+# 7: one void state -- `feed_is_archived`/`feed_archived_at` become
 # `feed_is_void`/`feed_voided_at`, and the unused archive flags on entries and
 # lines (`entry_is_archived`, `entry_archived_at`, `is_archived`, `archived_at`)
-# are gone. `upgrade_5_to_6` voids the entry behind any archived row.
-FORMAT_VERSION = 6
+# are gone. `upgrade_6_to_7` voids the entry behind any archived row.
+FORMAT_VERSION = 7
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
@@ -66,20 +67,21 @@ COLUMNS_ADDED_IN = {
     (ACCOUNTS_FILE, "hidden_from_budget"): 4,
     (ACCOUNTS_FILE, "goal_outflow"): 5,
     (ACCOUNTS_FILE, "goal_monthly_contribution"): 5,
-    (JOURNAL_FILE, "feed_is_void"): 6,
-    (JOURNAL_FILE, "feed_voided_at"): 6,
+    (ACCOUNTS_FILE, "is_hidden"): 6,
+    (JOURNAL_FILE, "feed_is_void"): 7,
+    (JOURNAL_FILE, "feed_voided_at"): 7,
 }
 
 #: Columns an older archive has that the current format dropped:
 #: `{(file, column): (kind, version it was dropped in)}`. Read from archives
 #: older than that version so `upgrade.py` can carry what they held.
 COLUMNS_RETIRED_IN = {
-    ("journal.csv", "entry_is_archived"): ("bool", 6),
-    ("journal.csv", "entry_archived_at"): ("datetime", 6),
-    ("journal.csv", "is_archived"): ("bool", 6),
-    ("journal.csv", "archived_at"): ("datetime", 6),
-    ("journal.csv", "feed_is_archived"): ("bool", 6),
-    ("journal.csv", "feed_archived_at"): ("datetime", 6),
+    ("journal.csv", "entry_is_archived"): ("bool", 7),
+    ("journal.csv", "entry_archived_at"): ("datetime", 7),
+    ("journal.csv", "is_archived"): ("bool", 7),
+    ("journal.csv", "archived_at"): ("datetime", 7),
+    ("journal.csv", "feed_is_archived"): ("bool", 7),
+    ("journal.csv", "feed_archived_at"): ("datetime", 7),
 }
 
 # journal.csv's `status` column carries every `JournalEntry.status` value plus
@@ -370,6 +372,7 @@ ACCOUNT = FieldMap(
         "is_system": ColumnSpec("is_system", KIND_BOOL),
         "sort_order": ColumnSpec("sort_order", KIND_INT),
         "hidden_from_budget": ColumnSpec("hidden_from_budget", KIND_BOOL),
+        "is_hidden": ColumnSpec("is_hidden", KIND_BOOL),
         "is_archived": ColumnSpec("is_archived", KIND_BOOL),
         "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
     },
@@ -488,6 +491,7 @@ ACCOUNTS_COLUMNS = (
     Column("is_system", KIND_BOOL),
     Column("sort_order", KIND_INT),
     Column("hidden_from_budget", KIND_BOOL),
+    Column("is_hidden", KIND_BOOL),
     Column("is_archived", KIND_BOOL),
     Column("archived_at", KIND_DATETIME),
     Column("goal_name", KIND_STR_OR_NONE),

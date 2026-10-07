@@ -10,6 +10,7 @@ from decimal import Decimal
 from django.test import SimpleTestCase
 
 from apps.portability.services import read, write
+from apps.portability.services.schema import FORMAT_VERSION
 from apps.portability.tests.fixtures import build_fixture_tables
 
 
@@ -41,7 +42,7 @@ class RoundTripTests(SimpleTestCase):
 
     def test_manifest_format_and_version(self):
         self.assertEqual(self.tables.manifest.format, "koala-budget-export")
-        self.assertEqual(self.tables.manifest.format_version, 6)
+        self.assertEqual(self.tables.manifest.format_version, FORMAT_VERSION)
 
     def test_manifest_file_row_counts(self):
         self.assertEqual(self.tables.manifest.files["accounts.csv"]["rows"], len(self.accounts))
@@ -154,6 +155,7 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "is_system": False,
                 "sort_order": 0,
                 "hidden_from_budget": False,
+                "is_hidden": False,
                 "is_archived": False,
                 "archived_at": None,
                 "goal_name": None,
@@ -185,6 +187,7 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "is_system": False,
                 "sort_order": 0,
                 "hidden_from_budget": False,
+                "is_hidden": False,
                 "is_archived": False,
                 "archived_at": None,
                 "goal_name": None,

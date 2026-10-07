@@ -104,10 +104,28 @@ const TransactionEditModal = ({
 
   // Categories: anything. The account side is only ever somewhere money sits, so
   // an expense account would be a nonsense choice there.
-  const categoryOptions = useMemo(() => buildCategoryOptions(allAccounts), [allAccounts]);
+  // A hidden or system account the selection already uses stays on offer in the
+  // picker that holds it, or opening the transaction would blank that field.
+  const usedOn = (pick) => {
+    const ids = new Set(transactions.flatMap(pick).filter(Boolean));
+    return allAccounts.filter((a) => ids.has(a.id));
+  };
+  const categoryOptions = useMemo(
+    () =>
+      buildCategoryOptions(allAccounts, {
+        keep: usedOn((tx) => [tx.category?.id, ...(tx.splits || []).map((leg) => leg.category_id)]),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allAccounts, transactions]
+  );
   const accountOptions = useMemo(
-    () => buildCategoryOptions(allAccounts, { filterTypes: ['asset', 'liability'] }),
-    [allAccounts]
+    () =>
+      buildCategoryOptions(allAccounts, {
+        filterTypes: ['asset', 'liability'],
+        keep: usedOn((tx) => [tx.account?.id]),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allAccounts, transactions]
   );
   const payeeOptions = useMemo(() => allPayees.map((p) => p.name), [allPayees]);
 

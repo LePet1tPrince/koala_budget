@@ -119,7 +119,7 @@ class Tables:
     # Non-fatal: a per-file sha256 in the manifest did not match the file's
     # actual contents (§3.1) -- shown to the user, does not block the import.
     hash_warnings: list = field(default_factory=list)
-    # What `upgrade_5_to_6` voided to bring an older archive's void state into
+    # What `upgrade_6_to_7` voided to bring an older archive's void state into
     # line, so the integrity gate can compare against the manifest it was
     # written with (`apply._verify`). None for a current archive.
     void_upgrade: dict | None = None

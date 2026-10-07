@@ -58,8 +58,15 @@ def upgrade_4_to_5(tables: dict) -> dict:
 
 
 def upgrade_5_to_6(tables: dict) -> dict:
+    """Version 6 added `is_hidden`. Before it, no account could be hidden."""
+    for row in tables["accounts"]:
+        row.setdefault("is_hidden", False)
+    return tables
+
+
+def upgrade_6_to_7(tables: dict) -> dict:
     """
-    Version 6 has one void state. Before it a feed row could be archived while
+    Version 7 has one void state. Before it a feed row could be archived while
     its entry stayed posted (the entry then counted toward nothing anyway), and
     entries and lines carried archive flags nothing read.
 
@@ -103,6 +110,7 @@ CHAIN: dict[int, Callable[[dict], dict]] = {
     3: upgrade_3_to_4,
     4: upgrade_4_to_5,
     5: upgrade_5_to_6,
+    6: upgrade_6_to_7,
 }
 
 

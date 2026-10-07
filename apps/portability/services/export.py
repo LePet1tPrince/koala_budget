@@ -295,7 +295,7 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
     the exporter agrees with itself.
 
     `count_entry_ids` are void entries to count anyway: an older archive's
-    checks were written before their entries were voided (`upgrade_5_to_6`).
+    checks were written before their entries were voided (`upgrade_6_to_7`).
     """
     non_void_lines = (
         JournalLine.objects.filter(book=book)

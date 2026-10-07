@@ -239,13 +239,14 @@ def base_rows(book, params):
     """
     The rows the request's accounts cover, before any view or quick filter.
 
-    With no account named, every account on a feed: an account hidden from the
-    Inbox (`has_feed=False`) keeps its rows, but they are not in the Inbox.
+    With no account named, every account on a feed that is not hidden: an
+    account off the feed (`has_feed=False`) or hidden (`is_hidden`) keeps its
+    rows, but they are not in the Inbox -- nor in its counts or Categorize Mode.
     """
     rows = BankTransaction.objects.filter(book=book)
     if params.accounts:
         return rows.filter(account_id__in=params.accounts)
-    return rows.filter(account__has_feed=True)
+    return rows.filter(account__has_feed=True, account__is_hidden=False)
 
 
 def filtered(book, params, *, transfer_ids=None):

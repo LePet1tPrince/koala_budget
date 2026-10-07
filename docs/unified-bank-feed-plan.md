@@ -45,7 +45,7 @@ Status: Phases 0–2 built. Rebased on `develop` at `9b98927` (#247); §0.1 list
 | #246 background writes (`runWrite`, quiet refresh) | Kept. Optimistic updates apply to the page on screen; the quiet refresh re-reads **that page** and its counts instead of the whole feed (§2.2). |
 | #245 inline transfer match | Phase 0: `archive_duplicate` becomes a `voiding.void` caller (`transfers/resolve` no longer exists). §2.1: "Possible transfers" becomes a server filter. §2.7: "Go to other side" and the post-match flash use `feed/locate/`. |
 | `?uncategorized=1` used by Categorize Mode | §2.1 keeps the endpoint's default page size at 200 so Categorize Mode is untouched; the Inbox sends `page_size` explicitly. |
-| Portability format is v4 (`hidden_from_budget`, #242) | Phase 0's format bump is **v5** (`upgrade_4_to_5`). |
+| Portability format is v4 (`hidden_from_budget`, #242); v5 (goal links) and v6 (`is_hidden`, #248) landed since | Phase 0's format bump is **v7** (`upgrade_6_to_7`). |
 | Audit migration `0012` (#243) | Phase 0's audit migration is `0013`. |
 | #243 goal-linked accounts, #244 CSV sign default | No effect. |
 
@@ -119,7 +119,7 @@ A `manage.py void_consistency [--book slug] [--fix]` command runs the same check
 - Bank Feed: the **Archived** view becomes **Voided** (`filter-voided`), Archive/Unarchive become **Void/Restore**, endpoints `batch_void`/`batch_restore` (renamed; the api-client is patched/regenerated). The old reconciled rule "silently skip a plain reconciled row" becomes a refusal naming it.
 - Transfer match's `archive_duplicate` becomes one `void()` call.
 - Audit: new `AuditEvent` types `BULK_VOID`/`BULK_RESTORE` (audit migration `0013`); `BULK_ARCHIVE`/`BULK_UNARCHIVE` stay as choices for history.
-- Portability format **v5**: `feed_is_archived`/`feed_archived_at` → `feed_is_void`/`feed_voided_at`; `entry_is_archived` and the line `is_archived` column dropped. `upgrade_4_to_5` renames the columns and applies 1.5's rules to the imported rows, so an old archive lands consistent; the manifest checksums still match because the rules are balance-neutral.
+- Portability format **v7**: `feed_is_archived`/`feed_archived_at` → `feed_is_void`/`feed_voided_at`; `entry_is_archived` and the line `is_archived` column dropped. `upgrade_6_to_7` renames the columns and applies 1.5's rules to the imported rows, so an old archive lands consistent; the manifest checksums still match because the rules are balance-neutral.
 - Tests: the invariant holds after every write path (categorize, decategorize, split, transfer mirror create/move/remove, void, restore, resolve, reconciliation undo, CSV/Plaid/YNAB/portability import).
 - **Restore view.** The unified feed's Voided view (§2.6) lists every voided bank row in the book, categorized or not; Restore there calls `voiding.restore`. Entries with **no** bank row (voided from the Transactions edit modal: manual entries, opening balances, tracking-account history) are in no feed → D3.
 
@@ -246,7 +246,7 @@ With server paging the client only holds the page on screen, so selection can no
 
 ## 4. Phases
 
-**Phase 0 — one void state (§1).** Rename, field removals, data migration with balance assertion, `voiding.py`, model backstops, callers switched, `counted_entries()` simplified, Archived → Voided in the feed, portability v6, `void_consistency`.
+**Phase 0 — one void state (§1).** Rename, field removals, data migration with balance assertion, `voiding.py`, model backstops, callers switched, `counted_entries()` simplified, Archived → Voided in the feed, portability v7, `void_consistency`.
 
 **Phase 1 — server.** List endpoint params, sort annotations, `counts`, pagination (§2.1); `feed/selection/`, `feed/locate/`, `?ids=`; id caps; refusals that name rows; self-transfer move refused; mirror skipping in bulk category and duplicate; `EXPLAIN` and index. Old client keeps working throughout (`?account=<id>` with every page still returns the same rows).
 
@@ -291,4 +291,5 @@ With server paging the client only holds the page on screen, so selection can no
 - **Add Transaction always shows the Account picker**, preset to the filtered account when there is exactly one — rather than hiding it then. One form for both cases, and the account a new row lands in is always visible.
 - **CSV upload** with several accounts shown opens an "Upload to which account?" dialog (`upload-account-dialog`) before the wizard, instead of a wizard step; with one account filtered it goes straight to the wizard.
 - **Bulk edit with mirrors selected**: the server skips a mirror whose primary is also selected (Phase 1); a mirror selected alone is refused and named, and the batch bar's toast offers **Deselect them**. `BulkEditModal` does not count mirrors up front.
+- **Hidden accounts (#248).** `Account.is_hidden` landed on `develop` mid-build: a hidden account is out of the Inbox. `feed_query.base_rows` with no account named covers `has_feed=True, is_hidden=False`, so a hidden account's rows leave the list, its counts, `selection/` and Categorize Mode's queue; a hidden account named in `?account=` still lists, as an off-feed one does.
 - Default page size **25** (`DEFAULT_PAGE_SIZE` in `assets/javascript/bank_feed/feedQuery.js`); the server's default stays 200 so Categorize Mode's request is unchanged.

@@ -825,13 +825,13 @@ class ExportInvariantGuardTests(TestCase):
 
 class PreVoidArchiveTests(TestCase):
     """
-    A format-5 archive could hold an archived bank row on a *posted* entry (the
+    A format-6 archive could hold an archived bank row on a *posted* entry (the
     entry counted toward nothing in the app, but its checks were computed
     void-only). It imports with the entry voided, every row on it void, and the
     integrity gate still passing against the manifest it was written with.
     """
 
-    def _v5_archive(self, book):
+    def _pre_void_archive(self, book):
         import io
         import json
         import zipfile
@@ -839,7 +839,7 @@ class PreVoidArchiveTests(TestCase):
         data = export_bytes(book)
         zf_in = zipfile.ZipFile(io.BytesIO(data))
         manifest = json.loads(zf_in.read("manifest.json"))
-        manifest["format_version"] = 5
+        manifest["format_version"] = 6
         archived = []
 
         def archive(row):
@@ -862,11 +862,11 @@ class PreVoidArchiveTests(TestCase):
         return buf.getvalue()
 
     def test_the_entry_behind_an_archived_row_arrives_void_with_its_rows(self):
-        source_team, _u, _h = build_db_fixture_team("Src", "src-v5")
-        dest_team, dest_user, _ = build_db_fixture_team("Dst", "dst-v5")
+        source_team, _u, _h = build_db_fixture_team("Src", "src-v6")
+        dest_team, dest_user, _ = build_db_fixture_team("Dst", "dst-v6")
         dest_book = dest_team.default_book
 
-        apply.apply_archive(dest_book, self._v5_archive(source_team.default_book), user=dest_user)
+        apply.apply_archive(dest_book, self._pre_void_archive(source_team.default_book), user=dest_user)
 
         row = BankTransaction.objects.get(book=dest_book, amount=Decimal("15.00"), journal_entry__isnull=False)
         self.assertTrue(row.is_void)

@@ -73,15 +73,22 @@ def _account_payload(account, book, goal_left=None):
 
     A goal account shows what the goal has `left`, not its raw ledger balance:
     its ledger holds only the spending, while its claim is allocations − spending.
+    An income account's balance is credit-normal, so it is shown cr − dr: a salary
+    reads positive.
     """
+    if goal_left is not None:
+        balance = goal_left
+    elif account.account_group.account_type == ACCOUNT_TYPE_INCOME:
+        balance = -account.balance
+    else:
+        balance = account.balance
     return {
         "id": account.pk,
         "name": account.name,
-        "balance": str(goal_left if goal_left is not None else account.balance),
+        "balance": str(balance),
         "isGoal": goal_left is not None,
         "institution": account.institution.name if account.institution else None,
-        "hasFeed": account.has_feed,
-        "canHaveFeed": account.account_group.account_type in FEED_ACCOUNT_TYPES and not account.is_system,
+        "isHidden": account.is_hidden,
         "isSystem": account.is_system,
         "url": account.get_absolute_url(),
         "editUrl": reverse("accounts:account_update", args=[*book.url_args, account.pk]),
@@ -174,7 +181,7 @@ class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
                 "reorderGroups": reverse("accounts:api_reorder_groups", args=book.url_args),
                 "createAccount": reverse("accounts:api_create_account", args=book.url_args),
                 "createGroup": reverse("accounts:api_create_group", args=book.url_args),
-                "setFeed": reverse("accounts:api_set_feed", args=book.url_args),
+                "setHidden": reverse("accounts:api_set_hidden", args=book.url_args),
                 "accountCreatePage": account_create_url,
             },
         }
@@ -1177,30 +1184,25 @@ def api_create_group(request, team_slug, book_slug):
 
 @login_and_book_required
 @require_POST
-def api_set_feed(request, team_slug, book_slug):
-    """Show or hide an account in the Inbox (board checkbox).
+def api_set_hidden(request, team_slug, book_slug):
+    """Hide or show an account (board eye toggle).
 
-    Body: {"account_id": int, "has_feed": bool}
+    Body: {"account_id": int, "is_hidden": bool}
 
-    Only asset and liability accounts can be turned on — a feed is a bank account or
-    card. Turning one off hides its feed rows from the Inbox without touching them, so
-    turning it back on brings them back. Any account can be turned off.
+    A hidden account is left out of every account picker and the Inbox. Nothing about
+    its transactions changes: they still count in every balance and report, and
+    showing the account again brings it back everywhere.
     """
     payload = _json_body(request)
-    if payload is None or not isinstance(payload.get("has_feed"), bool):
+    if payload is None or not isinstance(payload.get("is_hidden"), bool):
         return JsonResponse({"error": _("Invalid request body.")}, status=400)
 
-    account = (
-        Account.objects.filter(book=request.book, pk=payload.get("account_id")).select_related("account_group").first()
-    )
+    account = Account.objects.filter(book=request.book, pk=payload.get("account_id")).first()
     if account is None:
         return JsonResponse({"error": _("Unknown account.")}, status=400)
 
-    has_feed = payload["has_feed"]
-    if has_feed and (account.is_system or account.account_group.account_type not in FEED_ACCOUNT_TYPES):
-        return JsonResponse({"error": _("Only bank accounts and credit cards can appear in the Inbox.")}, status=400)
-
-    if account.has_feed != has_feed:
-        account.has_feed = has_feed
-        account.save(update_fields=["has_feed", "updated_at"])
-    return JsonResponse({"ok": True, "hasFeed": account.has_feed})
+    is_hidden = payload["is_hidden"]
+    if account.is_hidden != is_hidden:
+        account.is_hidden = is_hidden
+        account.save(update_fields=["is_hidden", "updated_at"])
+    return JsonResponse({"ok": True, "isHidden": account.is_hidden})

@@ -76,6 +76,11 @@ class Account(BaseBookModel):
         help_text="Income/expense category tucked into the budget page's collapsed Hidden group. "
         "A display choice only: its figures still count in every total.",
     )
+    is_hidden = models.BooleanField(
+        default=False,
+        help_text="Left out of every account picker and the Inbox. A display choice only: "
+        "its transactions and balance still count everywhere.",
+    )
 
     # Override managers to use AccountQuerySet for optimized balance queries
     objects = AccountQuerySet.as_manager()
