@@ -92,10 +92,13 @@ def diagnose(rows, difference: Decimal, statement_date: date, uncategorized=()) 
 
     # A duplicate pair is one hint, not one "untick it?" per copy: the message
     # names both, highlights both, and the one-click fix unticks the later copy.
+    # Only rows of exactly -difference can pair, so the quadratic scan runs over
+    # those alone, not every ticked row (2,000 ticks = 2M comparisons per tick).
     in_duplicate = set()
-    for i, a in enumerate(ticked):
-        for b in ticked[i + 1 :]:
-            if a.amount == b.amount == -difference and abs(a.date - b.date) <= DUPLICATE_WINDOW:
+    candidates = [r for r in ticked if r.amount == -difference]
+    for i, a in enumerate(candidates):
+        for b in candidates[i + 1 :]:
+            if abs(a.date - b.date) <= DUPLICATE_WINDOW:
                 if a.id in in_duplicate or b.id in in_duplicate:
                     continue
                 in_duplicate.update((a.id, b.id))

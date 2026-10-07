@@ -53,6 +53,39 @@ class ReconcilePage(BasePage):
     def hint(self, kind: str):
         return self.page.locator(f"[data-testid='hint-{kind}']")
 
+    def row_ids(self) -> list[int]:
+        """Line ids of the rows on the current page, top to bottom."""
+        ids = self.page.locator("[data-testid='reconcile-lines'] tbody tr[data-row]").evaluate_all(
+            "rows => rows.map(r => r.dataset.testid.replace('line-row-', ''))"
+        )
+        return [int(i) for i in ids]
+
+    def toggle_sort(self):
+        self.page.locator("[data-testid='sort-toggle']").click()
+
+    def pager_range(self):
+        return self.page.locator("[data-testid='pager-range']")
+
+    def next_page(self):
+        self.page.get_by_role("button", name="Next page").click()
+
+    def discard(self):
+        """Opens the confirmation dialog; confirm with `confirm_discard()`."""
+        self.page.locator("[data-testid='discard-draft-btn']").click()
+        expect(self.page.locator("[data-testid='discard-dialog']")).to_be_visible()
+
+    def confirm_discard(self):
+        self.page.locator("[data-testid='discard-confirm-btn']").click()
+        self.page.wait_for_selector("[data-testid='reconcile-start-form']", timeout=15_000)
+
+    def undo_first_statement(self):
+        """Opens the undo confirmation for the first history row."""
+        self.page.locator("[data-testid='history-undo']").first.click()
+        expect(self.page.locator("[data-testid='undo-dialog']")).to_be_visible()
+
+    def confirm_undo(self):
+        self.page.locator("[data-testid='undo-confirm-btn']").click()
+
     def history_statuses(self):
         """A locator over the status badges; assert with `expect(...).to_have_text([...])` (it refreshes async)."""
         return self.page.locator("[data-testid='history-status']")

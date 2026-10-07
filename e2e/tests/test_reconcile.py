@@ -238,3 +238,107 @@ def test_unreconciling_in_the_feed_marks_the_statement_changed(
     page.start("-40.00")
     expect(authenticated_page.locator("[data-testid='drift-banner']")).to_contain_text("Store")
     expect(page.row(line.id)).to_be_visible()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_lines_default_newest_first_and_the_toggle_flips_them(
+    requires_vite, authenticated_page: Page, live_server, chequing
+):
+    team, account = chequing["team"], chequing["account"]
+    early, _ = entry(team, account, chequing["groceries"], "-10.00", on=_in_period(2), description="Early")
+    late, _ = entry(team, account, chequing["groceries"], "-20.00", on=_in_period(20), description="Late")
+
+    page = ReconcilePage(authenticated_page, live_server.url)
+    page.goto(team.default_book, account.id)
+    page.start("-30.00")
+    assert page.row_ids() == [late.id, early.id]
+    page.toggle_sort()
+    expect(page.row(early.id)).to_be_visible()
+    assert page.row_ids() == [early.id, late.id]
+
+    # The choice is remembered for the next visit.
+    page.goto(team.default_book, account.id)
+    expect(page.row(early.id)).to_be_visible()
+    assert page.row_ids() == [early.id, late.id]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_long_statement_is_paginated_and_totals_cover_every_page(
+    requires_vite, authenticated_page: Page, live_server, chequing
+):
+    team, account = chequing["team"], chequing["account"]
+    book = team.default_book
+    end = _statement_date()
+    entries = JournalEntry.objects.bulk_create(
+        [
+            JournalEntry(book=book, entry_date=end - timedelta(days=i % 28), description=f"Tx {i}", status="posted")
+            for i in range(150)
+        ]
+    )
+    JournalLine.objects.bulk_create(
+        [
+            line
+            for je in entries
+            for line in (
+                JournalLine(book=book, journal_entry=je, account=account, cr_amount=Decimal("1.00")),
+                JournalLine(book=book, journal_entry=je, account=chequing["groceries"], dr_amount=Decimal("1.00")),
+            )
+        ]
+    )
+
+    page = ReconcilePage(authenticated_page, live_server.url)
+    page.goto(book, account.id)
+    page.start("-150.00")
+    expect(page.pager_range()).to_have_text("1–100 of 150")
+    assert len(page.row_ids()) == 100
+    page.next_page()
+    expect(page.pager_range()).to_have_text("101–150 of 150")
+    assert len(page.row_ids()) == 50
+
+    # Ticking through the statement date covers rows on pages not shown.
+    page.tick_all_through()
+    expect(page.difference()).to_have_text("$0.00")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_discard_asks_in_a_dialog(requires_vite, authenticated_page: Page, live_server, chequing):
+    team, account = chequing["team"], chequing["account"]
+    line, _ = entry(team, account, chequing["groceries"], "-40.00", on=_in_period(3), description="Store")
+    # A native confirm() would block here; fail loudly instead.
+    authenticated_page.on("dialog", lambda d: pytest.fail(f"native dialog: {d.message}"))
+
+    page = ReconcilePage(authenticated_page, live_server.url)
+    page.goto(team.default_book, account.id)
+    page.start("-40.00")
+    page.tick(line.id)
+    page.wait_saved()
+
+    page.discard()
+    authenticated_page.locator("[data-testid='discard-dialog']").get_by_role("button", name="Keep working").click()
+    expect(authenticated_page.locator("[data-testid='discard-dialog']")).to_be_hidden()
+    expect(page.row(line.id)).to_have_attribute("data-ticked", "true")
+
+    page.discard()
+    page.confirm_discard()
+    assert not Reconciliation.objects.filter(account=account).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_undo_asks_in_a_dialog(requires_vite, authenticated_page: Page, live_server, chequing):
+    team, account = chequing["team"], chequing["account"]
+    line, _ = entry(team, account, chequing["groceries"], "-40.00", on=_in_period(3), description="Store")
+    authenticated_page.on("dialog", lambda d: pytest.fail(f"native dialog: {d.message}"))
+
+    page = ReconcilePage(authenticated_page, live_server.url)
+    page.goto(team.default_book, account.id)
+    page.start("-40.00")
+    page.tick(line.id)
+    page.wait_saved()
+    page.finish()
+    expect(page.history_statuses()).to_have_text(["Intact"])
+
+    page.undo_first_statement()
+    page.confirm_undo()
+    expect(page.history_statuses()).to_have_text(["Undone"])
+    line.refresh_from_db()
+    assert not line.is_reconciled
