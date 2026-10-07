@@ -144,7 +144,7 @@ def write_lines(entry, home_account, legs, *, total, book):
     Write `legs` as the category lines of `entry`, against `home_account`.
 
     The home line -- the one on the account the money sat in -- is updated in
-    place, never recreated: it carries is_reconciled / is_cleared / is_archived,
+    place, never recreated: it carries is_reconciled / is_cleared,
     and recreating it would silently unreconcile a transaction the user has
     already confirmed against a statement.
 

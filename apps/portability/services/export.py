@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import defaultdict
 from decimal import Decimal
 
-from django.db.models import Max, Min
+from django.db.models import Max, Min, Q
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
@@ -288,13 +288,20 @@ def _build_budget_rows(book) -> list[dict]:
     return rows
 
 
-def build_checks(book) -> dict:
+def build_checks(book, *, count_entry_ids=()) -> dict:
     """
     The integrity gate's data (§6), computed **from the database** -- never
     from the rows this same module just built, or the check would only prove
     the exporter agrees with itself.
+
+    `count_entry_ids` are void entries to count anyway: an older archive's
+    checks were written before their entries were voided (`upgrade_6_to_7`).
     """
-    non_void_lines = _not_void(book=book).select_related("account", "account__account_group")
+    non_void_lines = (
+        JournalLine.objects.filter(book=book)
+        .filter(~Q(journal_entry__status=JournalEntry.STATUS_VOID) | Q(journal_entry_id__in=set(count_entry_ids)))
+        .select_related("account", "account__account_group")
+    )
 
     trial_dr = ZERO
     trial_cr = ZERO
@@ -342,7 +349,7 @@ def build_checks(book) -> dict:
         "uncategorized": (
             BankTransaction.objects.filter(book=book, journal_entry__isnull=True).count() + len(unplaceable)
         ),
-        "archived": BankTransaction.objects.filter(book=book, is_archived=True).count(),
+        "voided": BankTransaction.objects.filter(book=book, is_void=True).count(),
         "mirror": BankTransaction.objects.filter(book=book, is_transfer_mirror=True).count(),
     }
 

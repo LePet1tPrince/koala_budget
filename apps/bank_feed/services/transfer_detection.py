@@ -37,7 +37,7 @@ def find_transfer_candidates(book, window_days=None):
       - belong to different accounts,
       - have equal magnitude and opposite direction (one outflow, one inflow),
       - posted within ``window_days`` of each other,
-      - are neither archived nor backed by a voided journal entry, and
+      - are not void (a void row always has a void entry), and
       - have not been dismissed as "not a transfer".
 
     Matching is greedy and one-to-one: each transaction appears in at most one
@@ -54,7 +54,7 @@ def find_transfer_candidates(book, window_days=None):
     # a mirror leg can pair with an unrelated real transaction, surfacing the same
     # underlying transfer as a second, spurious suggestion.
     transactions = list(
-        BankTransaction.objects.filter(book=book, is_archived=False, is_transfer_mirror=False)
+        BankTransaction.objects.filter(book=book, is_void=False, is_transfer_mirror=False)
         .filter(counted_entries("journal_entry__"))
         .select_related("account", "journal_entry")
         .order_by("posted_date", "id")

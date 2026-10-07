@@ -11,12 +11,12 @@ import { formatDate } from '../utils';
  *
  * A transfer between two of the user's own accounts is reported by both banks,
  * so it lands in the feed twice. This shows the other side of the pair and what
- * Match will do -- which leg it keeps and archives is decided by the server
+ * Match will do -- which leg it keeps and voids is decided by the server
  * (`proposal`), so the sentence here is what the click does.
  *
  * Props:
  *   match      - {pair, self, other}: the suggestion and its two legs (snake_case rows)
- *   onMatch    - (match) => Promise; keep one leg, archive the other
+ *   onMatch    - (match) => Promise; keep one leg, void the other
  *   onDismiss  - (match) => Promise; not the same transfer
  *   onGoTo     - (match) => void; open the other leg in its own feed
  *   onClose    - () => void
@@ -49,8 +49,8 @@ const TransferMatchPanel = ({ id, match, onMatch, onDismiss, onGoTo, onClose }) 
   };
 
   const outcome = keepsThis
-    ? interpolate(gettext('Match keeps this transaction and archives the one in %s'), [otherAccount])
-    : interpolate(gettext('Match keeps the one in %s and archives this transaction'), [otherAccount]);
+    ? interpolate(gettext('Match keeps this transaction and voids the one in %s'), [otherAccount])
+    : interpolate(gettext('Match keeps the one in %s and voids this transaction'), [otherAccount]);
 
   return (
     <div
@@ -230,7 +230,7 @@ const Comparison = ({ self, other, dateGap, keep }) => {
                     <span className="badge badge-success badge-soft badge-xs">{gettext('Kept')}</span>
                   )}
                   {keep && keep !== s.key && (
-                    <span className="badge badge-ghost badge-xs">{gettext('Archived')}</span>
+                    <span className="badge badge-ghost badge-xs">{gettext('Voided')}</span>
                   )}
                 </span>
               </th>

@@ -26,7 +26,7 @@ export interface TransferMatchResponse {
      */
     keptId: number;
     /**
-     * BankTransaction id archived
+     * BankTransaction id voided
      * @type {number}
      * @memberof TransferMatchResponse
      */
@@ -44,7 +44,7 @@ export interface TransferMatchResponse {
      */
     previousCategoryId: number | null;
     /**
-     * The archived leg's entry, now void (null if it was uncategorized)
+     * The voided leg's entry, now void (null if it was uncategorized)
      * @type {number}
      * @memberof TransferMatchResponse
      */

@@ -46,10 +46,34 @@ class BankFeedPage(BasePage):
     # ------------------------------------------------------------------
 
     def click_account_card(self, account_id: int):
-        """Select an account card to load its bank feed."""
+        """Filter the Inbox to one account by its card (clicking it again shows every account)."""
         self.page.locator(f"[data-testid='account-card-{account_id}']").click()
-        # After clicking, the filter toggles and table should appear
         self.page.wait_for_selector("[data-testid='quick-filters-btn']", timeout=10_000)
+        self.wait_for_rows()
+
+    def toggle_account_filter(self, account_id: int):
+        """Tick or untick one account in the table's account filter."""
+        self.page.locator("[data-testid='account-filter-btn']").click()
+        self.page.locator(f"[data-testid='account-filter-{account_id}']").click()
+        self.page.keyboard.press("Escape")
+        self.wait_for_rows()
+
+    def show_all_accounts(self):
+        self.page.locator("[data-testid='account-filter-btn']").click()
+        self.page.locator("[data-testid='account-filter-all']").click()
+        self.wait_for_rows()
+
+    def heading(self) -> str:
+        return self.page.locator("[data-testid='feed-heading']").inner_text().strip()
+
+    def has_account_column(self) -> bool:
+        return self.page.get_by_role("columnheader", name="Account").count() > 0
+
+    def row_account(self, transaction_id: int) -> str:
+        return self.page.locator(f"[data-testid='feed-row-account-{transaction_id}']").inner_text().strip()
+
+    def has_row(self, transaction_id: int) -> bool:
+        return self.page.locator(f"[data-testid='feed-row-{transaction_id}']").count() > 0
 
     def open_csv_upload(self, csv_path: str):
         """Open the CSV wizard from the table's "More actions" menu and hand it a file."""
@@ -66,13 +90,13 @@ class BankFeedPage(BasePage):
         self.page.locator("[data-testid='modal-cancel-btn']").click()
 
     def click_filter(self, mode: str):
-        """Click a filter toggle. mode is one of: to-review, reconciled, uncategorized, archived.
+        """Click a filter toggle. mode is one of: to-review, reconciled, uncategorized, voided.
 
-        "archived" is a standalone toggle button; the others live inside the
+        "voided" is a standalone toggle button; the others live inside the
         "Quick Filters" dropdown menu and require opening it first.
         """
-        if mode == "archived":
-            self.page.locator("[data-testid='filter-archived']").click()
+        if mode == "voided":
+            self.page.locator("[data-testid='filter-voided']").click()
         else:
             self.page.locator("[data-testid='quick-filters-btn']").click()
             self.page.locator(f"[data-testid='filter-{mode}']").click()
@@ -138,13 +162,21 @@ class BankFeedPage(BasePage):
         self.page.locator("[data-testid='select-all']").check()
         self.page.wait_for_timeout(300)
 
+    def select_all_matching(self):
+        """After selecting the page: extend the selection to every row the filters match."""
+        self.page.locator("[data-testid='select-all-matching']").click()
+        self.page.wait_for_selector("[data-testid='select-all-matching']", state="detached", timeout=10_000)
+
+    def selected_count(self) -> int:
+        return int(self.page.locator("[data-testid='selected-count']").inner_text().split()[0])
+
     def batch_button(self, name: str):
         """A button in the batch action bar, by its visible label."""
         return self.page.get_by_role("button", name=name, exact=True)
 
     def batch_buttons(self) -> list[str]:
         """Labels of every enabled-or-disabled button the bar is showing."""
-        candidates = ["Bulk Edit", "Archive", "Unarchive", "Delete", "Reconcile", "Unreconcile", "Duplicate", "Export"]
+        candidates = ["Bulk Edit", "Void", "Restore", "Delete", "Reconcile", "Unreconcile", "Duplicate", "Export"]
         return [name for name in candidates if self.batch_button(name).count() and self.batch_button(name).is_visible()]
 
     def batch_bar_text(self) -> str:
@@ -265,9 +297,27 @@ class BankFeedPage(BasePage):
         self.page.wait_for_selector("[data-testid='edit-transaction-modal']", state="detached", timeout=10_000)
         self.wait_for_saves()
 
-    def wait_for_all_rows(self):
-        """Wait for the older pages of a long feed, which load behind the table."""
-        self.page.wait_for_selector("[data-testid='feed-loading-more']", state="detached", timeout=20_000)
+    def save_modal_expecting_error(self):
+        """Press Save on a modal the form will refuse; it stays open."""
+        self.page.locator("[data-testid='modal-save-btn']").click()
+        self.page.wait_for_timeout(300)
+
+    def wait_for_rows(self):
+        """Wait for the page of rows the current filters ask for.
+
+        The table keeps the previous page on screen while the next one loads,
+        behind a small spinner in the select-all strip.
+        """
+        self.page.wait_for_timeout(100)
+        self.page.wait_for_selector("[data-testid='feed-refetching']", state="detached", timeout=10_000)
+
+    def next_page(self):
+        self.page.get_by_role("button", name="Next page").click()
+        self.wait_for_rows()
+
+    def set_page_size(self, size: int):
+        self.page.locator("[data-testid='rows-per-page']").select_option(str(size))
+        self.wait_for_rows()
 
     def pager_total(self) -> int:
         """The row count the pager reports ("1–10 of 450" -> 450)."""

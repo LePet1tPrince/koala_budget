@@ -12,6 +12,7 @@ from django.utils import timezone
 from apps.accounts.models import Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
 from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.services import voiding
 from apps.teams.models import Team
 
 from . import goal_links
@@ -140,21 +141,21 @@ class InflowTest(LinkedFixture):
         self.assertEqual(compute_unassigned(self.book, SEPT).goals, D("0"))
         self.assertEqual(compute_unassigned(self.book, OCT).goals, D("500"))
 
-    def test_void_and_archived_dont_count(self):
+    def test_void_and_feed_voided_dont_count(self):
         entry = self.post(date(2026, 9, 5), self.savings, self.checking, "500")
         entry.status = JournalEntry.STATUS_VOID
         entry.save()
         self.assertEqual(self.numbers()["allocated"], D("0"))
         entry = self.post(date(2026, 9, 6), self.savings, self.checking, "80")
-        BankTransaction.objects.create(
+        row = BankTransaction.objects.create(
             book=self.book,
             account=self.savings,
             posted_date=date(2026, 9, 6),
             amount=D("-80"),
             description="transfer",
             journal_entry=entry,
-            is_archived=True,
         )
+        voiding.void(rows=[row])
         self.assertEqual(self.numbers()["allocated"], D("0"))
 
     def test_deleting_the_entry_removes_it(self):

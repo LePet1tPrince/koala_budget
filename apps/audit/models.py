@@ -28,6 +28,8 @@ class AuditEvent(models.Model):
     BULK_UNRECONCILE = "bulk_unreconcile"
     BULK_ARCHIVE = "bulk_archive"
     BULK_UNARCHIVE = "bulk_unarchive"
+    BULK_VOID = "bulk_void"
+    BULK_RESTORE = "bulk_restore"
     BULK_DELETE = "bulk_delete"
     BULK_DUPLICATE = "bulk_duplicate"
     TRANSFER_DUP_RESOLVED = "transfer_dup_resolved"
@@ -82,6 +84,8 @@ class AuditEvent(models.Model):
         (BULK_UNRECONCILE, "Bulk Unreconcile"),
         (BULK_ARCHIVE, "Bulk Archive"),
         (BULK_UNARCHIVE, "Bulk Unarchive"),
+        (BULK_VOID, "Bulk Void"),
+        (BULK_RESTORE, "Bulk Restore"),
         (BULK_DELETE, "Bulk Delete"),
         (BULK_DUPLICATE, "Bulk Duplicate"),
         (TRANSFER_DUP_RESOLVED, "Transfer Duplicate Resolved"),

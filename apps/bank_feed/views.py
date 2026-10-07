@@ -32,6 +32,7 @@ from apps.books.helpers import book_display_name
 from apps.books.permissions import BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.services import voiding
 from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services.guards import (
     ReconciledLineError,
@@ -61,14 +62,15 @@ from .serializers import (
     UploadValidateDatesResponseSerializer,
     bank_transaction_to_feed_row,
 )
-from .services.categorize import create_entry, repoint_category
+from .services import feed_query
+from .services.categorize import MIRROR_EDIT_ERROR, create_entry, repoint_category
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.sample_csv import build_sample_csv
 from .services.similar_transactions import suggest_categories
 from .services.splits import SplitError, apply_splits, check_legs_total, is_split, parse_legs
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_match import MatchError, ProposalChanged, match_transfer, propose_pairs
-from .services.transfer_mirror import is_split_mirror, linked_legs, sync_transfer, would_orphan_primary
+from .services.transfer_mirror import is_split_mirror, sync_transfer, would_orphan_primary
 
 # Upper bound on how many transactions one similar-category request may ask about.
 # The categorize view only ever needs the handful of cards it is about to show.
@@ -76,6 +78,7 @@ MAX_SIMILAR_CATEGORY_IDS = 50
 
 # A split's transfer leg is mirrored into the other account's feed; that row is
 # part of the split and is edited from the split's own row.
+VOID_EDIT_ERROR = "This transaction is void. Restore it before editing it."
 SPLIT_MIRROR_ERROR = "This is one part of a split transaction in another account. Open the split there to change it."
 
 
@@ -95,7 +98,7 @@ def _annotate_feed_account_activity(accounts, book):
             account__has_feed=True,
             account__is_hidden=False,
             journal_entry__isnull=True,
-            is_archived=False,
+            is_void=False,
         )
         .values("account_id")
         .annotate(count=Count("id"))
@@ -106,7 +109,7 @@ def _annotate_feed_account_activity(accounts, book):
             book=book,
             account__has_feed=True,
             account__is_hidden=False,
-            is_archived=False,
+            is_void=False,
         )
         .values("account_id")
         .annotate(latest_date=Max("posted_date"))
@@ -117,7 +120,7 @@ def _annotate_feed_account_activity(accounts, book):
             book=book,
             account__has_feed=True,
             account__is_hidden=False,
-            is_archived=False,
+            is_void=False,
             journal_entry__isnull=False,
             journal_entry__lines__account_id=F("account_id"),
             journal_entry__lines__is_reconciled=True,
@@ -221,19 +224,50 @@ class ManualTransactionSerializer(serializers.Serializer):
         return data
 
 
+FEED_QUERY_PARAMETERS = [
+    OpenApiParameter(
+        name="account",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Comma-separated ledger account ids; absent = every account on a feed",
+        required=False,
+    ),
+    OpenApiParameter(name="view", type=str, enum=["active", "voided"], required=False, description="Void or not"),
+    OpenApiParameter(name="to_review", type=bool, required=False, description="Only rows not reconciled"),
+    OpenApiParameter(name="reconciled", type=bool, required=False, description="Only reconciled rows"),
+    OpenApiParameter(name="uncategorized", type=bool, required=False, description="Only rows with no entry"),
+    OpenApiParameter(name="transfers", type=bool, required=False, description="Only possible duplicate transfers"),
+    OpenApiParameter(name="start_date", type=OpenApiTypes.DATE, required=False),
+    OpenApiParameter(name="end_date", type=OpenApiTypes.DATE, required=False),
+    OpenApiParameter(name="sort", type=str, enum=list(feed_query.SORT_KEYS), required=False),
+    OpenApiParameter(name="dir", type=str, enum=["asc", "desc"], required=False),
+    OpenApiParameter(name="ids", type=str, required=False, description="Comma-separated row ids (at most 1000)"),
+    OpenApiParameter(name="page_size", type=int, enum=list(feed_query.PAGE_SIZES), required=False),
+    OpenApiParameter(name="counts", type=bool, required=False, description="Add the quick-filter badge counts"),
+]
+
+
+class FeedPagination(PageNumberPagination):
+    """Pages of the Inbox table; `page_size` is one of `feed_query.PAGE_SIZES` (checked when parsed)."""
+
+    page_size = feed_query.DEFAULT_PAGE_SIZE
+    page_size_query_param = "page_size"
+    max_page_size = max(feed_query.PAGE_SIZES)
+
+
+def refused_response(refused):
+    """
+    A refused batch: nothing was written. `refused` names every row that blocked
+    it, so the page can offer to deselect them rather than only report the first.
+    """
+    return Response({"error": refused[0]["error"], "refused": refused}, status=status.HTTP_400_BAD_REQUEST)
+
+
 @extend_schema_view(
     list=extend_schema(
         operation_id="bank_feed_feed_list",
         tags=["bank-feed"],
-        parameters=[
-            OpenApiParameter(
-                name="account",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                description="Ledger account ID to filter bank feed by",
-                required=False,
-            ),
-        ],
+        parameters=FEED_QUERY_PARAMETERS,
     ),
     create=extend_schema(
         operation_id="bank_feed_feed_create",
@@ -263,52 +297,51 @@ class BankFeedViewSet(
     - GET /a/{team_slug}/{book_slug}/bankfeed/api/feed/ - Get all bank transactions (filtered by ?account=)
     """
 
-    class Pagination(PageNumberPagination):
-        page_size = 200
-
     serializer_class = BankFeedRowSerializer
     permission_classes = [BookModelAccessPermissions]
-    pagination_class = Pagination
+    pagination_class = FeedPagination
     queryset = BankTransaction.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
-        """Get all BankTransactions, optionally filtered by account."""
-        queryset = (
-            BankTransaction.objects.filter(
-                book=self.request.book,
-            )
-            # Every account a row serializes (its own, its category, a mirror's
-            # primary) reads `account_group` for its name and type: load it here,
-            # or each row costs a query of its own.
-            .select_related(
-                "account__account_group",
-                "account__institution",
-                "journal_entry",
-                "plaid_transaction",
-                "plaid_transaction__plaid_account",
-                "plaid_transaction__plaid_account__account",
-            )
-            .prefetch_related(
-                "journal_entry__lines__account__account_group",
-                "journal_entry__lines__account__institution",
-                "journal_entry__lines__reconciliation",
-                "journal_entry__bank_feed_transactions__account__account_group",
-                "journal_entry__bank_feed_transactions__account__institution",
-            )
+        """
+        The rows the request's params describe, in the requested order, loaded
+        for serializing. See `services/feed_query.py` for what each param means.
+        """
+        if self.action != "list":
+            return BankTransaction.objects.filter(book=self.request.book)
+        params = self.feed_params
+        rows = feed_query.filtered(
+            self.request.book,
+            params,
+            transfer_ids=feed_query.transfer_candidate_ids(self.request.book) if params.transfers else None,
+        )
+        return self._for_rows(feed_query.ordered(rows, params))
+
+    @staticmethod
+    def _for_rows(queryset):
+        # Every account a row serializes (its own, its category, a mirror's
+        # primary) reads `account_group` for its name and type: load it here,
+        # or each row costs a query of its own.
+        return queryset.select_related(
+            "account__account_group",
+            "account__institution",
+            "journal_entry",
+            "plaid_transaction",
+            "plaid_transaction__plaid_account",
+            "plaid_transaction__plaid_account__account",
+        ).prefetch_related(
+            "journal_entry__lines__account__account_group",
+            "journal_entry__lines__account__institution",
+            "journal_entry__lines__reconciliation",
+            "journal_entry__bank_feed_transactions__account__account_group",
+            "journal_entry__bank_feed_transactions__account__institution",
         )
 
-        # Filter by account if provided in query params
-        account_id = self.request.query_params.get("account")
-        if account_id:
-            queryset = queryset.filter(account_id=account_id)
-
-        # Only what is waiting to be categorized -- the same set the Inbox badge
-        # counts. Categorize mode asks for this rather than walking the whole feed.
-        # A hidden account is out of the Inbox, so its rows are not queued either.
-        if self.request.query_params.get("uncategorized") in ("1", "true"):
-            queryset = queryset.filter(journal_entry__isnull=True, is_archived=False, account__is_hidden=False)
-
-        return queryset
+    @property
+    def feed_params(self):
+        if not hasattr(self, "_feed_params"):
+            self._feed_params = feed_query.FeedParams.parse(self.request.query_params)
+        return self._feed_params
 
     @extend_schema(
         operation_id="bank_feed_feed_accounts",
@@ -409,18 +442,93 @@ class BankFeedViewSet(
     def list(self, request, team_slug=None, book_slug=None):
         """
         Get unified bank feed, optionally filtered by account.
-        Query params:
-        - account: Account ID to filter by (optional)
-        - uncategorized: "1" for only uncategorized, unarchived rows (optional)
-        - page: Page number (optional)
+        One page of the Inbox table: filtered, sorted and paged on the server
+        (`services/feed_query.py`). With `counts=1` the response also carries
+        the quick-filter badge counts for the request's accounts.
         """
-        # Model Meta ordering (-posted_date, -created_at) gives most-recent-first
-        bank_transactions = self.get_queryset()
-
-        page = self.paginate_queryset(bank_transactions)
+        page = self.paginate_queryset(self.get_queryset())
         rows = [bank_transaction_to_feed_row(tx) for tx in page]
-        serializer = BankFeedRowSerializer(rows, many=True)
-        return self.get_paginated_response(serializer.data)
+        response = self.get_paginated_response(BankFeedRowSerializer(rows, many=True).data)
+        if request.query_params.get("counts") in ("1", "true"):
+            response.data["counts"] = feed_query.counts(request.book, self.feed_params)
+        return response
+
+    @extend_schema(
+        operation_id="bank_feed_selection",
+        tags=["bank-feed"],
+        parameters=FEED_QUERY_PARAMETERS,
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    @action(detail=False, methods=["get"], url_path="selection", pagination_class=None)
+    def selection(self, request, team_slug=None, book_slug=None):
+        """
+        Every row matching the filters, as the batch bar reads it: "select all N matching".
+
+        Refused above `MAX_IDS` matches -- a batch write that large is one this
+        app does not attempt -- with the count, so the page can say so.
+        """
+        params = self.feed_params
+        rows = feed_query.filtered(
+            request.book,
+            params,
+            transfer_ids=feed_query.transfer_candidate_ids(request.book) if params.transfers else None,
+        )
+        total = rows.count()
+        if total > feed_query.MAX_IDS:
+            return Response(
+                {
+                    "error": f"Narrow the filters to select more than {feed_query.MAX_IDS} transactions.",
+                    "count": total,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({"count": total, "results": feed_query.selection_rows(feed_query.ordered(rows, params))})
+
+    @extend_schema(
+        operation_id="bank_feed_locate",
+        tags=["bank-feed"],
+        parameters=[
+            *FEED_QUERY_PARAMETERS,
+            OpenApiParameter(name="row", type=int, required=False, description="The row to find"),
+            OpenApiParameter(name="journal_entry", type=int, required=False, description="Find this entry's row..."),
+            OpenApiParameter(name="in_account", type=int, required=False, description="...in this account"),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    @action(detail=False, methods=["get"], url_path="locate", pagination_class=None)
+    def locate(self, request, team_slug=None, book_slug=None):
+        """
+        Which page of the current list a row is on, or `page: null` when the
+        filters hide it.
+
+        Name the row by `row`, or by `journal_entry` + `in_account` (the other leg
+        of a transfer: the same entry's row in the other account). Answers
+        `{id, page, is_void}` -- `id` null when no such row exists at all.
+        """
+        params = self.feed_params
+        target = BankTransaction.objects.filter(book=request.book)
+        try:
+            if request.query_params.get("row"):
+                target = target.filter(pk=int(request.query_params["row"]))
+            else:
+                target = target.filter(
+                    journal_entry_id=int(request.query_params["journal_entry"]),
+                    account_id=int(request.query_params["in_account"]),
+                )
+        except (KeyError, ValueError):
+            return Response({"error": "Pass row, or journal_entry and in_account."}, status=status.HTTP_400_BAD_REQUEST)
+        found = target.order_by("is_transfer_mirror", "pk").values("pk", "is_void").first()
+        if found is None:
+            return Response({"id": None, "page": None, "is_void": None})
+
+        rows = feed_query.filtered(
+            request.book,
+            params,
+            transfer_ids=feed_query.transfer_candidate_ids(request.book) if params.transfers else None,
+        )
+        position = feed_query.position_of(rows, params, found["pk"])
+        page = None if position is None else (position - 1) // params.page_size + 1
+        return Response({"id": found["pk"], "page": page, "is_void": found["is_void"]})
 
     def create(self, request, team_slug=None, book_slug=None):
         """
@@ -559,6 +667,11 @@ class BankFeedViewSet(
                 {"error": "Transaction not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        # A void transaction counts toward nothing; editing it would change what
+        # the user restores later without them seeing it. Restore first.
+        if bank_tx.is_void:
+            return Response({"error": VOID_EDIT_ERROR}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = ManualTransactionSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1272,45 +1385,32 @@ class BankFeedViewSet(
                 name=payee_name,
             )
 
-        # Get transactions
-        transactions = BankTransaction.objects.filter(
-            id__in=ids,
-            book=request.book,
-        ).select_related("account", "journal_entry")
+        transactions = list(
+            BankTransaction.objects.filter(id__in=ids, book=request.book)
+            .select_related("account", "journal_entry")
+            .prefetch_related("journal_entry__lines")
+        )
 
-        # A split's transfer-leg mirror is part of a split in another account; no
-        # batch field (date, payee, account, category) can be edited on it alone.
-        if any(is_split_mirror(tx) for tx in transactions):
-            return Response({"error": SPLIT_MIRROR_ERROR}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Reject up front: re-pointing a mirror leg to a non-feed category would
-        # orphan the real primary transaction, and a split has no single category
-        # line to re-point. Checked before the loop so the batch is all-or-nothing --
-        # one split caught in a select-all must not half-apply the rest.
+        # A transfer's mirror leg follows its original. With both legs selected,
+        # re-categorizing the mirror as well would be the same transfer twice (or
+        # refused outright), so the mirror is left to `sync_transfer`.
         if category_account is not None:
-            for tx in transactions:
-                if would_orphan_primary(tx, category_account):
-                    return Response(
-                        {
-                            "error": "This is the mirror side of a transfer. Edit the original transaction to change its category."  # noqa: E501
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if is_split(tx.journal_entry):
-                    return Response(
-                        {
-                            "error": "One or more selected transactions are split across categories. "
-                            "Open a split transaction to edit its categories."
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+            primaries = {
+                tx.journal_entry_id for tx in transactions if tx.journal_entry_id and not tx.is_transfer_mirror
+            }
+            transactions = [
+                tx for tx in transactions if not (tx.is_transfer_mirror and tx.journal_entry_id in primaries)
+            ]
 
-        if new_date is not None:
-            try:
-                for tx in transactions:
-                    assert_date_change_allowed(tx.journal_entry, new_date)
-            except ReconciledLineError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        # Every row is checked before any is written, and every refusal is named,
+        # so a selection spanning several accounts says which rows to deselect.
+        refused = []
+        for tx in transactions:
+            error = self._batch_edit_refusal(tx, category_account, target_account, new_date)
+            if error:
+                refused.append({"kind": "row", "id": tx.id, "error": str(error)})
+        if refused:
+            return refused_response(refused)
 
         try:
             self._apply_batch_edit(
@@ -1331,6 +1431,38 @@ class BankFeedViewSet(
             },
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @staticmethod
+    def _batch_edit_refusal(tx, category_account, target_account, new_date):
+        """Why `batch_edit` cannot apply to `tx`, or None."""
+        if tx.is_void:
+            return VOID_EDIT_ERROR
+        # A split's transfer-leg mirror is part of a split in another account; no
+        # batch field (date, payee, account, category) can be edited on it alone.
+        if is_split_mirror(tx):
+            return SPLIT_MIRROR_ERROR
+        home = target_account or tx.account
+        if category_account is not None:
+            # Re-pointing a mirror leg to a non-feed category would orphan the real
+            # primary; a split has no single category line to re-point.
+            if would_orphan_primary(tx, category_account):
+                return MIRROR_EDIT_ERROR
+            if is_split(tx.journal_entry):
+                return _("This transaction is split across categories. Open it to edit its categories.")
+            if category_account.id == home.id:
+                return _("A transaction cannot be categorized to the account it is in.")
+        elif target_account is not None and tx.journal_entry_id:
+            # Moving a row into the account its category already is would put both
+            # sides of the entry on one account: a transfer to itself.
+            others = [line for line in tx.journal_entry.lines.all() if line.account_id != tx.account_id]
+            if len(others) == 1 and others[0].account_id == target_account.id:
+                return _("A transaction cannot be moved to the account it is categorized to.")
+        if new_date is not None:
+            try:
+                assert_date_change_allowed(tx.journal_entry, new_date)
+            except ReconciledLineError as e:
+                return str(e)
+        return None
 
     @transaction.atomic
     def _apply_batch_edit(
@@ -1423,116 +1555,49 @@ class BankFeedViewSet(
         entry.delete()
 
     @extend_schema(
-        operation_id="bank_feed_batch_archive",
+        operation_id="bank_feed_batch_void",
         tags=["bank-feed"],
         request=BatchIdsSerializer,
         responses={204: None},
     )
-    @action(detail=False, methods=["post"], url_path="batch_archive")
-    def batch_archive(self, request, team_slug=None, book_slug=None):
+    @action(detail=False, methods=["post"], url_path="batch_void")
+    def batch_void(self, request, team_slug=None, book_slug=None):
         """
-        Batch archive multiple bank transactions.
-        Sets is_archived=True on BankTransaction.
+        Void bank transactions: they and their journal entries count toward nothing.
+
+        A categorized row voids its entry and every row on it (a transfer's other
+        leg too); an uncategorized row is voided on its own. All or nothing: a row
+        whose entry holds a reconciled line refuses the batch, naming it.
         """
-        serializer = BatchIdsSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        ids = serializer.validated_data["ids"]
-
-        def _is_reconciled(candidate):
-            return bool(
-                candidate.journal_entry
-                and candidate.journal_entry.lines.filter(account=candidate.account, is_reconciled=True).exists()
-            )
-
-        transactions = list(
-            BankTransaction.objects.filter(id__in=ids, book=request.book).prefetch_related("journal_entry__lines")
-        )
-
-        # A transfer's two legs archive together, and a reconciled leg must never
-        # be archived — so a transfer with a reconciled leg (either side) cannot
-        # be archived at all. Refuse the whole batch up front rather than
-        # archiving one leg and silently leaving the reconciled one behind.
-        for tx in transactions:
-            if tx.is_archived:
-                continue
-            legs = list(linked_legs(tx))
-            if not legs:
-                continue
-            if any(_is_reconciled(leg) for leg in legs):
-                return Response(
-                    {
-                        "error": "The other side of this transfer is already reconciled. "
-                        "Unreconcile the other transaction before archiving it."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if _is_reconciled(tx):
-                return Response(
-                    {"error": "This transfer is reconciled. Unreconcile it before archiving."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
-        archived_count = 0
-        for tx in transactions:
-            if tx.is_archived:
-                continue
-            # Reconciled (non-transfer) transactions cannot be archived — skip them silently
-            if _is_reconciled(tx):
-                continue
-            tx.is_archived = True
-            tx.save(update_fields=["is_archived", "updated_at"])
-            archived_count += 1
-
-            # A transfer's two legs are archived together, in either direction.
-            for leg in linked_legs(tx):
-                if leg.is_archived:
-                    continue
-                leg.is_archived = True
-                leg.save(update_fields=["is_archived", "updated_at"])
-                archived_count += 1
-
-        log_event(AuditEvent.BULK_ARCHIVE, request=request, metadata={"count": archived_count})
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return self._set_void(request, voiding.void, AuditEvent.BULK_VOID)
 
     @extend_schema(
-        operation_id="bank_feed_batch_unarchive",
+        operation_id="bank_feed_batch_restore",
         tags=["bank-feed"],
         request=BatchIdsSerializer,
         responses={204: None},
     )
-    @action(detail=False, methods=["post"], url_path="batch_unarchive")
-    def batch_unarchive(self, request, team_slug=None, book_slug=None):
-        """
-        Batch unarchive multiple bank transactions.
-        Sets is_archived=False on BankTransaction.
-        """
+    @action(detail=False, methods=["post"], url_path="batch_restore")
+    def batch_restore(self, request, team_slug=None, book_slug=None):
+        """Restore voided bank transactions, with their entries and their transfers' other legs."""
+        return self._set_void(request, voiding.restore, AuditEvent.BULK_RESTORE)
+
+    def _set_void(self, request, operation, event):
         serializer = BatchIdsSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        ids = serializer.validated_data["ids"]
+        rows = list(
+            BankTransaction.objects.filter(id__in=serializer.validated_data["ids"], book=request.book).select_related(
+                "journal_entry"
+            )
+        )
+        try:
+            _entries, changed_rows = operation(rows=rows)
+        except voiding.VoidRefused as exc:
+            return refused_response(exc.refused)
 
-        # Per-instance saves (not QuerySet.update) so signals/audit fire and updated_at bumps
-        unarchived_count = 0
-        for tx in BankTransaction.objects.filter(id__in=ids, book=request.book):
-            if not tx.is_archived:
-                continue
-            tx.is_archived = False
-            tx.save(update_fields=["is_archived", "updated_at"])
-            unarchived_count += 1
-
-            # A transfer's two legs are restored together, in either direction.
-            for leg in linked_legs(tx):
-                if not leg.is_archived:
-                    continue
-                leg.is_archived = False
-                leg.save(update_fields=["is_archived", "updated_at"])
-                unarchived_count += 1
-
-        log_event(AuditEvent.BULK_UNARCHIVE, request=request, metadata={"count": unarchived_count})
+        log_event(event, request=request, metadata={"count": len(changed_rows)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
@@ -1544,7 +1609,7 @@ class BankFeedViewSet(
     @action(detail=False, methods=["post"], url_path="batch_delete")
     def batch_delete(self, request, team_slug=None, book_slug=None):
         """
-        Permanently delete multiple archived bank transactions.
+        Permanently delete voided bank transactions.
         Also deletes any linked journal entries.
         """
         serializer = BatchIdsSerializer(data=request.data)
@@ -1556,14 +1621,14 @@ class BankFeedViewSet(
         transactions = BankTransaction.objects.filter(
             id__in=ids,
             book=request.book,
-            is_archived=True,
+            is_void=True,
         ).select_related("journal_entry")
 
         selected = list(transactions)
         journal_entry_ids = [tx.journal_entry_id for tx in selected if tx.journal_entry_id]
 
         # Delete both legs of any transfer being removed (the mirror leg may not be
-        # selected or archived), then any selected rows without an entry.
+        # selected), then any selected rows without an entry.
         if journal_entry_ids:
             BankTransaction.objects.filter(journal_entry_id__in=journal_entry_ids).delete()
         BankTransaction.objects.filter(id__in=[tx.id for tx in selected]).delete()
@@ -1602,11 +1667,15 @@ class BankFeedViewSet(
             .prefetch_related("journal_entry__lines")
         )
 
-        transactions = [
-            tx
-            for tx in transactions
-            if not (tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists())
-        ]
+        # A mirror leg is the other side of a transfer, not something a bank
+        # reported: copying it would make a second, uncategorized transfer leg that
+        # double-counts the movement once categorized.
+        def reconciled(tx):
+            return bool(
+                tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
+            )
+
+        transactions = [tx for tx in transactions if not tx.is_transfer_mirror and not reconciled(tx)]
 
         created_transactions = []
         for tx in transactions:

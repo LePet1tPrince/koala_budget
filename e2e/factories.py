@@ -162,15 +162,18 @@ class BankTransactionFactory(factory.django.DjangoModelFactory):
     source = "csv"
 
 
-def feed_transaction(team, account, *, category=None, reconciled=False, archived=False, **kwargs):
+def feed_transaction(team, account, *, category=None, reconciled=False, void=False, **kwargs):
     """Create one bank feed row in a given state.
 
     - no `category` -> uncategorized (no journal entry at all)
     - `category` -> categorized, with the bank-account line carrying `reconciled`
+    - `void` -> voided; a categorized row's entry is voided with it, as the app does
     """
     entry = None
     if category is not None:
-        entry = JournalEntryFactory(team=team, entry_date=kwargs.get("posted_date") or "2026-01-15")
+        entry = JournalEntryFactory(
+            team=team, entry_date=kwargs.get("posted_date") or "2026-01-15", **({"status": "void"} if void else {})
+        )
         # The bank-account line is the one the feed reads reconciliation from; the
         # other line is what the feed reports as the row's category.
         JournalLineFactory(
@@ -191,7 +194,7 @@ def feed_transaction(team, account, *, category=None, reconciled=False, archived
         team=team,
         account=account,
         journal_entry=entry,
-        is_archived=archived,
+        is_void=void,
         **kwargs,
     )
 

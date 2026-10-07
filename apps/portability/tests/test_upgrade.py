@@ -50,6 +50,54 @@ class UpgradeChainTests(SimpleTestCase):
         self.assertIsNone(result["journal_rows"][0]["reconciliation_id"])
 
 
+class VoidUpgradeTests(SimpleTestCase):
+    """Version 6 has one void state: an archived row's entry is voided, and so is every row on a void entry."""
+
+    def _row(self, entry_id, status="posted", feed_source=None, archived=False):
+        return {
+            "entry_id": entry_id,
+            "status": status,
+            "feed_source": feed_source,
+            "feed_is_archived": archived,
+            "feed_archived_at": None,
+            "entry_is_archived": False,
+            "entry_archived_at": None,
+            "is_archived": False,
+            "archived_at": None,
+        }
+
+    def _upgrade(self, rows):
+        tables = {"accounts": [], "journal_rows": rows, "budget_rows": [], "reconciliations": [], "goal_links": []}
+        return upgrade.upgrade_6_to_7(tables)
+
+    def test_an_archived_row_voids_its_entry_and_its_sibling_rows(self):
+        rows = [
+            self._row(1, feed_source="plaid", archived=True),
+            self._row(1, feed_source="system"),  # the transfer's mirror leg
+            self._row(2, feed_source="csv"),
+        ]
+        result = self._upgrade(rows)
+        by_entry = [(r["entry_id"], r["status"], r["feed_is_void"]) for r in result["journal_rows"]]
+        self.assertEqual(by_entry, [(1, "void", True), (1, "void", True), (2, "posted", False)])
+        self.assertEqual(result["void_upgrade"], {"entry_ids": {1}, "rows": 1})
+
+    def test_rows_on_an_already_void_entry_are_voided_without_counting_the_entry(self):
+        result = self._upgrade([self._row(3, status="void", feed_source="csv")])
+        self.assertTrue(result["journal_rows"][0]["feed_is_void"])
+        self.assertEqual(result["void_upgrade"], {"entry_ids": set(), "rows": 1})
+
+    def test_retired_columns_are_dropped(self):
+        row = self._upgrade([self._row(4)])["journal_rows"][0]
+        for retired in ("entry_is_archived", "entry_archived_at", "is_archived", "archived_at", "feed_is_archived"):
+            self.assertNotIn(retired, row)
+
+    def test_an_archived_uncategorized_row_stays_void_on_its_own(self):
+        row = self._row(None, status="uncategorized", feed_source="csv", archived=True)
+        result = self._upgrade([row])
+        self.assertTrue(result["journal_rows"][0]["feed_is_void"])
+        self.assertEqual(result["void_upgrade"]["entry_ids"], set())
+
+
 class GoalLinksUpgradeTests(SimpleTestCase):
     def test_v4_gains_no_links_and_default_goal_settings(self):
         tables = {

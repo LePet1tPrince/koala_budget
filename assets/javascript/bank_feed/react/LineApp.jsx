@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Toast } from '../../common/Toast';
+import Combobox from '../../common/Combobox';
+import Modal from '../../common/Modal';
 
 import AccountGrid from './AccountGrid';
 import LineTable from './LineTable';
@@ -9,14 +11,24 @@ import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
 import { getBatchOperationsApi, getTransactionApi } from '../bank_feed';
+import {
+  NO_QUICK_FILTERS,
+  filterParams,
+  queryFromUrl,
+  rowSetKey,
+  summaryAsRow,
+  writeQueryToUrl,
+} from '../feedQuery';
 import { formatCurrency } from '../../utilities/currency';
 import Icon from '../../common/Icon';
 import { BankFeedRowFromJSON } from 'api-client';
 
 /** How long the feed waits after its last write settles before re-reading it. */
 const QUIET_REFRESH_DELAY_MS = 500;
-// Feed pages requested at once when reading a whole account.
-const PAGE_FETCH_CONCURRENCY = 4;
+/** How long a row the page was asked to show keeps flashing. */
+const HIGHLIGHT_MS = 2000;
+/** The most rows "select all matching" takes (the server's `MAX_IDS`). */
+const MAX_SELECTION = 1000;
 
 /**
  * A date as the generated client parses one: `YYYY-MM-DD` at UTC midnight, which
@@ -63,7 +75,7 @@ const optimisticEditedRow = (row, data, accountsById) => {
   };
 };
 
-/** Fields a bulk edit changes on a row that stays in this account's feed. */
+/** Fields a bulk edit changes on a row that stays in view. */
 const optimisticBulkEditedRow = (row, updates, accountsById) => {
   const next = { ...row };
   if (updates.payee) next.payee = updates.payee;
@@ -72,31 +84,62 @@ const optimisticBulkEditedRow = (row, updates, accountsById) => {
   if (updates.category_id) {
     next.category = { id: updates.category_id, name: accountsById.get(updates.category_id)?.name ?? '' };
   }
+  if (updates.account_id) {
+    const account = accountsById.get(updates.account_id);
+    next.account = { ...(row.account || {}), id: updates.account_id, name: account?.name ?? '' };
+  }
   return next;
 };
 
+const isVoidRow = (r) => r.isVoid ?? r.is_void ?? false;
+const isReconciledRow = (r) => r.isReconciled ?? r.is_reconciled ?? false;
+
 /**
- * LineApp - Main application component for managing lines
- * Manages account selection and bank feed operations
+ * LineApp - the Inbox: every bank-feed account's rows in one table.
+ *
+ * The table is a window onto one server-side queryset. This component owns what
+ * is being looked at (`query`: accounts, view, quick filters, dates, sort, page),
+ * requests one page whenever it changes, and mirrors it into the URL. The cards
+ * above the table are a filter, not a gate: with no account chosen the table
+ * shows every account, with an Account column.
  */
-const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccountGroups, book, bankFeedClient, plaidClient, journalClient, uploadApi }) => {
-  // Store accounts in state so we can update reconciled_balance after reconciliation
+const LineApp = ({
+  accounts: initialAccounts,
+  allAccounts,
+  allPayees,
+  allAccountGroups,
+  book,
+  bankFeedClient,
+  plaidClient,
+  uploadApi,
+}) => {
+  // Store accounts in state so balances can be refreshed after writes
   const [accounts, setAccounts] = useState(initialAccounts);
-  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [query, setQuery] = useState(() => queryFromUrl());
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
+  // The page on screen, as the server returned it
   const [lines, setLines] = useState([]);
-  const [loading, setLoading] = useState(false);
-  // Older pages still arriving behind a table that is already showing page 1
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refetching, setRefetching] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [showUploadWizard, setShowUploadWizard] = useState(false);
 
-  // Account picker is expanded until an account is chosen, then it collapses
-  // to a compact strip so the account list doesn't crowd the categorizing view
-  const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(true);
+  // CSV upload: the account it goes to, chosen first when the Inbox shows several
+  const [uploadAccount, setUploadAccount] = useState(null);
+  const [choosingUploadAccount, setChoosingUploadAccount] = useState(false);
+  const [uploadChoice, setUploadChoice] = useState(null);
 
-  // Batch selection state
-  const [selectedIds, setSelectedIds] = useState(new Set());
+  // Account cards start open on the whole Inbox and collapsed on a filtered view
+  const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(() => query.accounts.length === 0);
+
+  // Selection across pages: id -> the row as last seen (a full row from a page,
+  // or a summary from "select all matching" -- the batch bar reads either).
+  const [selection, setSelection] = useState(() => new Map());
+  const [selectingAll, setSelectingAll] = useState(false);
 
   // Plaid sync status: ledger account id -> PlaidItem (for "last synced" display)
   const [plaidItemsByAccountId, setPlaidItemsByAccountId] = useState({});
@@ -104,12 +147,8 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // Category suggestions: merchant/payee name -> {id, name} of last-used category
   const [categorySuggestions, setCategorySuggestions] = useState({});
 
-  // View mode state (synced from LineTable): 'active' | 'archived'
-  const [viewMode, setViewMode] = useState('active');
-
-  // A row the table should page to and flash, set when jumping to the other leg
-  // of a transfer: {journalEntryId | importedTransactionId, nonce, keepFilters?}
-  const [focusRequest, setFocusRequest] = useState(null);
+  // A row the page was asked to show -- the other side of a transfer -- flashes
+  const [highlightId, setHighlightId] = useState(null);
 
   // Possible duplicate transfers across the whole book (a pair has a leg in two
   // accounts, and the account cards count both), each with the server's
@@ -129,23 +168,31 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   // server in the order they were made.
   const rowQueueRef = useRef(new Map());
   const quietRefreshTimerRef = useRef(null);
-  const quietLoadSeqRef = useRef(0);
+  const loadSeqRef = useRef(0);
 
   const accountsById = useMemo(() => new Map((allAccounts || []).map((a) => [a.id, a])), [allAccounts]);
+  const feedAccountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+
+  // The one account the Inbox is filtered to, if it is filtered to exactly one:
+  // its header, balances, Reconcile link and Plaid refresh apply then.
+  const selectedAccount = query.accounts.length === 1 ? feedAccountsById.get(query.accounts[0]) ?? null : null;
 
   // Snackbar state for batch operations
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: '',
-    severity: 'info',
-  });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info', action: null });
 
   // Accounts that have a feed of their own. A row categorized to one of these is
   // a transfer, and the only kind of row with another feed to link across to.
   const feedAccountIds = useMemo(() => new Set(accounts.map((a) => a.id)), [accounts]);
 
-  // Batch operations API
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
+  const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
+
+  const showSnackbar = useCallback((message, severity = 'info', action = null) => {
+    setSnackbar({ open: true, message, severity, action });
+  }, []);
+  const handleCloseSnackbar = () => setSnackbar((s) => ({ ...s, open: false }));
+
+  // --- possible transfers ----------------------------------------------
 
   const loadMatches = useCallback(async () => {
     try {
@@ -173,48 +220,34 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
 
   // Account id -> number of possible transfers with a leg there, for the cards
   const matchCountByAccount = useMemo(() => {
-    const counts = new Map();
+    const result = new Map();
     matches.forEach((pair) => {
       [pair.outflow, pair.inflow].forEach((leg) => {
         const id = leg.account?.id;
-        if (id != null) counts.set(id, (counts.get(id) || 0) + 1);
+        if (id != null) result.set(id, (result.get(id) || 0) + 1);
       });
     });
-    return counts;
+    return result;
   }, [matches]);
 
-  // Transaction API (create/update)
-  const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
+  // Legs of possible transfers in the accounts being looked at: the quick filter's badge
+  const transferCount = useMemo(() => {
+    const scope = query.accounts.length ? new Set(query.accounts) : null;
+    return matches.reduce(
+      (n, pair) => n + [pair.outflow, pair.inflow].filter((leg) => !scope || scope.has(leg.account?.id)).length,
+      0
+    );
+  }, [matches, query.accounts]);
 
-  // Show snackbar helper
-  const showSnackbar = useCallback((message, severity = 'info') => {
-    setSnackbar({ open: true, message, severity });
-  }, []);
-
-  // Close snackbar
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
+  // --- balances, Plaid, suggestions ------------------------------------
 
   const loadAccounts = useCallback(async () => {
     try {
-      const updatedAccounts = await batchApi.fetchFeedAccounts();
-      setAccounts(updatedAccounts);
-      const current = selectedAccountRef.current;
-      if (current) {
-        const updated = updatedAccounts.find(a => a.id === current.id);
-        if (updated) setSelectedAccount(updated);
-      }
+      setAccounts(await batchApi.fetchFeedAccounts());
     } catch (err) {
       console.error('Failed to refresh account balances:', err);
     }
   }, [batchApi]);
-
-  // Monotonic id so a slow response for a previously selected account can't
-  // overwrite the rows of the currently selected one
-  const loadRequestRef = useRef(0);
-  const selectedAccountRef = useRef(null);
-  selectedAccountRef.current = selectedAccount;
 
   // Load Plaid sync status (which item feeds each account, and when it last synced)
   const loadPlaidStatus = useCallback(async () => {
@@ -243,7 +276,6 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     loadPlaidStatus();
   }, [loadPlaidStatus]);
 
-  // Load category suggestions (most recent category per merchant)
   useEffect(() => {
     bankFeedClient
       .bankFeedCategorySuggestions({ ...book.params })
@@ -257,169 +289,134 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       .catch((err) => console.error('Failed to load category suggestions:', err));
   }, [bankFeedClient, book]);
 
-  // Load lines when an account is selected. Keyed on the id: refreshing the
-  // balances hands back a new object for the same account, which must not
-  // reload (and hide) the whole feed.
-  useEffect(() => {
-    if (selectedAccount) {
-      loadLines(selectedAccount);
-    } else {
-      setLines([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAccount?.id]);
+  // --- the page ------------------------------------------------------------
 
   /**
-   * Every row of an account's feed. Page 1 goes to `onFirstPage` as soon as it
-   * arrives, so the table can show it; the rest are fetched a few at a time in
-   * parallel rather than one after another (a 2,600-row account is 14 pages).
+   * Read one page of `q` from the server. `quiet` keeps the table as it is
+   * while reading and drops the answer if anything was written meanwhile (a
+   * background refresh after writes); otherwise the table dims until it lands.
+   * A later request always wins over an earlier one.
    */
-  const fetchAllLines = async (account, { onFirstPage } = {}) => {
-    const params = { ...book.params, account: account.id };
-    const first = await bankFeedClient.bankFeedFeedList(params);
-    const firstRows = first.results || [];
-    const pageCount = first.next && firstRows.length ? Math.ceil(first.count / firstRows.length) : 1;
-    onFirstPage?.(firstRows, pageCount > 1);
-
-    const pages = new Array(pageCount - 1);
-    let nextPage = 2;
-    const worker = async () => {
-      while (nextPage <= pageCount) {
-        const page = nextPage++;
-        try {
-          const data = await bankFeedClient.bankFeedFeedList({ ...params, page });
-          pages[page - 2] = data.results || [];
-        } catch (err) {
-          // The feed shrank while it was being read (rows deleted in the
-          // meantime), so the last page no longer exists.
-          if (err?.response?.status !== 404) throw err;
-          pages[page - 2] = [];
+  const fetchPage = useCallback(
+    async (q, { quiet = false } = {}) => {
+      const seq = ++loadSeqRef.current;
+      const epoch = writeEpochRef.current;
+      if (!quiet) setRefetching(true);
+      try {
+        const response = await bankFeedClient.bankFeedFeedListRaw({
+          ...book.params,
+          ...filterParams(q),
+          page: q.page + 1,
+          counts: true,
+        });
+        const json = await response.raw.json();
+        if (seq !== loadSeqRef.current) return;
+        if (quiet && (epoch !== writeEpochRef.current || inFlightRef.current > 0)) return;
+        setLines((json.results || []).map(BankFeedRowFromJSON));
+        setTotal(json.count ?? 0);
+        setCounts(json.counts ?? null);
+        setError(null);
+      } catch (err) {
+        if (seq !== loadSeqRef.current) return;
+        // Past the last page: rows left the view (voided, moved, deleted). Step back.
+        if (err?.response?.status === 404 && q.page > 0) {
+          setQuery((prev) => (prev.page === q.page ? { ...prev, page: prev.page - 1 } : prev));
+          return;
+        }
+        console.error('Failed to load the feed:', err);
+        if (!quiet) setError(gettext('Failed to load transactions. Please try again.'));
+      } finally {
+        if (seq === loadSeqRef.current) {
+          setRefetching(false);
+          setInitialLoading(false);
         }
       }
-    };
-    await Promise.all(Array.from({ length: Math.min(PAGE_FETCH_CONCURRENCY, pageCount - 1) }, worker));
+    },
+    [bankFeedClient, book]
+  );
 
-    // Pages are offsets, so a row written between two page reads can shift
-    // onto both of them: keep the first copy.
-    const seen = new Set();
-    return [firstRows, ...pages].flat().filter((row) => !seen.has(row.id) && seen.add(row.id));
-  };
+  useEffect(() => {
+    fetchPage(query);
+    writeQueryToUrl(query);
+  }, [query, fetchPage]);
 
-  /**
-   * Open an account's feed. The spinner covers only the first page; older
-   * pages are appended behind the table while it is already in use.
-   */
-  const loadLines = async (account = selectedAccountRef.current) => {
-    if (!account) return;
-    const requestId = ++loadRequestRef.current;
-    const epoch = writeEpochRef.current;
-    setLoading(true);
-    setLoadingMore(false);
-    setError(null);
-    let firstIds = new Set();
-    try {
-      const results = await fetchAllLines(account, {
-        onFirstPage: (rows, more) => {
-          firstIds = new Set(rows.map((row) => row.id));
-          if (loadRequestRef.current !== requestId) return;
-          setLines(rows);
-          setLoading(false);
-          setLoadingMore(more);
-        },
-      });
-      if (loadRequestRef.current === requestId) {
-        // Page 1 may have been edited, added to or trimmed since it arrived, so
-        // keep the rows on screen and append only what the older pages add --
-        // never a page-1 row, which may have been deleted in the meantime.
-        setLines((prev) => {
-          const shown = new Set(prev.map((row) => row.id));
-          return [...prev, ...results.filter((row) => !firstIds.has(row.id) && !shown.has(row.id))];
-        });
-        // A row written while the older pages were in flight can arrive here
-        // in its old state; a quiet re-read settles it.
-        if (writeEpochRef.current !== epoch) scheduleQuietRefresh();
-      }
-    } catch (err) {
-      console.error('Failed to load lines:', err);
-      if (loadRequestRef.current === requestId) {
-        setError(err.message || gettext('Failed to load lines'));
-      }
-    } finally {
-      if (loadRequestRef.current === requestId) {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    }
-  };
+  // A different set of rows (accounts, view, filters, dates) is a different
+  // selection: rows selected under the old one may not be in the new one.
+  const setKey = rowSetKey(query);
+  useEffect(() => {
+    setSelection(new Map());
+  }, [setKey]);
+
+  /** Change what the table is looking at. Anything but the page returns to page 1. */
+  const updateQuery = useCallback((patch) => {
+    setQuery((prev) => {
+      const next = { ...prev, ...patch };
+      if (!('page' in patch)) next.page = 0;
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (highlightId == null) return undefined;
+    const timer = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [highlightId]);
 
   /**
-   * Re-read the open feed without hiding it, after writes have settled.
-   *
-   * A write changes more than the rows it names -- the other leg of a transfer,
-   * a split's mirror rows -- so the feed is re-read once things go quiet, but in
-   * the background: the table stays up and usable, and the result is dropped if
-   * the user has written anything since it was requested, or switched account.
+   * Re-read the page, the account balances and the possible transfers once no
+   * write is in flight -- a write changes more than the rows it names (the
+   * other leg of a transfer, a split's mirror rows), so the page is re-read in
+   * the background, keeping the table up and usable.
    */
-  const refreshLinesQuietly = async () => {
-    const account = selectedAccountRef.current;
-    if (!account) return;
-    const loadId = loadRequestRef.current;
-    const epoch = writeEpochRef.current;
-    const seq = ++quietLoadSeqRef.current;
-    try {
-      const results = await fetchAllLines(account);
-      const stillCurrent =
-        seq === quietLoadSeqRef.current &&
-        loadId === loadRequestRef.current &&
-        epoch === writeEpochRef.current &&
-        inFlightRef.current === 0 &&
-        selectedAccountRef.current?.id === account.id;
-      if (stillCurrent) setLines(results);
-    } catch (err) {
-      console.error('Failed to refresh lines:', err);
-    }
-  };
-
-  /**
-   * Re-read the feed, the account balances and the possible transfers once no
-   * write is in flight -- categorizing, editing, archiving or importing can each
-   * create or dissolve a pair.
-   */
-  const scheduleQuietRefresh = () => {
+  const scheduleQuietRefresh = useCallback(() => {
     clearTimeout(quietRefreshTimerRef.current);
     quietRefreshTimerRef.current = setTimeout(() => {
       if (inFlightRef.current > 0) return;
       loadAccounts();
       loadMatches();
-      refreshLinesQuietly();
+      fetchPage(queryRef.current, { quiet: true });
     }, QUIET_REFRESH_DELAY_MS);
-  };
+  }, [loadAccounts, loadMatches, fetchPage]);
 
   useEffect(() => () => clearTimeout(quietRefreshTimerRef.current), []);
 
   const markPending = (ids, delta) => {
-    const counts = pendingCountsRef.current;
+    const pending = pendingCountsRef.current;
     ids.forEach((id) => {
-      const next = (counts.get(id) || 0) + delta;
-      if (next > 0) counts.set(id, next);
-      else counts.delete(id);
+      const next = (pending.get(id) || 0) + delta;
+      if (next > 0) pending.set(id, next);
+      else pending.delete(id);
     });
-    setPendingIds(new Set(counts.keys()));
+    setPendingIds(new Set(pending.keys()));
   };
+
+  /** Drop rows from the selection -- the ones a refused batch named, say. */
+  const deselect = useCallback((ids) => {
+    const drop = new Set(ids.map(String));
+    setSelection((prev) => new Map([...prev].filter(([id]) => !drop.has(id))));
+  }, []);
 
   /**
    * Apply a write to the table now and send it to the server in the background.
    *
    * `apply(row)` returns the row as it will look once the write lands, or null
-   * when the row leaves this feed. The table shows that at once; the rows stay
+   * when the row leaves the view. The table shows that at once; the rows stay
    * marked as saving until the server answers. On success `onSuccess` may hand
-   * back the server's own rows; on failure every row this write changed -- and
-   * nothing has changed since -- goes back to how it was, and the server's
-   * reason is shown. Either way the feed is quietly re-read once writes settle.
-   *
-   * Resolves once the write has settled; nothing has to wait for it.
+   * back the server's own rows and the selection the write acted on is cleared;
+   * on failure every row this write changed -- and nothing has changed since --
+   * goes back to how it was, and the server's reason is shown. A refusal that
+   * names rows keeps the selection and offers to deselect them. Either way the
+   * page is quietly re-read once writes settle.
    */
-  const runWrite = ({ rowIds = [], apply = null, request, onSuccess = null, successMessage = null, errorMessage }) => {
+  const runWrite = ({
+    rowIds = [],
+    apply = null,
+    request,
+    onSuccess = null,
+    successMessage = null,
+    errorMessage,
+    clearsSelection = false,
+  }) => {
     writeEpochRef.current += 1;
     inFlightRef.current += 1;
     const ids = new Set(rowIds);
@@ -429,8 +426,6 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     const before = new Map();
     const written = new Map();
     if (apply && ids.size > 0) {
-      // Computed against the latest rows (an earlier write may not have
-      // rendered yet), and once per row, so a re-run updater keeps identities.
       setLines((prev) =>
         prev.flatMap((row) => {
           if (!ids.has(row.id)) return [row];
@@ -467,6 +462,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             })
           );
         }
+        if (clearsSelection) deselect([...ids]);
         if (successMessage) showSnackbar(successMessage, 'success');
       })
       .catch((err) => {
@@ -476,13 +472,33 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
           const restored = prev.map((row) =>
             written.has(row.id) && written.get(row.id) === row ? before.get(row.id) : row
           );
-          // Rows this write removed from the feed come back
+          // Rows this write removed from the view come back
           before.forEach((row, id) => {
             if (written.get(id) === null && !present.has(id)) restored.push(row);
           });
           return restored;
         });
-        showSnackbar(err.message || errorMessage, 'error');
+        const refused = err?.data?.refused;
+        if (Array.isArray(refused) && refused.length && ids.size > 1) {
+          const refusedIds = refused.map((r) => String(r.id));
+          showSnackbar(
+            interpolate(gettext('%s of %s can’t take this: %s'), [refused.length, ids.size, refused[0].error]),
+            'error',
+            <button
+              type="button"
+              className="btn btn-xs"
+              onClick={() => {
+                deselect(refusedIds);
+                handleCloseSnackbar();
+              }}
+              data-testid="deselect-refused"
+            >
+              {gettext('Deselect them')}
+            </button>
+          );
+        } else {
+          showSnackbar(err.message || errorMessage, 'error');
+        }
       })
       .finally(() => {
         inFlightRef.current -= 1;
@@ -494,50 +510,87 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       });
   };
 
+  // --- jumping to a row ----------------------------------------------------
+
   /**
-   * Jump to the other leg of a transfer: the row for the same journal entry in
-   * the category account's feed.
+   * Show one row: go to the page it is on and flash it.
    *
-   * The two legs share one journal entry, so the counterpart needs no extra data
-   * from the server — switch to the category account and let the table find the
-   * row carrying this entry id once its lines have loaded.
+   * `target` names the row (`{row}`) or a transfer's other leg (`{journalEntry,
+   * inAccount}`). If the current filters hide it, open its own account with the
+   * filters cleared (and the voided view if it is void) -- unless `keepFilters`,
+   * for a courtesy flash not worth undoing the user's view for.
    */
+  const showRow = useCallback(
+    async (target, { accountId = null, keepFilters = false } = {}) => {
+      const locate = (q) => bankFeedClient.bankFeedLocate({ ...book.params, ...filterParams(q), ...target });
+      try {
+        const current = queryRef.current;
+        const found = await locate(current);
+        if (found.id == null) return;
+        if (found.page != null) {
+          setQuery((prev) => ({ ...prev, page: found.page - 1 }));
+          setHighlightId(String(found.id));
+          return;
+        }
+        if (keepFilters) return;
+        const opened = {
+          ...current,
+          accounts: accountId != null ? [accountId] : current.accounts,
+          view: found.is_void ? 'voided' : 'active',
+          quickFilters: NO_QUICK_FILTERS,
+          startDate: '',
+          endDate: '',
+          page: 0,
+        };
+        const again = await locate(opened);
+        setIsAccountPickerOpen(false);
+        setQuery({ ...opened, page: again.page != null ? again.page - 1 : 0 });
+        if (again.page != null) setHighlightId(String(again.id));
+      } catch (err) {
+        console.error('Failed to find the row:', err);
+      }
+    },
+    [bankFeedClient, book]
+  );
+
+  /** The other leg of a transfer: the same entry's row in the category account. */
   const handleOpenTransferLeg = useCallback(
     (row) => {
-      // The category must be a feed account — that is what makes this a transfer
-      // rather than a spending category, and what gives it a feed to open.
-      const target = accounts.find((a) => a.id === row.category?.id);
-      if (!target || !row.journalEntryId) return;
-      setFocusRequest({ journalEntryId: row.journalEntryId, nonce: `${row.id}-${Date.now()}` });
-      if (selectedAccountRef.current?.id === target.id) return;
-      // Selection refers to rows of the account we are leaving
-      setSelectedIds(new Set());
-      setSelectedAccount(target);
-      setIsAccountPickerOpen(false);
+      const target = row.category?.id;
+      if (!feedAccountIds.has(target) || !row.journalEntryId) return;
+      showRow({ journalEntry: row.journalEntryId, inAccount: target }, { accountId: target });
     },
-    [accounts]
+    [feedAccountIds, showRow]
+  );
+
+  /** Open the other leg of a possible transfer. */
+  const handleOpenMatchCounterpart = useCallback(
+    ({ other }) => showRow({ row: other.imported_transaction_id }, { accountId: other.account?.id }),
+    [showRow]
   );
 
   /**
-   * Match a possible duplicate transfer: the server keeps one leg, archives the
+   * Match a possible duplicate transfer: the server keeps one leg, voids the
    * other, and makes the kept one the transfer between both accounts.
    *
-   * Goes through `runWrite` like every other feed write: this account's leg
-   * shows the outcome at once (archived, or categorized as the transfer) and
-   * comes back if the server refuses. The leg the server archives must be the
-   * one the panel showed, or it answers 409 with the current proposal, which
-   * replaces the stale one so the panel redraws with the new outcome.
+   * Goes through `runWrite` like every other feed write: the legs on screen
+   * show the outcome at once (voided, or categorized as the transfer) and come
+   * back if the server refuses. The leg the server voids must be the one the
+   * panel showed, or it answers 409 with the current proposal, which replaces
+   * the stale one so the panel redraws with the new outcome.
    */
   const handleMatch = ({ pair, self, other }) => {
     const proposal = pair.proposal || {};
-    const row = lines.find((l) => (l.importedTransactionId ?? l.imported_transaction_id) === self.imported_transaction_id);
-    const archivesThis = proposal.archive_id === self.imported_transaction_id;
+    const legIds = [self.imported_transaction_id, other.imported_transaction_id];
+    const onScreen = lines.filter((l) => legIds.includes(l.importedTransactionId ?? l.imported_transaction_id));
     return runWrite({
-      rowIds: row ? [row.id] : [],
-      apply: (r) =>
-        archivesThis
-          ? { ...r, isArchived: true }
-          : { ...r, category: { id: other.account?.id, name: other.account?.name ?? '' }, isSplit: false },
+      rowIds: onScreen.map((r) => r.id),
+      apply: (r) => {
+        const txId = r.importedTransactionId ?? r.imported_transaction_id;
+        if (txId === proposal.archive_id) return queryRef.current.view === 'voided' ? { ...r, isVoid: true } : null;
+        const voidedLeg = txId === self.imported_transaction_id ? other : self;
+        return { ...r, category: { id: voidedLeg.account?.id, name: voidedLeg.account?.name ?? '' }, isSplit: false };
+      },
       request: async () => {
         try {
           return await batchApi.transferMatch(
@@ -555,20 +608,13 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
       },
       onSuccess: (result) => {
         const kept = result.kept_id === self.imported_transaction_id ? self : other;
-        const archived = kept === self ? other : self;
+        const voided = kept === self ? other : self;
         setMatches((prev) => prev.filter((p) => p !== pair));
-        // In this account the transfer is now either the kept row or its mirror;
-        // both carry the kept entry, so flash whichever is here once the quiet
-        // re-read brings it in.
-        setFocusRequest({
-          journalEntryId: result.kept_journal_entry_id,
-          nonce: `match-${result.kept_id}-${Date.now()}`,
-          keepFilters: true,
-        });
+        showRow({ row: result.kept_id }, { keepFilters: true });
         showSnackbar(
-          interpolate(gettext('Matched — kept the one in %s, archived the one in %s.'), [
+          interpolate(gettext('Matched — kept the one in %s, voided the one in %s.'), [
             kept.account?.name ?? '',
-            archived.account?.name ?? '',
+            voided.account?.name ?? '',
           ]),
           'success'
         );
@@ -578,7 +624,7 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     });
   };
 
-  /** Not the same transfer: stop suggesting the pair, in both feeds. */
+  /** Not the same transfer: stop suggesting the pair. */
   const handleDismissMatch = async ({ self, other }) => {
     try {
       await batchApi.transferDismiss(self.imported_transaction_id, other.imported_transaction_id);
@@ -595,184 +641,107 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     }
   };
 
-  /** Open the other leg of a possible transfer in its own account's feed. */
-  const handleOpenMatchCounterpart = useCallback(
-    ({ other }) => {
-      const target = accounts.find((a) => a.id === other.account?.id);
-      if (!target) return;
-      setFocusRequest({
-        importedTransactionId: other.imported_transaction_id,
-        nonce: `goto-${other.imported_transaction_id}-${Date.now()}`,
-      });
-      if (selectedAccountRef.current?.id === target.id) return;
-      setSelectedIds(new Set());
-      setSelectedAccount(target);
-      setIsAccountPickerOpen(false);
-    },
-    [accounts]
-  );
+  // --- account cards ---------------------------------------------------
 
+  /** A card filters the Inbox to its account; clicking it again shows every account. */
   const handleAccountSelect = (account) => {
-    // Selection refers to rows of the previous account; don't let the batch
-    // bar keep acting on rows that are no longer visible
-    setSelectedIds(new Set());
-    setSelectedAccount(account);
-    setIsAccountPickerOpen(false);
+    const only = query.accounts.length === 1 && query.accounts[0] === account.id;
+    updateQuery({ accounts: only ? [] : [account.id] });
+    if (!only) setIsAccountPickerOpen(false);
   };
 
-  // The Inbox nav submenu links straight to an account via ?account=<id>, so a
-  // click there opens the feed with that account already selected instead of
-  // landing back on the picker. Only applied once, on the first load of the
-  // accounts list.
-  const appliedAccountParamRef = useRef(false);
-  useEffect(() => {
-    if (appliedAccountParamRef.current || accounts.length === 0) return;
-    const requestedId = Number(new URLSearchParams(window.location.search).get('account'));
-    if (!requestedId) return;
-    appliedAccountParamRef.current = true;
-    const target = accounts.find((a) => a.id === requestedId);
-    if (target) handleAccountSelect(target);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts]);
+  // --- Plaid -----------------------------------------------------------
 
   /**
-   * Refresh bank feed data from Plaid
+   * Sync from Plaid: the filtered account's bank, or every linked bank when the
+   * Inbox shows several accounts. The sync runs in a background task with no
+   * completion signal, so the page is re-read a few times while it finishes.
    */
   const handleRefresh = async () => {
-    if (!selectedAccount) return;
-
     setRefreshing(true);
     setError(null);
-
     try {
-      // First, get all Plaid accounts and find one mapped to this ledger account
-      const plaidAccountsData = await plaidClient.plaidAccountsList({
-        ...book.params,
-      });
-
-      // Find Plaid account mapped to the selected ledger account
-      const plaidAccount = plaidAccountsData.results?.find(
-        (pa) => pa.account === selectedAccount.id
-      );
-
-      if (plaidAccount) {
-        // Trigger sync task for this Plaid item
-        await plaidClient.plaidItemsSync({
-          ...book.params,
-          id: plaidAccount.item,
-        });
-
-        // The sync runs in a background task with no completion signal, so
-        // reload a few times while it (probably) finishes instead of assuming
-        // it's done after a fixed 2s.
-        const accountId = selectedAccount.id;
-        for (const delay of [2000, 4000, 6000]) {
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          if (selectedAccountRef.current?.id !== accountId) break;
-          await loadLines();
+      let itemIds;
+      if (selectedAccount) {
+        const plaidAccountsData = await plaidClient.plaidAccountsList({ ...book.params });
+        const plaidAccount = plaidAccountsData.results?.find((pa) => pa.account === selectedAccount.id);
+        if (!plaidAccount) {
+          setError(gettext('This account is not linked to a bank feed.'));
+          return;
         }
-        await Promise.all([loadPlaidStatus(), loadMatches()]);
-        setRefreshing(false);
+        itemIds = [plaidAccount.item];
       } else {
-        // No Plaid account linked to this ledger account
-        setError(gettext('This account is not linked to a bank feed.'));
-        setRefreshing(false);
+        const items = await plaidClient.plaidItemsList({ ...book.params });
+        itemIds = (items.results || []).map((item) => item.id);
+        if (itemIds.length === 0) {
+          setError(gettext('No bank is linked yet. Use “Link Bank Account” to connect one.'));
+          return;
+        }
       }
+      await Promise.all(itemIds.map((id) => plaidClient.plaidItemsSync({ ...book.params, id })));
+      for (const delay of [2000, 4000, 6000]) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        await fetchPage(queryRef.current, { quiet: true });
+      }
+      await Promise.all([loadPlaidStatus(), loadMatches(), loadAccounts()]);
     } catch (err) {
       console.error('Failed to refresh:', err);
       setError(gettext('Failed to refresh bank feed. Please try again.'));
+    } finally {
       setRefreshing(false);
     }
   };
 
-  /**
-   * Handle successful Plaid Link - reload page to show new accounts
-   */
+  /** Handle successful Plaid Link - reload page to show new accounts */
   const handlePlaidSuccess = () => {
     window.location.reload();
   };
 
-  /**
-   * Categorize bank feed rows (for Plaid transactions)
-   */
-  const handleCategorize = async (rows, categoryAccountId) => {
-    try {
-      await bankFeedClient.bankFeedTransactionsCategorize({
-        ...book.params,
-        categorizeTransactionsRequest: {
-          rows: rows,
-          categoryId: categoryAccountId,
-        },
-      });
-
-      // Re-read the bank feed and account balances in the background
-      scheduleQuietRefresh();
-    } catch (err) {
-      console.error('Failed to categorize:', err);
-      throw err;
-    }
-  };
+  // --- single-row writes -------------------------------------------------
 
   /**
-   * Handle editing ledger transactions (redirect to journal entry edit)
-   */
-  const handleEditLedgerTransaction = (row) => {
-    if (row.source === 'ledger' && row.journal_line_id) {
-      // For now, we'll just reload the data
-      // In the future, this could open an edit modal or redirect to journal entry edit
-      console.log('Edit ledger transaction:', row);
-      // TODO: Implement ledger transaction editing
-    }
-  };
-
-  /**
-   * Handle adding a new line (manual transaction)
+   * Add a transaction (manual feed row). The modal waits for this one request --
+   * a new row has no id to edit until the server gives it one -- but not for the
+   * page to be re-read.
    */
   const handleAddLine = async (lineData) => {
-    try {
-      // Use the new transaction API which creates BankTransaction + JournalEntry.
-      // The modal waits for this one request -- a new row has no id to edit
-      // until the server gives it one -- but not for the feed to be re-read.
-      const created = await transactionApi.createTransaction({
-        date: lineData.date,
-        category: lineData.category,
-        splits: lineData.splits ?? null,
-        inflow: lineData.inflow || '0',
-        outflow: lineData.outflow || '0',
-        payee: lineData.payee || '',
-        description: lineData.description || '',
-        account: selectedAccount.id,
-      });
-
-      if (created) {
-        const row = BankFeedRowFromJSON(created);
-        setLines((prev) => (prev.some((l) => l.id === row.id) ? prev : [row, ...prev]));
-      }
-      writeEpochRef.current += 1;
-      scheduleQuietRefresh();
-    } catch (err) {
-      console.error('Failed to add line:', err);
-      throw err;
+    const accountId = lineData.account ?? selectedAccount?.id;
+    const created = await transactionApi.createTransaction({
+      date: lineData.date,
+      category: lineData.category,
+      splits: lineData.splits ?? null,
+      inflow: lineData.inflow || '0',
+      outflow: lineData.outflow || '0',
+      payee: lineData.payee || '',
+      description: lineData.description || '',
+      account: accountId,
+    });
+    const q = queryRef.current;
+    const inView = q.view === 'active' && (q.accounts.length === 0 || q.accounts.includes(accountId));
+    if (created && inView && q.page === 0) {
+      const row = BankFeedRowFromJSON(created);
+      setLines((prev) => (prev.some((l) => l.id === row.id) ? prev : [row, ...prev]));
+      setTotal((n) => n + 1);
     }
+    writeEpochRef.current += 1;
+    scheduleQuietRefresh();
   };
 
   /**
-   * Handle editing a transaction from the edit modal.
-   *
-   * The row shows the edit straight away and the modal closes without waiting;
-   * the update goes to the server in the background. A refused edit puts the row
-   * back and says why.
+   * Edit a transaction from the edit modal. The row shows the edit straight away
+   * and the modal closes without waiting. It stays in its own account: the
+   * update is sent with the row's account, whichever accounts the Inbox shows.
    */
-  const handleEditTransaction = (updatedData) => {
+  const handleEditTransaction = (updatedData, row) => {
     const { id, date, category, splits, remove_split, inflow, outflow, payee, description } = updatedData;
-    const accountId = selectedAccount.id;
+    const accountId = row?.account?.id ?? lines.find((l) => String(l.id) === String(id))?.account?.id;
     return runWrite({
       rowIds: [id],
-      apply: (row) => optimisticEditedRow(row, updatedData, accountsById),
+      apply: (r) => optimisticEditedRow(r, updatedData, accountsById),
       request: () =>
         transactionApi.updateTransaction(id, {
-          date: date,
-          category: category,
+          date,
+          category,
           splits: splits ?? null,
           remove_split: remove_split ?? false,
           inflow: inflow || '0',
@@ -786,154 +755,182 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
     });
   };
 
-  /**
-   * Handle deleting a line
-   */
-  const handleDeleteLine = async (lineId) => {
+  // --- selection and batch writes ----------------------------------------
+
+  const selectedIds = useMemo(() => new Set(selection.keys()), [selection]);
+  // Rows on this page are read fresh from the page; the rest as they were selected
+  const linesById = useMemo(() => new Map(lines.map((l) => [l.id, l])), [lines]);
+  const selectedRows = useMemo(
+    () => [...selection.values()].map((row) => linesById.get(row.id) ?? row),
+    [selection, linesById]
+  );
+
+  const handleToggleRows = (rows, checked) => {
+    setSelection((prev) => {
+      const next = new Map(prev);
+      rows.forEach((row) => (checked ? next.set(row.id, row) : next.delete(row.id)));
+      return next;
+    });
+  };
+
+  const handleSelectAllMatching = async () => {
+    setSelectingAll(true);
     try {
-      // Parse the composite ID
-      const [source, id] = lineId.split('-');
-
-      if (source === 'manual' || source === 'csv') {
-        // Delete manual transaction - would need to find and delete the journal entry
-        throw new Error('Deleting manual transactions not yet implemented');
-      } else if (source === 'plaid') {
-        // Cannot delete Plaid transactions
-        throw new Error('Cannot delete Plaid transactions');
-      } else if (source === 'ledger') {
-        // Delete ledger transaction - would need to delete the journal entry
-        throw new Error('Deleting ledger transactions not yet implemented');
-      }
-
-      await loadLines();
+      const data = await bankFeedClient.bankFeedSelection({ ...book.params, ...filterParams(queryRef.current) });
+      const next = new Map();
+      (data.results || []).map(summaryAsRow).forEach((row) => next.set(row.id, linesById.get(row.id) ?? row));
+      setSelection(next);
     } catch (err) {
-      console.error('Failed to delete line:', err);
-      throw err;
+      console.error('Failed to select every matching row:', err);
+      showSnackbar(gettext('Could not select every matching transaction.'), 'error');
+    } finally {
+      setSelectingAll(false);
     }
   };
 
-  // Batch operation handlers
+  const pageSelected = lines.length > 0 && lines.every((l) => selection.has(l.id));
+  let selectAllMatching = null;
+  if (pageSelected && selection.size < total && total > lines.length) {
+    selectAllMatching =
+      total > MAX_SELECTION
+        ? { tooMany: true }
+        : { offer: true, busy: selectingAll, onSelect: handleSelectAllMatching };
+  }
 
-  /**
-   * Bulk edit selected transactions via the unified batch_edit endpoint.
-   * @param {Object} updates - Fields to update (category_id, account_id, payee, description, date)
-   */
+  /** Every selected row in full, fetching those that were selected as summaries. */
+  const getExportRows = async () => {
+    const missing = selectedRows.filter((row) => row.summaryOnly).map((row) => row.id);
+    const fetched = new Map();
+    for (let i = 0; i < missing.length; i += 200) {
+      const response = await bankFeedClient.bankFeedFeedListRaw({
+        ...book.params,
+        ids: missing.slice(i, i + 200).join(','),
+        pageSize: 200,
+      });
+      const json = await response.raw.json();
+      (json.results || []).map(BankFeedRowFromJSON).forEach((row) => fetched.set(row.id, row));
+    }
+    return selectedRows.map((row) => fetched.get(row.id) ?? row);
+  };
+
+  // The one account every selected row is in, if there is one: reconciling and
+  // the reconciled-balance preview are about one account's statement.
+  const selectionAccount = useMemo(() => {
+    const ids = new Set(selectedRows.map((r) => r.account?.id));
+    return ids.size === 1 ? feedAccountsById.get([...ids][0]) ?? null : null;
+  }, [selectedRows, feedAccountsById]);
+
   const handleBulkEdit = (updates) => {
     const ids = [...selectedIds];
-    const accountId = selectedAccountRef.current?.id;
-    setSelectedIds(new Set());
+    const q = queryRef.current;
     runWrite({
       rowIds: ids,
-      // Moved to another account, the rows leave this feed
+      // Moved to an account the Inbox isn't showing, the rows leave the view
       apply: (row) =>
-        updates.account_id && updates.account_id !== accountId
+        updates.account_id && q.accounts.length && !q.accounts.includes(updates.account_id)
           ? null
           : optimisticBulkEditedRow(row, updates, accountsById),
       request: () => batchApi.batchEdit(ids, updates),
       successMessage: gettext('Transactions updated successfully'),
       errorMessage: gettext('Failed to update transactions'),
+      clearsSelection: true,
     });
   };
 
-  /**
-   * Batch archive selected transactions
-   */
-  const handleBatchArchive = () => {
+  // Voiding in the active view, or restoring in the voided one, takes the rows out of view
+  const handleBatchVoid = () => {
     const ids = [...selectedIds];
-    setSelectedIds(new Set());
     runWrite({
       rowIds: ids,
-      apply: (row) => ({ ...row, isArchived: true }),
-      request: () => batchApi.batchArchive(ids),
-      successMessage: gettext('Transactions archived successfully'),
-      errorMessage: gettext('Failed to archive transactions'),
+      apply: (row) => (queryRef.current.view === 'voided' ? { ...row, isVoid: true } : null),
+      request: () => batchApi.batchVoid(ids),
+      successMessage: gettext('Transactions voided'),
+      errorMessage: gettext('Failed to void transactions'),
+      clearsSelection: true,
     });
   };
 
-  /**
-   * Batch unarchive selected transactions
-   */
-  const handleBatchUnarchive = () => {
+  const handleBatchRestore = () => {
     const ids = [...selectedIds];
-    setSelectedIds(new Set());
     runWrite({
       rowIds: ids,
-      apply: (row) => ({ ...row, isArchived: false }),
-      request: () => batchApi.batchUnarchive(ids),
-      successMessage: gettext('Transactions unarchived successfully'),
-      errorMessage: gettext('Failed to unarchive transactions'),
+      apply: (row) => (queryRef.current.view === 'voided' ? null : { ...row, isVoid: false }),
+      request: () => batchApi.batchRestore(ids),
+      successMessage: gettext('Transactions restored'),
+      errorMessage: gettext('Failed to restore transactions'),
+      clearsSelection: true,
     });
   };
 
-  /**
-   * Permanently delete selected archived transactions
-   */
+  /** Permanently delete selected voided transactions */
   const handleBatchDelete = () => {
     const ids = [...selectedIds];
-    setSelectedIds(new Set());
     runWrite({
       rowIds: ids,
       apply: () => null,
       request: () => batchApi.batchDelete(ids),
       successMessage: gettext('Transactions permanently deleted'),
       errorMessage: gettext('Failed to delete transactions'),
+      clearsSelection: true,
     });
   };
 
-  /**
-   * Batch duplicate selected transactions
-   */
   const handleBatchDuplicate = () => {
     const ids = [...selectedIds];
-    setSelectedIds(new Set());
     runWrite({
       rowIds: ids,
       // The copies have no ids until the server makes them; the re-read brings them in
       request: () => batchApi.batchDuplicate(ids),
       successMessage: gettext('Transactions duplicated successfully'),
       errorMessage: gettext('Failed to duplicate transactions'),
+      clearsSelection: true,
     });
   };
 
   /**
    * Reconcile the selection against a statement: hand it to the reconcile page,
    * which opens (or resumes) the account's draft with these rows already ticked.
-   * A feed row knows its journal entry, not its line, so entries are passed.
+   * Only offered when every selected row is in one account.
    */
   const handleBatchReconcile = (rows) => {
-    if (!selectedAccount) return;
-    const entries = (rows || [])
-      .map((r) => r.journal_entry_id ?? r.journalEntryId)
-      .filter(Boolean);
-    const query = entries.length ? `?entries=${entries.join(',')}` : '';
-    window.location.href = `${book.base}reconcile/${selectedAccount.id}/${query}`;
+    if (!selectionAccount) return;
+    const entries = (rows || []).map((r) => r.journal_entry_id ?? r.journalEntryId).filter(Boolean);
+    const qs = entries.length ? `?entries=${entries.join(',')}` : '';
+    window.location.href = `${book.base}reconcile/${selectionAccount.id}/${qs}`;
   };
 
-  /**
-   * Batch unreconcile selected transactions
-   */
   const handleBatchUnreconcile = () => {
     const ids = [...selectedIds];
-    setSelectedIds(new Set());
     runWrite({
       rowIds: ids,
       apply: (row) => ({ ...row, isReconciled: false, reconciledStatementDate: undefined }),
       request: () => batchApi.batchUnreconcile(ids),
       successMessage: gettext('Transactions unreconciled successfully'),
       errorMessage: gettext('Failed to unreconcile transactions'),
+      clearsSelection: true,
     });
   };
 
-  /**
-   * Handle selection change from table
-   */
-  const handleSelectionChange = (newSelectedIds) => {
-    setSelectedIds(newSelectedIds);
+  const showVoidButton = useMemo(
+    () => selectedRows.some((r) => !isVoidRow(r) && !isReconciledRow(r)),
+    [selectedRows]
+  );
+  const showRestoreButton = useMemo(() => selectedRows.some((r) => isVoidRow(r)), [selectedRows]);
+
+  // --- CSV upload ----------------------------------------------------------
+
+  const handleUploadClick = () => {
+    if (selectedAccount) {
+      setUploadAccount(selectedAccount);
+    } else {
+      setUploadChoice(null);
+      setChoosingUploadAccount(true);
+    }
   };
 
-  /**
-   * Human-friendly "last synced" label for the selected account's Plaid item
-   */
+  const uploadOptions = useMemo(() => accounts.map((a) => ({ id: a.id, label: a.name, name: a.name })), [accounts]);
+
+  /** Human-friendly "last synced" label for a Plaid item */
   const formatLastSynced = (lastSyncedAt) => {
     if (!lastSyncedAt) return gettext('Never synced');
     const seconds = Math.floor((Date.now() - new Date(lastSyncedAt).getTime()) / 1000);
@@ -947,34 +944,15 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
   };
 
   const selectedPlaidItem = selectedAccount ? plaidItemsByAccountId[selectedAccount.id] : null;
-
-  /**
-   * Get selected rows data
-   */
-  const selectedRows = useMemo(() => {
-    return lines.filter(l => selectedIds.has(l.id));
-  }, [lines, selectedIds]);
-
-  /**
-   * Determine which archive/unarchive button to show based on selection
-   */
-  // Handle both camelCase (from generated API client) and snake_case (raw API)
-  const isArchived = (r) => r.isArchived ?? r.is_archived ?? false;
-  const isReconciled = (r) => r.isReconciled ?? r.is_reconciled ?? false;
-
-  const showArchiveButton = useMemo(() => {
-    // Show archive only if any selected row is not archived and not reconciled
-    return selectedRows.some(r => !isArchived(r) && !isReconciled(r));
-  }, [selectedRows]);
-
-  const showUnarchiveButton = useMemo(() => {
-    // Show unarchive if any selected row is archived
-    return selectedRows.some(r => isArchived(r));
-  }, [selectedRows]);
+  const heading = selectedAccount
+    ? `${gettext('Lines for')} ${selectedAccount.name}`
+    : query.accounts.length > 1
+      ? interpolate(gettext('%s accounts'), [query.accounts.length])
+      : gettext('All accounts');
 
   return (
     <div className="space-y-6">
-      {/* Account Selection Cards */}
+      {/* Account cards: a filter on the table below, not a gate in front of it */}
       <section className="app-card">
         <div className="flex justify-between items-center mb-4">
           <button
@@ -984,12 +962,13 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             aria-expanded={isAccountPickerOpen}
             data-testid="account-picker-toggle"
           >
-            <Icon name={isAccountPickerOpen ? 'chevron-down' : 'chevron-right'} className="inline-block w-3.5 h-3.5 shrink-0 text-base-content/70" />
-            <h2 className="text-xl mb-1">{gettext('Select Account')}</h2>
+            <Icon
+              name={isAccountPickerOpen ? 'chevron-down' : 'chevron-right'}
+              className="inline-block w-3.5 h-3.5 shrink-0 text-base-content/70"
+            />
+            <h2 className="text-xl mb-1">{gettext('Accounts')}</h2>
             {!isAccountPickerOpen && selectedAccount && (
-              <span className="text-sm font-normal text-base-content/70 truncate">
-                — {selectedAccount.name}
-              </span>
+              <span className="text-sm font-normal text-base-content/70 truncate">— {selectedAccount.name}</span>
             )}
           </button>
           <div className="flex gap-2 items-center">
@@ -1002,13 +981,11 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             </a>
           </div>
         </div>
-        {isAccountPickerOpen && (
-          accounts.length === 0 ? (
+        {isAccountPickerOpen &&
+          (accounts.length === 0 ? (
             <div className="alert alert-warning">
               <Icon name="exclamation-triangle" className="inline-block shrink-0 w-4 h-4" />
-              <span>
-                {gettext('No accounts with bank feeds found. Please link a bank account to get started.')}
-              </span>
+              <span>{gettext('No accounts with bank feeds found. Please link a bank account to get started.')}</span>
               <PlaidLinkButton
                 book={book}
                 allAccounts={allAccounts}
@@ -1017,31 +994,21 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               />
             </div>
           ) : (
-            <AccountGrid accounts={accounts}
-               selectedAccount={selectedAccount}
-               handleAccountSelect={handleAccountSelect}
-               matchCountByAccount={matchCountByAccount} />
-          )
-        )}
+            <AccountGrid
+              accounts={accounts}
+              selectedAccount={selectedAccount}
+              handleAccountSelect={handleAccountSelect}
+              matchCountByAccount={matchCountByAccount}
+            />
+          ))}
       </section>
 
-      {/* Lines Table */}
-      {selectedAccount && (
+      {accounts.length > 0 && (
         <section className="app-card">
           <div className="flex justify-between items-center mb-2">
-            <h2 className="text-xl mb-1">
-              {gettext('Lines for')} {selectedAccount.name}
+            <h2 className="text-xl mb-1" data-testid="feed-heading">
+              {heading}
             </h2>
-            {loadingMore && pendingIds.size === 0 && (
-              <span
-                className="ml-auto mr-3 inline-flex items-center gap-1.5 text-xs text-base-content/70"
-                role="status"
-                data-testid="feed-loading-more"
-              >
-                <span className="loading loading-spinner loading-xs" aria-hidden="true" />
-                {gettext('Loading older transactions…')}
-              </span>
-            )}
             {pendingIds.size > 0 && (
               <span
                 className="ml-auto mr-3 inline-flex items-center gap-1.5 text-xs text-base-content/70"
@@ -1054,102 +1021,148 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
             )}
             {selectedPlaidItem && (
               <span className="text-xs text-base-content/70" title={selectedPlaidItem.institutionName}>
-                {refreshing
-                  ? gettext('Syncing…')
-                  : formatLastSynced(selectedPlaidItem.lastSyncedAt)}
+                {refreshing ? gettext('Syncing…') : formatLastSynced(selectedPlaidItem.lastSyncedAt)}
               </span>
             )}
+            {!selectedAccount && refreshing && (
+              <span className="text-xs text-base-content/70">{gettext('Syncing…')}</span>
+            )}
           </div>
-          <div className="flex flex-wrap gap-x-6 gap-y-1 mb-4 text-sm">
-            <span className="text-base-content/70">
-              {gettext('Categorized balance')}:{' '}
-              <span className="font-semibold text-base-content">
-                {formatCurrency(selectedAccount.categorized_balance ?? selectedAccount.balance)}
-              </span>
-            </span>
-            <span className="text-base-content/70">
-              {gettext('Reconciled balance')}:{' '}
-              <span className="font-semibold text-base-content">
-                {formatCurrency(selectedAccount.reconciled_balance ?? 0)}
-              </span>
-              {selectedAccount.last_statement_date ? (
-                <span className="ml-2" data-testid="reconciled-through">
-                  {gettext('reconciled through')}{' '}
-                  {new Date(`${selectedAccount.last_statement_date}T00:00:00`).toLocaleDateString()}{' '}
-                  {selectedAccount.last_statement_intact ? (
-                    <span className="badge badge-soft badge-success badge-xs">{gettext('Intact')}</span>
-                  ) : (
-                    <span className="badge badge-soft badge-warning badge-xs">{gettext('Changed')}</span>
-                  )}
+          {selectedAccount && (
+            <div className="flex flex-wrap gap-x-6 gap-y-1 mb-4 text-sm">
+              <span className="text-base-content/70">
+                {gettext('Categorized balance')}:{' '}
+                <span className="font-semibold text-base-content">
+                  {formatCurrency(selectedAccount.categorized_balance ?? selectedAccount.balance)}
                 </span>
-              ) : (
-                selectedAccount.latest_reconciled_date && (
-                  <span className="text-base-content/70 ml-2">
-                    {gettext('as of')} {new Date(selectedAccount.latest_reconciled_date).toLocaleDateString()}
+              </span>
+              <span className="text-base-content/70">
+                {gettext('Reconciled balance')}:{' '}
+                <span className="font-semibold text-base-content">
+                  {formatCurrency(selectedAccount.reconciled_balance ?? 0)}
+                </span>
+                {selectedAccount.last_statement_date ? (
+                  <span className="ml-2" data-testid="reconciled-through">
+                    {gettext('reconciled through')}{' '}
+                    {new Date(`${selectedAccount.last_statement_date}T00:00:00`).toLocaleDateString()}{' '}
+                    {selectedAccount.last_statement_intact ? (
+                      <span className="badge badge-soft badge-success badge-xs">{gettext('Intact')}</span>
+                    ) : (
+                      <span className="badge badge-soft badge-warning badge-xs">{gettext('Changed')}</span>
+                    )}
                   </span>
-                )
-              )}
-            </span>
-            <a
-              className="btn btn-outline btn-xs"
-              href={`${book.base}reconcile/${selectedAccount.id}/`}
-              data-testid="reconcile-statement-btn"
-            >
-              {gettext('Reconcile statement')}
-            </a>
-          </div>
+                ) : (
+                  selectedAccount.latest_reconciled_date && (
+                    <span className="text-base-content/70 ml-2">
+                      {gettext('as of')} {new Date(selectedAccount.latest_reconciled_date).toLocaleDateString()}
+                    </span>
+                  )
+                )}
+              </span>
+              <a
+                className="btn btn-outline btn-xs"
+                href={`${book.base}reconcile/${selectedAccount.id}/`}
+                data-testid="reconcile-statement-btn"
+              >
+                {gettext('Reconcile statement')}
+              </a>
+            </div>
+          )}
           {error && (
             <div className="alert alert-error mb-4">
               <Icon name="exclamation-circle" className="inline-block shrink-0 w-4 h-4" />
               <span>{error}</span>
             </div>
           )}
-          {loading && (
+          {initialLoading ? (
             <div className="flex justify-center items-center py-4">
               <span className="loading loading-spinner loading-lg"></span>
             </div>
+          ) : (
+            <LineTable
+              lines={lines}
+              total={total}
+              counts={counts}
+              query={query}
+              onQueryChange={updateQuery}
+              accounts={accounts}
+              showAccountColumn={query.accounts.length !== 1}
+              refetching={refetching}
+              allAccounts={allAccounts}
+              allPayees={allPayees}
+              categorySuggestions={categorySuggestions}
+              book={book}
+              defaultAccountId={selectedAccount?.id ?? null}
+              onAdd={handleAddLine}
+              onEditTransaction={handleEditTransaction}
+              selectedIds={selectedIds}
+              onToggleRows={handleToggleRows}
+              selectAllMatching={selectAllMatching}
+              onUploadClick={handleUploadClick}
+              onRefresh={handleRefresh}
+              refreshing={refreshing}
+              uploadDisabled={initialLoading}
+              plaidClient={plaidClient}
+              onLinkSuccess={handlePlaidSuccess}
+              onOpenTransferLeg={handleOpenTransferLeg}
+              feedAccountIds={feedAccountIds}
+              highlightId={highlightId}
+              pendingIds={pendingIds}
+              transferCount={transferCount}
+              matchByTxId={matchByTxId}
+              onMatch={handleMatch}
+              onDismissMatch={handleDismissMatch}
+              onOpenMatchCounterpart={handleOpenMatchCounterpart}
+            />
           )}
-          <LineTable
-            lines={lines}
-            selectedAccount={selectedAccount}
-            allAccounts={allAccounts}
-            allPayees={allPayees}
-            categorySuggestions={categorySuggestions}
-            book={book}
-            onAdd={handleAddLine}
-            onDelete={handleDeleteLine}
-            onEditTransaction={handleEditTransaction}
-            selectedIds={selectedIds}
-            onSelectionChange={handleSelectionChange}
-            onFilterModeChange={setViewMode}
-            hidden={loading}
-            onUploadClick={() => setShowUploadWizard(true)}
-            onRefresh={handleRefresh}
-            refreshing={refreshing}
-            uploadDisabled={loading}
-            plaidClient={plaidClient}
-            onLinkSuccess={handlePlaidSuccess}
-            onOpenTransferLeg={handleOpenTransferLeg}
-            feedAccountIds={feedAccountIds}
-            focusRequest={focusRequest}
-            pendingIds={pendingIds}
-            matchByTxId={matchByTxId}
-            onMatch={handleMatch}
-            onDismissMatch={handleDismissMatch}
-            onOpenMatchCounterpart={handleOpenMatchCounterpart}
-          />
         </section>
       )}
 
-      {/* CSV Upload Wizard Modal */}
-      {showUploadWizard && selectedAccount && (
+      {/* CSV upload: which account, when the Inbox shows several */}
+      <Modal
+        open={choosingUploadAccount}
+        onClose={() => setChoosingUploadAccount(false)}
+        size="sm"
+        title={gettext('Upload to which account?')}
+        testId="upload-account-dialog"
+        actions={
+          <>
+            <button type="button" className="btn btn-sm" onClick={() => setChoosingUploadAccount(false)}>
+              {gettext('Cancel')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              disabled={!uploadChoice}
+              onClick={() => {
+                setChoosingUploadAccount(false);
+                setUploadAccount(feedAccountsById.get(uploadChoice.id) ?? null);
+              }}
+              data-testid="upload-account-continue"
+            >
+              {gettext('Continue')}
+            </button>
+          </>
+        }
+      >
+        <Combobox
+          label={gettext('Account')}
+          value={uploadChoice}
+          onChange={setUploadChoice}
+          options={uploadOptions}
+          placeholder={gettext('Choose an account')}
+          testId="upload-account"
+        />
+      </Modal>
+
+      {uploadAccount && (
         <CSVUploadWizard
-          selectedAccount={selectedAccount}
+          selectedAccount={uploadAccount}
           allAccounts={allAccounts}
           allAccountGroups={allAccountGroups}
           uploadApi={uploadApi}
           onComplete={(result) => {
-            setShowUploadWizard(false);
+            setUploadAccount(null);
             // Bring in the newly imported transactions without hiding the feed
             writeEpochRef.current += 1;
             scheduleQuietRefresh();
@@ -1163,11 +1176,10 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
               showSnackbar(parts.join(', '), 'success');
             }
           }}
-          onCancel={() => setShowUploadWizard(false)}
+          onCancel={() => setUploadAccount(null)}
         />
       )}
 
-      {/* Batch Action Bar */}
       <BatchActionBar
         selectedCount={selectedIds.size}
         selectedRows={selectedRows}
@@ -1175,27 +1187,28 @@ const LineApp = ({ accounts: initialAccounts, allAccounts, allPayees, allAccount
         allPayees={allPayees}
         bankFeedAccounts={accounts}
         onBulkEdit={handleBulkEdit}
-        onArchive={handleBatchArchive}
-        onUnarchive={handleBatchUnarchive}
+        onVoid={handleBatchVoid}
+        onRestore={handleBatchRestore}
         onDelete={handleBatchDelete}
         onDuplicate={handleBatchDuplicate}
         onReconcile={handleBatchReconcile}
         onUnreconcile={handleBatchUnreconcile}
-        onClearSelection={() => setSelectedIds(new Set())}
-        showArchive={showArchiveButton}
-        showUnarchive={showUnarchiveButton}
-        viewMode={viewMode}
-        selectedAccount={selectedAccount}
+        onClearSelection={() => setSelection(new Map())}
+        showVoid={showVoidButton}
+        showRestore={showRestoreButton}
+        viewMode={query.view}
+        selectedAccount={selectionAccount}
+        getExportRows={getExportRows}
       />
 
-      {/* Batch operation result. The 6s hold is carried over from the Snackbar
-          this replaces — long enough to read a failure message. */}
+      {/* Batch operation result. Held 6s -- long enough to read a failure message. */}
       <Toast
         open={snackbar.open}
         message={snackbar.message}
         severity={snackbar.severity}
         onClose={handleCloseSnackbar}
         autoHideMs={6000}
+        action={snackbar.action}
         testId="batch-toast"
       />
     </div>

@@ -103,7 +103,7 @@ def account_health(book, month) -> dict:
             book=book,
             account_id__in=account_ids,
             journal_entry__isnull=True,
-            is_archived=False,
+            is_void=False,
             posted_date__range=(month_start, month_end),
         )
         .values("account_id")
@@ -115,7 +115,7 @@ def account_health(book, month) -> dict:
             book=book,
             account_id__in=account_ids,
             journal_entry__isnull=True,
-            is_archived=False,
+            is_void=False,
             posted_date__lte=month_end,
         )
         .values("account_id")
@@ -123,9 +123,7 @@ def account_health(book, month) -> dict:
         .values_list("account_id", "count")
     )
     last_transaction_dates = dict(
-        BankTransaction.objects.filter(
-            book=book, account_id__in=account_ids, is_archived=False, posted_date__lte=month_end
-        )
+        BankTransaction.objects.filter(book=book, account_id__in=account_ids, is_void=False, posted_date__lte=month_end)
         .values("account_id")
         .annotate(latest=Max("posted_date"))
         .values_list("account_id", "latest")

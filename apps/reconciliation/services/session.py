@@ -17,8 +17,8 @@ from django.utils.translation import gettext as _
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
-from apps.bank_feed.models import BankTransaction
 from apps.journal.models import JournalEntry
+from apps.journal.services import voiding
 
 from ..models import Reconciliation
 from . import candidates
@@ -260,11 +260,9 @@ def undo(reconciliation, user, *, request=None) -> Reconciliation:
         line.is_reconciled = False
         line.save()
 
-    for entry in adjustment_entries:
-        entry.status = JournalEntry.STATUS_VOID
-        entry.save()
-        for bank_tx in BankTransaction.objects.filter(journal_entry=entry, is_archived=False):
-            bank_tx.archive()
+    # Its lines were unreconciled just above, so voiding is not refused; the
+    # adjustment's feed row (on a feed account) is voided with it.
+    voiding.void(entries=adjustment_entries)
 
     reconciliation.status = Reconciliation.STATUS_UNDONE
     reconciliation.undone_at = timezone.now()

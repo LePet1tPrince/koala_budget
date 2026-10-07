@@ -57,7 +57,7 @@ class BatchDeleteTest(TestCase):
         self.client.force_authenticate(user=self.user)
         self.url = f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/batch_delete/"
 
-    def _create_archived_tx(self, **kwargs):
+    def _create_void_tx(self, **kwargs):
         defaults = dict(
             book=self.book,
             account=self.bank_account,
@@ -65,14 +65,14 @@ class BatchDeleteTest(TestCase):
             description="Test tx",
             amount=Decimal("50.00"),
             source=BankTransaction.SOURCE_CSV,
-            is_archived=True,
+            is_void=True,
         )
         defaults.update(kwargs)
         return BankTransaction.objects.create(**defaults)
 
-    def test_delete_archived_transactions(self):
-        tx1 = self._create_archived_tx()
-        tx2 = self._create_archived_tx()
+    def test_delete_void_transactions(self):
+        tx1 = self._create_void_tx()
+        tx2 = self._create_void_tx()
         with current_book(self.book):
             resp = self.client.post(self.url, {"ids": [tx1.id, tx2.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
@@ -83,15 +83,16 @@ class BatchDeleteTest(TestCase):
             book=self.book,
             description="Test entry",
             entry_date=date.today(),
+            status=JournalEntry.STATUS_VOID,
         )
-        tx = self._create_archived_tx(journal_entry=je)
+        tx = self._create_void_tx(journal_entry=je)
         with current_book(self.book):
             resp = self.client.post(self.url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(BankTransaction.objects.filter(id=tx.id).exists())
         self.assertFalse(JournalEntry.objects.filter(id=je.id).exists())
 
-    def test_cannot_delete_non_archived_transactions(self):
+    def test_cannot_delete_transactions_that_are_not_void(self):
         tx = BankTransaction.objects.create(
             book=self.book,
             account=self.bank_account,
@@ -99,12 +100,12 @@ class BatchDeleteTest(TestCase):
             description="Active tx",
             amount=Decimal("25.00"),
             source=BankTransaction.SOURCE_CSV,
-            is_archived=False,
+            is_void=False,
         )
         with current_book(self.book):
             resp = self.client.post(self.url, {"ids": [tx.id]}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
-        # Non-archived transaction should not be deleted
+        # A transaction that is not void is not deleted
         self.assertTrue(BankTransaction.objects.filter(id=tx.id).exists())
 
     def test_cannot_delete_other_teams_transactions(self):
@@ -126,7 +127,7 @@ class BatchDeleteTest(TestCase):
             description="Other team tx",
             amount=Decimal("100.00"),
             source=BankTransaction.SOURCE_CSV,
-            is_archived=True,
+            is_void=True,
         )
         with current_book(self.book):
             resp = self.client.post(self.url, {"ids": [other_tx.id]}, format="json")
@@ -134,7 +135,7 @@ class BatchDeleteTest(TestCase):
         self.assertTrue(BankTransaction.objects.filter(id=other_tx.id).exists())
 
     def test_requires_authentication(self):
-        tx = self._create_archived_tx()
+        tx = self._create_void_tx()
         unauth_client = APIClient()
         resp = unauth_client.post(self.url, {"ids": [tx.id]}, format="json")
         self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])

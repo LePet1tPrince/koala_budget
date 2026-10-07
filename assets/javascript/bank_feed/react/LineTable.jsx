@@ -8,22 +8,18 @@ import { SortArrow, TablePager } from '../../common/TablePager';
 import { Dropdown, MenuRow, ReconciledLock } from './LineTableParts';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
 import { formatCurrency } from '../../utilities/currency';
-import { formatDate as formatDateUtc, formatDateForInput } from '../utils';
+import { formatDate as formatDateUtc } from '../utils';
+import { PAGE_SIZE_OPTIONS } from '../feedQuery';
 import Icon from '../../common/Icon';
 
 /* globals gettext, interpolate */
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200];
-
-// "To Review" and "Reconciled" are mutually exclusive (opposite states);
-// "Uncategorized" and "Possible transfers" are orthogonal to them and each other.
-const NO_QUICK_FILTERS = { toReview: false, reconciled: false, uncategorized: false, transfers: false };
 const NO_MATCHES = new Map();
+// Stable default, so the rows don't re-render for a fresh `new Set()` each time
+const NO_PENDING = new Set();
 
 /** The possible-transfer suggestion a row belongs to, if any. */
 const matchFor = (matchByTxId, row) => matchByTxId.get(row.importedTransactionId ?? row.imported_transaction_id);
-// Stable default, so the rows don't re-render for a fresh `new Set()` each time
-const NO_PENDING = new Set();
 
 // Column widths are fixed (the table is `table-fixed`) so the Description column
 // absorbs whatever the others leave behind, and long payees or categories
@@ -31,6 +27,7 @@ const NO_PENDING = new Set();
 const COLUMNS = [
   { key: 'select', label: '', width: 'w-12', sortable: false },
   { key: 'postedDate', label: gettext('Date'), width: 'w-[6rem]', sortable: true },
+  { key: 'account', label: gettext('Account'), width: 'w-[9rem]', sortable: true, truncate: true },
   { key: 'payee', label: gettext('Payee'), width: 'w-[9rem]', sortable: true, truncate: true },
   { key: 'category', label: gettext('Category'), width: 'w-[9rem]', sortable: true, truncate: true },
   { key: 'inflow', label: gettext('Inflow'), width: 'w-[6rem]', sortable: true, align: 'text-right' },
@@ -39,29 +36,11 @@ const COLUMNS = [
   { key: 'isReconciled', label: gettext('Reconciled'), width: 'w-[6.5rem]', sortable: false, align: 'text-center' },
 ];
 
-/** Value a column sorts on. Category sorts by name, amounts numerically. */
-const sortValue = (row, key) => {
-  switch (key) {
-    case 'category':
-      return (row.category?.name || '').toLowerCase();
-    case 'inflow':
-    case 'outflow':
-      return parseFloat(row[key]) || 0;
-    case 'postedDate':
-      return row.postedDate ? formatDateForInput(row.postedDate) : '';
-    default:
-      return (row[key] || '').toString().toLowerCase();
-  }
-};
-
 /**
  * Whether a row has been categorized.
  *
  * A split is apportioned across several categories and therefore has no single
  * one, so its `category` is null -- the same shape an uncategorized row has.
- * Testing `category` alone greys the row out, counts it in the uncategorized
- * badge and surfaces it under the Uncategorized filter, none of which is true
- * of a transaction whose every dollar has been assigned.
  */
 const isCategorized = (row) => Boolean(row.category) || Boolean(row.isSplit);
 
@@ -79,28 +58,110 @@ const categoryTitle = (row) => {
 };
 
 /**
- * The bank feed table.
+ * The account filter: every account on a feed, or any set of them. Grouped as
+ * the account cards are (by account group), in the same order.
+ */
+const AccountFilter = ({ accounts, selected, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const chosen = new Set(selected);
+  const label =
+    selected.length === 0
+      ? gettext('All accounts')
+      : selected.length === 1
+        ? accounts.find((a) => a.id === selected[0])?.name ?? gettext('1 account')
+        : interpolate(gettext('%s accounts'), [selected.length]);
+
+  const groups = [];
+  accounts.forEach((account) => {
+    const name = account.account_group_name ?? account.accountGroupName ?? '';
+    const last = groups[groups.length - 1];
+    if (last && last.name === name) last.accounts.push(account);
+    else groups.push({ name, accounts: [account] });
+  });
+
+  const toggle = (id) => {
+    const next = chosen.has(id) ? selected.filter((a) => a !== id) : [...selected, id];
+    // Every account ticked is the same as none: say "All accounts" rather than a list.
+    onChange(next.length === accounts.length ? [] : next);
+  };
+
+  return (
+    <Dropdown
+      open={open}
+      onOpenChange={setOpen}
+      panelClassName="max-h-80 overflow-y-auto"
+      trigger={({ toggle: toggleOpen, open: isOpen }) => (
+        <button
+          type="button"
+          className={`btn btn-sm ${selected.length ? 'btn-primary' : 'btn-outline'} max-w-[14rem]`}
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
+          onClick={toggleOpen}
+          data-testid="account-filter-btn"
+        >
+          <span className="truncate">{label}</span>
+          <span aria-hidden="true">▾</span>
+        </button>
+      )}
+    >
+      {({ close }) => (
+        <>
+          <MenuRow
+            testId="account-filter-all"
+            checked={selected.length === 0}
+            label={gettext('All accounts')}
+            onClick={() => {
+              onChange([]);
+              close();
+            }}
+          />
+          {groups.map((group) => (
+            <Fragment key={group.name}>
+              <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase text-base-content/70">{group.name}</div>
+              {group.accounts.map((account) => (
+                <MenuRow
+                  key={account.id}
+                  testId={`account-filter-${account.id}`}
+                  checked={chosen.has(account.id)}
+                  label={account.name}
+                  onClick={() => toggle(account.id)}
+                />
+              ))}
+            </Fragment>
+          ))}
+        </>
+      )}
+    </Dropdown>
+  );
+};
+
+/**
+ * The bank feed table: one page of the Inbox, as the server filtered, sorted and
+ * paged it (`apps/bank_feed/services/feed_query.py`).
  *
- * Replaces the `@material-table/core` + MUI implementation (restyle plan Phase
- * 5b). The filtering, counting and selection logic is carried over unchanged —
- * it is what `e2e/tests/test_bank_feed.py` pins — and only the rendering is new:
- * a plain `<table>` with hand-rolled sorting and pagination, which is a fraction
- * of the weight of a table component and lets the rows use theme tokens.
+ * Presentational. What is being looked at -- accounts, view, quick filters,
+ * dates, sort, page -- belongs to `LineApp`, which requests one page whenever it
+ * changes; every control here reports a change rather than applying it.
  */
 const LineTable = ({
   lines,
-  selectedAccount,
+  total,
+  counts,
+  query,
+  onQueryChange,
+  accounts = [],
+  showAccountColumn = true,
+  refetching = false,
   allAccounts,
   allPayees = [],
   categorySuggestions = {},
   book,
+  defaultAccountId = null,
   onAdd,
-  onDelete,
   onEditTransaction,
   selectedIds = new Set(),
-  onSelectionChange,
-  onFilterModeChange,
-  hidden = false,
+  onToggleRows,
+  selectAllMatching,
   onUploadClick,
   onRefresh,
   refreshing = false,
@@ -109,20 +170,14 @@ const LineTable = ({
   onLinkSuccess,
   onOpenTransferLeg,
   feedAccountIds = new Set(),
-  focusRequest = null,
+  highlightId = null,
+  transferCount = 0,
   matchByTxId = NO_MATCHES,
   onMatch,
   onDismissMatch,
   onOpenMatchCounterpart,
   pendingIds = NO_PENDING,
 }) => {
-  // Date range filter state (YYYY-MM-DD strings)
-  const [filterStart, setFilterStart] = useState('');
-  const [filterEnd, setFilterEnd] = useState('');
-  // Controlled page size so it survives data reloads
-  const [pageSize, setPageSize] = useState(25);
-  const [page, setPage] = useState(0);
-  const [sort, setSort] = useState({ key: 'postedDate', dir: 'desc' });
   const [quickFiltersOpen, setQuickFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
 
@@ -136,14 +191,11 @@ const LineTable = ({
 
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
 
-  // Archived is its own view, separate from the quick filters below
-  const [showArchived, setShowArchived] = useState(false);
-  // Quick filters: independently toggleable, applied only outside the archived view.
-  const [quickFilters, setQuickFilters] = useState(NO_QUICK_FILTERS);
+  const voided = query.view === 'voided';
+  const quickFilters = query.quickFilters;
 
   // The feed row whose possible-transfer panel is open (one at a time)
   const [openMatchId, setOpenMatchId] = useState(null);
-  useEffect(() => setOpenMatchId(null), [selectedAccount?.id]);
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -151,16 +203,10 @@ const LineTable = ({
   const [modalMode, setModalMode] = useState('edit'); // 'create' | 'edit'
 
   // Id of the row whose checkbox was last clicked, used as the anchor for
-  // shift-click range selection
+  // shift-click range selection (within the page on screen)
   const [lastCheckedId, setLastCheckedId] = useState(null);
+  useEffect(() => setLastCheckedId(null), [lines]);
 
-  // Jumping to the other leg of a transfer: `pendingFocusId` is a row we have
-  // been asked to show and have not yet paged to, `highlightId` the row that is
-  // currently flashing. `handledFocusRef` keeps a satisfied request from firing
-  // again the next time the rows reload.
-  const [pendingFocusId, setPendingFocusId] = useState(null);
-  const [highlightId, setHighlightId] = useState(null);
-  const handledFocusRef = useRef(null);
   const tableBodyRef = useRef(null);
 
   // The table scrolls sideways on narrow screens, but a possible-transfer panel
@@ -174,36 +220,33 @@ const LineTable = ({
     const observer = new ResizeObserver(() => setScrollWidth(el.clientWidth));
     observer.observe(el);
     return () => observer.disconnect();
-  }, [selectedAccount?.id]);
+  }, []);
 
-  const toggleQuickFilter = (key) => {
-    setQuickFilters((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      if (key === 'toReview' && next.toReview) next.reconciled = false;
-      if (key === 'reconciled' && next.reconciled) next.toReview = false;
-      return next;
+  // A row the page was asked to show (the other side of a transfer): scroll to
+  // it once it is on screen. The flash itself is the `feed-row-flash` class.
+  useEffect(() => {
+    if (highlightId == null) return;
+    requestAnimationFrame(() => {
+      tableBodyRef.current
+        ?.querySelector(`[data-testid="feed-row-${highlightId}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
+  }, [highlightId, lines]);
+
+  const columns = useMemo(
+    () => COLUMNS.filter((col) => col.key !== 'account' || showAccountColumn),
+    [showAccountColumn]
+  );
+  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+
+  const setQuickFilters = (next) => onQueryChange({ quickFilters: next });
+  const toggleQuickFilter = (key) => {
+    const next = { ...quickFilters, [key]: !quickFilters[key] };
+    if (key === 'toReview' && next.toReview) next.reconciled = false;
+    if (key === 'reconciled' && next.reconciled) next.toReview = false;
+    setQuickFilters(next);
   };
   const activeQuickFilterCount = Object.values(quickFilters).filter(Boolean).length;
-
-  // Clear selection and notify parent when switching between the active and archived views
-  useEffect(() => {
-    setLastCheckedId(null);
-    if (onSelectionChange) {
-      onSelectionChange(new Set());
-    }
-    if (onFilterModeChange) {
-      onFilterModeChange(showArchived ? 'archived' : 'active');
-    }
-  }, [showArchived]);
-
-  // Clear selection when quick filters change so the batch bar doesn't act on rows that scrolled out of view
-  useEffect(() => {
-    setLastCheckedId(null);
-    if (onSelectionChange) {
-      onSelectionChange(new Set());
-    }
-  }, [quickFilters]);
 
   const showSnackbar = (message, severity = 'info') => setSnackbar({ open: true, message, severity });
   const handleCloseSnackbar = () => setSnackbar((s) => ({ ...s, open: false }));
@@ -238,217 +281,51 @@ const LineTable = ({
     } else if (onEditTransaction) {
       // Not awaited: the row already shows the edit and is marked as saving,
       // so the modal closes at once. A refusal is reported by the feed.
-      onEditTransaction(data);
+      onEditTransaction(data, editingTransaction);
     }
   };
 
-  // Filter lines by selected date range, view (active/archived), and quick filters
-  const filteredLines = useMemo(() => {
-    if (!Array.isArray(lines)) return [];
-    let filtered = lines;
-
-    // Handle both camelCase (from generated API client) and snake_case (raw API)
-    const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
-    const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
-
-    if (showArchived) {
-      filtered = filtered.filter((l) => isArchived(l));
-    } else {
-      // Default: everything not archived, regardless of categorized/reconciled state
-      filtered = filtered.filter((l) => !isArchived(l));
-      if (quickFilters.toReview) {
-        filtered = filtered.filter((l) => !isReconciled(l));
-      } else if (quickFilters.reconciled) {
-        filtered = filtered.filter((l) => isReconciled(l));
-      }
-      if (quickFilters.uncategorized) {
-        filtered = filtered.filter((l) => !isCategorized(l));
-      }
-      if (quickFilters.transfers) {
-        filtered = filtered.filter((l) => matchFor(matchByTxId, l));
-      }
-    }
-
-    // Apply date range filter. Compare YYYY-MM-DD strings so UTC-parsed
-    // posted dates and local picker dates can't disagree on boundary days.
-    if (filterStart || filterEnd) {
-      const startStr = filterStart ? formatDateForInput(filterStart) : null;
-      const endStr = filterEnd ? formatDateForInput(filterEnd) : null;
-      filtered = filtered.filter((l) => {
-        if (!l.postedDate) return false;
-        const dateStr = formatDateForInput(l.postedDate);
-        if (startStr && dateStr < startStr) return false;
-        if (endStr && dateStr > endStr) return false;
-        return true;
-      });
-    }
-
-    return filtered;
-  }, [lines, filterStart, filterEnd, showArchived, quickFilters, matchByTxId]);
-
-  // Counts (independent of the active filter/date range) for the badges shown
-  // on the Quick Filters menu items and the Archived button
-  const filterCounts = useMemo(() => {
-    if (!Array.isArray(lines)) return { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0, transfers: 0 };
-    const isArchived = (l) => l.isArchived ?? l.is_archived ?? false;
-    const isReconciled = (l) => l.isReconciled ?? l.is_reconciled ?? false;
-    return lines.reduce(
-      (acc, l) => {
-        if (isArchived(l)) {
-          acc.archived += 1;
-          return acc;
-        }
-        if (isReconciled(l)) {
-          acc.reconciled += 1;
-        } else {
-          acc.to_review += 1;
-        }
-        if (!isCategorized(l)) {
-          acc.uncategorized += 1;
-        }
-        if (matchFor(matchByTxId, l)) {
-          acc.transfers += 1;
-        }
-        return acc;
-      },
-      { to_review: 0, reconciled: 0, archived: 0, uncategorized: 0, transfers: 0 }
-    );
-  }, [lines, matchByTxId]);
-
-  const sortedLines = useMemo(() => {
-    const rows = [...filteredLines];
-    rows.sort((a, b) => {
-      const av = sortValue(a, sort.key);
-      const bv = sortValue(b, sort.key);
-      if (av < bv) return sort.dir === 'asc' ? -1 : 1;
-      if (av > bv) return sort.dir === 'asc' ? 1 : -1;
-      return 0;
+  const toggleSort = (key) => {
+    const sort = query.sort;
+    onQueryChange({
+      sort: sort.key === key ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
     });
-    return rows;
-  }, [filteredLines, sort]);
-
-  const pageCount = Math.max(1, Math.ceil(sortedLines.length / pageSize));
-  // Filtering can shrink the list under the current page; clamp rather than
-  // render an empty page.
-  const safePage = Math.min(page, pageCount - 1);
-  const pageRows = sortedLines.slice(safePage * pageSize, safePage * pageSize + pageSize);
-
-  // Back to the first page when what is being looked at changes -- not when the
-  // row count does, or every categorize or archive would throw the user off the
-  // page they are working through. `safePage` clamps a page that shrank.
-  useEffect(() => {
-    setPage(0);
-  }, [filterStart, filterEnd, showArchived, quickFilters, pageSize, selectedAccount?.id]);
-
-  // Arriving from the other side of a transfer: the counterpart row is the one
-  // carrying the same journal entry id (or, for a possible-transfer leg that has
-  // no entry yet, the same bank transaction id). It only exists once the new
-  // account's lines have loaded, hence the dependency on `lines`. It may also be
-  // archived or hidden by a filter, so clear whatever would keep it off screen --
-  // unless the request asks to keep the filters (the flash after a match is a
-  // courtesy, not worth undoing the user's view for).
-  useEffect(() => {
-    if (!focusRequest || handledFocusRef.current === focusRequest.nonce) return;
-    const target = (Array.isArray(lines) ? lines : []).find((l) =>
-      focusRequest.importedTransactionId != null
-        ? (l.importedTransactionId ?? l.imported_transaction_id) === focusRequest.importedTransactionId
-        : l.journalEntryId === focusRequest.journalEntryId
-    );
-    if (!target) return;
-    handledFocusRef.current = focusRequest.nonce;
-    if (focusRequest.keepFilters) {
-      if (sortedLines.some((l) => l.id === target.id)) setPendingFocusId(target.id);
-      return;
-    }
-    setShowArchived(target.isArchived ?? target.is_archived ?? false);
-    setQuickFilters(NO_QUICK_FILTERS);
-    setFilterStart('');
-    setFilterEnd('');
-    setPendingFocusId(target.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusRequest, lines]);
-
-  // Then page to that row and flash it, once clearing the filters has put it
-  // back in the list. Declared after the reset-to-page-0 effect above so that,
-  // in the commit where the filters clear, this page wins.
-  useEffect(() => {
-    if (pendingFocusId == null) return;
-    const index = sortedLines.findIndex((l) => l.id === pendingFocusId);
-    if (index === -1) return;
-    setPage(Math.floor(index / pageSize));
-    setHighlightId(pendingFocusId);
-    setPendingFocusId(null);
-    // The row renders on the next paint; scroll to it then.
-    requestAnimationFrame(() => {
-      tableBodyRef.current
-        ?.querySelector(`[data-testid="feed-row-${pendingFocusId}"]`)
-        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-    // Drop the flag once the flash has played out, so the row isn't still
-    // marked when the user comes back to this account later.
-    const timer = setTimeout(() => setHighlightId(null), 2000);
-    return () => clearTimeout(timer);
-  }, [pendingFocusId, sortedLines, pageSize]);
-
-  const toggleSort = (key) =>
-    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+  };
 
   // Handle row selection. Shift-click extends the selection to every row
-  // between the last-clicked checkbox and this one (in displayed order).
-  const handleRowSelect = (rowId, checked, shiftKey) => {
-    if (!onSelectionChange) return;
-    const newSelected = new Set(selectedIds);
-
+  // between the last-clicked checkbox and this one (in displayed order, on this page).
+  const handleRowSelect = (row, checked, shiftKey) => {
+    if (!onToggleRows) return;
     if (shiftKey && lastCheckedId !== null) {
-      const ids = sortedLines.map((l) => l.id);
+      const ids = lines.map((l) => l.id);
       const anchorIndex = ids.indexOf(lastCheckedId);
-      const targetIndex = ids.indexOf(rowId);
+      const targetIndex = ids.indexOf(row.id);
       if (anchorIndex !== -1 && targetIndex !== -1) {
         const [start, end] = anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
-        for (let i = start; i <= end; i += 1) {
-          if (checked) {
-            newSelected.add(ids[i]);
-          } else {
-            newSelected.delete(ids[i]);
-          }
-        }
-        onSelectionChange(newSelected);
-        setLastCheckedId(rowId);
+        onToggleRows(lines.slice(start, end + 1), checked);
+        setLastCheckedId(row.id);
         return;
       }
     }
-
-    if (checked) {
-      newSelected.add(rowId);
-    } else {
-      newSelected.delete(rowId);
-    }
-    onSelectionChange(newSelected);
-    setLastCheckedId(rowId);
+    onToggleRows([row], checked);
+    setLastCheckedId(row.id);
   };
 
-  const handleSelectAll = (checked) => {
-    if (!onSelectionChange) return;
-    onSelectionChange(checked ? new Set(filteredLines.map((l) => l.id)) : new Set());
-  };
-
-  const allSelected = filteredLines.length > 0 && filteredLines.every((l) => selectedIds.has(l.id));
-  const someSelected = filteredLines.some((l) => selectedIds.has(l.id)) && !allSelected;
-
-  if (!selectedAccount) {
-    return (
-      <div className="alert alert-info">
-        <Icon name="info-circle" className="inline-block shrink-0 w-4 h-4" />
-        <span>{gettext('Please select an account to view lines')}</span>
-      </div>
-    );
-  }
+  const pageSelected = lines.length > 0 && lines.every((l) => selectedIds.has(l.id));
+  const somePageSelected = lines.some((l) => selectedIds.has(l.id)) && !pageSelected;
+  const pageCount = Math.max(1, Math.ceil(total / query.pageSize));
 
   return (
-    <div style={hidden ? { display: 'none' } : undefined}>
+    <div>
       <div className="space-y-4">
-        {/* Toolbar: quick filters, archived view, date filter, and actions */}
+        {/* Toolbar: accounts, quick filters, voided view, date filter, and actions */}
         <div className="flex flex-wrap items-center gap-2">
+          <AccountFilter
+            accounts={accounts}
+            selected={query.accounts}
+            onChange={(next) => onQueryChange({ accounts: next })}
+          />
+
           <Dropdown
             open={quickFiltersOpen}
             onOpenChange={setQuickFiltersOpen}
@@ -456,16 +333,14 @@ const LineTable = ({
               <button
                 type="button"
                 className={`btn btn-sm ${activeQuickFilterCount > 0 ? 'btn-primary' : 'btn-outline'}`}
-                disabled={showArchived}
+                disabled={voided}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 onClick={toggle}
                 data-testid="quick-filters-btn"
               >
                 {gettext('Quick Filters')}
-                {activeQuickFilterCount > 0 && (
-                  <span className="badge badge-sm">{activeQuickFilterCount}</span>
-                )}
+                {activeQuickFilterCount > 0 && <span className="badge badge-sm">{activeQuickFilterCount}</span>}
                 <span aria-hidden="true">▾</span>
               </button>
             )}
@@ -476,7 +351,7 @@ const LineTable = ({
                   testId="filter-to-review"
                   checked={quickFilters.toReview}
                   label={gettext('To Review')}
-                  count={filterCounts.to_review}
+                  count={counts?.to_review ?? 0}
                   countClass="badge-warning badge-outline"
                   onClick={() => toggleQuickFilter('toReview')}
                 />
@@ -484,7 +359,7 @@ const LineTable = ({
                   testId="filter-reconciled"
                   checked={quickFilters.reconciled}
                   label={gettext('Reconciled')}
-                  count={filterCounts.reconciled}
+                  count={counts?.reconciled ?? 0}
                   countClass="badge-success badge-outline"
                   onClick={() => toggleQuickFilter('reconciled')}
                 />
@@ -492,7 +367,7 @@ const LineTable = ({
                   testId="filter-uncategorized"
                   checked={quickFilters.uncategorized}
                   label={gettext('Uncategorized')}
-                  count={filterCounts.uncategorized}
+                  count={counts?.uncategorized ?? 0}
                   countClass="badge-outline"
                   onClick={() => toggleQuickFilter('uncategorized')}
                 />
@@ -500,7 +375,7 @@ const LineTable = ({
                   testId="filter-transfers"
                   checked={quickFilters.transfers}
                   label={gettext('Possible transfers')}
-                  count={filterCounts.transfers}
+                  count={transferCount}
                   countClass="badge-warning badge-outline"
                   onClick={() => toggleQuickFilter('transfers')}
                 />
@@ -510,7 +385,7 @@ const LineTable = ({
                     <MenuRow
                       label={gettext('Clear filters')}
                       onClick={() => {
-                        setQuickFilters(NO_QUICK_FILTERS);
+                        setQuickFilters({ toReview: false, reconciled: false, uncategorized: false, transfers: false });
                         close();
                       }}
                     />
@@ -522,27 +397,24 @@ const LineTable = ({
 
           <button
             type="button"
-            className={`btn btn-sm ${showArchived ? 'btn-neutral' : 'btn-outline'}`}
-            onClick={() => setShowArchived((v) => !v)}
-            aria-pressed={showArchived}
-            data-testid="filter-archived"
+            className={`btn btn-sm ${voided ? 'btn-neutral' : 'btn-outline'}`}
+            onClick={() => onQueryChange({ view: voided ? 'active' : 'voided' })}
+            aria-pressed={voided}
+            data-testid="filter-voided"
           >
-            {gettext('Archived')}
-            <span className="badge badge-sm badge-ghost">{filterCounts.archived}</span>
+            {gettext('Voided')}
+            <span className="badge badge-sm badge-ghost">{counts?.voided ?? 0}</span>
           </button>
 
           <div className="mx-1 h-6 w-px bg-base-300" />
 
           <DateRangePicker
-            startDate={filterStart}
-            endDate={filterEnd}
-            onApply={(s, e) => {
-              setFilterStart(s);
-              setFilterEnd(e);
-            }}
+            startDate={query.startDate}
+            endDate={query.endDate}
+            onApply={(s, e) => onQueryChange({ startDate: s || '', endDate: e || '' })}
           />
-          <span className="whitespace-nowrap text-sm text-base-content/70">
-            {filteredLines.length} {gettext('lines')}
+          <span className="whitespace-nowrap text-sm text-base-content/70" data-testid="feed-total">
+            {total} {gettext('lines')}
           </span>
 
           <div className="mx-1 h-6 w-px bg-base-300" />
@@ -603,43 +475,76 @@ const LineTable = ({
         </div>
 
         <div className="app-surface overflow-hidden">
-          {/* Select-all strip, which `@material-table/core` rendered as its toolbar */}
-          <div className="flex items-center gap-2 border-b border-base-300 px-3 py-2">
+          {/* Select-all strip: the checkbox takes this page; selecting everything
+              the filters match is offered once the page is full. */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-base-300 px-3 py-2">
             <input
               type="checkbox"
               className="checkbox checkbox-sm rounded-sm"
-              checked={allSelected}
+              checked={pageSelected}
               ref={(el) => {
-                if (el) el.indeterminate = someSelected;
+                if (el) el.indeterminate = somePageSelected;
               }}
-              onChange={(e) => handleSelectAll(e.target.checked)}
-              aria-label={gettext('Select all')}
+              onChange={(e) => onToggleRows?.(lines, e.target.checked)}
+              aria-label={gettext('Select all on this page')}
               data-testid="select-all"
             />
             {selectedIds.size > 0 && (
-              <span className="text-sm text-primary">
+              <span className="text-sm text-primary" data-testid="selected-count">
                 {selectedIds.size} {gettext('selected')}
               </span>
+            )}
+            {selectAllMatching?.offer && (
+              <button
+                type="button"
+                className="btn btn-link btn-xs"
+                onClick={selectAllMatching.onSelect}
+                disabled={selectAllMatching.busy}
+                data-testid="select-all-matching"
+              >
+                {selectAllMatching.busy
+                  ? gettext('Selecting…')
+                  : interpolate(gettext('Select all %s matching'), [total])}
+              </button>
+            )}
+            {selectAllMatching?.tooMany && (
+              <span className="text-xs text-base-content/70" data-testid="select-all-too-many">
+                {gettext('Narrow the filters to select more than 1,000 transactions.')}
+              </span>
+            )}
+            {refetching && (
+              <span
+                className="loading loading-spinner loading-xs ml-auto text-base-content/50"
+                role="status"
+                aria-label={gettext('Loading')}
+                data-testid="feed-refetching"
+              />
             )}
           </div>
 
           <div className="overflow-x-auto" ref={scrollRef}>
-            {/* The fixed columns add up to ~45rem; the floor keeps ~10rem for Description
-                (and its "Match found" chip) when the screen is narrower, where the
-                table scrolls sideways instead of squeezing that column to nothing. */}
-            <table className="table table-sm table-quiet table-fixed w-full min-w-[56rem]">
+            {/* The fixed columns add up to ~45rem (~54 with Account); the floor keeps
+                ~10rem for Description (and its "Match found" chip) on a narrow screen,
+                where the table scrolls sideways instead of squeezing that column. */}
+            <table
+              className={`table table-sm table-quiet table-fixed w-full ${
+                showAccountColumn ? 'min-w-[65rem]' : 'min-w-[56rem]'
+              } ${refetching ? 'opacity-60' : ''}`}
+              data-testid="feed-table"
+            >
               <thead>
                 <tr>
-                  {COLUMNS.map((col) => (
+                  {columns.map((col) => (
                     <th key={col.key} className={`truncate ${col.width || ''} ${col.align || ''}`}>
                       {col.sortable ? (
                         <button
                           type="button"
                           className="group inline-flex items-center gap-1 hover:text-base-content"
                           onClick={() => toggleSort(col.key)}
+                          data-testid={`sort-${col.key}`}
                         >
                           {col.label}
-                          <SortArrow active={sort.key === col.key} direction={sort.dir} />
+                          <SortArrow active={query.sort.key === col.key} direction={query.sort.dir} />
                         </button>
                       ) : (
                         col.label
@@ -649,153 +554,164 @@ const LineTable = ({
                 </tr>
               </thead>
               <tbody ref={tableBodyRef}>
-                {pageRows.map((row) => {
-                  // Uncategorized rows are muted outside the archived view. This was a
-                  // hardcoded #9CA3AF, which did not follow the theme.
-                  const muted = !showArchived && !isCategorized(row);
+                {lines.map((row) => {
+                  // Uncategorized rows are muted outside the voided view.
+                  const muted = !voided && !isCategorized(row);
                   const reconciled = row.isReconciled ?? row.is_reconciled ?? false;
                   // A row categorized to another feed account is a transfer: the
                   // same journal entry also has a row in that account's feed.
                   const isTransfer = !!row.category && feedAccountIds.has(row.category.id) && !!row.journalEntryId;
-                  // A possible duplicate transfer: the archived view never has one
-                  // (archived rows aren't candidates), so no chip there.
-                  const match = showArchived ? null : matchFor(matchByTxId, row);
+                  // A possible duplicate transfer: the voided view never has one
+                  // (void rows aren't candidates), so no chip there.
+                  const match = voided ? null : matchFor(matchByTxId, row);
                   const matchOpen = !!match && openMatchId === row.id;
                   const panelId = `transfer-match-panel-${row.id}`;
                   const saving = pendingIds.has(row.id);
+                  const account = accountsById.get(row.account?.id) ?? row.account;
                   return (
                     <Fragment key={row.id}>
-                    <tr
-                      className={`cursor-pointer ${muted ? 'text-base-content/50' : ''} ${
-                        row.id === highlightId ? 'feed-row-flash' : ''
-                      }`}
-                      onClick={() => handleEditClick(row)}
-                      aria-busy={saving || undefined}
-                      data-testid={`feed-row-${row.id}`}
-                    >
-                      <td className="w-12" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          className="checkbox checkbox-sm rounded-sm"
-                          checked={selectedIds.has(row.id)}
-                          onChange={(e) => handleRowSelect(row.id, e.target.checked, e.nativeEvent.shiftKey)}
-                          aria-label={gettext('Select row')}
-                        />
-                      </td>
-                      <td className="whitespace-nowrap">{formatDate(row.postedDate)}</td>
-                      <td className="truncate" title={row.payee || ''}>
-                        {row.payee || ''}
-                      </td>
-                      <td className="truncate" title={categoryTitle(row)}>
-                        <span className="inline-flex w-full items-center gap-1">
-                          {row.isSplit ? (
-                            <span className="badge badge-ghost badge-sm shrink-0" data-testid={`split-badge-${row.id}`}>
-                              {interpolate(gettext('Split (%s)'), [row.splitCount])}
-                            </span>
-                          ) : (
-                            <span className="truncate">
-                              {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
-                            </span>
-                          )}
-                          {isTransfer && (
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-xs shrink-0 px-1 text-primary"
-                              title={`${gettext('Go to the other side of this transfer in')} ${row.category.name}`}
-                              aria-label={`${gettext('Go to the other side of this transfer in')} ${row.category.name}`}
-                              data-testid={`transfer-link-${row.id}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (onOpenTransferLeg) onOpenTransferLeg(row);
-                              }}
-                            >
-                              <Icon name="arrow-right-left" className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </span>
-                      </td>
-                      <td className="money whitespace-nowrap text-right">
-                        {row.inflow && parseFloat(row.inflow) > 0 ? formatCurrency(row.inflow) : ''}
-                      </td>
-                      <td className="money whitespace-nowrap text-right">
-                        {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
-                      </td>
-                      <td title={row.description || ''}>
-                        <span className="flex min-w-0 items-center gap-1">
-                          {match && (
-                            <button
-                              type="button"
-                              className={`badge badge-sm shrink-0 gap-1 cursor-pointer ${
-                                matchOpen ? 'badge-warning' : 'badge-warning badge-soft'
-                              }`}
-                              title={interpolate(gettext('Possible transfer with %s — review'), [
-                                match.other.account?.name ?? '',
-                              ])}
-                              aria-label={interpolate(gettext('Possible transfer with %s'), [
-                                match.other.account?.name ?? '',
-                              ])}
-                              aria-expanded={matchOpen}
-                              aria-controls={matchOpen ? panelId : undefined}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenMatchId(matchOpen ? null : row.id);
-                              }}
-                              data-testid={`transfer-match-chip-${row.id}`}
-                            >
-                              <Icon name="arrow-right-left" className="h-3 w-3" />
-                              {gettext('Match found')}
-                            </button>
-                          )}
-                          {/* A split has no per-leg memo, so the marker beside the
-                              description is what identifies one without opening it. */}
-                          {row.isSplit && (
-                            <span className="badge badge-ghost badge-sm shrink-0">{gettext('Split')}</span>
-                          )}
-                          <span className="truncate">{row.description || ''}</span>
-                        </span>
-                      </td>
-                      <td className="text-center">
-                        {saving ? (
-                          <span
-                            className="loading loading-spinner loading-xs text-base-content/50"
-                            title={gettext('Saving…')}
-                            data-testid={`row-saving-${row.id}`}
+                      <tr
+                        className={`cursor-pointer ${muted ? 'text-base-content/50' : ''} ${
+                          row.id === highlightId ? 'feed-row-flash' : ''
+                        }`}
+                        onClick={() => handleEditClick(row)}
+                        aria-busy={saving || undefined}
+                        data-testid={`feed-row-${row.id}`}
+                      >
+                        <td className="w-12" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-sm rounded-sm"
+                            checked={selectedIds.has(row.id)}
+                            onChange={(e) => handleRowSelect(row, e.target.checked, e.nativeEvent.shiftKey)}
+                            aria-label={gettext('Select row')}
                           />
-                        ) : (
-                          <ReconciledLock reconciled={reconciled} />
-                        )}
-                      </td>
-                    </tr>
-                    {matchOpen && (
-                      <tr className="cursor-default">
-                        <td colSpan={COLUMNS.length} className="bg-base-100 p-2">
-                          <div
-                            className="sticky left-0"
-                            style={scrollWidth ? { width: `${scrollWidth - 16}px` } : undefined}
+                        </td>
+                        <td className="whitespace-nowrap">{formatDate(row.postedDate)}</td>
+                        {showAccountColumn && (
+                          <td
+                            className="truncate"
+                            title={[account?.name, account?.institution?.name ?? account?.institution_name]
+                              .filter(Boolean)
+                              .join(' · ')}
+                            data-testid={`feed-row-account-${row.id}`}
                           >
-                          <TransferMatchPanel
-                            id={panelId}
-                            match={match}
-                            onMatch={onMatch}
-                            onDismiss={onDismissMatch}
-                            onGoTo={onOpenMatchCounterpart}
-                            onClose={() => {
-                              setOpenMatchId(null);
-                              tableBodyRef.current
-                                ?.querySelector(`[data-testid="transfer-match-chip-${row.id}"]`)
-                                ?.focus();
-                            }}
-                          />
-                          </div>
+                            {account?.name ?? ''}
+                          </td>
+                        )}
+                        <td className="truncate" title={row.payee || ''}>
+                          {row.payee || ''}
+                        </td>
+                        <td className="truncate" title={categoryTitle(row)}>
+                          <span className="inline-flex w-full items-center gap-1">
+                            {row.isSplit ? (
+                              <span className="badge badge-ghost badge-sm shrink-0" data-testid={`split-badge-${row.id}`}>
+                                {interpolate(gettext('Split (%s)'), [row.splitCount])}
+                              </span>
+                            ) : (
+                              <span className="truncate">
+                                {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
+                              </span>
+                            )}
+                            {isTransfer && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs shrink-0 px-1 text-primary"
+                                title={`${gettext('Go to the other side of this transfer in')} ${row.category.name}`}
+                                aria-label={`${gettext('Go to the other side of this transfer in')} ${row.category.name}`}
+                                data-testid={`transfer-link-${row.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onOpenTransferLeg) onOpenTransferLeg(row);
+                                }}
+                              >
+                                <Icon name="arrow-right-left" className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </span>
+                        </td>
+                        <td className="money whitespace-nowrap text-right">
+                          {row.inflow && parseFloat(row.inflow) > 0 ? formatCurrency(row.inflow) : ''}
+                        </td>
+                        <td className="money whitespace-nowrap text-right">
+                          {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
+                        </td>
+                        <td title={row.description || ''}>
+                          <span className="flex min-w-0 items-center gap-1">
+                            {match && (
+                              <button
+                                type="button"
+                                className={`badge badge-sm shrink-0 gap-1 cursor-pointer ${
+                                  matchOpen ? 'badge-warning' : 'badge-warning badge-soft'
+                                }`}
+                                title={interpolate(gettext('Possible transfer with %s — review'), [
+                                  match.other.account?.name ?? '',
+                                ])}
+                                aria-label={interpolate(gettext('Possible transfer with %s'), [
+                                  match.other.account?.name ?? '',
+                                ])}
+                                aria-expanded={matchOpen}
+                                aria-controls={matchOpen ? panelId : undefined}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMatchId(matchOpen ? null : row.id);
+                                }}
+                                data-testid={`transfer-match-chip-${row.id}`}
+                              >
+                                <Icon name="arrow-right-left" className="h-3 w-3" />
+                                {gettext('Match found')}
+                              </button>
+                            )}
+                            {/* A split has no per-leg memo, so the marker beside the
+                                description is what identifies one without opening it. */}
+                            {row.isSplit && (
+                              <span className="badge badge-ghost badge-sm shrink-0">{gettext('Split')}</span>
+                            )}
+                            <span className="truncate">{row.description || ''}</span>
+                          </span>
+                        </td>
+                        <td className="text-center">
+                          {saving ? (
+                            <span
+                              className="loading loading-spinner loading-xs text-base-content/50"
+                              title={gettext('Saving…')}
+                              data-testid={`row-saving-${row.id}`}
+                            />
+                          ) : (
+                            <ReconciledLock reconciled={reconciled} />
+                          )}
                         </td>
                       </tr>
-                    )}
+                      {matchOpen && (
+                        <tr className="cursor-default">
+                          <td colSpan={columns.length} className="bg-base-100 p-2">
+                            <div
+                              className="sticky left-0"
+                              style={scrollWidth ? { width: `${scrollWidth - 16}px` } : undefined}
+                            >
+                              <TransferMatchPanel
+                                id={panelId}
+                                match={match}
+                                onMatch={onMatch}
+                                onDismiss={onDismissMatch}
+                                onGoTo={onOpenMatchCounterpart}
+                                onClose={() => {
+                                  setOpenMatchId(null);
+                                  tableBodyRef.current
+                                    ?.querySelector(`[data-testid="transfer-match-chip-${row.id}"]`)
+                                    ?.focus();
+                                }}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                     </Fragment>
                   );
                 })}
-                {pageRows.length === 0 && (
+                {lines.length === 0 && !refetching && (
                   <tr>
-                    <td colSpan={COLUMNS.length} className="py-8 text-center text-base-content/70">
+                    <td colSpan={columns.length} className="py-8 text-center text-base-content/70">
                       {gettext('No transactions to show')}
                     </td>
                   </tr>
@@ -805,20 +721,17 @@ const LineTable = ({
           </div>
 
           <TablePager
-            page={safePage}
+            page={query.page}
             pageCount={pageCount}
-            pageSize={pageSize}
+            pageSize={query.pageSize}
             pageSizeOptions={PAGE_SIZE_OPTIONS}
-            total={sortedLines.length}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
+            total={total}
+            onPageChange={(page) => onQueryChange({ page })}
+            onPageSizeChange={(pageSize) => onQueryChange({ pageSize })}
           />
         </div>
       </div>
 
-      {/* Prop-for-prop as the Material version passed them: the modal reads
-          `onDelete`/`selectedAccount` if given, and passing them here would add
-          behaviour this change is not meant to introduce. */}
       <EditTransactionModal
         open={editModalOpen}
         onClose={handleEditModalClose}
@@ -829,6 +742,8 @@ const LineTable = ({
         book={book}
         onSave={handleEditSave}
         mode={modalMode}
+        feedAccounts={accounts}
+        defaultAccountId={defaultAccountId}
       />
 
       <Toast

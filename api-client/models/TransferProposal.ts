@@ -55,7 +55,7 @@ export interface TransferProposal {
      */
     keepId: number | null;
     /**
-     * BankTransaction id Match archives
+     * BankTransaction id Match voids
      * @type {number}
      * @memberof TransferProposal
      */

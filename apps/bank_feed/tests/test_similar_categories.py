@@ -190,9 +190,8 @@ class SuggestCategoriesForTest(SimilarCategoriesTestMixin, TestCase):
 
         self.assertEqual(self._suggest(self._uncategorized(merchant="Blue Bottle")), [])
 
-    def test_voided_archived_and_mirror_transactions_are_excluded(self):
+    def test_voided_and_mirror_transactions_are_excluded(self):
         self._categorized(self.coffee, merchant="Blue Bottle", entry_status=JournalEntry.STATUS_VOID)
-        self._categorized(self.coffee, merchant="Blue Bottle", is_archived=True)
         self._categorized(self.coffee, merchant="Blue Bottle", is_transfer_mirror=True)
 
         self.assertEqual(self._suggest(self._uncategorized(merchant="Blue Bottle")), [])

@@ -124,7 +124,6 @@ erDiagram
         decimal cr_amount "credit amount"
         bool is_cleared "bank cleared"
         bool is_reconciled "user reconciled"
-        bool is_archived
         int budget_id FK "auto-linked by account + month"
         prop amount "non-zero of dr/cr"
     }

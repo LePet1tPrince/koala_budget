@@ -68,14 +68,10 @@ def journal_row(**overrides) -> dict:
         "status": "posted",
         "account_id": None,
         "account_name": "",
-        "entry_is_archived": False,
-        "entry_archived_at": None,
         "dr_amount": Decimal("0.00"),
         "cr_amount": Decimal("0.00"),
         "is_cleared": False,
         "is_reconciled": False,
-        "is_archived": False,
-        "archived_at": None,
         "reconciliation_id": None,
         "feed_source": None,
         "feed_amount": None,
@@ -83,8 +79,8 @@ def journal_row(**overrides) -> dict:
         "feed_description": "",
         "feed_merchant": None,
         "feed_is_mirror": False,
-        "feed_is_archived": False,
-        "feed_archived_at": None,
+        "feed_is_void": False,
+        "feed_voided_at": None,
     }
     row.update(overrides)
     return row
@@ -241,8 +237,7 @@ def build_fixture_tables() -> tuple[list[dict], list[dict], list[dict]]:
             dr_amount=Decimal("0.00"),
             cr_amount=Decimal("20.00"),
         ),
-        # An entry with one archived line (JournalLine.is_archived -- distinct
-        # from feed_is_archived on the same row, and from entry_is_archived).
+        # A bank-matched entry with a feed row on its bank line.
         journal_row(
             entry_id=400,
             entry_date=date(2026, 1, 15),
@@ -254,7 +249,6 @@ def build_fixture_tables() -> tuple[list[dict], list[dict], list[dict]]:
             account_name="Groceries",
             dr_amount=Decimal("15.00"),
             cr_amount=Decimal("0.00"),
-            is_archived=True,
         ),
         journal_row(
             entry_id=400,
@@ -386,3 +380,28 @@ def build_fixture_tables() -> tuple[list[dict], list[dict], list[dict]]:
     ]
 
     return accounts, journal_rows, budget_rows
+
+
+def to_pre_void_journal(csv_bytes: bytes, *, archived=lambda row: False) -> bytes:
+    """
+    Rewrite a current journal.csv the way a format < 6 archive had it: the feed
+    row's flag was `feed_is_archived`, and entries and lines carried archive
+    flags of their own. Rows for which `archived(row)` is true are marked
+    archived -- `row` is the CSV dict, cells as text.
+    """
+    import csv
+    import io
+
+    rows = list(csv.DictReader(io.StringIO(csv_bytes.decode("utf-8-sig"))))
+    out = io.StringIO()
+    writer = None
+    for row in rows:
+        was_void = row.pop("feed_is_void")
+        row["feed_is_archived"] = "true" if archived(row) else was_void
+        row["feed_archived_at"] = row.pop("feed_voided_at")
+        row.update({"entry_is_archived": "false", "entry_archived_at": "", "is_archived": "false", "archived_at": ""})
+        if writer is None:
+            writer = csv.DictWriter(out, fieldnames=list(row), lineterminator="\r\n")
+            writer.writeheader()
+        writer.writerow(row)
+    return out.getvalue().encode("utf-8-sig")

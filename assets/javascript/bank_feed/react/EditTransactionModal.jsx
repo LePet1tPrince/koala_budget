@@ -51,6 +51,7 @@ const field = (row, camel, snake) => row?.[camel] ?? row?.[snake];
  */
 const NO_SUGGESTIONS = {};
 const NO_PAYEES = [];
+const NO_ACCOUNTS = [];
 
 /**
  * EditTransactionModal - Modal dialog for creating/editing bank feed transactions
@@ -63,6 +64,9 @@ const NO_PAYEES = [];
  * - allAccounts: array - list of accounts for category selection
  * - onSave: function - called with updated/new transaction data
  * - mode: 'create' | 'edit' - defaults to 'edit' if transaction exists, 'create' otherwise
+ * - feedAccounts: the accounts a new transaction can be added to. When given, create
+ *   mode asks which one (the Inbox shows every account, so it can't be assumed)
+ * - defaultAccountId: the account to preselect, e.g. the one the Inbox is filtered to
  */
 const EditTransactionModal = ({
   open,
@@ -75,12 +79,15 @@ const EditTransactionModal = ({
   onSave,
   mode: modeProp,
   startSplit: startSplitOnOpen = false,
+  feedAccounts = NO_ACCOUNTS,
+  defaultAccountId = null,
 }) => {
   // Determine mode - create if no transaction, edit otherwise
   const mode = modeProp || (transaction ? 'edit' : 'create');
   const isCreateMode = mode === 'create';
 
   // Form state
+  const [account, setAccount] = useState(null);
   const [date, setDate] = useState('');
   const [category, setCategory] = useState(null);
   const [inflow, setInflow] = useState('');
@@ -114,6 +121,13 @@ const EditTransactionModal = ({
     return buildCategoryOptions(allAccounts, { keep });
   }, [allAccounts, transaction]);
 
+  // The account a new transaction lands in
+  const accountOptions = useMemo(
+    () => feedAccounts.map((a) => ({ id: a.id, label: a.name, name: a.name })),
+    [feedAccounts]
+  );
+  const asksForAccount = isCreateMode && accountOptions.length > 0;
+
   // Payee names for the free-text autocomplete
   const payeeOptions = useMemo(() => allPayees.map((p) => p.name), [allPayees]);
 
@@ -128,6 +142,7 @@ const EditTransactionModal = ({
 
     if (isCreateMode) {
       // Create mode - set defaults
+      setAccount(accountOptions.find((o) => o.id === defaultAccountId) ?? null);
       setDate(formatDateForInput(new Date()));
       setCategory(null);
       setInflow('');
@@ -295,6 +310,10 @@ const EditTransactionModal = ({
   const validate = () => {
     const newErrors = {};
 
+    if (asksForAccount && !account) {
+      newErrors.account = gettext('Choose the account this transaction is in');
+    }
+
     if (!date) {
       newErrors.date = gettext('Date is required');
     }
@@ -336,6 +355,7 @@ const EditTransactionModal = ({
         // Create mode - send new transaction data
         const newData = {
           source: 'manual',
+          account: account?.id ?? null,
           date: date,
           category: isSplit
             ? null
@@ -467,6 +487,19 @@ const EditTransactionModal = ({
         <TransactionHistory book={book} journalEntryId={journalEntryId} />
       ) : (
         <div className="flex flex-col gap-4">
+          {asksForAccount && (
+            <div>
+              <Combobox
+                label={gettext('Account')}
+                value={account}
+                onChange={setAccount}
+                options={accountOptions}
+                placeholder={gettext('Choose an account')}
+                testId="transaction-account"
+              />
+              {errors.account && <p className="mt-1 text-xs text-error">{errors.account}</p>}
+            </div>
+          )}
           <DateField
             label={gettext('Date')}
             value={date}

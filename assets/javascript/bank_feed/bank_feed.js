@@ -285,8 +285,8 @@ export function getBatchOperationsApi(bookBase) {
      * @param {Object} updates - Fields to update (category_id, account_id, payee, description, date)
      */
     batchEdit: (ids, updates) => fetchJson('batch_edit', { ids, ...updates }, 'PATCH'),
-    batchArchive: (ids) => fetchJson('batch_archive', { ids }),
-    batchUnarchive: (ids) => fetchJson('batch_unarchive', { ids }),
+    batchVoid: (ids) => fetchJson('batch_void', { ids }),
+    batchRestore: (ids) => fetchJson('batch_restore', { ids }),
     batchDelete: (ids) => fetchJson('batch_delete', { ids }),
     batchDuplicate: (ids) => fetchJson('batch_duplicate', { ids }),
     batchUnreconcile: (ids) => fetchJson('batch_unreconcile', { ids }),

@@ -204,8 +204,8 @@ def validate_pair(a, b, book):
     if a.amount == 0 or a.amount != -b.amount:
         raise MatchError(_("A transfer's two sides must be equal amounts in opposite directions."))
     for tx in (a, b):
-        if tx.is_archived:
-            raise MatchError(_("One of these transactions is archived."))
+        if tx.is_void:
+            raise MatchError(_("One of these transactions is void."))
         if tx.is_transfer_mirror:
             raise MatchError(_("One of these is the other side of an existing transfer, not a bank transaction."))
         if tx.journal_entry_id and tx.journal_entry.status == JournalEntry.STATUS_VOID:
@@ -222,20 +222,13 @@ def validate_pair(a, b, book):
 
 def archive_duplicate(tx):
     """
-    Archive a duplicate leg so it stops counting: void its entry, archive it, and
-    archive any other leg sharing that entry (its mirror) so the voided transfer
-    disappears from both feeds. The caller has checked nothing on the entry is
-    reconciled.
+    Void a duplicate leg so it stops counting: its entry and every row on it
+    (its mirror included), so the duplicate disappears from both feeds. The
+    caller has checked nothing on the entry is reconciled.
     """
-    entry = tx.journal_entry
-    if entry and entry.status != JournalEntry.STATUS_VOID:
-        entry.status = JournalEntry.STATUS_VOID
-        entry.save(update_fields=["status", "updated_at"])
-    tx.archive()
-    if entry:
-        for leg in BankTransaction.objects.filter(journal_entry=entry).exclude(id=tx.id):
-            if not leg.is_archived:
-                leg.archive()
+    from apps.journal.services import voiding
+
+    voiding.void(rows=[tx])
 
 
 @transaction.atomic
