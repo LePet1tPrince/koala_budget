@@ -11,6 +11,14 @@ import Cookies from 'js-cookie';
 
 import { computeFormula, parseAmount } from '../common/amount';
 
+// A write made elsewhere on the page that moves this month's figures without
+// going through a budget save — the Actual popover moving a transaction to
+// another category changes actuals, so Available, the meters, the totals and
+// Unassigned all move. Registered once; it repaints whichever table `init`
+// last bound.
+let refreshFigures = null;
+document.addEventListener('budget:actuals-changed', () => refreshFigures?.());
+
 init();
 
 // Changing month replaces the table without reloading the page (month-swap.js),
@@ -20,7 +28,9 @@ init();
 document.addEventListener('budget:swapped', init);
 
 function init() {
+  refreshFigures = null;
   const SAVE_URL = document.querySelector('[data-budget-save-url]')?.dataset.budgetSaveUrl;
+  const FIGURES_URL = document.querySelector('[data-budget-figures-url]')?.dataset.budgetFiguresUrl;
   const forms = Array.from(document.querySelectorAll('form[data-budget-autosave]'));
   if (!SAVE_URL || !forms.length) return;
 
@@ -52,6 +62,7 @@ function init() {
 
   rows.forEach((row, index) => wire(row, index));
   wireCover();
+  if (FIGURES_URL) refreshFigures = refetchFigures;
 
   // -------------------------------------------------------------------------
   // Row state
@@ -213,6 +224,25 @@ function init() {
       const next = row.queued;
       row.queued = null;
       if (!sameAmount(next, row.saved)) save(row, next);
+    }
+  }
+
+  // Re-read every figure for the month and paint it. Shares the save tickets, so
+  // whichever of a save and a refresh was *sent* last is what stays on screen.
+  async function refetchFigures() {
+    const mine = ++ticket;
+    const url = `${FIGURES_URL}?month=${encodeURIComponent(forms[0].dataset.month)}`;
+    let payload;
+    try {
+      const response = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!response.ok) return;
+      payload = await response.json();
+    } catch {
+      return;
+    }
+    if (mine > painted) {
+      painted = mine;
+      paint(payload.cells);
     }
   }
 

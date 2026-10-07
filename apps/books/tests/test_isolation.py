@@ -53,6 +53,7 @@ READS = {
     "budget:budget_home": month_query(),
     "budget:budget_grid": {"start": "2026-01-01"},
     "budget:api_unassigned": {},
+    "budget:budget_figures": month_query(),
     "budget:goals_list": month_query(),
     "reports:reports_home": {},
     "reports:income_statement": {"start_date": "2026-03-01", "end_date": "2026-03-31"},

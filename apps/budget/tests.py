@@ -602,6 +602,74 @@ class BudgetSaveAmountViewTest(TestCase):
         self.assertTrue(Budget.objects.filter(book=self.book, category=self.salary, month=self.month).exists())
 
 
+class BudgetFiguresViewTest(TestCase):
+    """budget_figures: the page's cells re-read after a write that isn't a budget save —
+    moving a transaction to another category from the Actual popover moves Available."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Figures Team", slug="figures-team")
+        cls.book = cls.team.default_book
+        cls.user = CustomUser.objects.create_user(username="figures@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+        expenses = AccountGroup.objects.create(book=cls.book, name="Fig Expenses", account_type=ACCOUNT_TYPE_EXPENSE)
+        cls.groceries = Account.objects.create(book=cls.book, name="Fig Groceries", account_group=expenses)
+        cls.dining = Account.objects.create(book=cls.book, name="Fig Dining", account_group=expenses)
+        assets = AccountGroup.objects.create(book=cls.book, name="Fig Assets", account_type="asset")
+        cls.checking = Account.objects.create(book=cls.book, name="Fig Checking", account_group=assets)
+        cls.month = date(2025, 6, 1)
+        for category in (cls.groceries, cls.dining):
+            Budget.objects.create(book=cls.book, category=category, month=cls.month, budget_amount=Decimal("100"))
+
+    def setUp(self):
+        self.client.login(username="figures@example.com", password="testpass123")
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 6, 10), description="Market")
+        self.line = JournalLine.objects.create(
+            book=self.book, journal_entry=entry, account=self.groceries, dr_amount=Decimal("30.00")
+        )
+        JournalLine.objects.create(
+            book=self.book, journal_entry=entry, account=self.checking, cr_amount=Decimal("30.00")
+        )
+
+    def get(self, month="2025-06-01"):
+        return self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/figures/", {"month": month})
+
+    def test_available_follows_a_recategorized_transaction(self):
+        cells = self.get().json()["cells"]
+        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["value"], "$70.00")
+        self.assertEqual(cells[f"row:{self.dining.pk}:available"]["value"], "$100.00")
+
+        response = self.client.post(
+            f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/{self.line.pk}/recategorize/",
+            data=json.dumps({"new_category_id": self.dining.pk}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        cells = self.get().json()["cells"]
+        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["value"], "$100.00")
+        self.assertEqual(cells[f"row:{self.dining.pk}:available"]["value"], "$70.00")
+        self.assertEqual(cells["section:expense:available"]["value"], "$170.00")
+
+    def test_month_is_normalized_to_the_first(self):
+        cells = self.get("2025-06-17").json()["cells"]
+        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["value"], "$70.00")
+
+    def test_rejects_an_invalid_month(self):
+        self.assertEqual(self.get("nope").status_code, 400)
+
+    def test_rejects_post(self):
+        response = self.client.post(f"/a/{self.team.slug}/{self.book.slug}/budget/figures/?month=2025-06-01")
+        self.assertEqual(response.status_code, 405)
+
+    def test_requires_membership(self):
+        self.client.logout()
+        self.assertIn(self.get().status_code, (302, 403, 404))
+
+
 class BudgetAmountParsingTest(TestCase):
     """parse_budget_amount is shared by the auto-save endpoint and the form field,
     so the <noscript> fallback accepts exactly what the JS path does."""
