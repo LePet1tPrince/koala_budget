@@ -20,11 +20,8 @@ class BudgetPage(BasePage):
     def goto_budget(self, book):
         self.goto(self.path(book), wait_for="[data-testid='budget-table'], [data-testid='budget-empty-state']")
 
-    def goto_goals(self, book, style: str | None = None):
-        path = self.goals_path(book)
-        if style:
-            path = f"{path}?style={style}"
-        self.goto(path, wait_for="[data-testid='goals-page']")
+    def goto_goals(self, book):
+        self.goto(self.goals_path(book), wait_for="[data-testid='goals-page']")
 
     def goto_goal_create(self, book):
         self.goto(self.goal_create_path(book), wait_for="[data-testid='goal-form']")
