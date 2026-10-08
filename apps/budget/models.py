@@ -195,8 +195,14 @@ class Goal(BaseBookModel):
     name = models.CharField(max_length=200, verbose_name=_("Name"))
     description = models.TextField(blank=True, verbose_name=_("Description"))
 
+    # 0 = no target: an open-ended goal (retirement, an RESP) planned by its
+    # monthly contribution alone. See `has_target`.
     target_amount = models.DecimalField(
-        max_digits=15, decimal_places=2, verbose_name=_("Target amount"), help_text=_("Target savings amount")
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        verbose_name=_("Target amount"),
+        help_text=_("Target savings amount (0 for an open-ended goal)"),
     )
 
     target_date = models.DateField(
@@ -302,6 +308,11 @@ class Goal(BaseBookModel):
     @property
     def left_amount(self):
         return self._progress("left")
+
+    @property
+    def has_target(self):
+        """False for an open-ended goal: one planned by a monthly contribution alone."""
+        return bool(self.target_amount and self.target_amount > 0)
 
     @property
     def to_fund(self):

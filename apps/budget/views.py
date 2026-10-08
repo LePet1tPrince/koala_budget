@@ -12,6 +12,7 @@ from django.db.models import Case, IntegerField, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_GET, require_POST
@@ -29,6 +30,7 @@ from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_a
 from .models import Budget, Goal, GoalAccountLink, GoalAllocation
 from .services import (
     BudgetService,
+    GoalAllocationError,
     GoalCloseError,
     GoalService,
     NetWorthService,
@@ -849,6 +851,24 @@ def _arcade_level(xp):
     }
 
 
+def _goal_card_progress(goal, saved, this_month):
+    """
+    (pct, remaining) for a goal card: what its bar shows and what it still asks for.
+
+    A goal with a target measures `saved` against the target. An open-ended goal
+    (no target) measures this month's contribution against its monthly plan, so
+    the bar fills each month and empties the next.
+    """
+    zero = Decimal("0")
+    if goal.has_target:
+        pct = max(min(float(saved / goal.target_amount * 100), 100), 0)
+        return pct, max(goal.target_amount - saved, zero)
+    rate = goal.monthly_contribution or zero
+    if rate <= 0:
+        return 0, zero
+    return max(min(float(this_month / rate * 100), 100), 0), max(rate - this_month, zero)
+
+
 @login_and_book_required
 def goals_list_view(request, team_slug, book_slug):
     """List all goals with progress for the selected month."""
@@ -878,10 +898,13 @@ def goals_list_view(request, team_slug, book_slug):
     for goal in goals:
         amounts = amounts_by_goal.get(goal.pk, {})
         saved = goal.allocated
-        remaining = goal.to_fund
-        pct = goal.progress_percentage
+        this_month = goal.saved_this_month or Decimal("0")
+        if goal.has_target:
+            remaining, pct = goal.to_fund, goal.progress_percentage
+        else:
+            pct, remaining = _goal_card_progress(goal, saved, this_month)
         # The spent part of the fill, drawn hatched: spending doesn't slide the bar back.
-        spent_pct = min(max(float(goal.spent / goal.target_amount * 100), 0), pct) if goal.target_amount > 0 else 0
+        spent_pct = min(max(float(goal.spent / goal.target_amount * 100), 0), pct) if goal.has_target else 0
 
         saved_months = {m for m, amt in amounts.items() if amt > 0}
         streak = _goal_streak(saved_months, month)
@@ -890,7 +913,7 @@ def goals_list_view(request, team_slug, book_slug):
         plan = goal_plan(goal, month)
         months_left = None
         needed_per_month = None
-        if plan and remaining > 0 and plan["rate"] > 0:
+        if plan and plan["rate"] > 0 and (remaining > 0 or not goal.has_target):
             needed_per_month = plan["rate"]
             if plan["finish"]:
                 finish = plan["finish"]
@@ -900,7 +923,7 @@ def goals_list_view(request, team_slug, book_slug):
         recent = [amounts.get(month - relativedelta(months=i), Decimal("0")) for i in range(3)]
         recent_avg = sum(recent) / 3
         projected_date = None
-        if remaining > 0 and recent_avg > 0:
+        if goal.has_target and remaining > 0 and recent_avg > 0:
             projected_date = month + relativedelta(months=math.ceil(remaining / recent_avg))
         behind_pace = bool(plan and plan["status"] == "behind")
 
@@ -914,7 +937,8 @@ def goals_list_view(request, team_slug, book_slug):
                 "saved": saved,
                 "remaining": remaining,
                 "pct": pct,
-                "this_month": goal.saved_this_month or Decimal("0"),
+                "this_month": this_month,
+                "has_target": goal.has_target,
                 "streak": streak,
                 "months_left": months_left,
                 "needed_per_month": needed_per_month,
@@ -1040,9 +1064,11 @@ def _goal_spending_url(goal, book):
 
 
 def _goal_numbers(goal, month):
-    """(allocated, spent) for `goal` as of the end of `month`."""
-    numbers = Goal.objects.filter(pk=goal.pk).with_progress(month).values("allocated", "spent").get()
-    return numbers["allocated"], numbers["spent"]
+    """(allocated, spent, saved in `month`) for `goal` as of the end of `month`."""
+    numbers = (
+        Goal.objects.filter(pk=goal.pk).with_progress(month).values("allocated", "spent", "saved_this_month").get()
+    )
+    return numbers["allocated"], numbers["spent"], numbers["saved_this_month"] or Decimal("0")
 
 
 @login_and_book_required
@@ -1077,15 +1103,17 @@ def goal_assign_available(request, team_slug, book_slug, pk):
             GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
         )
         month_amount = allocation.amount if allocation else Decimal("0")
-        old_saved, spent = _goal_numbers(goal, month)
-        remaining = goal.target_amount - old_saved
+        old_saved, spent, saved_month = _goal_numbers(goal, month)
+        _, remaining = _goal_card_progress(goal, old_saved, saved_month)
         available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
 
         raw_amount = payload.get("amount")
         if raw_amount is None:
-            if remaining <= 0:
+            if goal.has_target and remaining <= 0:
                 return JsonResponse({"error": "This goal is already fully funded."}, status=400)
-            amount = min(available, remaining)
+            # An open-ended goal asks for this month's contribution; once that's
+            # in, "add all available" means exactly that.
+            amount = min(available, remaining) if remaining > 0 else available
             if amount <= 0:
                 return JsonResponse({"error": "No available funds to assign right now."}, status=400)
         else:
@@ -1100,11 +1128,8 @@ def goal_assign_available(request, team_slug, book_slug, pk):
         GoalService(request.book).update_allocation(goal, month, month_amount + amount)
 
     new_saved = old_saved + amount
-    if goal.target_amount > 0:
-        old_pct = min(float(old_saved / goal.target_amount * 100), 100)
-        new_pct = min(float(new_saved / goal.target_amount * 100), 100)
-    else:
-        old_pct = new_pct = 0
+    old_pct, _ = _goal_card_progress(goal, old_saved, saved_month)
+    new_pct, new_remaining = _goal_card_progress(goal, new_saved, saved_month + amount)
 
     log_event(
         AuditEvent.GOAL_FUNDS_ASSIGNED,
@@ -1127,10 +1152,11 @@ def goal_assign_available(request, team_slug, book_slug, pk):
             "new_saved": float(new_saved),
             "old_pct": old_pct,
             "new_pct": new_pct,
-            "remaining": float(max(goal.target_amount - new_saved, Decimal("0"))),
+            "remaining": float(new_remaining),
             "this_month": float(month_amount + amount),
             "new_available": float(available - amount),
-            "completed": new_saved >= goal.target_amount and goal.target_amount > 0,
+            "completed": goal.has_target and new_saved >= goal.target_amount,
+            "open_ended": not goal.has_target,
             "spent": float(spent),
             "left": float(new_saved - spent),
         }
@@ -1170,7 +1196,7 @@ def goal_withdraw(request, team_slug, book_slug, pk):
             GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
         )
         month_amount = allocation.amount if allocation else Decimal("0")
-        old_saved, spent = _goal_numbers(goal, month)
+        old_saved, spent, saved_month = _goal_numbers(goal, month)
         left = old_saved - spent
         available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
 
@@ -1197,11 +1223,8 @@ def goal_withdraw(request, team_slug, book_slug, pk):
         GoalService(request.book).update_allocation(goal, month, month_amount - amount)
 
     new_saved = old_saved - amount
-    if goal.target_amount > 0:
-        old_pct = min(float(old_saved / goal.target_amount * 100), 100)
-        new_pct = min(float(new_saved / goal.target_amount * 100), 100)
-    else:
-        old_pct = new_pct = 0
+    old_pct, _ = _goal_card_progress(goal, old_saved, saved_month)
+    new_pct, new_remaining = _goal_card_progress(goal, new_saved, saved_month - amount)
 
     log_event(
         AuditEvent.GOAL_FUNDS_WITHDRAWN,
@@ -1224,10 +1247,11 @@ def goal_withdraw(request, team_slug, book_slug, pk):
             "new_saved": float(new_saved),
             "old_pct": old_pct,
             "new_pct": new_pct,
-            "remaining": float(max(goal.target_amount - new_saved, Decimal("0"))),
+            "remaining": float(new_remaining),
             "this_month": float(month_amount - amount),
             "new_available": float(available + amount),
-            "funded": new_saved >= goal.target_amount and goal.target_amount > 0,
+            "funded": goal.has_target and new_saved >= goal.target_amount,
+            "open_ended": not goal.has_target,
             "spent": float(spent),
             "left": float(new_saved - spent),
         }
@@ -1293,7 +1317,7 @@ def _goal_form_view(request, goal=None):
     book = request.book
     link_error = None
     if request.method == "POST":
-        form = GoalForm(request.POST, instance=goal)
+        form = GoalForm(request.POST, instance=goal, book=book)
         outflow_before = None if is_new else goal.outflow
         try:
             rows = goal_links.parse_link_rows(book, request.POST)
@@ -1320,7 +1344,7 @@ def _goal_form_view(request, goal=None):
                 return redirect("budget:goal_detail", *book.url_args, saved.pk)
         options = goal_links.link_options(book, goal, request.POST)
     else:
-        form = GoalForm(instance=goal)
+        form = GoalForm(instance=goal, book=book)
         options = goal_links.link_options(book, goal)
 
     allocated = Decimal("0")
@@ -1371,9 +1395,12 @@ def goal_detail_view(request, team_slug, book_slug, pk):
             "page_title": f"{goal.name} | {book_display_name(request.book)}",
             "goal": goal,
             "plan": goal_plan(goal, month),
+            "progress_pct": _goal_card_progress(goal, goal.allocated, goal.saved_this_month or Decimal("0"))[0],
             "open_links": [link for link in links if link.is_open],
             "past_links": [link for link in links if not link.is_open],
             "activity": goal_links.goal_activity(goal),
+            # A closed goal's history includes its own release; it stays as written.
+            "can_edit_contributions": not goal.is_closed and not goal.is_archived,
             "spending": GoalService(request.book).spending_lines(goal, limit=50),
             "drift": goal_links.link_drift(goal, goal.left),
             "spending_url": _goal_spending_url(goal, request.book),
@@ -1443,6 +1470,69 @@ def goal_unlink(request, team_slug, book_slug, link_pk):
             % {"account": link.account.name, "goal": goal.name},
         )
     return redirect("budget:goal_detail", *request.book.url_args, goal.pk)
+
+
+@login_and_book_required
+@require_POST
+def goal_contribution_edit(request, team_slug, book_slug, allocation_pk):
+    """
+    Change or undo a past month's manual contribution, from the goal page's
+    activity table. `action=undo` removes it; otherwise `amount` replaces it
+    (negative = a withdrawal; 0 = undo). Money from linked accounts isn't a
+    `GoalAllocation`, so it can't be reached here.
+    """
+    allocation = get_object_or_404(
+        GoalAllocation.objects.filter(book=request.book).select_related("goal"), pk=allocation_pk
+    )
+    goal = allocation.goal
+    back = redirect("budget:goal_detail", *request.book.url_args, goal.pk)
+
+    if request.POST.get("action") == "undo":
+        amount = Decimal("0")
+    else:
+        amount = evaluate_amount(request.POST.get("amount", ""))
+        if amount is None or abs(amount) > GRID_MAX_AMOUNT:
+            messages.error(request, _("Enter an amount, like 250 or -40 for a withdrawal."))
+            return back
+
+    try:
+        old = GoalService(request.book).edit_allocation(allocation, amount)
+    except GoalAllocationError as e:
+        messages.error(request, str(e))
+        return back
+    if old == amount:
+        return back
+
+    month_label = date_format(allocation.month, "F Y")
+    log_event(
+        AuditEvent.GOAL_CONTRIBUTION_EDITED,
+        request=request,
+        metadata={
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "month": allocation.month.isoformat(),
+            "from": str(old),
+            "to": str(amount),
+            "undo": amount == 0,
+        },
+    )
+    if amount == 0:
+        messages.success(
+            request,
+            _("Undid the %(amount)s %(kind)s in %(month)s.")
+            % {
+                "amount": currency(abs(old)),
+                "kind": _("contribution") if old > 0 else _("withdrawal"),
+                "month": month_label,
+            },
+        )
+    else:
+        messages.success(
+            request,
+            _("%(month)s changed from %(old)s to %(new)s.")
+            % {"month": month_label, "old": currency(old), "new": currency(amount)},
+        )
+    return back
 
 
 @login_and_book_required

@@ -329,6 +329,8 @@ def goal_activity(goal, limit=100):
                 "memo": allocation.notes,
                 "amount": allocation.amount,
                 "month_only": True,
+                # Manual: editable and undoable from the activity table.
+                "allocation_id": allocation.pk,
             }
         )
     for link in starting_balances().filter(goal=goal).select_related("account").exclude(amount=0):

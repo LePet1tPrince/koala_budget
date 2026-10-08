@@ -43,6 +43,7 @@ class AuditEvent(models.Model):
     GOAL_ACCOUNT_LINKED = "goal_account_linked"
     GOAL_ACCOUNT_UNLINKED = "goal_account_unlinked"
     GOAL_OUTFLOW_CHANGED = "goal_outflow_changed"
+    GOAL_CONTRIBUTION_EDITED = "goal_contribution_edited"
     ONBOARDING_STARTED = "onboarding_started"
     ONBOARDING_PHASE_COMPLETED = "onboarding_phase_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
@@ -99,6 +100,7 @@ class AuditEvent(models.Model):
         (GOAL_ACCOUNT_LINKED, "Account Linked To Goal"),
         (GOAL_ACCOUNT_UNLINKED, "Account Unlinked From Goal"),
         (GOAL_OUTFLOW_CHANGED, "Goal Outflow Setting Changed"),
+        (GOAL_CONTRIBUTION_EDITED, "Goal Contribution Edited"),
         (ONBOARDING_STARTED, "Onboarding Started"),
         (ONBOARDING_PHASE_COMPLETED, "Onboarding Phase Completed"),
         (ONBOARDING_COMPLETED, "Onboarding Questionnaire Completed"),

@@ -104,8 +104,10 @@ class GoalForm(forms.ModelForm):
     target_amount = AmountFormulaField(
         max_digits=15,
         decimal_places=2,
+        required=False,
+        min_value=0,
         label=_("Target amount"),
-        help_text=_("Target savings amount"),
+        help_text=_("Target savings amount. Leave blank for an open-ended goal planned by its monthly contribution."),
         widget=GroupedAmountInput(
             attrs={
                 "inputmode": "decimal",
@@ -155,11 +157,45 @@ class GoalForm(forms.ModelForm):
             ),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, book=None, **kwargs):
+        # `book` is not a form field, so ModelForm's own unique check skips the
+        # (book, name) constraint; clean_name enforces it.
+        self.book = book
         super().__init__(*args, **kwargs)
         # Only meaningful with a linked account; a form without the choice keeps
         # what the goal has (the model default for a new one).
         self.fields["outflow"].required = False
+        # An open-ended goal stores 0: show it as blank, not "0.00".
+        if self.instance.pk and not self.instance.has_target and not self.is_bound:
+            self.initial["target_amount"] = None
+
+    def clean_name(self):
+        name = self.cleaned_data["name"].strip()
+        book = self.book or (self.instance.book if self.instance.book_id else None)
+        if book is None:
+            return name
+        taken = Goal.objects.filter(book=book, name=name).exclude(pk=self.instance.pk).first()
+        if taken is None:
+            return name
+        if taken.is_archived:
+            message = _("You have an archived goal named “%(name)s”. Pick another name.")
+        else:
+            message = _("You already have a goal named “%(name)s”. Pick another name.")
+        raise forms.ValidationError(message % {"name": name})
+
+    def clean_target_amount(self):
+        return self.cleaned_data.get("target_amount") or Decimal("0")
 
     def clean_outflow(self):
         return self.cleaned_data.get("outflow") or self.instance.outflow or Goal.OUTFLOW_WITHDRAW
+
+    def clean(self):
+        cleaned = super().clean()
+        target = cleaned.get("target_amount")
+        monthly = cleaned.get("monthly_contribution")
+        # Only when both fields parsed: a field with its own error has said enough.
+        if "target_amount" in cleaned and "monthly_contribution" in cleaned and not target and not monthly:
+            raise forms.ValidationError(_("Set a target amount, a monthly contribution, or both."), code="no_plan")
+        if not target and cleaned.get("target_date"):
+            self.add_error("target_date", _("A target date needs a target amount."))
+        return cleaned

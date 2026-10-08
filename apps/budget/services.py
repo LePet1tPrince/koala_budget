@@ -13,6 +13,7 @@ from django.utils.translation import gettext_lazy
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalLine, counted_entries
+from apps.web.templatetags.currency_tags import currency
 
 
 def budgeted_account_types(book) -> tuple[str, ...]:
@@ -394,6 +395,10 @@ class GoalCloseError(ValueError):
     """A goal can't be closed as asked; the message says why and what to do."""
 
 
+class GoalAllocationError(ValueError):
+    """A past contribution can't be changed as asked; the message says why."""
+
+
 class GoalService:
     """Service class for goal-related calculations and queries."""
 
@@ -434,6 +439,49 @@ class GoalService:
             book=self.book, goal=goal, month=month, defaults={"amount": amount}
         )
         return allocation
+
+    def edit_allocation(self, allocation, amount):
+        """
+        Change a past month's manual contribution to `amount` (0 undoes it: the row
+        goes). Only `GoalAllocation`s -- money from linked accounts follows its
+        transactions and is changed there.
+
+        Refused on a closed or archived goal (closing wrote its own release into the
+        history), and when lowering it would take back money already spent: the goal
+        can't be left below zero by rewriting its past, the same cap a withdrawal has.
+        Returns the old amount.
+        """
+        with transaction.atomic():
+            allocation = GoalAllocation.objects.select_for_update().select_related("goal").get(pk=allocation.pk)
+            goal = allocation.goal
+            if goal.is_archived:
+                raise GoalAllocationError(_("This goal is archived. Its history can't be changed."))
+            if goal.is_closed:
+                raise GoalAllocationError(_("This goal is closed. Its history can't be changed."))
+            old = allocation.amount
+            if amount == old:
+                return old
+            change = amount - old
+            if change < 0:
+                # As of the latest month anything is recorded in, so a contribution
+                # dated ahead of today counts too.
+                latest = GoalAllocation.objects.filter(goal=goal).order_by("-month").values_list("month", flat=True)
+                as_of = max(timezone.localdate().replace(day=1), latest.first() or date.min)
+                left = self.left(goal, as_of)
+                if left + change < 0:
+                    raise GoalAllocationError(
+                        _(
+                            "That takes %(change)s out of %(goal)s, but only %(left)s is left in it; "
+                            "the rest has been spent."
+                        )
+                        % {"change": currency(-change), "goal": goal.name, "left": currency(max(left, Decimal("0")))}
+                    )
+            if amount == 0:
+                allocation.delete()
+            else:
+                allocation.amount = amount
+                allocation.save(update_fields=["amount", "updated_at"])
+            return old
 
     def add_to_allocation(self, goal, month, amount):
         """Add `amount` (negative to take money out) to the month's allocation. Call inside a transaction."""
@@ -599,7 +647,8 @@ def goal_plan(goal, month):
     """
     The goal's plan for `month` (docs/goal-linked-accounts-plan.md §9), from a goal
     annotated by `with_progress(month)`: a monthly contribution, or else the pace
-    to reach the target by the target date. None without either.
+    to reach the target by the target date. None without either. An open-ended
+    goal (no target) has only the contribution: `needed` is all of it every month.
 
     - rate: the plan's monthly amount
     - needed: what the plan asks for this month (never more than is still to fund,
@@ -622,12 +671,31 @@ def goal_plan(goal, month):
     if goal.monthly_contribution:
         rate = goal.monthly_contribution
         line_rate = rate
-    elif goal.target_date:
+    elif goal.target_date and target > 0:
         target_month = goal.target_date.replace(day=1)
         rate = (to_fund_before / max(_months_between(month, target_month) + 1, 1)).quantize(Decimal("0.01"))
         line_rate = target / max(_months_between(started, target_month) + 1, 1)
     else:
         return None
+
+    if target <= 0:
+        # Open-ended (no target): the plan is the contribution itself, every month,
+        # with no finish line. On track once this month's is in; behind only for a
+        # month that ended without it -- nobody is behind on the 1st.
+        status = None
+        if rate > 0 and not goal.is_funded:
+            if (goal.saved_this_month or Decimal("0")) >= rate:
+                status = PLAN_ON_TRACK
+            elif month < timezone.localdate().replace(day=1):
+                status = PLAN_BEHIND
+        return {
+            "rate": rate,
+            "needed": rate,
+            "finish": None,
+            "status": status,
+            "status_label": PLAN_LABELS.get(status),
+            "late": False,
+        }
 
     needed = min(rate, to_fund_before)
     finish = None

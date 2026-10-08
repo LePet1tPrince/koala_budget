@@ -225,10 +225,12 @@ def budget_goals_report(book, month):
         {
             "allocated": sum((r["goal"].allocated for r in goal_rows), ZERO),
             "target": sum((r["goal"].target_amount for r in goal_rows), ZERO),
+            # Open-ended goals (no target) are left out of "X of Y saved".
+            "toward_target": sum((r["goal"].allocated for r in goal_rows if r["goal"].has_target), ZERO),
             "left": sum((r["goal"].left for r in goal_rows), ZERO),
         }
     )
-    goal_totals["pct"] = _pct(goal_totals["allocated"], goal_totals["target"])
+    goal_totals["pct"] = _pct(goal_totals["toward_target"], goal_totals["target"])
 
     # Envelopes as one figure: Σ max(0, available) over expense categories, split into
     # what rolled in from earlier months and this month's unspent budget (spending draws

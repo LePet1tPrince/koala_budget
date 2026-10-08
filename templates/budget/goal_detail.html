@@ -2,6 +2,7 @@
 {% load static %}
 {% load i18n %}
 {% load currency_tags %}
+{% load icons %}
 
 {% block app %}
 
@@ -43,18 +44,29 @@
     <div class="card bg-base-100 shadow-xl mb-6">
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
+          {% if goal.has_target %}
           <div>
             <div class="text-sm text-base-content/70">{% translate "Progress" %}</div>
             <div class="text-2xl font-bold">
               {{ goal.allocated|currency }} / {{ goal.target_amount|currency }}
             </div>
           </div>
-          <div class="text-4xl font-bold text-primary">{{ goal.progress_percentage|floatformat:0 }}%</div>
+          {% else %}
+          <div>
+            <div class="text-sm text-base-content/70">
+              {% translate "This month" %} · <span class="badge badge-ghost badge-sm" data-testid="goal-open-ended">{% translate "Open-ended" %}</span>
+            </div>
+            <div class="text-2xl font-bold">
+              {{ goal.saved_this_month|default:0|currency }} / {{ goal.monthly_contribution|default:0|currency }}
+            </div>
+          </div>
+          {% endif %}
+          <div class="text-4xl font-bold text-primary">{{ progress_pct|floatformat:0 }}%</div>
         </div>
 
         <progress
           class="progress progress-primary w-full h-4"
-          value="{{ goal.progress_percentage }}"
+          value="{{ progress_pct }}"
           max="100"
         ></progress>
 
@@ -82,7 +94,9 @@
 
         {% if plan and not goal.is_closed %}
         <div class="mt-2 text-sm text-base-content/70" data-testid="goal-plan">
-          {% if goal.monthly_contribution %}
+          {% if not goal.has_target %}
+            {% blocktranslate trimmed with amount=plan.rate|currency %}Plan: {{ amount }} a month, with no target amount.{% endblocktranslate %}
+          {% elif goal.monthly_contribution %}
             {% blocktranslate trimmed with amount=plan.rate|currency %}Plan: {{ amount }} a month.{% endblocktranslate %}
           {% else %}
             {% blocktranslate trimmed with amount=plan.rate|currency %}Plan: about {{ amount }} a month to reach the target on time.{% endblocktranslate %}
@@ -196,6 +210,7 @@
                 <th>{% translate "Memo" %}</th>
                 <th>{% translate "Paid from" %}</th>
                 <th class="text-right">{% translate "Amount" %}</th>
+                {% if can_edit_contributions %}<th><span class="sr-only">{% translate "Actions" %}</span></th>{% endif %}
               </tr>
             </thead>
             <tbody>
@@ -223,7 +238,12 @@
     <!-- Activity: everything that moved the goal -->
     <div class="card bg-base-100 border border-base-300">
       <div class="card-body">
-        <h2 class="card-title">{% translate "Activity" %}</h2>
+        <h2 class="card-title" id="activity">{% translate "Activity" %}</h2>
+        {% if can_edit_contributions %}
+          <p class="text-sm text-base-content/70">
+            {% translate "Contributions you assigned or withdrew by hand can be changed or undone. Money from linked accounts follows its transactions." %}
+          </p>
+        {% endif %}
 
         <div class="overflow-x-auto">
           <table class="table table-sm table-quiet w-full" data-testid="goal-activity">
@@ -250,10 +270,17 @@
                 </td>
                 <td class="text-base-content/70">{{ event.payee|default:"" }}{% if event.payee and event.memo %} · {% endif %}{{ event.memo|default:"" }}</td>
                 <td class="text-right money {% if event.amount < 0 %}text-error{% endif %}">{{ event.amount|currency }}</td>
+                {% if can_edit_contributions %}
+                <td class="text-right whitespace-nowrap">
+                  {% if event.allocation_id %}
+                    {% include "budget/components/goal_contribution_actions.html" %}
+                  {% endif %}
+                </td>
+                {% endif %}
               </tr>
               {% empty %}
               <tr>
-                <td colspan="4" class="text-center text-base-content/70">
+                <td colspan="{% if can_edit_contributions %}5{% else %}4{% endif %}" class="text-center text-base-content/70">
                   {% translate "Nothing yet. Assign money, link an account, or spend from the goal and it shows up here." %}
                 </td>
               </tr>

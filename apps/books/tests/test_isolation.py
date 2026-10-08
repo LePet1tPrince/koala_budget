@@ -145,6 +145,7 @@ OBJECTS = {
     "budget:goal_complete": ("goal", "pk", "post"),
     "budget:goal_close": ("goal", "pk", "post"),
     "budget:goal_unlink": ("goal_link", "link_pk", "post"),
+    "budget:goal_contribution_edit": ("goal_allocation", "allocation_pk", "post"),
     "budget:category_visibility": ("account", "pk", "post"),
     "reports:account_activity": ("account", "account_id", "get"),
     "reports:export_account_activity": ("account", "account_id", "get"),
