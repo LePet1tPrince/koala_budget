@@ -93,6 +93,8 @@ const ActualTooltip = ({
         window.dispatchEvent(new CustomEvent('transaction-moved', {
           detail: { toCategoryId: parseInt(newCategoryId), amount: movedAmount }
         }));
+        // Available, the meters, the totals and Unassigned all follow actuals.
+        document.dispatchEvent(new CustomEvent('budget:actuals-changed'));
         // Store undo info and show success message
         const destCategory = allAccounts.find(a => a.id === parseInt(newCategoryId));
         const destName = destCategory?.name || gettext('another category');
@@ -130,6 +132,7 @@ const ActualTooltip = ({
         window.dispatchEvent(new CustomEvent('transaction-moved', {
           detail: { toCategoryId: undoInfo.toCategoryId, amount: -undoInfo.amount }
         }));
+        document.dispatchEvent(new CustomEvent('budget:actuals-changed'));
         setUndoInfo(null);
         setSnackbar({ open: true, message: gettext('Undo successful'), severity: 'success' });
       } else {

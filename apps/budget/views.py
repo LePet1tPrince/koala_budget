@@ -207,7 +207,8 @@ def _budget_cells(figures):
     """Flatten `_budget_figures` into `{cell key: {value, tone}}` for the auto-save
     response. Keys match the `data-budget-cell` attributes in the templates.
 
-    Actuals are left out: a budget amount never moves them.
+    Actuals are left out: a budget amount never moves them, and a recategorized
+    transaction's actuals are updated by the Actual popover itself.
     """
     cells = {}
 
@@ -310,6 +311,7 @@ def _budget_swap_context(book, month):
         "prev_month": month - relativedelta(months=1),
         "next_month": month + relativedelta(months=1),
         "save_amount_url": reverse("budget:budget_save_amount", args=book.url_args),
+        "figures_url": reverse("budget:budget_figures", args=book.url_args),
         "cover_url": reverse("budget:budget_cover", args=book.url_args),
         # Goals an overspent category can be covered from (emergency fund, ...), besides Unassigned.
         "cover_goals": [
@@ -325,6 +327,21 @@ def unassigned_api(request, team_slug, book_slug):
     """The Unassigned figure for the current month, for the sidebar pill to refresh
     itself after any write (see assets/javascript/unassigned/unassigned-pill.js)."""
     return JsonResponse(pill_context(compute_unassigned(request.book, date.today())))
+
+
+@login_and_book_required
+@require_GET
+def budget_figures(request, team_slug, book_slug):
+    """Every figure the budget page shows for `?month=` (the same cells `budget_save_amount`
+    returns), for repainting after a write made elsewhere on the page — moving a
+    transaction to another category from the Actual popover changes actuals, and with
+    them Available, the meters, the totals and Unassigned.
+    """
+    month = parse_date(request.GET.get("month") or "")
+    if month is None:
+        return JsonResponse({"error": _("Invalid month.")}, status=400)
+    month = month.replace(day=1)
+    return JsonResponse({"cells": _budget_cells(_budget_figures(request.book, month))})
 
 
 @login_and_book_required
