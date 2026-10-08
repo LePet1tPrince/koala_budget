@@ -210,8 +210,17 @@ def linked_spent_subquery(start=None, end=None):
 
 
 def monthly_linked(goal_ids, start=None, end=None):
-    """{goal id: {month: {"linked": Decimal, "spent": Decimal}}} from linked accounts."""
+    """
+    {goal id: {month: {"linked", "starting", "spent"}}} from linked accounts.
+    `linked` is everything they brought in, `starting` the part of it that was a
+    starting balance (a one-off, which never counts towards a monthly plan).
+    """
     result = {}
+
+    def cell(goal_id, month):
+        month = month.date() if hasattr(month, "date") else month
+        return result.setdefault(goal_id, {}).setdefault(month, {"linked": ZERO, "starting": ZERO, "spent": ZERO})
+
     rows = (
         linked_lines(start, end)
         .filter(link_goal__in=goal_ids)
@@ -219,12 +228,11 @@ def monthly_linked(goal_ids, start=None, end=None):
         .annotate(linked=Sum("alloc_delta"), spent=Sum("spent_delta"))
     )
     for row in rows:
-        month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
-        cell = result.setdefault(row["link_goal"], {}).setdefault(month, {"linked": ZERO, "spent": ZERO})
-        cell["linked"] += row["linked"]
-        cell["spent"] += row["spent"]
+        target = cell(row["link_goal"], row["month"])
+        target["linked"] += row["linked"]
+        target["spent"] += row["spent"]
     for link in starting_balances(start, end).filter(goal_id__in=goal_ids):
-        month = link.month.date() if hasattr(link.month, "date") else link.month
-        cell = result.setdefault(link.goal_id, {}).setdefault(month, {"linked": ZERO, "spent": ZERO})
-        cell["linked"] += link.amount
+        target = cell(link.goal_id, link.month)
+        target["linked"] += link.amount
+        target["starting"] += link.amount
     return result

@@ -160,3 +160,39 @@ class BudgetPage(BasePage):
 
     def cancel_goal_form(self):
         self.page.locator("[data-testid='goal-cancel-btn']").click()
+
+    # ------------------------------------------------------------------
+    # The budget page's Goals section (docs/goal-plans-plan.md §6)
+    # ------------------------------------------------------------------
+
+    def goal_plan_row(self, name: str):
+        return self.page.get_by_test_id("budget-goal-row").filter(has_text=name)
+
+    def goal_plan_input(self, name: str):
+        return self.goal_plan_row(name).get_by_test_id("goal-plan-input")
+
+    def goal_plan_actual(self, name: str) -> str:
+        return self.goal_plan_row(name).get_by_test_id("budget-goal-actual").inner_text().strip()
+
+    def goal_held(self, name: str):
+        """The "$X to move" line under a linked goal's Available (hidden when nothing waits)."""
+        return self.goal_plan_row(name).get_by_test_id("goal-held")
+
+    def wait_for_goal_save(self, name: str):
+        """A goal row's save is done once its status dot settles (saved or idle, never saving)."""
+        status = self.goal_plan_row(name).locator("[data-budget-status]")
+        self.page.wait_for_function(
+            "el => !el.classList.contains('is-saving')", arg=status.element_handle(), timeout=10_000
+        )
+
+    def set_goal_plan(self, name: str, amount: str):
+        field = self.goal_plan_input(name)
+        field.fill(amount)
+        field.press("Enter")
+        self.page.wait_for_timeout(200)
+        self.wait_for_goal_save(name)
+
+    def reset_goal_plan(self, name: str):
+        self.goal_plan_row(name).get_by_test_id("goal-plan-reset").click()
+        self.page.wait_for_timeout(200)
+        self.wait_for_goal_save(name)

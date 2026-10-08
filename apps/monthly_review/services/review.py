@@ -402,6 +402,38 @@ def _goal_spending(book, month: date) -> list:
     return rows
 
 
+def _goal_plans_unmet(book, month: date) -> list:
+    """
+    Linked goals whose plan for the month didn't fully arrive (docs/goal-plans-plan.md
+    §7): what was planned, what is still missing, and whether it went back to
+    Unassigned (`release`) or carries into next month (`carry`). Only once the
+    month is over: before then, the money may still move.
+    """
+    from apps.budget.models import Goal, month_after
+    from apps.budget.plans import held_by_goal
+    from apps.budget.services import goal_monthly
+
+    if month >= date.today().replace(day=1):
+        return []
+    goals = list(Goal.objects.filter(book=book).active())
+    if not goals:
+        return []
+    monthly = goal_monthly(book, goals, end=month_after(month))
+    held = held_by_goal(goals, monthly, month)
+    rows = []
+    for goal in goals:
+        if held[goal.pk] > 0:
+            rows.append(
+                {
+                    "name": goal.name,
+                    "planned": monthly[goal.pk][month]["planned"],
+                    "missing": held[goal.pk],
+                    "carried": goal.unmet_plan == Goal.UNMET_CARRY,
+                }
+            )
+    return rows
+
+
 def build_review(book, month: date) -> dict:
     month = month.replace(day=1)
     month_start, month_end = _month_bounds(month)
@@ -439,6 +471,7 @@ def build_review(book, month: date) -> dict:
         "cat_txns": _category_transactions(book, month_start, month_end, limit=_drill_limit()),
         "net_worth": _net_worth_section(book, window_start, month, month_end, report_service, baselines),
         "goal_spending": _goal_spending(book, month),
+        "goal_plans_unmet": _goal_plans_unmet(book, month),
         "notes": [
             _(
                 '"Saved" is the amount assigned to your savings goals this month -- it '

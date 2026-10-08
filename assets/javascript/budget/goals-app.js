@@ -245,6 +245,23 @@ function refreshAssignButtons() {
   });
 }
 
+// A goal whose money lives in a linked account: "assign" raised this month's plan,
+// which holds the money back until the transfer lands. Nothing was given yet.
+function planned(card, data) {
+  available = data.new_available;
+  const plannedEl = card.querySelector('[data-card-planned]');
+  if (plannedEl) plannedEl.textContent = fmt(data.plan);
+  const heldLine = card.querySelector('[data-card-held-line]');
+  if (heldLine) heldLine.hidden = !(data.held > 0);
+  const heldEl = card.querySelector('[data-card-held]');
+  if (heldEl) heldEl.textContent = fmt(data.held);
+  refreshAssignButtons();
+  toast(data.message, 'info');
+  const input = card.querySelector('[data-custom-input]');
+  if (input) input.value = '';
+  return data;
+}
+
 // The close dialog is rendered once per card with every case in the markup; after an
 // in-place assign/withdraw/cover, show the case that now applies and its figures.
 function refreshCloseDialog(card, allocated, spent, left) {
@@ -360,6 +377,7 @@ async function postMoney(card, url, amount, failMessage) {
 async function assign(card, amount) {
   const data = await postMoney(card, card.dataset.assignUrl, amount, 'Could not assign funds.');
   if (!data) return;
+  if (data.planned) return planned(card, data);
   available = data.new_available;
   totalSaved += data.assigned;
   updateCard(card, data);

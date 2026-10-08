@@ -110,3 +110,18 @@ class GoalLinksUpgradeTests(SimpleTestCase):
         self.assertEqual(result["goal_links"], [])
         self.assertIsNone(result["accounts"][0]["goal_outflow"])
         self.assertIsNone(result["accounts"][0]["goal_monthly_contribution"])
+
+
+class GoalPlansUpgradeTests(SimpleTestCase):
+    def test_v7_gains_blank_plan_columns(self):
+        tables = {
+            "accounts": [{"name": "Goal: Car"}],
+            "journal_rows": [],
+            "budget_rows": [{"kind": "goal"}],
+            "reconciliations": [],
+            "goal_links": [],
+        }
+        result = upgrade.upgrade_7_to_8(tables)
+        self.assertIsNone(result["accounts"][0]["goal_plan_from"])
+        self.assertIsNone(result["accounts"][0]["goal_unmet_plan"])
+        self.assertIsNone(result["budget_rows"][0]["plan_source"])

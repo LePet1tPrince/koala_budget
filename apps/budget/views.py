@@ -25,9 +25,9 @@ from apps.books.helpers import book_display_name
 from apps.utils.amounts import evaluate_amount
 from apps.web.templatetags.currency_tags import currency
 
-from . import goal_links
+from . import goal_links, plans
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
-from .models import Budget, Goal, GoalAccountLink, GoalAllocation
+from .models import Budget, Goal, GoalAccountLink, GoalAllocation, GoalPlan, month_after
 from .services import (
     BudgetService,
     GoalAllocationError,
@@ -150,20 +150,93 @@ def _budget_figures(book, month):
     }
 
     leftover_last_month = sum(prev_available_map.values(), Decimal("0"))
+    goal_section = _goal_section(book, month)
 
     return {
         "categories": categories,
         "sections": section_list,
+        "goal_section": goal_section,
         "has_categories": bool(categories),
         "grand_totals": grand_totals,
         "sidebar_summary": {
             "leftover_last_month": leftover_last_month,
             "assigned_this_month": grand_totals["budgeted"],
+            "goals_planned": goal_section["totals"]["planned"],
             "activity_this_month": grand_totals["actual"],
             "available": grand_totals["available"],
         },
         "net_worth_card": NetWorthService(book).get_net_worth_card_data(month, categories),
     }
+
+
+def _goal_section(book, month):
+    """The budget page's Goals section (docs/goal-plans-plan.md §6): a row per open goal.
+
+    Planned is the month's plan -- the monthly contribution unless the month was
+    changed. Actual is what the goal was given this month (its plan in a direct
+    month, plus anything assigned or arriving in a linked account). Available is
+    what's left in the goal, and a linked goal also says what it's still waiting for.
+    """
+    zero = Decimal("0")
+    goals = list(GoalService(book).get_goals_with_progress(month))
+    month_plans = plans.planned_for(goals, month)
+    monthly = goal_monthly(book, goals, end=month_after(month))
+    held = plans.held_by_goal(goals, monthly, month)
+    links_by_goal = defaultdict(list)
+    for link in GoalAccountLink.objects.filter(goal__in=goals).select_related("account").order_by("start_date"):
+        if plans.covers_month([(link.start_date, link.end_date)], month):
+            links_by_goal[link.goal_id].append(link.account.name)
+
+    rows = []
+    totals = {"planned": zero, "actual": zero, "available": zero, "held": zero}
+    for goal in goals:
+        month_plan = month_plans.get(goal.pk)
+        cell = monthly.get(goal.pk, {}).get(month, {})
+        planned = month_plan.planned if month_plan is not None else zero
+        actual = cell.get("saved", zero)
+        typed = bool(month_plan and month_plan.source == GoalPlan.SOURCE_TYPED)
+        hint = None
+        if (
+            month_plan is None
+            and goal.target_date
+            and goal.has_target
+            and not goal.monthly_contribution
+            and not goal.is_funded
+        ):
+            pace = goal_plan(goal, month)
+            if pace and pace["rate"] > 0:
+                hint = {"rate": pace["rate"], "finish": goal.target_date}
+        row = {
+            "goal": goal,
+            "planned": planned,
+            "actual": actual,
+            "available": goal.left,
+            "held": held.get(goal.pk, zero),
+            "typed": typed,
+            "can_reset": typed and plans.can_reset(goal, month),
+            "default": goal.monthly_contribution if plans.default_active(goal) else None,
+            "linked": bool(month_plan.linked) if month_plan is not None else bool(links_by_goal.get(goal.pk)),
+            "link_names": links_by_goal.get(goal.pk, []),
+            "funded": goal.is_funded,
+            "hint": hint,
+            "meter": _goal_meter(planned, actual, goal.is_funded),
+        }
+        rows.append(row)
+        totals["planned"] += planned
+        totals["actual"] += actual
+        totals["available"] += row["available"]
+        totals["held"] += row["held"]
+    return {"key": "goal", "label": _("Goals"), "rows": rows, "totals": totals}
+
+
+def _goal_meter(planned, actual, funded):
+    """A goal row's bar: what it was given this month against what it planned."""
+    if planned > 0:
+        pct = float(actual / planned * 100)
+        return {"pct": pct, "width": max(min(round(pct), 100), 0), "label": f"{round(pct)}%"}
+    if funded:
+        return {"pct": None, "width": 100, "label": str(_("Funded"))}
+    return {"pct": None, "width": 100 if actual > 0 else 0, "label": "—"}
 
 
 def _hidden_group():
@@ -236,8 +309,24 @@ def _budget_cells(figures):
         put(f"section:{section['key']}:budgeted", section["totals"]["budgeted"])
         put(f"section:{section['key']}:available", section["totals"]["available"])
 
+    goals = figures["goal_section"]
+    for row in goals["rows"]:
+        pk = row["goal"].pk
+        cells[f"goal:{pk}:planned"] = {"value": f"{row['planned']:.2f}", "tone": "", "typed": row["typed"]}
+        put(f"goal:{pk}:actual", row["actual"])
+        put(f"goal:{pk}:available", row["available"], toned=True)
+        put(f"goal:{pk}:held", row["held"])
+        cells[f"goal:{pk}:held"]["hidden"] = row["held"] <= 0
+        cells[f"goal:{pk}:meter"] = {"value": row["meter"]["label"], "tone": "", "width": row["meter"]["width"]}
+    put("section:goal:budgeted", goals["totals"]["planned"])
+    put("section:goal:actual", goals["totals"]["actual"])
+    put("section:goal:available", goals["totals"]["available"])
+    put("section:goal:held", goals["totals"]["held"])
+    cells["section:goal:held"]["hidden"] = goals["totals"]["held"] <= 0
+
     summary = figures["sidebar_summary"]
     put("sidebar:assigned", summary["assigned_this_month"])
+    put("sidebar:goals_planned", summary["goals_planned"])
     put("sidebar:available", summary["available"], toned=True)
 
     card = figures["net_worth_card"]
@@ -245,6 +334,8 @@ def _budget_cells(figures):
     put("networth:income_due", card["income_due"])
     put("networth:spend", card["spend"])
     put("networth:save", card["save"])
+    put("networth:held", card["held"])
+    cells["networth:held"]["hidden"] = card["held"] <= 0
     put("networth:available", card["available"], toned=True)
     # The line's own name flips to "Over-assigned" when the figure goes negative.
     cells["networth:label"] = {"value": str(card["label"]), "tone": ""}
@@ -307,6 +398,7 @@ def _budget_swap_context(book, month):
         "month": month,
         "end_date": month + relativedelta(months=1, days=-1),
         "sections": figures["sections"],
+        "goal_section": figures["goal_section"],
         "has_categories": figures["has_categories"],
         "grand_totals": figures["grand_totals"],
         "net_worth_card": figures["net_worth_card"],
@@ -314,6 +406,7 @@ def _budget_swap_context(book, month):
         "prev_month": month - relativedelta(months=1),
         "next_month": month + relativedelta(months=1),
         "save_amount_url": reverse("budget:budget_save_amount", args=book.url_args),
+        "save_goal_plan_url": reverse("budget:budget_save_goal_plan", args=book.url_args),
         "figures_url": reverse("budget:budget_figures", args=book.url_args),
         "cover_url": reverse("budget:budget_cover", args=book.url_args),
         # Goals an overspent category can be covered from (emergency fund, ...), besides Unassigned.
@@ -400,6 +493,82 @@ def budget_save_amount(request, team_slug, book_slug):
             "category_id": category.pk,
             "amount": f"{amount:.2f}",
             "cells": _budget_cells(_budget_figures(request.book, month)),
+        }
+    )
+
+
+@login_and_book_required
+@require_POST
+def budget_save_goal_plan(request, team_slug, book_slug):
+    """Save one goal's plan for a month, or put it back to the monthly contribution.
+
+    Body (JSON, or a form post from the <noscript> row): {"goal_id", "month",
+    "amount"} sets the month's plan; {"goal_id", "month", "reset": true} drops a
+    typed plan so the month plans the monthly contribution again. JSON gets every
+    figure the page shows for the month (the same `cells` as `budget_save_amount`);
+    a form post is redirected back to the month.
+    """
+    wants_json = request.content_type == "application/json"
+    if wants_json:
+        try:
+            payload = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+            return JsonResponse({"error": _("Invalid request body.")}, status=400)
+        if not isinstance(payload, dict):
+            return JsonResponse({"error": _("Invalid request body.")}, status=400)
+    else:
+        payload = request.POST
+
+    def refuse(message, status=400):
+        if wants_json:
+            return JsonResponse({"error": str(message)}, status=status)
+        messages.error(request, message)
+        return redirect(f"{reverse('budget:budget_home', args=request.book.url_args)}?month={month.isoformat()}")
+
+    month = parse_date(str(payload.get("month") or ""))
+    if month is None:
+        if wants_json:
+            return JsonResponse({"error": _("Invalid month.")}, status=400)
+        month = _month_from_request(request)
+    month = month.replace(day=1)
+
+    try:
+        goal_id = int(payload.get("goal_id"))
+    except (TypeError, ValueError):
+        return refuse(_("Unknown goal."))
+    goal = Goal.objects.filter(book=request.book).active().filter(pk=goal_id).first()
+    if goal is None:
+        return refuse(_("Unknown goal."), status=404)
+
+    reset = payload.get("reset") in (True, "1", "true", "on")
+    try:
+        if reset:
+            plans.reset_plan(goal, month)
+        else:
+            amount = parse_budget_amount(payload.get("amount"))
+            if amount is None:
+                return refuse(_("Enter a number, for example 250 or 1,250.50."))
+            if amount > MAX_BUDGET_AMOUNT:
+                return refuse(_("That amount is too large."))
+            plans.set_plan(goal, month, amount)
+    except plans.PlanError as e:
+        return refuse(str(e))
+
+    if not wants_json:
+        messages.success(request, _("%(goal)s plan saved.") % {"goal": goal.name})
+        return redirect(f"{reverse('budget:budget_home', args=request.book.url_args)}?month={month.isoformat()}")
+
+    figures = _budget_figures(request.book, month)
+    row = next((r for r in figures["goal_section"]["rows"] if r["goal"].pk == goal.pk), None)
+    planned = row["planned"] if row else Decimal("0")
+    return JsonResponse(
+        {
+            "saved": True,
+            "goal_id": goal.pk,
+            "amount": f"{planned:.2f}",
+            "typed": bool(row and row["typed"]),
+            "can_reset": bool(row and row["can_reset"]),
+            "cells": _budget_cells(figures),
         }
     )
 
@@ -852,19 +1021,21 @@ def _arcade_level(xp):
     }
 
 
-def _goal_card_progress(goal, saved, this_month):
+def _goal_card_progress(goal, saved, this_month, rate=None):
     """
     (pct, remaining) for a goal card: what its bar shows and what it still asks for.
 
     A goal with a target measures `saved` against the target. An open-ended goal
-    (no target) measures this month's contribution against its monthly plan, so
+    (no target) measures this month's contribution against its monthly plan
+    (`rate`: what it plans this month, by default its monthly contribution), so
     the bar fills each month and empties the next.
     """
     zero = Decimal("0")
     if goal.has_target:
         pct = max(min(float(saved / goal.target_amount * 100), 100), 0)
         return pct, max(goal.target_amount - saved, zero)
-    rate = goal.monthly_contribution or zero
+    if rate is None:
+        rate = goal.monthly_contribution or zero
     if rate <= 0:
         return 0, zero
     return max(min(float(this_month / rate * 100), 100), 0), max(rate - this_month, zero)
@@ -883,12 +1054,14 @@ def goals_list_view(request, team_slug, book_slug):
         Goal.objects.filter(book=request.book).filter(Q(closed_at__isnull=False) | Q(is_archived=True)).count()
     )
 
-    # What each goal was given per month (assigned + from linked accounts);
-    # used for streaks and pace.
+    # What each goal was given per month (assigned + from linked accounts + its
+    # plans); used for streaks and pace, and for what linked goals still wait for.
+    monthly = goal_monthly(request.book, goals, end=month_after(month))
     amounts_by_goal = {
-        goal_id: {m: values["saved"] for m, values in months.items()}
-        for goal_id, months in goal_monthly(request.book, goals).items()
+        goal_id: {m: values["saved"] for m, values in months.items()} for goal_id, months in monthly.items()
     }
+    month_plans = plans.planned_for(goals, month)
+    held_by_goal = plans.held_by_goal(goals, monthly, month)
 
     links_by_goal = defaultdict(list)
     for link in GoalAccountLink.objects.open().filter(goal__in=goals).select_related("account"):
@@ -902,18 +1075,26 @@ def goals_list_view(request, team_slug, book_slug):
         amounts = amounts_by_goal.get(goal.pk, {})
         saved = goal.allocated
         this_month = goal.saved_this_month or Decimal("0")
+        month_plan = month_plans.get(goal.pk)
         if goal.has_target:
             remaining, pct = goal.to_fund, goal.progress_percentage
         else:
-            pct, remaining = _goal_card_progress(goal, saved, this_month)
+            pct, remaining = _goal_card_progress(
+                goal, saved, this_month, month_plan.planned if month_plan is not None else None
+            )
+        held = held_by_goal.get(goal.pk, Decimal("0"))
+        if month_plan is not None and month_plan.linked:
+            # Planned money still waiting to move is already spoken for: the card
+            # asks only for what the plan doesn't cover.
+            remaining = max(remaining - held, Decimal("0"))
         # The spent part of the fill, drawn hatched: spending doesn't slide the bar back.
         spent_pct = min(max(float(goal.spent / goal.target_amount * 100), 0), pct) if goal.has_target else 0
 
         saved_months = {m for m, amt in amounts.items() if amt > 0}
         streak = _goal_streak(saved_months, month)
 
-        # The plan: a monthly contribution, or the pace to hit the target date.
-        plan = goal_plan(goal, month)
+        # The plan: this month's, a monthly contribution, or the pace to hit the target date.
+        plan = goal_plan(goal, month, month_plan)
         months_left = None
         needed_per_month = None
         if plan and plan["rate"] > 0 and (remaining > 0 or not goal.has_target):
@@ -949,6 +1130,9 @@ def goals_list_view(request, team_slug, book_slug):
                 "plan_status": plan["status"] if plan else None,
                 "plan_status_label": plan["status_label"] if plan else None,
                 "links": links_by_goal.get(goal.pk, []),
+                "planned": month_plan.planned if month_plan is not None else None,
+                "plan_linked": bool(month_plan and month_plan.linked),
+                "held": held,
                 "projected_date": projected_date,
                 "behind_pace": behind_pace,
                 "funded": goal.is_funded,
@@ -1101,6 +1285,10 @@ def goal_assign_available(request, team_slug, book_slug, pk):
 
     month = _parse_month(payload.get("month"))
 
+    month_plan = plans.planned_for([goal], month)[goal.pk]
+    if month_plan.linked if month_plan is not None else _linked_in(goal, month):
+        return _plan_more_for_linked_goal(request, goal, month, month_plan, payload.get("amount"))
+
     with transaction.atomic():
         allocation = (
             GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
@@ -1166,6 +1354,86 @@ def goal_assign_available(request, team_slug, book_slug, pk):
     )
 
 
+def _linked_in(goal, month):
+    links = goal.account_links.values_list("start_date", "end_date")
+    return plans.covers_month(list(links), month)
+
+
+def _plan_more_for_linked_goal(request, goal, month, month_plan, raw_amount):
+    """
+    "Assign" on a goal whose money lives in a linked account: raise this month's
+    plan instead of giving the goal money by hand, which the transfer into the
+    account would give it a second time (docs/goal-plans-plan.md §7). The plan
+    holds the money back from Unassigned until it arrives.
+    """
+    zero = Decimal("0")
+    planned = month_plan.planned if month_plan is not None else zero
+    monthly = goal_monthly(request.book, [goal], end=month_after(month))
+    held_before = plans.held_by_goal([goal], monthly, month)[goal.pk]
+    available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
+
+    if raw_amount is None:
+        amount = available
+        if goal.has_target:
+            saved = sum((c["saved"] for m, c in monthly.get(goal.pk, {}).items() if m <= month), zero)
+            room = goal.target_amount - saved - held_before
+            if room <= 0:
+                message = "This month's plan already covers what the goal still needs."
+                return JsonResponse({"error": message}, status=400)
+            amount = min(amount, room)
+        if amount <= 0:
+            return JsonResponse({"error": "No available funds to assign right now."}, status=400)
+    else:
+        try:
+            amount = Decimal(str(raw_amount))
+        except (InvalidOperation, TypeError, ValueError):
+            return JsonResponse({"error": "Invalid amount."}, status=400)
+        if not amount.is_finite() or amount <= 0 or amount > GRID_MAX_AMOUNT:
+            return JsonResponse({"error": "Invalid amount."}, status=400)
+    amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    try:
+        plans.set_plan(goal, month, planned + amount)
+    except plans.PlanError as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
+    held = plans.held_by_goal([goal], goal_monthly(request.book, [goal], end=month_after(month)), month)[goal.pk]
+    unassigned = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
+    accounts = ", ".join(
+        link.account.name
+        for link in goal.account_links.select_related("account")
+        if plans.covers_month([(link.start_date, link.end_date)], month)
+    )
+    log_event(
+        AuditEvent.GOAL_FUNDS_ASSIGNED,
+        request=request,
+        metadata={
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "month": month.isoformat(),
+            "amount": str(amount),
+            "quick_assign": raw_amount is None,
+            "planned": True,
+        },
+    )
+    return JsonResponse(
+        {
+            "goal_id": goal.pk,
+            "goal_name": goal.name,
+            "planned": True,
+            "assigned": 0.0,
+            "plan_added": float(amount),
+            "plan": float(planned + amount),
+            "held": float(held),
+            "new_available": float(unassigned),
+            "message": str(
+                _("Planned %(amount)s for %(goal)s. Move it to %(accounts)s to complete it.")
+                % {"amount": currency(amount), "goal": goal.name, "accounts": accounts or _("its account")}
+            ),
+        }
+    )
+
+
 @login_and_book_required
 @require_POST
 def goal_withdraw(request, team_slug, book_slug, pk):
@@ -1193,6 +1461,10 @@ def goal_withdraw(request, team_slug, book_slug, pk):
         return JsonResponse({"error": "This goal is closed."}, status=400)
 
     month = _parse_month(payload.get("month"))
+
+    month_plan = plans.planned_for([goal], month)[goal.pk]
+    if month_plan.linked if month_plan is not None else _linked_in(goal, month):
+        return _plan_more_for_linked_goal(request, goal, month, month_plan, payload.get("amount"))
 
     with transaction.atomic():
         allocation = (
@@ -1330,6 +1602,10 @@ def _goal_form_view(request, goal=None):
         if form.is_valid() and link_error is None:
             try:
                 with transaction.atomic():
+                    if not is_new:
+                        # Past months keep what they planned; this month on follows the
+                        # new contribution, target and links.
+                        plans.freeze(goal)
                     saved = form.save(commit=False)
                     saved.book = book
                     saved.save()
@@ -1393,6 +1669,9 @@ def goal_detail_view(request, team_slug, book_slug, pk):
     month = _month_from_request(request)
     goal = get_object_or_404(Goal.objects.filter(book=request.book).with_progress(month), pk=pk)
     links = list(goal.account_links.select_related("account").order_by("end_date", "start_date"))
+    month_plan = plans.planned_for([goal], month)[goal.pk]
+    held = plans.held_by_goal([goal], goal_monthly(request.book, [goal], end=month_after(month)), month)[goal.pk]
+    rate = month_plan.planned if month_plan is not None else None
 
     return render(
         request,
@@ -1401,8 +1680,11 @@ def goal_detail_view(request, team_slug, book_slug, pk):
             "active_tab": "goals",
             "page_title": f"{goal.name} | {book_display_name(request.book)}",
             "goal": goal,
-            "plan": goal_plan(goal, month),
-            "progress_pct": _goal_card_progress(goal, goal.allocated, goal.saved_this_month or Decimal("0"))[0],
+            "plan": goal_plan(goal, month, month_plan),
+            "month": month,
+            "month_plan": month_plan,
+            "held": held,
+            "progress_pct": _goal_card_progress(goal, goal.allocated, goal.saved_this_month or Decimal("0"), rate)[0],
             "open_links": [link for link in links if link.is_open],
             "past_links": [link for link in links if not link.is_open],
             "activity": goal_links.goal_activity(goal),
@@ -1578,8 +1860,7 @@ def goal_delete_view(request, team_slug, book_slug, pk):
                 return redirect("budget:goal_detail", team_slug=team_slug, book_slug=book_slug, pk=pk)
             goal.refresh_from_db()
             _log_goal_closed(request, goal, result, via="archive")
-        goal.is_archived = True
-        goal.save()
+        GoalService(request.book).archive(goal)
         messages.success(request, _("Goal archived successfully."))
         return redirect("budget:goals_list", team_slug=team_slug, book_slug=book_slug)
 
@@ -1623,8 +1904,7 @@ def goal_complete_view(request, team_slug, book_slug, pk):
     goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
     if request.method == "POST":
-        goal.is_complete = True
-        goal.save()
+        GoalService(request.book).mark_funded(goal)
         messages.success(request, _("Congratulations! Goal marked as funded."))
 
     return redirect("budget:goal_detail", team_slug=team_slug, book_slug=book_slug, pk=pk)

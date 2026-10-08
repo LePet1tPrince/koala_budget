@@ -279,6 +279,29 @@ deploy/            # Docker Compose and DigitalOcean configs
 
 - Nav: in the desktop sidebar, items with sub-items (Inbox, Budget, Reports, Accounts) no longer expand in place — their sub-items open in a **popout to the right of the nav on hover** (or keyboard focus), so the nav list never changes height. The mobile dropdown keeps the in-place expand. One Alpine component, `sideGroup` (`assets/javascript/nav/side-group.js`, registered in `alpine.js`), serves both: it picks popout mode when rendered inside `[data-nav-flyout]` (set on the sidebar `<nav>` in `app_nav.html`), else toggles inline and starts open on a sub-item's page, as before. The popout (`.side-flyout`, titled by a `.side-flyout-title` shown only there) is `position: fixed` — the nav is `overflow-y-auto` and would clip an absolute panel — and placed from the row's and nav's rects, aligned with the row and pulled up at the viewport bottom. Closing waits 200 ms so the pointer can cross the gap; passing over another group while one is open waits 120 ms before switching; focus inside keeps it open; Escape closes it and returns focus to the parent link; the chevron (and a tap on touch) only opens it, closing on an outside click. The aside is raised to z-45 while one is open (`has-[.side-group-open]`), as for the My books flyout, so it clears the budget grid's z-40 sticky cells. Since the sub-items are out of sight, the parent row reads as active on a sub-item's page (Budget on Goals; CSS `:has()` in `app-components.css`). Testids unchanged.
 
+- Budget/Goals: **goal plans**. The budget page has a Goals section (plan: `docs/goal-plans-plan.md`, §12 lists what the build decided). Each open goal's row is planned from `Goal.monthly_contribution` automatically, and you can change any single month. New `GoalPlan(goal, month, amount, source=typed|default)` (budget migration `0009`, in `BOOK_MODELS`) plus two `Goal` fields: `plan_from` (months on/after it with no row plan the current contribution; earlier months plan only their rows) and `unmet_plan` (`release` default / `carry`). **What a plan does depends on the month** (`apps/budget/plans.py`):
+  - **Direct month** (no `GoalAccountLink` covers it, derived from link history and never stored): the plan *is* the goal's allocation. It is folded into `goal_allocated_subquery` via `plans.direct_planned_subquery`, with a cumulative target cap.
+  - **Linked month:** the plan never touches `allocated`. Its shortfall (planned − (manual + linked flows; starting balances excluded)) is **held** back from Unassigned. `release` drops the shortfall at month end; `carry` rolls it like income, both ways.
+
+  `compute_unassigned` gains `goals_held` (`Unassigned.amount` subtracts it, so a transfer into a linked account moves nothing); `card_data` gains `held`.
+
+  **History:** every write that changes what the default depends on calls `plans.freeze(goal)` first. Freeze writes rows for the months the default covered and moves `plan_from` (through last month for contribution/target/link changes, so this month follows the new settings; through this month for Funded/close/archive). It trims the latest direct default rows to what the cap let count, and never changes a figure (`FreezeTest`). The writers that call it are the goal form, `goal_links.set_links`/`unlink`/`end_all`, `GoalService.close`, the new `mark_funded` and `archive`. `PlanInputsWriteTest` AST-scans for writes outside them. The SQL classifies the default's months with a first-month/rest shortcut that holds because links change only through those writers; `PlanTwinTest` checks it against the exact Python (`plan_months` + `apply_plans`).
+
+  **Per-month figures:** `goal_monthly` now reads from the start of history and adds `flows`, `planned`, `plan_linked`, `plan_source` and `plan_in` (`saved` includes `plan_in`); `monthly_linked` adds `starting`. `goal_plan(goal, month, month_plan)` reads the month's plan.
+
+  **Budget page:** `_goal_section()` sits between Income and Expenses (`budget/components/budget_goal_section.html`, testids `budget-goal-row`/`goal-plan-input`/`goal-held`/`goal-plan-reset`/`goal-plan-typed-tag`). Columns are Planned (input) · Actual (given this month) · Available (left, plus "$X to move"); a "Monthly"/"Changed" tag and reset; a target-date pace hint with **Use** for goals with no contribution. Saves go through new `POST budget/save-goal-plan/` (`budget:budget_save_goal_plan`, JSON or no-JS form post; `{reset: true}` drops a typed month ≥ `plan_from`; isolation `WRITES`). Its `goal:<pk>:…`/`section:goal:…` cells are painted by `budget-autosave.js`, which now handles goal rows and a `hidden` flag on cells. The sidebar adds "Planned for goals" and the net-worth card adds "Waiting to move to goals".
+
+  **Elsewhere:**
+  - Quick-assign on a goal linked this month **adds to the month's plan** instead of writing a `GoalAllocation` (which the transfer would have doubled).
+  - Goal cards show "Planned this month · $X still to move".
+  - The goal page shows the month's plan and "Planned contribution" rows in Activity.
+  - The goal form has the `unmet_plan` radios (with a linked account) and contribution help text.
+  - Dollar Map: a hatched `goals_held` segment and waterfall step.
+  - Budget vs Actual and Budget & Goals show held; `month_rows` needed = the month's plan.
+  - Monthly review: `goal_plan_unmet` card, once the month is over.
+
+  **Data:** portability **format v8** adds `kind=goal_plan` rows plus `plan_source` on `budget.csv`, and `goal_plan_from`/`goal_unmet_plan` on `accounts.csv`. `upgrade_7_to_8` leaves them blank, and apply runs `plans.adopt_goals` (the same rule as the migration: plan from this month, with a typed 0 where a direct goal already had a hand-assigned contribution this month). The user data export adds `goal_plans.csv`. Tests: `apps/budget/test_goal_plans.py`, `e2e/tests/test_goal_plans.py`.
+
 ---
 
 ## Known Issues

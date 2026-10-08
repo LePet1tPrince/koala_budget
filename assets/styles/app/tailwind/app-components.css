@@ -813,6 +813,17 @@
   color: var(--color-accent-content);
 }
 
+/* Planned for a linked goal, not yet moved: the goals colour, hatched, since the
+   money is still sitting in the account it will leave. */
+.dollar-bar-seg[data-key='goals_held'] {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--color-accent) 70%, var(--color-base-100)) 0 6px,
+    color-mix(in oklab, var(--color-accent) 40%, var(--color-base-100)) 6px 12px
+  );
+  color: var(--color-accent-content);
+}
+
 .dollar-bar-seg[data-key='envelopes'] {
   background: var(--color-info);
   color: var(--color-info-content);

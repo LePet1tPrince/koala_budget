@@ -53,6 +53,8 @@ def account(account_id: int, name: str, account_type: str, group_name: str, **ov
         "goal_order": None,
         "goal_outflow": None,
         "goal_monthly_contribution": None,
+        "goal_plan_from": None,
+        "goal_unmet_plan": None,
     }
     row.update(overrides)
     return row
@@ -94,6 +96,7 @@ def budget_row(**overrides) -> dict:
         "account_name": "",
         "amount": Decimal("0.00"),
         "notes": "",
+        "plan_source": None,
         "is_archived": False,
         "archived_at": None,
     }

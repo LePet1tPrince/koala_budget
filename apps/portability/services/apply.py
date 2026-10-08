@@ -22,7 +22,7 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation, GoalPlan
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
 from apps.reconciliation.models import Reconciliation
@@ -53,6 +53,7 @@ class ApplyResult:
     bank_transactions: int
     reconciliations: int = 0
     goal_links: int = 0
+    goal_plans: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -69,6 +70,7 @@ class ApplyResult:
             "bank_transactions": self.bank_transactions,
             "reconciliations": self.reconciliations,
             "goal_links": self.goal_links,
+            "goal_plans": self.goal_plans,
         }
 
 
@@ -140,6 +142,8 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
     _insert_goal_allocations(book, tables.budget_rows, account_id_map, goal_id_by_account_id)
 
     goal_links_created = _insert_goal_links(book, tables.goal_links, account_id_map, goal_id_by_account_id)
+    goal_plans_created = _insert_goal_plans(book, tables.budget_rows, account_id_map, goal_id_by_account_id)
+    _adopt_unplanned_goals(book)
 
     report(55, "Writing statements")
     reconciliation_id_map = _insert_reconciliations(book, tables.reconciliations, account_id_map)
@@ -171,6 +175,7 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
         bank_transactions=bank_transactions_created,
         reconciliations=len(reconciliation_id_map),
         goal_links=goal_links_created,
+        goal_plans=goal_plans_created,
     )
     log_event(AuditEvent.DATA_IMPORTED, user=user, book=book, metadata={"result": result.as_dict()})
     report(100, "Done")
@@ -258,7 +263,10 @@ def _insert_goals(book, account_rows, account_id_map) -> dict[int, int]:
             is_archived=bool(row["goal_is_archived"]),
             order=row["goal_order"] or 0,
             outflow=row.get("goal_outflow") or Goal.OUTFLOW_WITHDRAW,
-            **schema.model_kwargs(schema.GOAL, row, skip={"is_complete", "is_archived", "order", "outflow"}),
+            unmet_plan=row.get("goal_unmet_plan") or Goal.UNMET_RELEASE,
+            **schema.model_kwargs(
+                schema.GOAL, row, skip={"is_complete", "is_archived", "order", "outflow", "unmet_plan"}
+            ),
         )
         for row in goal_rows
     ]
@@ -293,6 +301,38 @@ def _insert_goal_allocations(book, budget_rows, account_id_map, goal_id_by_accou
             )
         )
     GoalAllocation.objects.bulk_create(objs)
+
+
+def _insert_goal_plans(book, budget_rows, account_id_map, goal_id_by_account_id) -> int:
+    objs = [
+        GoalPlan(
+            book=book,
+            goal_id=goal_id_by_account_id[account_id_map[row["account_id"]]],
+            **schema.model_kwargs(schema.GOAL_PLAN, row, skip={"goal"}),
+        )
+        for row in budget_rows
+        if row["kind"] == "goal_plan"
+    ]
+    GoalPlan.objects.bulk_create(objs)
+    return len(objs)
+
+
+def _adopt_unplanned_goals(book) -> None:
+    """Goals from an export made before goal plans start planning this month (`upgrade_7_to_8`)."""
+    from django.utils import timezone
+
+    from apps.budget.plans import adopt_goals
+
+    goals = Goal.objects.filter(book=book, plan_from__isnull=True)
+    if goals.exists():
+        adopt_goals(
+            list(goals),
+            timezone.localdate().replace(day=1),
+            Goal=Goal,
+            GoalPlan=GoalPlan,
+            GoalAllocation=GoalAllocation,
+            GoalAccountLink=GoalAccountLink,
+        )
 
 
 def _insert_goal_links(book, rows, account_id_map, goal_id_by_account_id) -> int:

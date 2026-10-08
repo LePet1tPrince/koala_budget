@@ -528,3 +528,60 @@ the default (D4).
 | M5 | Dollar Map, Budget vs Actual / Budget & Goals, monthly review card | Report tests green |
 | M6 | Portability v8, user data export, `CLAUDE.md` "Recent Changes" entry | Round trip and upgrade green |
 | M7 (follow-up) | Goal rows in the multi-month grid (same endpoint per cell; "Apply to entire year" writes typed rows) | n/a |
+
+---
+
+## 12. What the build decided
+
+Where the build differs from, or settles something left open in, the sections above.
+
+- **How far `freeze` goes depends on the change.** A change to the contribution,
+  the target or the links freezes the months *before* the current one and sets
+  `plan_from` to the current month, so the current month follows the new settings
+  at once (no row has to be rewritten). Funded, closing and archiving freeze
+  *through* the current month (`through_current=True`) and set `plan_from` to next
+  month, so what this month's plan already gave stays. `set_contribution` (§4) is
+  therefore not needed as a separate writer: the goal form calls `plans.freeze`
+  before saving whatever changed, and `goal_links.set_links`/`unlink`/`end_all`,
+  `GoalService.close`, `GoalService.mark_funded` and `GoalService.archive` call it
+  themselves. `PlanInputsWriteTest` fails on any attribute assignment or
+  `.update()` of `monthly_contribution`, `target_amount`, `is_complete`,
+  `closed_at` or `plan_from` outside `models.py`, `plans.py` and `services.py`.
+- **A new goal's `plan_from` is set by `Goal.save()`** (the month it is created), so
+  the form, onboarding, the YNAB import and the link preview need no extra call.
+  `plans.start` from §4 doesn't exist. Portability's bulk insert carries
+  `plan_from` from the file, or runs `plans.adopt_goals` for an older export.
+- **The target cap is cumulative and applies to every direct plan**, typed or
+  default: through any date, direct plans count at most
+  `max(0, target − everything else given before that date)`
+  (`plans.direct_planned_subquery`, `plans.apply_plans`). To keep a later target
+  change from releasing months the cap had stopped, `freeze` writes the frozen
+  default rows and then **trims the latest direct default rows** until they sum to
+  what the plans actually counted (`_trim_to_counted`). Typed rows are never
+  trimmed.
+- **The SQL relies on one invariant about links.** The default's months
+  (`plan_from` onwards) are classified as direct or linked without walking every
+  month: the first one is linked if a link covers it, the rest if the goal has an
+  open link. This holds because every link change freezes first. `PlanTwinTest`
+  checks the SQL against the per-month Python (`plan_months`), which classifies
+  each month exactly.
+- **`goal_monthly` reads from the start of history** (and trims to `start` at the
+  end), since the cap needs everything given before a month. It gains `flows`,
+  `planned`, `plan_linked`, `plan_source` and `plan_in`. `monthly_linked` gains
+  `starting`, so starting balances stay out of `put_in`.
+- **`with_progress(month)`'s `allocated`** still counts manual allocations dated in
+  any month (as before), but plans only through the viewed month
+  (`goal_allocated_subquery(plans_end=…)`).
+- **Reset** is offered for any month from `plan_from` on. After a settings change
+  that includes the current month.
+- **Quick-assign on a linked goal** (`_plan_more_for_linked_goal`) adds to this
+  month's plan. With no amount it plans what's available, capped for a target goal
+  at `target − saved − held`. The goals page's "still to put in" for a linked goal
+  subtracts what the plan already holds.
+- **The held line** reads "$X to move" (the linked accounts are in its tooltip),
+  because naming the accounts inline widened the whole budget table.
+- **The monthly review card** (`goal_plan_unmet`) only appears once the month is
+  over. It says "went back to Unassigned" (`release`) or "carries into next month"
+  (`carry`).
+- **The Dollar Map** lists a linked goal with nothing left but money still held,
+  and shows that money as its own hatched segment and waterfall step.

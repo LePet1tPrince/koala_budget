@@ -39,6 +39,14 @@
             {{ sidebar_summary.assigned_this_month|currency }}
           </span>
         </div>
+        {% if goal_section.rows %}
+        <div class="flex justify-between items-center">
+          <span class="text-sm">{% translate "Planned for goals" %}</span>
+          <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:goals_planned" data-testid="sidebar-goals-planned">
+            {{ sidebar_summary.goals_planned|currency }}
+          </span>
+        </div>
+        {% endif %}
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Activity" %}</span>
           <span class="font-mono text-sm font-semibold">

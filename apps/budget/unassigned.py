@@ -5,6 +5,7 @@ The Unassigned metric: money that has no job yet (see docs/unassigned-plan.md).
                + Σ max(0, −available) over income categories   (budgeted income not yet received)
                − Σ max(0,  available) over expense categories  (unspent budget: the envelopes)
                − Σ max(0,  left)      over goals               (allocated − spent from it)
+               − Σ held               over goals               (planned, not yet arrived)
 
 Every "available" is the budget page's own running balance through `month`
 (`BudgetService.get_available_with_previous`: expense budget − actual + rollover,
@@ -32,6 +33,11 @@ actually happened.
   `month` claim nothing yet.
 - **Everything else in net worth counts as it lands**: opening balances,
   reconciliation adjustments, any equity entry.
+- **A goal's plan claims its money before it moves** (docs/goal-plans-plan.md). A
+  goal with no linked account is given its plan outright (it is in `left`); a
+  linked goal holds back what it planned until the money arrives in the account,
+  so a transfer into the account moves nothing -- the goal's left rises by what
+  `held` falls.
 
 `compute_unassigned()` is the one place this is calculated. The sidebar pill, the
 dashboard, the budget/goals card (via `NetWorthService.get_net_worth_card_data`), the
@@ -67,6 +73,7 @@ class Unassigned:
     income_due: Decimal  # budgeted income not yet received, rolled over
     envelopes: Decimal  # Σ unspent expense budget (overspent envelopes count as 0)
     goals: Decimal  # Σ left in goals (overspent goals count as 0)
+    goals_held: Decimal = ZERO  # Σ planned for linked goals and not yet arrived
     # Not terms of the sum: overspending already left net worth, and these say how much
     # of it is still showing as a negative balance.
     overspent: Decimal = ZERO  # expense envelopes
@@ -76,7 +83,7 @@ class Unassigned:
 
     @property
     def amount(self) -> Decimal:
-        return self.net_worth + self.income_due - self.envelopes - self.goals
+        return self.net_worth + self.income_due - self.envelopes - self.goals - self.goals_held
 
     @property
     def state(self) -> str:
@@ -123,7 +130,8 @@ def compute_unassigned(
     passes the opposite of the setting to show what flipping it would do.
     """
     from apps.budget.models import Goal, goal_allocated_subquery, goal_spent_subquery, month_after
-    from apps.budget.services import BudgetService, NetWorthService
+    from apps.budget.plans import held_by_goal
+    from apps.budget.services import BudgetService, NetWorthService, goal_monthly
 
     month = month.replace(day=1)
     if categories is None:
@@ -148,6 +156,7 @@ def compute_unassigned(
         .order_by("order", "target_date", "name")
     )
     goal_left = {g.pk: g.allocated_to_date - g.spent_to_date for g in goals}
+    goal_held = held_by_goal(goals, goal_monthly(book, goals, end=month_after(month)), month) if goals else {}
 
     result = Unassigned(
         month=month,
@@ -155,6 +164,7 @@ def compute_unassigned(
         income_due=sum(income_due_by_account.values(), ZERO),
         envelopes=_positive(expense_available.values()),
         goals=_positive(goal_left.values()),
+        goals_held=sum(goal_held.values(), ZERO),
         overspent=-sum((v for v in expense_available.values() if v < 0), ZERO),
         goals_overspent=-sum((v for v in goal_left.values() if v < 0), ZERO),
     )
@@ -172,10 +182,11 @@ def compute_unassigned(
                     "amount": goal_left[g.pk],
                     "allocated": g.allocated_to_date,
                     "spent": g.spent_to_date,
+                    "held": goal_held.get(g.pk, ZERO),
                     "goal": g,
                 }
                 for g in goals
-                if g.allocated_to_date or g.spent_to_date
+                if g.allocated_to_date or g.spent_to_date or goal_held.get(g.pk)
             ],
             "envelopes": [
                 {
@@ -222,21 +233,23 @@ def allocation_bar(unassigned: Unassigned) -> dict:
     """
     Geometry for the allocation bar: every claim on your money side by side.
 
-    Segments are goals, budget envelopes and (when positive) Unassigned. A marker
-    sits at net worth, and a second at net worth + income still due when some is.
-    Goals + envelopes + Unassigned is exactly what you have (net worth + income
-    due), so the claims only reach past it when Unassigned is negative: that
+    Segments are goals, money planned for linked goals but not yet moved, budget
+    envelopes and (when positive) Unassigned. A marker sits at net worth, and a
+    second at net worth + income still due when some is. The claims plus Unassigned
+    are exactly what you have (net worth + income due), so they only reach past it
+    when Unassigned is negative: that
     over-assignment is drawn hatched rather than silently rescaled away.
     Overspending isn't a claim, so it never appears here: it has already left net worth.
     """
     amount = unassigned.amount
     free = max(amount, ZERO)
     have = unassigned.net_worth + unassigned.income_due
-    filled = unassigned.goals + unassigned.envelopes + free
+    filled = unassigned.goals + unassigned.goals_held + unassigned.envelopes + free
     scale = max(filled, have)
 
     segments = [
         {"key": "goals", "label": _("Goals"), "amount": unassigned.goals},
+        {"key": "goals_held", "label": _("Waiting to move to goals"), "amount": unassigned.goals_held},
         {"key": "envelopes", "label": _("Budget envelopes"), "amount": unassigned.envelopes},
         {"key": "unassigned", "label": unassigned.label, "amount": free},
     ]
@@ -267,8 +280,10 @@ def waterfall(unassigned: Unassigned) -> list[dict]:
     steps += [
         ("envelopes", _("Budget envelopes, unspent"), -unassigned.envelopes, False),
         ("goals", _("Left in goals"), -unassigned.goals, False),
-        ("unassigned", unassigned.label, unassigned.amount, True),
     ]
+    if unassigned.goals_held:
+        steps.append(("goals_held", _("Waiting to move to goals"), -unassigned.goals_held, False))
+    steps.append(("unassigned", unassigned.label, unassigned.amount, True))
     bars, running = [], ZERO
     for key, label, value, is_total in steps:
         if is_total:

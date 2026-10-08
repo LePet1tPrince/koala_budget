@@ -180,6 +180,9 @@
                   {% blocktranslate with amount=row.needed|currency trimmed %}of {{ amount }} needed{% endblocktranslate %}
                 </span>
               {% endif %}
+              {% if row.held %}
+                <span class="block text-xs text-warning" data-testid="plan-goal-held">{% blocktranslate with amount=row.held|currency trimmed %}{{ amount }} still to move{% endblocktranslate %}</span>
+              {% endif %}
             </td>
             <td class="text-right money whitespace-nowrap {% if row.left < 0 %}text-error{% endif %}">
               {{ row.left|currency }}{% if row.left < 0 %} · {% translate "carried" %}{% endif %}

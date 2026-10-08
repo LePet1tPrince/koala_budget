@@ -39,7 +39,7 @@
 {% endcomment %}
 <noscript><style>#budget-table-card tr[data-hidden-row][hidden] { display: table-row; }</style></noscript>
 <div class="overflow-x-auto lg:overflow-x-visible bg-base-100 rounded-lg shadow"
-     id="budget-table-card" data-budget-save-url="{{ save_amount_url }}" data-budget-figures-url="{{ figures_url }}" data-cover-url="{{ cover_url }}">
+     id="budget-table-card" data-budget-save-url="{{ save_amount_url }}" data-goal-plan-save-url="{{ save_goal_plan_url }}" data-budget-figures-url="{{ figures_url }}" data-cover-url="{{ cover_url }}">
   {{ cover_goals|json_script:'cover-goals' }}
   <dialog class="modal" data-cover-dialog data-testid="cover-dialog">
     <div class="modal-box max-w-md">
@@ -326,6 +326,10 @@
         <tr class="h-2">
           <td colspan="7"></td>
         </tr>
+        {% endif %}
+        {# Goals sit between income and expenses: pay yourself first. #}
+        {% if section.key == "income" %}
+          {% include "budget/components/budget_goal_section.html" %}
         {% endif %}
       {% endfor %}
     </tbody>

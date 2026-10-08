@@ -183,6 +183,7 @@ WRITES = {
     "journal:transaction-batch-delete": lambda a, b: {"ids": [b.entry.id]},
     "journal:transaction-batch-status": lambda a, b: {"ids": [b.entry.id], "status": "void"},
     "budget:budget_save_amount": lambda a, b: {"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"},
+    "budget:budget_save_goal_plan": lambda a, b: {"goal_id": b.goal.id, "month": "2026-03-01", "amount": "999"},
     "budget:budget_grid_save": lambda a, b: {
         "changes": [{"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"}]
     },

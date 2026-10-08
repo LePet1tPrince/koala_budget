@@ -129,17 +129,32 @@ def goal_assigned_subquery(start=None, end=None):
     return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
 
 
-def goal_allocated_subquery(start=None, end=None):
+def goal_allocated_subquery(start=None, end=None, plans_end=None):
     """
-    What a goal has been given, as a scalar subquery on `Goal`: manual allocations
-    plus everything its linked accounts brought in (starting balances and linked
-    flows, `apps.budget.linked`), dated from `start` (inclusive) to `end`
+    What a goal has been given, as a scalar subquery on `Goal`: manual allocations,
+    everything its linked accounts brought in (starting balances and linked
+    flows, `apps.budget.linked`) and what its plans gave it in months no linked
+    account covers (`apps.budget.plans`), dated from `start` (inclusive) to `end`
     (exclusive). Months are first-of-month dates, so a month range is
     `(month, month_after(month))`.
-    """
-    from apps.budget.linked import linked_allocated_subquery
 
-    return goal_assigned_subquery(start, end) + linked_allocated_subquery(start, end)
+    Plans never count past a month that hasn't been reached: they count up to
+    `plans_end`, which defaults to `end` (or the end of the current month when
+    `end` is open).
+    """
+    from django.db.models import ExpressionWrapper
+    from django.utils import timezone
+
+    from apps.budget.linked import linked_allocated_subquery
+    from apps.budget.plans import direct_planned_subquery
+
+    if plans_end is None:
+        plans_end = end if end is not None else month_after(timezone.localdate())
+    given = goal_assigned_subquery(start, end) + linked_allocated_subquery(start, end)
+    planned = direct_planned_subquery(plans_end)
+    if start is not None:
+        planned = planned - direct_planned_subquery(start)
+    return ExpressionWrapper(given + planned, output_field=DecimalField(max_digits=15, decimal_places=2))
 
 
 class GoalQuerySet(models.QuerySet):
@@ -173,7 +188,7 @@ class GoalQuerySet(models.QuerySet):
         return self.annotate(
             saved_previous=goal_allocated_subquery(end=month),
             saved_this_month=goal_allocated_subquery(month, end),
-            allocated=goal_allocated_subquery(),
+            allocated=goal_allocated_subquery(plans_end=end),
             spent=goal_spent_subquery(end=end),
             spent_this_month=goal_spent_subquery(start=month, end=end),
         ).annotate(
@@ -262,6 +277,32 @@ class Goal(BaseBookModel):
         help_text=_("How much you plan to put towards the goal each month"),
     )
 
+    # The plan (docs/goal-plans-plan.md). Months from `plan_from` on that have no
+    # `GoalPlan` row plan the goal's current default (`monthly_contribution`);
+    # earlier months plan only what their rows say. Every change to what the
+    # default depends on goes through `apps.budget.plans.freeze` first.
+    plan_from = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name=_("Plan from"),
+        help_text=_("First month the current monthly contribution applies to (first day of month)"),
+    )
+
+    # What a linked goal does with planned money that hasn't arrived by month end.
+    UNMET_RELEASE = "release"
+    UNMET_CARRY = "carry"
+    UNMET_PLAN_CHOICES = [
+        (UNMET_RELEASE, _("Release it at the end of the month")),
+        (UNMET_CARRY, _("Keep holding it until the money arrives")),
+    ]
+    unmet_plan = models.CharField(
+        max_length=10,
+        choices=UNMET_PLAN_CHOICES,
+        default=UNMET_RELEASE,
+        verbose_name=_("When planned money isn't moved"),
+        help_text=_("What happens to money planned for this goal that hasn't reached its linked accounts by month end"),
+    )
+
     objects = GoalQuerySet.as_manager()
 
     class Meta:
@@ -278,6 +319,11 @@ class Goal(BaseBookModel):
 
     def save(self, *args, **kwargs):
         """Override save to automatically create backing account for new goals."""
+        if self.pk is None and self.plan_from is None:
+            # A new goal plans its monthly contribution from the month it was made.
+            from django.utils import timezone
+
+            self.plan_from = timezone.localdate().replace(day=1)
         if self.pk is None and not self.account_id:
             with transaction.atomic():
                 # Created inside the same transaction so a failed goal save
@@ -387,6 +433,50 @@ class GoalAllocation(BaseBookModel):
 
     def save(self, *args, **kwargs):
         # Ensure month is always first day of month
+        self.month = self.month.replace(day=1)
+        super().save(*args, **kwargs)
+
+
+class GoalPlan(BaseBookModel):
+    """
+    What a goal plans to receive in one month (docs/goal-plans-plan.md).
+
+    A month with no row plans the goal's default (`Goal.monthly_contribution`) if
+    it falls on or after `Goal.plan_from`, and nothing otherwise. A `typed` row is
+    the user changing one month on the budget page; a `default` row is
+    `plans.freeze` recording what the default was before a change to it.
+
+    What a plan does depends on the month: for a goal with no linked account
+    covering it, the plan *is* the money given to the goal; for a linked month,
+    the plan holds money back from Unassigned until it arrives in the account.
+    """
+
+    SOURCE_DEFAULT = "default"
+    SOURCE_TYPED = "typed"
+    SOURCE_CHOICES = [
+        (SOURCE_DEFAULT, _("Monthly contribution")),
+        (SOURCE_TYPED, _("Changed for this month")),
+    ]
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="plans", verbose_name=_("Goal"))
+    month = models.DateField(verbose_name=_("Month"), help_text=_("Month of this plan (first day of month)"))
+    amount = models.DecimalField(
+        max_digits=15, decimal_places=2, verbose_name=_("Amount"), help_text=_("Amount planned for the month")
+    )
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_TYPED, verbose_name=_("Source"))
+
+    class Meta:
+        unique_together = ["book", "goal", "month"]
+        ordering = ["goal", "month"]
+        default_related_name = "budget_goal_plans"
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gte=0), name="goal_plan_amount_not_negative"),
+        ]
+
+    def __str__(self):
+        return f"{self.goal.name} - {self.month.strftime('%Y-%m')} - plan ${self.amount}"
+
+    def save(self, *args, **kwargs):
         self.month = self.month.replace(day=1)
         super().save(*args, **kwargs)
 

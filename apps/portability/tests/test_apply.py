@@ -278,6 +278,51 @@ class GoalLinksRoundTripTests(TestCase):
         self.assertEqual(after, before)
 
 
+class GoalPlansRoundTripTests(TestCase):
+    """A goal's plans, its plan_from and its unmet-plan setting travel with it (format v8)."""
+
+    def test_plans_survive(self):
+        from apps.budget.models import GoalPlan
+
+        source_team, _user, _handles = build_db_fixture_team("Plans Source", "plans-source")
+        dest_team, dest_user = make_team("Plans Destination", "plans-destination")
+        book = source_team.default_book
+        goal = Goal.objects.get(book=book, name="New Deck")
+        Goal.objects.filter(pk=goal.pk).update(
+            monthly_contribution=Decimal("100.00"), plan_from=date(2026, 2, 1), unmet_plan=Goal.UNMET_CARRY
+        )
+        GoalPlan.objects.create(book=book, goal=goal, month=date(2026, 1, 1), amount=Decimal("40"), source="default")
+        GoalPlan.objects.create(book=book, goal=goal, month=date(2026, 3, 1), amount=Decimal("0"), source="typed")
+        month = date(2026, 4, 1)
+        before = Goal.objects.filter(pk=goal.pk).with_progress(month).values("allocated", "saved_this_month").get()
+
+        apply.apply_archive(dest_team.default_book, export_bytes(book), user=dest_user)
+
+        copied = Goal.objects.get(book=dest_team.default_book, name="New Deck")
+        self.assertEqual(copied.plan_from, date(2026, 2, 1))
+        self.assertEqual(copied.unmet_plan, Goal.UNMET_CARRY)
+        self.assertEqual(
+            list(copied.plans.order_by("month").values_list("month", "amount", "source")),
+            [(date(2026, 1, 1), Decimal("40.00"), "default"), (date(2026, 3, 1), Decimal("0.00"), "typed")],
+        )
+        after = Goal.objects.filter(pk=copied.pk).with_progress(month).values("allocated", "saved_this_month").get()
+        self.assertEqual(after, before)
+
+    def test_an_older_export_starts_planning_on_import(self):
+        source_team, _user, _handles = build_db_fixture_team("Old Source", "old-source")
+        dest_team, dest_user = make_team("Old Destination", "old-destination")
+        book = source_team.default_book
+        Goal.objects.filter(book=book).update(plan_from=None)
+
+        apply.apply_archive(dest_team.default_book, export_bytes(book), user=dest_user)
+
+        from django.utils import timezone
+
+        this_month = timezone.localdate().replace(day=1)
+        self.assertTrue(Goal.objects.filter(book=dest_team.default_book).exists())
+        self.assertFalse(Goal.objects.filter(book=dest_team.default_book).exclude(plan_from=this_month).exists())
+
+
 class ImportIntoNonEmptyTeamTests(TestCase):
     """Every import wipes first -- including a team that already has books (§4.1)."""
 

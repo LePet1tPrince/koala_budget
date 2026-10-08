@@ -613,7 +613,7 @@ def dollar_map(request, team_slug, book_slug):
             "month": month,
             "unassigned": unassigned,
             "bar": allocation_bar(unassigned),
-            "goals": [g for g in detail["goals"] if g["amount"] > 0],
+            "goals": [g for g in detail["goals"] if g["amount"] > 0 or g["held"] > 0],
             "envelopes": [e for e in envelopes if e["amount"] > 0],
             "overspent": [e for e in reversed(envelopes) if e["amount"] < 0]
             + [g for g in detail["goals"] if g["amount"] < 0],

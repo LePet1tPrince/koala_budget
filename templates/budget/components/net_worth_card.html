@@ -3,7 +3,7 @@
 {% load icons %}
 {% comment %}
   The terms of the Unassigned sum for the month being viewed (apps/budget/unassigned.py):
-  net worth + income still due − envelopes − goals. Every figure carries a
+  net worth + income still due − envelopes − goals − held for goals. Every figure carries a
   data-budget-cell key so the budget page's autosave can repaint it in place.
 {% endcomment %}
 <div class="bg-base-100 rounded-lg shadow mb-6 p-6" data-testid="net-worth-card">
@@ -36,6 +36,16 @@
           {% translate "In goals" %}
         </div>
         <span class="font-mono font-semibold text-sm" data-saved-display data-budget-cell="networth:save">{{ net_worth_card.save|currency }}</span>
+      </div>
+
+      <div class="flex justify-between items-center" data-hide-row data-testid="net-worth-card-held"
+           {% if not net_worth_card.held %}hidden{% endif %}>
+        <div class="flex items-center gap-2 text-sm text-base-content/70"
+             title="{% translate 'Planned for goals with linked accounts, waiting for the money to move there' %}">
+          {% icon "arrow-right-left" class="inline-block shrink-0 w-4 h-4" %}
+          {% translate "Waiting to move to goals" %}
+        </div>
+        <span class="font-mono font-semibold text-sm" data-budget-cell="networth:held">{{ net_worth_card.held|currency }}</span>
       </div>
 
       <div class="divider my-0"></div>

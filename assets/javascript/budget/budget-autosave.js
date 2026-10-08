@@ -6,6 +6,9 @@
 // POSTed as JSON and the server returns every figure for the month, which we
 // write straight into the `data-budget-cell` spans the templates carry.
 //
+// Goal rows (the Goals section) save the month's plan the same way, through
+// their own endpoint, and can be put back to the monthly contribution.
+//
 // The <noscript> Save buttons remain the fallback when JS is disabled.
 import Cookies from 'js-cookie';
 
@@ -30,6 +33,7 @@ document.addEventListener('budget:swapped', init);
 function init() {
   refreshFigures = null;
   const SAVE_URL = document.querySelector('[data-budget-save-url]')?.dataset.budgetSaveUrl;
+  const GOAL_PLAN_URL = document.querySelector('[data-goal-plan-save-url]')?.dataset.goalPlanSaveUrl;
   const FIGURES_URL = document.querySelector('[data-budget-figures-url]')?.dataset.budgetFiguresUrl;
   const forms = Array.from(document.querySelectorAll('form[data-budget-autosave]'));
   if (!SAVE_URL || !forms.length) return;
@@ -55,12 +59,13 @@ function init() {
 
   const rows = forms
     .map((form) => {
-      const input = form.querySelector('input[name="budget_amount"]');
+      const input = form.querySelector('input[name="budget_amount"], input[data-goal-plan-input]');
       return input ? makeRow(form, input) : null;
     })
     .filter(Boolean);
 
   rows.forEach((row, index) => wire(row, index));
+  wireGoalPlans();
   wireCover();
   if (FIGURES_URL) refreshFigures = refetchFigures;
 
@@ -74,7 +79,9 @@ function init() {
       input,
       status: form.querySelector('[data-budget-status]'),
       categoryId: form.dataset.categoryId,
+      goalId: form.dataset.goalId,
       categoryName: form.dataset.categoryName || '',
+      goalRow: form.dataset.goalId ? form.closest('tr') : null,
       month: form.dataset.month,
       // What the server last confirmed. Escape reverts to it, and a commit that
       // matches it is a no-op rather than a request.
@@ -171,25 +178,33 @@ function init() {
     save(row, value);
   }
 
-  async function save(row, value) {
+  // A budget row posts its category's amount; a goal row its plan (or a reset).
+  function requestFor(row, value, reset) {
+    if (row.goalId) {
+      const body = { goal_id: Number(row.goalId), month: row.month };
+      if (reset) body.reset = true;
+      else body.amount = value;
+      return { url: GOAL_PLAN_URL, body };
+    }
+    return { url: SAVE_URL, body: { category_id: Number(row.categoryId), month: row.month, amount: value } };
+  }
+
+  async function save(row, value, reset = false) {
     row.inFlight = true;
     setStatus(row, 'saving');
     const mine = ++ticket;
+    const request = requestFor(row, value, reset);
 
     let response;
     let payload;
     try {
-      response = await fetch(SAVE_URL, {
+      response = await fetch(request.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRFToken': Cookies.get('csrftoken') || '',
         },
-        body: JSON.stringify({
-          category_id: Number(row.categoryId),
-          month: row.month,
-          amount: value,
-        }),
+        body: JSON.stringify(request.body),
       });
       payload = await response.json().catch(() => ({}));
     } catch {
@@ -213,7 +228,12 @@ function init() {
     }
     row.input.classList.remove('input-error');
     setStatus(row, 'saved');
-    announce(`${row.categoryName} saved as ${payload.amount}.`);
+    if (row.goalRow) showPlanSource(row, payload);
+    announce(
+      reset
+        ? `${row.categoryName} is back to its monthly contribution, ${payload.amount}.`
+        : `${row.categoryName} saved as ${payload.amount}.`
+    );
 
     if (mine > painted) {
       painted = mine;
@@ -267,6 +287,11 @@ function init() {
       if (checkbox) checkbox.dataset.budgeted = cell.value;
 
       const el = cells.get(key);
+      // A line that only means something when its figure isn't zero ("$400 still to move").
+      if (el && cell.hidden !== undefined) {
+        const line = el.closest('[data-hide-row]');
+        if (line) line.hidden = cell.hidden;
+      }
       if (el && cell.width !== undefined) {
         paintMeter(el, cell);
         return;
@@ -278,6 +303,42 @@ function init() {
       flash(el);
     });
     refreshCoverButtons();
+  }
+
+  // -------------------------------------------------------------------------
+  // Goal rows: "Monthly" / "Changed", reset, and the target-date pace hint
+  // -------------------------------------------------------------------------
+
+  function showPlanSource(row, payload) {
+    const typed = row.goalRow.querySelector('[data-goal-tag="typed"]');
+    const monthly = row.goalRow.querySelector('[data-goal-tag="default"]');
+    const reset = row.goalRow.querySelector('form[data-goal-plan-reset]');
+    if (typed) typed.hidden = !payload.typed;
+    // "Monthly" only applies when the goal has a contribution to fall back to.
+    if (monthly) monthly.hidden = payload.typed || monthly.dataset.hasDefault !== 'true';
+    if (reset) reset.hidden = !payload.can_reset;
+    // The target-date pace is a suggestion for a month with no plan of its own.
+    const hint = row.goalRow.querySelector('[data-goal-plan-hint]');
+    if (hint) hint.hidden = payload.typed;
+  }
+
+  function wireGoalPlans() {
+    rows
+      .filter((row) => row.goalRow)
+      .forEach((row) => {
+        const reset = row.goalRow.querySelector('form[data-goal-plan-reset]');
+        reset?.addEventListener('submit', (event) => {
+          event.preventDefault();
+          if (row.inFlight) return;
+          save(row, null, true);
+        });
+        row.goalRow.querySelectorAll('[data-goal-plan-use]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            row.input.value = btn.dataset.goalPlanUse;
+            commit(row);
+          });
+        });
+      });
   }
 
   // -------------------------------------------------------------------------

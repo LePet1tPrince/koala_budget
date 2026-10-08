@@ -1,5 +1,7 @@
 {% load i18n %}
-{% comment %}Under a goal card's title (every page style): open-ended marker, plan status and the accounts the goal's money lives in.{% endcomment %}
+{% load currency_tags %}
+{% comment %}Under a goal card's title (every page style): open-ended marker, plan status, the accounts the goal's
+money lives in, and for a linked goal what this month's plan is still waiting for (docs/goal-plans-plan.md §7).{% endcomment %}
 {% if item.plan_status and not item.funded or item.links or not item.has_target %}
   <div class="flex flex-wrap items-center gap-2 text-xs text-base-content/70 -mt-1">
     {% if not item.has_target %}
@@ -12,5 +14,13 @@
     {% if item.links %}
       <span data-testid="goal-card-links">{% translate "Linked" %} · {{ item.links|join:", " }}</span>
     {% endif %}
+  </div>
+{% endif %}
+{% if item.plan_linked %}
+  <div class="text-xs text-base-content/70 mt-1" data-testid="goal-card-plan">
+    {% translate "Planned this month" %} <span class="money" data-card-planned>{{ item.planned|currency }}</span>
+    <span data-card-held-line {% if not item.held %}hidden{% endif %}>
+      · <span class="text-warning" data-testid="goal-card-held"><span class="money" data-card-held>{{ item.held|currency }}</span> {% translate "still to move" %}</span>
+    </span>
   </div>
 {% endif %}

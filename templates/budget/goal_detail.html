@@ -115,6 +115,24 @@
         </div>
         {% endif %}
 
+        {% if month_plan and not goal.is_closed %}
+        <div class="mt-1 text-sm text-base-content/70" data-testid="goal-month-plan">
+          {% if month_plan.linked %}
+            {% blocktranslate trimmed with month=month|date:"F" planned=month_plan.planned|currency %}
+              Planned for {{ month }}: {{ planned }}, counted as it arrives in the linked accounts.
+            {% endblocktranslate %}
+            {% if held %}
+              <span class="text-warning" data-testid="goal-detail-held">{% blocktranslate trimmed with held=held|currency %}{{ held }} still to move.{% endblocktranslate %}</span>
+            {% endif %}
+          {% else %}
+            {% blocktranslate trimmed with month=month|date:"F" planned=month_plan.planned|currency %}
+              Planned for {{ month }}: {{ planned }}, given to the goal on the Budget page.
+            {% endblocktranslate %}
+          {% endif %}
+          <a class="link link-primary" href="{% url 'budget:budget_home' team_slug=request.team.slug book_slug=request.book.slug %}?month={{ month|date:'Y-m-d' }}">{% translate "Change it" %}</a>
+        </div>
+        {% endif %}
+
         {% if goal.remaining and goal.remaining > 0 %}
         <div class="mt-2 text-sm text-base-content/70">
           {% translate "Remaining:" %} {{ goal.remaining|currency }}
@@ -267,7 +285,8 @@
               <tr data-testid="goal-activity-row" data-kind="{{ event.kind }}">
                 <td class="whitespace-nowrap">{% if event.month_only %}{{ event.date|date:"M Y" }}{% else %}{{ event.date|date:"M j, Y" }}{% endif %}</td>
                 <td class="whitespace-nowrap">
-                  {% if event.kind == "assigned" %}{% translate "Assigned" %}
+                  {% if event.kind == "planned" %}{% translate "Planned contribution" %}
+                  {% elif event.kind == "assigned" %}{% translate "Assigned" %}
                   {% elif event.kind == "withdrawn" %}{% translate "Withdrawn" %}
                   {% elif event.kind == "starting" %}{% blocktranslate trimmed with account=event.account.name %}Starting balance from {{ account }}{% endblocktranslate %}
                   {% elif event.kind == "in" %}{% blocktranslate trimmed with account=event.account.name %}From {{ account }}{% endblocktranslate %}

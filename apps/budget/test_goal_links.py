@@ -313,8 +313,8 @@ class MonthlyTest(LinkedFixture):
         self.post(date(2026, 9, 5), self.savings, self.checking, "300")
         self.post(date(2026, 10, 5), self.checking, self.savings, "50")
         result = monthly_linked([self.goal.pk])[self.goal.pk]
-        self.assertEqual(result[SEPT], {"linked": D("1300"), "spent": D("0")})
-        self.assertEqual(result[OCT], {"linked": D("0"), "spent": D("50")})
+        self.assertEqual(result[SEPT], {"linked": D("1300"), "starting": D("1000"), "spent": D("0")})
+        self.assertEqual(result[OCT], {"linked": D("0"), "starting": D("0"), "spent": D("50")})
 
     def test_with_progress_month_split(self):
         self.link()
@@ -440,7 +440,10 @@ class GoalMonthlyTest(LinkedFixture):
         self.post(date(2026, 9, 6), self.goal.account, self.checking, "20")
         self.post(date(2026, 10, 6), self.checking, self.savings, "40")
         result = goal_monthly(self.book, [self.goal])[self.goal.pk]
-        self.assertEqual(result[SEPT], {"assigned": D("50"), "linked": D("300"), "saved": D("350"), "spent": D("20")})
+        sept = {key: result[SEPT][key] for key in ("assigned", "linked", "flows", "saved", "spent")}
+        self.assertEqual(
+            sept, {"assigned": D("50"), "linked": D("300"), "flows": D("300"), "saved": D("350"), "spent": D("20")}
+        )
         self.assertEqual(result[OCT]["spent"], D("40"))
 
 
@@ -453,6 +456,7 @@ class AllocationReadsTest(TestCase):
 
     ALLOWED = {
         "apps/budget/models.py",  # goal_assigned_subquery
+        "apps/budget/plans.py",  # adopt_goals: a hand-assigned contribution isn't planned again
         "apps/budget/services.py",  # writers + goal_monthly
         "apps/budget/views.py",  # assign/withdraw writers
         "apps/ynab_import/services/apply.py",  # bulk import

@@ -419,6 +419,19 @@ def _step7_saving(review) -> list:
                 "goal": spend["name"],
             }
         out.append(Insight(kind="goal_spending", severity="info", step=7, title=title, metric=spend["amount"]))
+
+    # A linked goal's plan that didn't fully arrive in its account.
+    for unmet in review.get("goal_plans_unmet", ()):
+        values = {
+            "missing": _money(unmet["missing"]),
+            "goal": unmet["name"],
+            "planned": _money(unmet["planned"]),
+        }
+        if unmet["carried"]:
+            title = _("%(missing)s of %(goal)s's %(planned)s plan wasn't moved; it carries into next month.") % values
+        else:
+            title = _("%(missing)s of %(goal)s's %(planned)s plan wasn't moved and went back to Unassigned.") % values
+        out.append(Insight(kind="goal_plan_unmet", severity="info", step=7, title=title, metric=unmet["missing"]))
     return out
 
 

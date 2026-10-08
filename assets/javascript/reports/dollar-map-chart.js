@@ -25,6 +25,9 @@ function colorFor(bar) {
       return p.envelopes;
     case 'goals':
       return p.goals;
+    case 'goals_held':
+      // Planned for a linked goal and not yet moved: the goals colour, lighter.
+      return `${p.goals}99`;
     case 'unassigned':
       return bar.value < 0 ? MONEY.out : MONEY.in;
     default:

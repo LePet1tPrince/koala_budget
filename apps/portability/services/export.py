@@ -17,7 +17,7 @@ from django.db.models import Max, Min, Q
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
-from apps.budget.models import Budget, GoalAccountLink, GoalAllocation
+from apps.budget.models import Budget, GoalAccountLink, GoalAllocation, GoalPlan
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.models import Reconciliation
 
@@ -26,6 +26,7 @@ from .schema import (
     KIND_BUDGET,
     KIND_DECIMAL,
     KIND_GOAL,
+    KIND_GOAL_PLAN,
     UNCATEGORIZED_STATUS,
     encode_cell,
 )
@@ -62,7 +63,11 @@ def build_row_count(book) -> int:
         JournalLine.objects.filter(book=book).count()
         + BankTransaction.objects.filter(book=book, journal_entry__isnull=True).count()
     )
-    budget = Budget.objects.filter(book=book).count() + GoalAllocation.objects.filter(book=book).count()
+    budget = (
+        Budget.objects.filter(book=book).count()
+        + GoalAllocation.objects.filter(book=book).count()
+        + GoalPlan.objects.filter(book=book).count()
+    )
     return accounts + journal + budget
 
 
@@ -266,7 +271,7 @@ def build_goal_link_rows(book) -> list[dict]:
 
 
 def _build_budget_rows(book) -> list[dict]:
-    """One row per monthly amount -- a `Budget` or a `GoalAllocation`, told apart by `kind` (§2.1)."""
+    """One row per monthly amount -- a `Budget`, `GoalAllocation` or `GoalPlan`, told apart by `kind` (§2.1)."""
     rows = []
 
     budgets = Budget.objects.filter(book=book).select_related("category").order_by("month", "category__name")
@@ -283,6 +288,15 @@ def _build_budget_rows(book) -> list[dict]:
         row = schema.build_row((schema.GOAL_ALLOCATION, allocation), columns=schema.BUDGET_COLUMNS)
         row["kind"] = KIND_GOAL
         row["account_name"] = allocation.goal.account.name if allocation.goal.account_id else allocation.goal.name
+        rows.append(row)
+
+    goal_plans = (
+        GoalPlan.objects.filter(book=book).select_related("goal", "goal__account").order_by("month", "goal__name")
+    )
+    for plan in goal_plans:
+        row = schema.build_row((schema.GOAL_PLAN, plan), columns=schema.BUDGET_COLUMNS)
+        row["kind"] = KIND_GOAL_PLAN
+        row["account_name"] = plan.goal.account.name if plan.goal.account_id else plan.goal.name
         rows.append(row)
 
     return rows

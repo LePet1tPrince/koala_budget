@@ -140,9 +140,18 @@ class GoalForm(forms.ModelForm):
 
     class Meta:
         model = Goal
-        fields = ["name", "description", "target_amount", "target_date", "monthly_contribution", "outflow"]
+        fields = [
+            "name",
+            "description",
+            "target_amount",
+            "target_date",
+            "monthly_contribution",
+            "outflow",
+            "unmet_plan",
+        ]
         widgets = {
             "outflow": forms.RadioSelect(attrs={"class": "radio radio-sm radio-primary"}),
+            "unmet_plan": forms.RadioSelect(attrs={"class": "radio radio-sm radio-primary"}),
             "name": forms.TextInput(attrs={"class": "input input-bordered w-full"}),
             "description": forms.Textarea(attrs={"class": "textarea textarea-bordered w-full", "rows": 3}),
             # The native input is the no-JS path; `date-field` swaps in the app's DateField.
@@ -166,6 +175,11 @@ class GoalForm(forms.ModelForm):
         # Only meaningful with a linked account; a form without the choice keeps
         # what the goal has (the model default for a new one).
         self.fields["outflow"].required = False
+        self.fields["unmet_plan"].required = False
+        self.fields["monthly_contribution"].help_text = _(
+            "Planned automatically every month on the Budget page. A change applies from this month; "
+            "months you changed there keep what you typed."
+        )
         # An open-ended goal stores 0: show it as blank, not "0.00".
         if self.instance.pk and not self.instance.has_target and not self.is_bound:
             self.initial["target_amount"] = None
@@ -193,6 +207,9 @@ class GoalForm(forms.ModelForm):
 
     def clean_outflow(self):
         return self.cleaned_data.get("outflow") or self.instance.outflow or Goal.OUTFLOW_WITHDRAW
+
+    def clean_unmet_plan(self):
+        return self.cleaned_data.get("unmet_plan") or self.instance.unmet_plan or Goal.UNMET_RELEASE
 
     def clean(self):
         cleaned = super().clean()

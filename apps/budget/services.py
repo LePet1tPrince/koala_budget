@@ -11,7 +11,7 @@ from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, ngettext
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAllocation, month_after
 from apps.journal.models import JournalLine, counted_entries
 from apps.web.templatetags.currency_tags import currency
 
@@ -518,14 +518,19 @@ class GoalService:
         - spent: spent from the goal this month, so a month you bought the car
           reads as planned spending rather than a gap.
         """
+        from . import plans
+
         zero = Decimal("0")
         month = month.replace(day=1)
         rows = []
-        for goal in self.get_goals_with_progress(month):
+        goals = list(self.get_goals_with_progress(month))
+        month_plans = plans.planned_for(goals, month)
+        held = plans.held_by_goal(goals, goal_monthly(self.book, goals, end=month_after(month)), month)
+        for goal in goals:
             before = goal.saved_previous
             needed = None
             note = ""
-            plan = goal_plan(goal, month)
+            plan = goal_plan(goal, month, month_plans.get(goal.pk))
             if goal.is_complete or (goal.target_amount > 0 and before >= goal.target_amount):
                 note = "funded"
             elif plan is None:
@@ -544,6 +549,7 @@ class GoalService:
                     "assigned": assigned,
                     "spent": goal.spent_this_month,
                     "left": goal.left,
+                    "held": held.get(goal.pk, zero),
                     "pct": pct,
                     "pct_capped": max(min(pct or (100 if note == "funded" else 0), 100), 0),
                 }
@@ -552,6 +558,7 @@ class GoalService:
             "needed": sum((r["needed"] or zero for r in rows), zero),
             "assigned": sum((r["assigned"] for r in rows), zero),
             "spent": sum((r["spent"] for r in rows), zero),
+            "held": sum((r["held"] for r in rows), zero),
         }
         return rows, totals
 
@@ -643,13 +650,16 @@ class GoalService:
 
         Returns {"released": Decimal, "covered": Decimal}.
         """
+        from . import plans
+        from .goal_links import end_all
+
         goal = Goal.objects.select_for_update().get(pk=goal.pk)
         if goal.closed_at is not None:
             raise GoalCloseError(_("This goal is already closed."))
+        # This month keeps what its plan already gave; no month after plans anything.
+        plans.freeze(goal, through_current=True)
         # Linked accounts stop feeding the goal first, so what's released is final.
         # Rolled back with everything else if the close is refused.
-        from .goal_links import end_all
-
         end_all(goal, timezone.localdate())
         left = self.left(goal, month)
         released = covered = Decimal("0")
@@ -670,6 +680,24 @@ class GoalService:
         goal.closed_at = timezone.now()
         goal.save(update_fields=["closed_at", "updated_at"])
         return {"released": released, "covered": covered}
+
+    @transaction.atomic
+    def mark_funded(self, goal):
+        """Funded: the goal stops asking for money (its plan stops after this month) but keeps its claim."""
+        from . import plans
+
+        plans.freeze(goal, through_current=True)
+        goal.is_complete = True
+        goal.save(update_fields=["is_complete", "updated_at"])
+
+    @transaction.atomic
+    def archive(self, goal):
+        """Hide a closed goal. Close it first: a hidden goal must not keep holding money."""
+        from . import plans
+
+        plans.freeze(goal, through_current=True)
+        goal.is_archived = True
+        goal.save(update_fields=["is_archived", "updated_at"])
 
     @transaction.atomic
     def cover_from_goal(self, goal, category, month, amount):
@@ -700,12 +728,15 @@ def _months_between(start, end):
     return (end.year - start.year) * 12 + end.month - start.month
 
 
-def goal_plan(goal, month):
+def goal_plan(goal, month, month_plan=None):
     """
     The goal's plan for `month` (docs/goal-linked-accounts-plan.md §9), from a goal
-    annotated by `with_progress(month)`: a monthly contribution, or else the pace
-    to reach the target by the target date. None without either. An open-ended
-    goal (no target) has only the contribution: `needed` is all of it every month.
+    annotated by `with_progress(month)`: what it plans for the month
+    (`month_plan`, the goal's `plans.MonthPlan` -- a typed amount or the monthly
+    contribution, docs/goal-plans-plan.md), else its monthly contribution, else
+    the pace to reach the target by the target date. None without any. An
+    open-ended goal (no target) has only the contribution: `needed` is all of it
+    every month.
 
     - rate: the plan's monthly amount
     - needed: what the plan asks for this month (never more than is still to fund,
@@ -725,7 +756,12 @@ def goal_plan(goal, month):
     # A goal viewed in a month before it was created is measured from that month.
     started = min(started, month)
 
-    if goal.monthly_contribution:
+    if month_plan is not None:
+        rate = month_plan.planned
+        line_rate = goal.monthly_contribution or rate
+        if line_rate <= 0 and goal.target_date and target > 0:
+            line_rate = target / max(_months_between(started, goal.target_date.replace(day=1)) + 1, 1)
+    elif goal.monthly_contribution:
         rate = goal.monthly_contribution
         line_rate = rate
     elif goal.target_date and target > 0:
@@ -786,16 +822,23 @@ def goal_monthly(book, goals, start=None, end=None):
 
     - assigned: manual allocations (`GoalAllocation`; withdrawals negative)
     - linked: what linked accounts brought in (starting balances, flows)
-    - saved: assigned + linked -- the month's share of `allocated`
+    - flows: the part of `linked` that wasn't a starting balance
+    - planned / plan_linked / plan_source: the month's plan (`apps.budget.plans`)
+    - plan_in: what a direct month's plan gave the goal, after the target cap
+    - saved: assigned + linked + plan_in -- the month's share of `allocated`
     - spent: lines on the goal's own account plus linked spending
 
     Months from `start` (inclusive) to `end` (exclusive), first-of-month keys.
     Every per-month read of goal allocations goes through here, so a month's
-    "saved" can never leave out what a linked account brought in.
+    "saved" can never leave out what a linked account brought in or what a plan
+    gave. Plans count through `end` (by default through the current month), like
+    everywhere else; the target cap needs the whole history, so the figures are
+    read from the start and trimmed to `start` at the end.
     """
     from django.db.models import F
     from django.db.models.functions import TruncMonth
 
+    from . import plans as goal_plans
     from .linked import monthly_linked
 
     goals = list(goals)
@@ -806,19 +849,18 @@ def goal_monthly(book, goals, start=None, end=None):
 
     def cell(goal_id, month):
         month = month.date() if hasattr(month, "date") else month
-        return result[goal_id].setdefault(month, {"assigned": zero, "linked": zero, "saved": zero, "spent": zero})
+        return result[goal_id].setdefault(
+            month,
+            {"assigned": zero, "linked": zero, "flows": zero, "saved": zero, "spent": zero},
+        )
 
     allocations = GoalAllocation.objects.filter(book=book, goal_id__in=goal_ids)
-    if start is not None:
-        allocations = allocations.filter(month__gte=start.replace(day=1))
     if end is not None:
         allocations = allocations.filter(month__lt=end)
     for row in allocations.values("goal_id", "month").annotate(total=Sum("amount")):
         cell(row["goal_id"], row["month"])["assigned"] += row["total"]
 
     lines = _active_lines().filter(book=book, account_id__in=list(by_account))
-    if start is not None:
-        lines = lines.filter(journal_entry__entry_date__gte=start)
     if end is not None:
         lines = lines.filter(journal_entry__entry_date__lt=end)
     for row in (
@@ -828,15 +870,25 @@ def goal_monthly(book, goals, start=None, end=None):
     ):
         cell(by_account[row["account_id"]], row["month"])["spent"] += row["total"]
 
-    for goal_id, months in monthly_linked(goal_ids, start, end).items():
+    for goal_id, months in monthly_linked(goal_ids, None, end).items():
         for month, values in months.items():
             target = cell(goal_id, month)
             target["linked"] += values["linked"]
+            target["flows"] += values["linked"] - values["starting"]
             target["spent"] += values["spent"]
 
-    for months in result.values():
-        for values in months.values():
-            values["saved"] = values["assigned"] + values["linked"]
+    plan_end = end if end is not None else goal_plans.next_month(goal_plans.current_month())
+    planned = goal_plans.plan_months(goals, plan_end)
+    for goal in goals:
+        goal_plans.apply_plans(
+            goal, result[goal.pk], planned[goal.pk], plan_end, lambda month, pk=goal.pk: cell(pk, month)
+        )
+
+    if start is not None:
+        start = start.replace(day=1)
+        for months in result.values():
+            for month in [m for m in months if m < start]:
+                del months[month]
     return result
 
 
@@ -916,7 +968,8 @@ class NetWorthService:
             - income_due: Income budgeted this month and not yet received
             - spend: Money in expense envelopes (unspent budget, rollover included)
             - save: Total allocated to goals
-            - available: net_worth + income_due - spend - save (Unassigned)
+            - held: Planned for linked goals and not yet moved to their accounts
+            - available: net_worth + income_due - spend - save - held (Unassigned)
             - state / label: the Unassigned state and the words for it
         """
         from .unassigned import compute_unassigned
@@ -931,6 +984,7 @@ class NetWorthService:
             "income_due": unassigned.income_due,
             "spend": unassigned.envelopes,
             "save": unassigned.goals,
+            "held": unassigned.goals_held,
             "available": unassigned.amount,
             "state": unassigned.state,
             "label": unassigned.label,

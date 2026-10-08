@@ -169,6 +169,8 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "goal_order": None,
                 "goal_outflow": None,
                 "goal_monthly_contribution": None,
+                "goal_plan_from": None,
+                "goal_unmet_plan": None,
             },
             {
                 "account_id": 2,
@@ -201,6 +203,8 @@ class AccentedPayeeUtf8Tests(SimpleTestCase):
                 "goal_order": None,
                 "goal_outflow": None,
                 "goal_monthly_contribution": None,
+                "goal_plan_from": None,
+                "goal_unmet_plan": None,
             },
         ]
         journal_rows = [

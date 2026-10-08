@@ -142,7 +142,12 @@
                   </span>
                 </div>
               </td>
-              <td class="text-right tabular-nums whitespace-nowrap">{{ row.assigned|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">
+                {{ row.assigned|currency }}
+                {% if row.held %}
+                  <span class="block text-xs text-warning" data-testid="bva-goal-held">{% blocktranslate trimmed with amount=row.held|currency %}{{ amount }} still to move{% endblocktranslate %}</span>
+                {% endif %}
+              </td>
               <td class="text-right tabular-nums whitespace-nowrap">{% if row.needed is not None %}{{ row.needed|currency }}{% else %}—{% endif %}</td>
               <td class="text-right tabular-nums whitespace-nowrap {% if not row.spent %}opacity-40{% endif %}">{{ row.spent|currency }}</td>
             </tr>

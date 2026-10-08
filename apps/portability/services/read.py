@@ -51,6 +51,8 @@ from .schema import (
     FORMAT_VERSION,
     GOAL_LINKS_FILE,
     GOAL_OUTFLOWS,
+    GOAL_PLAN_SOURCES,
+    GOAL_UNMET_PLANS,
     JOURNAL_FILE,
     MANIFEST_FILE,
     RECONCILIATION_STATUSES,
@@ -314,6 +316,11 @@ def _validate_enums(accounts: list[dict], journal_rows: list[dict], budget_rows:
             raise DocumentError(
                 f"{ACCOUNTS_FILE}: account_id {row['account_id']} has an unknown goal_outflow '{row['goal_outflow']}'."
             )
+        if row.get("goal_unmet_plan") is not None and row["goal_unmet_plan"] not in GOAL_UNMET_PLANS:
+            raise DocumentError(
+                f"{ACCOUNTS_FILE}: account_id {row['account_id']} has an unknown goal_unmet_plan "
+                f"'{row['goal_unmet_plan']}'."
+            )
 
     for row in journal_rows:
         if row["status"] not in ENTRY_STATUSES:
@@ -333,6 +340,17 @@ def _validate_enums(accounts: list[dict], journal_rows: list[dict], budget_rows:
                 f"{BUDGET_FILE}: row for account_id {row['account_id']}, month {row['month']} has an "
                 f"unknown kind '{row['kind']}'."
             )
+        if row["kind"] == "goal_plan":
+            if row.get("plan_source") not in GOAL_PLAN_SOURCES:
+                raise DocumentError(
+                    f"{BUDGET_FILE}: goal plan for account_id {row['account_id']}, month {row['month']} has an "
+                    f"unknown plan_source '{row.get('plan_source')}'."
+                )
+            if row["amount"] is None or row["amount"] < 0:
+                raise DocumentError(
+                    f"{BUDGET_FILE}: goal plan for account_id {row['account_id']}, month {row['month']} needs an "
+                    "amount of zero or more."
+                )
 
 
 def _validate_journal_row_shape(journal_rows: list[dict]) -> None:

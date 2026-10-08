@@ -18,6 +18,7 @@ from django.utils.translation import gettext as _
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, Account
 
+from . import plans
 from .models import Goal, GoalAccountLink
 
 ZERO = Decimal("0")
@@ -160,6 +161,8 @@ def set_links(goal, rows, today=None):
     today = today or timezone.localdate()
     if rows and (goal.closed_at is not None or goal.is_archived):
         raise LinkError(_("A closed goal can't be linked to an account."))
+    # Links decide whether a month's plan is given or held: past months keep theirs.
+    plans.freeze(goal, today)
     seen = set()
     for row in rows:
         if row.account.pk in seen:
@@ -203,11 +206,13 @@ def unlink(link, today=None):
     today = today or timezone.localdate()
     if link.end_date is not None:
         raise LinkError(_("That account is already unlinked."))
+    plans.freeze(link.goal, today)
     _end(link, today)
 
 
 def end_all(goal, end_date):
     """End every open link of `goal` on `end_date` (closing or archiving the goal)."""
+    plans.freeze(goal, end_date)
     for link in GoalAccountLink.objects.open().filter(goal=goal):
         link.end_date = max(end_date, link.start_date)
         link.save(update_fields=["end_date", "updated_at"])
@@ -347,20 +352,38 @@ ACTIVITY_STARTING = "starting"
 ACTIVITY_IN = "in"
 ACTIVITY_OUT = "out"
 ACTIVITY_SPENT = "spent"
+ACTIVITY_PLANNED = "planned"
 
 
 def goal_activity(goal, limit=100):
     """
-    Everything that moved the goal, newest first: manual allocations (by month),
-    starting balances, each linked line that counted, and spending from the goal's
+    Everything that moved the goal, newest first: planned contributions and manual
+    allocations (by month), starting balances, each linked line that counted, and spending from the goal's
     own account. Each event: date, kind, account (for linked events), payee, memo
     and amount -- its effect on what's left in the goal (spending negative).
     """
     from apps.journal.models import JournalLine, counted_entries
 
     from .linked import linked_lines, starting_balances
+    from .services import goal_monthly
 
     events = []
+    # What the goal's plans gave it, in months no linked account covered
+    # (docs/goal-plans-plan.md §2.2). A linked month's plan gives nothing itself:
+    # the money arriving in the account shows below.
+    for month, cell in goal_monthly(goal.book, [goal]).get(goal.pk, {}).items():
+        if cell["plan_in"]:
+            events.append(
+                {
+                    "date": month,
+                    "kind": ACTIVITY_PLANNED,
+                    "account": None,
+                    "payee": "",
+                    "memo": "",
+                    "amount": cell["plan_in"],
+                    "month_only": True,
+                }
+            )
     for allocation in goal.allocations.exclude(amount=0):
         events.append(
             {

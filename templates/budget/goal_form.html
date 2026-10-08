@@ -99,6 +99,8 @@
             <label class="label">
               <span class="label-text-alt text-error">{{ form.monthly_contribution.errors.0 }}</span>
             </label>
+            {% else %}
+            <p class="text-xs text-base-content/70 mt-1" data-testid="goal-monthly-help">{{ form.monthly_contribution.help_text }}</p>
             {% endif %}
           </div>
         </div>
@@ -182,7 +184,8 @@
             {% endfor %}
           </ul>
 
-          <fieldset class="space-y-2" data-outflow-section data-testid="goal-outflow">
+          <div class="space-y-4" data-outflow-section>
+          <fieldset class="space-y-2" data-testid="goal-outflow">
             <legend class="font-medium mb-1">{% translate "When money moves out of these accounts to your other accounts" %}</legend>
             {% for radio in form.outflow %}
               <label class="flex items-start gap-3 cursor-pointer" for="{{ radio.id_for_label }}">
@@ -203,6 +206,34 @@
               </label>
             {% endfor %}
           </fieldset>
+
+          <fieldset class="space-y-2" data-testid="goal-unmet-plan">
+            <legend class="font-medium mb-1">{% translate "When money you planned hasn't moved by the end of the month" %}</legend>
+            <p class="text-xs text-base-content/70">
+              {% blocktranslate trimmed %}
+                Each month, the plan holds money back from Unassigned until it arrives in these accounts.
+                A transfer counts in the month it's dated.
+              {% endblocktranslate %}
+            </p>
+            {% for radio in form.unmet_plan %}
+              <label class="flex items-start gap-3 cursor-pointer" for="{{ radio.id_for_label }}">
+                <input type="radio" class="radio radio-sm radio-primary shrink-0 mt-0.5" name="{{ radio.data.name }}"
+                       id="{{ radio.id_for_label }}" value="{{ radio.data.value }}" {% if radio.data.selected %}checked{% endif %}
+                       data-testid="goal-unmet-plan-{{ radio.data.value }}">
+                <span class="flex-1 min-w-0">
+                  <span class="block">{{ radio.choice_label }}</span>
+                  <span class="block text-xs text-base-content/70">
+                    {% if radio.data.value == "release" %}
+                      {% translate "Anything not moved goes back to Unassigned, and next month starts fresh." %}
+                    {% else %}
+                      {% translate "The gap carries into next month, and the next money that arrives fills it first. Suits an account you often fund a few days late." %}
+                    {% endif %}
+                  </span>
+                </span>
+              </label>
+            {% endfor %}
+          </fieldset>
+          </div>
 
           <div class="alert hidden" data-link-preview data-testid="goal-link-preview" aria-live="polite"></div>
         {% else %}

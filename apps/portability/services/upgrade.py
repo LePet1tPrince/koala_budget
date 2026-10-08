@@ -103,6 +103,20 @@ def upgrade_6_to_7(tables: dict) -> dict:
     return tables
 
 
+def upgrade_7_to_8(tables: dict) -> dict:
+    """
+    Version 8 added goal plans. Before it no goal planned anything: the import
+    leaves `goal_plan_from` blank and starts each goal planning in the month it is
+    imported (`apps.budget.plans.adopt_goals`), so no earlier month changes.
+    """
+    for row in tables["accounts"]:
+        row.setdefault("goal_plan_from", None)
+        row.setdefault("goal_unmet_plan", None)
+    for row in tables["budget_rows"]:
+        row.setdefault("plan_source", None)
+    return tables
+
+
 # {from_version: fn(tables) -> tables at from_version + 1}
 CHAIN: dict[int, Callable[[dict], dict]] = {
     1: upgrade_1_to_2,
@@ -111,6 +125,7 @@ CHAIN: dict[int, Callable[[dict], dict]] = {
     4: upgrade_4_to_5,
     5: upgrade_5_to_6,
     6: upgrade_6_to_7,
+    7: upgrade_7_to_8,
 }
 
 

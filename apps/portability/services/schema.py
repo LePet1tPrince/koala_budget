@@ -30,7 +30,7 @@ from apps.accounts.models import (
     Payee,
 )
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation, GoalPlan
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.models import Reconciliation
 
@@ -47,7 +47,10 @@ FORMAT = "koala-budget-export"
 # `feed_is_void`/`feed_voided_at`, and the unused archive flags on entries and
 # lines (`entry_is_archived`, `entry_archived_at`, `is_archived`, `archived_at`)
 # are gone. `upgrade_6_to_7` voids the entry behind any archived row.
-FORMAT_VERSION = 7
+# 8: goal plans -- `kind = goal_plan` rows on budget.csv (with `plan_source`),
+# and `goal_plan_from` / `goal_unmet_plan` on accounts.csv. An older archive's
+# goals start planning in the month it is imported (`plans.adopt_goals`).
+FORMAT_VERSION = 8
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
@@ -70,6 +73,9 @@ COLUMNS_ADDED_IN = {
     (ACCOUNTS_FILE, "is_hidden"): 6,
     (JOURNAL_FILE, "feed_is_void"): 7,
     (JOURNAL_FILE, "feed_voided_at"): 7,
+    (ACCOUNTS_FILE, "goal_plan_from"): 8,
+    (ACCOUNTS_FILE, "goal_unmet_plan"): 8,
+    (BUDGET_FILE, "plan_source"): 8,
 }
 
 #: Columns an older archive has that the current format dropped:
@@ -95,11 +101,14 @@ RECONCILIATION_STATUSES = frozenset(dict(Reconciliation.STATUS_CHOICES))
 FEED_SOURCES = frozenset(dict(BankTransaction.SOURCE_CHOICES))
 ACCOUNT_TYPES = frozenset(dict(ACCOUNT_TYPE_CHOICES))
 GOAL_OUTFLOWS = frozenset(dict(Goal.OUTFLOW_CHOICES))
+GOAL_UNMET_PLANS = frozenset(dict(Goal.UNMET_PLAN_CHOICES))
+GOAL_PLAN_SOURCES = frozenset(dict(GoalPlan.SOURCE_CHOICES))
 
-# budget.csv's `kind` column: which of the two models a row represents.
+# budget.csv's `kind` column: which of the three models a row represents.
 KIND_BUDGET = "budget"
 KIND_GOAL = "goal"
-BUDGET_ROW_KINDS = frozenset({KIND_BUDGET, KIND_GOAL})
+KIND_GOAL_PLAN = "goal_plan"
+BUDGET_ROW_KINDS = frozenset({KIND_BUDGET, KIND_GOAL, KIND_GOAL_PLAN})
 
 # Columns that exist in a file for a human to read but are not any model's own
 # data -- the importer parses the id column next to them and ignores these.
@@ -464,6 +473,9 @@ GOAL = FieldMap(
         # Blank on an account that backs no goal, hence _OR_NONE.
         "outflow": ColumnSpec("goal_outflow", KIND_STR_OR_NONE),
         "monthly_contribution": ColumnSpec("goal_monthly_contribution", KIND_DECIMAL),
+        "plan_from": ColumnSpec("goal_plan_from", KIND_DATE),
+        # Blank on an account that backs no goal, hence _OR_NONE.
+        "unmet_plan": ColumnSpec("goal_unmet_plan", KIND_STR_OR_NONE),
     },
     omitted={
         "id": "a goal has no handle of its own; it is identified by the account it backs (§2.1)",
@@ -505,6 +517,8 @@ ACCOUNTS_COLUMNS = (
     Column("goal_order", KIND_INT),
     Column("goal_outflow", KIND_STR_OR_NONE),
     Column("goal_monthly_contribution", KIND_DECIMAL),
+    Column("goal_plan_from", KIND_DATE),
+    Column("goal_unmet_plan", KIND_STR_OR_NONE),
 )
 
 # --- journal.csv --------------------------------------------------------
@@ -628,8 +642,8 @@ JOURNAL_COLUMNS = (
 
 # --- budget.csv ---------------------------------------------------------
 #
-# One row per monthly amount -- a Budget row or a GoalAllocation, told apart
-# by `kind` (§2.1). A GoalAllocation's target is a Goal, identified the same
+# One row per monthly amount -- a Budget row, a GoalAllocation or a GoalPlan,
+# told apart by `kind` (§2.1). A GoalAllocation's target is a Goal, identified the same
 # way a Goal is everywhere else in this format: by the account_id of the
 # equity account backing it.
 
@@ -672,6 +686,26 @@ GOAL_ALLOCATION = FieldMap(
     },
 )
 
+GOAL_PLAN = FieldMap(
+    model=GoalPlan,
+    columns={
+        # A goal is identified by its account everywhere in this format (§2.1).
+        "goal": ColumnSpec("account_id", KIND_INT, read=lambda plan: plan.goal.account_id),
+        "month": ColumnSpec("month", KIND_DATE),
+        "amount": ColumnSpec("amount", KIND_DECIMAL),
+        "source": ColumnSpec("plan_source", KIND_STR_OR_NONE),
+        "is_archived": ColumnSpec("is_archived", KIND_BOOL),
+        "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
+    },
+    omitted={
+        "id": "no cross-reference needs a handle; identified by (kind=goal_plan, account_id, month), which is "
+        "already unique (GoalPlan.Meta.unique_together)",
+        "book": _TENANT,
+        "created_at": _TIMESTAMP,
+        "updated_at": _TIMESTAMP,
+    },
+)
+
 BUDGET_COLUMNS = (
     Column("kind", KIND_STR),
     Column("month", KIND_DATE),
@@ -679,6 +713,7 @@ BUDGET_COLUMNS = (
     Column("account_name", KIND_STR),
     Column("amount", KIND_DECIMAL),
     Column("notes", KIND_STR),
+    Column("plan_source", KIND_STR_OR_NONE),
     Column("is_archived", KIND_BOOL),
     Column("archived_at", KIND_DATETIME),
 )
@@ -777,6 +812,7 @@ FIELD_MAPS = (
     BANK_TRANSACTION,
     BUDGET,
     GOAL_ALLOCATION,
+    GOAL_PLAN,
     RECONCILIATION,
     GOAL_LINK,
 )
@@ -795,6 +831,7 @@ ROW_COMPOSITIONS = {
     BUDGET_FILE: (
         (BUDGET,),
         (GOAL_ALLOCATION,),
+        (GOAL_PLAN,),
     ),
     RECONCILIATIONS_FILE: ((RECONCILIATION,),),
     GOAL_LINKS_FILE: ((GOAL_LINK,),),

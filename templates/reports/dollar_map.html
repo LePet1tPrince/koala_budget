@@ -56,6 +56,11 @@
           {% blocktranslate trimmed with amount=unassigned.goals_overspent|currency %}{{ amount }} overspent, already spent{% endblocktranslate %}
         </div>
       {% endif %}
+      {% if unassigned.goals_held %}
+        <div class="stat-desc" data-testid="dollar-map-held">
+          {% blocktranslate trimmed with amount=unassigned.goals_held|currency %}+ {{ amount }} waiting to move to goals{% endblocktranslate %}
+        </div>
+      {% endif %}
     </div>
     <div class="stat py-3">
       <div class="stat-title">{{ unassigned.label }}</div>
@@ -77,6 +82,11 @@
         <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-accent inline-block"></span>{% translate "Goals" %}</h3>
         <span class="money text-sm font-semibold">{{ unassigned.goals|currency }}</span>
       </div>
+      {% if unassigned.goals_held %}
+        <p class="text-xs text-base-content/70 -mt-1 mb-2">
+          {% blocktranslate trimmed with amount=unassigned.goals_held|currency %}+ {{ amount }} planned, waiting to move to linked accounts{% endblocktranslate %}
+        </p>
+      {% endif %}
       <ul class="space-y-1 text-sm">
         {% for goal in goals %}
           <li class="flex justify-between gap-2">
@@ -84,6 +94,12 @@
             <span class="money {% if goal.amount < 0 %}text-error{% endif %}"
                   {% if goal.spent %}title="{% blocktranslate trimmed with allocated=goal.allocated|currency spent=goal.spent|currency %}{{ allocated }} allocated − {{ spent }} spent{% endblocktranslate %}"{% endif %}>{{ goal.amount|currency }}{% if goal.amount < 0 %} · {% translate "overspent" %}{% endif %}</span>
           </li>
+          {% if goal.held %}
+            <li class="flex justify-between gap-2 pl-3 text-xs text-base-content/70" data-testid="dollar-map-goal-held">
+              <span>{% translate "waiting to move" %}</span>
+              <span class="money">{{ goal.held|currency }}</span>
+            </li>
+          {% endif %}
         {% empty %}
           <li class="text-base-content/70">
             {% url 'budget:goals_list' request.team.slug request.book.slug as goals_url %}

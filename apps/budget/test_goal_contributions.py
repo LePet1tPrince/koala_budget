@@ -21,7 +21,8 @@ from apps.users.models import CustomUser
 
 from . import goal_links
 from .forms import GoalForm
-from .models import Goal, GoalAccountLink, GoalAllocation
+from .models import Goal, GoalAccountLink, GoalAllocation, GoalPlan
+from .plans import planned_for
 from .services import PLAN_BEHIND, PLAN_ON_TRACK, GoalAllocationError, GoalService, goal_plan
 from .views import _goal_card_progress
 
@@ -158,9 +159,22 @@ class OpenEndedGoalTest(Fixture):
 
     @mock.patch("apps.budget.services.timezone.localdate", return_value=date(2026, 9, 15))
     def test_on_track_once_this_month_is_in_and_never_behind_mid_month(self, _today):
-        self.assertIsNone(goal_plan(self.open_goal(), SEPT)["status"])
+        # Planned from September, the goal is given its contribution on the 1st
+        # (docs/goal-plans-plan.md §2.2): on track from the start.
+        goal = self.open_goal()
+        self.assertEqual(goal.saved_this_month, D("200"))
+        self.assertEqual(goal_plan(goal, SEPT, planned_for([goal], SEPT)[goal.pk])["status"], PLAN_ON_TRACK)
+        # Planned 0 this month: nothing asked, so no status.
         Goal.objects.filter(name="RESP").delete()
-        self.assertEqual(goal_plan(self.open_goal("200"), SEPT)["status"], PLAN_ON_TRACK)
+        goal = self.open_goal()
+        GoalPlan.objects.create(book=self.book, goal=goal, month=SEPT, amount=D("0"))
+        self.assertIsNone(goal_plan(goal, SEPT, planned_for([goal], SEPT)[goal.pk])["status"])
+        # A month with no plan (before the goal planned anything) measures the contribution.
+        Goal.objects.filter(name="RESP").delete()
+        goal = self.open_goal()
+        Goal.objects.filter(pk=goal.pk).update(plan_from=OCT)
+        goal = Goal.objects.filter(pk=goal.pk).with_progress(SEPT).get()
+        self.assertIsNone(goal_plan(goal, SEPT, planned_for([goal], SEPT)[goal.pk])["status"])
 
     @mock.patch("apps.budget.services.timezone.localdate", return_value=date(2026, 10, 15))
     def test_a_past_month_without_the_contribution_is_behind(self, _today):

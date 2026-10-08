@@ -23,6 +23,7 @@ TOP_LEVEL_KEYS = {
     "cat_txns",
     "net_worth",
     "goal_spending",
+    "goal_plans_unmet",
     "insights",
     "notes",
 }
