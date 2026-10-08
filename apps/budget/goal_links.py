@@ -24,7 +24,13 @@ ZERO = Decimal("0")
 
 
 class LinkError(ValueError):
-    """A link the user asked for that can't be made. The message is shown as is."""
+    """A link the user asked for that can't be made. The message is shown as is;
+    `goal` is the other goal standing in the way, when there is one, so the form
+    can link to it."""
+
+    def __init__(self, message, goal=None):
+        super().__init__(message)
+        self.goal = goal
 
 
 @dataclass(frozen=True)
@@ -85,7 +91,8 @@ def _check_row(goal, row, today, existing=None):
     if taken is not None:
         raise LinkError(
             _("%(account)s already feeds %(goal)s. Unlink it there first.")
-            % {"account": account, "goal": taken.goal.name}
+            % {"account": account, "goal": taken.goal.name},
+            goal=taken.goal,
         )
 
     # An account's links never overlap: a new range starts after the last one ended.
@@ -102,7 +109,8 @@ def _check_row(goal, row, today, existing=None):
                 "goal": previous.goal.name,
                 "end": _day(previous.end_date),
                 "start": _day(earliest),
-            }
+            },
+            goal=previous.goal,
         )
     # The future is refused, except the day after a link that ended today: a goal
     # closed today holds the account through today, and the next can take over tomorrow.

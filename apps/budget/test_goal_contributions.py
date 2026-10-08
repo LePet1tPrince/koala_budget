@@ -386,3 +386,37 @@ class GoalDeleteTest(Fixture):
         self.client.login(username="stranger2@example.com", password="pass12345")
         self.client.post(self.url())
         self.assertTrue(Goal.objects.filter(pk=self.car.pk).exists())
+
+
+class ArchivedGoalsAreReachableTest(Fixture):
+    """An archived goal holds its name and its accounts' history, so it must be findable."""
+
+    def test_closed_view_lists_archived_goals_even_without_closed_at(self):
+        # Archived before archiving closed goals: no closed_at.
+        Goal.objects.create(book=self.book, name="Retirement", target_amount=D("1"), is_archived=True)
+        page = self.client.get(reverse("budget:goals_list", args=self.book.url_args) + "?show=closed&month=2026-10-01")
+        self.assertContains(page, "Retirement")
+        self.assertContains(page, 'data-testid="closed-goal-archived"')
+        self.assertEqual(page.context["closed_count"], 1)
+        open_page = self.client.get(reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-10-01")
+        self.assertNotContains(open_page, 'data-testid="closed-goal-archived"')
+
+    def test_link_errors_link_to_the_goal_in_the_way(self):
+        retirement = Goal.objects.create(book=self.book, name="Retirement", target_amount=D("1"), is_archived=True)
+        GoalAccountLink.objects.create(
+            book=self.book, goal=retirement, account=self.savings, start_date=AUG, end_date=date(2026, 9, 30)
+        )
+        response = self.client.post(
+            reverse("budget:goal_create", args=self.book.url_args),
+            {
+                "name": "Retirement 2",
+                "monthly_contribution": "100",
+                "outflow": "withdraw",
+                "link_account": str(self.savings.pk),
+                f"link_start_{self.savings.pk}": "2026-08-01",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "counted towards Retirement through Sep 30, 2026")
+        self.assertContains(response, reverse("budget:goal_detail", args=[*self.book.url_args, retirement.pk]))
+        self.assertContains(response, 'data-testid="goal-link-error-goal"')

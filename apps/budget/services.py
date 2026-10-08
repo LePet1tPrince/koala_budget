@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, ngettext
@@ -414,13 +414,22 @@ class GoalService:
         Goals with their allocated/spent/left annotations as of `month`.
 
         `closed`: False (default) for open goals only, True for closed ones only,
-        None for both.
+        None for both. Closed ones include every archived goal -- an archived goal
+        is finished with, and one archived before archiving closed goals has no
+        `closed_at`; left out, it would hold its name and its accounts' history
+        with no page to find it from.
         """
         qs = Goal.objects.filter(book=self.book)
+        if closed is True:
+            return (
+                qs.filter(Q(closed_at__isnull=False) | Q(is_archived=True))
+                .with_progress(month)
+                .select_related("account")
+            )
         if not include_archived:
             qs = qs.filter(is_archived=False)
         if closed is not None:
-            qs = qs.filter(closed_at__isnull=not closed)
+            qs = qs.filter(closed_at__isnull=True)
         return qs.with_progress(month).select_related("account")
 
     def get_goal_summary(self, month, closed=False):

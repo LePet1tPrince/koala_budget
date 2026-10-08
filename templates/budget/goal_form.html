@@ -118,7 +118,15 @@
         </div>
 
         {% if link_error %}
-          <div class="alert alert-error" role="alert" data-testid="goal-link-error">{{ link_error }}</div>
+          <div class="alert alert-error" role="alert" data-testid="goal-link-error">
+            <span>{{ link_error }}</span>
+            {% if link_error_goal %}
+              <a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=link_error_goal.pk %}"
+                 class="link font-medium" data-testid="goal-link-error-goal">
+                {% blocktranslate trimmed with name=link_error_goal.name %}Open “{{ name }}”{% endblocktranslate %}
+              </a>
+            {% endif %}
+          </div>
         {% endif %}
 
         {% if link_options %}
@@ -144,6 +152,8 @@
                         {% blocktranslate trimmed with goal=option.previous.goal.name date=option.previous.end_date|date:"M j, Y" %}
                           Counted towards {{ goal }} through {{ date }}. Delete that goal to count its earlier history here.
                         {% endblocktranslate %}
+                        <a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=option.previous.goal.pk %}"
+                           class="link link-primary" data-testid="goal-link-previous-goal">{% translate "Open it" %}</a>
                       </span>
                     {% endif %}
                   </span>

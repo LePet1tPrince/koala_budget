@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -879,7 +879,9 @@ def goals_list_view(request, team_slug, book_slug):
     service = GoalService(request.book)
     summary = service.get_goal_summary(month, closed=show_closed)
     goals = summary["goals"]
-    closed_count = Goal.objects.filter(book=request.book, is_archived=False, closed_at__isnull=False).count()
+    closed_count = (
+        Goal.objects.filter(book=request.book).filter(Q(closed_at__isnull=False) | Q(is_archived=True)).count()
+    )
 
     # What each goal was given per month (assigned + from linked accounts);
     # used for streaks and pace.
@@ -1317,13 +1319,14 @@ def _goal_form_view(request, goal=None):
     is_new = goal is None
     book = request.book
     link_error = None
+    link_error_goal = None
     if request.method == "POST":
         form = GoalForm(request.POST, instance=goal, book=book)
         outflow_before = None if is_new else goal.outflow
         try:
             rows = goal_links.parse_link_rows(book, request.POST)
         except goal_links.LinkError as e:
-            rows, link_error = None, str(e)
+            rows, link_error, link_error_goal = None, str(e), e.goal
         if form.is_valid() and link_error is None:
             try:
                 with transaction.atomic():
@@ -1332,7 +1335,7 @@ def _goal_form_view(request, goal=None):
                     saved.save()
                     changes = goal_links.set_links(saved, rows)
             except goal_links.LinkError as e:
-                link_error = str(e)
+                link_error, link_error_goal = str(e), e.goal
                 if is_new:
                     # The rolled-back save left a pk on the unsaved instance.
                     form.instance.pk = None
@@ -1369,6 +1372,9 @@ def _goal_form_view(request, goal=None):
             "is_new": is_new,
             "link_options": options,
             "link_error": link_error,
+            # Another goal standing in the way, to link to (it may be archived, and
+            # so on no list).
+            "link_error_goal": link_error_goal,
             "any_linked": any(option["checked"] for option in options),
             "form_props": form_props,
         },
