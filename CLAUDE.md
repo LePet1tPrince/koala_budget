@@ -271,6 +271,8 @@ deploy/            # Docker Compose and DigitalOcean configs
 
 - Budget: moving a transaction to another category from the Actual popover (`ActualTooltip.jsx`) now repaints **Available**, the progress meters, group/section totals, the sidebar and the net-worth card — previously only the two Actual figures changed. New `GET budget/figures/?month=` (`budget:budget_figures`, isolation `READS`) returns the same `cells` as `budget_save_amount`; after a successful move or Undo the popover dispatches `budget:actuals-changed` on `document`, and `budget-autosave.js` re-reads the figures and paints them, sharing the save tickets so whichever request was sent last wins. Tests: `BudgetFiguresViewTest`.
 
+- Date range picker: **All time** preset in the shared `common/DateRangePicker.jsx`. Without an `allTimeStart` prop it applies an empty range (no date filter — Transactions, Bank Feed); with one it applies `allTimeStart` → today. Report pages need concrete dates, so their mount point (`#date-range-picker` in the income statement, account activity, Income & Spending and account detail templates) carries `data-all-time-start="{% first_entry_date request.book %}"` (new `apps/journal/templatetags/journal_tags.py`: the book's earliest counted entry date, `""` when empty — `ReportsDateRangePicker` then falls back to the start of this month).
+
 ---
 
 ## Known Issues

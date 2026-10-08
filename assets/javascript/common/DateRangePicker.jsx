@@ -40,9 +40,12 @@ const presetRanges = [
   { label: 'Last month', value: 'lastMonth' },
   { label: 'This year', value: 'thisYear' },
   { label: 'Last year', value: 'lastYear' },
+  { label: 'All time', value: 'allTime' },
 ];
 
-const getPresetRange = (value) => {
+// `allTimeStart` (yyyy-MM-dd) bounds "All time" for pages that need a concrete
+// range; without it "All time" means no date filter at all.
+const getPresetRange = (value, allTimeStart) => {
   const now = new Date();
   switch (value) {
     case 'last7days':
@@ -61,12 +64,16 @@ const getPresetRange = (value) => {
       const d = subYears(now, 1);
       return { start: startOfYear(d), end: endOfYear(d) };
     }
+    case 'allTime': {
+      const start = safeParseISO(allTimeStart);
+      return start ? { start, end: now } : { start: null, end: null };
+    }
     default:
       return { start: null, end: null };
   }
 };
 
-const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
+const DateRangePicker = ({ startDate, endDate, onApply, preset, allTimeStart }) => {
   const [tempStart, setTempStart] = useState(startDate || '');
   const [tempEnd, setTempEnd] = useState(endDate || '');
   const [activeRange, setActiveRange] = useState(preset || '');
@@ -82,14 +89,14 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
   // A `preset` with no dates yet means "apply this range on mount".
   useEffect(() => {
     if (preset && !startDate && !endDate) {
-      const { start, end } = getPresetRange(preset);
+      const { start, end } = getPresetRange(preset, allTimeStart);
       if (start && end) {
         setTempStart(safeFormat(start));
         setTempEnd(safeFormat(end));
         onApply(safeFormat(start), safeFormat(end));
       }
     }
-  }, [preset, startDate, endDate, onApply]);
+  }, [preset, startDate, endDate, onApply, allTimeStart]);
 
   const editedValue = editing === 'start' ? tempStart : tempEnd;
   const editedDate = safeParseISO(editedValue);
@@ -104,7 +111,7 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset }) => {
 
   const handlePresetClick = (value) => {
     setActiveRange(value);
-    const { start, end } = getPresetRange(value);
+    const { start, end } = getPresetRange(value, allTimeStart);
     setTempStart(safeFormat(start));
     setTempEnd(safeFormat(end));
     setEditing('start');
