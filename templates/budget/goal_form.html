@@ -38,6 +38,12 @@
           {% if form.name.errors %}
           <label class="label">
             <span class="label-text-alt text-error">{{ form.name.errors.0 }}</span>
+            {% if form.name_clash %}
+              <a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=form.name_clash.pk %}"
+                 class="label-text-alt link link-primary" data-testid="goal-name-clash-link">
+                {% blocktranslate trimmed with name=form.name_clash.name %}Open “{{ name }}”{% endblocktranslate %}
+              </a>
+            {% endif %}
           </label>
           {% endif %}
         </div>
@@ -132,6 +138,12 @@
                     {% if option.feeds %}
                       <span class="block text-xs text-base-content/70">
                         {% blocktranslate trimmed with goal=option.feeds %}Feeds {{ goal }}{% endblocktranslate %}
+                      </span>
+                    {% elif option.previous %}
+                      <span class="block text-xs text-base-content/70" data-testid="goal-link-previous">
+                        {% blocktranslate trimmed with goal=option.previous.goal.name date=option.previous.end_date|date:"M j, Y" %}
+                          Counted towards {{ goal }} through {{ date }}. Delete that goal to count its earlier history here.
+                        {% endblocktranslate %}
                       </span>
                     {% endif %}
                   </span>

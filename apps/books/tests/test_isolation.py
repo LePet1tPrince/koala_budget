@@ -139,6 +139,7 @@ OBJECTS = {
     "budget:goal_detail": ("goal", "pk", "get"),
     "budget:goal_update": ("goal", "pk", "get"),
     "budget:goal_delete": ("goal", "pk", "post"),
+    "budget:goal_destroy": ("goal", "pk", "post"),
     "budget:goal_allocate": ("goal", "pk", "post"),
     "budget:goal_assign_available": ("goal", "pk", "post"),
     "budget:goal_withdraw": ("goal", "pk", "post"),

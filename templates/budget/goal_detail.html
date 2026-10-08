@@ -37,6 +37,7 @@
         <a href="{% url 'budget:goal_delete' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}" class="btn btn-outline btn-warning btn-sm">
           {% translate "Archive" %}
         </a>
+        {% include "budget/components/goal_delete_form.html" %}
       </div>
     </div>
 

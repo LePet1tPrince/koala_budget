@@ -161,6 +161,7 @@ class GoalForm(forms.ModelForm):
         # `book` is not a form field, so ModelForm's own unique check skips the
         # (book, name) constraint; clean_name enforces it.
         self.book = book
+        self.name_clash = None
         super().__init__(*args, **kwargs)
         # Only meaningful with a linked account; a form without the choice keeps
         # what the goal has (the model default for a new one).
@@ -177,8 +178,12 @@ class GoalForm(forms.ModelForm):
         taken = Goal.objects.filter(book=book, name=name).exclude(pk=self.instance.pk).first()
         if taken is None:
             return name
+        # The template links to it: deleting it is the other way to free the name.
+        self.name_clash = taken
         if taken.is_archived:
-            message = _("You have an archived goal named “%(name)s”. Pick another name.")
+            message = _("You have an archived goal named “%(name)s”. Pick another name, or delete that goal.")
+        elif taken.is_closed:
+            message = _("You have a closed goal named “%(name)s”. Pick another name, or delete that goal.")
         else:
             message = _("You already have a goal named “%(name)s”. Pick another name.")
         raise forms.ValidationError(message % {"name": name})

@@ -32,6 +32,7 @@ from .services import (
     BudgetService,
     GoalAllocationError,
     GoalCloseError,
+    GoalDeleteError,
     GoalService,
     NetWorthService,
     budgeted_account_types,
@@ -1401,6 +1402,7 @@ def goal_detail_view(request, team_slug, book_slug, pk):
             "activity": goal_links.goal_activity(goal),
             # A closed goal's history includes its own release; it stays as written.
             "can_edit_contributions": not goal.is_closed and not goal.is_archived,
+            "delete_blocked": GoalService(request.book).delete_blocked_reason(goal),
             "spending": GoalService(request.book).spending_lines(goal, limit=50),
             "drift": goal_links.link_drift(goal, goal.left),
             "spending_url": _goal_spending_url(goal, request.book),
@@ -1533,6 +1535,25 @@ def goal_contribution_edit(request, team_slug, book_slug, allocation_pk):
             % {"month": month_label, "old": currency(old), "new": currency(amount)},
         )
     return back
+
+
+@login_and_book_required
+@require_POST
+def goal_destroy(request, team_slug, book_slug, pk):
+    """
+    Delete a goal for good -- open, closed or archived -- with its contributions
+    and account links, freeing its name and its accounts' history. Refused while
+    transactions are categorized to it.
+    """
+    goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
+    try:
+        summary = GoalService(request.book).delete(goal)
+    except GoalDeleteError as e:
+        messages.error(request, str(e))
+        return redirect("budget:goal_detail", *request.book.url_args, pk)
+    log_event(AuditEvent.GOAL_DELETED, request=request, metadata={"goal_id": pk, **summary})
+    messages.success(request, _("Deleted %(goal)s.") % {"goal": summary["goal_name"]})
+    return redirect("budget:goals_list", *request.book.url_args)
 
 
 @login_and_book_required

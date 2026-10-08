@@ -19,6 +19,7 @@ from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
 
+from . import goal_links
 from .forms import GoalForm
 from .models import Goal, GoalAccountLink, GoalAllocation
 from .services import PLAN_BEHIND, PLAN_ON_TRACK, GoalAllocationError, GoalService, goal_plan
@@ -82,7 +83,11 @@ class GoalNameTest(Fixture):
         Goal.objects.create(book=self.book, name="Retirement", target_amount=D("1"), is_archived=True)
         form = self.form("Retirement")
         self.assertFalse(form.is_valid())
-        self.assertEqual(form.errors["name"], ["You have an archived goal named “Retirement”. Pick another name."])
+        self.assertEqual(
+            form.errors["name"],
+            ["You have an archived goal named “Retirement”. Pick another name, or delete that goal."],
+        )
+        self.assertEqual(form.name_clash.name, "Retirement")
 
     def test_surrounding_spaces_do_not_dodge_the_check(self):
         self.assertFalse(self.form("  Car ").is_valid())
@@ -101,7 +106,10 @@ class GoalNameTest(Fixture):
             {"name": "Retirement", "target_amount": "100", "outflow": "withdraw"},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "You have an archived goal named “Retirement”. Pick another name.")
+        self.assertContains(
+            response, "You have an archived goal named “Retirement”. Pick another name, or delete that goal."
+        )
+        self.assertContains(response, 'data-testid="goal-name-clash-link"')
         self.assertEqual(Goal.objects.filter(book=self.book, name="Retirement").count(), 1)
 
 
@@ -278,3 +286,103 @@ class ContributionEditTest(Fixture):
         response = self.client.post(self.url(self.aug), {"action": "undo"})
         self.assertIn(response.status_code, (302, 403, 404))
         self.assertTrue(GoalAllocation.objects.filter(pk=self.aug.pk).exists())
+
+
+class RelinkAfterCloseTest(Fixture):
+    """Closing a goal ends its links today; the account must be linkable again."""
+
+    TODAY = date(2026, 10, 8)
+
+    def close_retirement(self):
+        retirement = Goal.objects.create(book=self.book, name="Retirement", target_amount=D("1000"))
+        GoalAccountLink.objects.create(book=self.book, goal=retirement, account=self.savings, start_date=AUG)
+        goal_links.end_all(retirement, self.TODAY)  # what closing it today does to its links
+        Goal.objects.filter(pk=retirement.pk).update(closed_at="2026-10-08T12:00:00Z")
+        retirement.refresh_from_db()
+        return retirement
+
+    def test_same_day_relink_starts_tomorrow_by_default(self):
+        self.close_retirement()
+        new = Goal.objects.create(book=self.book, name="Retirement 2", target_amount=D("1000"))
+        start = goal_links.default_start(self.savings, self.TODAY)
+        self.assertEqual(start, date(2026, 10, 9))
+        goal_links.set_links(new, [goal_links.LinkRow(self.savings, start)], today=self.TODAY)
+        self.assertTrue(GoalAccountLink.objects.open().filter(goal=new, account=self.savings).exists())
+
+    def test_overlap_names_the_goal_and_the_earliest_date(self):
+        self.close_retirement()
+        new = Goal.objects.create(book=self.book, name="Retirement 2", target_amount=D("1000"))
+        with self.assertRaisesMessage(
+            goal_links.LinkError,
+            "counted towards Retirement through Oct 8, 2026, so here it can count from Oct 9, 2026",
+        ):
+            goal_links.set_links(new, [goal_links.LinkRow(self.savings, self.TODAY)], today=self.TODAY)
+
+    def test_further_future_is_still_refused(self):
+        self.close_retirement()
+        new = Goal.objects.create(book=self.book, name="Retirement 2", target_amount=D("1000"))
+        with self.assertRaisesMessage(goal_links.LinkError, "can't be in the future"):
+            goal_links.set_links(new, [goal_links.LinkRow(self.savings, date(2026, 10, 10))], today=self.TODAY)
+
+    def test_the_form_shows_the_previous_goal_and_defaults_past_it(self):
+        self.close_retirement()
+        with mock.patch("apps.budget.goal_links.timezone.localdate", return_value=self.TODAY):
+            page = self.client.get(reverse("budget:goal_create", args=self.book.url_args))
+        self.assertContains(page, 'data-testid="goal-link-previous"')
+        self.assertContains(page, 'value="2026-10-09"')
+
+    def test_deleting_the_closed_goal_frees_the_history(self):
+        retirement = self.close_retirement()
+        GoalService(self.book).delete(retirement)
+        new = Goal.objects.create(book=self.book, name="Retirement", target_amount=D("1000"))
+        goal_links.set_links(new, [goal_links.LinkRow(self.savings, AUG)], today=self.TODAY)
+
+
+class GoalDeleteTest(Fixture):
+    def url(self, goal=None):
+        return reverse("budget:goal_destroy", args=[*self.book.url_args, (goal or self.car).pk])
+
+    def test_delete_removes_the_goal_its_contributions_links_and_account(self):
+        GoalAccountLink.objects.create(book=self.book, goal=self.car, account=self.savings, start_date=SEPT)
+        account_pk = self.car.account_id
+        response = self.client.post(self.url())
+        self.assertRedirects(response, reverse("budget:goals_list", args=self.book.url_args))
+        self.assertFalse(Goal.objects.filter(pk=self.car.pk).exists())
+        self.assertFalse(GoalAllocation.objects.filter(goal_id=self.car.pk).exists())
+        self.assertFalse(GoalAccountLink.objects.filter(goal_id=self.car.pk).exists())
+        self.assertFalse(Account.objects.filter(pk=account_pk).exists())
+        event = AuditEvent.objects.get(event_type=AuditEvent.GOAL_DELETED)
+        self.assertEqual(event.metadata["goal_name"], "Car")
+        self.assertEqual(event.metadata["linked_accounts"], ["RRSP"])
+
+    def test_what_was_left_returns_to_unassigned(self):
+        from .unassigned import compute_unassigned
+
+        before = compute_unassigned(self.book, OCT).amount
+        GoalService(self.book).delete(self.car)
+        self.assertEqual(compute_unassigned(self.book, OCT).amount, before + D("1500"))
+
+    def test_closed_and_archived_goals_can_be_deleted_and_free_their_name(self):
+        GoalService(self.book).close(self.car, OCT)
+        Goal.objects.filter(pk=self.car.pk).update(is_archived=True)
+        self.client.post(self.url())
+        self.assertTrue(GoalForm({"name": "Car", "target_amount": "1"}, book=self.book).is_valid())
+
+    def test_refused_while_transactions_are_categorized_to_it(self):
+        self.post(date(2026, 9, 10), self.car.account, self.checking, "200")
+        response = self.client.post(self.url(), follow=True)
+        self.assertContains(response, "1 transaction is categorized to Car")
+        self.assertTrue(Goal.objects.filter(pk=self.car.pk).exists())
+        page = self.client.get(reverse("budget:goal_detail", args=[*self.book.url_args, self.car.pk]))
+        self.assertContains(page, 'data-testid="goal-delete-blocked"')
+
+    def test_the_goal_page_offers_delete(self):
+        page = self.client.get(reverse("budget:goal_detail", args=[*self.book.url_args, self.car.pk]))
+        self.assertContains(page, 'data-testid="goal-delete-confirm"')
+
+    def test_get_is_refused_and_strangers_cannot_delete(self):
+        self.assertEqual(self.client.get(self.url()).status_code, 405)
+        CustomUser.objects.create_user(username="stranger2@example.com", password="pass12345")
+        self.client.login(username="stranger2@example.com", password="pass12345")
+        self.client.post(self.url())
+        self.assertTrue(Goal.objects.filter(pk=self.car.pk).exists())

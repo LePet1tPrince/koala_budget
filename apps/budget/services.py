@@ -8,7 +8,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from django.utils.translation import gettext as _
-from django.utils.translation import gettext_lazy
+from django.utils.translation import gettext_lazy, ngettext
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
 from apps.budget.models import Budget, Goal, GoalAllocation
@@ -399,6 +399,10 @@ class GoalAllocationError(ValueError):
     """A past contribution can't be changed as asked; the message says why."""
 
 
+class GoalDeleteError(ValueError):
+    """A goal can't be deleted; the message says why and what to do instead."""
+
+
 class GoalService:
     """Service class for goal-related calculations and queries."""
 
@@ -572,6 +576,50 @@ class GoalService:
             }
             for line in lines
         ]
+
+    def delete_blocked_reason(self, goal):
+        """Why `goal` can't be deleted, or None. Transactions categorized to its account
+        would lose their category (the journal protects its accounts)."""
+        if not goal.account_id:
+            return None
+        count = JournalLine.objects.filter(account_id=goal.account_id).count()
+        if not count:
+            return None
+        return ngettext(
+            "%(count)d transaction is categorized to %(goal)s. Move it to another category first, "
+            "or close the goal instead.",
+            "%(count)d transactions are categorized to %(goal)s. Move them to another category first, "
+            "or close the goal instead.",
+            count,
+        ) % {"count": count, "goal": goal.name}
+
+    @transaction.atomic
+    def delete(self, goal):
+        """
+        Delete a goal as if it never existed: its contributions, its links to accounts
+        (so those accounts' history is free for another goal) and its backing account.
+        Whatever it had left goes back to Unassigned, since nothing claims it any more.
+
+        Refused while transactions are categorized to it (`delete_blocked_reason`).
+        Returns a summary for the audit log.
+        """
+        goal = Goal.objects.select_for_update().get(pk=goal.pk)
+        reason = self.delete_blocked_reason(goal)
+        if reason:
+            raise GoalDeleteError(reason)
+        numbers = Goal.objects.filter(pk=goal.pk).with_progress().values("allocated", "left").get()
+        summary = {
+            "goal_name": goal.name,
+            "allocated": str(numbers["allocated"] or Decimal("0")),
+            "left": str(numbers["left"] or Decimal("0")),
+            "contributions": goal.allocations.count(),
+            "linked_accounts": sorted({link.account.name for link in goal.account_links.select_related("account")}),
+        }
+        account = goal.account
+        goal.delete()  # allocations and links go with it
+        if account is not None:
+            account.delete()
+        return summary
 
     @transaction.atomic
     def close(self, goal, month, cover=False):
