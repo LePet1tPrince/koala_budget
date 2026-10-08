@@ -10,6 +10,7 @@ services:
       - POSTGRES_PASSWORD=postgres
     ports:
       - "5432:5432"
+    restart: unless-stopped
     healthcheck:
       test: pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
       interval: 2s
@@ -22,6 +23,7 @@ services:
       - redis_data:/data
     ports:
       - "6379:6379"
+    restart: unless-stopped
     healthcheck:
       test: bash -c 'exec 6<>/dev/tcp/redis/6379'
       interval: 2s
