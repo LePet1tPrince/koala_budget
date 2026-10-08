@@ -58,15 +58,26 @@
   `menu-active` paints a full neutral slab, which against the canvas was the
   highest-contrast element on the screen.
 */
+/*
+  In the desktop sidebar a group's sub-items live in a popout that is closed
+  most of the time, so the parent also reads as active when the current page
+  is one of its sub-items (e.g. the Budget row on the Goals page).
+*/
 .side-link-active {
   @apply bg-primary/10 font-medium text-primary hover:bg-primary/10 hover:text-primary;
+}
+
+/* No background here: the row carries it (see `.side-row` below). */
+[data-nav-flyout] .side-group:has(> .side-sub .side-link-active) > .side-row > .side-link {
+  @apply font-medium text-primary hover:text-primary;
 }
 
 .side-link-active > i {
   @apply text-primary;
 }
 
-.side-link-active::before {
+.side-link-active::before,
+[data-nav-flyout] .side-group:has(> .side-sub .side-link-active) > .side-row > .side-link::before {
   content: '';
   @apply absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary;
 }
@@ -90,8 +101,14 @@
 }
 
 .side-row:has(> .side-link-active),
-.side-row:has(> .side-link-active):hover {
+.side-row:has(> .side-link-active):hover,
+[data-nav-flyout] .side-group:has(> .side-sub .side-link-active) > .side-row {
   @apply bg-primary/10;
+}
+
+/* The row whose popout is open keeps its hover shading while the pointer is on the popout. */
+.side-group-open > .side-row {
+  @apply bg-base-300/45;
 }
 
 .side-link-toggle {
@@ -102,6 +119,28 @@
 /* Institution heading inside the Inbox submenu. */
 .side-sublabel {
   @apply mt-1 pl-9 pr-3 pt-1 text-[0.6875rem] font-medium text-base-content/70 truncate;
+}
+
+/*
+  Desktop popout for a group's sub-items (assets/javascript/nav/side-group.js
+  sets `left`/`top`/`max-height`). Fixed, not absolute: the nav scrolls, which
+  would clip it. A true overlay, so it is allowed a shadow.
+*/
+.side-flyout {
+  @apply fixed z-10 flex w-60 flex-col gap-0.5 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 shadow-lg;
+}
+
+.side-flyout .side-link-sub,
+.side-flyout .side-sublabel {
+  @apply pl-3;
+}
+
+.side-flyout-title {
+  @apply hidden;
+}
+
+.side-flyout .side-flyout-title {
+  @apply block px-3 pb-1 pt-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70;
 }
 
 .side-section {
