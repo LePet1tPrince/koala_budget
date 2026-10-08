@@ -1,5 +1,6 @@
 {% extends "accounts/detail_base.html" %}
 {% load i18n %}
+{% load journal_tags %}
 {% load icons %}
 {% load currency_tags %}
 {% load account_nav %}
@@ -113,7 +114,7 @@
 <section class="app-card" data-testid="account-activity">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <h2 class="text-base font-semibold">{% translate "Activity" %}</h2>
-    <div id="date-range-picker" data-default-range="year"></div>
+    <div id="date-range-picker" data-default-range="year" data-all-time-start="{% first_entry_date request.book %}"></div>
   </div>
   {% include "reports/components/account_activity_section.html" %}
 </section>
