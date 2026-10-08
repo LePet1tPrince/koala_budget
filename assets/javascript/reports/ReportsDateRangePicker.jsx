@@ -5,7 +5,7 @@ import DateRangePicker from '../common/DateRangePicker';
 import { createRoot } from 'react-dom/client';
 
 // Component that integrates with URL parameters
-const DateRangePickerWrapper = ({ defaultRange }) => {
+const DateRangePickerWrapper = ({ defaultRange, allTimeStart }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -62,16 +62,23 @@ const DateRangePickerWrapper = ({ defaultRange }) => {
       startDate={startDate}
       endDate={endDate}
       onApply={handleDateRangeApply}
+      allTimeStart={allTimeStart || format(startOfMonth(new Date()), 'yyyy-MM-dd')}
     />
   );
 };
 
 // Mount the React app. `data-default-range="year"` on the mount point opts a
-// page into a this-year default instead of the usual this-month one.
+// page into a this-year default instead of the usual this-month one;
+// `data-all-time-start` (the book's first entry date) bounds the "All time" preset.
 const el = document.getElementById('date-range-picker');
 
 if (!el) {
   console.warn('Date range picker mount point not found');
 } else {
-  createRoot(el).render(<DateRangePickerWrapper defaultRange={el.dataset.defaultRange || 'month'} />);
+  createRoot(el).render(
+    <DateRangePickerWrapper
+      defaultRange={el.dataset.defaultRange || 'month'}
+      allTimeStart={el.dataset.allTimeStart || ''}
+    />,
+  );
 }

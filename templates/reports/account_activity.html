@@ -1,5 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
+{% load journal_tags %}
 {% load form_tags %}
 {% load django_vite %}
 {% load static %}
@@ -27,7 +28,7 @@
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div id="date-range-picker"></div>
+      <div id="date-range-picker" data-all-time-start="{% first_entry_date request.book %}"></div>
       <a href="{% url 'reports:export_account_activity' request.team.slug request.book.slug account.pk %}?{{ request.GET.urlencode }}" class="btn btn-ghost btn-sm">
         {% icon "download" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Export CSV" %}

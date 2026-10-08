@@ -1,5 +1,6 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
+{% load journal_tags %}
 {% load django_vite %}
 {% load static %}
 {% load currency_tags %}
@@ -88,7 +89,7 @@
       {% endif %}
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div id="date-range-picker"></div>
+      <div id="date-range-picker" data-all-time-start="{% first_entry_date request.book %}"></div>
       <div class="join" data-testid="display-toggle">
         <a href="?{{ total_view_qs }}" class="btn btn-sm join-item {% if not period %}btn-active{% endif %}">{% translate "Total" %}</a>
         <div class="dropdown dropdown-end join-item">
