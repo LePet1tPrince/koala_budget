@@ -153,6 +153,9 @@ function successMessage(data) {
   if (style === 'arcade') {
     return `💥 SLAM! +${fmt(data.assigned)} → ${data.goal_name} hits ${Math.round(data.new_pct)}%!`;
   }
+  if (data.open_ended) {
+    return `+${fmt(data.assigned)} — ${data.goal_name} is at ${Math.round(data.new_pct)}% of this month's contribution.`;
+  }
   return `+${fmt(data.assigned)} — ${data.goal_name} is now ${Math.round(data.new_pct)}% funded (was ${Math.round(data.old_pct)}%).`;
 }
 
@@ -208,7 +211,10 @@ function refreshAssignButtons() {
     const left = parseFloat(card.dataset.left ?? card.dataset.saved ?? '0');
     const btn = card.querySelector('[data-assign-all]');
     if (btn) {
-      const funded = card.classList.contains('is-funded') || remaining <= 0;
+      // An open-ended goal (no target) never runs out of room: once this month's
+      // contribution is in, the button adds whatever is available.
+      const openEnded = 'openEnded' in card.dataset;
+      const funded = card.classList.contains('is-funded') || (remaining <= 0 && !openEnded);
       const finish = !funded && available >= remaining && remaining > 0;
       const amount = finish ? remaining : available;
       const label = finish ? btn.dataset.labelFinish : btn.dataset.labelAll;

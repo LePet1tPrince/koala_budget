@@ -105,12 +105,16 @@
               <td class="text-right tabular-nums whitespace-nowrap">{{ row.saved|currency }}</td>
               <td class="text-right tabular-nums whitespace-nowrap {% if not row.spent %}opacity-40{% endif %}">{{ row.spent|currency }}</td>
               <td class="text-right tabular-nums whitespace-nowrap {% if row.left < 0 %}text-error{% endif %}">{{ row.left|currency }}</td>
-              <td class="text-right tabular-nums whitespace-nowrap">{{ row.goal.target_amount|currency }}</td>
+              <td class="text-right tabular-nums whitespace-nowrap">{% if row.goal.has_target %}{{ row.goal.target_amount|currency }}{% else %}<span class="text-base-content/70">{% translate "Open-ended" %}</span>{% endif %}</td>
               <td>
+                {% if row.goal.has_target %}
                 <div class="flex items-center gap-2">
                   <progress class="progress progress-success flex-1" value="{{ row.goal.progress_percentage|floatformat:0 }}" max="100"></progress>
                   <span class="text-xs text-base-content/70 tabular-nums w-10 text-right">{{ row.goal.progress_percentage|floatformat:0 }}%</span>
                 </div>
+                {% else %}
+                <span class="text-base-content/70">—</span>
+                {% endif %}
               </td>
               <td class="whitespace-nowrap">{% if row.goal.target_date %}{{ row.goal.target_date|date:"M j, Y" }}{% else %}—{% endif %}</td>
               <td class="text-right tabular-nums whitespace-nowrap">

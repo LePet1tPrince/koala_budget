@@ -143,7 +143,7 @@
       <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-accent inline-block"></span>{% translate "Goals" %}</h3>
       {% if goal_rows %}
       <span class="text-sm text-base-content/70">
-        {% blocktranslate trimmed with saved=goal_totals.allocated|currency target=goal_totals.target|currency %}{{ saved }} of {{ target }} saved{% endblocktranslate %}{% if goal_totals.pct is not None %} · {{ goal_totals.pct|floatformat:0 }}%{% endif %}
+        {% blocktranslate trimmed with saved=goal_totals.toward_target|currency target=goal_totals.target|currency %}{{ saved }} of {{ target }} saved{% endblocktranslate %}{% if goal_totals.pct is not None %} · {{ goal_totals.pct|floatformat:0 }}%{% endif %}
       </span>
       {% endif %}
     </div>
@@ -169,7 +169,7 @@
             <td>
               <div class="flex items-center gap-2">
                 <div class="goal-meter flex-1"><div style="width: {{ row.goal.progress_percentage|floatformat:0 }}%;"></div></div>
-                <span class="text-xs text-base-content/70 tabular-nums whitespace-nowrap">{{ row.goal.allocated|currency }} / {{ row.goal.target_amount|currency }}</span>
+                <span class="text-xs text-base-content/70 tabular-nums whitespace-nowrap">{{ row.goal.allocated|currency }}{% if row.goal.has_target %} / {{ row.goal.target_amount|currency }}{% else %} · {% translate "open-ended" %}{% endif %}</span>
               </div>
             </td>
             <td class="whitespace-nowrap">{% if row.goal.target_date %}{{ row.goal.target_date|date:"M Y" }}{% else %}<span class="text-base-content/70">—</span>{% endif %}</td>

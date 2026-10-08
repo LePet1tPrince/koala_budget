@@ -703,13 +703,21 @@ def goal_progress(request, team_slug, book_slug):
 
     # Table rows with the pace needed to hit each target on time
     goal_rows = []
-    totals = {"saved": Decimal("0"), "target": Decimal("0"), "spent": Decimal("0"), "left": Decimal("0")}
+    # `toward_target`: what goals with a target hold -- the only fair numerator for
+    # the overall %, since an open-ended goal adds savings but no target.
+    totals = {
+        "saved": Decimal("0"),
+        "target": Decimal("0"),
+        "spent": Decimal("0"),
+        "left": Decimal("0"),
+        "toward_target": Decimal("0"),
+    }
     for goal in goals:
         saved = goal.allocated
-        remaining = goal.target_amount - saved
+        remaining = goal.target_amount - saved if goal.has_target else None
         months_left = None
         needed_per_month = None
-        if goal.target_date and goal.target_date >= date.today() and remaining > 0:
+        if goal.target_date and goal.target_date >= date.today() and remaining and remaining > 0:
             target_month = goal.target_date.replace(day=1)
             months_left = max((target_month.year - today_month.year) * 12 + target_month.month - today_month.month, 1)
             needed_per_month = remaining / months_left
@@ -728,8 +736,10 @@ def goal_progress(request, team_slug, book_slug):
         totals["left"] += goal.left
         totals["saved"] += saved
         totals["target"] += goal.target_amount
+        if goal.has_target:
+            totals["toward_target"] += saved
 
-    totals["pct"] = totals["saved"] / totals["target"] * 100 if totals["target"] else None
+    totals["pct"] = totals["toward_target"] / totals["target"] * 100 if totals["target"] else None
 
     return render(
         request,

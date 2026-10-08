@@ -1,0 +1,71 @@
+{% load i18n %}
+{% load currency_tags %}
+{% load icons %}
+{% comment %}
+Edit / Undo for one manual contribution (a GoalAllocation) in the goal page's
+activity table. Each button opens a <dialog> holding the real form, so a click
+can't change history by accident. Context: event (from goal_activity), goal.
+{% endcomment %}
+{% with pk=event.allocation_id month=event.date|date:"F Y" %}
+<div class="inline-flex gap-1">
+  <button type="button" class="btn btn-ghost btn-xs" data-testid="contribution-edit-btn"
+          onclick="document.getElementById('contribution-edit-{{ pk }}').showModal()">
+    {% icon "pencil" class="w-3.5 h-3.5" %}<span>{% translate "Edit" %}</span>
+  </button>
+  <button type="button" class="btn btn-ghost btn-xs" data-testid="contribution-undo-btn"
+          onclick="document.getElementById('contribution-undo-{{ pk }}').showModal()">
+    {% icon "rotate-ccw" class="w-3.5 h-3.5" %}<span>{% translate "Undo" %}</span>
+  </button>
+</div>
+
+<dialog id="contribution-edit-{{ pk }}" class="modal text-left" data-testid="contribution-edit-dialog">
+  <form method="post" class="modal-box max-w-sm whitespace-normal"
+        action="{% url 'budget:goal_contribution_edit' team_slug=request.team.slug book_slug=request.book.slug allocation_pk=pk %}">
+    {% csrf_token %}
+    <h3 class="font-bold text-lg">
+      {% blocktranslate trimmed %}Change {{ month }}{% endblocktranslate %}
+    </h3>
+    <p class="text-sm text-base-content/70 mt-2">
+      {% translate "What you put into this goal by hand that month. A negative amount is a withdrawal; 0 removes it." %}
+    </p>
+    <label class="form-control mt-4">
+      <span class="label-text mb-1">{% translate "Amount" %}</span>
+      <input type="text" name="amount" inputmode="decimal" autocomplete="off" data-amount-input
+             value="{{ event.amount|stringformat:'s' }}" required
+             class="input input-bordered w-full font-mono" data-testid="contribution-amount-input">
+    </label>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">{% translate "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary" data-testid="contribution-save-btn">{% translate "Save" %}</button>
+    </div>
+  </form>
+  <form method="dialog" class="modal-backdrop"><button>{% translate "Close" %}</button></form>
+</dialog>
+
+<dialog id="contribution-undo-{{ pk }}" class="modal text-left" data-testid="contribution-undo-dialog">
+  <form method="post" class="modal-box max-w-sm whitespace-normal"
+        action="{% url 'budget:goal_contribution_edit' team_slug=request.team.slug book_slug=request.book.slug allocation_pk=pk %}">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="undo">
+    <h3 class="font-bold text-lg">
+      {% if event.amount > 0 %}
+        {% blocktranslate trimmed with amount=event.amount|currency %}Undo the {{ amount }} contribution in {{ month }}?{% endblocktranslate %}
+      {% else %}
+        {% blocktranslate trimmed with amount=event.amount|currency %}Undo the {{ amount }} withdrawal in {{ month }}?{% endblocktranslate %}
+      {% endif %}
+    </h3>
+    <p class="text-sm mt-2">
+      {% if event.amount > 0 %}
+        {% translate "The money goes back to your unassigned money and the goal holds that much less." %}
+      {% else %}
+        {% translate "The money goes back into the goal and your unassigned money is that much less." %}
+      {% endif %}
+    </p>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">{% translate "Keep it" %}</button>
+      <button type="submit" class="btn btn-error" data-testid="contribution-undo-confirm">{% translate "Undo" %}</button>
+    </div>
+  </form>
+  <form method="dialog" class="modal-backdrop"><button>{% translate "Close" %}</button></form>
+</dialog>
+{% endwith %}

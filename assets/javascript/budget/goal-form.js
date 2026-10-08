@@ -6,7 +6,8 @@ import { formatMoney, parseAmount } from '../common/amount';
  * The goal form (templates/budget/goal_form.html).
  *
  * - Plan: a target date or a monthly amount; the sentence under them works out
- *   the other one.
+ *   the other one. With no target the goal is open-ended: the monthly amount is
+ *   the whole plan.
  * - Where the money lives: an account's start date and starting-balance choice
  *   show only while it is ticked, the outflow choice only while any account is,
  *   and a preview (from `goal_link_preview`, which reads the form's own fields)
@@ -29,7 +30,15 @@ function planSummary() {
   const toFund = Math.max((target || 0) - (props.allocated || 0), 0);
   const now = new Date();
 
-  if (!target || toFund <= 0) return '';
+  if (!target) {
+    // Open-ended: no target, so the monthly contribution is the whole plan.
+    if (monthly && monthly > 0) {
+      return `Open-ended: ${formatMoney(monthly)}/month with no finish line. Each month is on track once it's in.`;
+    }
+    if (dateValue) return 'A target date needs a target amount.';
+    return 'Set a target amount, a monthly contribution, or both.';
+  }
+  if (toFund <= 0) return '';
 
   if (monthly && monthly > 0) {
     const months = Math.ceil(toFund / monthly);

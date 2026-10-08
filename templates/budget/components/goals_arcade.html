@@ -171,6 +171,7 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
        data-remaining="{{ item.remaining }}"
        data-saved="{{ item.saved }}"
        data-left="{{ item.left }}"
+       {% if not item.has_target %}data-open-ended{% endif %}
        data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}"
        data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}"
        data-testid="goal-card">
@@ -203,7 +204,11 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
           <div class="text-4xl font-bold font-mono" data-num="pct" data-format="pct">{{ item.pct|floatformat:0 }}%</div>
           <div class="mt-2 text-sm font-mono">
             <span class="slot-readout" data-num="saved">{{ item.saved|currency }}</span>
-            <span class="opacity-60">/ {{ item.goal.target_amount|currency }}</span>
+            {% if item.has_target %}
+              <span class="opacity-60">/ {{ item.goal.target_amount|currency }}</span>
+            {% else %}
+              <span class="opacity-60">{% blocktranslate trimmed with rate=item.goal.monthly_contribution|currency %}SAVED · {{ rate }}/MO{% endblocktranslate %}</span>
+            {% endif %}
           </div>
           {% if item.spent %}
             <div class="text-xs font-mono opacity-70 mt-1" data-testid="goal-numbers">
@@ -212,14 +217,14 @@ MAX BET levers, XP levels, trophy shelf, screen shake.
             </div>
           {% endif %}
           <div class="text-xs font-mono opacity-70 mt-2">
-            {% translate "TO THE BELL:" %} <span data-num="remaining">{{ item.remaining|currency }}</span>
+            {% if item.has_target %}{% translate "TO THE BELL:" %}{% else %}{% translate "LEFT THIS MONTH:" %}{% endif %} <span data-num="remaining">{{ item.remaining|currency }}</span>
           </div>
           <div class="text-xs font-mono opacity-70">
             {% translate "THIS MONTH:" %} <span data-num="this-month">{{ item.this_month|currency }}</span>
           </div>
           {% if item.needed_per_month and not item.funded %}
             <div class="text-xs font-mono opacity-60 mt-1">
-              {% translate "PACE:" %} {{ item.needed_per_month|currency }}/mo → {{ item.plan_finish|date:"M Y" }}
+              {% translate "PACE:" %} {{ item.needed_per_month|currency }}/mo{% if item.has_target %} → {{ item.plan_finish|date:"M Y" }}{% endif %}
             </div>
           {% endif %}
         </div>

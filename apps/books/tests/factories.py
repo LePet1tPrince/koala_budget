@@ -70,6 +70,7 @@ class BookData:
             "bank_transaction": self.categorized_tx,
             "goal": self.goal,
             "goal_link": self.goal_link,
+            "goal_allocation": self.allocation,
             "reconciliation": self.reconciliation,
             "plaid_item": self.plaid_item,
             "plaid_account": self.plaid_account,

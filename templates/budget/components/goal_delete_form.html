@@ -1,0 +1,54 @@
+{% load i18n %}
+{% load currency_tags %}
+{% comment %}
+Delete a goal for good: a button that opens a confirmation dialog holding the real
+form. When transactions are categorized to the goal the dialog says why it can't be
+deleted and offers the way out instead of a button.
+
+Context: goal (annotated by with_progress), delete_blocked (a reason, or None),
+spending_url (optional).
+{% endcomment %}
+<button type="button" class="btn btn-ghost btn-sm text-error" data-testid="goal-delete-btn"
+        onclick="document.getElementById('goal-delete-dialog-{{ goal.pk }}').showModal()">
+  {% translate "Delete" %}
+</button>
+
+<dialog id="goal-delete-dialog-{{ goal.pk }}" class="modal" data-testid="goal-delete-dialog">
+  <div class="modal-box max-w-md text-left">
+    <h3 class="font-bold text-lg">
+      {% blocktranslate trimmed with name=goal.name %}Delete {{ name }}?{% endblocktranslate %}
+    </h3>
+
+    {% if delete_blocked %}
+      <p class="mt-4" data-testid="goal-delete-blocked">{{ delete_blocked }}</p>
+      <div class="modal-action">
+        {% if spending_url %}
+          <a href="{{ spending_url }}" class="btn btn-ghost">{% translate "See those transactions" %}</a>
+        {% endif %}
+        <button type="button" class="btn" onclick="this.closest('dialog').close()">{% translate "OK" %}</button>
+      </div>
+    {% else %}
+      <ul class="list-disc pl-5 mt-4 space-y-1 text-sm">
+        <li>{% translate "Its contributions and its account links are removed, as if it never existed." %}</li>
+        <li>{% translate "Its name and its linked accounts' history become free for another goal." %}</li>
+        {% if goal.left > 0 %}
+          <li>
+            {% blocktranslate trimmed with amount=goal.left|currency %}
+              The {{ amount }} left in it goes back to your unassigned money.
+            {% endblocktranslate %}
+          </li>
+        {% endif %}
+      </ul>
+      <p class="text-sm text-base-content/70 mt-3">
+        {% translate "This can't be undone. To keep its history, close the goal instead." %}
+      </p>
+      <form method="post" class="modal-action"
+            action="{% url 'budget:goal_destroy' team_slug=request.team.slug book_slug=request.book.slug pk=goal.pk %}">
+        {% csrf_token %}
+        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()" autofocus>{% translate "Cancel" %}</button>
+        <button type="submit" class="btn btn-error" data-testid="goal-delete-confirm">{% translate "Delete goal" %}</button>
+      </form>
+    {% endif %}
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>{% translate "Close" %}</button></form>
+</dialog>

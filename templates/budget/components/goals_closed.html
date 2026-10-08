@@ -19,8 +19,11 @@ Closed goals, whatever the page style: finished with, their history kept.
       <tbody>
         {% for item in goal_items %}
           <tr data-testid="closed-goal-row">
-            <td><a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="link link-hover font-medium">{{ item.goal.name }}</a></td>
-            <td class="text-base-content/70">{{ item.goal.closed_at|date:"M j, Y" }}</td>
+            <td>
+              <a href="{% url 'budget:goal_detail' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}" class="link link-hover font-medium">{{ item.goal.name }}</a>
+              {% if item.goal.is_archived %}<span class="badge badge-ghost badge-sm ml-1" data-testid="closed-goal-archived">{% translate "Archived" %}</span>{% endif %}
+            </td>
+            <td class="text-base-content/70">{{ item.goal.closed_at|date:"M j, Y"|default:"—" }}</td>
             <td class="text-right money">{{ item.saved|currency }}</td>
             <td class="text-right money">{{ item.spent|currency }}</td>
             <td class="text-right money {% if item.left < 0 %}text-error{% endif %}">{{ item.left|currency }}</td>

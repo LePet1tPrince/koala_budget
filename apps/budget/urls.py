@@ -27,10 +27,16 @@ urlpatterns = [
     path("goals/<int:pk>/", views.goal_detail_view, name="goal_detail"),
     path("goals/<int:pk>/edit/", views.goal_update_view, name="goal_update"),
     path("goals/<int:pk>/delete/", views.goal_delete_view, name="goal_delete"),
+    path("goals/<int:pk>/destroy/", views.goal_destroy, name="goal_destroy"),
     path("goals/<int:pk>/allocate/", views.goal_allocation_update_view, name="goal_allocate"),
     path("goals/<int:pk>/assign-available/", views.goal_assign_available, name="goal_assign_available"),
     path("goals/<int:pk>/withdraw/", views.goal_withdraw, name="goal_withdraw"),
     path("goals/<int:pk>/complete/", views.goal_complete_view, name="goal_complete"),
     path("goals/<int:pk>/close/", views.goal_close_view, name="goal_close"),
     path("goals/links/<int:link_pk>/unlink/", views.goal_unlink, name="goal_unlink"),
+    path(
+        "goals/contributions/<int:allocation_pk>/",
+        views.goal_contribution_edit,
+        name="goal_contribution_edit",
+    ),
 ]

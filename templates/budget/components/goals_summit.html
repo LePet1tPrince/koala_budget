@@ -109,6 +109,7 @@ pace/projection numbers, context-aware quick-assign.
        data-remaining="{{ item.remaining }}"
        data-saved="{{ item.saved }}"
        data-left="{{ item.left }}"
+       {% if not item.has_target %}data-open-ended{% endif %}
        data-assign-url="{% url 'budget:goal_assign_available' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}"
        data-withdraw-url="{% url 'budget:goal_withdraw' team_slug=request.team.slug book_slug=request.book.slug pk=item.goal.pk %}"
        data-testid="goal-card">
@@ -147,7 +148,11 @@ pace/projection numbers, context-aware quick-assign.
           <div class="text-4xl font-bold" data-num="pct" data-format="pct">{{ item.pct|floatformat:0 }}%</div>
           <div class="text-sm mt-1">
             <span class="font-mono font-semibold text-success" data-num="saved">{{ item.saved|currency }}</span>
-            <span class="text-base-content/70">{% translate "of" %} {{ item.goal.target_amount|currency }}</span>
+            {% if item.has_target %}
+              <span class="text-base-content/70">{% translate "of" %} {{ item.goal.target_amount|currency }}</span>
+            {% else %}
+              <span class="text-base-content/70">{% blocktranslate trimmed with rate=item.goal.monthly_contribution|currency %}saved · % is this month's {{ rate }}{% endblocktranslate %}</span>
+            {% endif %}
           </div>
           <dl class="grid grid-cols-[auto_1fr] gap-x-3 mt-2 text-sm" data-testid="goal-numbers">
             <dt class="text-base-content/70">{% translate "Allocated" %}</dt>
@@ -158,7 +163,7 @@ pace/projection numbers, context-aware quick-assign.
             <dd class="font-mono text-right font-semibold" data-testid="goal-left"><span data-num="left" class="{% if item.left < 0 %}text-error{% endif %}">{{ item.left|currency }}</span>{% if item.left < 0 %} <span class="font-sans font-normal text-xs" data-carried>{% translate "carried" %}</span>{% endif %}</dd>
           </dl>
           <div class="text-sm text-base-content/70 mt-2">
-            {% translate "To go:" %} <span class="font-mono" data-num="remaining">{{ item.remaining|currency }}</span>
+            {% if item.has_target %}{% translate "To go:" %}{% else %}{% translate "Still to put in this month:" %}{% endif %} <span class="font-mono" data-num="remaining">{{ item.remaining|currency }}</span>
           </div>
           <div class="text-sm text-base-content/70">
             {% translate "This month:" %} <span class="font-mono" data-num="this-month">{{ item.this_month|currency }}</span>
@@ -170,7 +175,9 @@ pace/projection numbers, context-aware quick-assign.
             {% if item.funded %}
               <div class="text-success font-medium">{% translate "Target reached — nice work!" %}</div>
             {% else %}
-              {% if item.needed_per_month %}
+              {% if item.needed_per_month and not item.has_target %}
+                <div>{% blocktranslate trimmed with rate=item.needed_per_month|currency %}Plan: {{ rate }}/mo, no finish line{% endblocktranslate %}</div>
+              {% elif item.needed_per_month %}
                 <div>{{ item.needed_per_month|currency }}{% translate "/mo to hit" %} {{ item.plan_finish|date:"M Y" }}</div>
               {% endif %}
               {% if item.behind_pace %}

@@ -8,7 +8,7 @@ rolls it back, so what the form previews is exactly what saving would do.
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -24,7 +24,13 @@ ZERO = Decimal("0")
 
 
 class LinkError(ValueError):
-    """A link the user asked for that can't be made. The message is shown as is."""
+    """A link the user asked for that can't be made. The message is shown as is;
+    `goal` is the other goal standing in the way, when there is one, so the form
+    can link to it."""
+
+    def __init__(self, message, goal=None):
+        super().__init__(message)
+        self.goal = goal
 
 
 @dataclass(frozen=True)
@@ -79,27 +85,58 @@ def _check_row(goal, row, today, existing=None):
         raise LinkError(_("Only asset accounts can be linked to a goal; %(account)s isn't one.") % {"account": account})
     if account.is_archived and existing is None:
         raise LinkError(_("%(account)s is archived.") % {"account": account})
-    if row.start_date > today:
-        raise LinkError(_("The start date for %(account)s can't be in the future.") % {"account": account})
 
     other_open = GoalAccountLink.objects.open().filter(account=account).exclude(goal=goal)
     taken = other_open.select_related("goal").first()
     if taken is not None:
         raise LinkError(
             _("%(account)s already feeds %(goal)s. Unlink it there first.")
-            % {"account": account, "goal": taken.goal.name}
+            % {"account": account, "goal": taken.goal.name},
+            goal=taken.goal,
         )
 
     # An account's links never overlap: a new range starts after the last one ended.
-    previous = GoalAccountLink.objects.filter(account=account, end_date__isnull=False)
-    if existing is not None:
-        previous = previous.exclude(pk=existing.pk)
-    last_end = previous.order_by("-end_date").values_list("end_date", flat=True).first()
-    if last_end is not None and row.start_date <= last_end:
+    previous = previous_link(account, exclude=existing)
+    earliest = previous.end_date + timedelta(days=1) if previous is not None else None
+    if earliest is not None and row.start_date < earliest:
         raise LinkError(
-            _("%(account)s counted towards a goal until %(date)s. Start this link after that date.")
-            % {"account": account, "date": last_end.strftime("%b %-d, %Y")}
+            _(
+                "%(account)s counted towards %(goal)s through %(end)s, so here it can count from %(start)s "
+                "at the earliest. To count its earlier history here instead, delete %(goal)s."
+            )
+            % {
+                "account": account,
+                "goal": previous.goal.name,
+                "end": _day(previous.end_date),
+                "start": _day(earliest),
+            },
+            goal=previous.goal,
         )
+    # The future is refused, except the day after a link that ended today: a goal
+    # closed today holds the account through today, and the next can take over tomorrow.
+    if row.start_date > max(today, earliest or today):
+        raise LinkError(_("The start date for %(account)s can't be in the future.") % {"account": account})
+
+
+def _day(value):
+    return value.strftime("%b %-d, %Y")
+
+
+def previous_link(account, exclude=None):
+    """The account's most recently ended link (another goal's or an earlier one of this goal's), or None."""
+    links = GoalAccountLink.objects.filter(account=account, end_date__isnull=False).select_related("goal")
+    if exclude is not None:
+        links = links.exclude(pk=exclude.pk)
+    return links.order_by("-end_date").first()
+
+
+def default_start(account, today):
+    """Where a new link of `account` starts unless the user says otherwise: today, or
+    the day after its last link ended if that is later."""
+    previous = previous_link(account)
+    if previous is None:
+        return today
+    return max(today, previous.end_date + timedelta(days=1))
 
 
 def _end(link, today):
@@ -275,13 +312,15 @@ def link_options(book, goal=None, data=None, today=None):
     for account in eligible_accounts(book, goal).with_balance():
         link = current.get(account.pk)
         feeds = account.feeds_goal_name if account.is_linked and link is None else None
+        previous = None if link else previous_link(account)
+        fresh_start = default_start(account, today) if link is None else link.start_date
         if ticked is not None:
             checked = str(account.pk) in ticked
-            start = data.get(f"link_start_{account.pk}") or today.isoformat()
+            start = data.get(f"link_start_{account.pk}") or fresh_start.isoformat()
             include = bool(data.get(f"link_include_{account.pk}")) if checked else True
         else:
             checked = link is not None
-            start = (link.start_date if link else today).isoformat()
+            start = fresh_start.isoformat()
             include = link.include_starting_balance if link else True
         options.append(
             {
@@ -292,6 +331,9 @@ def link_options(book, goal=None, data=None, today=None):
                 "include": include,
                 "feeds": feeds,
                 "disabled": bool(feeds),
+                # The goal it counted towards before (closed or unlinked), shown so a
+                # later default start date isn't a mystery.
+                "previous": previous,
             }
         )
     return options
@@ -329,6 +371,8 @@ def goal_activity(goal, limit=100):
                 "memo": allocation.notes,
                 "amount": allocation.amount,
                 "month_only": True,
+                # Manual: editable and undoable from the activity table.
+                "allocation_id": allocation.pk,
             }
         )
     for link in starting_balances().filter(goal=goal).select_related("account").exclude(amount=0):
