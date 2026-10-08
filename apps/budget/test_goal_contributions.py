@@ -420,3 +420,22 @@ class ArchivedGoalsAreReachableTest(Fixture):
         self.assertContains(response, "counted towards Retirement through Sep 30, 2026")
         self.assertContains(response, reverse("budget:goal_detail", args=[*self.book.url_args, retirement.pk]))
         self.assertContains(response, 'data-testid="goal-link-error-goal"')
+
+
+class GoalBackLinkTest(Fixture):
+    def back_href(self, goal):
+        page = self.client.get(reverse("budget:goal_detail", args=[*self.book.url_args, goal.pk]))
+        self.assertContains(page, 'data-testid="goal-back-link"')
+        self.assertContains(page, "Back to Goals")
+        return page
+
+    def test_open_goal_links_to_the_goals_list(self):
+        goals_url = reverse("budget:goals_list", args=self.book.url_args)
+        page = self.back_href(self.car)
+        self.assertContains(page, f'href="{goals_url}"')
+
+    def test_closed_goal_links_to_the_closed_filter(self):
+        Goal.objects.filter(pk=self.car.pk).update(closed_at="2026-09-30T00:00:00Z")
+        goals_url = reverse("budget:goals_list", args=self.book.url_args)
+        page = self.back_href(self.car)
+        self.assertContains(page, f'href="{goals_url}?show=closed"')
