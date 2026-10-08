@@ -1238,22 +1238,11 @@ class GoalsListViewTest(TestCase):
     def setUp(self):
         self.client.login(username="goalspage@example.com", password="testpass123")
 
-    def test_default_style_is_summit(self):
+    def test_renders_goal_cards(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["style"], "summit")
         self.assertContains(response, 'data-testid="goal-card"')
-
-    def test_style_param_is_remembered_in_session(self):
-        response = self.client.get(f"{self.url}?style=arcade")
-        self.assertEqual(response.context["style"], "arcade")
-        self.assertContains(response, "SAVE-O-TRON")
-        response = self.client.get(self.url)
-        self.assertEqual(response.context["style"], "arcade")
-
-    def test_invalid_style_falls_back_to_summit(self):
-        response = self.client.get(f"{self.url}?style=vaporwave")
-        self.assertEqual(response.context["style"], "summit")
+        self.assertNotContains(response, 'data-testid="goals-style-picker"')
 
     def test_goal_items_carry_progress_and_streak(self):
         response = self.client.get(f"{self.url}?month=2026-02-01")

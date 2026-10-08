@@ -54,7 +54,7 @@ def test_categorizing_a_purchase_to_a_goal_spends_from_it(
     requires_vite, authenticated_page: Page, live_server, team, goal_fixture
 ):
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_goals(team.default_book, style="summit")
+    budget.goto_goals(team.default_book)
     assert budget.goal_spent("Zed Car") == "$0.00"
     pill_before = budget.unassigned_pill_value()
 
@@ -74,7 +74,7 @@ def test_categorizing_a_purchase_to_a_goal_spends_from_it(
         authenticated_page.wait_for_timeout(100)
     assert row.journal_entry.lines.filter(account=goal_fixture["goal"].account, dr_amount=Decimal("250.00")).exists()
 
-    budget.goto_goals(team.default_book, style="summit")
+    budget.goto_goals(team.default_book)
     assert budget.goal_spent("Zed Car") == "$250.00"
     assert budget.goal_left("Zed Car").startswith("$750.00")
     assert budget.goal_state("Zed Car") == "spending"
@@ -131,7 +131,7 @@ def test_link_an_account_from_the_goal_form(
 
     goal = Goal.objects.get(book=book, name="Zed Rainy Day")
     assert list(goal.account_links.values_list("account__name", flat=True)) == ["Zed Savings"]
-    budget.goto_goals(book, style="summit")
+    budget.goto_goals(book)
     assert budget.goal_card_links("Zed Rainy Day") == "Linked · Zed Savings"
     assert budget.goal_saved("Zed Rainy Day") == "$1,200.00"
 
@@ -161,7 +161,7 @@ def test_a_transfer_into_a_linked_account_funds_the_goal(
     )
 
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_goals(book, style="summit")
+    budget.goto_goals(book)
     assert budget.goal_saved("Zed Rainy Day") == "$0.00"
     pill_before = budget.unassigned_pill_value()
 
@@ -177,7 +177,7 @@ def test_a_transfer_into_a_linked_account_funds_the_goal(
         authenticated_page.wait_for_timeout(100)
     assert row.journal_entry_id
 
-    budget.goto_goals(book, style="summit")
+    budget.goto_goals(book)
     assert budget.goal_saved("Zed Rainy Day") == "$300.00"
     # Money set aside: Unassigned went down by the transfer.
     assert _money(budget.unassigned_pill_value()) == _money(pill_before) - Decimal("300.00")

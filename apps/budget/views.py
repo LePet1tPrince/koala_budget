@@ -788,37 +788,6 @@ def budget_grid_save(request, team_slug, book_slug):
 # Goal Views
 # =============================================================================
 
-GOAL_STYLES = {
-    "summit": _("Summit"),
-    "koala": _("Koala Climb"),
-    "arcade": _("Save-o-Tron"),
-}
-
-# Arcade style: 1 XP per dollar ever saved to goals; level N spans ARCADE_LEVEL_STEP * N XP
-ARCADE_LEVEL_STEP = 500
-ARCADE_LEVEL_NAMES = [
-    "Piggy Bank Rookie",
-    "Coin Collector",
-    "Cash Cadet",
-    "Budget Brawler",
-    "Savings Samurai",
-    "Bamboo Baron",
-    "Vault Virtuoso",
-    "Money Machine",
-    "Fortune Fabler",
-    "Koala Tycoon",
-]
-
-
-def _goals_style(request):
-    """Which of the three goal-page designs to render; remembered per session."""
-    style = request.GET.get("style")
-    if style in GOAL_STYLES:
-        request.session["goals_style"] = style
-        return style
-    stored = request.session.get("goals_style")
-    return stored if stored in GOAL_STYLES else "summit"
-
 
 def _goal_streak(saved_months, month):
     """Consecutive months with a positive allocation, counting backwards from the
@@ -831,25 +800,6 @@ def _goal_streak(saved_months, month):
         streak += 1
         cursor -= relativedelta(months=1)
     return streak
-
-
-def _arcade_level(xp):
-    """Level number/name and progress through the current level for a given XP total."""
-    level = 1
-    floor = 0
-    while xp >= floor + ARCADE_LEVEL_STEP * level:
-        floor += ARCADE_LEVEL_STEP * level
-        level += 1
-    span = ARCADE_LEVEL_STEP * level
-    into = xp - floor
-    return {
-        "number": level,
-        "name": ARCADE_LEVEL_NAMES[min(level - 1, len(ARCADE_LEVEL_NAMES) - 1)],
-        "xp": xp,
-        "into": into,
-        "span": span,
-        "pct": into / span * 100,
-    }
 
 
 def _goal_card_progress(goal, saved, this_month):
@@ -874,7 +824,6 @@ def _goal_card_progress(goal, saved, this_month):
 def goals_list_view(request, team_slug, book_slug):
     """List all goals with progress for the selected month."""
     month = _month_from_request(request)
-    style = _goals_style(request)
     show_closed = request.GET.get("show") == "closed"
     service = GoalService(request.book)
     summary = service.get_goal_summary(month, closed=show_closed)
@@ -895,9 +844,6 @@ def goals_list_view(request, team_slug, book_slug):
         links_by_goal[link.goal_id].append(link.account.name)
 
     goal_items = []
-    any_streak_3 = False
-    any_half_way = False
-    big_month = False
     for goal in goals:
         amounts = amounts_by_goal.get(goal.pk, {})
         saved = goal.allocated
@@ -930,10 +876,6 @@ def goals_list_view(request, team_slug, book_slug):
             projected_date = month + relativedelta(months=math.ceil(remaining / recent_avg))
         behind_pace = bool(plan and plan["status"] == "behind")
 
-        any_streak_3 = any_streak_3 or streak >= 3
-        any_half_way = any_half_way or pct >= 50
-        big_month = big_month or any(amt >= 500 for amt in amounts.values())
-
         goal_items.append(
             {
                 "goal": goal,
@@ -961,7 +903,6 @@ def goals_list_view(request, team_slug, book_slug):
                 "state_label": goal.state_label,
                 "closed": goal.is_closed,
                 "spending_url": _goal_spending_url(goal, request.book),
-                "milestones": [25, 50, 75, 100],
             }
         )
 
@@ -973,63 +914,14 @@ def goals_list_view(request, team_slug, book_slug):
     on_track_count = sum(1 for item in goal_items if item["funded"] or not item["behind_pace"])
 
     total_saved = summary["total_saved"]
-    has_completed_goal = Goal.objects.filter(book=request.book, is_complete=True).exists()
-    achievements = [
-        {
-            "key": "first_save",
-            "icon": "🪙",
-            "name": _("Opening Bid"),
-            "desc": _("Save your first dollar"),
-            "earned": total_saved > 0,
-        },
-        {
-            "key": "first_1k",
-            "icon": "🥇",
-            "name": _("Grand Club"),
-            "desc": _("Save $1,000 in total"),
-            "earned": total_saved >= 1000,
-        },
-        {
-            "key": "half_way",
-            "icon": "🚀",
-            "name": _("50% Club"),
-            "desc": _("Get a goal halfway funded"),
-            "earned": any_half_way,
-        },
-        {
-            "key": "streak_3",
-            "icon": "🔥",
-            "name": _("Hot Streak"),
-            "desc": _("Save 3 months in a row"),
-            "earned": any_streak_3,
-        },
-        {
-            "key": "big_month",
-            "icon": "💪",
-            "name": _("Heavy Lifter"),
-            "desc": _("Save $500+ in one month"),
-            "earned": big_month,
-        },
-        {
-            "key": "finisher",
-            "icon": "🔔",
-            "name": _("Bell Ringer"),
-            "desc": _("Complete a goal"),
-            "earned": has_completed_goal,
-        },
-    ]
 
     goals_props = {
-        "style": style,
         "month": month.isoformat(),
         "available": float(available),
         # The metric's name is still being decided; the toasts read it from here.
         "unassignedLabel": str(UNASSIGNED_LABEL),
         "overAssignedLabel": str(OVER_ASSIGNED_LABEL),
         "totalSaved": float(total_saved),
-        "xp": int(total_saved),
-        "levelStep": ARCADE_LEVEL_STEP,
-        "levelNames": ARCADE_LEVEL_NAMES,
     }
 
     return render(
@@ -1039,15 +931,10 @@ def goals_list_view(request, team_slug, book_slug):
             "active_tab": "goals",
             "page_title": f"Goals | {book_display_name(request.book)}",
             "month": month,
-            "style": style,
-            "style_label": GOAL_STYLES[style],
-            "goal_styles": GOAL_STYLES,
             "goal_items": goal_items,
             "summary": summary,
             "available": available,
             "on_track_count": on_track_count,
-            "achievements": achievements,
-            "arcade_level": _arcade_level(int(total_saved)),
             "net_worth_card": net_worth_card,
             "goals_props": goals_props,
             "prev_month": month - relativedelta(months=1),

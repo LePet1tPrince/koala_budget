@@ -277,6 +277,8 @@ deploy/            # Docker Compose and DigitalOcean configs
 
 - Date range picker: **All time** preset in the shared `common/DateRangePicker.jsx`. Without an `allTimeStart` prop it applies an empty range (no date filter — Transactions, Bank Feed); with one it applies `allTimeStart` → today. Report pages need concrete dates, so their mount point (`#date-range-picker` in the income statement, account activity, Income & Spending and account detail templates) carries `data-all-time-start="{% first_entry_date request.book %}"` (new `apps/journal/templatetags/journal_tags.py`: the book's earliest counted entry date, `""` when empty — `ReportsDateRangePicker` then falls back to the start of this month).
 
+- Goals: **one page style**. The three selectable designs (`?style=summit|koala|arcade`) are gone; the goals page renders only the former default, Summit, now `templates/budget/components/goals_cards.html`. Deleted: `goals_koala.html`, `goals_arcade.html`, the "Page style" dropdown (`goals-style-picker`) in `budget_page_header.html`, `GOAL_STYLES`/`_goals_style()` (and the `goals_style` session key), the arcade XP/level/achievements context (`_arcade_level`, `ARCADE_LEVEL_*`, `achievements`, per-item `milestones`), and in `goals-app.js` the per-style celebrations/toasts, WebAudio bleeps, XP bar, koala rider and milestone handling. A stale `?style=` param is ignored. E2E `BudgetPage.goto_goals(book)` no longer takes `style`.
+
 ---
 
 ## Known Issues

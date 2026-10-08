@@ -58,7 +58,7 @@ def test_goal_custom_amount_formula_is_assigned(requires_vite, authenticated_pag
     goal = Goal.objects.create(book=team.default_book, name="Zed Trip", target_amount=Decimal("3000.00"))
 
     budget = BudgetPage(authenticated_page, live_server.url)
-    budget.goto_goals(team.default_book, style="summit")
+    budget.goto_goals(team.default_book)
 
     card = budget.goal_card("Zed Trip")
     field = card.locator("[data-custom-input]")

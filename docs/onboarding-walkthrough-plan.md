@@ -380,8 +380,8 @@ Constraints:
 - Both themes: `koala` and `koala-dark`. Theme is read from the `data-theme` attribute /
   `dark` class, not from `prefers-color-scheme`, and an in-page toggle must recolour the
   flow without a reload.
-- The koala mascot from the Goals "Koala Climb" style is a natural progress motif —
-  optional, cheap to add later since it is just an illustration swap.
+- A koala mascot is a natural progress motif (the retired Goals "Koala Climb" style used
+  one) — optional, cheap to add later since it is just an illustration swap.
 
 
 ## 7. Behaviour rules
