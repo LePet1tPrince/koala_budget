@@ -218,13 +218,9 @@ class OpenEndedGoalTest(Fixture):
         ):
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 200)
-        for style in ("summit", "koala", "arcade"):
-            with self.subTest(style=style):
-                page = self.client.get(
-                    reverse("budget:goals_list", args=self.book.url_args) + f"?month=2026-09-01&style={style}"
-                )
-                self.assertContains(page, 'data-testid="goal-open-ended"')
-                self.assertContains(page, "data-open-ended")
+        page = self.client.get(reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-09-01")
+        self.assertContains(page, 'data-testid="goal-open-ended"')
+        self.assertContains(page, "data-open-ended")
 
 
 class ContributionEditTest(Fixture):

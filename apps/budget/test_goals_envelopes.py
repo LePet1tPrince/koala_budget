@@ -453,7 +453,7 @@ class GoalStatesTest(GoalsFixture):
         self.assertContains(closed, 'data-testid="closed-goal-row"')
 
     def test_close_opens_a_dialog_that_says_what_happens(self):
-        url = reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-09-01&style=summit"
+        url = reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-09-01"
         page = self.client.get(url).content.decode()
         self.assertIn(f'id="goal-close-dialog-{self.car.pk}"', page)
         self.assertIn("goes back to your unassigned money", page)
@@ -493,7 +493,7 @@ class GoalStatesTest(GoalsFixture):
 
     def test_goals_page_shows_allocated_spent_left_and_negative_carried(self):
         self.spend_from_car(date(2026, 9, 5), "6500")
-        page = self.client.get(reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-09-01&style=summit")
+        page = self.client.get(reverse("budget:goals_list", args=self.book.url_args) + "?month=2026-09-01")
         self.assertContains(page, 'data-testid="goal-negative"')
         self.assertContains(page, "-$1,500.00")
         self.assertContains(page, 'data-testid="goal-spending-link"')

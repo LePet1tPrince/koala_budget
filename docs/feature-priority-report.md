@@ -448,7 +448,7 @@ Ten items, **~55–80 dev-days**. Pick by channel, not by order.
 | # | Item | Effort | Why not now |
 |---|---|---|---|
 | P3.1 | **Multi-currency** | XL · 15–25 days · Very High | No currency field exists anywhere; `currency_tags.py` hardcodes `$`. Genuinely wanted by Canadians with USD accounts, and genuinely an architectural change touching every amount, every report, every aggregate, plus FX rate history and revaluation accounting. Do not start this until P0 and P1 are done — it can eat a quarter. Consider a scoped version: **display-only USD accounts excluded from CAD totals**, which is days not weeks, and buys most of the goodwill. |
-| P3.2 | **Goals: choose one of three styles** | S · 1 day · Low | `goals_summit` / `goals_koala` / `goals_arcade` all ship today as a deliberate review mechanism. Someone needs to *decide*, then delete two templates and their JS branches. Pure debt with a product decision attached — it is cheap, it is just not urgent. |
+| P3.2 | ~~**Goals: choose one of three styles**~~ | Done | Decided: the default (formerly "Summit") card grid, now `goals_cards.html`. The Koala Climb and Save-o-Tron templates, the style picker and their JS branches are deleted. |
 | P3.3 | **PWA / offline** | M · 5–8 days · Medium | No manifest, no service worker. Revisit after P1.7 tells us whether phone usage is real. |
 | P3.4 | **Granular household permissions** (read-only partner) | M · 5–7 days · Medium | Teams has admin/member. No one has asked for finer grain yet. |
 | P3.5 | **Tax-time exports** (capital gains, T-slip summaries) | L · 8–12 days · High | Seasonally powerful (Feb–Apr is a Canadian traffic spike) but depends on P2.3 investments to be worth anything. Plan it for the *second* tax season. |

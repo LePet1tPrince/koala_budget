@@ -6,7 +6,7 @@
 {% block app %}
   {{ goals_props|json_script:'goals-props' }}
 
-  <div class="container mx-auto px-4 py-6" data-goals-root data-style="{{ style }}" data-month="{{ month|date:'Y-m-d' }}" data-testid="goals-page">
+  <div class="container mx-auto px-4 py-6" data-goals-root data-month="{{ month|date:'Y-m-d' }}" data-testid="goals-page">
     {% translate "Goals" as goals_title %}
     {% include "budget/components/budget_page_header.html" with header_title=goals_title goals_header=True %}
 
@@ -14,12 +14,8 @@
 
     {% if show_closed %}
       {% include "budget/components/goals_closed.html" %}
-    {% elif style == 'koala' %}
-      {% include "budget/components/goals_koala.html" %}
-    {% elif style == 'arcade' %}
-      {% include "budget/components/goals_arcade.html" %}
     {% else %}
-      {% include "budget/components/goals_summit.html" %}
+      {% include "budget/components/goals_cards.html" %}
     {% endif %}
   </div>
 {% endblock %}
