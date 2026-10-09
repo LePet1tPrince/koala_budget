@@ -855,3 +855,66 @@ def test_transfer_link_opens_the_other_leg_on_its_page(
 
     assert feed.heading() == "Lines for Zed Savings"
     assert "page=2" in authenticated_page.url
+
+
+# ----------------------------------------------------------------------
+# Duplicate
+# ----------------------------------------------------------------------
+
+
+def _duplicate(feed, page, transaction_id):
+    feed.select_row(transaction_id)
+    feed.batch_button("Duplicate").click()
+    toast = page.locator("[data-testid='batch-toast']")
+    toast.wait_for(timeout=10_000)
+    feed.wait_for_saves()
+    return toast.inner_text()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_duplicating_one_row_shows_its_copy(requires_vite, authenticated_page, live_server, team, two_accounts):
+    chequing = two_accounts["chequing"]
+    original = feed_transaction(team, chequing, amount=Decimal("12.34"), description="DUP-ONE")
+
+    feed = _open_feed(authenticated_page, live_server, chequing)
+    message = _duplicate(feed, authenticated_page, original.id)
+
+    assert "Transaction duplicated" in message
+    assert "Transactions" not in message
+    copy = BankTransaction.objects.exclude(pk=original.pk).get(description="DUP-ONE")
+    authenticated_page.wait_for_selector(f"[data-testid='feed-row-{copy.id}']", timeout=10_000)
+    assert feed.has_row(original.id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_duplicating_a_transfer_mirror_shows_its_copy(
+    requires_vite, authenticated_page, live_server, team, two_accounts
+):
+    """The other side of a transfer is a row like any other in its own account's feed."""
+    from apps.bank_feed.services.transfer_mirror import sync_transfer
+
+    chequing, savings = two_accounts["chequing"], two_accounts["savings"]
+    primary = feed_transaction(team, chequing, category=savings, amount=Decimal("25.00"), description="DUP-XFER")
+    sync_transfer(primary)
+    mirror = BankTransaction.objects.get(journal_entry=primary.journal_entry, account=savings)
+
+    feed = _open_feed(authenticated_page, live_server, savings)
+    message = _duplicate(feed, authenticated_page, mirror.id)
+
+    assert "Transaction duplicated" in message
+    copy = BankTransaction.objects.get(account=savings, journal_entry__isnull=True, description="DUP-XFER")
+    authenticated_page.wait_for_selector(f"[data-testid='feed-row-{copy.id}']", timeout=10_000)
+    assert copy.amount == mirror.amount
+
+
+@pytest.mark.django_db(transaction=True)
+def test_duplicating_several_rows_counts_them(requires_vite, authenticated_page, live_server, team, two_accounts):
+    chequing = two_accounts["chequing"]
+    first, second = _rows(team, chequing, "DUP-MANY", 2)
+
+    feed = _open_feed(authenticated_page, live_server, chequing)
+    feed.select_row(first.id)
+    message = _duplicate(feed, authenticated_page, second.id)
+
+    assert "2 transactions duplicated" in message
+    assert BankTransaction.objects.filter(description__startswith="DUP-MANY").count() == 4
