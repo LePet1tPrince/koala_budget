@@ -1,0 +1,99 @@
+{% load i18n %}
+{% load currency_tags %}
+{% comment %}
+  The Goals tab's rows, one per active goal (docs/budget-tabs-goals-plan.md §3). Budgeted is the
+  month's contribution to the goal -- the same record the goals page assigns to
+  and withdraws from -- and Available is the goal's balance at the end of the
+  month: everything given to it so far, less everything spent from it. Money a
+  linked account brought in shows beside the field; it counts in Available but is
+  changed by its transactions, not here.
+{% endcomment %}
+{% if not section.rows %}
+<tr>
+  <td colspan="7" class="budget-empty text-center text-base-content/70" data-testid="budget-panel-empty">
+    {% translate "No goals yet." %}
+    <a href="{% url 'budget:goal_create' team_slug=request.team.slug book_slug=request.book.slug %}" class="link link-primary">{% translate "Create one" %}</a>
+  </td>
+</tr>
+{% endif %}
+{% for row in section.rows %}
+{% with goal=row.goal %}
+<tr data-testid="budget-goal-row" data-goal-id="{{ goal.pk }}">
+  <td class="text-center">
+    <input type="checkbox" class="checkbox checkbox-sm budget-row-checkbox" checked
+           data-testid="budget-goal-checkbox"
+           data-goal-id="{{ goal.pk }}"
+           data-category-name="{{ goal.name }}"
+           data-budgeted="{{ row.budgeted }}">
+  </td>
+  <td class="budget-name">
+    <div class="flex items-baseline gap-2 min-w-0">
+      <a href="{{ goal.get_absolute_url }}" class="link link-primary font-medium truncate" title="{{ goal.name }}">{{ goal.name }}</a>
+      {% if goal.is_funded %}
+        <span class="text-xs text-base-content/70 whitespace-nowrap" data-testid="budget-goal-plan">{% translate "Funded" %}</span>
+      {% elif row.plan %}
+        {% if row.plan.status == "behind" %}
+        <span class="badge badge-warning badge-xs whitespace-nowrap" data-testid="budget-goal-behind">{% translate "Behind" %}</span>
+        {% endif %}
+        <span class="text-xs text-base-content/70 whitespace-nowrap" data-testid="budget-goal-plan">
+          {% if goal.has_target %}
+            {% if row.plan.needed > 0 %}{% blocktranslate trimmed with amount=row.plan.needed|currency %}{{ amount }} this month{% endblocktranslate %}{% endif %}
+          {% else %}
+            {% blocktranslate trimmed with amount=row.plan.rate|currency %}Open-ended · {{ amount }}/mo{% endblocktranslate %}
+          {% endif %}
+        </span>
+      {% endif %}
+    </div>
+  </td>
+
+  <td>
+    {% with meter=row.meter %}
+    <div class="budget-meter is-goal{% if meter.over %} is-over{% endif %}"
+         data-budget-cell="goal:{{ goal.pk }}:meter" data-testid="budget-meter"
+         title="{% if goal.has_target %}{% translate 'Saved of the target' %}{% else %}{% translate "This month's contribution of the monthly plan" %}{% endif %}">
+      <span class="budget-meter-track"><span class="budget-meter-fill" style="width: {{ meter.width }}%"></span></span>
+      <span class="budget-meter-label">{{ meter.label }}</span>
+    </div>
+    {% endwith %}
+  </td>
+
+  <td class="text-right">
+    <form method="post" class="inline-flex items-center justify-end gap-1.5" id="budget-goal-form-{{ goal.pk }}"
+          data-budget-autosave
+          data-goal-id="{{ goal.pk }}"
+          data-category-name="{{ goal.name }}"
+          data-month="{{ month|date:'Y-m-d' }}">
+      {% csrf_token %}
+      <input type="hidden" name="goal_id" value="{{ goal.pk }}">
+      <input type="hidden" name="budget_month" value="{{ month|date:'Y-m-d' }}">
+      {% if row.linked %}
+      <span class="text-xs text-base-content/70 whitespace-nowrap" data-testid="budget-goal-linked"
+            title="{% translate 'From linked accounts this month' %}">{% if row.linked > 0 %}+{% endif %}{{ row.linked|currency }}</span>
+      {% endif %}
+      <input type="text" name="budget_amount" value="{{ row.input_value }}" inputmode="decimal" autocomplete="off"
+             data-amount-input placeholder="0.00"
+             class="input input-bordered input-xs budget-amount w-full max-w-24 text-right font-mono text-xs"
+             aria-label="{% blocktranslate trimmed with goal=goal.name %}{{ goal }} contribution{% endblocktranslate %}">
+      <span class="budget-status" data-budget-status aria-hidden="true"></span>
+    </form>
+  </td>
+
+  <td class="text-right">
+    <a href="{{ goal.get_absolute_url }}#activity" class="font-mono link link-hover" title="{% translate 'Spent from the goal this month' %}">{{ row.actual|currency }}</a>
+  </td>
+
+  <td class="text-right">
+    <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}"
+          data-budget-cell="goal:{{ goal.pk }}:available" data-testid="budget-goal-available">
+      {{ row.available|currency }}
+    </span>
+  </td>
+
+  <td class="text-center whitespace-nowrap">
+    <noscript>
+      <button type="submit" form="budget-goal-form-{{ goal.pk }}" class="btn btn-primary btn-xs">{% translate "Save" %}</button>
+    </noscript>
+  </td>
+</tr>
+{% endwith %}
+{% endfor %}

@@ -12,6 +12,7 @@ from django.db.models import Case, IntegerField, Q, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
@@ -142,24 +143,30 @@ def _budget_figures(book, month):
         sections[section_key]["groups"].append(group)
         sections[section_key]["hidden_count"] = len(group["rows"])
 
+    sections[GOAL_TAB] = _goal_section(book, month)
+
     # One tab per section the book budgets (no Income tab with future income off).
     section_list = [sections[key] for key in budget_tab_keys(book)]
 
-    # Grand totals across both sections
+    # Grand totals across the category sections
     grand_totals = {
-        field: sum((section["totals"][field] for section in section_list), Decimal("0"))
+        field: sum((section["totals"][field] for section in section_list if section["key"] != GOAL_TAB), ZERO)
         for field in ("budgeted", "actual", "available")
     }
 
     # The sidebar summarises the tab on screen, so each section carries its own. A
-    # section's key is its categories' account type.
+    # category section's key is its categories' account type; the goal section
+    # brings its own summary.
     type_of = {category.pk: category.account_group.account_type for category in categories}
     sidebar_summary = {}
     for section in section_list:
         key = section["key"]
+        section["autofill"] = _autofill_actions(key)
+        if key == GOAL_TAB:
+            sidebar_summary[key] = section["summary"]
+            continue
         rows = [row for group in section["groups"] for row in group["rows"]]
         section["overspent"] = sum(1 for row in rows if row["available"] < 0) if key == ACCOUNT_TYPE_EXPENSE else 0
-        section["autofill"] = _autofill_actions(key)
         section["summary"] = sidebar_summary[key] = {
             "leftover_last_month": sum(
                 (amount for pk, amount in prev_available_map.items() if type_of.get(pk) == key), Decimal("0")
@@ -172,7 +179,8 @@ def _budget_figures(book, month):
     return {
         "categories": categories,
         "sections": section_list,
-        "has_categories": bool(categories),
+        # Anything to budget at all: categories, or goals on the Goals tab.
+        "has_categories": bool(categories) or bool(sections[GOAL_TAB]["rows"]),
         "grand_totals": grand_totals,
         "sidebar_summary": sidebar_summary,
         "net_worth_card": NetWorthService(book).get_net_worth_card_data(month, categories),
@@ -183,11 +191,101 @@ def _budget_figures(book, month):
 # used (a cookie the page's script writes), else expenses -- the section edited most.
 BUDGET_TAB_COOKIE = "budget_tab"
 DEFAULT_BUDGET_TAB = "expense"
+GOAL_TAB = "goal"
+ZERO = Decimal("0")
 
 
 def budget_tab_keys(book):
-    """The budget page's tabs, in order: a section per category type the book budgets."""
-    return ["income", "expense"] if ACCOUNT_TYPE_INCOME in budgeted_account_types(book) else ["expense"]
+    """The budget page's tabs, in order: income (while the book budgets it), goals,
+    then expenses -- where money comes from, then where it goes."""
+    keys = [GOAL_TAB, ACCOUNT_TYPE_EXPENSE]
+    if ACCOUNT_TYPE_INCOME in budgeted_account_types(book):
+        keys.insert(0, ACCOUNT_TYPE_INCOME)
+    return keys
+
+
+def _goal_section(book, month):
+    """
+    The Goals tab: one row per goal, budgeted like a category
+    (docs/budget-tabs-goals-plan.md §3).
+
+    - budgeted: the month's manual contribution (`GoalAllocation`), which is what
+      the goals page assigns and withdraws -- the same row
+    - linked: what linked accounts brought in this month (not editable here)
+    - actual: spent from the goal this month
+    - available: the goal's balance at the end of the month -- everything given
+      to it through the month, less everything spent from it. Not `goal.left`,
+      which counts allocations dated after the month; this one matches the goal's
+      term in Unassigned for the same month.
+
+    Only active goals are listed: closed and archived ones are finished with, and
+    their history lives on the goal page. A goal created after the month has no
+    row until then.
+    """
+    goals = list(Goal.objects.filter(book=book).active().with_progress(month).select_related("account"))
+    manual = dict(
+        GoalAllocation.objects.filter(book=book, month=month, goal__in=goals).values_list("goal_id", "amount")
+    )
+    month_end = month + relativedelta(months=1)
+
+    rows = []
+    totals = _zero_totals()
+    summary = {"leftover_last_month": ZERO, "assigned_this_month": ZERO, "linked_this_month": ZERO}
+    behind = 0
+    for goal in goals:
+        budgeted = manual.get(goal.pk, ZERO)
+        saved_month = goal.saved_this_month or ZERO
+        saved_to_date = (goal.saved_previous or ZERO) + saved_month
+        actual = goal.spent_this_month or ZERO
+        available = saved_to_date - (goal.spent or ZERO)
+        linked = saved_month - budgeted
+        quiet = not (budgeted or linked or actual or available)
+        created = timezone.localtime(goal.created_at).date() if goal.created_at else month
+        if quiet and created >= month_end:
+            continue
+
+        pct, _remaining = _goal_card_progress(goal, saved_to_date, saved_month)
+        has_plan = goal.has_target or (goal.monthly_contribution or ZERO) > 0
+        plan = goal_plan(goal, month)
+        if plan and plan["status"] == "behind":
+            behind += 1
+        rows.append(
+            {
+                "goal": goal,
+                "budgeted": budgeted,
+                # Blank (not "0.00") when nothing was assigned this month, as for a category.
+                "input_value": f"{manual[goal.pk]:.2f}" if goal.pk in manual else "",
+                "linked": linked,
+                "actual": actual,
+                "available": available,
+                "plan": plan,
+                "meter": {
+                    "pct": pct if has_plan else None,
+                    "width": round(pct) if has_plan else 0,
+                    "over": available < 0,
+                    "label": f"{round(pct)}%" if has_plan else "—",
+                },
+            }
+        )
+        for field, amount in (("budgeted", budgeted), ("actual", actual), ("available", available)):
+            totals[field] += amount
+        summary["leftover_last_month"] += available - saved_month + actual
+        summary["assigned_this_month"] += budgeted
+        summary["linked_this_month"] += linked
+
+    summary["activity_this_month"] = totals["actual"]
+    summary["available"] = totals["available"]
+    group = {"name": _("Goals"), "rows": rows, "subtotals": dict(totals)}
+    return {
+        "key": GOAL_TAB,
+        "label": _("Goals"),
+        "groups": [group] if rows else [],
+        "rows": rows,
+        "totals": totals,
+        "summary": summary,
+        "behind": behind,
+        "overspent": 0,
+    }
 
 
 def _budget_tab(request, book):
@@ -200,6 +298,12 @@ def _budget_tab(request, book):
 
 def _autofill_actions(section_key):
     """The sidebar's Auto-Assign buttons for a tab: `[{action, label, css}]`."""
+    if section_key == GOAL_TAB:
+        return [
+            {"action": "assigned_last_month", "label": _("Assigned Last Month"), "css": "btn-soft btn-primary"},
+            {"action": "monthly_plan", "label": _("Monthly Plan"), "css": "btn-soft btn-secondary"},
+            {"action": "assign_zero", "label": _("Assign Zero"), "css": "btn-soft"},
+        ]
     return [
         {"action": "assigned_last_month", "label": _("Assigned Last Month"), "css": "btn-soft btn-primary"},
         {
@@ -267,16 +371,16 @@ def _budget_cells(figures):
     for section in figures["sections"]:
         for index, group in enumerate(section["groups"]):
             for row in group["rows"]:
-                pk = row["category"].pk
-                put(f"row:{pk}:available", row["available"], toned=True)
+                prefix = f"goal:{row['goal'].pk}" if section["key"] == GOAL_TAB else f"row:{row['category'].pk}"
+                put(f"{prefix}:available", row["available"], toned=True)
                 meter = row["meter"]
-                cells[f"row:{pk}:meter"] = {
+                cells[f"{prefix}:meter"] = {
                     "value": meter["label"],
                     "tone": "neg" if meter["over"] else "",
                     "width": meter["width"],
                 }
                 # Not rendered — the Auto-Assign confirm dialog reads it off the row checkbox.
-                cells[f"row:{pk}:budgeted"] = {"value": f"{row['budgeted']:.2f}", "tone": ""}
+                cells[f"{prefix}:budgeted"] = {"value": f"{row['budgeted']:.2f}", "tone": ""}
             put(f"group:{section['key']}:{index}:budgeted", group["subtotals"]["budgeted"])
             put(f"group:{section['key']}:{index}:available", group["subtotals"]["available"], toned=True)
         put(f"section:{section['key']}:budgeted", section["totals"]["budgeted"])
@@ -287,6 +391,13 @@ def _budget_cells(figures):
             count = section["overspent"]
             cells["tab:expense:overspent"] = {
                 "value": ngettext("%(count)s overspent", "%(count)s overspent", count) % {"count": count},
+                "tone": "",
+                "hidden": count == 0,
+            }
+        if section["key"] == GOAL_TAB:
+            count = section["behind"]
+            cells["tab:goal:behind"] = {
+                "value": ngettext("%(count)s behind", "%(count)s behind", count) % {"count": count},
                 "tone": "",
                 "hidden": count == 0,
             }
@@ -310,6 +421,24 @@ def _budget_cells(figures):
 @login_and_book_required
 def budget_month_view(request, team_slug, book_slug):
     month = _month_from_request(request)
+
+    if request.method == "POST" and request.POST.get("goal_id"):
+        # A goal row's <noscript> fallback: the month's contribution, set.
+        goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=request.POST.get("goal_id"))
+        goal_month = _parse_month(request.POST.get("budget_month")) if request.POST.get("budget_month") else month
+        amount = parse_budget_amount(request.POST.get("budget_amount"))
+        if amount is None:
+            messages.error(request, _("Enter a number, for example 250 or 1,250.50."))
+        else:
+            try:
+                _set_goal_amount(request, goal, goal_month, amount)
+            except GoalAllocationError as e:
+                messages.error(request, str(e))
+            else:
+                messages.success(
+                    request, _("%(goal)s set to %(amount)s.") % {"goal": goal.name, "amount": currency(amount)}
+                )
+        return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}&tab={GOAL_TAB}")
 
     if request.method == "POST":
         # The <noscript> fallback: a full form post per row. With JS the page
@@ -375,10 +504,13 @@ def _budget_swap_context(book, month, tab=DEFAULT_BUDGET_TAB):
         "save_amount_url": reverse("budget:budget_save_amount", args=book.url_args),
         "figures_url": reverse("budget:budget_figures", args=book.url_args),
         "cover_url": reverse("budget:budget_cover", args=book.url_args),
-        # Goals an overspent category can be covered from (emergency fund, ...), besides Unassigned.
+        # Goals an overspent category can be covered from (emergency fund, ...), besides
+        # Unassigned: the goal rows, with the same month-end balance each row shows.
         "cover_goals": [
-            {"id": goal.pk, "name": goal.name, "left": f"{goal.left:.2f}"}
-            for goal in GoalService(book).get_goals_with_progress(month)
+            {"id": row["goal"].pk, "name": row["goal"].name, "left": f"{row['available']:.2f}"}
+            for section in figures["sections"]
+            if section["key"] == GOAL_TAB
+            for row in section["rows"]
         ],
     }
 
@@ -416,7 +548,9 @@ def budget_save_amount(request, team_slug, book_slug):
     place — the old full-page redirect reset the scroll position and focus on
     every save, which made typing down a column unusable.
 
-    Body: {"category_id": int, "month": "YYYY-MM-DD", "amount": "123.45"}
+    Body: {"category_id": int, "month": "YYYY-MM-DD", "amount": "123.45"}, or
+    {"goal_id": int, ...} for a goal row: the month's contribution to the goal,
+    the same `GoalAllocation` the goals page assigns to and withdraws from.
     """
     try:
         payload = json.loads(request.body)
@@ -424,6 +558,37 @@ def budget_save_amount(request, team_slug, book_slug):
         return JsonResponse({"error": _("Invalid request body.")}, status=400)
     if not isinstance(payload, dict):
         return JsonResponse({"error": _("Invalid request body.")}, status=400)
+
+    month = parse_date(str(payload.get("month") or ""))
+    amount = parse_budget_amount(payload.get("amount"))
+
+    if (payload.get("goal_id") is None) == (payload.get("category_id") is None):
+        return JsonResponse({"error": _("Unknown budget category.")}, status=400)
+    if payload.get("goal_id") is not None:
+        try:
+            goal_id = int(payload.get("goal_id"))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": _("Unknown goal.")}, status=400)
+        goal = Goal.objects.filter(book=request.book, pk=goal_id).first()
+        if goal is None:
+            return JsonResponse({"error": _("Unknown goal.")}, status=400)
+        if month is None:
+            return JsonResponse({"error": _("Invalid month.")}, status=400)
+        if amount is None:
+            return JsonResponse({"error": _("Enter a number, for example 250 or 1,250.50.")}, status=400)
+        month = month.replace(day=1)
+        try:
+            _set_goal_amount(request, goal, month, amount)
+        except GoalAllocationError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+        return JsonResponse(
+            {
+                "saved": True,
+                "goal_id": goal.pk,
+                "amount": f"{amount:.2f}",
+                "cells": _budget_cells(_budget_figures(request.book, month)),
+            }
+        )
 
     try:
         category_id = int(payload.get("category_id"))
@@ -433,12 +598,10 @@ def budget_save_amount(request, team_slug, book_slug):
     if category is None:
         return JsonResponse({"error": _("Unknown budget category.")}, status=400)
 
-    month = parse_date(str(payload.get("month") or ""))
     if month is None:
         return JsonResponse({"error": _("Invalid month.")}, status=400)
     month = month.replace(day=1)
 
-    amount = parse_budget_amount(payload.get("amount"))
     if amount is None:
         return JsonResponse({"error": _("Enter a number, for example 250 or 1,250.50.")}, status=400)
 
@@ -461,6 +624,27 @@ def budget_save_amount(request, team_slug, book_slug):
             "cells": _budget_cells(_budget_figures(request.book, month)),
         }
     )
+
+
+def _set_goal_amount(request, goal, month, amount, via="budget"):
+    """Set a goal's contribution for `month` from the budget page, and record it in the
+    goal's history the way an edit on the goal page is. Raises `GoalAllocationError`."""
+    old = GoalService(request.book).set_month_allocation(goal, month, amount)
+    if old != amount:
+        log_event(
+            AuditEvent.GOAL_CONTRIBUTION_EDITED,
+            request=request,
+            metadata={
+                "goal_id": goal.pk,
+                "goal_name": goal.name,
+                "month": month.isoformat(),
+                "from": str(old),
+                "to": str(amount),
+                "undo": amount == 0,
+                "via": via,
+            },
+        )
+    return old
 
 
 @login_and_book_required
@@ -504,6 +688,10 @@ def budget_autofill_view(request, team_slug, book_slug):
 
     action = request.POST.get("action")
     month = _parse_month(request.POST.get("month"))
+
+    if request.POST.get("section") == GOAL_TAB:
+        _autofill_goals(request, action, month)
+        return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}&tab={GOAL_TAB}")
 
     prev_month = month - relativedelta(months=1)
     service = BudgetService(request.book)
@@ -602,6 +790,55 @@ def budget_autofill_view(request, team_slug, book_slug):
 
     tab = f"&tab={section}" if section in types else ""
     return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}{tab}")
+
+
+def _autofill_goals(request, action, month):
+    """
+    Auto-Assign on the Goals tab: set each selected open goal's contribution for
+    `month` to last month's, to its plan's ask for the month, or to zero. Every write
+    goes through `set_month_allocation`, so a goal it would take spent money back
+    from is refused -- named in the message -- and the rest still apply.
+    """
+    goals = list(Goal.objects.filter(book=request.book).active().with_progress(month))
+    if request.POST.get("filtered"):
+        selected_ids = {gid for gid in request.POST.getlist("goal_ids") if gid}
+        goals = [goal for goal in goals if str(goal.pk) in selected_ids]
+
+    if action == "assigned_last_month":
+        previous = dict(
+            GoalAllocation.objects.filter(
+                book=request.book, month=month - relativedelta(months=1), goal__in=goals
+            ).values_list("goal_id", "amount")
+        )
+        targets = {goal.pk: previous.get(goal.pk, ZERO) for goal in goals}
+        done = _("Goals set to last month's contributions.")
+    elif action == "monthly_plan":
+        targets = {}
+        for goal in goals:
+            plan = goal_plan(goal, month)
+            # A goal with no plan (or one already funded) is left as it is.
+            if plan and plan["needed"] > 0:
+                targets[goal.pk] = plan["needed"]
+        done = _("Goals set to their monthly plan.")
+    elif action == "assign_zero":
+        targets = {goal.pk: ZERO for goal in goals}
+        done = _("Goal contributions set to zero.")
+    else:
+        return
+
+    refused = []
+    by_id = {goal.pk: goal for goal in goals}
+    for goal_id, amount in targets.items():
+        try:
+            _set_goal_amount(request, by_id[goal_id], month, amount, via="budget_autofill")
+        except GoalAllocationError:
+            refused.append(by_id[goal_id].name)
+    messages.success(request, done)
+    if refused:
+        messages.warning(
+            request,
+            _("Left alone, since it would take back money already spent: %(goals)s.") % {"goals": ", ".join(refused)},
+        )
 
 
 # =============================================================================
@@ -1562,8 +1799,10 @@ def goal_allocation_update_view(request, team_slug, book_slug, pk):
             messages.error(request, _("Allocation amount cannot be negative."))
             return redirect(f"/a/{team_slug}/{book_slug}/budget/goals/?month={month.isoformat()}")
 
-        service = GoalService(request.book)
-        service.update_allocation(goal, month, amount)
+        try:
+            _set_goal_amount(request, goal, month, amount, via="goals_page")
+        except GoalAllocationError as e:
+            messages.error(request, str(e))
 
         # Return to goals list at the same month
         return redirect(f"/a/{team_slug}/{book_slug}/budget/goals/?month={month.isoformat()}")

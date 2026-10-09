@@ -454,24 +454,34 @@ class GoalService:
         return allocation
 
     def edit_allocation(self, allocation, amount):
+        """Change a past month's manual contribution to `amount` (0 undoes it): see
+        `set_month_allocation`. Returns the old amount."""
+        return self.set_month_allocation(allocation.goal, allocation.month, amount)
+
+    def set_month_allocation(self, goal, month, amount):
         """
-        Change a past month's manual contribution to `amount` (0 undoes it: the row
-        goes). Only `GoalAllocation`s -- money from linked accounts follows its
+        Set the goal's manual contribution for `month` to `amount` (0 removes the
+        row). Only `GoalAllocation`s -- money from linked accounts follows its
         transactions and is changed there.
+
+        The one writer behind the budget page's goal rows, the goal page's history
+        edits and the goals page's no-JS "Set month": they set a month's amount,
+        where the goals page's buttons add to it.
 
         Refused on a closed or archived goal (closing wrote its own release into the
         history), and when lowering it would take back money already spent: the goal
         can't be left below zero by rewriting its past, the same cap a withdrawal has.
         Returns the old amount.
         """
+        month = month.replace(day=1)
         with transaction.atomic():
-            allocation = GoalAllocation.objects.select_for_update().select_related("goal").get(pk=allocation.pk)
-            goal = allocation.goal
+            goal = Goal.objects.select_for_update().get(pk=goal.pk)
             if goal.is_archived:
                 raise GoalAllocationError(_("This goal is archived. Its history can't be changed."))
             if goal.is_closed:
                 raise GoalAllocationError(_("This goal is closed. Its history can't be changed."))
-            old = allocation.amount
+            allocation = GoalAllocation.objects.select_for_update().filter(goal=goal, month=month).first()
+            old = allocation.amount if allocation else Decimal("0")
             if amount == old:
                 return old
             change = amount - old
@@ -479,7 +489,7 @@ class GoalService:
                 # As of the latest month anything is recorded in, so a contribution
                 # dated ahead of today counts too.
                 latest = GoalAllocation.objects.filter(goal=goal).order_by("-month").values_list("month", flat=True)
-                as_of = max(timezone.localdate().replace(day=1), latest.first() or date.min)
+                as_of = max(timezone.localdate().replace(day=1), latest.first() or date.min, month)
                 left = self.left(goal, as_of)
                 if left + change < 0:
                     raise GoalAllocationError(
@@ -491,9 +501,11 @@ class GoalService:
                     )
             if amount == 0:
                 allocation.delete()
-            else:
+            elif allocation:
                 allocation.amount = amount
                 allocation.save(update_fields=["amount", "updated_at"])
+            else:
+                GoalAllocation.objects.create(book=goal.book, goal=goal, month=month, amount=amount)
             return old
 
     def add_to_allocation(self, goal, month, amount):

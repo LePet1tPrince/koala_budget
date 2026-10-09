@@ -138,6 +138,11 @@
               {% if not section.overspent %}hidden{% endif %}>
           {% blocktranslate trimmed count counter=section.overspent %}{{ counter }} overspent{% plural %}{{ counter }} overspent{% endblocktranslate %}
         </span>
+        {% elif section.key == "goal" %}
+        <span class="badge badge-warning badge-xs" data-budget-cell="tab:goal:behind" data-testid="budget-tab-behind"
+              title="{% translate 'Behind their plan' %}" {% if not section.behind %}hidden{% endif %}>
+          {% blocktranslate trimmed count counter=section.behind %}{{ counter }} behind{% plural %}{{ counter }} behind{% endblocktranslate %}
+        </span>
         {% endif %}
       </a>
       {% endfor %}
@@ -153,18 +158,21 @@
         <tr>
           <th class="text-center w-8">
             <input type="checkbox" class="checkbox checkbox-sm budget-select-all" checked
-                   title="{% translate 'Select all categories' %}"
-                   aria-label="{% blocktranslate trimmed with section=section.label %}Select all {{ section }} categories{% endblocktranslate %}">
+                   title="{% translate 'Select all rows' %}"
+                   aria-label="{% blocktranslate trimmed with section=section.label %}Select every row on the {{ section }} tab{% endblocktranslate %}">
           </th>
-          <th>{% translate "Category" %}</th>
+          <th>{% if section.key == "goal" %}{% translate "Goal" %}{% else %}{% translate "Category" %}{% endif %}</th>
           <th class="w-28"><span class="sr-only">{% translate "Progress" %}</span></th>
           <th class="text-right">{% translate "Budgeted" %}</th>
-          <th class="text-right">{% translate "Actual" %}</th>
+          <th class="text-right">{% if section.key == "goal" %}{% translate "Spent" %}{% else %}{% translate "Actual" %}{% endif %}</th>
           <th class="text-right">{% translate "Available" %}</th>
           <th class="text-center"><noscript>{% translate "Action" %}</noscript></th>
         </tr>
       </thead>
       <tbody>
+        {% if section.key == "goal" %}
+        {% include "budget/components/budget_goal_rows.html" %}
+        {% else %}
         {% if not section.groups %}
         <tr>
           <td colspan="7" class="budget-empty text-center text-base-content/70" data-testid="budget-panel-empty">
@@ -352,12 +360,13 @@
           </tr>
           {% endfor %}
         {% endfor %}
+        {% endif %}
       </tbody>
       <tfoot>
         <!-- Section total: sticks to the bottom of the screen while the rows scroll. -->
-        <tr data-testid="{% if section.key == 'expense' %}budget-grand-total{% else %}budget-total-income{% endif %}">
+        <tr data-testid="{% if section.key == 'expense' %}budget-grand-total{% elif section.key == 'goal' %}budget-total-goals{% else %}budget-total-income{% endif %}">
           <td></td>
-          <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
+          <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% elif section.key == 'goal' %}{% translate "Total Goals" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
           <td></td>
           <td class="text-right">
             <span class="font-mono" data-budget-cell="section:{{ section.key }}:budgeted">{{ section.totals.budgeted|currency }}</span>

@@ -50,7 +50,8 @@ function init() {
 
   const checkboxes = new Map();
   document.querySelectorAll('.budget-row-checkbox').forEach((cb) => {
-    checkboxes.set(`row:${cb.dataset.categoryId}:budgeted`, cb);
+    const key = cb.dataset.goalId ? `goal:${cb.dataset.goalId}` : `row:${cb.dataset.categoryId}`;
+    checkboxes.set(`${key}:budgeted`, cb);
   });
 
   const rows = forms
@@ -61,6 +62,12 @@ function init() {
     .filter(Boolean);
 
   rows.forEach((row, index) => wire(row, index));
+  // Each row by the key of its `:budgeted` cell, so a figure that moved because of
+  // something else (covering a category from a goal changes the goal's month) can
+  // reach the field showing it.
+  const rowsByBudgetedKey = new Map(
+    rows.map((row) => [row.goalId ? `goal:${row.goalId}:budgeted` : `row:${row.categoryId}:budgeted`, row])
+  );
   wireCover();
   if (FIGURES_URL) refreshFigures = refetchFigures;
 
@@ -74,6 +81,8 @@ function init() {
       input,
       status: form.querySelector('[data-budget-status]'),
       categoryId: form.dataset.categoryId,
+      // A goal row (the Goals tab): its amount is the month's contribution to the goal.
+      goalId: form.dataset.goalId,
       categoryName: form.dataset.categoryName || '',
       month: form.dataset.month,
       // What the server last confirmed. Escape reverts to it, and a commit that
@@ -187,7 +196,7 @@ function init() {
           'X-CSRFToken': Cookies.get('csrftoken') || '',
         },
         body: JSON.stringify({
-          category_id: Number(row.categoryId),
+          ...(row.goalId ? { goal_id: Number(row.goalId) } : { category_id: Number(row.categoryId) }),
           month: row.month,
           amount: value,
         }),
@@ -275,6 +284,7 @@ function init() {
         paintMeter(el, cell);
         return;
       }
+      syncField(rowsByBudgetedKey.get(key), cell.value);
       if (!el || el.textContent.trim() === cell.value) return;
       el.textContent = cell.value;
       el.classList.toggle('text-error', cell.tone === 'neg');
@@ -282,6 +292,15 @@ function init() {
       flash(el);
     });
     refreshCoverButtons();
+  }
+
+  // A field nobody is typing in, with no save of its own on the way, shows what the
+  // server now holds. Blank and zero are the same amount.
+  function syncField(row, value) {
+    if (!row || row.inFlight || row.queued !== null || document.activeElement === row.input) return;
+    if (sameAmount(row.saved || '0', value)) return;
+    row.saved = value;
+    row.input.value = value;
   }
 
   // -------------------------------------------------------------------------
@@ -329,6 +348,11 @@ function init() {
     const unassignedNow = () => parseMoney(cells.get('networth:available')?.textContent ?? '0');
     const source = () => (goalRadio?.checked ? 'goal' : 'unassigned');
     const selectedGoal = () => goals.find((g) => String(g.id) === select?.value);
+    // What a goal has left: its row on the Goals tab, which every save repaints.
+    const leftOf = (goal) => {
+      const cell = cells.get(`goal:${goal.id}:available`);
+      return cell ? parseMoney(cell.textContent) : parseFloat(goal.left);
+    };
 
     const fillGoals = () => {
       if (!select) return;
@@ -336,11 +360,11 @@ function init() {
         ...goals.map((goal) => {
           const option = document.createElement('option');
           option.value = goal.id;
-          option.textContent = `${goal.name} · ${fmtMoney(parseFloat(goal.left))} left`;
+          option.textContent = `${goal.name} · ${fmtMoney(leftOf(goal))} left`;
           return option;
         })
       );
-      const richest = goals.reduce((a, b) => (parseFloat(b.left) > parseFloat(a.left) ? b : a), goals[0]);
+      const richest = goals.reduce((a, b) => (leftOf(b) > leftOf(a) ? b : a), goals[0]);
       if (richest) select.value = String(richest.id);
     };
 
@@ -352,7 +376,7 @@ function init() {
       const newClaim = Math.max(0, amount - currentShortfall);
       if (source() === 'unassigned') return -newClaim;
       const goal = selectedGoal();
-      const released = goal ? Math.min(amount, Math.max(0, parseFloat(goal.left))) : 0;
+      const released = goal ? Math.min(amount, Math.max(0, leftOf(goal))) : 0;
       return released - newClaim;
     };
 
@@ -371,7 +395,7 @@ function init() {
           warn = true;
         }
         const goal = source() === 'goal' ? selectedGoal() : null;
-        const goalAfter = goal ? parseFloat(goal.left) - amount : 0;
+        const goalAfter = goal ? leftOf(goal) - amount : 0;
         if (goal && goalAfter < 0) {
           messages.push(`${goal.name} will go to ${fmtMoney(goalAfter)}.`);
           warn = true;
