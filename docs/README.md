@@ -17,6 +17,7 @@ Welcome to the Koala Budget documentation. This directory contains comprehensive
 |----------|-------------|----------|
 | [ERD](./erd.md) | Entity Relationship Diagram (Mermaid) | All developers |
 | [Data Model](./data-model.md) | Detailed model documentation | Backend developers |
+| [Internals](./internals.html) | Interactive ERD of every model + how income, expenses and goals feed Unassigned (open in a browser) | All developers |
 | [API Guide](./api-guide.md) | REST API reference | Full-stack developers |
 | [Frontend Guide](./frontend-guide.md) | React/TypeScript patterns | Frontend developers |
 
@@ -60,6 +61,7 @@ Mid Level (Core Reference)
 
 Low Level (Detailed Reference)
 ├── data-model.md - Every field of every model
+├── internals.html - Interactive ERD + budgeting/Unassigned flows
 ├── reports.md - Specific feature documentation
 └── context/CLAUDE.md - Comprehensive LLM context
 ```

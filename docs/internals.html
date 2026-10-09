@@ -1,0 +1,1187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Generated: ERD data comes from Django's model registry (apps.get_models()). -->
+<title>Koala Budget Internals</title>
+<meta name="description" content="Koala Budget data model (ERD of every app model) and how budgeting for income, expenses and goals feeds the Unassigned metric.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one sticky header with two tabs; page 1 is a pannable ERD canvas beside a detail panel,
+   page 2 is a single reading column of diagrams and tables. Tokens follow the app's koala theme
+   (assets/styles/theme.css): warm-paper canvas, warm-white surfaces, eucalyptus brand, ochre = goals,
+   dusty blue = envelopes, success/error only for money moving up/down. */
+:root {
+  --canvas: oklch(97% 0.008 106);
+  --surface: oklch(99.2% 0.004 106);
+  --sunk: oklch(95.3% 0.009 106);
+  --line: oklch(91% 0.012 106);
+  --line-strong: oklch(83% 0.015 106);
+  --ink: oklch(27% 0.017 150);
+  --muted: oklch(43% 0.016 150);
+  --faint: oklch(56% 0.014 150);
+  --primary: oklch(51% 0.105 157);
+  --blue: oklch(50% 0.085 233);
+  --ochre: oklch(70% 0.125 66);
+  --ochre-ink: oklch(50% 0.11 66);
+  --up: oklch(50% 0.12 157);
+  --down: oklch(52% 0.17 25);
+  --edge: oklch(27% 0.017 150 / 0.32);
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 0.875rem;
+  --radius-sm: 0.5rem;
+  --gutter: clamp(16px, 3vw, 32px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: oklch(21% 0.015 150);
+    --surface: oklch(25% 0.016 150);
+    --sunk: oklch(23% 0.015 150);
+    --line: oklch(32% 0.018 150);
+    --line-strong: oklch(41% 0.02 150);
+    --ink: oklch(93% 0.012 106);
+    --muted: oklch(79% 0.012 106);
+    --faint: oklch(66% 0.012 106);
+    --primary: oklch(72% 0.13 157);
+    --blue: oklch(70% 0.1 233);
+    --ochre: oklch(78% 0.13 66);
+    --ochre-ink: oklch(80% 0.12 66);
+    --up: oklch(74% 0.13 157);
+    --down: oklch(70% 0.16 25);
+    --edge: oklch(93% 0.012 106 / 0.3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --canvas: oklch(21% 0.015 150);
+  --surface: oklch(25% 0.016 150);
+  --sunk: oklch(23% 0.015 150);
+  --line: oklch(32% 0.018 150);
+  --line-strong: oklch(41% 0.02 150);
+  --ink: oklch(93% 0.012 106);
+  --muted: oklch(79% 0.012 106);
+  --faint: oklch(66% 0.012 106);
+  --primary: oklch(72% 0.13 157);
+  --blue: oklch(70% 0.1 233);
+  --ochre: oklch(78% 0.13 66);
+  --ochre-ink: oklch(80% 0.12 66);
+  --up: oklch(74% 0.13 157);
+  --down: oklch(70% 0.16 25);
+  --edge: oklch(93% 0.012 106 / 0.3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font: 14px/1.55 var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+}
+h1, h2, h3, h4 { margin: 0; line-height: 1.2; text-wrap: balance; font-weight: 600; }
+p { margin: 0; }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+code { background: var(--sunk); border: 1px solid var(--line); border-radius: 4px; padding: 0.05em 0.35em; white-space: nowrap; }
+a { color: var(--primary); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- header ---------- */
+.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50;
+  background: color-mix(in oklch, var(--canvas) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.top-inner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px;
+  padding: 10px var(--gutter);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand b { font-weight: 700; letter-spacing: -0.01em; font-size: 15px; }
+.brand span { color: var(--muted); font-size: 13px; }
+.tabs { display: flex; gap: 4px; background: var(--sunk); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.tab {
+  border: 0; background: transparent; border-radius: 999px; padding: 5px 14px; cursor: pointer;
+  font-weight: 500; font-size: 13px; color: var(--muted);
+}
+.tab[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.stamp { margin-left: auto; color: var(--faint); font-size: 12px; }
+
+.page { padding-block: 28px 64px; padding-inline: var(--gutter); }
+.page-head { display: grid; gap: 8px; max-width: 72ch; margin-bottom: 20px; }
+.page-head h1 { font-size: 28px; letter-spacing: -0.02em; }
+.lead { color: var(--muted); font-size: 15px; }
+.eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+
+/* ---------- ERD page ---------- */
+.conventions { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.conv { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; color: var(--muted); min-width: 0; }
+.conv strong { color: var(--ink); font-weight: 600; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-bottom: 10px; }
+.search { position: relative; flex: 1 1 220px; max-width: 340px; }
+.search input {
+  width: 100%; height: 34px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink); padding: 0 10px; font: inherit; font-size: 13px;
+}
+.btn {
+  height: 30px; padding: 0 11px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
+  background: var(--surface); cursor: pointer; font-size: 12.5px; font-weight: 500;
+}
+.btn:hover { border-color: var(--primary); }
+.btn[aria-pressed="true"] { background: color-mix(in oklch, var(--primary) 12%, var(--surface)); border-color: var(--primary); }
+.btn-group { display: flex; gap: 6px; align-items: center; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 12px; color: var(--muted); }
+.legend svg { display: block; overflow: visible; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+
+.erd-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }
+@media (max-width: 1000px) { .erd-layout { grid-template-columns: minmax(0, 1fr); } }
+.erd-viewport {
+  position: relative; overflow: auto; height: clamp(460px, calc(100vh - 250px), 960px);
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in oklch, var(--ink) 10%, transparent) 1px, transparent 1.2px) 0 0 / 22px 22px,
+    var(--sunk);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  cursor: grab; touch-action: pan-x pan-y;
+}
+.erd-viewport.dragging { cursor: grabbing; user-select: none; }
+.erd-sizer { position: relative; }
+.erd-canvas {
+  position: absolute; top: 0; left: 0; transform-origin: 0 0;
+  display: flex; align-items: flex-start; gap: 84px; padding: 26px 34px 40px 88px; width: max-content;
+}
+.edges { position: absolute; top: 0; left: 0; z-index: 0; pointer-events: none; overflow: visible; }
+.edges path { fill: none; stroke: var(--edge); stroke-width: 1.15; transition: opacity .15s, stroke .15s; }
+.edges path.opt { stroke-dasharray: 4 3; }
+.edges .mk { stroke: var(--edge); fill: none; stroke-width: 1.15; }
+.erd-canvas.focus .edges { z-index: 3; }
+.erd-canvas.focus .edges path { opacity: 0.07; }
+.erd-canvas.focus .edges path.hl { opacity: 1; stroke: var(--primary); stroke-width: 1.7; }
+.erd-col { display: flex; flex-direction: column; gap: 30px; width: 292px; }
+.zone { display: flex; flex-direction: column; gap: 14px; }
+.zone-label { font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; color: var(--faint); padding-left: 2px; }
+
+.ent {
+  position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; cursor: pointer; transition: opacity .15s, border-color .15s, box-shadow .15s;
+}
+.ent:hover { border-color: var(--primary); }
+.ent.hub { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 14%, transparent); }
+.ent-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px 7px; border-bottom: 1px solid var(--line); min-height: 36px; }
+.ent-head h3 { font-size: 13.5px; font-weight: 650; letter-spacing: -0.005em; }
+.ent-head .app { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); margin-left: auto; }
+.tag {
+  display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 999px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+  background: color-mix(in oklch, var(--primary) 13%, transparent); color: var(--primary);
+}
+.tag.team { background: color-mix(in oklch, var(--ochre) 20%, transparent); color: var(--ochre-ink); }
+.tag.plain { background: var(--sunk); color: var(--muted); }
+.ent-body { padding: 4px 0 5px; }
+.f { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: baseline; gap: 4px; padding: 1.5px 10px 1.5px 6px; font-size: 11.5px; }
+.f .k { font-family: var(--font-mono); font-size: 9px; font-weight: 600; color: var(--faint); text-align: center; }
+.f .k.pk { color: var(--ochre-ink); }
+.f .k.fk { color: var(--primary); }
+.f .n { font-family: var(--font-mono); font-size: 11.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.f .n i { font-style: normal; color: var(--faint); }
+.f .n .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--ochre); margin-left: 4px; vertical-align: 2px; }
+.f .t { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); white-space: nowrap; text-align: right; }
+.f .t.ref { color: var(--primary); font-weight: 500; }
+.f .od { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--down); margin-left: 4px; }
+.f .od.null { color: var(--faint); }
+.f-ch { grid-column: 2 / -1; font-size: 10px; color: var(--faint); line-height: 1.35; padding-bottom: 1px; font-family: var(--font-mono); white-space: normal; }
+.ent-foot { border-top: 1px dashed var(--line); padding: 5px 10px 6px; font-family: var(--font-mono); font-size: 9.8px; color: var(--muted); display: grid; gap: 1px; }
+.ent-foot .miss { color: var(--faint); font-family: var(--font-sans); font-size: 10.5px; }
+.erd-canvas.focus .ent { opacity: 0.28; }
+.erd-canvas.focus .ent.rel { opacity: 1; }
+.erd-canvas.focus .ent.sel { opacity: 1; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 22%, transparent); }
+.erd-canvas.searching .ent { opacity: 0.25; }
+.erd-canvas.searching .ent.match { opacity: 1; border-color: var(--ochre); }
+
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 16px 18px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 68px);
+  max-height: calc(100vh - 90px); overflow: auto; min-width: 0;
+}
+@media (max-width: 1000px) { .panel { position: static; max-height: none; } }
+.panel h2 { font-size: 19px; letter-spacing: -0.01em; }
+.panel h4 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); margin: 16px 0 6px; }
+.panel .sub { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 10px; color: var(--muted); font-size: 12px; }
+.panel p.desc { color: var(--ink); font-size: 13px; }
+.ftable { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ftable td { padding: 4px 6px 4px 0; border-top: 1px solid var(--line); vertical-align: top; }
+.ftable td:first-child { font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
+.ftable td:nth-child(2) { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.ftable .fnote { display: block; font-family: var(--font-sans); font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.rel-list { display: grid; gap: 4px; }
+.rel-btn {
+  display: flex; gap: 8px; align-items: baseline; text-align: left; width: 100%;
+  border: 1px solid var(--line); background: var(--canvas); border-radius: 6px; padding: 5px 8px; cursor: pointer; font-size: 12px;
+}
+.rel-btn:hover { border-color: var(--primary); }
+.rel-btn b { font-weight: 600; }
+.rel-btn span { color: var(--muted); font-family: var(--font-mono); font-size: 11px; margin-left: auto; text-align: right; }
+.domain-list { display: grid; gap: 10px; }
+.domain-list > div { display: grid; gap: 4px; }
+.domain-list .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip-btn { border: 1px solid var(--line); background: var(--canvas); border-radius: 999px; padding: 2px 9px; font-size: 12px; cursor: pointer; }
+.chip-btn:hover { border-color: var(--primary); color: var(--primary); }
+.hint { color: var(--muted); font-size: 12.5px; }
+
+/* ---------- Budgeting page ---------- */
+.read { max-width: 1120px; margin: 0 auto; }
+.sec { display: grid; gap: 14px; margin-top: 44px; }
+.sec > h2 { font-size: 21px; letter-spacing: -0.015em; }
+.sec > p, .sec > .prose { max-width: 75ch; color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; min-width: 0; }
+
+.equation { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr; gap: 8px; align-items: stretch; }
+.term { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.term .name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+.term .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.term .fig { font-family: var(--font-mono); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.term .formula { font-family: var(--font-mono); font-size: 11px; color: var(--muted); line-height: 1.45; }
+.term .rule { font-size: 12px; color: var(--muted); }
+.term.result { border-color: var(--primary); background: color-mix(in oklch, var(--primary) 7%, var(--surface)); }
+.op { display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 20px; color: var(--faint); font-weight: 500; }
+@media (max-width: 900px) {
+  .equation { grid-template-columns: minmax(0, 1fr); }
+  .op { justify-content: flex-start; padding-left: 14px; font-size: 16px; height: 18px; }
+}
+.callout { border-left: 3px solid var(--primary); padding: 8px 14px; background: var(--surface); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 13.5px; }
+
+.two { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 900px) { .two { grid-template-columns: minmax(0, 1fr); } }
+figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+figcaption { font-size: 12.5px; color: var(--muted); }
+.svg-scroll { overflow-x: auto; }
+svg.diagram { display: block; width: 100%; height: auto; }
+.sv-ink { fill: var(--ink); }
+.sv-muted { fill: var(--muted); }
+.sv-faint { fill: var(--faint); }
+.sv-line { stroke: var(--line-strong); }
+.sv-grid { stroke: var(--line); }
+.sv-txt { font-family: var(--font-sans); font-size: 12px; }
+.sv-mono { font-family: var(--font-mono); font-size: 11px; }
+
+.alloc { display: grid; gap: 8px; }
+.alloc-bar { position: relative; height: 34px; display: flex; border-radius: 6px; overflow: visible; }
+.alloc-bar .seg { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--surface); white-space: nowrap; overflow: hidden; }
+.alloc-bar .seg:first-child { border-radius: 6px 0 0 6px; }
+.alloc-bar .seg:last-child { border-radius: 0 6px 6px 0; }
+.alloc-marker { position: absolute; top: -6px; bottom: -6px; width: 0; border-left: 2px solid var(--ink); }
+.alloc-scale { position: relative; height: 18px; font-size: 11.5px; color: var(--muted); }
+.alloc-scale span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; text-align: center; line-height: 1.3; }
+.alloc-scale span.end { transform: translateX(-100%); text-align: right; }
+
+.flows { display: grid; grid-template-columns: 88px repeat(3, minmax(0, 1fr)); gap: 10px 12px; }
+.flow-head { padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--surface); display: grid; gap: 2px; }
+.flow-head h3 { font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.flow-head p { font-size: 12px; color: var(--muted); }
+.stage-label { font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint); font-weight: 600; padding-top: 12px; }
+.step { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.step::after {
+  content: ""; position: absolute; left: 50%; bottom: -11px; width: 0; height: 0;
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--line-strong);
+  transform: translateX(-50%);
+}
+.step.last::after { display: none; }
+.step.claim { border-color: color-mix(in oklch, var(--primary) 45%, var(--line)); }
+.step h4 { font-size: 13px; font-weight: 600; }
+.step p { font-size: 12.5px; color: var(--muted); }
+.step .rec { font-family: var(--font-mono); font-size: 11px; color: var(--ink); background: var(--sunk); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; overflow-wrap: anywhere; }
+.where { display: flex; flex-wrap: wrap; gap: 4px; }
+.where span { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--sunk); border: 1px solid var(--line); color: var(--muted); }
+.flows .c1 { grid-column: 2; } .flows .c2 { grid-column: 3; } .flows .c3 { grid-column: 4; } .flows .c0 { grid-column: 1; }
+.flows .r0 { grid-row: 1; } .flows .r1 { grid-row: 2; } .flows .r2 { grid-row: 3; } .flows .r3 { grid-row: 4; } .flows .r4 { grid-row: 5; }
+@media (max-width: 900px) {
+  .flows { grid-template-columns: minmax(0, 1fr); }
+  .flows > * { grid-column: 1 !important; grid-row: auto !important; }
+  .flows .c0 { display: none; }
+  .flows .c1 { order: 1; } .flows .c2 { order: 2; } .flows .c3 { order: 3; }
+  .flow-head { margin-top: 12px; }
+  .step::before { content: attr(data-stage); font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+}
+
+.states { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.state { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface); display: grid; gap: 4px; align-content: start; }
+.state b { font-size: 13px; }
+.state p { font-size: 12px; color: var(--muted); }
+.state .when { font-family: var(--font-mono); font-size: 11px; color: var(--ink); }
+.state-arrow { align-self: center; color: var(--faint); font-family: var(--font-mono); font-size: 12px; }
+
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+table.data { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.data th { text-align: left; font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); font-weight: 600; padding: 10px 12px 8px; border-bottom: 1px solid var(--line-strong); background: var(--surface); position: sticky; top: 0; white-space: nowrap; }
+table.data td { padding: 9px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+table.data tr:first-child td { border-top: 0; }
+table.data td.act { font-weight: 500; min-width: 210px; }
+table.data td.wh { color: var(--muted); font-size: 12.5px; min-width: 170px; }
+table.data td.mv { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); min-width: 170px; }
+table.data td.by { font-size: 12.5px; color: var(--muted); min-width: 230px; }
+table.data tr.grp td { background: var(--sunk); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--muted); padding: 6px 12px; }
+.fx { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.fx.up { background: color-mix(in oklch, var(--up) 14%, transparent); color: var(--up); }
+.fx.down { background: color-mix(in oklch, var(--down) 13%, transparent); color: var(--down); }
+.fx.none { background: var(--sunk); color: var(--faint); border: 1px solid var(--line); }
+.fx.both { background: color-mix(in oklch, var(--blue) 13%, transparent); color: var(--blue); }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filters .btn { height: 28px; border-radius: 999px; }
+table.timing td, table.timing th { text-align: center; }
+table.timing td:first-child, table.timing th:first-child, table.timing td:nth-child(2), table.timing th:nth-child(2) { text-align: left; }
+
+.loop { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.loop > div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; color: var(--muted); position: relative; }
+.loop > div b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 4px; }
+.loop > div:not(:last-child)::after { content: "→"; position: absolute; right: -10px; top: 50%; transform: translate(50%, -50%); color: var(--faint); font-family: var(--font-mono); }
+@media (max-width: 760px) { .loop { grid-template-columns: minmax(0, 1fr); } .loop > div:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -10px; transform: translate(50%, 50%); } }
+
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.rules > div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.rules b { font-size: 13px; }
+.rules p { font-size: 12.5px; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand"><b>Koala Budget</b><span>Internals</span></div>
+    <nav class="tabs" role="tablist" aria-label="Pages">
+      <button class="tab" role="tab" id="tab-erd" aria-controls="erd" aria-selected="true" data-page="erd">Data model</button>
+      <button class="tab" role="tab" id="tab-budgeting" aria-controls="budgeting" aria-selected="false" data-page="budgeting">Budgeting &amp; Unassigned</button>
+    </nav>
+    <span class="stamp">Generated from <span class="mono">develop @ 573d260</span> · 9 Oct 2026</span>
+  </div>
+</header>
+
+<main>
+<!-- ===================================================== PAGE 1: ERD -->
+<section class="page" id="erd" role="tabpanel" aria-labelledby="tab-erd">
+  <div class="page-head">
+    <span class="eyebrow">Page 1 of 2</span>
+    <h1>Data model</h1>
+    <p class="lead" id="erd-lead">Every concrete model under <code>apps/</code> and <code>pegasus/</code>, read from Django's model registry. Click a model for its fields, what it references and what references it.</p>
+  </div>
+
+  <div class="conventions">
+    <div class="conv"><span class="tag">book</span> <strong>BaseBookModel</strong>: adds <code>book_id → Book</code> (CASCADE) and the <code>for_book</code> manager. <span id="book-count"></span> Those edges are not drawn.</div>
+    <div class="conv"><strong>BaseModel</strong> fields are hidden on every card: <code>created_at</code>, <code>updated_at</code>, <code>is_archived</code>, <code>archived_at</code>. A card's footer says when a model has dropped some.</div>
+    <div class="conv"><strong>Money</strong>: <code>decimal(15,2)</code>; bank-feed <code>amount</code> is <code>decimal(12,2)</code>, positive = outflow. Account type lives on <strong>AccountGroup</strong>, not Account.</div>
+  </div>
+
+  <div class="toolbar">
+    <label class="search" for="erd-search">
+      <input id="erd-search" type="search" placeholder="Find a model or field (e.g. reconciled)" autocomplete="off" aria-label="Find a model or field">
+    </label>
+    <div class="btn-group" role="group" aria-label="Zoom">
+      <button class="btn" id="zoom-fit" type="button" aria-pressed="false">Fit</button>
+      <button class="btn" id="zoom-75" type="button" aria-pressed="false">75%</button>
+      <button class="btn" id="zoom-100" type="button" aria-pressed="true">100%</button>
+    </div>
+    <div class="legend" aria-label="Legend">
+      <span class="legend-item"><svg width="44" height="12" viewBox="0 0 44 12" aria-hidden="true"><path d="M2 6 H42" stroke="var(--ink)" stroke-opacity=".5" fill="none"/><path d="M2 1 L10 6 L2 11 M2 6 H10" stroke="var(--ink)" stroke-opacity=".5" fill="none"/><path d="M37 1 V11" stroke="var(--ink)" stroke-opacity=".5"/></svg>many → one (FK)</span>
+      <span class="legend-item"><svg width="44" height="12" viewBox="0 0 44 12" aria-hidden="true"><path d="M2 6 H42" stroke="var(--ink)" stroke-opacity=".5" stroke-dasharray="4 3" fill="none"/></svg>nullable</span>
+      <span class="legend-item"><svg width="44" height="12" viewBox="0 0 44 12" aria-hidden="true"><path d="M2 6 H42" stroke="var(--ink)" stroke-opacity=".5" fill="none"/><path d="M7 1 V11 M37 1 V11" stroke="var(--ink)" stroke-opacity=".5"/></svg>one ↔ one</span>
+      <span class="legend-item"><span class="f" style="padding:0;display:inline"><span class="od">protect</span><span class="od null">set null</span></span>&nbsp;on_delete (unmarked = cascade)</span>
+      <span class="legend-item"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ochre)"></span>has a note</span>
+    </div>
+  </div>
+
+  <div class="erd-layout">
+    <div class="erd-viewport" id="erd-viewport" aria-label="Entity relationship diagram. Drag to pan.">
+      <div class="erd-sizer" id="erd-sizer">
+        <div class="erd-canvas" id="erd-canvas">
+          <svg class="edges" id="erd-edges" aria-hidden="true"></svg>
+        </div>
+      </div>
+    </div>
+    <aside class="panel" id="erd-panel" aria-live="polite"></aside>
+  </div>
+</section>
+
+<!-- ===================================================== PAGE 2: BUDGETING -->
+<section class="page" id="budgeting" role="tabpanel" aria-labelledby="tab-budgeting" hidden>
+<div class="read">
+  <div class="page-head">
+    <span class="eyebrow">Page 2 of 2</span>
+    <h1>Budgeting &amp; Unassigned</h1>
+    <p class="lead">Unassigned is the money with no job yet. One function computes it, <code>compute_unassigned(book, month)</code> in <code>apps/budget/unassigned.py</code>, and every screen that shows it reads that function.</p>
+  </div>
+
+  <!-- 1. The sum -->
+  <section class="sec" aria-labelledby="h-sum">
+    <h2 id="h-sum">The sum</h2>
+    <p>Every term is measured as of the last day of the month being viewed. Figures are the worked example in <code>apps/budget/test_unassigned.py</code> (<code>UnassignedFixture</code>, September 2026).</p>
+    <div class="equation">
+      <div class="term">
+        <div class="name"><span class="swatch" style="background:var(--ink)"></span>Net worth</div>
+        <div class="fig">$20,000</div>
+        <div class="formula">Σ (dr − cr) on asset + liability accounts, counted entries dated ≤ month end</div>
+        <div class="rule">Uncategorized Inbox rows are not in it: they have no journal entry yet.</div>
+      </div>
+      <div class="op" aria-label="plus">+</div>
+      <div class="term">
+        <div class="name"><span class="swatch" style="background:var(--up)"></span>Income still due</div>
+        <div class="fig">$5,000</div>
+        <div class="formula">Σ max(0, −available) over income categories<br>available = actual − budget + previous</div>
+        <div class="rule">Zero when the book does not budget future income.</div>
+      </div>
+      <div class="op" aria-label="minus">−</div>
+      <div class="term">
+        <div class="name"><span class="swatch" style="background:var(--blue)"></span>Budget envelopes</div>
+        <div class="fig">$7,500</div>
+        <div class="formula">Σ max(0, available) over expense categories<br>available = budget − actual + previous</div>
+        <div class="rule">3,500 rolled over from August + 4,000 budgeted in September.</div>
+      </div>
+      <div class="op" aria-label="minus">−</div>
+      <div class="term">
+        <div class="name"><span class="swatch" style="background:var(--ochre)"></span>Left in goals</div>
+        <div class="fig">$16,000</div>
+        <div class="formula">Σ max(0, allocated − spent) over goals not archived</div>
+        <div class="rule">allocated = allocations + linked-account inflows; spent = Σ (dr − cr) on the goal's account.</div>
+      </div>
+      <div class="op" aria-label="equals">=</div>
+      <div class="term result">
+        <div class="name"><span class="swatch" style="background:var(--primary)"></span>Unassigned</div>
+        <div class="fig">$1,500</div>
+        <div class="formula">&gt; 0 "waiting for a job"<br>= 0 "Every dollar has a job"<br>&lt; 0 label becomes "Over-assigned", red</div>
+      </div>
+    </div>
+    <p class="callout"><strong>One rule behind every term:</strong> a claim is the larger of what was planned and what happened, floored at zero. Overspending is not a claim. It has already left net worth, so it lowers Unassigned the moment it is categorized, and the negative balance is carried forward rather than reset.</p>
+
+    <div class="two">
+      <figure class="card">
+        <svg class="diagram" viewBox="0 0 640 262" role="img" aria-label="Waterfall: net worth 20,000 plus income still due 5,000, minus envelopes 7,500, minus goals 16,000, equals Unassigned 1,500.">
+          <g class="sv-grid" stroke-width="1">
+            <line x1="60" x2="624" y1="210" y2="210"/><line x1="60" x2="624" y1="174" y2="174"/><line x1="60" x2="624" y1="138" y2="138"/>
+            <line x1="60" x2="624" y1="102" y2="102"/><line x1="60" x2="624" y1="66" y2="66"/><line x1="60" x2="624" y1="30" y2="30"/>
+          </g>
+          <g class="sv-mono sv-faint" text-anchor="end">
+            <text x="52" y="214">0</text><text x="52" y="178">5k</text><text x="52" y="142">10k</text>
+            <text x="52" y="106">15k</text><text x="52" y="70">20k</text><text x="52" y="34">25k</text>
+          </g>
+          <!-- bars: 1px = $138.9 (180px = $25,000) -->
+          <rect x="76" y="66" width="80" height="144" rx="3" style="fill:var(--ink)"/>
+          <rect x="188" y="30" width="80" height="36" rx="3" style="fill:var(--up)"/>
+          <rect x="300" y="30" width="80" height="54" rx="3" style="fill:var(--blue)"/>
+          <rect x="412" y="84" width="80" height="115.2" rx="3" style="fill:var(--ochre)"/>
+          <rect x="524" y="199.2" width="80" height="10.8" rx="2" style="fill:var(--primary)"/>
+          <g style="stroke:var(--faint)" stroke-dasharray="3 3" stroke-width="1">
+            <line x1="156" x2="188" y1="66" y2="66"/><line x1="268" x2="300" y1="30" y2="30"/>
+            <line x1="380" x2="412" y1="84" y2="84"/><line x1="492" x2="524" y1="199.2" y2="199.2"/>
+          </g>
+          <g class="sv-mono sv-ink" text-anchor="middle" font-weight="600">
+            <text x="116" y="58">20,000</text><text x="228" y="22">+5,000</text><text x="340" y="22">−7,500</text>
+            <text x="452" y="76">−16,000</text><text x="564" y="191">1,500</text>
+          </g>
+          <g class="sv-txt sv-muted" text-anchor="middle">
+            <text x="116" y="230">Net worth</text>
+            <text x="228" y="230">Income</text><text x="228" y="245">still due</text>
+            <text x="340" y="230">Envelopes</text><text x="340" y="245">unspent</text>
+            <text x="452" y="230">Left in</text><text x="452" y="245">goals</text>
+            <text x="564" y="230">Unassigned</text>
+          </g>
+        </svg>
+        <figcaption>The Dollar Map report's waterfall for the worked example, drawn to scale. Each bar starts where the previous one ended.</figcaption>
+      </figure>
+      <figure class="card alloc">
+        <div class="eyebrow">Allocation bar, same example</div>
+        <div class="alloc-scale num top"><span class="end" style="left:80%">net worth 20,000</span></div>
+        <div class="alloc-bar" role="img" aria-label="Goals 16,000, envelopes 7,500 and Unassigned 1,500 fill 25,000, which equals net worth 20,000 plus income still due 5,000.">
+          <div class="seg" style="width:64%;background:var(--ochre)">Goals 16,000</div>
+          <div class="seg" style="width:30%;background:var(--blue)">Envelopes 7,500</div>
+          <div class="seg" style="width:6%;background:var(--primary)" title="Unassigned 1,500"></div>
+          <div class="alloc-marker" style="left:80%"></div>
+          <div class="alloc-marker" style="left:100%"></div>
+        </div>
+        <div class="alloc-scale num">
+          <span class="end" style="left:100%">with income due 25,000</span>
+        </div>
+        <p class="hint">The invariant behind it holds for every month: <span class="mono">envelopes + goals + Unassigned = net worth + income still due</span>. Claims can only reach past the right marker when Unassigned is negative; the report hatches that over-assignment.</p>
+        <p class="hint">Unassigned here is the thin green segment: 1,500, or 6% of the bar.</p>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 2. Three flows -->
+  <section class="sec" aria-labelledby="h-flows">
+    <h2 id="h-flows">How each flow becomes a claim</h2>
+    <p>Income, expenses and goals follow the same four steps: plan it, let it happen, keep a running balance, and turn that balance into the one term it contributes.</p>
+    <div class="flows">
+      <div class="c0 r1 stage-label">Plan</div>
+      <div class="c0 r2 stage-label">Happens</div>
+      <div class="c0 r3 stage-label">Balance</div>
+      <div class="c0 r4 stage-label">Claim</div>
+
+      <div class="flow-head c1 r0"><h3><span class="swatch" style="width:10px;height:10px;border-radius:3px;background:var(--up)"></span>Income</h3><p>Only budgeted while <em>Let me budget with future income</em> is on (<code>Book.budget_future_income</code>).</p></div>
+      <div class="step c1 r1" data-stage="Plan">
+        <h4>Budget what you expect to earn</h4>
+        <div class="where"><span>Budget › Income tab</span><span>Multi-month grid</span><span>Auto-Assign: Received Last Month</span></div>
+        <div class="rec">Budget(category = income account, month)</div>
+      </div>
+      <div class="step c1 r2" data-stage="Happens">
+        <h4>Paycheque categorized to the income account</h4>
+        <div class="where"><span>Inbox</span><span>Categorize mode</span><span>Transactions</span></div>
+        <div class="rec">JournalLine cr income · dr bank</div>
+      </div>
+      <div class="step c1 r3" data-stage="Balance">
+        <h4>available = actual − budget + previous</h4>
+        <p>Negative: income still expected. Positive: a surplus, which offsets income expected in later months. A late paycheque fills the earlier gap and counts once.</p>
+      </div>
+      <div class="step claim last c1 r4" data-stage="Claim">
+        <h4>+ Income still due</h4>
+        <p>Σ max(0, −available). Turn future income off and the term is 0: money counts only once it lands, through net worth.</p>
+      </div>
+
+      <div class="flow-head c2 r0"><h3><span class="swatch" style="width:10px;height:10px;border-radius:3px;background:var(--blue)"></span>Expenses</h3><p>Every income/expense account is a budget category. Hidden categories still count.</p></div>
+      <div class="step c2 r1" data-stage="Plan">
+        <h4>Budget each category per month</h4>
+        <div class="where"><span>Budget › Expenses tab (autosave)</span><span>Multi-month grid</span><span>Auto-Assign</span><span>Cover overspending</span></div>
+        <div class="rec">Budget(category = expense account, month)</div>
+      </div>
+      <div class="step c2 r2" data-stage="Happens">
+        <h4>Purchase categorized to the category</h4>
+        <div class="where"><span>Inbox</span><span>Categorize mode</span><span>Transactions</span><span>Budget › Actual popover (move)</span></div>
+        <div class="rec">JournalLine dr expense · cr bank/card</div>
+      </div>
+      <div class="step c2 r3" data-stage="Balance">
+        <h4>available = budget − actual + previous</h4>
+        <p>Rolls over every month. A negative balance is carried (red, "N overspent") and the next budget fills it first.</p>
+      </div>
+      <div class="step claim last c2 r4" data-stage="Claim">
+        <h4>− Budget envelopes</h4>
+        <p>Σ max(0, available). An overspent envelope claims 0; what was spent past it already came out of net worth.</p>
+      </div>
+
+      <div class="flow-head c3 r0"><h3><span class="swatch" style="width:10px;height:10px;border-radius:3px;background:var(--ochre)"></span>Goals</h3><p>An envelope that never resets, backed one-to-one by an equity account.</p></div>
+      <div class="step c3 r1" data-stage="Plan">
+        <h4>Allocate money to the goal</h4>
+        <div class="where"><span>Goals › Add all available / Add</span><span>Withdraw</span><span>Goal form › Where the money lives</span><span>Goal › Activity edit/undo</span></div>
+        <div class="rec">GoalAllocation(goal, month, ±amount) · GoalAccountLink(goal, account, start, end)</div>
+      </div>
+      <div class="step c3 r2" data-stage="Happens">
+        <h4>Spending categorized to the goal; money moves through a linked account</h4>
+        <div class="where"><span>Inbox</span><span>Transactions</span><span>Pickers: Goals › "Car · $600 left"</span></div>
+        <div class="rec">JournalLine dr goal account (spent) · linked lines derived</div>
+      </div>
+      <div class="step c3 r3" data-stage="Balance">
+        <h4>left = allocated − spent</h4>
+        <p>Never resets. Progress bars use <em>allocated</em>, so buying the car does not slide the bar back.</p>
+      </div>
+      <div class="step claim last c3 r4" data-stage="Claim">
+        <h4>− Left in goals</h4>
+        <p>Σ max(0, left) over goals not archived. An overspent goal claims 0 and shows "−$X carried".</p>
+      </div>
+    </div>
+
+    <div class="two">
+      <div class="card" style="display:grid;gap:10px;align-content:start">
+        <h3 style="font-size:15px">Goal state</h3>
+        <p class="hint">Derived, never stored (<code>Goal.state</code>). Checked top to bottom; the first match wins.</p>
+        <div class="states">
+          <div class="state"><b>Closed</b><span class="when">closed_at set</span><p>Left released to Unassigned, links ended.</p></div>
+          <div class="state"><b>Spending</b><span class="when">spent &gt; 0</span><p>Transactions categorized to it draw it down.</p></div>
+          <div class="state"><b>Funded</b><span class="when">is_complete or allocated ≥ target</span><p>Stops asking for money. Keeps its claim.</p></div>
+          <div class="state"><b>Saving</b><span class="when">otherwise</span><p>Asking for money: target pace or monthly contribution.</p></div>
+        </div>
+      </div>
+      <div class="card" style="display:grid;gap:10px;align-content:start">
+        <h3 style="font-size:15px">Linked accounts (<code>apps/budget/linked.py</code>)</h3>
+        <p class="hint">For a line on a linked account, the other side of its entry decides. Nothing is stored per transaction.</p>
+        <div class="tbl-wrap" style="border-radius:var(--radius-sm)">
+          <table class="data">
+            <thead><tr><th>Other side</th><th>Money arrives</th><th>Money leaves</th></tr></thead>
+            <tbody>
+              <tr><td>Unlinked asset/liability</td><td>allocated +</td><td>per <code>Goal.outflow</code>: withdraw → allocated −, spend → spent +, ignore → nothing</td></tr>
+              <tr><td>Another goal's linked account</td><td>allocated +</td><td>allocated −</td></tr>
+              <tr><td>Income account</td><td>allocated +</td><td>allocated −</td></tr>
+              <tr><td>Non-goal equity (opening balance, adjustment)</td><td>allocated +</td><td>allocated −</td></tr>
+              <tr><td>Expense, a goal's own account, same goal's account</td><td colspan="2">nothing (the envelope or <em>spent</em> already counts it)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Where it shows up -->
+  <section class="sec" aria-labelledby="h-where">
+    <h2 id="h-where">Where Unassigned shows up</h2>
+    <p>Four inputs go into one function; ten surfaces read it. Surfaces differ only in which month they pass.</p>
+    <figure class="card">
+      <div class="svg-scroll">
+        <svg class="diagram" viewBox="0 0 1000 452" style="min-width:760px" role="img" aria-label="Budget rows, counted journal lines, goal allocations and links, and the book's future-income setting feed compute_unassigned(book, month). It serves the sidebar pill and dashboard for today's month, the budget and goals pages for the viewed month, the reports for a month parameter, and two what-if previews.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--faint)"/></marker>
+          </defs>
+          <!-- inputs -->
+          <g class="sv-txt">
+            <rect x="10" y="40" width="250" height="62" rx="8" style="fill:var(--surface);stroke:var(--line-strong)"/>
+            <text x="24" y="64" class="sv-ink" font-weight="600">Budget</text>
+            <text x="24" y="84" class="sv-mono sv-muted">income + expense rows, month ≤ T</text>
+            <rect x="10" y="122" width="250" height="62" rx="8" style="fill:var(--surface);stroke:var(--line-strong)"/>
+            <text x="24" y="146" class="sv-ink" font-weight="600">JournalLine</text>
+            <text x="24" y="166" class="sv-mono sv-muted">counted lines, dated ≤ end of T</text>
+            <rect x="10" y="204" width="250" height="62" rx="8" style="fill:var(--surface);stroke:var(--line-strong)"/>
+            <text x="24" y="228" class="sv-ink" font-weight="600">GoalAllocation + GoalAccountLink</text>
+            <text x="24" y="248" class="sv-mono sv-muted">allocations ≤ T + linked lines</text>
+            <rect x="10" y="286" width="250" height="62" rx="8" style="fill:var(--surface);stroke:var(--line-strong)"/>
+            <text x="24" y="310" class="sv-ink" font-weight="600">Book.budget_future_income</text>
+            <text x="24" y="330" class="sv-mono sv-muted">off → income still due = 0</text>
+          </g>
+          <g style="stroke:var(--faint)" stroke-width="1.3" fill="none">
+            <path d="M260 71 C 300 71, 300 190, 336 190" marker-end="url(#ar)"/>
+            <path d="M260 153 C 300 153, 300 200, 336 200" marker-end="url(#ar)"/>
+            <path d="M260 235 C 300 235, 300 210, 336 210" marker-end="url(#ar)"/>
+            <path d="M260 317 C 300 317, 300 220, 336 220" marker-end="url(#ar)"/>
+          </g>
+          <g class="sv-mono sv-faint" font-size="10">
+            <text x="268" y="62">available</text>
+            <text x="268" y="146">net worth, actuals, spent</text>
+            <text x="268" y="258">allocated</text>
+            <text x="268" y="340">income on/off</text>
+          </g>
+          <!-- function -->
+          <rect x="338" y="160" width="232" height="92" rx="10" style="fill:color-mix(in oklch, var(--primary) 10%, var(--surface));stroke:var(--primary)" stroke-width="1.5"/>
+          <text x="454" y="192" text-anchor="middle" class="sv-mono sv-ink" font-size="13" font-weight="600">compute_unassigned</text>
+          <text x="454" y="212" text-anchor="middle" class="sv-mono sv-muted" font-size="12">(book, month = T)</text>
+          <text x="454" y="234" text-anchor="middle" class="sv-txt sv-muted" font-size="11.5">apps/budget/unassigned.py</text>
+          <!-- outputs -->
+          <g style="stroke:var(--faint)" stroke-width="1.3" fill="none">
+            <path d="M570 190 C 620 190, 620 64, 672 64" marker-end="url(#ar)"/>
+            <path d="M570 200 C 620 200, 620 170, 672 170" marker-end="url(#ar)"/>
+            <path d="M570 214 C 620 214, 620 290, 672 290" marker-end="url(#ar)"/>
+            <path d="M570 226 C 620 226, 620 394, 672 394" marker-end="url(#ar)"/>
+          </g>
+          <g class="sv-mono sv-faint" font-size="10" text-anchor="middle">
+            <text x="616" y="112" transform="rotate(-62 616 112)">T = today</text>
+            <text x="633" y="186">viewed T</text>
+            <text x="633" y="262">?month=</text>
+            <text x="612" y="330" transform="rotate(62 612 330)">what-if</text>
+          </g>
+          <g class="sv-txt">
+            <rect x="674" y="14" width="316" height="100" rx="8" style="fill:var(--surface);stroke:var(--line-strong)"/>
+            <text x="688" y="36" class="sv-faint" font-size="10.5" font-weight="600" letter-spacing="0.8">CURRENT MONTH</text>
+            <text x="688" y="58" class="sv-ink">Sidebar pill · every app page</text>
+            <text x="688" y="78" class="sv-ink">Mobile top-bar pill</text>
+            <text x="688" y="98" class="sv-ink">Dashboard headline + allocation bar</text>
+            <rect x="674" y="124" width="316" height="100" rx="8" style="fill:var(--surface);stroke:var(--line-strong)"/>
+            <text x="688" y="146" class="sv-faint" font-size="10.5" font-weight="600" letter-spacing="0.8">MONTH ON SCREEN</text>
+            <text x="688" y="168" class="sv-ink">Budget page net-worth card</text>
+            <text x="688" y="188" class="sv-ink">Goals page card + Add all available cap</text>
+            <text x="688" y="208" class="sv-ink">Cover overspending dialog</text>
+            <rect x="674" y="234" width="316" height="100" rx="8" style="fill:var(--surface);stroke:var(--line-strong)"/>
+            <text x="688" y="256" class="sv-faint" font-size="10.5" font-weight="600" letter-spacing="0.8">MONTH IN THE URL</text>
+            <text x="688" y="278" class="sv-ink">Dollar Map report</text>
+            <text x="688" y="298" class="sv-ink">Budget &amp; Goals report</text>
+            <text x="688" y="318" class="sv-muted">stats, allocation bar, waterfall</text>
+            <rect x="674" y="344" width="316" height="100" rx="8" style="fill:var(--surface);stroke:var(--line-strong)"/>
+            <text x="688" y="366" class="sv-faint" font-size="10.5" font-weight="600" letter-spacing="0.8">BEFORE → AFTER PREVIEWS</text>
+            <text x="688" y="388" class="sv-ink">Goal form: linking accounts</text>
+            <text x="688" y="408" class="sv-ink">Book settings › General: future income</text>
+            <text x="688" y="428" class="sv-muted">this month: rolled-back savepoint / setting flipped</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Single source of truth. Because every surface calls the same function, two screens showing the same month cannot disagree. Screens showing different months can: budgeting next month moves the budget page's card while you view next month, but not the pill until that month starts.</figcaption>
+    </figure>
+
+    <div class="tbl-wrap">
+      <table class="data">
+        <thead><tr><th>Surface</th><th>Month</th><th>What it shows</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td class="act">Sidebar pill</td><td>today</td><td>Figure, label, hint ("waiting for a job" / "Every dollar has a job" / "promised more than you have"); links to Dollar Map; ±$X delta chip after writes</td><td class="mv">unassigned_pill.html · context processor · unassigned-pill.js</td></tr>
+          <tr><td class="act">Mobile top bar</td><td>today</td><td>Compact pill: figure only</td><td class="mv">top_nav_app.html (compact)</td></tr>
+          <tr><td class="act">Dashboard</td><td>today</td><td>Headline card in success/error colour plus the allocation bar</td><td class="mv">web/views.py::team_home · app_home.html</td></tr>
+          <tr><td class="act">Budget page sidebar</td><td>viewed</td><td>Net worth, Income still due, In budget envelopes, In goals, Unassigned/Over-assigned. Repainted in place from each autosave response (<code>networth:*</code> cells)</td><td class="mv">net_worth_card.html · budget-autosave.js</td></tr>
+          <tr><td class="act">Goals page</td><td>viewed</td><td>Same card. <em>Add all available</em> assigns min(Unassigned, still needed) and is refused at ≤ 0</td><td class="mv">goal_assign_available · goals-app.js</td></tr>
+          <tr><td class="act">Cover overspending dialog</td><td>viewed</td><td>Unassigned before → after for "from Unassigned" or "from a goal"</td><td class="mv">budget_table.html · budget_cover</td></tr>
+          <tr><td class="act">Goal close / delete / withdraw</td><td>viewed</td><td>States that what is left returns to Unassigned</td><td class="mv">goal_close_form.html · goal_delete_form.html</td></tr>
+          <tr><td class="act">Goal form</td><td>today</td><td>Live preview: "Unassigned goes from $X to $Y" for the accounts and outflow being edited</td><td class="mv">goal_links.preview · goal-form.js</td></tr>
+          <tr><td class="act">Book settings › General</td><td>today</td><td>"Turned off, your Unassigned would be $X instead of $Y this month"</td><td class="mv">books/views.py (future_income flipped)</td></tr>
+          <tr><td class="act">Dollar Map / Budget &amp; Goals reports</td><td>?month=</td><td>Stats strip, allocation bar, per-goal/envelope/income-due breakdown, waterfall</td><td class="mv">allocation_bar() · waterfall() · detail=True</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="loop" aria-label="How the pill refreshes after a write">
+      <div><b>1. Any write</b>A same-origin <span class="mono">POST / PUT / PATCH / DELETE</span> fetch succeeds: categorize, budget autosave, goal assign, void…</div>
+      <div><b>2. Re-read</b>The pill's <span class="mono">fetch</span> wrapper calls <span class="mono">GET …/budget/api/unassigned/</span>. Skipped when the request sent <span class="mono">X-Unassigned-Unchanged: 1</span> (hiding a category).</div>
+      <div><b>3. Show the ripple</b>If the figure moved: a <span class="mono">+$X</span> / <span class="mono">−$X</span> chip (green up, red down) and a polite live-region announcement.</div>
+      <div><b>4. Full-page posts</b>No-JS forms redirect; the last figure is kept in <span class="mono">sessionStorage</span>, so the chip still appears on the next page.</div>
+    </div>
+  </section>
+
+  <!-- 4. Action matrix -->
+  <section class="sec" aria-labelledby="h-actions">
+    <h2 id="h-actions">What each action does to Unassigned</h2>
+    <p>Seen from the month the action is dated in, or any later month. A budget, allocation or transaction dated after the month being viewed changes nothing until that month. The chip is the usual outcome; the exceptions (a carried overspend, a surplus) are named under <em>By how much</em>.</p>
+    <div class="filters" role="group" aria-label="Filter actions">
+      <button class="btn" type="button" data-filter="all" aria-pressed="true">All</button>
+      <button class="btn" type="button" data-filter="income" aria-pressed="false">Income</button>
+      <button class="btn" type="button" data-filter="expense" aria-pressed="false">Expenses</button>
+      <button class="btn" type="button" data-filter="goal" aria-pressed="false">Goals</button>
+      <button class="btn" type="button" data-filter="ledger" aria-pressed="false">Ledger &amp; settings</button>
+    </div>
+    <div class="tbl-wrap">
+      <table class="data" id="actions">
+        <thead><tr><th>Action</th><th>Unassigned</th><th>By how much</th><th>What moves</th><th>Where</th></tr></thead>
+        <tbody>
+          <tr class="grp" data-flow="income"><td colspan="5">Income · with future income on</td></tr>
+          <tr data-flow="income"><td class="act">Raise an income budget (this or an earlier month)</td><td><span class="fx up">▲ Up</span></td><td class="by">By the rise in income still due. A surplus already received absorbs it first.</td><td class="mv">income still due ↑</td><td class="wh">Budget › Income tab · grid · Auto-Assign</td></tr>
+          <tr data-flow="income"><td class="act">Lower an income budget ("it isn't coming")</td><td><span class="fx down">▼ Down</span></td><td class="by">By the drop in income still due. No need to edit past months.</td><td class="mv">income still due ↓</td><td class="wh">Budget › Income tab</td></tr>
+          <tr data-flow="income"><td class="act">Income arrives within budget</td><td><span class="fx none">— None</span></td><td class="by">It was already counted as coming.</td><td class="mv">net worth ↑ · still due ↓ (equal)</td><td class="wh">Inbox · Categorize mode · Transactions</td></tr>
+          <tr data-flow="income"><td class="act">Income arrives beyond budget, or unbudgeted</td><td><span class="fx up">▲ Up</span></td><td class="by">By the excess, after it fills income still expected in later months up to the one viewed.</td><td class="mv">net worth ↑</td><td class="wh">Inbox · Categorize mode · Transactions</td></tr>
+          <tr data-flow="income"><td class="act">A paycheque lands a month late</td><td><span class="fx none">— None</span></td><td class="by">Counts once, not twice.</td><td class="mv">earlier shortfall rolls as still due, then fills</td><td class="wh">Inbox</td></tr>
+          <tr data-flow="income"><td class="act">Turn <em>budget with future income</em> off / on</td><td><span class="fx both">▲▼ Either</span></td><td class="by">Off: down by all income still due. On: up by it. The page states the figure before you save. Income rows are kept.</td><td class="mv">income still due → 0 / restored</td><td class="wh">Book settings › General</td></tr>
+          <tr data-flow="income"><td class="act">Income arrives, future income off</td><td><span class="fx up">▲ Up</span></td><td class="by">By the full amount, the day it is categorized.</td><td class="mv">net worth ↑</td><td class="wh">Inbox · Categorize mode</td></tr>
+
+          <tr class="grp" data-flow="expense"><td colspan="5">Expenses</td></tr>
+          <tr data-flow="expense"><td class="act">Raise an expense budget (this or an earlier month)</td><td><span class="fx down">▼ Down</span></td><td class="by">By the increase, except the part that fills a carried overspend (no change).</td><td class="mv">envelope ↑</td><td class="wh">Budget › Expenses tab (autosave) · grid · Auto-Assign</td></tr>
+          <tr data-flow="expense"><td class="act">Lower an expense budget</td><td><span class="fx up">▲ Up</span></td><td class="by">By the envelope balance it releases, never past zero.</td><td class="mv">envelope ↓</td><td class="wh">Budget › Expenses tab · grid</td></tr>
+          <tr data-flow="expense"><td class="act">Spend within what's available</td><td><span class="fx none">— None</span></td><td class="by">Planned money, now spent.</td><td class="mv">net worth ↓ · envelope ↓ (equal)</td><td class="wh">Inbox · Categorize mode · Transactions</td></tr>
+          <tr data-flow="expense"><td class="act">Overspend, or spend with no budget</td><td><span class="fx down">▼ Down</span></td><td class="by">By the amount past available, as soon as it is categorized. The red balance is carried into next month.</td><td class="mv">net worth ↓ · envelope floors at 0</td><td class="wh">Inbox · Categorize mode · Transactions</td></tr>
+          <tr data-flow="expense"><td class="act">Refund to an expense category</td><td><span class="fx none">— None</span></td><td class="by">None while the envelope is positive. Up by the part that shrinks an overspend.</td><td class="mv">actual ↓ · net worth ↑</td><td class="wh">Inbox · Transactions</td></tr>
+          <tr data-flow="expense"><td class="act">Move a transaction to another category</td><td><span class="fx none">— None</span></td><td class="by">None unless an overspend grows (down by the growth) or shrinks (up by the shrink).</td><td class="mv">actuals move between envelopes</td><td class="wh">Budget › Actual popover · Inbox edit · Transactions</td></tr>
+          <tr data-flow="expense"><td class="act">Cover overspending from Unassigned</td><td><span class="fx none">— None</span></td><td class="by">Free up to the shortfall: the overspend already came out. Only an amount past it is a new claim (down).</td><td class="mv">budget ↑ by the shortfall</td><td class="wh">Budget › row › Cover (default)</td></tr>
+          <tr data-flow="expense"><td class="act">Cover overspending from a goal</td><td><span class="fx up">▲ Up</span></td><td class="by">By X: the goal's money returns. Used for buffer goals (emergency fund).</td><td class="mv">goal allocation −X · budget +X</td><td class="wh">Budget › row › Cover › from a goal</td></tr>
+          <tr data-flow="expense"><td class="act">Auto-Assign: Reset Available to Zero</td><td><span class="fx both">▲▼ Either</span></td><td class="by">Up by the expense balances released; down by any income still due it drops. Holes are filled at no cost.</td><td class="mv">every selected available → 0</td><td class="wh">Budget sidebar, per tab</td></tr>
+          <tr data-flow="expense"><td class="act">Auto-Assign: Assigned / Spent Last Month, Assign Zero</td><td><span class="fx both">▲▼ Either</span></td><td class="by">As raising or lowering each budget, row by row. Hidden categories are skipped.</td><td class="mv">sets this month's budgets</td><td class="wh">Budget sidebar, per tab</td></tr>
+          <tr data-flow="expense"><td class="act">Hide or unhide a category</td><td><span class="fx none">— None</span></td><td class="by">Its figures still count. The request sends <span class="mono">X-Unassigned-Unchanged</span>.</td><td class="mv">display only</td><td class="wh">Budget › row › Hide</td></tr>
+
+          <tr class="grp" data-flow="goal"><td colspan="5">Goals</td></tr>
+          <tr data-flow="goal"><td class="act">Assign to a goal</td><td><span class="fx down">▼ Down</span></td><td class="by">By the amount. Paying back a negative goal moves nothing until it is back to zero.</td><td class="mv">allocation ↑</td><td class="wh">Goals › Add all available · Add (custom)</td></tr>
+          <tr data-flow="goal"><td class="act">Withdraw from a goal</td><td><span class="fx up">▲ Up</span></td><td class="by">By the amount. Capped at what is left.</td><td class="mv">this month's allocation ↓ (may go negative)</td><td class="wh">Goals › Withdraw funds… / Withdraw all</td></tr>
+          <tr data-flow="goal"><td class="act">Spend from a goal</td><td><span class="fx none">— None</span></td><td class="by">None within what is left. Down by the part past it; the goal shows "−$X carried".</td><td class="mv">spent ↑ · net worth ↓</td><td class="wh">Inbox · Transactions (category: the goal)</td></tr>
+          <tr data-flow="goal"><td class="act">Refund on a goal purchase</td><td><span class="fx none">— None</span></td><td class="by">None, unless it shrinks an overspent goal (up by that part).</td><td class="mv">spent ↓ · net worth ↑</td><td class="wh">Inbox · Transactions (credit to the goal)</td></tr>
+          <tr data-flow="goal"><td class="act">Close a goal with money left</td><td><span class="fx up">▲ Up</span></td><td class="by">By what was left.</td><td class="mv">allocation −left · links end today</td><td class="wh">Goal › Close (dialog)</td></tr>
+          <tr data-flow="goal"><td class="act">Close an overspent goal (Cover and close)</td><td><span class="fx none">— None</span></td><td class="by">Free. Without Cover the close is refused.</td><td class="mv">allocation +shortfall</td><td class="wh">Goal › Close (dialog)</td></tr>
+          <tr data-flow="goal"><td class="act">Archive a goal</td><td><span class="fx up">▲ Up</span></td><td class="by">By what was left. Refused if negative and not covered.</td><td class="mv">closes it first, then leaves the sum</td><td class="wh">Goal › Archive</td></tr>
+          <tr data-flow="goal"><td class="act">Delete a goal</td><td><span class="fx up">▲ Up</span></td><td class="by">By what was left. Refused while transactions are categorized to it.</td><td class="mv">goal, allocations, links, account removed</td><td class="wh">Goal › Delete (dialog)</td></tr>
+          <tr data-flow="goal"><td class="act">Edit or undo a past contribution</td><td><span class="fx both">▲▼ Either</span></td><td class="by">Opposite to the change. Refused on closed/archived goals or if it would leave the goal below zero.</td><td class="mv">that month's allocation</td><td class="wh">Goal › Activity › Edit / Undo</td></tr>
+          <tr data-flow="goal"><td class="act">Link an account, including its balance</td><td><span class="fx down">▼ Down</span></td><td class="by">By that balance. The form previews before → after.</td><td class="mv">allocated + balance on the day before start</td><td class="wh">Goal form › Where the money lives</td></tr>
+          <tr data-flow="goal"><td class="act">Transfer into a linked account from an unlinked one</td><td><span class="fx down">▼ Down</span></td><td class="by">By the amount.</td><td class="mv">allocated ↑ · net worth unchanged</td><td class="wh">Inbox (categorize as transfer)</td></tr>
+          <tr data-flow="goal"><td class="act">Transfer out of a linked account to an unlinked one</td><td><span class="fx both">▲ or —</span></td><td class="by">Up by the amount for withdraw and spend; none for ignore.</td><td class="mv">withdraw: allocated ↓ · spend: spent ↑ · ignore: nothing</td><td class="wh">Inbox (categorize as transfer)</td></tr>
+          <tr data-flow="goal"><td class="act">Income lands straight in a linked account</td><td><span class="fx both">— or ▼</span></td><td class="by">None if unbudgeted. Down by the amount if it was income still due.</td><td class="mv">net worth ↑ · allocated ↑</td><td class="wh">Inbox</td></tr>
+          <tr data-flow="goal"><td class="act">An expense paid from a linked account</td><td><span class="fx none">— None</span></td><td class="by">Same as any expense: none within budget, down if overspent.</td><td class="mv">envelope only; goal untouched</td><td class="wh">Inbox</td></tr>
+
+          <tr class="grp" data-flow="ledger"><td colspan="5">Ledger &amp; settings</td></tr>
+          <tr data-flow="ledger"><td class="act">Transfer between your own accounts; pay a credit card</td><td><span class="fx none">— None</span></td><td class="by">Unless one side is linked to a goal (see Goals).</td><td class="mv">net worth unchanged</td><td class="wh">Inbox (categorize as transfer)</td></tr>
+          <tr data-flow="ledger"><td class="act">Import transactions, still uncategorized</td><td><span class="fx none">— None</span></td><td class="by">Counts from the moment it is categorized.</td><td class="mv">BankTransaction only, no entry</td><td class="wh">Plaid sync · CSV upload</td></tr>
+          <tr data-flow="ledger"><td class="act">Opening balances, reconciliation adjustment, any equity entry</td><td><span class="fx both">▲▼ Either</span></td><td class="by">By the amount, in its direction.</td><td class="mv">net worth ±</td><td class="wh">Onboarding task rail · Reconcile › Finish with adjustment</td></tr>
+          <tr data-flow="ledger"><td class="act">Void / restore a transaction</td><td><span class="fx both">▲▼ Either</span></td><td class="by">Reverses / reapplies whatever it did. Refused when a line is reconciled.</td><td class="mv">entry leaves / rejoins every sum</td><td class="wh">Inbox Void · Transactions</td></tr>
+          <tr data-flow="ledger"><td class="act">Hide an account (eye toggle)</td><td><span class="fx none">— None</span></td><td class="by">Its lines still count in every balance.</td><td class="mv">display only</td><td class="wh">Accounts board</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:15px;margin-top:6px">By month of the action</h3>
+    <p class="hint" style="max-width:75ch">The design table from <code>docs/unassigned-plan.md</code> §1, as seen from the current month. Each row is tested in <code>apps/budget/test_unassigned.py</code> (<code>IncomeTest</code>, <code>ExpenseTest</code>, <code>GoalTest</code>).</p>
+    <div class="tbl-wrap">
+      <table class="data timing">
+        <thead><tr><th>Flow</th><th>Action</th><th>Previous month</th><th>Current month</th><th>Future month</th></tr></thead>
+        <tbody>
+          <tr><td>Income</td><td>Increase budget</td><td><span class="fx up">▲</span></td><td><span class="fx up">▲</span></td><td><span class="fx none">—</span></td></tr>
+          <tr><td>Income</td><td>Increase actual, still ≤ budget</td><td><span class="fx none">—</span></td><td><span class="fx none">—</span></td><td><span class="fx none">—</span></td></tr>
+          <tr><td>Income</td><td>Actual &gt; budget</td><td><span class="fx up">▲</span></td><td><span class="fx up">▲</span></td><td><span class="fx none">—</span></td></tr>
+          <tr><td>Expense</td><td>Increase budget</td><td><span class="fx down">▼</span></td><td><span class="fx down">▼</span></td><td><span class="fx none">—</span></td></tr>
+          <tr><td>Expense</td><td>Increase actual, still ≤ available</td><td><span class="fx none">—</span></td><td><span class="fx none">—</span></td><td><span class="fx none">—</span></td></tr>
+          <tr><td>Expense</td><td>Actual &gt; available</td><td><span class="fx down">▼</span></td><td><span class="fx down">▼</span></td><td><span class="fx none">—</span></td></tr>
+          <tr><td>Goal</td><td>Increase allocation</td><td><span class="fx down">▼</span></td><td><span class="fx down">▼</span></td><td><span class="fx none">—</span></td></tr>
+          <tr><td>Goal</td><td>Increase spending, still ≤ left</td><td><span class="fx none">—</span></td><td><span class="fx none">—</span></td><td><span class="fx none">—</span></td></tr>
+          <tr><td>Goal</td><td>Spending &gt; left</td><td><span class="fx down">▼</span></td><td><span class="fx down">▼</span></td><td><span class="fx none">—</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 5. Guarantees -->
+  <section class="sec" aria-labelledby="h-rules">
+    <h2 id="h-rules">Guarantees</h2>
+    <div class="rules">
+      <div><b>Planned money moves nothing when it is used</b><p>Income within budget, spending within an envelope, spending within a goal: net worth and the claim fall or rise together.</p></div>
+      <div><b>Overspending moves it once</b><p>It comes out when categorized. The negative balance is carried; budgeting into the hole moves nothing until past it.</p></div>
+      <div><b>Later months don't count yet</b><p>Budgets, income, allocations and transactions dated after the month count from the 1st of their own month.</p></div>
+      <div><b>What doesn't count</b><p>Void entries, uncategorized Inbox rows, archived goals. Hidden categories and hidden accounts do count.</p></div>
+      <div><b>One number, many screens</b><p>Pill, dashboard, budget and goals cards, quick-assign cap and reports all call <code>compute_unassigned</code>.</p></div>
+      <div><b>Still open</b><p>Illiquid assets (house, RRSP) count in net worth. The final name: <code>UNASSIGNED_LABEL</code> / <code>OVER_ASSIGNED_LABEL</code> are defined once.</p></div>
+    </div>
+  </section>
+</div>
+</section>
+</main>
+
+<script>
+const ERD = {"domains":[{"id":"identity","label":"Identity & access"},{"id":"tenancy","label":"Tenancy"},{"id":"workflow","label":"Workflow state & imports"},{"id":"audit","label":"Audit trail"},{"id":"budget","label":"Budgeting & goals"},{"id":"coa","label":"Chart of accounts"},{"id":"recon","label":"Reconciliation"},{"id":"ledger","label":"Ledger"},{"id":"feed","label":"Bank feed"},{"id":"plaid","label":"Plaid"},{"id":"chat","label":"AI chat"},{"id":"demo","label":"Pegasus demo"}],"columns":[["identity","chat","demo"],["tenancy","workflow","audit"],["budget"],["coa","recon"],["ledger"],["feed","plaid"]],"models":[{"id":"users.CustomUser","name":"CustomUser","app":"users","domain":"identity","base":null,"missing":[],"desc":"A person who signs in. Joins teams through Membership.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"password","t":"varchar"},{"n":"last_login","t":"datetime","null":1},{"n":"is_superuser","t":"bool"},{"n":"username","t":"varchar","uq":1},{"n":"first_name","t":"varchar"},{"n":"last_name","t":"varchar"},{"n":"email","t":"varchar"},{"n":"is_staff","t":"bool"},{"n":"is_active","t":"bool"},{"n":"date_joined","t":"datetime"},{"n":"avatar","t":"file"},{"n":"language","t":"varchar","null":1},{"n":"timezone","t":"varchar"},{"n":"groups","t":"M:N","to":"auth.Group","k":"m2m"},{"n":"user_permissions","t":"M:N","to":"auth.Permission","k":"m2m"}],"cons":[]},{"id":"teams.Membership","name":"Membership","app":"teams","domain":"identity","base":"BaseModel","missing":[],"desc":"A user's role in a team. One row per (team, user).","fields":[{"n":"id","t":"bigint","pk":1},{"n":"team","t":"FK","to":"teams.Team","k":"fk","od":"CASCADE"},{"n":"user","t":"FK","to":"users.CustomUser","k":"fk","od":"CASCADE"},{"n":"role","t":"varchar","ch":["admin","member"]}],"cons":["UNIQUE (team, user)"]},{"id":"teams.Invitation","name":"Invitation","app":"teams","domain":"identity","base":"BaseModel","missing":[],"desc":"An emailed invite to a team; accepted_by is set when someone accepts.","fields":[{"n":"id","t":"uuid","pk":1},{"n":"team","t":"FK","to":"teams.Team","k":"fk","od":"CASCADE"},{"n":"email","t":"varchar"},{"n":"role","t":"varchar","ch":["admin","member"]},{"n":"invited_by","t":"FK","to":"users.CustomUser","k":"fk","od":"CASCADE"},{"n":"is_accepted","t":"bool"},{"n":"accepted_by","t":"FK","null":1,"to":"users.CustomUser","k":"fk","od":"CASCADE"}],"cons":[]},{"id":"api.UserAPIKey","name":"UserAPIKey","app":"api","domain":"identity","base":null,"missing":[],"desc":"Hashed REST API key; requests made with it act as its user.","fields":[{"n":"id","t":"varchar","pk":1},{"n":"prefix","t":"varchar","uq":1},{"n":"hashed_key","t":"varchar"},{"n":"created","t":"datetime"},{"n":"name","t":"varchar"},{"n":"revoked","t":"bool"},{"n":"expiry_date","t":"datetime","null":1},{"n":"user","t":"FK","to":"users.CustomUser","k":"fk","od":"CASCADE"}],"cons":[]},{"id":"teams.Flag","name":"Flag","app":"teams","domain":"identity","base":null,"missing":[],"desc":"Feature flag (django-waffle), targetable by user, team or group.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"name","t":"varchar","uq":1},{"n":"everyone","t":"bool","null":1},{"n":"percent","t":"decimal(3,1)","null":1},{"n":"testing","t":"bool"},{"n":"superusers","t":"bool"},{"n":"staff","t":"bool"},{"n":"authenticated","t":"bool"},{"n":"languages","t":"text"},{"n":"rollout","t":"bool"},{"n":"note","t":"text"},{"n":"created","t":"datetime"},{"n":"modified","t":"datetime"},{"n":"groups","t":"M:N","to":"auth.Group","k":"m2m"},{"n":"users","t":"M:N","to":"users.CustomUser","k":"m2m"},{"n":"teams","t":"M:N","to":"teams.Team","k":"m2m"}],"cons":[]},{"id":"teams.Team","name":"Team","app":"teams","domain":"tenancy","base":"BaseModel","missing":[],"desc":"People and billing. Owns one or more books and the Stripe subscription.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"subscription","t":"FK","null":1,"to":"djstripe.Subscription","k":"fk","od":"SET_NULL"},{"n":"customer","t":"FK","null":1,"to":"djstripe.Customer","k":"fk","od":"SET_NULL"},{"n":"billing_details_last_changed","t":"datetime"},{"n":"last_synced_with_stripe","t":"datetime","null":1},{"n":"name","t":"varchar"},{"n":"slug","t":"slug","uq":1},{"n":"members","t":"M:N","to":"users.CustomUser","k":"m2m"}],"cons":[]},{"id":"books.Book","name":"Book","app":"books","domain":"tenancy","base":"BaseModel","missing":[],"desc":"A set of books: the money tenant. Every financial row carries a book FK; nothing is shared between books. budget_future_income switches the Income budget and the 'income still due' term of Unassigned.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"team","t":"FK","to":"teams.Team","k":"fk","od":"CASCADE"},{"n":"name","t":"varchar"},{"n":"slug","t":"slug"},{"n":"budget_future_income","t":"bool","note":"On: income is budgeted and counted before it lands. Off: the Income tab disappears; money is unassigned only once it lands."},{"n":"sort_order","t":"int"}],"cons":["UNIQUE (team, name)","UNIQUE (team, slug)"]},{"id":"onboarding.OnboardingState","name":"OnboardingState","app":"onboarding","domain":"workflow","base":"BaseBookModel","missing":[],"desc":"First-run walkthrough per book: questionnaire answers, phase, guided tasks done.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"answers","t":"json"},{"n":"catalog_version","t":"usmallint"},{"n":"phase","t":"varchar","ch":["welcome","questions","review","tasks","done"]},{"n":"question_phase","t":"varchar"},{"n":"tasks_done","t":"json"},{"n":"started_at","t":"datetime","null":1},{"n":"completed_at","t":"datetime","null":1},{"n":"skipped_at","t":"datetime","null":1}],"cons":["UNIQUE (book)"]},{"id":"monthly_review.MonthlyReviewState","name":"MonthlyReviewState","app":"monthly_review","domain":"workflow","base":"BaseBookModel","missing":[],"desc":"Progress through one month's review walkthrough.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"month","t":"date"},{"n":"step","t":"usmallint"},{"n":"steps_seen","t":"json"},{"n":"baseline","t":"varchar"},{"n":"notes","t":"text"},{"n":"started_at","t":"datetime","null":1},{"n":"completed_at","t":"datetime","null":1},{"n":"dismissed_at","t":"datetime","null":1}],"cons":["UNIQUE (book, month)"]},{"id":"ynab_import.YnabImport","name":"YnabImport","app":"ynab_import","domain":"workflow","base":"BaseBookModel","missing":[],"desc":"One YNAB import job (Celery): the two export CSVs, the wizard's choices, progress and result.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"status","t":"varchar","ch":["uploaded","running","done","failed"]},{"n":"register_csv","t":"text"},{"n":"plan_csv","t":"text"},{"n":"choices","t":"json"},{"n":"result","t":"json"},{"n":"error","t":"text"},{"n":"task_id","t":"varchar"},{"n":"progress","t":"usmallint"},{"n":"step","t":"varchar"},{"n":"started_at","t":"datetime","null":1},{"n":"created_by","t":"FK","null":1,"to":"users.CustomUser","k":"fk","od":"SET_NULL"},{"n":"finished_at","t":"datetime","null":1}],"cons":[]},{"id":"portability.DataImport","name":"DataImport","app":"portability","domain":"workflow","base":"BaseBookModel","missing":[],"desc":"One replace-the-book import of an exported .zip, with a safety export taken first.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"status","t":"varchar","ch":["uploaded","running","done","failed"]},{"n":"archive","t":"bytes"},{"n":"safety_archive","t":"bytes"},{"n":"safety_archive_created_at","t":"datetime","null":1},{"n":"result","t":"json"},{"n":"error","t":"text"},{"n":"task_id","t":"varchar"},{"n":"progress","t":"usmallint"},{"n":"step","t":"varchar"},{"n":"started_at","t":"datetime","null":1},{"n":"created_by","t":"FK","null":1,"to":"users.CustomUser","k":"fk","od":"SET_NULL"},{"n":"finished_at","t":"datetime","null":1}],"cons":[]},{"id":"audit.AuditEvent","name":"AuditEvent","app":"audit","domain":"audit","base":null,"missing":[],"desc":"Operation-level event: 59 types (logins, imports, Plaid syncs, bulk feed ops, goal funds, reconciliation…). Team-level events (logins) carry no book.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"team","t":"FK","null":1,"to":"teams.Team","k":"fk","od":"SET_NULL"},{"n":"book","t":"FK","null":1,"to":"books.Book","k":"fk","od":"SET_NULL"},{"n":"user","t":"FK","null":1,"to":"users.CustomUser","k":"fk","od":"SET_NULL"},{"n":"event_type","t":"varchar","chn":59},{"n":"timestamp","t":"datetime"},{"n":"ip_address","t":"inet","null":1},{"n":"metadata","t":"json"}],"cons":[]},{"id":"audit.AuditLog","name":"AuditLog","app":"audit","domain":"audit","base":null,"missing":[],"desc":"Row-level field diff for JournalEntry/JournalLine, written by signals. journal_entry_id is denormalized (no FK) for history lookups.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"content_type","t":"FK","null":1,"to":"contenttypes.ContentType","k":"fk","od":"SET_NULL"},{"n":"object_id","t":"uint","null":1},{"n":"journal_entry_id","t":"uint","null":1,"note":"Plain integer, no FK: history survives the entry's deletion."},{"n":"team","t":"FK","null":1,"to":"teams.Team","k":"fk","od":"SET_NULL"},{"n":"book","t":"FK","null":1,"to":"books.Book","k":"fk","od":"SET_NULL"},{"n":"user","t":"FK","null":1,"to":"users.CustomUser","k":"fk","od":"SET_NULL"},{"n":"event","t":"FK","null":1,"to":"audit.AuditEvent","k":"fk","od":"SET_NULL"},{"n":"action","t":"varchar","ch":["CREATE","UPDATE","DELETE"]},{"n":"timestamp","t":"datetime"},{"n":"changes","t":"json"},{"n":"source_model","t":"varchar"}],"cons":[]},{"id":"budget.Budget","name":"Budget","app":"budget","domain":"budget","base":"BaseBookModel","missing":[],"desc":"Planned amount for one income or expense category in one month. Available = budget − actual + previous available (income: actual − budget + previous).","fields":[{"n":"id","t":"bigint","pk":1},{"n":"month","t":"date","note":"First day of the month."},{"n":"category","t":"FK","to":"accounts.Account","k":"fk","od":"CASCADE"},{"n":"budget_amount","t":"decimal(15,2)"}],"cons":["UNIQUE (book, month, category)"]},{"id":"budget.Goal","name":"Goal","app":"budget","domain":"budget","base":"BaseBookModel","missing":[],"desc":"A budget envelope that never resets. Backed one-to-one by an equity account; allocated − spent = left. closed_at set = Closed.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"name","t":"varchar"},{"n":"description","t":"text"},{"n":"target_amount","t":"decimal(15,2)","note":"0 = open-ended goal, planned by monthly_contribution."},{"n":"target_date","t":"date","null":1},{"n":"account","t":"1:1","uq":1,"null":1,"to":"accounts.Account","k":"o2o","od":"CASCADE","note":"The goal's equity account. Transactions categorized to it are goal spending."},{"n":"is_complete","t":"bool","note":"Funded: stops asking for money, keeps its claim."},{"n":"closed_at","t":"datetime","null":1,"note":"Closed: what was left went back to Unassigned."},{"n":"is_archived","t":"bool"},{"n":"order","t":"int"},{"n":"outflow","t":"varchar","ch":["withdraw","spend","ignore"],"note":"What money leaving a linked account to an unlinked one does: withdraw (allocated −), spend (spent +), ignore."},{"n":"monthly_contribution","t":"decimal(15,2)","null":1}],"cons":["UNIQUE (book, name)"]},{"id":"budget.GoalAllocation","name":"GoalAllocation","app":"budget","domain":"budget","base":"BaseBookModel","missing":[],"desc":"Manual money into a goal for a month; negative = withdrawal, release on close, or cover-from-goal.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"goal","t":"FK","to":"budget.Goal","k":"fk","od":"CASCADE"},{"n":"month","t":"date"},{"n":"amount","t":"decimal(15,2)","note":"Signed. Withdrawals subtract from the month's row, which may go negative."},{"n":"notes","t":"text"}],"cons":["UNIQUE (book, goal, month)"]},{"id":"budget.GoalAccountLink","name":"GoalAccountLink","app":"budget","domain":"budget","base":"BaseBookModel","missing":[],"desc":"Links an asset account to a goal over [start_date, end_date]. Money moving in or out of the account counts toward the goal, derived from journal lines (nothing stored per transaction).","fields":[{"n":"id","t":"bigint","pk":1},{"n":"goal","t":"FK","to":"budget.Goal","k":"fk","od":"CASCADE"},{"n":"account","t":"FK","to":"accounts.Account","k":"fk","od":"PROTECT"},{"n":"start_date","t":"date"},{"n":"end_date","t":"date","null":1},{"n":"include_starting_balance","t":"bool","note":"Gives the goal the account's balance on the day before start_date."}],"cons":["UNIQUE (book, account) WHERE end_date IS NULL","CHECK end_date IS NULL OR end_date ≥ start_date"]},{"id":"accounts.AccountGroup","name":"AccountGroup","app":"accounts","domain":"coa","base":"BaseBookModel","missing":[],"desc":"Groups accounts and fixes their type. is_system marks the Equity Adjustments group.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"name","t":"varchar"},{"n":"account_type","t":"varchar","ch":["asset","liability","income","expense","goal"],"note":"'goal' is the stored value of the equity type. Goal-ness comes only from the Goal relation."},{"n":"description","t":"text"},{"n":"is_system","t":"bool"},{"n":"sort_order","t":"uint"}],"cons":["UNIQUE (book, name)"]},{"id":"accounts.Account","name":"Account","app":"accounts","domain":"coa","base":"BaseBookModel","missing":[],"desc":"A ledger account. Income and expense accounts are budget categories; a goal's backing account is equity; asset and liability accounts make up net worth.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"name","t":"varchar"},{"n":"account_group","t":"FK","to":"accounts.AccountGroup","k":"fk","od":"PROTECT"},{"n":"institution","t":"FK","null":1,"to":"accounts.Institution","k":"fk","od":"SET_NULL"},{"n":"has_feed","t":"bool","note":"Shown in the Inbox and can receive bank-feed rows."},{"n":"is_system","t":"bool","note":"System accounts (Reconciliation Adjustments) are refused as categories."},{"n":"sort_order","t":"uint"},{"n":"hidden_from_budget","t":"bool","note":"Collapsed on the budget page only. Its figures still count everywhere, Unassigned included."},{"n":"is_hidden","t":"bool","note":"Left out of pickers and the Inbox. Its lines still count in every balance."}],"cons":[]},{"id":"accounts.Institution","name":"Institution","app":"accounts","domain":"coa","base":"BaseBookModel","missing":[],"desc":"The bank or lender holding asset and liability accounts.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"name","t":"varchar"}],"cons":["UNIQUE (book, name)"]},{"id":"accounts.Payee","name":"Payee","app":"accounts","domain":"coa","base":"BaseBookModel","missing":[],"desc":"The counterparty named on a journal entry.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"name","t":"varchar"}],"cons":["UNIQUE (book, name)"]},{"id":"reconciliation.Reconciliation","name":"Reconciliation","app":"reconciliation","domain":"recon","base":"BaseBookModel","missing":[],"desc":"One statement for one account. A draft ticks lines; finishing locks them (is_reconciled). Statement balance is stored in ledger sign (dr − cr).","fields":[{"n":"id","t":"bigint","pk":1},{"n":"account","t":"FK","to":"accounts.Account","k":"fk","od":"CASCADE"},{"n":"statement_date","t":"date"},{"n":"statement_balance","t":"decimal(15,2)"},{"n":"status","t":"varchar","ch":["draft","completed","undone"],"note":"draft → completed (→ undone). One draft per account."},{"n":"opening_balance","t":"decimal(15,2)","null":1},{"n":"cleared_total","t":"decimal(15,2)","null":1},{"n":"adjustment_amount","t":"decimal(15,2)"},{"n":"started_by","t":"FK","null":1,"to":"users.CustomUser","k":"fk","od":"SET_NULL"},{"n":"completed_by","t":"FK","null":1,"to":"users.CustomUser","k":"fk","od":"SET_NULL"},{"n":"completed_at","t":"datetime","null":1},{"n":"undone_at","t":"datetime","null":1}],"cons":["UNIQUE (account) WHERE status = 'draft'"]},{"id":"journal.JournalEntry","name":"JournalEntry","app":"journal","domain":"ledger","base":"BaseBookModel","missing":["archived_at","is_archived"],"desc":"One transaction. status=void drops it out of every balance, report and budget figure.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"entry_date","t":"date"},{"n":"payee","t":"FK","null":1,"to":"accounts.Payee","k":"fk","od":"PROTECT"},{"n":"description","t":"text"},{"n":"source","t":"varchar","ch":["manual","import","bank_match","recurring","reconciliation"]},{"n":"status","t":"varchar","ch":["draft","posted","void"],"note":"void = excluded everywhere (counted_entries). draft is also not a posted balance."}],"cons":[]},{"id":"journal.JournalLine","name":"JournalLine","app":"journal","domain":"ledger","base":"BaseBookModel","missing":["archived_at","is_archived"],"desc":"One side of an entry: dr or cr on one account; Σdr = Σcr per entry. Balances, actuals, net worth and goal spending are all sums of these.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"journal_entry","t":"FK","to":"journal.JournalEntry","k":"fk","od":"CASCADE"},{"n":"account","t":"FK","to":"accounts.Account","k":"fk","od":"PROTECT"},{"n":"dr_amount","t":"decimal(15,2)"},{"n":"cr_amount","t":"decimal(15,2)"},{"n":"is_cleared","t":"bool"},{"n":"is_reconciled","t":"bool","note":"Set when a statement is finished. A reconciled line refuses edits that change its amount, account or date past the statement."},{"n":"reconciliation","t":"FK","null":1,"to":"reconciliation.Reconciliation","k":"fk","od":"SET_NULL","note":"The statement that ticked (draft) or locked (completed) this line."},{"n":"budget","t":"FK","null":1,"to":"budget.Budget","k":"fk","od":"SET_NULL","note":"Resolved on save from the entry month and the line's category."}],"cons":[]},{"id":"bank_feed.BankTransaction","name":"BankTransaction","app":"bank_feed","domain":"feed","base":"BaseBookModel","missing":["archived_at","is_archived"],"desc":"A row in the Inbox. journal_entry null = uncategorized, which counts nowhere. A transfer mirror shares its primary's entry; a row on an entry is void exactly when the entry is.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"account","t":"FK","to":"accounts.Account","k":"fk","od":"CASCADE"},{"n":"journal_entry","t":"FK","null":1,"to":"journal.JournalEntry","k":"fk","od":"SET_NULL","note":"null = uncategorized: in the Inbox, but not in any balance yet."},{"n":"amount","t":"decimal(12,2)","note":"Signed: positive = outflow."},{"n":"posted_date","t":"date"},{"n":"description","t":"varchar"},{"n":"merchant_name","t":"varchar","null":1},{"n":"source","t":"varchar","ch":["plaid","csv","manual","system","ynab"]},{"n":"raw","t":"json","null":1},{"n":"is_void","t":"bool"},{"n":"voided_at","t":"datetime","null":1},{"n":"is_transfer_mirror","t":"bool","note":"Synthetic counterpart of a transfer, created by sync_transfer in the other feed account."}],"cons":[]},{"id":"bank_feed.TransferMatchDismissal","name":"TransferMatchDismissal","app":"bank_feed","domain":"feed","base":"BaseBookModel","missing":[],"desc":"A pair of rows the user marked 'not a match', so the duplicate-transfer detector stops suggesting it.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"transaction_low","t":"FK","to":"bank_feed.BankTransaction","k":"fk","od":"CASCADE"},{"n":"transaction_high","t":"FK","to":"bank_feed.BankTransaction","k":"fk","od":"CASCADE"}],"cons":["UNIQUE (book, transaction_low, transaction_high)"]},{"id":"plaid.PlaidItem","name":"PlaidItem","app":"plaid","domain":"plaid","base":"BaseBookModel","missing":[],"desc":"One Plaid connection (institution login) with its incremental-sync cursor.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"plaid_item_id","t":"varchar","uq":1},{"n":"access_token","t":"varchar"},{"n":"institution_name","t":"varchar"},{"n":"cursor","t":"varchar","null":1},{"n":"last_synced_at","t":"datetime","null":1}],"cons":[]},{"id":"plaid.PlaidAccount","name":"PlaidAccount","app":"plaid","domain":"plaid","base":"BaseBookModel","missing":[],"desc":"An account under a Plaid item, mapped to a ledger Account.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"plaid_account_id","t":"varchar","uq":1},{"n":"item","t":"FK","to":"plaid.PlaidItem","k":"fk","od":"CASCADE"},{"n":"account","t":"FK","null":1,"to":"accounts.Account","k":"fk","od":"PROTECT"},{"n":"name","t":"varchar"},{"n":"mask","t":"varchar"},{"n":"subtype","t":"varchar"},{"n":"type","t":"varchar"}],"cons":[]},{"id":"plaid.PlaidTransaction","name":"PlaidTransaction","app":"plaid","domain":"plaid","base":"BaseBookModel","missing":[],"desc":"Plaid's metadata for one imported BankTransaction.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"plaid_transaction_id","t":"varchar","uq":1},{"n":"bank_transaction","t":"1:1","uq":1,"to":"bank_feed.BankTransaction","k":"o2o","od":"CASCADE"},{"n":"plaid_account","t":"FK","to":"plaid.PlaidAccount","k":"fk","od":"CASCADE"},{"n":"iso_currency_code","t":"varchar","null":1},{"n":"unofficial_currency_code","t":"varchar","null":1},{"n":"authorized_date","t":"date","null":1},{"n":"pending","t":"bool"},{"n":"pending_transaction_id","t":"varchar","null":1},{"n":"personal_finance_category","t":"varchar","null":1},{"n":"personal_finance_category_id","t":"varchar","null":1},{"n":"category_confidence","t":"varchar","null":1},{"n":"payment_channel","t":"varchar","null":1},{"n":"transaction_type","t":"varchar","null":1},{"n":"location","t":"json","null":1},{"n":"merchant_metadata","t":"json","null":1}],"cons":[]},{"id":"chat.Chat","name":"Chat","app":"chat","domain":"chat","base":"BaseModel","missing":[],"desc":"An AI chat thread.","fields":[{"n":"id","t":"int","pk":1},{"n":"user","t":"FK","null":1,"to":"users.CustomUser","k":"fk","od":"CASCADE"},{"n":"chat_type","t":"varchar","ch":["chat","agent"]},{"n":"agent_type","t":"varchar","ch":["weather","admin","employees"]},{"n":"name","t":"varchar"}],"cons":[]},{"id":"chat.ChatMessage","name":"ChatMessage","app":"chat","domain":"chat","base":"BaseModel","missing":[],"desc":"One message in a chat.","fields":[{"n":"id","t":"int","pk":1},{"n":"chat","t":"FK","to":"chat.Chat","k":"fk","od":"CASCADE"},{"n":"message_type","t":"varchar","ch":["HUMAN","AI","SYSTEM"]},{"n":"content","t":"text"}],"cons":[]},{"id":"pegasus_employees.Employee","name":"Employee","app":"pegasus_employees","domain":"demo","base":"BaseModel","missing":[],"desc":"Pegasus demo model; kept because apps/ai/tools/employees.py imports it.","fields":[{"n":"id","t":"bigint","pk":1},{"n":"user","t":"FK","to":"users.CustomUser","k":"fk","od":"CASCADE"},{"n":"name","t":"varchar"},{"n":"department","t":"varchar","ch":["hr","finance","engineering","marketing","sales"]},{"n":"salary","t":"uint"}],"cons":[]},{"id":"teams_example.Player","name":"Player","app":"teams_example","domain":"demo","base":"BaseTeamModel","missing":[],"desc":"Pegasus demo; the last BaseTeamModel (team FK instead of book).","fields":[{"n":"id","t":"bigint","pk":1},{"n":"name","t":"varchar"},{"n":"sex","t":"varchar","ch":["m","f"]},{"n":"date_of_birth","t":"date","null":1}],"cons":[]}]};
+
+/* ---------- tabs ---------- */
+(function () {
+  const tabs = [...document.querySelectorAll('.tab')];
+  const pages = { erd: document.getElementById('erd'), budgeting: document.getElementById('budgeting') };
+  function show(id, push) {
+    if (!pages[id]) id = 'erd';
+    for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.page === id));
+    for (const [k, el] of Object.entries(pages)) el.hidden = k !== id;
+    if (push) { try { history.replaceState(null, '', '#' + id); } catch (e) { /* sandboxed */ } }
+    if (id === 'erd' && window.__erdDraw) window.__erdDraw();
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => show(t.dataset.page, true));
+    t.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      next.focus(); show(next.dataset.page, true);
+    });
+  });
+  window.addEventListener('hashchange', () => show(location.hash.slice(1), false));
+  window.__showPage = show;
+})();
+
+/* ---------- action filter ---------- */
+(function () {
+  const buttons = document.querySelectorAll('[data-filter]');
+  const rows = document.querySelectorAll('#actions tbody tr');
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    buttons.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    const f = b.dataset.filter;
+    rows.forEach((r) => { r.hidden = f !== 'all' && r.dataset.flow !== f; });
+  }));
+})();
+
+/* ---------- ERD ---------- */
+(function () {
+  const byId = new Map(ERD.models.map((m) => [m.id, m]));
+  const domainLabel = Object.fromEntries(ERD.domains.map((d) => [d.id, d.label]));
+  const canvas = document.getElementById('erd-canvas');
+  const sizer = document.getElementById('erd-sizer');
+  const viewport = document.getElementById('erd-viewport');
+  const svg = document.getElementById('erd-edges');
+  const panel = document.getElementById('erd-panel');
+  const NS = 'http://www.w3.org/2000/svg';
+  const short = (id) => id.split('.')[1];
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  const bookModels = ERD.models.filter((m) => m.base === 'BaseBookModel');
+  document.getElementById('book-count').textContent = bookModels.length + ' of ' + ERD.models.length + ' models.';
+  document.getElementById('erd-lead').prepend(document.createTextNode(ERD.models.length + ' models in ' + ERD.domains.length + ' domains. '));
+
+  /* relations */
+  const edges = [];
+  const incoming = new Map(ERD.models.map((m) => [m.id, []]));
+  for (const m of ERD.models) {
+    for (const f of m.fields) {
+      if (!f.to) continue;
+      if (byId.has(f.to)) {
+        edges.push({ from: m.id, to: f.to, field: f.n, kind: f.k, opt: !!f.null, od: f.od });
+        incoming.get(f.to).push({ from: m.id, field: f.n, kind: f.k, od: f.od, opt: !!f.null });
+      }
+    }
+    if (m.base === 'BaseBookModel') incoming.get('books.Book').push({ from: m.id, field: 'book', kind: 'fk', od: 'CASCADE', viaBase: true });
+  }
+  const neighbours = new Map(ERD.models.map((m) => [m.id, new Set()]));
+  for (const e of edges) { neighbours.get(e.from).add(e.to); neighbours.get(e.to).add(e.from); }
+
+  /* cards */
+  const cards = new Map();
+  ERD.columns.forEach((col, ci) => {
+    const colEl = el('div', 'erd-col');
+    colEl.dataset.col = ci;
+    for (const dom of col) {
+      const zone = el('div', 'zone');
+      zone.append(el('div', 'zone-label', domainLabel[dom]));
+      for (const m of ERD.models.filter((x) => x.domain === dom)) zone.append(card(m, ci));
+      colEl.append(zone);
+    }
+    canvas.append(colEl);
+  });
+
+  function card(m, ci) {
+    const a = el('article', 'ent' + (m.id === 'books.Book' ? ' hub' : ''));
+    a.tabIndex = 0; a.dataset.id = m.id; a.dataset.col = ci;
+    a.setAttribute('aria-label', m.name + ' model');
+    const head = el('div', 'ent-head');
+    head.append(el('h3', null, m.name));
+    if (m.base === 'BaseBookModel') head.append(el('span', 'tag', 'book'));
+    if (m.base === 'BaseTeamModel') head.append(el('span', 'tag team', 'team'));
+    head.append(el('span', 'app', m.app));
+    a.append(head);
+    const body = el('div', 'ent-body');
+    for (const f of m.fields) {
+      const row = el('div', 'f'); row.dataset.field = f.n;
+      const key = f.pk ? 'PK' : f.k === 'o2o' ? '1:1' : f.k === 'm2m' ? 'M:N' : f.to ? 'FK' : f.uq ? 'UQ' : '';
+      row.append(el('span', 'k' + (f.pk ? ' pk' : f.to ? ' fk' : ''), key));
+      const n = el('span', 'n', f.n);
+      if (f.null) n.append(el('i', null, '?'));
+      if (f.note) { n.append(el('span', 'dot')); row.title = f.note; }
+      row.append(n);
+      const t = el('span', 't' + (f.to ? ' ref' : ''));
+      if (f.to) {
+        t.textContent = '→ ' + short(f.to);
+        if (f.od === 'PROTECT') t.append(el('span', 'od', 'protect'));
+        if (f.od === 'SET_NULL') t.append(el('span', 'od null', 'set null'));
+      } else t.textContent = f.t;
+      row.append(t);
+      if (f.ch) row.append(el('span', 'f-ch', f.ch.join(' · ')));
+      else if (f.chn) row.append(el('span', 'f-ch', f.chn + ' values'));
+      body.append(row);
+    }
+    a.append(body);
+    if (m.cons.length || m.missing.length) {
+      const foot = el('div', 'ent-foot');
+      m.cons.forEach((c) => foot.append(el('span', null, c)));
+      if (m.missing.length) foot.append(el('span', 'miss', 'No ' + m.missing.join(', ') + ' (removed from BaseModel)'));
+      a.append(foot);
+    }
+    a.addEventListener('click', () => select(m.id));
+    a.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(m.id); } });
+    a.addEventListener('mouseenter', () => preview(m.id));
+    a.addEventListener('mouseleave', () => preview(null));
+    a.addEventListener('focus', () => preview(m.id));
+    a.addEventListener('blur', () => preview(null));
+    cards.set(m.id, a);
+    return a;
+  }
+
+  /* geometry: offsets are unaffected by the zoom transform */
+  function offset(node) {
+    let x = 0, y = 0;
+    while (node && node !== canvas) { x += node.offsetLeft; y += node.offsetTop; node = node.offsetParent; }
+    return { x, y };
+  }
+  function defs() {
+    const d = document.createElementNS(NS, 'defs');
+    d.innerHTML =
+      '<marker id="crow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="mk" d="M2 6 L12 0.5 M2 6 L12 11.5 M2 6 L12 6"/></marker>' +
+      '<marker id="one" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="mk" d="M7 0.5 V11.5"/></marker>' +
+      '<marker id="crow-hl" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="mk" style="stroke:var(--primary)" d="M2 6 L12 0.5 M2 6 L12 11.5 M2 6 L12 6"/></marker>' +
+      '<marker id="one-hl" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="mk" style="stroke:var(--primary)" d="M7 0.5 V11.5"/></marker>';
+    return d;
+  }
+  const paths = [];
+  function draw() {
+    if (!canvas.offsetWidth) return;
+    const W = canvas.offsetWidth, H = canvas.offsetHeight;
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.replaceChildren(defs());
+    paths.length = 0;
+    for (const e of edges) {
+      const sCard = cards.get(e.from), tCard = cards.get(e.to);
+      const row = sCard.querySelector('[data-field="' + e.field + '"]');
+      const sp = offset(sCard), tp = offset(tCard), rp = offset(row);
+      const sW = sCard.offsetWidth, tW = tCard.offsetWidth;
+      const y1 = rp.y + Math.min(row.offsetHeight, 20) / 2;
+      const y2 = tp.y + 18;
+      let d;
+      if (sCard.dataset.col === tCard.dataset.col) {
+        const x1 = sp.x, x2 = tp.x;
+        const bulge = 26 + Math.min(46, Math.abs(y2 - y1) * 0.12);
+        d = 'M' + x1 + ' ' + y1 + ' C' + (x1 - bulge) + ' ' + y1 + ' ' + (x2 - bulge) + ' ' + y2 + ' ' + x2 + ' ' + y2;
+      } else {
+        const right = tp.x > sp.x;
+        const x1 = right ? sp.x + sW : sp.x;
+        const x2 = right ? tp.x : tp.x + tW;
+        const dx = Math.max(36, Math.abs(x2 - x1) * 0.45) * (right ? 1 : -1);
+        d = 'M' + x1 + ' ' + y1 + ' C' + (x1 + dx) + ' ' + y1 + ' ' + (x2 - dx) + ' ' + y2 + ' ' + x2 + ' ' + y2;
+      }
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', d);
+      if (e.opt) p.classList.add('opt');
+      p.dataset.from = e.from; p.dataset.to = e.to; p.dataset.kind = e.kind;
+      setMarkers(p, false);
+      svg.append(p);
+      paths.push(p);
+    }
+    sizer.style.width = W * scale + 'px';
+    sizer.style.height = H * scale + 'px';
+    apply();
+  }
+  function setMarkers(p, hl) {
+    const s = hl ? '-hl' : '';
+    const k = p.dataset.kind;
+    p.setAttribute('marker-start', 'url(#' + (k === 'o2o' ? 'one' : 'crow') + s + ')');
+    p.setAttribute('marker-end', 'url(#' + (k === 'm2m' ? 'crow' : 'one') + s + ')');
+  }
+
+  /* focus state */
+  let selected = null, hovered = null;
+  function apply() {
+    const id = hovered || selected;
+    canvas.classList.toggle('focus', !!id);
+    const nb = id ? neighbours.get(id) : null;
+    for (const [cid, c] of cards) {
+      c.classList.toggle('sel', cid === selected);
+      c.classList.toggle('rel', !!id && (cid === id || nb.has(cid)));
+    }
+    for (const p of paths) {
+      const on = !!id && (p.dataset.from === id || p.dataset.to === id);
+      if (p.classList.contains('hl') !== on) { p.classList.toggle('hl', on); setMarkers(p, on); }
+    }
+  }
+  function preview(id) { hovered = id; apply(); }
+  function select(id, scroll) {
+    selected = selected === id && !scroll ? null : id;
+    apply();
+    renderPanel(selected);
+    if (selected && scroll) {
+      const c = cards.get(selected), o = offset(c);
+      viewport.scrollTo({ left: Math.max(0, o.x * scale - 40), top: Math.max(0, o.y * scale - 40), behavior: 'smooth' });
+    }
+  }
+
+  /* panel */
+  function relButton(id, label, meta) {
+    const b = el('button', 'rel-btn'); b.type = 'button';
+    b.append(el('b', null, label), el('span', null, meta));
+    b.addEventListener('click', () => select(id, true));
+    return b;
+  }
+  function renderPanel(id) {
+    panel.replaceChildren();
+    if (!id) {
+      panel.append(el('h2', null, 'Models by domain'));
+      panel.append(el('p', 'hint', 'Select a model on the canvas or below. Drag the canvas to pan; hover a model to trace its relations.'));
+      const list = el('div', 'domain-list'); list.style.marginTop = '12px';
+      for (const d of ERD.domains) {
+        const ms = ERD.models.filter((m) => m.domain === d.id);
+        const g = el('div');
+        g.append(el('div', 'eyebrow', d.label + ' · ' + ms.length));
+        const chips = el('div', 'chips');
+        ms.forEach((m) => { const b = el('button', 'chip-btn', m.name); b.type = 'button'; b.addEventListener('click', () => select(m.id, true)); chips.append(b); });
+        g.append(chips); list.append(g);
+      }
+      panel.append(list);
+      return;
+    }
+    const m = byId.get(id);
+    panel.append(el('h2', null, m.name));
+    const sub = el('div', 'sub');
+    sub.append(el('code', null, m.id));
+    sub.append(el('span', 'tag' + (m.base === 'BaseBookModel' ? '' : m.base === 'BaseTeamModel' ? ' team' : ' plain'), m.base || 'models.Model'));
+    sub.append(el('span', null, domainLabel[m.domain]));
+    panel.append(sub);
+    panel.append(el('p', 'desc', m.desc));
+
+    panel.append(el('h4', null, 'Fields'));
+    const t = el('table', 'ftable'); const tb = el('tbody');
+    if (m.base === 'BaseBookModel') {
+      const tr = el('tr'); tr.append(el('td', null, 'book'), el('td', null, 'FK → Book')); const c = el('td'); c.append(el('span', 'fnote', 'Inherited from BaseBookModel. CASCADE.')); tr.append(c); tb.append(tr);
+    }
+    for (const f of m.fields) {
+      const tr = el('tr');
+      tr.append(el('td', null, f.n + (f.null ? '?' : '')));
+      let type = f.to ? (f.k === 'o2o' ? '1:1' : f.k === 'm2m' ? 'M:N' : 'FK') + ' → ' + short(f.to) : f.t;
+      if (f.pk) type += ' PK'; else if (f.uq && !f.to) type += ' UNIQUE';
+      tr.append(el('td', null, type));
+      const nc = el('td');
+      const bits = [];
+      if (f.od) bits.push(f.od.replace('_', ' ').toLowerCase());
+      if (f.ch) bits.push(f.ch.join(' | '));
+      if (f.chn) bits.push(f.chn + ' choices');
+      if (bits.length) nc.append(el('span', 'fnote', bits.join(' · ')));
+      if (f.note) nc.append(el('span', 'fnote', f.note));
+      tr.append(nc); tb.append(tr);
+    }
+    t.append(tb); panel.append(t);
+    if (m.missing.length) panel.append(el('p', 'hint', 'Not present: ' + m.missing.join(', ') + '.'));
+
+    const out = m.fields.filter((f) => f.to);
+    if (out.length || m.base === 'BaseBookModel') {
+      panel.append(el('h4', null, 'References'));
+      const l = el('div', 'rel-list');
+      if (m.base === 'BaseBookModel') l.append(relButton('books.Book', 'Book', 'book · cascade'));
+      for (const f of out) {
+        if (byId.has(f.to)) l.append(relButton(f.to, short(f.to), f.n + (f.null ? '?' : '') + ' · ' + (f.od || 'm2m').replace('_', ' ').toLowerCase()));
+        else { const s = el('div', 'rel-btn'); s.append(el('b', null, f.to), el('span', null, f.n + ' · external')); l.append(s); }
+      }
+      panel.append(l);
+    }
+    const inc = incoming.get(id);
+    if (inc.length) {
+      panel.append(el('h4', null, 'Referenced by · ' + inc.length));
+      const l = el('div', 'rel-list');
+      for (const r of inc) l.append(relButton(r.from, short(r.from), r.field + (r.opt ? '?' : '') + ' · ' + (r.od || 'm2m').replace('_', ' ').toLowerCase() + (r.viaBase ? ' (base)' : '')));
+      panel.append(l);
+    }
+    if (m.cons.length) {
+      panel.append(el('h4', null, 'Constraints'));
+      const l = el('div', 'rel-list');
+      m.cons.forEach((c) => l.append(el('code', null, c)));
+      panel.append(l);
+    }
+  }
+
+  /* search */
+  const search = document.getElementById('erd-search');
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    canvas.classList.toggle('searching', !!q);
+    let first = null;
+    for (const [id, c] of cards) {
+      const m = byId.get(id);
+      const hit = !!q && (m.name.toLowerCase().includes(q) || m.app.includes(q) || m.fields.some((f) => f.n.includes(q)));
+      c.classList.toggle('match', hit);
+      if (hit && !first) first = c;
+    }
+    if (first) { const o = offset(first); viewport.scrollTo({ left: Math.max(0, o.x * scale - 40), top: Math.max(0, o.y * scale - 40), behavior: 'smooth' }); }
+  });
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { const hit = [...cards.values()].find((c) => c.classList.contains('match')); if (hit) select(hit.dataset.id, true); }
+    if (e.key === 'Escape') { search.value = ''; search.dispatchEvent(new Event('input')); }
+  });
+
+  /* zoom */
+  let scale = 1;
+  const zoomBtns = { fit: document.getElementById('zoom-fit'), 75: document.getElementById('zoom-75'), 100: document.getElementById('zoom-100') };
+  function setScale(s, key) {
+    scale = s;
+    canvas.style.transform = 'scale(' + s + ')';
+    sizer.style.width = canvas.offsetWidth * s + 'px';
+    sizer.style.height = canvas.offsetHeight * s + 'px';
+    for (const [k, b] of Object.entries(zoomBtns)) b.setAttribute('aria-pressed', String(k === key));
+  }
+  zoomBtns.fit.addEventListener('click', () => setScale(Math.min(1, (viewport.clientWidth - 4) / canvas.offsetWidth), 'fit'));
+  zoomBtns[75].addEventListener('click', () => setScale(0.75, '75'));
+  zoomBtns[100].addEventListener('click', () => setScale(1, '100'));
+
+  /* pan */
+  let drag = null;
+  viewport.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('.ent') || e.pointerType === 'touch') return;
+    drag = { x: e.clientX, y: e.clientY, l: viewport.scrollLeft, t: viewport.scrollTop };
+    viewport.classList.add('dragging'); viewport.setPointerCapture(e.pointerId);
+  });
+  viewport.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    viewport.scrollLeft = drag.l - (e.clientX - drag.x);
+    viewport.scrollTop = drag.t - (e.clientY - drag.y);
+  });
+  const end = () => { drag = null; viewport.classList.remove('dragging'); };
+  viewport.addEventListener('pointerup', end);
+  viewport.addEventListener('pointercancel', end);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && selected && document.activeElement !== search) select(selected); });
+
+  renderPanel(null);
+  window.__erdDraw = draw;
+  let raf = 0;
+  window.addEventListener('resize', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+  window.__showPage(location.hash.slice(1) || 'erd', false);
+  draw();
+})();
+</script>
+
+</body>
+</html>
