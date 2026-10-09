@@ -4,25 +4,49 @@
 
 <!-- Budget Table -->
 <style>
-  /* The column headings stay visible while the rows scroll under them.
+  /* Three things stay in view while the rows scroll: the tab bar, the column
+     headings, and the section total.
 
      They stick to the *page*, not to a window of their own: the table scrolls
      with the document so the summary cards beside it can follow along, which a
-     nested scroll area would defeat. That rules out an `overflow` on the
-     wrapper, because any non-visible overflow makes it the scrollport a sticky
-     child measures against — and a wrapper that is exactly as tall as its
-     content never scrolls, so the heading row would simply ride away with it.
-     Horizontal scrolling is therefore kept only below `lg`, where the narrow
-     viewport actually needs it and the frozen heading matters least.
+     nested scroll area would defeat. That rules out an `overflow` on a panel,
+     because any non-visible overflow makes it the scrollport a sticky child
+     measures against — and a panel that is exactly as tall as its content never
+     scrolls, so the headings would simply ride away with it. Horizontal
+     scrolling is therefore kept only below `lg`, where the narrow viewport
+     actually needs it and frozen headings matter least. The tab bar sits
+     outside the panels, so it sticks at every width.
+
+     Below `lg` a panel is its own scroll container, so a heading made sticky
+     there would be pushed down *inside* it by the offset, over the rows; the
+     headings and the total only stick from `lg` up.
 
      A sticky cell needs an opaque background of its own, or rows show through
-     as they pass beneath. The offset clears the sticky page header, whose
-     height the header include publishes as `--budget-header-h`. */
-  #budget-table-card thead th {
+     as they pass beneath. Offsets stack: the sticky page header publishes its
+     height as `--budget-header-h`, the tab bar as `--budget-tabs-h`. */
+  #budget-tabs-bar {
     position: sticky;
     top: var(--budget-header-h, 4rem);
-    z-index: 20;
+    z-index: 25;
+  }
+  #budget-table-card thead th {
     background: var(--color-base-100);
+  }
+  #budget-table-card tfoot td {
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+  @media (min-width: 1024px) {
+    #budget-table-card thead th {
+      position: sticky;
+      top: calc(var(--budget-header-h, 4rem) + var(--budget-tabs-h, 0px));
+      z-index: 20;
+    }
+    #budget-table-card tfoot td {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+    }
   }
 
   /* The Hide button stays out of the way until its row is pointed at or
@@ -38,8 +62,8 @@
   without it they are simply shown, Unhide buttons and all.
 {% endcomment %}
 <noscript><style>#budget-table-card tr[data-hidden-row][hidden] { display: table-row; }</style></noscript>
-<div class="overflow-x-auto lg:overflow-x-visible bg-base-100 rounded-lg shadow"
-     id="budget-table-card" data-budget-save-url="{{ save_amount_url }}" data-budget-figures-url="{{ figures_url }}" data-cover-url="{{ cover_url }}">
+<div class="bg-base-100 rounded-lg shadow" id="budget-table-card" data-testid="budget-table"
+     data-budget-save-url="{{ save_amount_url }}" data-budget-figures-url="{{ figures_url }}" data-cover-url="{{ cover_url }}">
   {{ cover_goals|json_script:'cover-goals' }}
   <dialog class="modal" data-cover-dialog data-testid="cover-dialog">
     <div class="modal-box max-w-md">
@@ -89,36 +113,67 @@
     </div>
     <form method="dialog" class="modal-backdrop"><button>{% translate "close" %}</button></form>
   </dialog>
-  <table class="table table-sm w-full" data-testid="budget-table">
-    <thead>
-      <tr>
-        <th class="text-center w-8">
-          <input type="checkbox" class="checkbox checkbox-sm" id="budget-select-all" checked
-                 title="{% translate 'Select all categories' %}">
-        </th>
-        <th>{% translate "Category" %}</th>
-        <th class="w-32"><span class="sr-only">{% translate "Progress" %}</span></th>
-        <th class="text-right">{% translate "Budgeted" %}</th>
-        <th class="text-right">{% translate "Actual" %}</th>
-        <th class="text-right">{% translate "Available" %}</th>
-        <th class="text-center"><noscript>{% translate "Action" %}</noscript></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% if not has_categories %}
-      <tr>
-        <td colspan="7" class="text-center text-base-content/70 py-8" data-testid="budget-empty-state">
-          {% translate "No budget categories found. Please add income or expense accounts first." %}
-        </td>
-      </tr>
-      {% endif %}
-
+  {% if has_categories %}
+  {% comment %}
+    One tab per section. Every panel is rendered and the inactive ones carry
+    `hidden`, chosen here from ?tab= / the budget_tab cookie, so the first paint
+    is already right and the tabs work as plain links without script. With
+    script (budget/budget-tabs.js) a click switches in place.
+  {% endcomment %}
+  <div id="budget-tabs-bar" class="bg-base-100 rounded-t-lg border-b border-base-300 px-3 py-2">
+    <div role="tablist" aria-label="{% translate 'Budget sections' %}"
+         class="tabs tabs-box tabs-sm budget-tabs w-fit max-w-full flex-nowrap overflow-x-auto" data-testid="budget-tabs">
       {% for section in sections %}
-        {% if section.groups %}
-        <!-- Section Header -->
-        <tr class="bg-base-300">
-          <td colspan="7" class="font-bold text-lg">{{ section.label }}</td>
+      <a role="tab" id="budget-tab-{{ section.key }}" href="?tab={{ section.key }}&month={{ month|date:'Y-m-d' }}"
+         class="tab shrink-0 gap-2 whitespace-nowrap{% if section.key == budget_tab %} tab-active{% endif %}"
+         aria-selected="{% if section.key == budget_tab %}true{% else %}false{% endif %}"
+         aria-controls="budget-panel-{{ section.key }}"
+         tabindex="{% if section.key == budget_tab %}0{% else %}-1{% endif %}"
+         data-budget-tab="{{ section.key }}" data-testid="budget-tab-{{ section.key }}">
+        <span class="font-semibold">{{ section.label }}</span>
+        <span class="font-mono text-xs opacity-70" title="{% translate 'Budgeted this month' %}"
+              data-budget-cell="tab:{{ section.key }}:budgeted">{{ section.totals.budgeted|currency }}</span>
+        {% if section.key == "expense" %}
+        <span class="badge badge-error badge-xs" data-budget-cell="tab:expense:overspent" data-testid="budget-tab-overspent"
+              {% if not section.overspent %}hidden{% endif %}>
+          {% blocktranslate trimmed count counter=section.overspent %}{{ counter }} overspent{% plural %}{{ counter }} overspent{% endblocktranslate %}
+        </span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% for section in sections %}
+  <div role="tabpanel" id="budget-panel-{{ section.key }}" aria-labelledby="budget-tab-{{ section.key }}"
+       class="overflow-x-auto lg:overflow-x-visible" data-budget-panel="{{ section.key }}"
+       data-testid="budget-panel-{{ section.key }}" {% if section.key != budget_tab %}hidden{% endif %}>
+    <table class="table table-sm budget-table w-full" data-testid="budget-table-{{ section.key }}">
+      <thead>
+        <tr>
+          <th class="text-center w-8">
+            <input type="checkbox" class="checkbox checkbox-sm budget-select-all" checked
+                   title="{% translate 'Select all categories' %}"
+                   aria-label="{% blocktranslate trimmed with section=section.label %}Select all {{ section }} categories{% endblocktranslate %}">
+          </th>
+          <th>{% translate "Category" %}</th>
+          <th class="w-28"><span class="sr-only">{% translate "Progress" %}</span></th>
+          <th class="text-right">{% translate "Budgeted" %}</th>
+          <th class="text-right">{% translate "Actual" %}</th>
+          <th class="text-right">{% translate "Available" %}</th>
+          <th class="text-center"><noscript>{% translate "Action" %}</noscript></th>
         </tr>
+      </thead>
+      <tbody>
+        {% if not section.groups %}
+        <tr>
+          <td colspan="7" class="budget-empty text-center text-base-content/70" data-testid="budget-panel-empty">
+            {% blocktranslate trimmed with section=section.label %}
+              No {{ section }} categories yet. Add one on the Accounts page.
+            {% endblocktranslate %}
+          </td>
+        </tr>
+        {% endif %}
 
         {% for group in section.groups %}
           {% if group.hidden %}
@@ -128,7 +183,7 @@
             <td></td>
             <td>
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <button type="button" class="flex items-center gap-1.5 font-bold whitespace-nowrap text-base-content/70 hover:text-base-content"
+                <button type="button" class="flex items-center gap-1.5 font-semibold whitespace-nowrap text-base-content/70 hover:text-base-content"
                         aria-expanded="false" data-hidden-toggle="{{ section.key }}" data-testid="budget-hidden-toggle">
                   <span class="transition-transform" data-hidden-chevron>{% icon "chevron-right" class="w-4 h-4" %}</span>
                   {% icon "eye-off" class="w-4 h-4" %}
@@ -139,7 +194,7 @@
                   {% endblocktranslate %}
                 </button>
                 {% if group.overspent %}
-                <span class="badge badge-error badge-sm whitespace-nowrap" data-testid="budget-hidden-overspent">
+                <span class="badge badge-error badge-xs whitespace-nowrap" data-testid="budget-hidden-overspent">
                   {% blocktranslate trimmed count counter=group.overspent %}
                     {{ counter }} overspent
                   {% plural %}
@@ -165,9 +220,24 @@
             <td></td>
           </tr>
           {% else %}
-          <!-- Group Header -->
-          <tr class="bg-base-200">
-            <td colspan="7" class="font-bold">{{ group.name }}</td>
+          <!-- Group header: the group's name and its subtotals, one row. -->
+          <tr class="bg-base-200 font-semibold" data-testid="budget-group-header">
+            <td></td>
+            <td>{{ group.name }}</td>
+            <td></td>
+            <td class="text-right">
+              <span class="font-mono" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
+            </td>
+            <td class="text-right">
+              <span class="font-mono">{{ group.subtotals.actual|currency }}</span>
+            </td>
+            <td class="text-right">
+              <span class="font-mono {% if group.subtotals.available < 0 %}text-error{% elif group.subtotals.available > 0 %}text-success{% endif %}"
+                    data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:available">
+                {{ group.subtotals.available|currency }}
+              </span>
+            </td>
+            <td></td>
           </tr>
           {% endif %}
 
@@ -187,11 +257,12 @@
                      data-budgeted="{{ row.budgeted }}">
             </td>
           {% endif %}
-            <td class="pl-8">
-              <a href="{% url 'reports:account_activity' request.team.slug request.book.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget" class="link link-primary">
-                <div class="font-medium">{{ row.category.name }}</div>
-              </a>
-              {% if group.hidden %}<div class="text-xs text-base-content/70">{{ row.category.account_group.name }}</div>{% endif %}
+            <td class="budget-name">
+              <div class="flex items-baseline gap-2 min-w-0">
+                <a href="{% url 'reports:account_activity' request.team.slug request.book.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget"
+                   class="link link-primary font-medium truncate" title="{{ row.category.name }}">{{ row.category.name }}</a>
+                {% if group.hidden %}<span class="text-xs text-base-content/70 truncate">{{ row.category.account_group.name }}</span>{% endif %}
+              </div>
             </td>
 
             <td>
@@ -205,7 +276,7 @@
               {% endwith %}
             </td>
 
-            <td class="text-right py-1">
+            <td class="text-right">
               <form method="post" class="inline-flex items-center justify-end gap-1.5" id="budget-form-{{ row.category.pk }}"
                     data-budget-autosave
                     data-category-id="{{ row.category.pk }}"
@@ -240,9 +311,9 @@
               </span>
             </td>
 
-            <td class="text-center">
+            <td class="text-center whitespace-nowrap">
               <noscript>
-                <button type="submit" form="budget-form-{{ row.category.pk }}" class="btn btn-primary btn-sm" data-testid="budget-save-btn">
+                <button type="submit" form="budget-form-{{ row.category.pk }}" class="btn btn-primary btn-xs" data-testid="budget-save-btn">
                   {% translate "Save" %}
                 </button>
               </noscript>
@@ -280,33 +351,11 @@
             </td>
           </tr>
           {% endfor %}
-
-          {% if not group.hidden %}
-          <!-- Group Subtotal -->
-          <tr class="bg-base-200 font-bold">
-            <td></td>
-            <td class="pl-8">{% translate "Subtotal" %} - {{ group.name }}</td>
-            <td></td>
-            <td class="text-right">
-              <span class="font-mono" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
-            </td>
-            <td class="text-right">
-              <span class="font-mono">{{ group.subtotals.actual|currency }}</span>
-            </td>
-            <td class="text-right">
-              <span class="font-mono {% if group.subtotals.available < 0 %}text-error{% elif group.subtotals.available > 0 %}text-success{% endif %}"
-                    data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:available">
-                {{ group.subtotals.available|currency }}
-              </span>
-            </td>
-            <td></td>
-          </tr>
-          {% endif %}
         {% endfor %}
-
-        <!-- Section Total -->
-        <tr class="bg-primary text-primary-content font-bold"
-            data-testid="{% if section.key == 'expense' %}budget-grand-total{% else %}budget-total-income{% endif %}">
+      </tbody>
+      <tfoot>
+        <!-- Section total: sticks to the bottom of the screen while the rows scroll. -->
+        <tr data-testid="{% if section.key == 'expense' %}budget-grand-total{% else %}budget-total-income{% endif %}">
           <td></td>
           <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
           <td></td>
@@ -321,83 +370,81 @@
           </td>
           <td></td>
         </tr>
-
-        <!-- Spacer row between sections -->
-        <tr class="h-2">
-          <td colspan="7"></td>
-        </tr>
-        {% endif %}
-      {% endfor %}
-    </tbody>
-  </table>
+      </tfoot>
+    </table>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="text-center text-base-content/70 py-8" data-testid="budget-empty-state">
+    {% translate "No budget categories found. Please add income or expense accounts first." %}
+  </p>
+  {% endif %}
 </div>
 
 <p class="sr-only" role="status" aria-live="polite" data-budget-live></p>
 
-<!-- Info Box -->
-<div class="alert alert-info mt-6">
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-  </svg>
-  <div>
-    <h3 class="font-bold">{% translate "How it works" %}</h3>
-    <div class="text-sm">
+<details class="mt-4 text-sm text-base-content/70" data-testid="budget-how-it-works">
+  <summary class="cursor-pointer select-none w-fit hover:text-base-content">{% translate "How Available works" %}</summary>
+  <div class="mt-2 flex flex-col gap-1">
+    <p>
       {% translate "Available = Budget (this month) - Actual (this month) + Available (previous month). Unspent budget rolls forward to future months." %}
-    </div>
-    <div class="text-sm mt-1">
+    </p>
+    <p>
       {% blocktranslate trimmed %}
         Don't need a category any more? Hide it with the eye button at the end of its row. Hidden categories
         collapse to the bottom of their section, and their money still counts in every total.
       {% endblocktranslate %}
-    </div>
-    <div class="text-sm mt-1">
+    </p>
+    <p>
       {% blocktranslate trimmed %}
         Amounts save as you go — press Enter or the arrow keys to move down the column, Escape to undo an edit.
       {% endblocktranslate %}
-    </div>
+    </p>
   </div>
-</div>
+</details>
 
 <script>
   // Budget amounts auto-save in place — see assets/javascript/budget/budget-autosave.js.
   // The <noscript> Save buttons remain the fallback when JS is disabled.
 
-  // "Select all" checkbox in the header keeps in sync with the per-row checkboxes
-  // used to scope the Auto-Assign actions (see budget_sidebar.html).
+  // Each tab's "Select all" checkbox keeps in sync with that tab's per-row
+  // checkboxes, which scope the Auto-Assign actions (see budget_sidebar.html).
   // Shift-click extends the selection to every row between the last-clicked
   // checkbox and this one (in displayed order), as in the bank feed table.
   (function () {
-    const selectAll = document.getElementById('budget-select-all');
-    if (!selectAll) return;
-    const rowCheckboxes = () => Array.from(document.querySelectorAll('.budget-row-checkbox'));
-    let lastChecked = null;
+    document.querySelectorAll('.budget-select-all').forEach(function (selectAll) {
+      const panel = selectAll.closest('[data-budget-panel]');
+      if (!panel) return;
+      const rowCheckboxes = () => Array.from(panel.querySelectorAll('.budget-row-checkbox'));
+      let lastChecked = null;
 
-    const syncSelectAll = function () {
-      const boxes = rowCheckboxes();
-      selectAll.checked = boxes.every(function (b) { return b.checked; });
-      selectAll.indeterminate = !selectAll.checked && boxes.some(function (b) { return b.checked; });
-    };
-
-    selectAll.addEventListener('change', function () {
-      rowCheckboxes().forEach(function (cb) { cb.checked = selectAll.checked; });
-    });
-
-    rowCheckboxes().forEach(function (cb) {
-      // `click` rather than `change`: only the click carries shiftKey, and by
-      // the time it fires the box has already toggled to its new state.
-      cb.addEventListener('click', function (e) {
+      const syncSelectAll = function () {
         const boxes = rowCheckboxes();
-        if (e.shiftKey && lastChecked) {
-          const anchorIndex = boxes.indexOf(lastChecked);
-          const targetIndex = boxes.indexOf(cb);
-          if (anchorIndex !== -1 && targetIndex !== -1) {
-            const start = Math.min(anchorIndex, targetIndex);
-            const end = Math.max(anchorIndex, targetIndex);
-            for (let i = start; i <= end; i += 1) boxes[i].checked = cb.checked;
+        selectAll.checked = boxes.every(function (b) { return b.checked; });
+        selectAll.indeterminate = !selectAll.checked && boxes.some(function (b) { return b.checked; });
+      };
+
+      selectAll.addEventListener('change', function () {
+        rowCheckboxes().forEach(function (cb) { cb.checked = selectAll.checked; });
+      });
+
+      rowCheckboxes().forEach(function (cb) {
+        // `click` rather than `change`: only the click carries shiftKey, and by
+        // the time it fires the box has already toggled to its new state.
+        cb.addEventListener('click', function (e) {
+          const boxes = rowCheckboxes();
+          if (e.shiftKey && lastChecked) {
+            const anchorIndex = boxes.indexOf(lastChecked);
+            const targetIndex = boxes.indexOf(cb);
+            if (anchorIndex !== -1 && targetIndex !== -1) {
+              const start = Math.min(anchorIndex, targetIndex);
+              const end = Math.max(anchorIndex, targetIndex);
+              for (let i = start; i <= end; i += 1) boxes[i].checked = cb.checked;
+            }
           }
-        }
-        lastChecked = cb;
-        syncSelectAll();
+          lastChecked = cb;
+          syncSelectAll();
+        });
       });
     });
   })();

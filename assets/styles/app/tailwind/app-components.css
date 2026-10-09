@@ -608,6 +608,124 @@
   }
 }
 
+/* Budget table density. Rows hold a 20px amount field (`.budget-amount`
+   below), so the cells only need a hairline of vertical padding: a row is
+   ~25px instead of the ~40px `table-sm` gave with an `input-sm`.
+
+   These rules are unlayered, so they win over daisyUI's `table-sm` padding --
+   and over any padding utility on a cell, which is why the category column's
+   indent and width live here too rather than as classes on the cell. */
+.budget-table :where(th, td) {
+  padding-block: 0.125rem;
+  padding-inline: 0.5rem;
+}
+
+.budget-table thead th {
+  padding-block: 0.375rem;
+}
+
+.budget-table td.budget-name {
+  padding-left: 1rem;
+  max-width: 16rem;
+}
+
+.budget-table td.budget-empty {
+  padding-block: 1.5rem;
+}
+
+/* The amount field. daisyUI sizes an input by its height (`--size`, 24px for
+   `input-xs`), not by padding, so the room around the digits is the box being
+   twice the text's height. 20px is the 12px text plus a hairline of air; the
+   smaller radius keeps a box that short from reading as a pill. */
+.budget-table .input.budget-amount {
+  --size: 1.25rem;
+  padding-inline: 0.375rem;
+  border-radius: 0.25rem;
+}
+
+/* Fields and checkboxes are soft filled wells rather than outlined boxes: a
+   column of grey borders reads as a form, a column of tints as a table. The
+   tint is mixed from the theme's own ink over its surface, so it holds in dark
+   mode. With the border gone, focus and error need a state of their own, or
+   they would vanish with it. */
+.budget-table .input.budget-amount {
+  border-color: transparent;
+  background-color: color-mix(in oklab, var(--color-base-content) 7%, var(--color-base-100));
+  box-shadow: none;
+  transition: background-color 120ms ease-out;
+}
+
+.budget-table tr:hover .input.budget-amount {
+  background-color: color-mix(in oklab, var(--color-base-content) 11%, var(--color-base-100));
+}
+
+.budget-table .input.budget-amount:focus {
+  border-color: transparent;
+  background-color: var(--color-base-100);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 0;
+}
+
+.budget-table .input.budget-amount.input-error {
+  background-color: color-mix(in oklab, var(--color-error) 14%, var(--color-base-100));
+  outline: 2px solid var(--color-error);
+  outline-offset: 0;
+}
+
+/* daisyUI draws a checkbox's border *and* its checked fill from
+   `--input-color`, so clearing it removes both and the fills below take over.
+   The theme's round `--radius-selector` would make these read as radios. */
+.budget-table .checkbox {
+  --input-color: transparent;
+  border-radius: 0.25rem;
+  background-color: color-mix(in oklab, var(--color-base-content) 8%, var(--color-base-100));
+  box-shadow: none;
+}
+
+.budget-table .checkbox:checked,
+.budget-table .checkbox:indeterminate {
+  color: var(--color-primary);
+  background-color: color-mix(in oklab, var(--color-primary) 18%, var(--color-base-100));
+}
+
+.budget-table .checkbox:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* The row's small buttons (Hide, Cover, Unhide) match it, or the 24px
+   `btn-xs` would hold every row 4px taller than the field. */
+.budget-table .btn-xs {
+  --size: 1.25rem;
+}
+
+/* Budget tabs as a segmented control. In `tabs-box` only the active tab has a
+   surface, so two inactive tabs side by side ran together as one line of text.
+   A hairline divider separates neighbours (dropped beside the active or hovered
+   tab, whose own surface already does) and an inactive tab tints on hover, so
+   each reads as its own button. */
+.budget-tabs .tab + .tab::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 1px;
+  background-color: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  pointer-events: none;
+}
+
+.budget-tabs .tab.tab-active::before,
+.budget-tabs .tab.tab-active + .tab::before,
+.budget-tabs .tab:hover::before,
+.budget-tabs .tab:hover + .tab::before {
+  background-color: transparent;
+}
+
+.budget-tabs .tab:not(.tab-active):hover {
+  background-color: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+}
+
 /* Budget row progress bar: spent against what there was to spend (income:
    received against expected). The track is a light step of the fill's own hue.
    Width animates, so an autosave that moves a bar is visible as it happens. */

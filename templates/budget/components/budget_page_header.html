@@ -25,9 +25,9 @@ Flags: show_grid_link (Budget page), goals_header (Goals page: Open/Closed filte
   <div id="budget-month-picker" data-month="{{ month|date:'Y-m-d' }}"></div>
   <noscript>
     <div class="flex gap-2 items-center">
-      <a href="?month={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Previous" %}</a>
+      <a href="?month={{ prev_month|date:'Y-m-d' }}{% if budget_tab %}&tab={{ budget_tab }}{% endif %}" class="btn btn-outline btn-sm">{% translate "Previous" %}</a>
       <span class="font-bold">{{ month|date:"F Y" }}</span>
-      <a href="?month={{ next_month|date:'Y-m-d' }}" class="btn btn-outline btn-sm">{% translate "Next" %}</a>
+      <a href="?month={{ next_month|date:'Y-m-d' }}{% if budget_tab %}&tab={{ budget_tab }}{% endif %}" class="btn btn-outline btn-sm">{% translate "Next" %}</a>
     </div>
   </noscript>
   {% if show_grid_link %}

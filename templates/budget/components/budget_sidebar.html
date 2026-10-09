@@ -13,44 +13,53 @@
      The offset clears the sticky page header, whose height the header include
      publishes as `--budget-header-h`; the fallback covers the moment before
      that script runs. The max height keeps the cards inside the viewport, so a
-     short screen can still reach the Auto-Assign buttons. */
-  #budget-sidebar {
-    position: sticky;
-    top: calc(var(--budget-header-h, 4rem) + 1rem);
-    max-height: calc(100vh - var(--budget-header-h, 4rem) - 2rem);
-    overflow-y: auto;
+     short screen can still reach the Auto-Assign buttons. Below `lg` the cards
+     sit under the table instead, at full width, and do not follow. */
+  @media (min-width: 1024px) {
+    #budget-sidebar {
+      position: sticky;
+      top: calc(var(--budget-header-h, 4rem) + 1rem);
+      max-height: calc(100vh - var(--budget-header-h, 4rem) - 2rem);
+      overflow-y: auto;
+    }
   }
 </style>
-<div class="flex flex-col gap-4 w-72 shrink-0" id="budget-sidebar">
-  <div class="flex flex-col gap-4">
+<div class="flex flex-col gap-4 w-full lg:w-72 shrink-0" id="budget-sidebar">
+  {% comment %}
+    One summary and one Auto-Assign card per tab; the cards for the tabs not on
+    screen carry `hidden`, switched with the tabs by budget/budget-tabs.js.
+  {% endcomment %}
+  {% for section in sections %}
+  <div class="flex flex-col gap-4" data-budget-tab-for="{{ section.key }}" data-testid="budget-sidebar-{{ section.key }}"
+       {% if section.key != budget_tab %}hidden{% endif %}>
     <!-- Monthly Summary -->
     <div class="bg-base-100 rounded-lg shadow p-5">
-      <h3 class="font-bold text-lg mb-4">{{ month|date:"F" }}{% translate "'s Summary" %}</h3>
+      <h3 class="font-bold text-lg mb-4">{{ section.label }} · {{ month|date:"F" }}</h3>
       <div class="flex flex-col gap-2">
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Left Over from Last Month" %}</span>
-          <span class="font-mono text-sm font-semibold {% if sidebar_summary.leftover_last_month < 0 %}text-error{% elif sidebar_summary.leftover_last_month > 0 %}text-success{% endif %}">
-            {{ sidebar_summary.leftover_last_month|currency }}
+          <span class="font-mono text-sm font-semibold {% if section.summary.leftover_last_month < 0 %}text-error{% elif section.summary.leftover_last_month > 0 %}text-success{% endif %}">
+            {{ section.summary.leftover_last_month|currency }}
           </span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Assigned in" %} {{ month|date:"F" }}</span>
-          <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:assigned">
-            {{ sidebar_summary.assigned_this_month|currency }}
+          <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:{{ section.key }}:assigned">
+            {{ section.summary.assigned_this_month|currency }}
           </span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm">{% translate "Activity" %}</span>
+          <span class="text-sm">{% if section.key == "income" %}{% translate "Received" %}{% else %}{% translate "Spent" %}{% endif %}</span>
           <span class="font-mono text-sm font-semibold">
-            {{ sidebar_summary.activity_this_month|currency }}
+            {{ section.summary.activity_this_month|currency }}
           </span>
         </div>
         <div class="divider my-0"></div>
         <div class="flex justify-between items-center">
           <span class="text-sm font-bold">{% translate "Available" %}</span>
-          <span class="font-mono text-sm font-bold {% if sidebar_summary.available < 0 %}text-error{% elif sidebar_summary.available > 0 %}text-success{% endif %}"
-                data-budget-cell="sidebar:available">
-            {{ sidebar_summary.available|currency }}
+          <span class="font-mono text-sm font-bold {% if section.summary.available < 0 %}text-error{% elif section.summary.available > 0 %}text-success{% endif %}"
+                data-budget-cell="sidebar:{{ section.key }}:available">
+            {{ section.summary.available|currency }}
           </span>
         </div>
       </div>
@@ -60,47 +69,28 @@
     <div class="bg-base-100 rounded-lg shadow p-5">
       <h3 class="font-bold text-lg mb-4">{% translate "Auto-Assign" %}</h3>
       <p class="text-xs text-base-content/70 -mt-2 mb-2">
-        {% translate "Applies to the categories checked in the table. Uncheck any you want to leave alone." %}
+        {% blocktranslate trimmed with section=section.label %}
+          Applies to the categories checked on the {{ section }} tab. Uncheck any you want to leave alone.
+        {% endblocktranslate %}
       </p>
       <div class="flex flex-col gap-2">
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}" data-autofill-form>
+        {% for item in section.autofill %}
+        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}"
+              data-autofill-form data-autofill-section="{{ section.key }}">
           {% csrf_token %}
           <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
-          <input type="hidden" name="action" value="assigned_last_month">
-          <button type="submit" class="btn btn-soft btn-primary btn-sm w-full justify-start gap-2">
-            {% translate "Assigned Last Month" %}
+          <input type="hidden" name="section" value="{{ section.key }}">
+          <input type="hidden" name="action" value="{{ item.action }}">
+          <button type="submit" class="btn {{ item.css }} btn-sm w-full justify-start gap-2"
+                  data-testid="autofill-{{ section.key }}-{{ item.action }}">
+            {{ item.label }}
           </button>
         </form>
-
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}" data-autofill-form>
-          {% csrf_token %}
-          <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
-          <input type="hidden" name="action" value="spent_last_month">
-          <button type="submit" class="btn btn-soft btn-secondary btn-sm w-full justify-start gap-2">
-            {% translate "Spent Last Month" %}
-          </button>
-        </form>
-
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}" data-autofill-form>
-          {% csrf_token %}
-          <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
-          <input type="hidden" name="action" value="assign_zero">
-          <button type="submit" class="btn btn-soft btn-sm w-full justify-start gap-2">
-            {% translate "Assign Zero" %}
-          </button>
-        </form>
-
-        <form method="post" action="{% url 'budget:budget_autofill' team_slug=request.team.slug book_slug=request.book.slug %}" data-autofill-form>
-          {% csrf_token %}
-          <input type="hidden" name="month" value="{{ month|date:'Y-m-d' }}">
-          <input type="hidden" name="action" value="reset_available_zero">
-          <button type="submit" class="btn btn-soft btn-sm w-full justify-start gap-2">
-            {% translate "Reset Available to Zero" %}
-          </button>
-        </form>
+        {% endfor %}
       </div>
     </div>
   </div>
+  {% endfor %}
 </div>
 
 <!-- Confirmation dialog shown when an Auto-Assign action would overwrite an existing budget amount -->
@@ -129,9 +119,12 @@
     const modalConfirmBtn = document.getElementById('budget-autofill-confirm-btn');
     let pendingForm = null;
 
-    const rowCheckboxes = () => Array.from(document.querySelectorAll('.budget-row-checkbox'));
+    // Only the tab the form belongs to: the other tabs' checkboxes are off screen.
+    const rowCheckboxes = (section) =>
+      Array.from(document.querySelectorAll('#budget-panel-' + section + ' .budget-row-checkbox'));
 
     document.querySelectorAll('form[data-autofill-form]').forEach(function (form) {
+      const section = form.dataset.autofillSection;
       form.addEventListener('submit', function (e) {
         if (form.dataset.confirmed === '1') {
           // Already confirmed (or nothing to confirm) — let this submission through.
@@ -140,9 +133,9 @@
         }
         e.preventDefault();
 
-        const selected = rowCheckboxes().filter(function (cb) { return cb.checked; });
+        const selected = rowCheckboxes(section).filter(function (cb) { return cb.checked; });
 
-        if (rowCheckboxes().length && !selected.length) {
+        if (rowCheckboxes(section).length && !selected.length) {
           window.alert("{% translate 'Select at least one category to apply this to.' %}");
           return;
         }

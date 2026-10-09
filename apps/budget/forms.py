@@ -71,6 +71,8 @@ class BudgetAmountField(forms.DecimalField):
 class BudgetAmountForm(forms.ModelForm):
     # A text input rather than a number input: the budget table binds Up/Down to
     # move between rows, which a number input would spend on its own spinner.
+    # `max-w-24`, not `w-24`: the shared widget template prepends `w-full`.
+    # `budget-amount` (app-components.css) trims the field's height to fit the row.
     budget_amount = BudgetAmountField(
         max_digits=15,
         decimal_places=2,
@@ -81,7 +83,7 @@ class BudgetAmountForm(forms.ModelForm):
                 "autocomplete": "off",
                 "data-amount-input": "",
                 "placeholder": "0.00",
-                "class": "input input-bordered input-sm w-28 text-right font-mono",
+                "class": "input input-bordered input-xs budget-amount max-w-24 text-right font-mono text-xs",
             }
         ),
     )

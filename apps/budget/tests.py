@@ -545,7 +545,8 @@ class BudgetSaveAmountViewTest(TestCase):
         self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["tone"], "pos")
         self.assertEqual(cells["group:expense:0:budgeted"]["value"], "$250.00")
         self.assertEqual(cells["section:expense:budgeted"]["value"], "$250.00")
-        self.assertEqual(cells["sidebar:assigned"]["value"], "$250.00")
+        self.assertEqual(cells["sidebar:expense:assigned"]["value"], "$250.00")
+        self.assertEqual(cells["tab:expense:budgeted"]["value"], "$250.00")
         self.assertIn("networth:available", cells)
 
     def test_amount_is_normalized_in_the_response(self):
@@ -1484,7 +1485,9 @@ class HiddenCategoryTest(TestCase):
     def test_hide_without_js_redirects_back_to_the_month(self):
         response = self.hide(self.gym)
         self.assertRedirects(
-            response, f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01", fetch_redirect_response=False
+            response,
+            f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01&tab=expense",
+            fetch_redirect_response=False,
         )
 
     def test_unhide(self):
@@ -1565,3 +1568,160 @@ class HiddenCategoryTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.gym.refresh_from_db()
         self.assertFalse(self.gym.hidden_from_budget)
+
+
+class BudgetTabsTest(TestCase):
+    """The budget page shows one section (Income, Expenses) at a time; the tab
+    comes from ?tab=, else the budget_tab cookie, else Expenses."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        cls.team = Team.objects.create(name="Tabs Team", slug="tabs-team")
+        cls.book = cls.team.default_book
+        cls.book.budget_future_income = True
+        cls.book.save()
+        cls.user = CustomUser.objects.create_user(username="tabsuser@example.com", password="testpass123")
+        cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
+
+        income_group = AccountGroup.objects.create(book=cls.book, name="Tabs Income", account_type=ACCOUNT_TYPE_INCOME)
+        expense_group = AccountGroup.objects.create(
+            book=cls.book, name="Tabs Expenses", account_type=ACCOUNT_TYPE_EXPENSE
+        )
+        asset_group = AccountGroup.objects.create(book=cls.book, name="Tabs Assets", account_type="asset")
+        cls.salary = Account.objects.create(book=cls.book, name="Tabs Salary", account_group=income_group)
+        cls.groceries = Account.objects.create(book=cls.book, name="Tabs Groceries", account_group=expense_group)
+        cls.rent = Account.objects.create(book=cls.book, name="Tabs Rent", account_group=expense_group)
+        cls.checking = Account.objects.create(book=cls.book, name="Tabs Checking", account_group=asset_group)
+
+        cls.month = date(2025, 6, 1)
+        for category, amount in ((cls.salary, "3000"), (cls.groceries, "400"), (cls.rent, "1000")):
+            Budget.objects.create(book=cls.book, category=category, month=cls.month, budget_amount=Decimal(amount))
+        # May: 50 of groceries left over. June: rent overspent by 200, salary received in full.
+        Budget.objects.create(
+            book=cls.book, category=cls.groceries, month=date(2025, 5, 1), budget_amount=Decimal("50")
+        )
+        cls._entry(cls.rent, cls.checking, "1200", date(2025, 6, 2))
+        cls._entry(cls.checking, cls.salary, "3000", date(2025, 6, 15))
+
+    @classmethod
+    def _entry(cls, debit, credit, amount, day):
+        entry = JournalEntry.objects.create(book=cls.book, entry_date=day, description="Tabs")
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=debit, dr_amount=Decimal(amount))
+        JournalLine.objects.create(book=cls.book, journal_entry=entry, account=credit, cr_amount=Decimal(amount))
+
+    def setUp(self):
+        self.client.login(username="tabsuser@example.com", password="testpass123")
+
+    @property
+    def base(self):
+        return f"/a/{self.team.slug}/{self.book.slug}/budget/"
+
+    def page(self, query=""):
+        return self.client.get(f"{self.base}?month=2025-06-01{query}")
+
+    def test_expenses_is_the_default_tab(self):
+        response = self.page()
+        self.assertEqual(response.context["budget_tab"], "expense")
+        html = response.content.decode()
+        self.assertIn('data-testid="budget-panel-expense" >', html)
+        self.assertIn('data-testid="budget-panel-income" hidden', html)
+        self.assertIn('data-testid="budget-sidebar-income"\n       hidden', html)
+
+    def test_query_picks_the_tab(self):
+        self.assertEqual(self.page("&tab=income").context["budget_tab"], "income")
+
+    def test_cookie_remembers_the_tab_and_the_query_wins_over_it(self):
+        self.client.cookies["budget_tab"] = "income"
+        self.assertEqual(self.page().context["budget_tab"], "income")
+        self.assertEqual(self.page("&tab=expense").context["budget_tab"], "expense")
+
+    def test_an_unknown_tab_falls_back_to_expenses(self):
+        self.client.cookies["budget_tab"] = "nonsense"
+        self.assertEqual(self.page("&tab=bogus").context["budget_tab"], "expense")
+
+    def test_without_future_income_there_is_no_income_tab(self):
+        self.book.budget_future_income = False
+        self.book.save()
+        response = self.page("&tab=income")
+        self.assertEqual(response.context["budget_tab"], "expense")
+        self.assertEqual([s["key"] for s in response.context["sections"]], ["expense"])
+        self.assertNotContains(response, 'data-testid="budget-tab-income"')
+
+    def test_each_section_summarises_itself(self):
+        income, expense = self.page().context["sections"]
+        self.assertEqual(
+            income["summary"],
+            {
+                "leftover_last_month": Decimal("0"),
+                "assigned_this_month": Decimal("3000"),
+                "activity_this_month": Decimal("3000"),
+                "available": Decimal("0"),
+            },
+        )
+        self.assertEqual(
+            expense["summary"],
+            {
+                "leftover_last_month": Decimal("50"),
+                "assigned_this_month": Decimal("1400"),
+                "activity_this_month": Decimal("1200"),
+                # Groceries 50 + 400, rent 1000 − 1200.
+                "available": Decimal("250"),
+            },
+        )
+
+    def test_the_expenses_tab_counts_overspent_categories(self):
+        _income, expense = self.page().context["sections"]
+        self.assertEqual(expense["overspent"], 1)
+
+        response = self.client.post(
+            f"{self.base}save-amount/",
+            data=json.dumps({"category_id": self.rent.pk, "month": "2025-06-01", "amount": "1200"}),
+            content_type="application/json",
+        )
+        cells = response.json()["cells"]
+        self.assertEqual(cells["tab:expense:overspent"]["hidden"], True)
+        self.assertEqual(cells["tab:income:budgeted"]["value"], "$3,000.00")
+        self.assertEqual(cells["sidebar:income:assigned"]["value"], "$3,000.00")
+        self.assertEqual(cells["sidebar:expense:assigned"]["value"], "$1,600.00")
+
+    def test_autofill_touches_only_its_own_tab(self):
+        response = self.client.post(
+            f"{self.base}autofill/", {"month": "2025-06-01", "action": "assign_zero", "section": "income"}
+        )
+        self.assertRedirects(response, f"{self.base}?month=2025-06-01&tab=income", fetch_redirect_response=False)
+        amounts = dict(Budget.objects.filter(month=self.month).values_list("category_id", "budget_amount"))
+        self.assertEqual(amounts[self.salary.pk], Decimal("0"))
+        self.assertEqual(amounts[self.groceries.pk], Decimal("400"))
+        self.assertEqual(amounts[self.rent.pk], Decimal("1000"))
+
+    def test_autofill_cannot_reach_income_when_the_book_does_not_budget_it(self):
+        self.book.budget_future_income = False
+        self.book.save()
+        self.client.post(f"{self.base}autofill/", {"month": "2025-06-01", "action": "assign_zero", "section": "income"})
+        amounts = dict(Budget.objects.filter(month=self.month).values_list("category_id", "budget_amount"))
+        self.assertEqual(amounts[self.salary.pk], Decimal("3000"))
+        # An unbudgeted section is ignored, so the action covers what the book does budget.
+        self.assertEqual(amounts[self.groceries.pk], Decimal("0"))
+
+    def test_hiding_redraws_the_categorys_own_tab(self):
+        response = self.client.post(
+            f"{self.base}categories/{self.salary.pk}/visibility/",
+            {"hidden": "1", "month": "2025-06-01"},
+            HTTP_X_BUDGET_FRAGMENT="1",
+        )
+        self.assertEqual(response.context["budget_tab"], "income")
+
+    def test_no_js_save_returns_to_the_rows_tab(self):
+        response = self.client.post(
+            f"{self.base}?month=2025-06-01",
+            {"category_id": self.salary.pk, "budget_month": "2025-06-01", "budget_amount": "3100"},
+        )
+        self.assertRedirects(response, f"{self.base}?month=2025-06-01&tab=income", fetch_redirect_response=False)
+
+    def test_group_subtotals_ride_on_the_group_header(self):
+        response = self.page()
+        self.assertContains(response, 'data-testid="budget-group-header"', count=2)
+        self.assertNotContains(response, "Subtotal")
