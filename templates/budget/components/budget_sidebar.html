@@ -37,7 +37,7 @@
       <h3 class="font-bold text-lg mb-4">{{ section.label }} · {{ month|date:"F" }}</h3>
       <div class="flex flex-col gap-2">
         <div class="flex justify-between items-center">
-          <span class="text-sm">{% translate "Left Over from Last Month" %}</span>
+          <span class="text-sm">{% if section.key == "goal" %}{% blocktranslate trimmed with month=month|date:"F" %}Saved Before {{ month }}{% endblocktranslate %}{% else %}{% translate "Left Over from Last Month" %}{% endif %}</span>
           <span class="font-mono text-sm font-semibold {% if section.summary.leftover_last_month < 0 %}text-error{% elif section.summary.leftover_last_month > 0 %}text-success{% endif %}">
             {{ section.summary.leftover_last_month|currency }}
           </span>
@@ -48,6 +48,14 @@
             {{ section.summary.assigned_this_month|currency }}
           </span>
         </div>
+        {% if section.key == "goal" %}
+        <div class="flex justify-between items-center">
+          <span class="text-sm">{% translate "From Linked Accounts" %}</span>
+          <span class="font-mono text-sm font-semibold">
+            {{ section.summary.linked_this_month|currency }}
+          </span>
+        </div>
+        {% endif %}
         <div class="flex justify-between items-center">
           <span class="text-sm">{% if section.key == "income" %}{% translate "Received" %}{% else %}{% translate "Spent" %}{% endif %}</span>
           <span class="font-mono text-sm font-semibold">
@@ -140,12 +148,13 @@
           return;
         }
 
-        form.querySelectorAll('input[name="category_ids"]').forEach(function (el) { el.remove(); });
+        form.querySelectorAll('input[name="category_ids"], input[name="goal_ids"]').forEach(function (el) { el.remove(); });
         selected.forEach(function (cb) {
           const input = document.createElement('input');
           input.type = 'hidden';
-          input.name = 'category_ids';
-          input.value = cb.dataset.categoryId;
+          // A goal row's checkbox names its goal; a category row's, its category.
+          input.name = cb.dataset.goalId ? 'goal_ids' : 'category_ids';
+          input.value = cb.dataset.goalId || cb.dataset.categoryId;
           form.appendChild(input);
         });
 
@@ -165,7 +174,7 @@
         if (existingCount > 0 && modal) {
           pendingForm = form;
           modalMessage.textContent = (
-            existingCount + (existingCount === 1 ? " of the selected categories already has" : " of the selected categories already have") +
+            existingCount + (existingCount === 1 ? " of the selected rows already has" : " of the selected rows already have") +
             " a budget amount set for this month. Continuing will overwrite " +
             (existingCount === 1 ? "it" : "them") +
             ". This can't be undone. Continue?"

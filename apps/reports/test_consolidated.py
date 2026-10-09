@@ -271,6 +271,7 @@ class BudgetPageProgressBarTest(PlanFixture):
         return {
             row["category"].name: row
             for section in response.context["sections"]
+            if section["key"] != "goal"
             for group in section["groups"]
             for row in group["rows"]
         }, response

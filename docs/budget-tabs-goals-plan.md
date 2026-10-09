@@ -1,6 +1,6 @@
 # Budget page: goals as budget rows, condensed rows, section tabs
 
-Status: steps 1–2 built (density + tabs, one PR); step 3 (goals) in its own PR · Scope: `/a/{team}/{book}/budget/` (single-month page only)
+Status: built — steps 1–2 (density + tabs) in one PR, step 3 (goals) in its own PR · Scope: `/a/{team}/{book}/budget/` (single-month page only)
 
 Three changes, one page:
 
@@ -231,3 +231,11 @@ Steps 1 and 2 shipped together, as one PR.
 - **`budget-table` stays on the outer card** (one element, as the page objects expect); each panel's table is `budget-table-<key>`.
 - **Phone layout fixed in passing**: below `lg` the fixed-width sidebar covered the table. The sidebar now sits below the table there, full width and not sticky.
 - **Auto-Assign is per tab** in step 2 already (one button set per section, each posting `section`), so step 3 only adds the Goals tab's set.
+
+Step 3:
+
+- **The Goals tab exists without future income**: tabs are `[income?, goal, expense]`.
+- **The goal tab's empty state links to New Goal**; a book with goals but no categories still gets the tabs.
+- **One group, no group header row** on the Goals tab: the section total in the tfoot is the only subtotal.
+- **`goal_allocation_update_view` (the goals page's no-JS "Set month") moved onto `set_month_allocation` too**, so it gains the closed/archived refusal and the spent-money cap it never had.
+- **Idle fields follow their cells.** Covering a category from a goal changes that goal's contribution for the month, so `budget-autosave.js` updates any field nobody is typing in from its repainted `:budgeted` cell.

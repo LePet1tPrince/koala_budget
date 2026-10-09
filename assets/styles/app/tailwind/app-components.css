@@ -634,11 +634,16 @@
 }
 
 /* Budget row progress bar: spent against what there was to spend (income:
-   received against expected). The track is a light step of the fill's own hue.
+   received against expected; a goal: saved against its target). The track is a light step of the fill's own hue.
    Width animates, so an autosave that moves a bar is visible as it happens. */
 .budget-meter {
   --meter: var(--color-success);
   @apply flex items-center gap-2 min-w-24;
+}
+
+/* A goal row: saved against the target, in the equity hue the balance sheet uses. */
+.budget-meter.is-goal {
+  --meter: var(--color-secondary);
 }
 
 .budget-meter.is-over {

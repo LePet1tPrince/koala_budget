@@ -180,3 +180,45 @@ def test_budget_rows_are_condensed(authenticated_page: Page, live_server, team):
     budget.goto_budget(team.default_book)
 
     assert budget.row_height() <= 30
+
+
+@pytest.mark.django_db(transaction=True)
+def test_budget_a_goal_from_the_goals_tab(authenticated_page: Page, live_server, team):
+    """Typing into a goal row sets the month's contribution the goals page shows, and
+    Available is the goal's balance -- what it has saved, less what it has spent.
+
+    Requires the Vite dev server (the amount saves in place).
+    """
+    from datetime import date
+    from decimal import Decimal
+
+    from playwright.sync_api import expect
+
+    from apps.budget.models import Goal, GoalAllocation
+
+    book = team.default_book
+    month = date.today().replace(day=1)
+    goal = Goal.objects.create(book=book, name="Zed Car", target_amount=Decimal("5000"))
+    GoalAllocation.objects.create(
+        book=book, goal=goal, month=month.replace(year=month.year - 1), amount=Decimal("1000")
+    )
+
+    budget = BudgetPage(authenticated_page, live_server.url)
+    budget.goto_budget(book)
+    budget.select_tab("goal")
+    expect(budget.goal_row("Zed Car")).to_be_visible()
+    assert budget.goal_available("Zed Car") == "$1,000.00"
+
+    pill_before = budget.unassigned_pill_value()
+    budget.set_goal_budget("Zed Car", "200+50")
+
+    expect(budget.goal_row("Zed Car").get_by_test_id("budget-goal-available")).to_have_text("$1,250.00")
+    expect(budget.goal_row("Zed Car").locator("input[name='budget_amount']")).to_have_value("250.00")
+    assert GoalAllocation.objects.get(goal=goal, month=month).amount == Decimal("250.00")
+    expect(
+        authenticated_page.get_by_test_id("unassigned-pill").locator("[data-unassigned-pill-value]")
+    ).not_to_have_text(pill_before)
+
+    # The goals page reads the same contribution for the month.
+    budget.goto_goals(book)
+    expect(budget.goal_card("Zed Car")).to_contain_text("250")
