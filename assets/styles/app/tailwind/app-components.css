@@ -701,9 +701,9 @@
 
 /* Budget tabs as a segmented control. In `tabs-box` only the active tab has a
    surface, so two inactive tabs side by side ran together as one line of text.
-   A hairline divider separates neighbours (dropped beside the active tab, whose
-   own surface already does) and an inactive tab tints on hover, so each reads
-   as its own button. */
+   A hairline divider separates neighbours (dropped beside the active or hovered
+   tab, whose own surface already does) and an inactive tab tints on hover, so
+   each reads as its own button. */
 .budget-tabs .tab + .tab::before {
   content: "";
   position: absolute;
@@ -716,7 +716,9 @@
 }
 
 .budget-tabs .tab.tab-active::before,
-.budget-tabs .tab.tab-active + .tab::before {
+.budget-tabs .tab.tab-active + .tab::before,
+.budget-tabs .tab:hover::before,
+.budget-tabs .tab:hover + .tab::before {
   background-color: transparent;
 }
 
