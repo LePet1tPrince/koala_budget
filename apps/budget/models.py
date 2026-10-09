@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django.db import models, transaction
-from django.db.models import DecimalField, F, OuterRef, Subquery, Sum
+from django.db.models import Case, DecimalField, F, OuterRef, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
@@ -129,17 +129,100 @@ def goal_assigned_subquery(start=None, end=None):
     return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
 
 
-def goal_allocated_subquery(start=None, end=None):
+MONEY_FIELD = DecimalField(max_digits=15, decimal_places=2)
+
+
+class GoalMatching(dict):
     """
-    What a goal has been given, as a scalar subquery on `Goal`: manual allocations
-    plus everything its linked accounts brought in (starting balances and linked
-    flows, `apps.budget.linked`), dated from `start` (inclusive) to `end`
-    (exclusive). Months are first-of-month dates, so a month range is
+    {goal id: {month: {"pending", "arrived", "matched"}}} -- how much of the money
+    arriving in each goal's linked accounts was money already assigned to it.
+
+    Assigning money to a goal and then moving it into the goal's linked account is
+    one contribution, not two. Months are walked in order, carrying what has been
+    assigned but not yet moved (`pending`): money arriving in a month first fills
+    what's pending -- assigned that month or earlier -- and only the rest adds to
+    the goal. So budgeting $500 and moving $500 is $500 whichever came first within
+    the month, and a transfer that lands the month after its budget still counts
+    once. Money that arrived with nothing pending (history from before budgeting,
+    interest) never fills a later assignment: that assignment is new money.
+
+    Only positive monthly allocations are assigned money; withdrawals, closes and
+    covers (negative allocations), money leaving a linked account and starting
+    balances always count in full. A goal with no linked account has nothing
+    arriving, so nothing is matched and it adds up as before.
+
+    Derived on read like the rest of linked accounts (docs/goal-linked-accounts-plan.md
+    D5): one query for the allocations, one for the arrivals.
+    """
+
+    @classmethod
+    def for_goals(cls, goal_ids):
+        from apps.budget.linked import monthly_arrivals
+
+        goal_ids = list(goal_ids)
+        matching = cls()
+        if not goal_ids:
+            return matching
+        arrivals = monthly_arrivals(goal_ids)
+        if not arrivals:
+            return matching
+        assigned = {}
+        for goal_id, month, amount in GoalAllocation.objects.filter(
+            goal_id__in=list(arrivals), amount__gt=0
+        ).values_list("goal_id", "month", "amount"):
+            assigned.setdefault(goal_id, {})[month] = amount
+        for goal_id, arrived_by_month in arrivals.items():
+            assigned_by_month = assigned.get(goal_id, {})
+            pending = ZERO
+            months = {}
+            for month in sorted(set(arrived_by_month) | set(assigned_by_month)):
+                pending_before = pending
+                pending += assigned_by_month.get(month, ZERO)
+                arrived = arrived_by_month.get(month, ZERO)
+                matched = min(pending, arrived)
+                pending -= matched
+                months[month] = {"pending": pending_before, "arrived": arrived, "matched": matched}
+            matching[goal_id] = months
+        return matching
+
+    def matched(self, goal_id, start=None, end=None):
+        """Σ matched for months from `start` (inclusive) to `end` (exclusive)."""
+        return sum(
+            (
+                values["matched"]
+                for month, values in self.get(goal_id, {}).items()
+                if (start is None or month >= start) and (end is None or month < end)
+            ),
+            ZERO,
+        )
+
+    def expression(self, start=None, end=None):
+        """`matched` as a per-goal constant in SQL (annotate on `Goal`)."""
+        whens = []
+        for goal_id in self:
+            value = self.matched(goal_id, start, end)
+            if value:
+                whens.append(When(pk=goal_id, then=Value(value, output_field=MONEY_FIELD)))
+        zero = Value(ZERO, output_field=MONEY_FIELD)
+        return Case(*whens, default=zero, output_field=MONEY_FIELD) if whens else zero
+
+
+def goal_allocated_subquery(matching, start=None, end=None):
+    """
+    What a goal has been given, as an expression on `Goal`: manual allocations plus
+    everything its linked accounts brought in (starting balances and linked flows,
+    `apps.budget.linked`), less the linked money that was already assigned
+    (`GoalMatching`, for the goals being annotated), dated from `start` (inclusive)
+    to `end` (exclusive). Months are first-of-month dates, so a month range is
     `(month, month_after(month))`.
     """
     from apps.budget.linked import linked_allocated_subquery
 
-    return goal_assigned_subquery(start, end) + linked_allocated_subquery(start, end)
+    return (
+        goal_assigned_subquery(start, end)
+        + linked_allocated_subquery(start, end)
+        - matching.expression(start.replace(day=1) if start else None, end)
+    )
 
 
 class GoalQuerySet(models.QuerySet):
@@ -156,7 +239,8 @@ class GoalQuerySet(models.QuerySet):
         (default: the current month). See docs/goals-envelopes-plan.md §3.
 
         - allocated: Σ allocations, all months (withdrawals are negative allocations),
-          plus what linked accounts brought in (docs/goal-linked-accounts-plan.md)
+          plus what linked accounts brought in (docs/goal-linked-accounts-plan.md),
+          less linked money that was already assigned (`GoalMatching`)
         - spent: Σ (dr − cr) of counted lines on the goal's account through month end,
           plus linked spending
         - left: allocated − spent — the goal's claim on your money
@@ -170,10 +254,16 @@ class GoalQuerySet(models.QuerySet):
         month = month.replace(day=1)
         end = month_after(month)
 
+        matching = GoalMatching.for_goals(
+            GoalAccountLink.objects.filter(goal__in=self.values("pk"))
+            .values_list("goal_id", flat=True)
+            .order_by()
+            .distinct()
+        )
         return self.annotate(
-            saved_previous=goal_allocated_subquery(end=month),
-            saved_this_month=goal_allocated_subquery(month, end),
-            allocated=goal_allocated_subquery(),
+            saved_previous=goal_allocated_subquery(matching, end=month),
+            saved_this_month=goal_allocated_subquery(matching, month, end),
+            allocated=goal_allocated_subquery(matching),
             spent=goal_spent_subquery(end=end),
             spent_this_month=goal_spent_subquery(start=month, end=end),
         ).annotate(

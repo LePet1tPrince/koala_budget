@@ -347,6 +347,10 @@ ACTIVITY_STARTING = "starting"
 ACTIVITY_IN = "in"
 ACTIVITY_OUT = "out"
 ACTIVITY_SPENT = "spent"
+# Money that arrived in a linked account for money already assigned to the goal:
+# counted once (`models.GoalMatching`), so this row takes it back out of
+# the sum of the rows above it.
+ACTIVITY_MATCHED = "matched"
 
 
 def goal_activity(goal, limit=100):
@@ -424,6 +428,22 @@ def goal_activity(goal, limit=100):
                     "memo": entry.description,
                     "amount": line.cr_amount - line.dr_amount,
                     "month_only": False,
+                }
+            )
+    from .services import goal_monthly
+
+    for month, values in goal_monthly(goal.book, [goal]).get(goal.pk, {}).items():
+        matched = values["assigned"] + values["linked"] - values["saved"]
+        if matched:
+            events.append(
+                {
+                    "date": month,
+                    "kind": ACTIVITY_MATCHED,
+                    "account": None,
+                    "payee": "",
+                    "memo": "",
+                    "amount": -matched,
+                    "month_only": True,
                 }
             )
     events.sort(key=lambda e: e["date"], reverse=True)

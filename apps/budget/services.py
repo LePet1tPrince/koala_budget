@@ -11,7 +11,7 @@ from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, ngettext
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAllocation, GoalMatching
 from apps.journal.models import JournalLine, counted_entries
 from apps.web.templatetags.currency_tags import currency
 
@@ -454,24 +454,34 @@ class GoalService:
         return allocation
 
     def edit_allocation(self, allocation, amount):
+        """Change a past month's manual contribution to `amount` (0 undoes it): see
+        `set_month_allocation`. Returns the old amount."""
+        return self.set_month_allocation(allocation.goal, allocation.month, amount)
+
+    def set_month_allocation(self, goal, month, amount):
         """
-        Change a past month's manual contribution to `amount` (0 undoes it: the row
-        goes). Only `GoalAllocation`s -- money from linked accounts follows its
+        Set the goal's manual contribution for `month` to `amount` (0 removes the
+        row). Only `GoalAllocation`s -- money from linked accounts follows its
         transactions and is changed there.
+
+        The one writer behind the budget page's goal rows, the goal page's history
+        edits and the goals page's no-JS "Set month": they set a month's amount,
+        where the goals page's buttons add to it.
 
         Refused on a closed or archived goal (closing wrote its own release into the
         history), and when lowering it would take back money already spent: the goal
         can't be left below zero by rewriting its past, the same cap a withdrawal has.
         Returns the old amount.
         """
+        month = month.replace(day=1)
         with transaction.atomic():
-            allocation = GoalAllocation.objects.select_for_update().select_related("goal").get(pk=allocation.pk)
-            goal = allocation.goal
+            goal = Goal.objects.select_for_update().get(pk=goal.pk)
             if goal.is_archived:
                 raise GoalAllocationError(_("This goal is archived. Its history can't be changed."))
             if goal.is_closed:
                 raise GoalAllocationError(_("This goal is closed. Its history can't be changed."))
-            old = allocation.amount
+            allocation = GoalAllocation.objects.select_for_update().filter(goal=goal, month=month).first()
+            old = allocation.amount if allocation else Decimal("0")
             if amount == old:
                 return old
             change = amount - old
@@ -479,7 +489,7 @@ class GoalService:
                 # As of the latest month anything is recorded in, so a contribution
                 # dated ahead of today counts too.
                 latest = GoalAllocation.objects.filter(goal=goal).order_by("-month").values_list("month", flat=True)
-                as_of = max(timezone.localdate().replace(day=1), latest.first() or date.min)
+                as_of = max(timezone.localdate().replace(day=1), latest.first() or date.min, month)
                 left = self.left(goal, as_of)
                 if left + change < 0:
                     raise GoalAllocationError(
@@ -491,17 +501,45 @@ class GoalService:
                     )
             if amount == 0:
                 allocation.delete()
-            else:
+            elif allocation:
                 allocation.amount = amount
                 allocation.save(update_fields=["amount", "updated_at"])
+            else:
+                GoalAllocation.objects.create(book=goal.book, goal=goal, month=month, amount=amount)
             return old
 
     def add_to_allocation(self, goal, month, amount):
-        """Add `amount` (negative to take money out) to the month's allocation. Call inside a transaction."""
+        """
+        Add `amount` (negative to take money out) to what the goal has been given,
+        recording it in the month's allocation. Call inside a transaction.
+
+        The goal moves by exactly `amount` as of the end of `month` -- the figures
+        the budget page, the goals page and Unassigned show for that month. Usually
+        that is the month's row plus `amount`. But on a linked goal, money arriving
+        in the month first fills what was assigned and not yet moved
+        (`models.GoalMatching`), so while the month's arrivals exceed what's pending
+        a raw +200 would be absorbed and a raw −200 freed up again; the row is
+        solved for instead. With P pending from earlier months and Q this month's
+        arrivals, the month holds h(a) = a − min(P + max(a, 0), Q) of its row `a`:
+        flat for a in [0, max(0, Q − P)], slope 1 either side. The new row is
+        h⁻¹(h(current) + amount), past that flat stretch.
+        """
         month = month.replace(day=1)
         allocation = GoalAllocation.objects.select_for_update().filter(book=self.book, goal=goal, month=month).first()
         current = allocation.amount if allocation else Decimal("0")
-        return self.update_allocation(goal, month, current + amount)
+        cell = GoalMatching.for_goals([goal.pk]).get(goal.pk, {}).get(month)
+        arrived = cell["arrived"] if cell else Decimal("0")
+        if not arrived:
+            return self.update_allocation(goal, month, current + amount)
+        pending = cell["pending"]
+
+        def held(row):
+            return row - min(pending + max(row, Decimal("0")), arrived)
+
+        target = held(current) + amount
+        base = -min(pending, arrived)
+        row = target - base if target <= base else target + arrived
+        return self.update_allocation(goal, month, row)
 
     def left(self, goal, month):
         return Goal.objects.filter(pk=goal.pk).with_progress(month).values_list("left", flat=True).get()
@@ -786,12 +824,15 @@ def goal_monthly(book, goals, start=None, end=None):
 
     - assigned: manual allocations (`GoalAllocation`; withdrawals negative)
     - linked: what linked accounts brought in (starting balances, flows)
-    - saved: assigned + linked -- the month's share of `allocated`
+    - saved: the month's share of `allocated` -- assigned + linked, less the money
+      that arrived in a linked account for money already assigned
+      (`models.GoalMatching`)
     - spent: lines on the goal's own account plus linked spending
 
     Months from `start` (inclusive) to `end` (exclusive), first-of-month keys.
     Every per-month read of goal allocations goes through here, so a month's
-    "saved" can never leave out what a linked account brought in.
+    "saved" can never leave out what a linked account brought in, nor count it
+    twice.
     """
     from django.db.models import F
     from django.db.models.functions import TruncMonth
@@ -803,6 +844,8 @@ def goal_monthly(book, goals, start=None, end=None):
     by_account = {g.account_id: g.pk for g in goals if g.account_id}
     zero = Decimal("0")
     result = {pk: {} for pk in goal_ids}
+    if start is not None:
+        start = start.replace(day=1)
 
     def cell(goal_id, month):
         month = month.date() if hasattr(month, "date") else month
@@ -810,7 +853,7 @@ def goal_monthly(book, goals, start=None, end=None):
 
     allocations = GoalAllocation.objects.filter(book=book, goal_id__in=goal_ids)
     if start is not None:
-        allocations = allocations.filter(month__gte=start.replace(day=1))
+        allocations = allocations.filter(month__gte=start)
     if end is not None:
         allocations = allocations.filter(month__lt=end)
     for row in allocations.values("goal_id", "month").annotate(total=Sum("amount")):
@@ -834,9 +877,11 @@ def goal_monthly(book, goals, start=None, end=None):
             target["linked"] += values["linked"]
             target["spent"] += values["spent"]
 
-    for months in result.values():
-        for values in months.values():
-            values["saved"] = values["assigned"] + values["linked"]
+    matching = GoalMatching.for_goals(goal_ids)
+    for goal_id, months in result.items():
+        matched = matching.get(goal_id, {})
+        for month, values in months.items():
+            values["saved"] = values["assigned"] + values["linked"] - matched.get(month, {}).get("matched", zero)
     return result
 
 

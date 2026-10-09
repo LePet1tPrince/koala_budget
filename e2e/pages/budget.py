@@ -66,6 +66,23 @@ class BudgetPage(BasePage):
         return self.panel(key).get_by_test_id("budget-row").first.evaluate("el => el.getBoundingClientRect().height")
 
     # ------------------------------------------------------------------
+    # Goal rows (the Goals tab)
+    # ------------------------------------------------------------------
+
+    def goal_row(self, name: str):
+        return self.page.get_by_test_id("budget-goal-row").filter(has_text=name)
+
+    def goal_available(self, name: str) -> str:
+        return self.goal_row(name).get_by_test_id("budget-goal-available").inner_text().strip()
+
+    def set_goal_budget(self, name: str, amount: str):
+        """Type an amount into a goal row and commit it; waits for the save to come back."""
+        field = self.goal_row(name).locator("input[name='budget_amount']")
+        field.fill(amount)
+        with self.page.expect_response(lambda r: "save-amount" in r.url):
+            field.press("Enter")
+
+    # ------------------------------------------------------------------
     # Hidden categories
     # ------------------------------------------------------------------
 

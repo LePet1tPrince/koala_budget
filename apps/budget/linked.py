@@ -228,3 +228,24 @@ def monthly_linked(goal_ids, start=None, end=None):
         cell = result.setdefault(link.goal_id, {}).setdefault(month, {"linked": ZERO, "spent": ZERO})
         cell["linked"] += link.amount
     return result
+
+
+def monthly_arrivals(goal_ids):
+    """
+    {goal id: {month: money that arrived in its linked accounts}}: Σ of the lines
+    that added to the goal, all time. Starting balances are not arrivals -- that
+    money was there before the link. What `models.GoalMatching` matches against
+    the money assigned to the goal.
+    """
+    result = {}
+    rows = (
+        linked_lines()
+        .filter(link_goal__in=list(goal_ids), alloc_delta__gt=0)
+        .values("link_goal", "month")
+        .annotate(total=Sum("alloc_delta"))
+    )
+    for row in rows:
+        month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
+        by_month = result.setdefault(row["link_goal"], {})
+        by_month[month] = by_month.get(month, ZERO) + row["total"]
+    return result

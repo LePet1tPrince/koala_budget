@@ -1063,7 +1063,7 @@ class BudgetSectionOrderingTest(TestCase):
         )
         response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2026-05-01")
         self.assertEqual(response.status_code, 200)
-        income_section, expense_section = response.context["sections"]
+        income_section, _goals, expense_section = response.context["sections"]
         self.assertEqual(income_section["key"], "income")
         self.assertEqual(income_section["groups"][0]["name"], "Zeta Income")
         self.assertEqual(income_section["totals"]["budgeted"], Decimal("4000.00"))
@@ -1647,11 +1647,11 @@ class BudgetTabsTest(TestCase):
         self.book.save()
         response = self.page("&tab=income")
         self.assertEqual(response.context["budget_tab"], "expense")
-        self.assertEqual([s["key"] for s in response.context["sections"]], ["expense"])
+        self.assertEqual([s["key"] for s in response.context["sections"]], ["goal", "expense"])
         self.assertNotContains(response, 'data-testid="budget-tab-income"')
 
     def test_each_section_summarises_itself(self):
-        income, expense = self.page().context["sections"]
+        income, _goals, expense = self.page().context["sections"]
         self.assertEqual(
             income["summary"],
             {
@@ -1673,7 +1673,7 @@ class BudgetTabsTest(TestCase):
         )
 
     def test_the_expenses_tab_counts_overspent_categories(self):
-        _income, expense = self.page().context["sections"]
+        _income, _goals, expense = self.page().context["sections"]
         self.assertEqual(expense["overspent"], 1)
 
         response = self.client.post(

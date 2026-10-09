@@ -272,11 +272,12 @@
                   {% elif event.kind == "starting" %}{% blocktranslate trimmed with account=event.account.name %}Starting balance from {{ account }}{% endblocktranslate %}
                   {% elif event.kind == "in" %}{% blocktranslate trimmed with account=event.account.name %}From {{ account }}{% endblocktranslate %}
                   {% elif event.kind == "out" %}{% blocktranslate trimmed with account=event.account.name %}Moved out of {{ account }}{% endblocktranslate %}
+                  {% elif event.kind == "matched" %}<span title="{% translate 'Money moved into a linked account for money already assigned to the goal counts once, not twice.' %}">{% translate "Moved in for money already assigned" %}</span>
                   {% elif event.account %}{% blocktranslate trimmed with account=event.account.name %}Spent from {{ account }}{% endblocktranslate %}
                   {% else %}{% translate "Spent" %}{% endif %}
                 </td>
                 <td class="text-base-content/70">{{ event.payee|default:"" }}{% if event.payee and event.memo %} · {% endif %}{{ event.memo|default:"" }}</td>
-                <td class="text-right money {% if event.amount < 0 %}text-error{% endif %}">{{ event.amount|currency }}</td>
+                <td class="text-right money {% if event.amount < 0 and event.kind != "matched" %}text-error{% elif event.kind == "matched" %}text-base-content/70{% endif %}">{{ event.amount|currency }}</td>
                 {% if can_edit_contributions %}
                 <td class="text-right whitespace-nowrap">
                   {% if event.allocation_id %}
