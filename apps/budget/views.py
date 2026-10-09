@@ -218,10 +218,11 @@ def _goal_section(book, month):
       which counts allocations dated after the month; this one matches the goal's
       term in Unassigned for the same month.
 
-    Every open goal has a row. A closed goal keeps one, read-only, for any month
-    it still has a figure in; a goal created after the month has none until then.
+    Only active goals are listed: closed and archived ones are finished with, and
+    their history lives on the goal page. A goal created after the month has no
+    row until then.
     """
-    goals = list(Goal.objects.filter(book=book, is_archived=False).with_progress(month).select_related("account"))
+    goals = list(Goal.objects.filter(book=book).active().with_progress(month).select_related("account"))
     manual = dict(
         GoalAllocation.objects.filter(book=book, month=month, goal__in=goals).values_list("goal_id", "amount")
     )
@@ -240,12 +241,12 @@ def _goal_section(book, month):
         linked = saved_month - budgeted
         quiet = not (budgeted or linked or actual or available)
         created = timezone.localtime(goal.created_at).date() if goal.created_at else month
-        if quiet and (goal.is_closed or created >= month_end):
+        if quiet and created >= month_end:
             continue
 
         pct, _remaining = _goal_card_progress(goal, saved_to_date, saved_month)
         has_plan = goal.has_target or (goal.monthly_contribution or ZERO) > 0
-        plan = None if goal.is_closed else goal_plan(goal, month)
+        plan = goal_plan(goal, month)
         if plan and plan["status"] == "behind":
             behind += 1
         rows.append(
@@ -257,7 +258,6 @@ def _goal_section(book, month):
                 "linked": linked,
                 "actual": actual,
                 "available": available,
-                "closed": goal.is_closed,
                 "plan": plan,
                 "meter": {
                     "pct": pct if has_plan else None,
@@ -505,13 +505,12 @@ def _budget_swap_context(book, month, tab=DEFAULT_BUDGET_TAB):
         "figures_url": reverse("budget:budget_figures", args=book.url_args),
         "cover_url": reverse("budget:budget_cover", args=book.url_args),
         # Goals an overspent category can be covered from (emergency fund, ...), besides
-        # Unassigned: the open ones, with the same month-end balance their row shows.
+        # Unassigned: the goal rows, with the same month-end balance each row shows.
         "cover_goals": [
             {"id": row["goal"].pk, "name": row["goal"].name, "left": f"{row['available']:.2f}"}
             for section in figures["sections"]
             if section["key"] == GOAL_TAB
             for row in section["rows"]
-            if not row["closed"]
         ],
     }
 

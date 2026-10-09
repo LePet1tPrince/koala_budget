@@ -1,7 +1,7 @@
 {% load i18n %}
 {% load currency_tags %}
 {% comment %}
-  The Goals tab's rows (docs/budget-tabs-goals-plan.md §3). Budgeted is the
+  The Goals tab's rows, one per active goal (docs/budget-tabs-goals-plan.md §3). Budgeted is the
   month's contribution to the goal -- the same record the goals page assigns to
   and withdraws from -- and Available is the goal's balance at the end of the
   month: everything given to it so far, less everything spent from it. Money a
@@ -20,20 +20,16 @@
 {% with goal=row.goal %}
 <tr data-testid="budget-goal-row" data-goal-id="{{ goal.pk }}">
   <td class="text-center">
-    {% if not row.closed %}
     <input type="checkbox" class="checkbox checkbox-sm budget-row-checkbox" checked
            data-testid="budget-goal-checkbox"
            data-goal-id="{{ goal.pk }}"
            data-category-name="{{ goal.name }}"
            data-budgeted="{{ row.budgeted }}">
-    {% endif %}
   </td>
   <td class="budget-name">
     <div class="flex items-baseline gap-2 min-w-0">
       <a href="{{ goal.get_absolute_url }}" class="link link-primary font-medium truncate" title="{{ goal.name }}">{{ goal.name }}</a>
-      {% if row.closed %}
-        <span class="badge badge-ghost badge-xs whitespace-nowrap" data-testid="budget-goal-closed">{% translate "Closed" %}</span>
-      {% elif goal.is_funded %}
+      {% if goal.is_funded %}
         <span class="text-xs text-base-content/70 whitespace-nowrap" data-testid="budget-goal-plan">{% translate "Funded" %}</span>
       {% elif row.plan %}
         {% if row.plan.status == "behind" %}
@@ -62,9 +58,6 @@
   </td>
 
   <td class="text-right">
-    {% if row.closed %}
-    <span class="font-mono">{{ row.budgeted|currency }}</span>
-    {% else %}
     <form method="post" class="inline-flex items-center justify-end gap-1.5" id="budget-goal-form-{{ goal.pk }}"
           data-budget-autosave
           data-goal-id="{{ goal.pk }}"
@@ -83,7 +76,6 @@
              aria-label="{% blocktranslate trimmed with goal=goal.name %}{{ goal }} contribution{% endblocktranslate %}">
       <span class="budget-status" data-budget-status aria-hidden="true"></span>
     </form>
-    {% endif %}
   </td>
 
   <td class="text-right">
@@ -98,11 +90,9 @@
   </td>
 
   <td class="text-center whitespace-nowrap">
-    {% if not row.closed %}
     <noscript>
       <button type="submit" form="budget-goal-form-{{ goal.pk }}" class="btn btn-primary btn-xs">{% translate "Save" %}</button>
     </noscript>
-    {% endif %}
   </td>
 </tr>
 {% endwith %}

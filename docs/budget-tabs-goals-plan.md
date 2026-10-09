@@ -48,7 +48,7 @@ No migrations. No change to the Unassigned formula. No change to the goals page.
 
 ### 3.1 Which goals are rows
 
-For month **M**: goals with `is_archived=False`, and either open (`closed_at IS NULL`) or with a non-zero Budgeted/Spent/Available figure for M (closed during or after M). Closed rows render read-only with a `Closed` badge. Order = `Goal.Meta.ordering` (`order`, `target_date`, `name`). One group, no group header row.
+For month **M**: active goals only (`Goal.objects.active()`: not archived, not closed), less any created after M with no figure in M. A closed goal has no row in any month, including months before it closed — its history lives on the goal page. Order = `Goal.Meta.ordering` (`order`, `target_date`, `name`). One group, no group header row.
 
 **Invariant (tested):** `Σ max(0, row.available)` over goal rows == `compute_unassigned(book, M).goals`. Guarantees the Goals tab and the net-worth card's "In goals" agree.
 
@@ -181,7 +181,8 @@ Page header (`--budget-header-h`) → tab bar (`top: var(--budget-header-h)`, pu
 **Backend** (`apps/budget/tests.py`, new `apps/budget/test_budget_goals.py`):
 
 - Goal section figures: budgeted/linked/actual/available per §3.2, including a linked account and a future-month allocation (available ≠ `goal.left`).
-- Invariant §3.1 against `compute_unassigned` for: plain goal, overspent goal, goal closed in M, goal closed before M, future allocation.
+- Invariant §3.1 against `compute_unassigned` for: plain goal, overspent goal, future allocation (active goals only — see build notes).
+- Closed and archived goals have no row in any month, and are not offered in the Cover dialog.
 - Save: sets (not adds); 0 deletes the row; closed / archived → 400; lowering below spent → 400, nothing written; another book's `goal_id` → 400; both/neither id → 400; audit event with `via: "budget"`; response cells include `goal:*`, `section:goal:*`, `networth:*`; goals page reads the same amount afterwards.
 - No-JS POST with `goal_id`.
 - `goal_allocation_update_view` now refuses a closed goal.
@@ -238,5 +239,6 @@ Step 3:
 - **The Goals tab exists without future income**: tabs are `[income?, goal, expense]`.
 - **The goal tab's empty state links to New Goal**; a book with goals but no categories still gets the tabs.
 - **One group, no group header row** on the Goals tab: the section total in the tfoot is the only subtotal.
+- **Only active goals are listed.** Closed and archived goals have no row in any month (the plan had closed ones keep a read-only row for months they still held a figure in). Consequence: for a month before a goal closed, the Goals tab's total can differ from the net-worth card's "In goals", which still counts that goal's month-end balance; from its close month on the balance is 0 and the two agree.
 - **`goal_allocation_update_view` (the goals page's no-JS "Set month") moved onto `set_month_allocation` too**, so it gains the closed/archived refusal and the spent-money cap it never had.
 - **Idle fields follow their cells.** Covering a category from a goal changes that goal's contribution for the month, so `budget-autosave.js` updates any field nobody is typing in from its repainted `:budgeted` cell.

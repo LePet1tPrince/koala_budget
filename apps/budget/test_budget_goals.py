@@ -116,23 +116,31 @@ class GoalSectionFiguresTest(Fixture):
         self.assertEqual(row["available"], D("250"))
 
     def test_goals_tab_agrees_with_unassigned(self):
-        """Σ max(0, available) over the goal rows is exactly Unassigned's goals term."""
-        # An overspent goal and a goal closed after September, to cover both edges.
+        """
+        With only active goals, Σ max(0, available) over the goal rows is exactly
+        Unassigned's goals term.
+        """
+        # An overspent goal, to cover that edge.
         trip = Goal.objects.create(book=self.book, name="Trip", target_amount=D("1000"))
         GoalAllocation.objects.create(book=self.book, goal=trip, month=SEPT, amount=D("100"))
         self.post(date(2026, 9, 20), trip.account, self.checking, "400")
         Goal.objects.filter(pk=trip.pk).update(created_at="2026-07-15T12:00:00Z")
-        self.car.closed_at = "2026-12-01T00:00:00Z"
-        self.car.save()
         for month in (AUG, SEPT, OCT, NOV):
             rows = self.goal_section(month)["rows"]
             claims = sum((max(r["available"], D("0")) for r in rows), D("0"))
             self.assertEqual(claims, compute_unassigned(self.book, month).goals, month)
 
-    def test_a_goal_closed_before_the_month_has_no_row(self):
+    def test_closed_and_archived_goals_have_no_row(self):
+        """Only active goals are listed, in every month -- including ones before they closed."""
         GoalService(self.book).close(self.car, SEPT)
-        self.assertIsNotNone(self.row(self.car, SEPT))  # still holds the release
-        self.assertIsNone(self.row(self.car, date(2027, 1, 1)))
+        Goal.objects.filter(pk=self.house.pk).update(is_archived=True)
+        for month in (AUG, SEPT, OCT, date(2027, 1, 1)):
+            self.assertEqual(self.goal_section(month)["rows"], [], month)
+
+    def test_closed_goals_are_not_offered_to_cover_from(self):
+        GoalService(self.book).close(self.car, SEPT)
+        response = self.client.get(reverse("budget:budget_home", args=self.book.url_args) + "?month=2026-09-01")
+        self.assertEqual([g["name"] for g in response.context["cover_goals"]], ["House"])
 
     def test_a_goal_created_after_the_month_has_no_row_until_it_has_figures(self):
         late = Goal.objects.create(book=self.book, name="Later", target_amount=D("100"))
