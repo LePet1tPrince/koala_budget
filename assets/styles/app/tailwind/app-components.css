@@ -608,9 +608,9 @@
   }
 }
 
-/* Budget table density. Rows hold a 24px amount field (`input-xs`), so the
-   cells only need a hairline of vertical padding: a row is ~28px instead of the
-   ~40px `table-sm` gives with an `input-sm`.
+/* Budget table density. Rows hold a 20px amount field (`.budget-amount`
+   below), so the cells only need a hairline of vertical padding: a row is
+   ~25px instead of the ~40px `table-sm` gave with an `input-sm`.
 
    These rules are unlayered, so they win over daisyUI's `table-sm` padding --
    and over any padding utility on a cell, which is why the category column's
@@ -631,6 +631,22 @@
 
 .budget-table td.budget-empty {
   padding-block: 1.5rem;
+}
+
+/* The amount field. daisyUI sizes an input by its height (`--size`, 24px for
+   `input-xs`), not by padding, so the room around the digits is the box being
+   twice the text's height. 20px is the 12px text plus a hairline of air; the
+   smaller radius keeps a box that short from reading as a pill. */
+.budget-table .input.budget-amount {
+  --size: 1.25rem;
+  padding-inline: 0.375rem;
+  border-radius: 0.25rem;
+}
+
+/* The row's small buttons (Hide, Cover, Unhide) match it, or the 24px
+   `btn-xs` would hold every row 4px taller than the field. */
+.budget-table .btn-xs {
+  --size: 1.25rem;
 }
 
 /* Budget row progress bar: spent against what there was to spend (income:
