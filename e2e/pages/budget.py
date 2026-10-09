@@ -43,6 +43,29 @@ class BudgetPage(BasePage):
         return self.page.locator("[data-testid='budget-grand-total']").is_visible()
 
     # ------------------------------------------------------------------
+    # Tabs (one section on screen at a time)
+    # ------------------------------------------------------------------
+
+    def tab(self, key: str):
+        return self.page.get_by_test_id(f"budget-tab-{key}")
+
+    def panel(self, key: str):
+        return self.page.get_by_test_id(f"budget-panel-{key}")
+
+    def select_tab(self, key: str):
+        self.tab(key).click()
+        self.panel(key).wait_for()
+
+    def active_tab(self) -> str:
+        return self.page.locator("[data-budget-tab][aria-selected='true']").get_attribute("data-budget-tab")
+
+    def amount_inputs(self, key: str):
+        return self.panel(key).locator("input[name='budget_amount']")
+
+    def row_height(self, key: str = "expense") -> float:
+        return self.panel(key).get_by_test_id("budget-row").first.evaluate("el => el.getBoundingClientRect().height")
+
+    # ------------------------------------------------------------------
     # Hidden categories
     # ------------------------------------------------------------------
 

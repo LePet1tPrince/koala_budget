@@ -15,9 +15,10 @@ from django.urls import reverse
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.accounts.models import Account
+from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
@@ -141,29 +142,74 @@ def _budget_figures(book, month):
         sections[section_key]["groups"].append(group)
         sections[section_key]["hidden_count"] = len(group["rows"])
 
-    section_list = [sections["income"], sections["expense"]]
+    # One tab per section the book budgets (no Income tab with future income off).
+    section_list = [sections[key] for key in budget_tab_keys(book)]
 
-    # Grand totals across both sections (sidebar summary)
+    # Grand totals across both sections
     grand_totals = {
-        field: sections["income"]["totals"][field] + sections["expense"]["totals"][field]
+        field: sum((section["totals"][field] for section in section_list), Decimal("0"))
         for field in ("budgeted", "actual", "available")
     }
 
-    leftover_last_month = sum(prev_available_map.values(), Decimal("0"))
+    # The sidebar summarises the tab on screen, so each section carries its own. A
+    # section's key is its categories' account type.
+    type_of = {category.pk: category.account_group.account_type for category in categories}
+    sidebar_summary = {}
+    for section in section_list:
+        key = section["key"]
+        rows = [row for group in section["groups"] for row in group["rows"]]
+        section["overspent"] = sum(1 for row in rows if row["available"] < 0) if key == ACCOUNT_TYPE_EXPENSE else 0
+        section["autofill"] = _autofill_actions(key)
+        section["summary"] = sidebar_summary[key] = {
+            "leftover_last_month": sum(
+                (amount for pk, amount in prev_available_map.items() if type_of.get(pk) == key), Decimal("0")
+            ),
+            "assigned_this_month": section["totals"]["budgeted"],
+            "activity_this_month": section["totals"]["actual"],
+            "available": section["totals"]["available"],
+        }
 
     return {
         "categories": categories,
         "sections": section_list,
         "has_categories": bool(categories),
         "grand_totals": grand_totals,
-        "sidebar_summary": {
-            "leftover_last_month": leftover_last_month,
-            "assigned_this_month": grand_totals["budgeted"],
-            "activity_this_month": grand_totals["actual"],
-            "available": grand_totals["available"],
-        },
+        "sidebar_summary": sidebar_summary,
         "net_worth_card": NetWorthService(book).get_net_worth_card_data(month, categories),
     }
+
+
+# The budget page shows one section at a time. `?tab=` picks it, else the last tab
+# used (a cookie the page's script writes), else expenses -- the section edited most.
+BUDGET_TAB_COOKIE = "budget_tab"
+DEFAULT_BUDGET_TAB = "expense"
+
+
+def budget_tab_keys(book):
+    """The budget page's tabs, in order: a section per category type the book budgets."""
+    return ["income", "expense"] if ACCOUNT_TYPE_INCOME in budgeted_account_types(book) else ["expense"]
+
+
+def _budget_tab(request, book):
+    keys = budget_tab_keys(book)
+    for value in (request.GET.get("tab"), request.COOKIES.get(BUDGET_TAB_COOKIE)):
+        if value in keys:
+            return value
+    return DEFAULT_BUDGET_TAB
+
+
+def _autofill_actions(section_key):
+    """The sidebar's Auto-Assign buttons for a tab: `[{action, label, css}]`."""
+    return [
+        {"action": "assigned_last_month", "label": _("Assigned Last Month"), "css": "btn-soft btn-primary"},
+        {
+            "action": "spent_last_month",
+            "label": _("Received Last Month") if section_key == "income" else _("Spent Last Month"),
+            "css": "btn-soft btn-secondary",
+        },
+        {"action": "assign_zero", "label": _("Assign Zero"), "css": "btn-soft"},
+        {"action": "reset_available_zero", "label": _("Reset Available to Zero"), "css": "btn-soft"},
+    ]
 
 
 def _hidden_group():
@@ -236,9 +282,18 @@ def _budget_cells(figures):
         put(f"section:{section['key']}:budgeted", section["totals"]["budgeted"])
         put(f"section:{section['key']}:available", section["totals"]["available"])
 
-    summary = figures["sidebar_summary"]
-    put("sidebar:assigned", summary["assigned_this_month"])
-    put("sidebar:available", summary["available"], toned=True)
+        put(f"tab:{section['key']}:budgeted", section["totals"]["budgeted"])
+        if section["key"] == ACCOUNT_TYPE_EXPENSE:
+            count = section["overspent"]
+            cells["tab:expense:overspent"] = {
+                "value": ngettext("%(count)s overspent", "%(count)s overspent", count) % {"count": count},
+                "tone": "",
+                "hidden": count == 0,
+            }
+
+    for key, summary in figures["sidebar_summary"].items():
+        put(f"sidebar:{key}:assigned", summary["assigned_this_month"])
+        put(f"sidebar:{key}:available", summary["available"], toned=True)
 
     card = figures["net_worth_card"]
     put("networth:net_worth", card["net_worth"])
@@ -285,10 +340,12 @@ def budget_month_view(request, team_slug, book_slug):
                 _("%(category)s budget set to $%(amount)s.")
                 % {"category": budget.category.name, "amount": form.cleaned_data["budget_amount"]},
             )
-            return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}")
+            # Back to the tab the row is on: without script, nothing else remembers it.
+            tab = budget.category.account_group.account_type
+            return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}&tab={tab}")
         messages.error(request, _("Could not save budget amount: %(errors)s") % {"errors": form.errors.as_text()})
 
-    context = _budget_swap_context(request.book, month)
+    context = _budget_swap_context(request.book, month, _budget_tab(request, request.book))
     # Every account type is a valid "Move to..." target in the Actual popup (the
     # client groups them by type); moving onto a feed account makes it a transfer.
     # System accounts (reconciliation adjustments) are bookkeeping, not destinations.
@@ -299,12 +356,14 @@ def budget_month_view(request, team_slug, book_slug):
     return render(request, "budget/budget_home.html", context)
 
 
-def _budget_swap_context(book, month):
-    """What `budget/components/budget_swap.html` renders: the month's figures and
-    the URLs its forms post to. The month view adds the page chrome around it."""
+def _budget_swap_context(book, month, tab=DEFAULT_BUDGET_TAB):
+    """What `budget/components/budget_swap.html` renders: the month's figures, the
+    tab on screen and the URLs its forms post to. The month view adds the page
+    chrome around it."""
     figures = _budget_figures(book, month)
     return {
         "month": month,
+        "budget_tab": tab,
         "end_date": month + relativedelta(months=1, days=-1),
         "sections": figures["sections"],
         "has_categories": figures["has_categories"],
@@ -425,14 +484,16 @@ def budget_category_visibility(request, team_slug, book_slug, pk):
         category.save(update_fields=["hidden_from_budget", "updated_at"])
 
     month = _parse_month(request.POST.get("month"))
+    # The category's own tab: that is the one the click came from.
+    tab = category.account_group.account_type
     if request.headers.get("X-Budget-Fragment") == "1":
-        return render(request, "budget/components/budget_swap.html", _budget_swap_context(request.book, month))
+        return render(request, "budget/components/budget_swap.html", _budget_swap_context(request.book, month, tab))
     if "application/json" in request.headers.get("Accept", ""):
         return JsonResponse({"category_id": category.pk, "hidden": hidden})
 
     template = _("%(category)s is hidden from the budget.") if hidden else _("%(category)s is back in the budget.")
     messages.success(request, template % {"category": category.name})
-    return redirect(f"{reverse('budget:budget_home', args=request.book.url_args)}?month={month.isoformat()}")
+    return redirect(f"{reverse('budget:budget_home', args=request.book.url_args)}?month={month.isoformat()}&tab={tab}")
 
 
 @login_and_book_required
@@ -447,12 +508,17 @@ def budget_autofill_view(request, team_slug, book_slug):
     prev_month = month - relativedelta(months=1)
     service = BudgetService(request.book)
 
+    # One tab's categories: each tab carries its own Auto-Assign buttons, and a fill
+    # must not reach rows on a tab that isn't on screen. Without a `section` (an
+    # older form) it covers every budgeted type, as it always did.
+    types = budgeted_account_types(request.book)
+    section = request.POST.get("section")
+    if section in types:
+        types = (section,)
+
     # Hidden categories are left alone: a bulk fill is aimed at what is on screen.
     categories = list(
-        Account.for_book.filter(
-            account_group__account_type__in=budgeted_account_types(request.book),
-            hidden_from_budget=False,
-        )
+        Account.for_book.filter(account_group__account_type__in=types, hidden_from_budget=False)
         .select_related("account_group")
         .order_by("account_group__name", "name")
     )
@@ -534,7 +600,8 @@ def budget_autofill_view(request, team_slug, book_slug):
         Budget.objects.bulk_update(updates, ["budget_amount"])
         messages.success(request, _("Budgets adjusted so all available amounts are zero."))
 
-    return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}")
+    tab = f"&tab={section}" if section in types else ""
+    return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}{tab}")
 
 
 # =============================================================================

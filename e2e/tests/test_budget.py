@@ -123,3 +123,60 @@ def test_hide_and_unhide_a_budget_category(authenticated_page: Page, live_server
     expect(budget.hidden_toggle()).to_have_count(0)
     expect(budget.budget_row("Zed Groceries")).to_be_visible()
     assert not Account.objects.get(pk=gym.pk).hidden_from_budget
+
+
+def _income_and_expense_categories(team):
+    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
+
+    book = team.default_book
+    book.budget_future_income = True
+    book.save()
+    income_group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_INCOME)
+    expense_group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
+    AccountFactory(team=team, account_group=income_group, name="Zed Salary")
+    AccountFactory(team=team, account_group=income_group, name="Zed Side Gig")
+    AccountFactory(team=team, account_group=expense_group, name="Zed Groceries")
+    AccountFactory(team=team, account_group=expense_group, name="Zed Rent")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_budget_tabs_show_one_section_and_remember_it(authenticated_page: Page, live_server, team):
+    """Income and Expenses are tabs: one panel on screen, the choice in the URL and kept on reload.
+
+    Requires the Vite dev server (the tabs switch in place).
+    """
+    from playwright.sync_api import expect
+
+    _income_and_expense_categories(team)
+    budget = BudgetPage(authenticated_page, live_server.url)
+    budget.goto_budget(team.default_book)
+
+    assert budget.active_tab() == "expense"
+    expect(budget.panel("expense")).to_be_visible()
+    expect(budget.panel("income")).to_be_hidden()
+
+    budget.select_tab("income")
+    expect(budget.panel("income")).to_be_visible()
+    expect(budget.panel("expense")).to_be_hidden()
+    expect(budget.tab("income")).to_have_attribute("aria-selected", "true")
+    assert "tab=income" in authenticated_page.url
+
+    # Moving down a column never crosses into a tab that is out of view.
+    budget.amount_inputs("income").last.focus()
+    authenticated_page.keyboard.press("ArrowDown")
+    expect(budget.amount_inputs("income").last).to_be_focused()
+
+    # A plain visit (no ?tab=) reopens the tab last used.
+    budget.goto_budget(team.default_book)
+    assert budget.active_tab() == "income"
+    expect(budget.panel("income")).to_be_visible()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_budget_rows_are_condensed(authenticated_page: Page, live_server, team):
+    """A budget row holds a 24px amount field and a hairline of padding: about 29px tall."""
+    _income_and_expense_categories(team)
+    budget = BudgetPage(authenticated_page, live_server.url)
+    budget.goto_budget(team.default_book)
+
+    assert budget.row_height() <= 30

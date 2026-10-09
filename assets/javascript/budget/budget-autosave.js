@@ -128,11 +128,12 @@ function init() {
   }
 
   // The next row in `step`'s direction that is on screen: a collapsed hidden
-  // category's field is still in the list but cannot take focus.
+  // category's field, or one on another tab, is still in the list but cannot
+  // take focus — and moving down a column must never land on a tab out of view.
   function focusRow(index, step) {
     for (let i = index + step; i >= 0 && i < rows.length; i += step) {
       const target = rows[i];
-      if (target.input.closest('tr[hidden]')) continue;
+      if (target.input.closest('[hidden]')) continue;
       target.input.focus();
       target.input.select();
       return;
@@ -267,6 +268,9 @@ function init() {
       if (checkbox) checkbox.dataset.budgeted = cell.value;
 
       const el = cells.get(key);
+      // A badge that only shows while there is something to count (a tab's
+      // "N overspent").
+      if (el && cell.hidden !== undefined) el.hidden = cell.hidden;
       if (el && cell.width !== undefined) {
         paintMeter(el, cell);
         return;

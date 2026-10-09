@@ -608,6 +608,31 @@
   }
 }
 
+/* Budget table density. Rows hold a 24px amount field (`input-xs`), so the
+   cells only need a hairline of vertical padding: a row is ~28px instead of the
+   ~40px `table-sm` gives with an `input-sm`.
+
+   These rules are unlayered, so they win over daisyUI's `table-sm` padding --
+   and over any padding utility on a cell, which is why the category column's
+   indent and width live here too rather than as classes on the cell. */
+.budget-table :where(th, td) {
+  padding-block: 0.125rem;
+  padding-inline: 0.5rem;
+}
+
+.budget-table thead th {
+  padding-block: 0.375rem;
+}
+
+.budget-table td.budget-name {
+  padding-left: 1rem;
+  max-width: 16rem;
+}
+
+.budget-table td.budget-empty {
+  padding-block: 1.5rem;
+}
+
 /* Budget row progress bar: spent against what there was to spend (income:
    received against expected). The track is a light step of the fill's own hue.
    Width animates, so an autosave that moves a bar is visible as it happens. */

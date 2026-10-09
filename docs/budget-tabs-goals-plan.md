@@ -1,6 +1,6 @@
 # Budget page: goals as budget rows, condensed rows, section tabs
 
-Status: plan · Scope: `/a/{team}/{book}/budget/` (single-month page only)
+Status: steps 1–2 built (density + tabs, one PR); step 3 (goals) in its own PR · Scope: `/a/{team}/{book}/budget/` (single-month page only)
 
 Three changes, one page:
 
@@ -35,7 +35,7 @@ No migrations. No change to the Unassigned formula. No change to the goals page.
 
 | # | Decision | Status |
 |---|---|---|
-| D1 | **Goal row Available = the goal's balance at month end** = Σ allocations through the month (manual + linked accounts) − Σ spent through the month. For a goal never spent from, this **equals cumulative saved**. Alternative (literal "cumulative saved", ignoring spending) rejected: it would break the row equation `Available = previous + Budgeted − Actual`, disagree with the goals page's "Left", the Cover dialog, and Unassigned. | **Confirm** |
+| D1 | **Goal row Available = the goal's balance at month end** = Σ allocations through the month (manual + linked accounts) − Σ spent through the month. For a goal never spent from, this **equals cumulative saved**. Alternative (literal "cumulative saved", ignoring spending) rejected: it would break the row equation `Available = previous + Budgeted − Actual`, disagree with the goals page's "Left", the Cover dialog, and Unassigned. | Confirmed |
 | D2 | **Goal row Budgeted = this month's manual `GoalAllocation.amount`**, editable. Typing **sets** it (like every budget cell), the goals page buttons **add** to it — same row either way. Money from linked accounts is not editable here; it shows as a note ("+ $120 from Savings") and counts in Available. | Recommended |
 | D3 | **Goal row Actual = spent from the goal this month** (`spent_this_month`: goal-account lines + linked spending). Column header on the Goals tab reads "Spent". | Recommended |
 | D4 | **Default tab = Expenses.** Last tab remembered in a `budget_tab` cookie; `?tab=` overrides. | Recommended |
@@ -218,3 +218,16 @@ Each PR updates `CLAUDE.md` "Recent Changes".
 | Save latency: `_budget_figures` adds two goal queries per save | Measure before/after on the YNAB sample book; goal subqueries are already used per page load on the goals page. |
 | Sticky offsets wrong when the header wraps (narrow widths) | Both heights published by `ResizeObserver`, never hard-coded. |
 | Hidden panels still hold checked checkboxes → Auto-Assign hits rows not on screen | Auto-Assign reads the active panel only; server enforces `section`. |
+
+---
+
+## 10. Build notes (what changed from the plan)
+
+Steps 1 and 2 shipped together, as one PR.
+
+- **Row height is 29px**, not 28: the 24px field + 2×2px padding + the row's 1px border. The E2E guard is ≤ 30px.
+- **The amount field is `max-w-24`**, not `w-24`: the shared widget template prepends `w-full`, which had always overridden the width class (the old `w-28` never applied).
+- **Column headings and the total stick from `lg` up only.** Below `lg` a panel scrolls sideways, which makes it a scroll container; a sticky offset inside it pushed the headings down over the rows. The tab bar sits outside the panels and sticks at every width.
+- **`budget-table` stays on the outer card** (one element, as the page objects expect); each panel's table is `budget-table-<key>`.
+- **Phone layout fixed in passing**: below `lg` the fixed-width sidebar covered the table. The sidebar now sits below the table there, full width and not sticky.
+- **Auto-Assign is per tab** in step 2 already (one button set per section, each posting `section`), so step 3 only adds the Goals tab's set.
