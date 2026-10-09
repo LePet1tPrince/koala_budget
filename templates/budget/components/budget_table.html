@@ -122,7 +122,7 @@
   {% endcomment %}
   <div id="budget-tabs-bar" class="bg-base-100 rounded-t-lg border-b border-base-300 px-3 py-2">
     <div role="tablist" aria-label="{% translate 'Budget sections' %}"
-         class="tabs tabs-box tabs-sm w-fit max-w-full flex-nowrap overflow-x-auto" data-testid="budget-tabs">
+         class="tabs tabs-box tabs-sm budget-tabs w-fit max-w-full flex-nowrap overflow-x-auto" data-testid="budget-tabs">
       {% for section in sections %}
       <a role="tab" id="budget-tab-{{ section.key }}" href="?tab={{ section.key }}&month={{ month|date:'Y-m-d' }}"
          class="tab shrink-0 gap-2 whitespace-nowrap{% if section.key == budget_tab %} tab-active{% endif %}"

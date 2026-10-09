@@ -699,6 +699,31 @@
   --size: 1.25rem;
 }
 
+/* Budget tabs as a segmented control. In `tabs-box` only the active tab has a
+   surface, so two inactive tabs side by side ran together as one line of text.
+   A hairline divider separates neighbours (dropped beside the active tab, whose
+   own surface already does) and an inactive tab tints on hover, so each reads
+   as its own button. */
+.budget-tabs .tab + .tab::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 1px;
+  background-color: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  pointer-events: none;
+}
+
+.budget-tabs .tab.tab-active::before,
+.budget-tabs .tab.tab-active + .tab::before {
+  background-color: transparent;
+}
+
+.budget-tabs .tab:not(.tab-active):hover {
+  background-color: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+}
+
 /* Budget row progress bar: spent against what there was to spend (income:
    received against expected; a goal: saved against its target). The track is a light step of the fill's own hue.
    Width animates, so an autosave that moves a bar is visible as it happens. */
