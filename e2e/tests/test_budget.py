@@ -174,12 +174,13 @@ def test_budget_tabs_show_one_section_and_remember_it(authenticated_page: Page, 
 
 @pytest.mark.django_db(transaction=True)
 def test_budget_rows_are_condensed(authenticated_page: Page, live_server, team):
-    """A budget row holds a 24px amount field and a hairline of padding: about 29px tall."""
+    """A budget row holds a 20px amount field and a hairline of padding: about 25px tall."""
     _income_and_expense_categories(team)
     budget = BudgetPage(authenticated_page, live_server.url)
     budget.goto_budget(team.default_book)
 
-    assert budget.row_height() <= 30
+    assert budget.row_height() <= 26
+    assert budget.amount_inputs("expense").first.evaluate("el => el.getBoundingClientRect().height") <= 20
 
 
 @pytest.mark.django_db(transaction=True)

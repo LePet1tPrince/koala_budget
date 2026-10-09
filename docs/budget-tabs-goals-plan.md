@@ -225,7 +225,7 @@ Each PR updates `CLAUDE.md` "Recent Changes".
 
 Steps 1 and 2 shipped together, as one PR.
 
-- **Row height is 29px**, not 28: the 24px field + 2×2px padding + the row's 1px border. The E2E guard is ≤ 30px.
+- **Row height is 25px**: a 20px field (`.budget-amount` trims `input-xs`'s 24px height — daisyUI sizes an input by height, so the box is the padding) + 2×2px cell padding + the row's 1px border. The table's `btn-xs` buttons are trimmed to 20px too, or the Hide button holds the row at 29px. The E2E guard is ≤ 26px row, ≤ 20px field.
 - **The amount field is `max-w-24`**, not `w-24`: the shared widget template prepends `w-full`, which had always overridden the width class (the old `w-28` never applied).
 - **Column headings and the total stick from `lg` up only.** Below `lg` a panel scrolls sideways, which makes it a scroll container; a sticky offset inside it pushed the headings down over the rows. The tab bar sits outside the panels and sticks at every width.
 - **`budget-table` stays on the outer card** (one element, as the page objects expect); each panel's table is `budget-table-<key>`.
