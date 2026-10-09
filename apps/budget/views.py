@@ -29,6 +29,7 @@ from apps.web.templatetags.currency_tags import currency
 
 from . import goal_links
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
+from .linked import monthly_linked
 from .models import Budget, Goal, GoalAccountLink, GoalAllocation
 from .services import (
     BudgetService,
@@ -211,7 +212,10 @@ def _goal_section(book, month):
 
     - budgeted: the month's manual contribution (`GoalAllocation`), which is what
       the goals page assigns and withdraws -- the same row
-    - linked: what linked accounts brought in this month (not editable here)
+    - moved: what linked accounts brought in this month (not editable here). It
+      fills money already assigned to the goal before it adds anything
+      (`models.GoalMatching`), so budgeting $500 and then moving $500 into
+      the linked account is $500, not $1,000
     - actual: spent from the goal this month
     - available: the goal's balance at the end of the month -- everything given
       to it through the month, less everything spent from it. Not `goal.left`,
@@ -227,6 +231,10 @@ def _goal_section(book, month):
         GoalAllocation.objects.filter(book=book, month=month, goal__in=goals).values_list("goal_id", "amount")
     )
     month_end = month + relativedelta(months=1)
+    moved_in = {
+        goal_id: months.get(month, {}).get("linked", ZERO)
+        for goal_id, months in monthly_linked([g.pk for g in goals], month, month_end).items()
+    }
 
     rows = []
     totals = _zero_totals()
@@ -238,8 +246,10 @@ def _goal_section(book, month):
         saved_to_date = (goal.saved_previous or ZERO) + saved_month
         actual = goal.spent_this_month or ZERO
         available = saved_to_date - (goal.spent or ZERO)
+        moved = moved_in.get(goal.pk, ZERO)
+        # What linked money added beyond the money assigned to the goal.
         linked = saved_month - budgeted
-        quiet = not (budgeted or linked or actual or available)
+        quiet = not (budgeted or moved or actual or available)
         created = timezone.localtime(goal.created_at).date() if goal.created_at else month
         if quiet and created >= month_end:
             continue
@@ -255,7 +265,7 @@ def _goal_section(book, month):
                 "budgeted": budgeted,
                 # Blank (not "0.00") when nothing was assigned this month, as for a category.
                 "input_value": f"{manual[goal.pk]:.2f}" if goal.pk in manual else "",
-                "linked": linked,
+                "moved": moved,
                 "actual": actual,
                 "available": available,
                 "plan": plan,
@@ -405,6 +415,8 @@ def _budget_cells(figures):
     for key, summary in figures["sidebar_summary"].items():
         put(f"sidebar:{key}:assigned", summary["assigned_this_month"])
         put(f"sidebar:{key}:available", summary["available"], toned=True)
+        if "linked_this_month" in summary:
+            put(f"sidebar:{key}:linked", summary["linked_this_month"])
 
     card = figures["net_worth_card"]
     put("networth:net_worth", card["net_worth"])
@@ -1293,10 +1305,8 @@ def goal_assign_available(request, team_slug, book_slug, pk):
     month = _parse_month(payload.get("month"))
 
     with transaction.atomic():
-        allocation = (
-            GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
-        )
-        month_amount = allocation.amount if allocation else Decimal("0")
+        # Lock the goal so two clicks can't both read the same figures.
+        Goal.objects.select_for_update().filter(pk=goal.pk).first()
         old_saved, spent, saved_month = _goal_numbers(goal, month)
         _, remaining = _goal_card_progress(goal, old_saved, saved_month)
         available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
@@ -1319,7 +1329,7 @@ def goal_assign_available(request, team_slug, book_slug, pk):
                 return JsonResponse({"error": "Invalid amount."}, status=400)
 
         amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        GoalService(request.book).update_allocation(goal, month, month_amount + amount)
+        GoalService(request.book).add_to_allocation(goal, month, amount)
 
     new_saved = old_saved + amount
     old_pct, _ = _goal_card_progress(goal, old_saved, saved_month)
@@ -1347,7 +1357,7 @@ def goal_assign_available(request, team_slug, book_slug, pk):
             "old_pct": old_pct,
             "new_pct": new_pct,
             "remaining": float(new_remaining),
-            "this_month": float(month_amount + amount),
+            "this_month": float(saved_month + amount),
             "new_available": float(available - amount),
             "completed": goal.has_target and new_saved >= goal.target_amount,
             "open_ended": not goal.has_target,
@@ -1386,10 +1396,8 @@ def goal_withdraw(request, team_slug, book_slug, pk):
     month = _parse_month(payload.get("month"))
 
     with transaction.atomic():
-        allocation = (
-            GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
-        )
-        month_amount = allocation.amount if allocation else Decimal("0")
+        # Lock the goal so two clicks can't both read the same figures.
+        Goal.objects.select_for_update().filter(pk=goal.pk).first()
         old_saved, spent, saved_month = _goal_numbers(goal, month)
         left = old_saved - spent
         available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
@@ -1414,7 +1422,7 @@ def goal_withdraw(request, team_slug, book_slug, pk):
                 )
 
         amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        GoalService(request.book).update_allocation(goal, month, month_amount - amount)
+        GoalService(request.book).add_to_allocation(goal, month, -amount)
 
     new_saved = old_saved - amount
     old_pct, _ = _goal_card_progress(goal, old_saved, saved_month)
@@ -1442,7 +1450,7 @@ def goal_withdraw(request, team_slug, book_slug, pk):
             "old_pct": old_pct,
             "new_pct": new_pct,
             "remaining": float(new_remaining),
-            "this_month": float(month_amount - amount),
+            "this_month": float(saved_month - amount),
             "new_available": float(available + amount),
             "funded": goal.has_target and new_saved >= goal.target_amount,
             "open_ended": not goal.has_target,

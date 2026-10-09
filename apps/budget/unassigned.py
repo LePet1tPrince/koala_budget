@@ -122,7 +122,14 @@ def compute_unassigned(
     only once it has landed, so `income_due` is zero; the budgeting settings page
     passes the opposite of the setting to show what flipping it would do.
     """
-    from apps.budget.models import Goal, goal_allocated_subquery, goal_spent_subquery, month_after
+    from apps.budget.models import (
+        Goal,
+        GoalAccountLink,
+        GoalMatching,
+        goal_allocated_subquery,
+        goal_spent_subquery,
+        month_after,
+    )
     from apps.budget.services import BudgetService, NetWorthService
 
     month = month.replace(day=1)
@@ -139,13 +146,15 @@ def compute_unassigned(
     expense_available = {c.pk: available[c.pk] for c in expense}
     income_due_by_account = {c.pk: -available[c.pk] for c in income if available[c.pk] < 0}
 
+    goals = Goal.objects.filter(book=book, is_archived=False)
+    matching = GoalMatching.for_goals(
+        GoalAccountLink.objects.filter(goal__in=goals).values_list("goal_id", flat=True).order_by().distinct()
+    )
     goals = list(
-        Goal.objects.filter(book=book, is_archived=False)
-        .annotate(
-            allocated_to_date=goal_allocated_subquery(end=month_after(month)),
+        goals.annotate(
+            allocated_to_date=goal_allocated_subquery(matching, end=month_after(month)),
             spent_to_date=goal_spent_subquery(end=month_after(month)),
-        )
-        .order_by("order", "target_date", "name")
+        ).order_by("order", "target_date", "name")
     )
     goal_left = {g.pk: g.allocated_to_date - g.spent_to_date for g in goals}
 

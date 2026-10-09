@@ -1,6 +1,6 @@
 # Goal-linked accounts
 
-Status: built (M1–M5), revision 2. D6 ("Leave the goal alone") was approved with the
+Status: built (M1–M5), revision 3 (matched money, §1). D6 ("Leave the goal alone") was approved with the
 plan and is built. Builds on `docs/goals-envelopes-plan.md` (allocated / spent /
 left) and the v3 Unassigned formula (`docs/unassigned-plan.md` §1). Inspired by
 Monarch's Save Up goal (Goals 3.0), trimmed to fewer options (§9).
@@ -22,9 +22,36 @@ accounts.
 
 ```
 allocated = Σ manual GoalAllocation.amount + starting balances + linked inflows − linked withdrawals
+            − matched
 spent     = Σ lines on the goal's equity account + linked spending
 left      = allocated − spent
 ```
+
+**Matched (revision 3).** Assigning money to a goal and then moving it into a linked
+account is one contribution, not two. Before revision 3 the two were added, so
+budgeting $500 for a goal (the budget page's Goals tab, or Assign on the goals page)
+and then transferring $500 into its savings account gave the goal $1,000.
+`models.GoalMatching` walks each goal's months in order, carrying what has been
+assigned but not yet moved (`pending`). Money arriving in a month first fills what is
+pending, whether it was assigned that month or earlier. That filled part is `matched`,
+and only the rest of the money arriving adds to the goal.
+
+- Budgeting then moving, or moving then budgeting, in the same month counts once.
+- A transfer landing the month after its budget also counts once.
+- Money that arrived with nothing pending never fills a later assignment. This covers
+  history from before budgeting, and interest.
+- Only positive monthly allocations are pending money.
+- These always count in full: withdrawals, closes and covers (all negative
+  allocations), money leaving a linked account, and starting balances.
+- A goal with no linked account matches nothing.
+
+`matched` is computed in Python, with one query for allocations and one for arrivals.
+It reaches SQL as a per-goal constant (`GoalMatching.expression`), inside
+`with_progress` and `compute_unassigned`. `goal_monthly` uses the same walk.
+`GoalService.add_to_allocation` (Assign, Withdraw, Close, Cover) solves for the
+month's row, so each of those moves the goal by exactly the amount asked for. The
+goal page's Activity table adds a "Moved in for money already assigned" row per
+month, so its rows still sum to what's left.
 
 ## 2. Decisions (confirmed)
 

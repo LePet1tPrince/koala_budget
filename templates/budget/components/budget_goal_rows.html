@@ -4,9 +4,9 @@
   The Goals tab's rows, one per active goal (docs/budget-tabs-goals-plan.md §3). Budgeted is the
   month's contribution to the goal -- the same record the goals page assigns to
   and withdraws from -- and Available is the goal's balance at the end of the
-  month: everything given to it so far, less everything spent from it. Money a
-  linked account brought in shows beside the field; it counts in Available but is
-  changed by its transactions, not here.
+  month: everything given to it so far, less everything spent from it. Money moved
+  into a linked account shows beside the field; it fills money already assigned to
+  the goal before adding to it, and is changed by its transactions, not here.
 {% endcomment %}
 {% if not section.rows %}
 <tr>
@@ -66,9 +66,11 @@
       {% csrf_token %}
       <input type="hidden" name="goal_id" value="{{ goal.pk }}">
       <input type="hidden" name="budget_month" value="{{ month|date:'Y-m-d' }}">
-      {% if row.linked %}
+      {% if row.moved %}
       <span class="text-xs text-base-content/70 whitespace-nowrap" data-testid="budget-goal-linked"
-            title="{% translate 'From linked accounts this month' %}">{% if row.linked > 0 %}+{% endif %}{{ row.linked|currency }}</span>
+            title="{% translate "Moved into this goal's linked accounts this month. It fills money already assigned to the goal before it adds to it, so budgeting an amount and then moving it counts once." %}">
+        {% if row.moved > 0 %}+{% endif %}{% blocktranslate trimmed with amount=row.moved|currency %}{{ amount }} moved{% endblocktranslate %}
+      </span>
       {% endif %}
       <input type="text" name="budget_amount" value="{{ row.input_value }}" inputmode="decimal" autocomplete="off"
              data-amount-input placeholder="0.00"

@@ -50,8 +50,8 @@
         </div>
         {% if section.key == "goal" %}
         <div class="flex justify-between items-center">
-          <span class="text-sm">{% translate "From Linked Accounts" %}</span>
-          <span class="font-mono text-sm font-semibold">
+          <span class="text-sm" title="{% translate 'Money moved into linked accounts beyond what was already assigned to the goals' %}">{% translate "Linked, Beyond Assigned" %}</span>
+          <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:goal:linked">
             {{ section.summary.linked_this_month|currency }}
           </span>
         </div>

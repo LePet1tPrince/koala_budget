@@ -96,7 +96,7 @@ class GoalSectionFiguresTest(Fixture):
     def test_a_goal_row_reads_like_a_category(self):
         row = self.row(self.car, SEPT)
         self.assertEqual(row["budgeted"], D("500"))
-        self.assertEqual(row["linked"], D("0"))
+        self.assertEqual(row["moved"], D("0"))
         self.assertEqual(row["actual"], D("300"))
         # 1,000 + 500 − 300, as of the end of September.
         self.assertEqual(row["available"], D("1200"))
@@ -112,7 +112,7 @@ class GoalSectionFiguresTest(Fixture):
         row = self.row(self.house, SEPT)
         self.assertEqual(row["budgeted"], D("0"))
         self.assertEqual(row["input_value"], "")
-        self.assertEqual(row["linked"], D("250"))
+        self.assertEqual(row["moved"], D("250"))
         self.assertEqual(row["available"], D("250"))
 
     def test_goals_tab_agrees_with_unassigned(self):
@@ -219,6 +219,26 @@ class GoalBudgetSaveTest(Fixture):
         self.assertEqual(cells["sidebar:goal:assigned"]["value"], "$700.00")
         self.assertEqual(compute_unassigned(self.book, SEPT).amount, before - D("200"))
         self.assertEqual(cells["networth:save"]["value"], "$1,650.00")
+
+    def test_budgeting_money_already_moved_into_the_linked_account_counts_once(self):
+        """House's linked Savings received 250 in September; budgeting 250 is that money."""
+        before = compute_unassigned(self.book, SEPT).amount
+        cells = self.save(goal_id=self.house.pk, month="2026-09-01", amount="250").json()["cells"]
+        self.assertEqual(cells[f"goal:{self.house.pk}:available"]["value"], "$250.00")
+        self.assertEqual(cells["sidebar:goal:linked"]["value"], "$0.00")
+        self.assertEqual(compute_unassigned(self.book, SEPT).amount, before)
+        cells = self.save(goal_id=self.house.pk, month="2026-09-01", amount="400").json()["cells"]
+        self.assertEqual(cells[f"goal:{self.house.pk}:available"]["value"], "$400.00")
+        self.assertEqual(compute_unassigned(self.book, SEPT).amount, before - D("150"))
+
+    def test_moving_budgeted_money_into_the_linked_account_counts_once(self):
+        self.save(goal_id=self.house.pk, month="2026-10-01", amount="300")
+        before = compute_unassigned(self.book, OCT).amount
+        self.post(date(2026, 10, 5), self.savings, self.checking, "300")
+        row = self.row(self.house, OCT)
+        self.assertEqual(row["moved"], D("300"))
+        self.assertEqual(row["available"], D("550"))  # 250 in September + 300 this month
+        self.assertEqual(compute_unassigned(self.book, OCT).amount, before)
 
     def test_cannot_take_back_money_already_spent(self):
         self.post(date(2026, 9, 25), self.car.account, self.checking, "1300")  # 1,600 spent of 1,700

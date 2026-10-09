@@ -322,7 +322,9 @@ class MonthlyTest(LinkedFixture):
         self.post(date(2026, 9, 5), self.savings, self.checking, "300")
         goal = Goal.objects.filter(pk=self.goal.pk).with_progress(SEPT).get()
         self.assertEqual(goal.saved_previous, D("100"))
-        self.assertEqual(goal.saved_this_month, D("300"))
+        # 100 of the 300 that arrived was for August's assignment: counted once.
+        self.assertEqual(goal.saved_this_month, D("200"))
+        self.assertEqual(goal.allocated, D("300"))
 
 
 class ManualAllocationTest(LinkedFixture):
@@ -333,6 +335,154 @@ class ManualAllocationTest(LinkedFixture):
         service.add_to_allocation(self.goal, SEPT, D("-50"))
         self.assertEqual(self.numbers()["allocated"], D("150"))
         self.assertEqual(self.savings.balance, D("1000"))
+
+
+class CountedOnceTest(LinkedFixture):
+    """
+    Assigning money to a linked goal and moving it into the linked account is one
+    contribution: money arriving fills what was assigned and not yet moved, that
+    month or earlier, and only the rest adds (`models.GoalMatching`).
+    """
+
+    def setUp(self):
+        self.link()
+        self.service = GoalService(self.book)
+
+    def assign(self, month, amount):
+        self.service.set_month_allocation(self.goal, month, D(amount))
+
+    def move(self, day, amount):
+        return self.post(day, self.savings, self.checking, amount)
+
+    def test_assign_then_move_counts_once(self):
+        before = self.unassigned()
+        self.assign(SEPT, "500")
+        self.assertEqual(self.unassigned(), before - D("500"))
+        self.move(date(2026, 9, 10), "500")
+        self.assertEqual(self.numbers()["allocated"], D("500"))
+        self.assertEqual(self.unassigned(), before - D("500"))
+
+    def test_move_then_assign_counts_once(self):
+        self.move(date(2026, 9, 10), "500")
+        self.assign(SEPT, "500")
+        self.assertEqual(self.numbers()["allocated"], D("500"))
+
+    def test_moving_less_keeps_the_assignment(self):
+        self.assign(SEPT, "500")
+        self.move(date(2026, 9, 10), "300")
+        self.assertEqual(self.numbers()["allocated"], D("500"))
+
+    def test_moving_more_adds_the_rest(self):
+        self.assign(SEPT, "500")
+        self.move(date(2026, 9, 10), "700")
+        self.assertEqual(self.numbers()["allocated"], D("700"))
+
+    def test_a_late_transfer_counts_once(self):
+        self.assign(SEPT, "500")
+        before = self.unassigned(OCT)
+        self.move(date(2026, 10, 2), "500")
+        self.assertEqual(self.numbers(month=OCT)["allocated"], D("500"))
+        self.assertEqual(self.unassigned(OCT), before)
+        goal = Goal.objects.filter(pk=self.goal.pk).with_progress(OCT).get()
+        self.assertEqual((goal.saved_previous, goal.saved_this_month), (D("500"), D("0")))
+
+    def test_earlier_unbudgeted_money_does_not_absorb_a_later_budget(self):
+        self.move(date(2026, 9, 10), "500")
+        self.assign(OCT, "300")
+        self.assertEqual(self.numbers(month=OCT)["allocated"], D("800"))
+        before = self.unassigned(OCT)
+        self.move(date(2026, 10, 5), "300")
+        self.assertEqual(self.numbers(month=OCT)["allocated"], D("800"))
+        self.assertEqual(self.unassigned(OCT), before)
+
+    def test_starting_balance_is_not_matched(self):
+        GoalAccountLink.objects.all().delete()
+        self.link(include=True)
+        self.assign(SEPT, "500")
+        self.assertEqual(self.numbers()["allocated"], D("1500"))
+
+    def test_unlinked_goal_adds_as_before(self):
+        self.service.set_month_allocation(self.other_goal, SEPT, D("500"))
+        self.move(date(2026, 9, 10), "500")
+        self.assertEqual(self.numbers(self.other_goal)["allocated"], D("500"))
+
+    def test_withdrawing_takes_money_out(self):
+        self.assign(SEPT, "500")
+        self.move(date(2026, 9, 10), "500")
+        self.service.add_to_allocation(self.goal, SEPT, D("-200"))
+        self.assertEqual(self.numbers()["left"], D("300"))
+
+    def test_assigning_adds_on_top_of_money_that_arrived(self):
+        self.move(date(2026, 9, 10), "500")
+        self.service.add_to_allocation(self.goal, SEPT, D("200"))
+        self.assertEqual(self.numbers()["allocated"], D("700"))
+
+    def test_close_releases_everything(self):
+        self.assign(SEPT, "500")
+        self.move(date(2026, 9, 10), "500")
+        result = self.service.close(self.goal, SEPT)
+        self.assertEqual(result["released"], D("500"))
+        self.assertEqual(self.numbers()["left"], D("0"))
+
+    def test_cover_from_goal_takes_exactly_the_amount(self):
+        self.assign(SEPT, "500")
+        self.move(date(2026, 9, 10), "500")
+        self.service.cover_from_goal(self.goal, self.groceries, SEPT, D("100"))
+        self.assertEqual(self.numbers()["allocated"], D("400"))
+
+    def test_assign_and_withdraw_views_move_the_goal_by_the_amount(self):
+        from django.urls import reverse
+
+        from apps.teams.roles import ROLE_ADMIN
+        from apps.users.models import CustomUser
+
+        user = CustomUser.objects.create_user(username="once@example.com", password="pass12345")
+        self.team.members.add(user, through_defaults={"role": ROLE_ADMIN})
+        self.client.login(username="once@example.com", password="pass12345")
+        self.move(date(2026, 9, 10), "500")
+        args = [*self.book.url_args, self.goal.pk]
+        response = self.client.post(
+            reverse("budget:goal_assign_available", args=args),
+            data='{"amount": 200, "month": "2026-09-01"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["this_month"], 700.0)
+        self.assertEqual(self.numbers()["allocated"], D("700"))
+        response = self.client.post(
+            reverse("budget:goal_withdraw", args=args),
+            data='{"amount": 300, "month": "2026-09-01"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.numbers()["allocated"], D("400"))
+
+    def test_monthly_figures_agree_with_the_totals(self):
+        from .services import goal_monthly
+
+        self.assign(AUG, "300")
+        self.move(date(2026, 9, 10), "500")
+        self.assign(SEPT, "400")
+        self.service.add_to_allocation(self.goal, OCT, D("-100"))
+        self.move(date(2026, 10, 3), "50")
+        monthly = goal_monthly(self.book, [self.goal])[self.goal.pk]
+        running = D("0")
+        for month in (AUG, SEPT, OCT):
+            running += monthly.get(month, {}).get("saved", D("0"))
+            goal = Goal.objects.filter(pk=self.goal.pk).with_progress(month).get()
+            self.assertEqual(running, goal.saved_previous + goal.saved_this_month, month)
+        # A window starting mid-history carries the running totals in.
+        windowed = goal_monthly(self.book, [self.goal], start=SEPT)[self.goal.pk]
+        self.assertEqual(windowed[SEPT]["saved"], monthly[SEPT]["saved"])
+        self.assertEqual(windowed[OCT]["saved"], monthly[OCT]["saved"])
+
+    def test_activity_explains_the_matched_money(self):
+        self.assign(SEPT, "500")
+        self.move(date(2026, 9, 10), "500")
+        events = goal_links.goal_activity(self.goal)
+        matched = [e for e in events if e["kind"] == goal_links.ACTIVITY_MATCHED]
+        self.assertEqual([e["amount"] for e in matched], [D("-500")])
+        self.assertEqual(sum((e["amount"] for e in events), D("0")), self.numbers()["left"])
 
 
 class CloseTest(LinkedFixture):
@@ -440,7 +590,8 @@ class GoalMonthlyTest(LinkedFixture):
         self.post(date(2026, 9, 6), self.goal.account, self.checking, "20")
         self.post(date(2026, 10, 6), self.checking, self.savings, "40")
         result = goal_monthly(self.book, [self.goal])[self.goal.pk]
-        self.assertEqual(result[SEPT], {"assigned": D("50"), "linked": D("300"), "saved": D("350"), "spent": D("20")})
+        # The 50 assigned is part of the 300 that arrived: saved is the larger.
+        self.assertEqual(result[SEPT], {"assigned": D("50"), "linked": D("300"), "saved": D("300"), "spent": D("20")})
         self.assertEqual(result[OCT]["spent"], D("40"))
 
 

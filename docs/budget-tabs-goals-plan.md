@@ -59,7 +59,7 @@ One `with_progress(M)` query + one `GoalAllocation` query for M:
 | Field | Source |
 |---|---|
 | `budgeted` | `GoalAllocation.amount` for (goal, M), else 0 |
-| `linked` | `saved_this_month − budgeted` (what linked accounts brought in during M) |
+| `linked` | `saved_this_month − budgeted`: what linked accounts added beyond the money already assigned (the sidebar's line). The row itself shows `moved`, the raw amount linked accounts brought in during M, which first fills money already assigned (`models.GoalMatching`, docs/goal-linked-accounts-plan.md §1 revision 3) |
 | `actual` | `spent_this_month` |
 | `available` | `saved_previous + saved_this_month − spent` (month-end; **not** `goal.left`, which counts future months) |
 | `previous` | `available − budgeted − linked + actual` (for the sidebar's "left over") |
