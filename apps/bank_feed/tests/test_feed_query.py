@@ -405,13 +405,34 @@ class BatchAcrossAccountsTest(FeedFixture):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual({r["id"] for r in resp.data["refused"]}, {self.split.id, self.void.id})
 
-    def test_duplicate_skips_mirror_legs(self):
+    def duplicate(self, *rows):
         with current_book(self.book):
-            resp = self.client.post(
-                self.url("batch_duplicate/"), {"ids": [self.mirror.id, self.groceries_tx.id]}, format="json"
-            )
+            resp = self.client.post(self.url("batch_duplicate/"), {"ids": [r.id for r in rows]}, format="json")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual([r["description"] for r in resp.data], ["Market"])
+        return resp.data
+
+    def test_duplicate_copies_a_transfer_once_when_both_legs_are_selected(self):
+        created = self.duplicate(self.mirror, self.transfer, self.groceries_tx)
+        self.assertEqual(sorted(r["description"] for r in created), ["Card payment", "Market"])
+        copy = BankTransaction.objects.get(pk=next(r["id"] for r in created if r["description"] == "Card payment"))
+        self.assertEqual(copy.account_id, self.checking.id)  # the primary's account
+
+    def test_duplicate_copies_a_mirror_selected_on_its_own(self):
+        """A mirror is the transfer as its own account shows it: copying it alone makes a copy there."""
+        (created,) = self.duplicate(self.mirror)
+        copy = BankTransaction.objects.get(pk=created["id"])
+        self.assertEqual((copy.account_id, copy.amount), (self.card.id, self.mirror.amount))
+        self.assertIsNone(copy.journal_entry_id)
+        self.assertFalse(copy.is_transfer_mirror)
+        self.assertIn(copy.id, self.ids(account=str(self.card.id), view="active", page_size=25))
+
+    def test_duplicate_skips_reconciled_rows(self):
+        self.assertEqual(self.duplicate(self.reconciled), [])
+
+    def test_duplicate_lands_on_the_first_page_beside_its_original(self):
+        (created,) = self.duplicate(self.groceries_tx)
+        listed = self.ids(account=str(self.checking.id), view="active", page_size=25)
+        self.assertEqual(listed.index(int(created["id"])), listed.index(self.groceries_tx.id) - 1)
 
     def test_more_than_the_cap_is_refused(self):
         resp = self.patch({"ids": list(range(1, 1002)), "payee": "x"})

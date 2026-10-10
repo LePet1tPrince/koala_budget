@@ -395,7 +395,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries.
+     * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries, and answers with the copies made: reconciled rows are not copied, and a transfer with both legs selected is copied once.
      */
     async bankFeedBatchDuplicateRaw(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
         if (requestParameters['bookSlug'] == null) {
@@ -452,7 +452,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries.
+     * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries, and answers with the copies made: reconciled rows are not copied, and a transfer with both legs selected is copied once.
      */
     async bankFeedBatchDuplicate(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedBankFeedRowList> {
         const response = await this.bankFeedBatchDuplicateRaw(requestParameters, initOverrides);

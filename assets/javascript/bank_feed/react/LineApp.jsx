@@ -1,4 +1,4 @@
-/* globals gettext, interpolate */
+/* globals gettext, ngettext, interpolate */
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Toast } from '../../common/Toast';
@@ -831,8 +831,8 @@ const LineApp = ({
           ? null
           : optimisticBulkEditedRow(row, updates, accountsById),
       request: () => batchApi.batchEdit(ids, updates),
-      successMessage: gettext('Transactions updated successfully'),
-      errorMessage: gettext('Failed to update transactions'),
+      successMessage: interpolate(ngettext('Transaction updated', '%s transactions updated', ids.length), [ids.length]),
+      errorMessage: ngettext('Failed to update the transaction', 'Failed to update the transactions', ids.length),
       clearsSelection: true,
     });
   };
@@ -844,8 +844,8 @@ const LineApp = ({
       rowIds: ids,
       apply: (row) => (queryRef.current.view === 'voided' ? { ...row, isVoid: true } : null),
       request: () => batchApi.batchVoid(ids),
-      successMessage: gettext('Transactions voided'),
-      errorMessage: gettext('Failed to void transactions'),
+      successMessage: interpolate(ngettext('Transaction voided', '%s transactions voided', ids.length), [ids.length]),
+      errorMessage: ngettext('Failed to void the transaction', 'Failed to void the transactions', ids.length),
       clearsSelection: true,
     });
   };
@@ -856,8 +856,10 @@ const LineApp = ({
       rowIds: ids,
       apply: (row) => (queryRef.current.view === 'voided' ? null : { ...row, isVoid: false }),
       request: () => batchApi.batchRestore(ids),
-      successMessage: gettext('Transactions restored'),
-      errorMessage: gettext('Failed to restore transactions'),
+      successMessage: interpolate(ngettext('Transaction restored', '%s transactions restored', ids.length), [
+        ids.length,
+      ]),
+      errorMessage: ngettext('Failed to restore the transaction', 'Failed to restore the transactions', ids.length),
       clearsSelection: true,
     });
   };
@@ -869,8 +871,11 @@ const LineApp = ({
       rowIds: ids,
       apply: () => null,
       request: () => batchApi.batchDelete(ids),
-      successMessage: gettext('Transactions permanently deleted'),
-      errorMessage: gettext('Failed to delete transactions'),
+      successMessage: interpolate(
+        ngettext('Transaction permanently deleted', '%s transactions permanently deleted', ids.length),
+        [ids.length]
+      ),
+      errorMessage: ngettext('Failed to delete the transaction', 'Failed to delete the transactions', ids.length),
       clearsSelection: true,
     });
   };
@@ -881,8 +886,32 @@ const LineApp = ({
       rowIds: ids,
       // The copies have no ids until the server makes them; the re-read brings them in
       request: () => batchApi.batchDuplicate(ids),
-      successMessage: gettext('Transactions duplicated successfully'),
-      errorMessage: gettext('Failed to duplicate transactions'),
+      // The server answers with the copies it made: a reconciled row is not
+      // copied, and a transfer with both legs selected is copied once.
+      onSuccess: (created) => {
+        const made = Array.isArray(created) ? created.length : 0;
+        if (made === 0) {
+          showSnackbar(
+            ngettext(
+              'This transaction could not be duplicated.',
+              'None of these transactions could be duplicated.',
+              ids.length
+            ),
+            'warning'
+          );
+          return null;
+        }
+        showSnackbar(
+          made === ids.length
+            ? interpolate(ngettext('Transaction duplicated', '%s transactions duplicated', made), [made])
+            : interpolate(gettext('Duplicated %s of %s transactions'), [made, ids.length]),
+          'success'
+        );
+        // Show the copy: under some sorts it lands on another page than its original
+        showRow({ row: created[0].id }, { keepFilters: true });
+        return null;
+      },
+      errorMessage: ngettext('Failed to duplicate the transaction', 'Failed to duplicate the transactions', ids.length),
       clearsSelection: true,
     });
   };
@@ -905,8 +934,14 @@ const LineApp = ({
       rowIds: ids,
       apply: (row) => ({ ...row, isReconciled: false, reconciledStatementDate: undefined }),
       request: () => batchApi.batchUnreconcile(ids),
-      successMessage: gettext('Transactions unreconciled successfully'),
-      errorMessage: gettext('Failed to unreconcile transactions'),
+      successMessage: interpolate(ngettext('Transaction unreconciled', '%s transactions unreconciled', ids.length), [
+        ids.length,
+      ]),
+      errorMessage: ngettext(
+        'Failed to unreconcile the transaction',
+        'Failed to unreconcile the transactions',
+        ids.length
+      ),
       clearsSelection: true,
     });
   };

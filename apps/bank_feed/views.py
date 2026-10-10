@@ -1649,7 +1649,9 @@ class BankFeedViewSet(
     def batch_duplicate(self, request, team_slug=None, book_slug=None):
         """
         Batch duplicate multiple bank transactions.
-        Creates new BankTransaction copies without journal entries.
+        Creates new BankTransaction copies without journal entries, and answers
+        with the copies made: reconciled rows are not copied, and a transfer with
+        both legs selected is copied once.
         """
         serializer = BatchIdsSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1658,7 +1660,7 @@ class BankFeedViewSet(
         ids = serializer.validated_data["ids"]
 
         # Get transactions that belong to this book, excluding reconciled ones
-        transactions = (
+        selected = list(
             BankTransaction.objects.filter(
                 id__in=ids,
                 book=request.book,
@@ -1667,15 +1669,19 @@ class BankFeedViewSet(
             .prefetch_related("journal_entry__lines")
         )
 
-        # A mirror leg is the other side of a transfer, not something a bank
-        # reported: copying it would make a second, uncategorized transfer leg that
-        # double-counts the movement once categorized.
         def reconciled(tx):
-            return bool(
-                tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
-            )
+            lines = tx.journal_entry.lines.all() if tx.journal_entry else ()
+            return any(line.account_id == tx.account_id and line.is_reconciled for line in lines)
 
-        transactions = [tx for tx in transactions if not tx.is_transfer_mirror and not reconciled(tx)]
+        # With both legs of a transfer selected, copy the transfer once, from its
+        # primary: copying the mirror too would make a second copy of the same
+        # movement. A mirror selected on its own is copied like any other row.
+        primary_entries = {tx.journal_entry_id for tx in selected if tx.journal_entry_id and not tx.is_transfer_mirror}
+        transactions = [
+            tx
+            for tx in selected
+            if not (tx.is_transfer_mirror and tx.journal_entry_id in primary_entries) and not reconciled(tx)
+        ]
 
         created_transactions = []
         for tx in transactions:
@@ -1693,7 +1699,7 @@ class BankFeedViewSet(
             )
             created_transactions.append(new_tx)
 
-        log_event(AuditEvent.BULK_DUPLICATE, request=request, metadata={"count": len(ids)})
+        log_event(AuditEvent.BULK_DUPLICATE, request=request, metadata={"count": len(created_transactions)})
 
         # Return the created transactions as feed rows
         rows = [bank_transaction_to_feed_row(tx) for tx in created_transactions]
