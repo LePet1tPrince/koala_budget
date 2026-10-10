@@ -127,6 +127,8 @@ const EditTransactionModal = ({
     [feedAccounts]
   );
   const asksForAccount = isCreateMode && accountOptions.length > 0;
+  // With the account preset, the date is the first thing left to fill in.
+  const accountPreset = asksForAccount && accountOptions.some((o) => o.id === defaultAccountId);
 
   // Payee names for the free-text autocomplete
   const payeeOptions = useMemo(() => allPayees.map((p) => p.name), [allPayees]);
@@ -435,6 +437,7 @@ const EditTransactionModal = ({
       // The leg table needs the width; a single category does not.
       size={isSplit ? 'lg' : 'sm'}
       testId="edit-transaction-modal"
+      initialFocus={accountPreset ? '[data-testid="transaction-date"]' : undefined}
       title={title}
       actions={
         <>

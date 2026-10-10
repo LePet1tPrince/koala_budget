@@ -16,14 +16,23 @@ const SIZES = {
   lg: 'max-w-3xl',
 };
 
-const Modal = ({ open, onClose, title, children, actions, size = 'md', testId, bodyClassName = '' }) => {
+const Modal = ({ open, onClose, title, children, actions, size = 'md', testId, bodyClassName = '', initialFocus }) => {
   const ref = useRef(null);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (open && !el.open) el.showModal();
+    if (open && !el.open) {
+      // `showModal()` focuses the first focusable control unless one carries the
+      // `autofocus` attribute. React's `autoFocus` prop never sets the attribute,
+      // so `initialFocus` (a selector) marks the target for the duration of the call.
+      const target = initialFocus ? el.querySelector(initialFocus) : null;
+      target?.setAttribute('autofocus', '');
+      el.showModal();
+      target?.removeAttribute('autofocus');
+    }
     if (!open && el.open) el.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Escape and backdrop clicks fire the dialog's own `cancel`/`close`, which must
