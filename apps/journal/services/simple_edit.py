@@ -126,6 +126,17 @@ def apply_edits_bulk(entries, edits, *, book):
         return [_write(plan, edits, book=book) for plan in plans]
 
 
+GOAL_ENTRY_REFUSAL = _(
+    "This is a goal's saving, booked from its plan and its linked accounts. Change it on the goal's page."
+)
+
+
+def refuse_goal_entry(entry):
+    """Goal saving entries are the goal ledger's to write (apps.budget.goal_ledger)."""
+    if entry.source == JournalEntry.SOURCE_GOAL:
+        raise EditRefused(GOAL_ENTRY_REFUSAL)
+
+
 def delete_transaction(entry, *, book):
     """
     Remove a transaction.
@@ -135,6 +146,7 @@ def delete_transaction(entry, *, book):
     bring it back, so the entry goes and the row returns to the feed as
     uncategorized. Anything else is deleted outright.
     """
+    refuse_goal_entry(entry)
     try:
         sides = resolve_sides(entry)
     except UnsupportedEntry as exc:
@@ -172,6 +184,7 @@ def set_status(entry, new_status, *, book):
 
     if new_status not in (JournalEntry.STATUS_VOID, JournalEntry.STATUS_POSTED):
         raise EditRefused(_("A transaction can only be voided or restored."))
+    refuse_goal_entry(entry)
 
     if (entry.status == JournalEntry.STATUS_VOID) == (new_status == JournalEntry.STATUS_VOID):
         return entry
@@ -220,6 +233,7 @@ class _Plan:
 
 def _plan(entry, edits):
     """Check `edits` against `entry` and work out the lines to write."""
+    refuse_goal_entry(entry)
     try:
         sides = resolve_sides(entry)
     except UnsupportedEntry as exc:

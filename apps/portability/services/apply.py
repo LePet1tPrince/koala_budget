@@ -22,6 +22,7 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
+from apps.budget import goal_ledger
 from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
@@ -156,6 +157,11 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
 
     report(95, "Checking the numbers")
     _verify(tables, account_id_map, book, entry_id_map)
+
+    # Goals' saving entries are derived from the plans and links just written,
+    # so they never travel; book them now, after the checks that compare what
+    # was written against the file.
+    goal_ledger.rebuild_book(book)
 
     result = ApplyResult(
         wipe_counts=wipe_counts,

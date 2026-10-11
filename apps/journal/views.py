@@ -92,6 +92,15 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         """Create journal entry in the current book."""
         serializer.save(book=self.request.book)
 
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+
+        from apps.journal.services.simple_edit import GOAL_ENTRY_REFUSAL
+
+        if instance.source == JournalEntry.SOURCE_GOAL:
+            raise ValidationError(str(GOAL_ENTRY_REFUSAL))
+        instance.delete()
+
     @action(detail=True, methods=["post"])
     def post_entry(self, request, pk=None, team_slug=None, book_slug=None):
         """
@@ -259,7 +268,13 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         """Delete the entire journal entry when deleting a line."""
+        from rest_framework.exceptions import ValidationError
+
+        from apps.journal.services.simple_edit import GOAL_ENTRY_REFUSAL
+
         journal_entry = instance.journal_entry
+        if journal_entry.source == JournalEntry.SOURCE_GOAL:
+            raise ValidationError(str(GOAL_ENTRY_REFUSAL))
         journal_entry.delete()
 
     @extend_schema(

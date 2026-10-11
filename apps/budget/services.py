@@ -11,7 +11,7 @@ from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, ngettext
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Budget, Goal, GoalAllocation, month_after
 from apps.journal.models import JournalLine, counted_entries
 from apps.web.templatetags.currency_tags import currency
 
@@ -497,11 +497,37 @@ class GoalService:
             return old
 
     def add_to_allocation(self, goal, month, amount):
-        """Add `amount` (negative to take money out) to the month's allocation. Call inside a transaction."""
+        """
+        Commit `amount` more to the goal this month. Call inside a transaction.
+
+        The month saves the larger of its plan and what linked accounts brought
+        in, so the plan is raised from whichever is larger: assigning $200 always
+        puts $200 more into the goal, even when a transfer has already covered
+        the old plan. A negative `amount` is taken out by hand (`adjust`).
+        """
+        if amount < 0:
+            return self.adjust(goal, month, amount)
+        from .linked import monthly_linked
+
         month = month.replace(day=1)
         allocation = GoalAllocation.objects.select_for_update().filter(book=self.book, goal=goal, month=month).first()
         current = allocation.amount if allocation else Decimal("0")
-        return self.update_allocation(goal, month, current + amount)
+        moved_in = monthly_linked([goal.pk], month, month_after(month)).get(goal.pk, {}).get(month, {}).get("in", 0)
+        return self.update_allocation(goal, month, max(current, moved_in) + amount)
+
+    def adjust(self, goal, month, amount):
+        """
+        Move `amount` into the goal by hand this month (negative to take it out),
+        outside the plan: it counts in full however much the linked accounts
+        brought in. Call inside a transaction.
+        """
+        month = month.replace(day=1)
+        allocation, _created = GoalAllocation.objects.select_for_update().get_or_create(
+            book=self.book, goal=goal, month=month
+        )
+        allocation.adjustment += amount
+        allocation.save(update_fields=["adjustment", "updated_at"])
+        return allocation
 
     def left(self, goal, month):
         return Goal.objects.filter(pk=goal.pk).with_progress(month).values_list("left", flat=True).get()
@@ -565,7 +591,7 @@ class GoalService:
             return []
         lines = (
             _active_lines()
-            .filter(book=self.book, account_id=goal.account_id)
+            .filter(book=self.book, account_id=goal.account_id, journal_entry__goal_saving__isnull=True)
             .select_related("journal_entry", "journal_entry__payee")
             .prefetch_related("journal_entry__lines__account")
             .order_by("-journal_entry__entry_date", "-journal_entry_id", "-pk")
@@ -591,7 +617,8 @@ class GoalService:
         would lose their category (the journal protects its accounts)."""
         if not goal.account_id:
             return None
-        count = JournalLine.objects.filter(account_id=goal.account_id).count()
+        # The ledger's own saving entries go with the goal.
+        count = JournalLine.objects.filter(account_id=goal.account_id, journal_entry__goal_saving__isnull=True).count()
         if not count:
             return None
         return ngettext(
@@ -624,10 +651,15 @@ class GoalService:
             "contributions": goal.allocations.count(),
             "linked_accounts": sorted({link.account.name for link in goal.account_links.select_related("account")}),
         }
-        account = goal.account
-        goal.delete()  # allocations and links go with it
-        if account is not None:
-            account.delete()
+        from . import goal_ledger
+
+        account, saving_account = goal.account, goal.saving_account
+        with goal_ledger.suspended():
+            goal_ledger.delete_goal_entries(goal)
+            goal.delete()  # allocations and links go with it
+        for backing in (account, saving_account):
+            if backing is not None:
+                backing.delete()
         return summary
 
     @transaction.atomic
@@ -663,10 +695,10 @@ class GoalService:
                     % {"name": goal.name, "amount": f"−${-left:,.2f}"}
                 )
             covered = -left
-            self.add_to_allocation(goal, month, covered)
+            self.adjust(goal, month, covered)
         elif left > 0:
             released = left
-            self.add_to_allocation(goal, month, -released)
+            self.adjust(goal, month, -released)
         goal.closed_at = timezone.now()
         goal.save(update_fields=["closed_at", "updated_at"])
         return {"released": released, "covered": covered}
@@ -681,7 +713,7 @@ class GoalService:
         (emergency fund) get used.
         """
         month = month.replace(day=1)
-        self.add_to_allocation(goal, month, -amount)
+        self.adjust(goal, month, -amount)
         return BudgetService(self.book).raise_budget(category, month, amount)
 
 
@@ -784,19 +816,18 @@ def goal_monthly(book, goals, start=None, end=None):
     """
     Each goal's month-by-month figures: {goal id: {month: {...}}} with
 
-    - assigned: manual allocations (`GoalAllocation`; withdrawals negative)
-    - linked: what linked accounts brought in (starting balances, flows)
-    - saved: assigned + linked -- the month's share of `allocated`
-    - spent: lines on the goal's own account plus linked spending
+    - assigned: the month's plan (`GoalAllocation`; withdrawals negative)
+    - saved: what the month's saving entries put into the fund -- the larger of
+      the plan and what linked accounts brought in, less what they took out,
+      plus any starting balance (`apps.budget.goal_ledger`)
+    - linked: saved − assigned, what the linked accounts changed over the plan
+    - spent: every other line on the goal's fund
 
     Months from `start` (inclusive) to `end` (exclusive), first-of-month keys.
-    Every per-month read of goal allocations goes through here, so a month's
-    "saved" can never leave out what a linked account brought in.
+    Every per-month read of goal money goes through here.
     """
-    from django.db.models import F
+    from django.db.models import Case, F, When
     from django.db.models.functions import TruncMonth
-
-    from .linked import monthly_linked
 
     goals = list(goals)
     goal_ids = [g.pk for g in goals]
@@ -813,7 +844,7 @@ def goal_monthly(book, goals, start=None, end=None):
         allocations = allocations.filter(month__gte=start.replace(day=1))
     if end is not None:
         allocations = allocations.filter(month__lt=end)
-    for row in allocations.values("goal_id", "month").annotate(total=Sum("amount")):
+    for row in allocations.values("goal_id", "month").annotate(total=Sum(F("amount") + F("adjustment"))):
         cell(row["goal_id"], row["month"])["assigned"] += row["total"]
 
     lines = _active_lines().filter(book=book, account_id__in=list(by_account))
@@ -821,22 +852,22 @@ def goal_monthly(book, goals, start=None, end=None):
         lines = lines.filter(journal_entry__entry_date__gte=start)
     if end is not None:
         lines = lines.filter(journal_entry__entry_date__lt=end)
+    saving = Q(journal_entry__goal_saving__isnull=False)
     for row in (
         lines.annotate(month=TruncMonth("journal_entry__entry_date"))
         .values("account_id", "month")
-        .annotate(total=Sum(F("dr_amount") - F("cr_amount")))
+        .annotate(
+            saved=Sum(Case(When(saving, then=F("cr_amount") - F("dr_amount")), default=zero)),
+            spent=Sum(Case(When(saving, then=zero), default=F("dr_amount") - F("cr_amount"))),
+        )
     ):
-        cell(by_account[row["account_id"]], row["month"])["spent"] += row["total"]
-
-    for goal_id, months in monthly_linked(goal_ids, start, end).items():
-        for month, values in months.items():
-            target = cell(goal_id, month)
-            target["linked"] += values["linked"]
-            target["spent"] += values["spent"]
+        target = cell(by_account[row["account_id"]], row["month"])
+        target["saved"] += row["saved"]
+        target["spent"] += row["spent"]
 
     for months in result.values():
         for values in months.values():
-            values["saved"] = values["assigned"] + values["linked"]
+            values["linked"] = values["saved"] - values["assigned"]
     return result
 
 

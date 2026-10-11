@@ -103,6 +103,18 @@ def upgrade_6_to_7(tables: dict) -> dict:
     return tables
 
 
+def upgrade_7_to_8(tables: dict) -> dict:
+    """
+    Version 8 added `adjustment` to goal rows. Before it, a withdrawal was a
+    negative `amount`, which the goal ledger still reads as one.
+    """
+    from decimal import Decimal
+
+    for row in tables["budget_rows"]:
+        row.setdefault("adjustment", Decimal("0"))
+    return tables
+
+
 # {from_version: fn(tables) -> tables at from_version + 1}
 CHAIN: dict[int, Callable[[dict], dict]] = {
     1: upgrade_1_to_2,
@@ -111,6 +123,7 @@ CHAIN: dict[int, Callable[[dict], dict]] = {
     4: upgrade_4_to_5,
     5: upgrade_5_to_6,
     6: upgrade_6_to_7,
+    7: upgrade_7_to_8,
 }
 
 

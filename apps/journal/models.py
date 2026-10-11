@@ -48,6 +48,10 @@ class JournalEntry(BaseBookModel):
     # An adjustment posted when a statement is finished with a difference
     # (apps.reconciliation). Its own source so undo can find it without guessing.
     SOURCE_RECONCILIATION = "reconciliation"
+    # Posted and kept in step by apps.budget.goal_ledger: a month's saving
+    # into a goal's fund. Never edited directly; the plan and the linked
+    # accounts it is computed from are.
+    SOURCE_GOAL = "goal"
 
     SOURCE_CHOICES = [
         (SOURCE_MANUAL, "Manual Entry"),
@@ -55,6 +59,7 @@ class JournalEntry(BaseBookModel):
         (SOURCE_BANK_MATCH, "Bank Match"),
         (SOURCE_RECURRING, "Recurring Entry"),
         (SOURCE_RECONCILIATION, "Reconciliation Adjustment"),
+        (SOURCE_GOAL, "Goal Saving"),
     ]
 
     entry_date = models.DateField(help_text="Date of the journal entry")

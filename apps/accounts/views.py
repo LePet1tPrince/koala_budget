@@ -147,6 +147,8 @@ class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
         # balances), so it is shown as two sections: groups holding goals, and the rest.
         sections = {account_type: [] for account_type in (*ACCOUNT_TYPE_ORDER, SECTION_EQUITY)}
         for group in AccountGroup.objects.filter(book=book).order_by("sort_order", "name"):
+            if group.account_type not in sections:
+                continue  # each goal's "Saving: X" account is the goal's to manage
             accounts_in_group = accounts_by_group.get(group.pk, [])
             key = group.account_type
             if key == ACCOUNT_TYPE_EQUITY and not (

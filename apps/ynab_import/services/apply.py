@@ -21,6 +21,7 @@ from apps.accounts.models import ACCOUNT_TYPE_INCOME, Account, AccountGroup, Ins
 from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.transfer_detection import dismiss_all_candidates
 from apps.bank_feed.services.transfer_mirror import mirror_rows_for
+from apps.budget import goal_ledger
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
@@ -119,6 +120,9 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
 
     report(85, "Setting your savings goals")
     goals = _create_goals(book, plan, accounts)
+    # The allocations went in with bulk_create, which the goal ledger never
+    # hears about; book every goal's savings from them now.
+    goal_ledger.rebuild_book(book)
 
     report(92, "Recording your opening balances")
     openings = _create_openings(book, plan, accounts)

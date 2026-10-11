@@ -47,7 +47,11 @@ FORMAT = "koala-budget-export"
 # `feed_is_void`/`feed_voided_at`, and the unused archive flags on entries and
 # lines (`entry_is_archived`, `entry_archived_at`, `is_archived`, `archived_at`)
 # are gone. `upgrade_6_to_7` voids the entry behind any archived row.
-FORMAT_VERSION = 7
+# 8: goals are booked in the ledger (docs/goals-ledger-plan.md) -- `adjustment`
+# on budget.csv goal rows (money moved by hand outside the plan). The saving
+# entries and "Saving: X" accounts are derived, so they never travel: the
+# importer rebuilds them from the plans and links (`goal_ledger.rebuild_book`).
+FORMAT_VERSION = 8
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
@@ -70,6 +74,7 @@ COLUMNS_ADDED_IN = {
     (ACCOUNTS_FILE, "is_hidden"): 6,
     (JOURNAL_FILE, "feed_is_void"): 7,
     (JOURNAL_FILE, "feed_voided_at"): 7,
+    (BUDGET_FILE, "adjustment"): 8,
 }
 
 #: Columns an older archive has that the current format dropped:
@@ -471,6 +476,7 @@ GOAL = FieldMap(
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "account": "implicit -- a goal's columns live on its own backing account's row, by construction (§2.1)",
+        "saving_account": "derived -- the goal ledger creates it, and books its entries, on import",
     },
 )
 
@@ -659,6 +665,7 @@ GOAL_ALLOCATION = FieldMap(
         "goal": ColumnSpec("account_id", KIND_INT, read=lambda allocation: allocation.goal.account_id),
         "month": ColumnSpec("month", KIND_DATE),
         "amount": ColumnSpec("amount", KIND_DECIMAL),
+        "adjustment": ColumnSpec("adjustment", KIND_DECIMAL),
         "notes": ColumnSpec("notes", KIND_STR),
         "is_archived": ColumnSpec("is_archived", KIND_BOOL),
         "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
@@ -678,6 +685,7 @@ BUDGET_COLUMNS = (
     Column("account_id", KIND_INT),
     Column("account_name", KIND_STR),
     Column("amount", KIND_DECIMAL),
+    Column("adjustment", KIND_DECIMAL),
     Column("notes", KIND_STR),
     Column("is_archived", KIND_BOOL),
     Column("archived_at", KIND_DATETIME),

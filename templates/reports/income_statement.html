@@ -138,6 +138,16 @@
       </div>
       {% endif %}
     </div>
+    {% if report_data.saving.items %}
+    <div class="stat py-3" data-testid="income-statement-saving">
+      <div class="stat-figure text-accent hidden sm:block">{% icon "piggy-bank" class="inline-block shrink-0 w-5 h-5" %}</div>
+      <div class="stat-title">{% translate "Saved for goals" %}</div>
+      <div class="stat-value text-2xl">{{ report_data.saving.total|currency }}</div>
+      <div class="stat-desc">
+        {% blocktranslate trimmed with net=report_data.net_after_saving|currency %}{{ net }} surplus after saving{% endblocktranslate %}
+      </div>
+    </div>
+    {% endif %}
     {% if report_data.goal_spending.items %}
     <div class="stat py-3" data-testid="income-statement-goal-spending">
       <div class="stat-figure text-accent hidden sm:block">{% icon "piggy-bank" class="inline-block shrink-0 w-5 h-5" %}</div>
@@ -152,7 +162,7 @@
 
   <div x-data="{
         tab: '{{ initial_tab }}',
-        sec: { income: true, expenses: true, goals: true },
+        sec: { income: true, expenses: true, saving: true, goals: true },
         grp: { {% for group_data in report_data.income_groups %}g{{ group_data.group.pk }}: true, {% endfor %}{% for group_data in report_data.expense_groups %}g{{ group_data.group.pk }}: true{% if not forloop.last %}, {% endif %}{% endfor %} }
       }">
     <!-- Statement / Income Flow tabs -->
@@ -269,21 +279,52 @@
                 {% endfor %}
               </tbody>
 
-              {% if report_data.goal_spending.items %}
-              <!-- Goal spending: planned, paid from goals -- below the operating net, like capital spending -->
-              <tbody data-testid="goal-spending-table">
+              {% if report_data.saving.items or report_data.goal_spending.items %}
+              <tbody>
                 <tr class="font-bold row-subnet border-t-2 border-base-300" data-testid="net-before-goal-spending">
-                  <td class="whitespace-nowrap">{% translate "Net before goal spending" %}</td>
+                  <td class="whitespace-nowrap">{% if report_data.saving.items %}{% translate "Net before saving" %}{% else %}{% translate "Net before goal spending" %}{% endif %}</td>
                   {% if period %}{% for amount in report_data.net_profit_per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %} {% if amount < 0 %}text-error{% endif %}">{{ amount|currency }}</td>
                   {% endfor %}{% endif %}
                   <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_profit < 0 %}text-error{% endif %}">{{ report_data.net_profit|currency }}</td>
                 </tr>
+              </tbody>
+              {% endif %}
+
+              {% if report_data.saving.items %}
+              <!-- Saving: money set aside for goals is an expense (docs/goals-ledger-plan.md) -->
+              <tbody data-testid="saving-table">
+                <tr class="cursor-pointer select-none row-goals font-bold" @click="sec.saving = !sec.saving">
+                  <td class="whitespace-nowrap">
+                    <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="sec.saving ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
+                    <span class="ml-1">{% translate "Saving" %}</span>
+                    <span class="font-normal text-xs text-base-content/70 ml-1">{% translate "set aside for goals" %}</span>
+                  </td>
+                  {% if period %}{% for amount in report_data.saving.per_period %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap">{{ report_data.saving.total|currency }}</td>
+                </tr>
+                {% for item in report_data.saving.items %}
+                <tr x-show="sec.saving" class="row-account">
+                  <td class="pl-12 whitespace-nowrap">{% if item.account.saving_goal %}<a href="{{ item.account.saving_goal.get_absolute_url }}" class="link link-hover link-primary">{{ item.account.saving_goal.name }}</a>{% else %}{{ item.account.name }}{% endif %}</td>
+                  {% if period %}{% for amount in item.per_period %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap">{{ item.amount|currency }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+              {% endif %}
+
+              {% if report_data.goal_spending.items %}
+              <!-- Goal spending: paid from money already set aside, so not an expense of this period -->
+              <tbody data-testid="goal-spending-table">
                 <tr class="cursor-pointer select-none row-goals font-bold" @click="sec.goals = !sec.goals">
                   <td class="whitespace-nowrap">
                     <span class="inline-flex w-3 opacity-60 transition-transform duration-200" :class="sec.goals ? '' : '-rotate-90'">{% icon "chevron-down" class="w-3 h-3" %}</span>
                     <span class="ml-1">{% translate "Goal spending" %}</span>
-                    <span class="font-normal text-xs text-base-content/70 ml-1">{% translate "planned, paid from goals" %}</span>
+                    <span class="font-normal text-xs text-base-content/70 ml-1">{% translate "paid from goals" %}</span>
                   </td>
                   {% if period %}{% for amount in report_data.goal_spending.per_period %}
                   <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %}">{{ amount|currency }}</td>
@@ -303,7 +344,15 @@
               {% endif %}
 
               <tfoot>
-                {% if report_data.goal_spending.items %}
+                {% if report_data.saving.items %}
+                <tr class="font-bold text-sm text-base-content border-t-2 border-base-300" data-testid="net-after-saving">
+                  <td class="whitespace-nowrap">{% translate "Surplus after saving" %}</td>
+                  {% if period %}{% for amount in report_data.net_after_saving_per_period %}
+                  <td class="text-right tabular-nums whitespace-nowrap{% if not amount %} opacity-40{% endif %} {% if amount < 0 %}text-error{% endif %}">{{ amount|currency }}</td>
+                  {% endfor %}{% endif %}
+                  <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_after_saving < 0 %}text-error{% endif %}">{{ report_data.net_after_saving|currency }}</td>
+                </tr>
+                {% elif report_data.goal_spending.items %}
                 <tr class="font-bold text-sm text-base-content border-t-2 border-base-300" data-testid="net-after-goal-spending">
                   <td class="whitespace-nowrap">{% translate "Net after goal spending" %}</td>
                   {% if period %}{% for amount in report_data.net_after_goal_spending_per_period %}

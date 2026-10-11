@@ -54,6 +54,17 @@ def export_income_statement_csv(book, start_date, end_date):
     # Net profit (operating: before goal spending)
     writer.writerow(["", "Net Profit", _decimal_str(data["net_profit"])])
 
+    saving = data["saving"]
+    if saving["items"]:
+        writer.writerow([])
+        writer.writerow(["SAVING (set aside for goals)"])
+        writer.writerow(["Account Name", "Amount"])
+        for item in saving["items"]:
+            writer.writerow([item["account"].name, _decimal_str(item["amount"])])
+        writer.writerow(["", "Total Saving", _decimal_str(saving["total"])])
+        writer.writerow([])
+        writer.writerow(["", "Surplus After Saving", _decimal_str(data["net_after_saving"])])
+
     goal_spending = data["goal_spending"]
     if goal_spending["items"]:
         writer.writerow([])

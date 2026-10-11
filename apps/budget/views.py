@@ -1056,10 +1056,7 @@ def goal_assign_available(request, team_slug, book_slug, pk):
     month = _parse_month(payload.get("month"))
 
     with transaction.atomic():
-        allocation = (
-            GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
-        )
-        month_amount = allocation.amount if allocation else Decimal("0")
+        Goal.objects.select_for_update().filter(pk=goal.pk).first()
         old_saved, spent, saved_month = _goal_numbers(goal, month)
         _, remaining = _goal_card_progress(goal, old_saved, saved_month)
         available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
@@ -1082,7 +1079,7 @@ def goal_assign_available(request, team_slug, book_slug, pk):
                 return JsonResponse({"error": "Invalid amount."}, status=400)
 
         amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        GoalService(request.book).update_allocation(goal, month, month_amount + amount)
+        GoalService(request.book).add_to_allocation(goal, month, amount)
 
     new_saved = old_saved + amount
     old_pct, _ = _goal_card_progress(goal, old_saved, saved_month)
@@ -1110,7 +1107,7 @@ def goal_assign_available(request, team_slug, book_slug, pk):
             "old_pct": old_pct,
             "new_pct": new_pct,
             "remaining": float(new_remaining),
-            "this_month": float(month_amount + amount),
+            "this_month": float(saved_month + amount),
             "new_available": float(available - amount),
             "completed": goal.has_target and new_saved >= goal.target_amount,
             "open_ended": not goal.has_target,
@@ -1126,10 +1123,11 @@ def goal_withdraw(request, team_slug, book_slug, pk):
     """Take funds back out of a goal (JSON endpoint for the goals page).
 
     Body: {"month": "YYYY-MM-DD", "amount": "123.45"}. Without "amount",
-    withdraws everything the goal has left. The withdrawal is recorded against
-    the given month's allocation (which may go negative), so past months'
-    contribution history is never rewritten. Money already spent from the goal
-    can't be withdrawn: the cap is left (allocated − spent), not allocated.
+    withdraws everything the goal has left. The withdrawal is a by-hand
+    adjustment to the given month (`GoalService.adjust`): it counts in full
+    whatever the linked accounts brought in, and past months' contribution
+    history is never rewritten. Money already spent from the goal can't be
+    withdrawn: the cap is left (allocated − spent), not allocated.
     """
     goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
@@ -1149,10 +1147,7 @@ def goal_withdraw(request, team_slug, book_slug, pk):
     month = _parse_month(payload.get("month"))
 
     with transaction.atomic():
-        allocation = (
-            GoalAllocation.objects.select_for_update().filter(book=request.book, goal=goal, month=month).first()
-        )
-        month_amount = allocation.amount if allocation else Decimal("0")
+        Goal.objects.select_for_update().filter(pk=goal.pk).first()
         old_saved, spent, saved_month = _goal_numbers(goal, month)
         left = old_saved - spent
         available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
@@ -1177,7 +1172,7 @@ def goal_withdraw(request, team_slug, book_slug, pk):
                 )
 
         amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        GoalService(request.book).update_allocation(goal, month, month_amount - amount)
+        GoalService(request.book).adjust(goal, month, -amount)
 
     new_saved = old_saved - amount
     old_pct, _ = _goal_card_progress(goal, old_saved, saved_month)
@@ -1205,7 +1200,7 @@ def goal_withdraw(request, team_slug, book_slug, pk):
             "old_pct": old_pct,
             "new_pct": new_pct,
             "remaining": float(new_remaining),
-            "this_month": float(month_amount - amount),
+            "this_month": float(saved_month - amount),
             "new_available": float(available + amount),
             "funded": goal.has_target and new_saved >= goal.target_amount,
             "open_ended": not goal.has_target,

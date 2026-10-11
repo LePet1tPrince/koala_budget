@@ -246,6 +246,11 @@
     <div class="card bg-base-100 border border-base-300">
       <div class="card-body">
         <h2 class="card-title" id="activity">{% translate "Activity" %}</h2>
+        {% if goal.account_links.exists %}
+          <p class="text-sm text-base-content/70" data-testid="goal-activity-max-rule">
+            {% translate "Each month saves the larger of what you assigned and what moved into the linked accounts, so a transfer counts towards the plan rather than on top of it." %}
+          </p>
+        {% endif %}
         {% if can_edit_contributions %}
           <p class="text-sm text-base-content/70">
             {% translate "Contributions you assigned or withdrew by hand can be changed or undone. Money from linked accounts follows its transactions." %}

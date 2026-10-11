@@ -361,20 +361,34 @@ def goal_activity(goal, limit=100):
     from .linked import linked_lines, starting_balances
 
     events = []
-    for allocation in goal.allocations.exclude(amount=0):
-        events.append(
-            {
-                "date": allocation.month,
-                "kind": ACTIVITY_ASSIGNED if allocation.amount > 0 else ACTIVITY_WITHDRAWN,
-                "account": None,
-                "payee": "",
-                "memo": allocation.notes,
-                "amount": allocation.amount,
-                "month_only": True,
-                # Manual: editable and undoable from the activity table.
-                "allocation_id": allocation.pk,
-            }
-        )
+    for allocation in goal.allocations.exclude(amount=0, adjustment=0):
+        if allocation.amount:
+            events.append(
+                {
+                    "date": allocation.month,
+                    "kind": ACTIVITY_ASSIGNED if allocation.amount > 0 else ACTIVITY_WITHDRAWN,
+                    "account": None,
+                    "payee": "",
+                    "memo": allocation.notes,
+                    "amount": allocation.amount,
+                    "month_only": True,
+                    # Manual: editable and undoable from the activity table.
+                    "allocation_id": allocation.pk,
+                }
+            )
+        if allocation.adjustment:
+            # Money moved by hand outside the plan: withdrawn, released or covered.
+            events.append(
+                {
+                    "date": allocation.month,
+                    "kind": ACTIVITY_ASSIGNED if allocation.adjustment > 0 else ACTIVITY_WITHDRAWN,
+                    "account": None,
+                    "payee": "",
+                    "memo": allocation.notes,
+                    "amount": allocation.adjustment,
+                    "month_only": True,
+                }
+            )
     for link in starting_balances().filter(goal=goal).select_related("account").exclude(amount=0):
         events.append(
             {
@@ -390,7 +404,7 @@ def goal_activity(goal, limit=100):
     lines = (
         linked_lines()
         .filter(link_goal=goal.pk)
-        .filter(Q(alloc_delta__lt=0) | Q(alloc_delta__gt=0) | Q(spent_delta__gt=0) | Q(spent_delta__lt=0))
+        .filter(Q(alloc_delta__lt=0) | Q(alloc_delta__gt=0))
         .select_related("journal_entry", "journal_entry__payee", "account")
     )
     for line in lines:
@@ -405,11 +419,11 @@ def goal_activity(goal, limit=100):
         if line.alloc_delta:
             kind = ACTIVITY_IN if line.alloc_delta > 0 else ACTIVITY_OUT
             events.append({**common, "kind": kind, "amount": line.alloc_delta})
-        if line.spent_delta:
-            events.append({**common, "kind": ACTIVITY_SPENT, "amount": -line.spent_delta})
     if goal.account_id:
         own = (
             JournalLine.objects.filter(counted_entries("journal_entry__"), account_id=goal.account_id)
+            # The ledger's own saving entries are the plan and the flows above.
+            .filter(journal_entry__goal_saving__isnull=True)
             .select_related("journal_entry", "journal_entry__payee")
             .order_by("-journal_entry__entry_date")[:limit]
         )
@@ -450,7 +464,7 @@ def link_drift(goal, left):
         return None
 
     reasons = []
-    assigned = sum((a.amount for a in goal.allocations.all()), ZERO)
+    assigned = sum((a.amount + a.adjustment for a in goal.allocations.all()), ZERO)
     if assigned:
         reasons.append(_("You assigned or withdrew %(amount)s by hand.") % {"amount": _money(assigned)})
     counted_start = {link.pk for link in starting_balances().filter(goal=goal)}

@@ -14,6 +14,10 @@ ACCOUNT_TYPE_LIABILITY = "liability"
 ACCOUNT_TYPE_INCOME = "income"
 ACCOUNT_TYPE_EXPENSE = "expense"
 ACCOUNT_TYPE_EQUITY = "goal"
+# A goal's "Saving: X" account: an expense in the income statement's own Saving
+# section, never a budget category (docs/goals-ledger-plan.md). Its own type, so
+# every expense query (envelopes, actuals, overspending) leaves it out unasked.
+ACCOUNT_TYPE_SAVING = "saving"
 
 ACCOUNT_TYPE_CHOICES = [
     (ACCOUNT_TYPE_ASSET, "Asset"),
@@ -21,6 +25,7 @@ ACCOUNT_TYPE_CHOICES = [
     (ACCOUNT_TYPE_INCOME, "Income"),
     (ACCOUNT_TYPE_EXPENSE, "Expense"),
     (ACCOUNT_TYPE_EQUITY, "Goal"),
+    (ACCOUNT_TYPE_SAVING, "Saving"),
 ]
 
 

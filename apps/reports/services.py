@@ -10,8 +10,9 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_EXPENSE,
     ACCOUNT_TYPE_INCOME,
     ACCOUNT_TYPE_LIABILITY,
+    ACCOUNT_TYPE_SAVING,
 )
-from apps.journal.models import JournalLine, counted_entries
+from apps.journal.models import JournalEntry, JournalLine, counted_entries
 
 
 class ReportService:
@@ -49,6 +50,10 @@ class ReportService:
                                   'per_period': [...]},
                 'net_after_goal_spending': Decimal,
                 'net_after_goal_spending_per_period': [...],
+                'saving': {'items': [...same item shape...], 'total': Decimal,
+                           'per_period': [...]},
+                'net_after_saving': Decimal,
+                'net_after_saving_per_period': [...],
             }
 
         `net_profit` is the operating net (income − expenses), the figure the
@@ -56,6 +61,11 @@ class ReportService:
         own section below it, like capital spending: a real outflow, but planned
         and paid from money set aside (docs/goals-envelopes-plan.md §4.5). Plain
         equity accounts (opening balances) are not goal spending.
+
+        `saving` is what each goal's "Saving: X" account booked: money set aside
+        is an expense (docs/goals-ledger-plan.md), and `net_after_saving`, the
+        surplus, is what is left with no job. `net_after_goal_spending` is the
+        cash view: what the period's purchases, from income or from goals, left.
         """
         # Get all journal lines in the date range (voided entries don't count)
         journal_lines = (
@@ -73,6 +83,7 @@ class ReportService:
         income_data = []
         expense_data = []
         goal_data = []
+        saving_data = []
         total_income = Decimal("0")
         total_expenses = Decimal("0")
 
@@ -83,13 +94,15 @@ class ReportService:
         for line in journal_lines:
             account = line.account
             account_type = account.account_group.account_type
+            if line.journal_entry.source == JournalEntry.SOURCE_GOAL and account_type != ACCOUNT_TYPE_SAVING:
+                continue  # the fund side of a saving entry; the saving side is its own section
 
             # Calculate the net impact of this journal line
             # For income: credits increase income
             # For expenses: debits increase expenses
             if account_type == ACCOUNT_TYPE_INCOME:
                 amount = line.cr_amount - line.dr_amount
-            elif account_type == ACCOUNT_TYPE_EXPENSE or account.pk in goal_account_ids:
+            elif account_type in (ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_SAVING) or account.pk in goal_account_ids:
                 amount = line.dr_amount - line.cr_amount
             else:
                 continue  # Skip balance-sheet accounts
@@ -117,6 +130,8 @@ class ReportService:
                 elif account_type == ACCOUNT_TYPE_EXPENSE:
                     expense_data.append(item)
                     total_expenses += amount
+                elif account_type == ACCOUNT_TYPE_SAVING:
+                    saving_data.append(item)
                 else:
                     goal_data.append(item)
 
@@ -126,6 +141,9 @@ class ReportService:
         goal_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
         total_goal_spending = sum((item["amount"] for item in goal_data), Decimal("0"))
         goal_spending_per_period = self._sum_periods(goal_data, len(periods)) if period else []
+        saving_data.sort(key=lambda x: x["account"].name)
+        total_saving = sum((item["amount"] for item in saving_data), Decimal("0"))
+        saving_per_period = self._sum_periods(saving_data, len(periods)) if period else []
 
         net_profit = total_income - total_expenses
 
@@ -156,6 +174,11 @@ class ReportService:
             "net_after_goal_spending": net_profit - total_goal_spending,
             "net_after_goal_spending_per_period": [
                 net - goal for net, goal in zip(net_profit_per_period, goal_spending_per_period, strict=True)
+            ],
+            "saving": {"items": saving_data, "total": total_saving, "per_period": saving_per_period},
+            "net_after_saving": net_profit - total_saving,
+            "net_after_saving_per_period": [
+                net - saved for net, saved in zip(net_profit_per_period, saving_per_period, strict=True)
             ],
         }
 
@@ -246,7 +269,9 @@ class ReportService:
                 'total_assets': Decimal,
                 'total_liabilities': Decimal,
                 'total_equity': Decimal,
-                'net_worth': Decimal
+                'net_worth': Decimal,
+                'reserved_for_goals': Decimal (Σ goal funds with money left),
+                'free_net_worth': Decimal (net worth − reserved_for_goals)
             }
         """
         # Get all journal lines up to as_of_date (voided entries don't count)
@@ -259,8 +284,8 @@ class ReportService:
             .select_related("account", "account__account_group")
         )
 
-        # Goal accounts are left out: spending from a goal is reported on the
-        # income statement, not here. Plain equity (opening balances) stays.
+        # A goal's fund is equity: money reserved out of net worth for the goal
+        # (docs/goals-ledger-plan.md). Its balance is what the goal has left.
         goal_account_ids = self.goal_account_ids()
 
         asset_data = []
@@ -276,8 +301,6 @@ class ReportService:
         for line in journal_lines:
             account = line.account
             account_type = account.account_group.account_type
-            if account.pk in goal_account_ids:
-                continue
 
             # Calculate account balance based on account type
             # Assets: debit balances are positive (dr - cr)
@@ -313,6 +336,12 @@ class ReportService:
         equity_data.sort(key=lambda x: (x["account"].sort_order, x["account"].name))
 
         net_worth = total_assets - total_liabilities
+        # What goals have left claims that much of net worth; a goal spent past
+        # its fund claims nothing (the overspending already came out).
+        reserved_for_goals = sum(
+            (item["amount"] for item in equity_data if item["account"].pk in goal_account_ids and item["amount"] > 0),
+            Decimal("0"),
+        )
 
         return {
             "assets": asset_data,
@@ -325,6 +354,8 @@ class ReportService:
             "total_liabilities": total_liabilities,
             "total_equity": total_equity,
             "net_worth": net_worth,
+            "reserved_for_goals": reserved_for_goals,
+            "free_net_worth": net_worth - reserved_for_goals,
         }
 
     def get_balance_composition_data(self, start_date, end_date):
@@ -616,6 +647,9 @@ class ReportService:
             .select_related("journal_entry", "journal_entry__payee")
             .prefetch_related("journal_entry__lines__account__account_group")
         )
+        if account.pk in self.goal_account_ids():
+            # A goal's activity is its spending; its saving entries are the plan.
+            queryset = queryset.filter(journal_entry__goal_saving__isnull=True)
 
         # Apply date filter if provided
         if start_date and end_date:

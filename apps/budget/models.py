@@ -6,7 +6,7 @@ from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
+from apps.accounts.models import ACCOUNT_TYPE_EQUITY, ACCOUNT_TYPE_SAVING, Account, AccountGroup
 from apps.books.models import BaseBookModel
 
 ZERO = Decimal("0")
@@ -44,6 +44,7 @@ class Budget(BaseBookModel):
 
 
 GOALS_GROUP_NAME = "Goals"
+SAVINGS_GROUP_NAME = "Saving for goals"
 
 STATE_SAVING = "saving"
 STATE_FUNDED = "funded"
@@ -84,23 +85,31 @@ def goals_group(book):
     )
 
 
+def savings_group(book):
+    """The system group every goal's "Saving: X" account lives in, created if missing."""
+    group = AccountGroup.objects.filter(book=book, account_type=ACCOUNT_TYPE_SAVING).order_by("pk").first()
+    if group is not None:
+        return group
+    name = SAVINGS_GROUP_NAME
+    if AccountGroup.objects.filter(book=book, name=name).exists():
+        name = f"{SAVINGS_GROUP_NAME} (goals)"
+    return AccountGroup.objects.create(
+        book=book,
+        account_type=ACCOUNT_TYPE_SAVING,
+        name=name,
+        description="What each goal saved, month by month",
+        is_system=True,
+    )
+
+
 def month_after(month):
     """First day of the month after the one containing `month`."""
     month = month.replace(day=1)
     return month.replace(year=month.year + 1, month=1) if month.month == 12 else month.replace(month=month.month + 1)
 
 
-def goal_spent_subquery(start=None, end=None):
-    """
-    What a goal has spent, as a scalar subquery on `Goal`.
-
-    Σ (dr − cr) of counted lines on the goal's own account (refunds reduce it),
-    plus what its linked accounts sent out under the "count it as spent" outflow
-    setting (`apps.budget.linked`). Entries dated from `start` (inclusive) to `end`
-    (exclusive). Void entries and entries behind an archived bank transaction don't
-    count, the same as everywhere else.
-    """
-    from apps.budget.linked import linked_spent_subquery
+def _fund_lines(start=None, end=None):
+    """Counted lines on `OuterRef("account")` (a goal's fund), dated `start` to `end` (exclusive)."""
     from apps.journal.models import JournalLine, counted_entries
 
     lines = JournalLine.objects.filter(counted_entries("journal_entry__"), account=OuterRef("account"))
@@ -108,13 +117,28 @@ def goal_spent_subquery(start=None, end=None):
         lines = lines.filter(journal_entry__entry_date__gte=start)
     if end is not None:
         lines = lines.filter(journal_entry__entry_date__lt=end)
-    total = lines.values("account").annotate(total=Sum(F("dr_amount") - F("cr_amount"))).values("total")
-    own = Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
-    return own + linked_spent_subquery(start, end)
+    return lines
+
+
+def _sum_subquery(lines, expression):
+    total = lines.values("account").annotate(total=Sum(expression)).values("total")
+    return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
+
+
+def goal_spent_subquery(start=None, end=None):
+    """
+    What a goal has spent, as a scalar subquery on `Goal`.
+
+    Σ (dr − cr) of counted lines on the goal's fund that a saving entry didn't
+    write (refunds reduce it), dated from `start` (inclusive) to `end`
+    (exclusive). Void entries don't count, the same as everywhere else.
+    """
+    lines = _fund_lines(start, end).filter(journal_entry__goal_saving__isnull=True)
+    return _sum_subquery(lines, F("dr_amount") - F("cr_amount"))
 
 
 def goal_assigned_subquery(start=None, end=None):
-    """Σ manual allocations (`GoalAllocation`) for months from `start` to `end` (exclusive)."""
+    """Σ the plan and the by-hand adjustments (`GoalAllocation`) for months from `start` to `end` (exclusive)."""
     filters = {}
     if start is not None:
         filters["month__gte"] = start.replace(day=1)
@@ -123,7 +147,7 @@ def goal_assigned_subquery(start=None, end=None):
     total = (
         GoalAllocation.objects.filter(goal=OuterRef("pk"), **filters)
         .values("goal")
-        .annotate(total=Sum("amount"))
+        .annotate(total=Sum(F("amount") + F("adjustment")))
         .values("total")
     )
     return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
@@ -131,15 +155,14 @@ def goal_assigned_subquery(start=None, end=None):
 
 def goal_allocated_subquery(start=None, end=None):
     """
-    What a goal has been given, as a scalar subquery on `Goal`: manual allocations
-    plus everything its linked accounts brought in (starting balances and linked
-    flows, `apps.budget.linked`), dated from `start` (inclusive) to `end`
-    (exclusive). Months are first-of-month dates, so a month range is
-    `(month, month_after(month))`.
+    What a goal has been given, as a scalar subquery on `Goal`: Σ (cr − dr) of
+    its fund's lines in saving entries (`GoalSaving`, written by
+    `apps.budget.goal_ledger` from the plan and the linked accounts), dated from
+    `start` (inclusive) to `end` (exclusive). A saving entry is dated the first
+    of its month, so a month range is `(month, month_after(month))`.
     """
-    from apps.budget.linked import linked_allocated_subquery
-
-    return goal_assigned_subquery(start, end) + linked_allocated_subquery(start, end)
+    lines = _fund_lines(start, end).filter(journal_entry__goal_saving__isnull=False)
+    return _sum_subquery(lines, F("cr_amount") - F("dr_amount"))
 
 
 class GoalQuerySet(models.QuerySet):
@@ -187,9 +210,11 @@ class Goal(BaseBookModel):
     """
     A savings goal: a budget envelope that never resets.
 
-    Saving is an allocation of unassigned money (`GoalAllocation`); spending is a
-    real transaction categorized to the goal's backing equity account. Every goal
-    has that account; not every equity account is a goal.
+    Saving is a real entry, Dr "Saving: X" / Cr the goal's fund (its backing
+    equity account), posted by `apps.budget.goal_ledger` from the month's plan
+    (`GoalAllocation`) and what linked accounts brought in. Spending is a debit
+    to the fund. The fund's balance is what's left. Every goal has a fund; not
+    every equity account is a goal.
     """
 
     name = models.CharField(max_length=200, verbose_name=_("Name"))
@@ -217,6 +242,17 @@ class Goal(BaseBookModel):
         blank=True,
         verbose_name=_("Account"),
         help_text=_("Associated equity account (automatically created)"),
+    )
+
+    # The expense side of every saving entry: "Saving: X", in `savings_group`.
+    saving_account = models.OneToOneField(
+        Account,
+        on_delete=models.SET_NULL,
+        related_name="saving_goal",
+        null=True,
+        blank=True,
+        verbose_name=_("Saving account"),
+        help_text=_("Expense account the goal's savings are booked to (automatically created)"),
     )
 
     # "Funded — stop asking for money". The goal keeps its claim either way.
@@ -277,14 +313,17 @@ class Goal(BaseBookModel):
         return reverse("budget:goal_detail", args=[*self.book.url_args, self.pk])
 
     def save(self, *args, **kwargs):
-        """Override save to automatically create backing account for new goals."""
-        if self.pk is None and not self.account_id:
+        """Create the fund and the saving account a new goal needs, in one transaction."""
+        if self.pk is None and not (self.account_id and self.saving_account_id):
             with transaction.atomic():
                 # Created inside the same transaction so a failed goal save
                 # doesn't leave an orphaned account behind.
-                self.account = Account.objects.create(
-                    book=self.book, name=f"Goal: {self.name}", account_group=goals_group(self.book)
-                )
+                if not self.account_id:
+                    self.account = Account.objects.create(
+                        book=self.book, name=f"Goal: {self.name}", account_group=goals_group(self.book)
+                    )
+                if not self.saving_account_id:
+                    self.saving_account = create_saving_account(self)
                 super().save(*args, **kwargs)
             return
 
@@ -359,8 +398,15 @@ class Goal(BaseBookModel):
 
 class GoalAllocation(BaseBookModel):
     """
-    Monthly allocation towards a goal.
-    This represents how much is being saved toward the goal each month.
+    A goal's month: the plan, and money taken out or put back by hand.
+
+    `amount` is the plan -- what you commit to saving this month. Money moved
+    into a linked account counts towards it rather than on top of it, so the
+    month saves the larger of the two (`apps.budget.goal_ledger`). A negative
+    `amount` (written before withdrawals had their own field) reads as one.
+
+    `adjustment` is money moved by hand outside the plan: a withdrawal, money
+    released on closing, or a shortfall covered. It always counts in full.
     """
 
     goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="allocations", verbose_name=_("Goal"))
@@ -373,6 +419,14 @@ class GoalAllocation(BaseBookModel):
         default=Decimal("0"),
         verbose_name=_("Amount"),
         help_text=_("Amount allocated this month"),
+    )
+
+    adjustment = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal("0"),
+        verbose_name=_("Adjustment"),
+        help_text=_("Money taken out (negative) or put back by hand this month, outside the plan"),
     )
 
     notes = models.TextField(blank=True, verbose_name=_("Notes"))
@@ -389,6 +443,60 @@ class GoalAllocation(BaseBookModel):
         # Ensure month is always first day of month
         self.month = self.month.replace(day=1)
         super().save(*args, **kwargs)
+
+
+def create_saving_account(goal):
+    """A new "Saving: X" account for `goal` (not yet linked to it)."""
+    return Account.objects.create(
+        book=goal.book,
+        name=f"Saving: {goal.name}",
+        account_group=savings_group(goal.book),
+        is_system=True,
+    )
+
+
+class GoalSaving(BaseBookModel):
+    """
+    The journal entry that books one month of a goal's saving
+    (docs/goals-ledger-plan.md). Written only by `apps.budget.goal_ledger`.
+
+    - KIND_SAVING, one per goal and month: Dr "Saving: X" / Cr fund for
+      max(plan, moved in) − moved out, sides flipped when that is negative.
+    - KIND_STARTING, one per linked account that counts the balance already
+      there: Dr the system equity offset / Cr fund. Equity to equity, so it
+      never reaches the income statement.
+
+    Deleting the entry deletes this row; the ledger deletes entries, never rows.
+    """
+
+    KIND_SAVING = "saving"
+    KIND_STARTING = "starting"
+    KIND_CHOICES = [(KIND_SAVING, _("Saving")), (KIND_STARTING, _("Starting balance"))]
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="savings", verbose_name=_("Goal"))
+    month = models.DateField(verbose_name=_("Month"))
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=KIND_SAVING)
+    link = models.ForeignKey(
+        "GoalAccountLink", on_delete=models.SET_NULL, null=True, blank=True, related_name="starting_entries"
+    )
+    entry = models.OneToOneField("journal.JournalEntry", on_delete=models.CASCADE, related_name="goal_saving")
+
+    class Meta:
+        ordering = ["month", "pk"]
+        default_related_name = "budget_goal_savings"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["goal", "month"], condition=models.Q(kind="saving"), name="goal_saving_one_per_month"
+            ),
+            models.UniqueConstraint(
+                fields=["link"],
+                condition=models.Q(kind="starting", link__isnull=False),
+                name="goal_saving_one_starting_per_link",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.goal.name} - {self.month.strftime('%Y-%m')} - {self.kind}"
 
 
 class GoalAccountLinkQuerySet(models.QuerySet):

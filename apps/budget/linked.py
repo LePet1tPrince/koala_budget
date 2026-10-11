@@ -1,10 +1,9 @@
 """
-Linked accounts: what an account linked to a goal does to that goal
-(docs/goal-linked-accounts-plan.md §3, §5).
+Linked accounts: what an account linked to a goal moves into or out of it
+(docs/goal-linked-accounts-plan.md §3, §5; docs/goals-ledger-plan.md).
 
-Nothing here is stored. Every figure is derived from counted journal lines, so
-editing, re-dating, re-categorizing, splitting, voiding, archiving, deleting or
-bulk-importing a transaction moves the goal with no hook to keep in step.
+Every figure here is derived from counted journal lines. `apps.budget.goal_ledger`
+reads them to size each month's saving entry; nothing else does.
 
 For a counted line `l` on an account linked to goal `G` (dated inside the link's
 range), the *other side* of `l`'s entry decides. Each other line falls in one class:
@@ -17,13 +16,16 @@ range), the *other side* of `l`'s entry decides. Each other line falls in one cl
 
 and each class's *share* is its amount on the side opposite `l` over the entry's
 total. Money arriving (`l.dr`) counts for every class; money leaving (`l.cr`) always
-comes out of the goal for `other`/`income`/`adjust`, and for `free` does what the
-goal's `outflow` says:
+comes out of the goal for `other`/`income`/`adjust`, and for `free` unless the
+goal's `outflow` says to leave the goal alone:
 
-    alloc_delta = (dr × (free + other + income + adjust)
-                   − cr × (other + income + adjust)
-                   − cr × free  [outflow = withdraw]) / total
-    spent_delta =  cr × free  [outflow = spend]   / total
+    in_delta    = dr × (free + other + income + adjust) / total
+    out_delta   = (cr × (other + income + adjust)
+                   + cr × free  [outflow ≠ ignore]) / total
+    alloc_delta = in_delta − out_delta
+
+The "spend" outflow setting is read as "withdraw": both lower the fund by the
+same amount, and the saving entry is the one place the goal is booked.
 
 A two-line entry is all one class, so the share is 0 or 1 and the result exact; a
 split's bank line takes just the legs that count, and a leg takes its own amount.
@@ -31,7 +33,7 @@ Only an entry with several lines on both sides divides pro rata, hence the round
 
 Expense lines never count: an expense has already lowered its envelope's claim, and
 lowering the goal's too would make Unassigned rise by money that no longer exists.
-A goal account's lines are goal spending, which `spent` already counts.
+A goal account's lines are the goal's own ledger, never a flow into it.
 
 Starting balances: a link with `include_starting_balance` gives the goal the
 account's balance on the day before `start_date`, in `start_date`'s month.
@@ -119,7 +121,8 @@ def linked_lines(start=None, end=None):
     - `link_goal`, `link_account`, `link_outflow`: the link's goal, the account, and
       the goal's outflow setting
     - `month`: first of the entry's month
-    - `alloc_delta`, `spent_delta`: what the line does to the goal
+    - `in_delta`, `out_delta`, `alloc_delta`: what the line moves into and out of
+      the goal, and the net
 
     Dated from `start` (inclusive) to `end` (exclusive). An account's links never
     overlap, so a line appears at most once.
@@ -150,16 +153,14 @@ def linked_lines(start=None, end=None):
         _out_free=_other_side_sum("dr_amount", ("free",)),
     )
     out_free = F("cr_amount") * F("_out_free")
-    alloc = (
-        F("dr_amount") * F("_in")
-        - F("cr_amount") * F("_out_kept")
-        - Case(When(link_outflow=Goal.OUTFLOW_WITHDRAW, then=out_free), default=_money(ZERO), output_field=WIDE)
+    moved_in = F("dr_amount") * F("_in")
+    moved_out = F("cr_amount") * F("_out_kept") + Case(
+        When(link_outflow=Goal.OUTFLOW_IGNORE, then=_money(ZERO)), default=out_free, output_field=WIDE
     )
-    spent = Case(When(link_outflow=Goal.OUTFLOW_SPEND, then=out_free), default=_money(ZERO), output_field=WIDE)
     return lines.annotate(
-        alloc_delta=Coalesce(Round(alloc / total, 2, output_field=MONEY), _money(ZERO)),
-        spent_delta=Coalesce(Round(spent / total, 2, output_field=MONEY), _money(ZERO)),
-    )
+        in_delta=Coalesce(Round(moved_in / total, 2, output_field=MONEY), _money(ZERO)),
+        out_delta=Coalesce(Round(moved_out / total, 2, output_field=MONEY), _money(ZERO)),
+    ).annotate(alloc_delta=F("in_delta") - F("out_delta"))
 
 
 def starting_balances(start=None, end=None):
@@ -192,39 +193,28 @@ def starting_balances(start=None, end=None):
     )
 
 
-def _per_goal(queryset, goal_field, value_field):
-    total = queryset.filter(**{goal_field: OuterRef("pk")}).values(goal_field).annotate(t=Sum(value_field)).values("t")
-    return Coalesce(Subquery(total, output_field=MONEY), _money(ZERO))
-
-
-def linked_allocated_subquery(start=None, end=None):
-    """What linked accounts added to a goal (scalar subquery on `Goal`), from `start` to `end`."""
-    return _per_goal(linked_lines(start, end), "link_goal", "alloc_delta") + _per_goal(
-        starting_balances(start, end), "goal", "amount"
-    )
-
-
-def linked_spent_subquery(start=None, end=None):
-    """What linked accounts spent from a goal (scalar subquery on `Goal`), from `start` to `end`."""
-    return _per_goal(linked_lines(start, end), "link_goal", "spent_delta")
-
-
 def monthly_linked(goal_ids, start=None, end=None):
-    """{goal id: {month: {"linked": Decimal, "spent": Decimal}}} from linked accounts."""
+    """
+    {goal id: {month: {"in": Decimal, "out": Decimal, "starting": Decimal}}}: what
+    linked accounts moved into and out of each goal per month, and the starting
+    balances counted in that month.
+    """
     result = {}
+
+    def cell(goal_id, month):
+        month = month.date() if hasattr(month, "date") else month
+        return result.setdefault(goal_id, {}).setdefault(month, {"in": ZERO, "out": ZERO, "starting": ZERO})
+
     rows = (
         linked_lines(start, end)
         .filter(link_goal__in=goal_ids)
         .values("link_goal", "month")
-        .annotate(linked=Sum("alloc_delta"), spent=Sum("spent_delta"))
+        .annotate(moved_in=Sum("in_delta"), moved_out=Sum("out_delta"))
     )
     for row in rows:
-        month = row["month"].date() if hasattr(row["month"], "date") else row["month"]
-        cell = result.setdefault(row["link_goal"], {}).setdefault(month, {"linked": ZERO, "spent": ZERO})
-        cell["linked"] += row["linked"]
-        cell["spent"] += row["spent"]
+        target = cell(row["link_goal"], row["month"])
+        target["in"] += row["moved_in"]
+        target["out"] += row["moved_out"]
     for link in starting_balances(start, end).filter(goal_id__in=goal_ids):
-        month = link.month.date() if hasattr(link.month, "date") else link.month
-        cell = result.setdefault(link.goal_id, {}).setdefault(month, {"linked": ZERO, "spent": ZERO})
-        cell["linked"] += link.amount
+        cell(link.goal_id, link.month)["starting"] += link.amount
     return result

@@ -93,7 +93,13 @@
       <div class="stat-figure {% if report_data.net_worth < 0 %}text-error{% endif %} hidden sm:block">{% icon "scale-balanced" class="inline-block shrink-0 w-5 h-5" %}</div>
       <div class="stat-title">{% translate "Net Worth" %}</div>
       <div class="stat-value text-2xl {% if report_data.net_worth < 0 %}text-error{% endif %}">{{ report_data.net_worth|currency }}</div>
-      <div class="stat-desc">{% translate "Assets − Liabilities" %}</div>
+      <div class="stat-desc">
+        {% if report_data.reserved_for_goals %}
+        {% blocktranslate trimmed with free=report_data.free_net_worth|currency %}{{ free }} free after goals{% endblocktranslate %}
+        {% else %}
+        {% translate "Assets − Liabilities" %}
+        {% endif %}
+      </div>
     </div>
   </div>
 
@@ -205,6 +211,16 @@
                 <td class="whitespace-nowrap">{% translate "Net Worth" %}</td>
                 <td class="text-right tabular-nums whitespace-nowrap {% if report_data.net_worth < 0 %}text-error{% endif %}">{{ report_data.net_worth|currency }}</td>
               </tr>
+              {% if report_data.reserved_for_goals %}
+              <tr class="text-sm text-base-content/70" data-testid="reserved-for-goals">
+                <td class="whitespace-nowrap">{% translate "Reserved for goals" %}</td>
+                <td class="text-right tabular-nums whitespace-nowrap">({{ report_data.reserved_for_goals|currency }})</td>
+              </tr>
+              <tr class="font-bold text-sm text-base-content" data-testid="free-net-worth">
+                <td class="whitespace-nowrap">{% translate "Free net worth" %}</td>
+                <td class="text-right tabular-nums whitespace-nowrap {% if report_data.free_net_worth < 0 %}text-error{% endif %}">{{ report_data.free_net_worth|currency }}</td>
+              </tr>
+              {% endif %}
             </tfoot>
           </table>
         </div>

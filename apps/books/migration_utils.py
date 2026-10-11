@@ -39,6 +39,7 @@ BACKFILLED_BOOK_MODELS = [
 BOOK_MODELS = [
     *BACKFILLED_BOOK_MODELS,
     ("budget", "goalaccountlink"),
+    ("budget", "goalsaving"),
 ]
 
 # Audit events that belong to the team rather than to its books.

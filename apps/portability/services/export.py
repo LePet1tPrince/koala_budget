@@ -15,7 +15,7 @@ from decimal import Decimal
 
 from django.db.models import Max, Min, Q
 
-from apps.accounts.models import Account, AccountGroup, Institution, Payee
+from apps.accounts.models import ACCOUNT_TYPE_SAVING, Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.budget.models import Budget, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
@@ -49,7 +49,22 @@ def _money(value) -> str:
 
 
 def _not_void(**extra):
-    return JournalLine.objects.filter(**extra).exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+    return _lines().filter(**extra).exclude(journal_entry__status=JournalEntry.STATUS_VOID)
+
+
+# A goal's saving entries and its "Saving: X" account are the goal ledger's,
+# derived from the plans and links that do travel; the importer rebuilds them
+# (`goal_ledger.rebuild_book`). Carrying them too would book every saving twice.
+def _accounts():
+    return Account.objects.exclude(account_group__account_type=ACCOUNT_TYPE_SAVING)
+
+
+def _entries():
+    return JournalEntry.objects.exclude(source=JournalEntry.SOURCE_GOAL)
+
+
+def _lines():
+    return JournalLine.objects.exclude(journal_entry__source=JournalEntry.SOURCE_GOAL)
 
 
 def build_row_count(book) -> int:
@@ -57,9 +72,9 @@ def build_row_count(book) -> int:
     The row count `EXPORT_MAX_ROWS` guards, without building anything. Cheap:
     three `count()` queries, no row construction.
     """
-    accounts = Account.objects.filter(book=book).count()
+    accounts = _accounts().filter(book=book).count()
     journal = (
-        JournalLine.objects.filter(book=book).count()
+        _lines().filter(book=book).count()
         + BankTransaction.objects.filter(book=book, journal_entry__isnull=True).count()
     )
     budget = Budget.objects.filter(book=book).count() + GoalAllocation.objects.filter(book=book).count()
@@ -116,7 +131,8 @@ def _assert_every_feed_row_travels(book, journal_rows: list[dict]) -> None:
 def _build_accounts(book) -> list[dict]:
     """One row per account, with its group, institution and goal folded in (§2.1)."""
     accounts = (
-        Account.objects.filter(book=book)
+        _accounts()
+        .filter(book=book)
         .select_related("account_group", "institution", "goal")
         .order_by(*Account._meta.ordering)
     )
@@ -164,9 +180,7 @@ def _place_feed_rows(book) -> tuple[dict[tuple[int, int], BankTransaction], list
     The count is reported in the manifest so the repair is disclosed rather
     than done quietly.
     """
-    line_accounts: set[tuple[int, int]] = set(
-        JournalLine.objects.filter(book=book).values_list("journal_entry_id", "account_id")
-    )
+    line_accounts: set[tuple[int, int]] = set(_lines().filter(book=book).values_list("journal_entry_id", "account_id"))
 
     lookup: dict[tuple[int, int], BankTransaction] = {}
     unplaceable: list[BankTransaction] = []
@@ -193,7 +207,8 @@ def _build_journal_rows(book) -> list[dict]:
     feed_lookup, unplaceable = _place_feed_rows(book)
 
     lines = (
-        JournalLine.objects.filter(book=book)
+        _lines()
+        .filter(book=book)
         .select_related("journal_entry", "journal_entry__payee", "account")
         .order_by("journal_entry__entry_date", "journal_entry_id", "id")
     )
@@ -298,7 +313,8 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
     checks were written before their entries were voided (`upgrade_6_to_7`).
     """
     non_void_lines = (
-        JournalLine.objects.filter(book=book)
+        _lines()
+        .filter(book=book)
         .filter(~Q(journal_entry__status=JournalEntry.STATUS_VOID) | Q(journal_entry_id__in=set(count_entry_ids)))
         .select_related("account", "account__account_group")
     )
@@ -325,7 +341,7 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
         if allocation.goal.account_id:
             goal_totals[allocation.goal.account_id] += allocation.amount
 
-    date_bounds = JournalEntry.objects.filter(book=book).aggregate(first=Min("entry_date"), last=Max("entry_date"))
+    date_bounds = _entries().filter(book=book).aggregate(first=Min("entry_date"), last=Max("entry_date"))
 
     statements = Reconciliation.objects.filter(book=book)
     statement_counts = {
@@ -334,8 +350,8 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
         "reconciled_lines": JournalLine.objects.filter(book=book, is_reconciled=True).count(),
     }
 
-    accounts_count = Account.objects.filter(book=book).count()
-    entries_count = JournalEntry.objects.filter(book=book).count()
+    accounts_count = _accounts().filter(book=book).count()
+    entries_count = _entries().filter(book=book).count()
     goals_count = Account.objects.filter(book=book, goal__isnull=False).count()
 
     # `uncategorized` counts what the *file* will hold as uncategorized, which

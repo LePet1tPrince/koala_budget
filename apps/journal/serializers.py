@@ -155,6 +155,10 @@ class JournalEntrySerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         """Update journal entry and replace all lines."""
+        from apps.journal.services.simple_edit import GOAL_ENTRY_REFUSAL
+
+        if instance.source == JournalEntry.SOURCE_GOAL:
+            raise serializers.ValidationError(str(GOAL_ENTRY_REFUSAL))
         lines_data = validated_data.pop("lines", None)
 
         # Replacing the lines deletes and recreates them, which would drop
@@ -349,7 +353,11 @@ class SimpleLineSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         """Update a journal entry and its lines from simple line data."""
+        from apps.journal.services.simple_edit import GOAL_ENTRY_REFUSAL
+
         journal_entry = instance.journal_entry
+        if journal_entry.source == JournalEntry.SOURCE_GOAL:
+            raise serializers.ValidationError(str(GOAL_ENTRY_REFUSAL))
 
         # The simple-line format assumes a 2-line entry; updating one line of a
         # larger split entry would unbalance it.

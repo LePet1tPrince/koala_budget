@@ -6,6 +6,7 @@ link service's refusals, and the goal's numbers through `with_progress`.
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -177,11 +178,13 @@ class OutflowTest(LinkedFixture):
         self.assertEqual(self.numbers(), {"allocated": D("800"), "spent": D("0"), "left": D("800")})
         self.assertEqual(self.unassigned(), before + D("200"))
 
-    def test_spend(self):
+    def test_spend_reads_as_withdraw(self):
+        # The saving entry is the one place a goal is booked, so "count it as
+        # spent" lowers what was saved, the same as a withdrawal.
         self.set_outflow(Goal.OUTFLOW_SPEND)
         before = self.unassigned()
         self.post(date(2026, 9, 5), self.checking, self.savings, "200")
-        self.assertEqual(self.numbers(), {"allocated": D("1000"), "spent": D("200"), "left": D("800")})
+        self.assertEqual(self.numbers(), {"allocated": D("800"), "spent": D("0"), "left": D("800")})
         self.assertEqual(self.unassigned(), before + D("200"))
 
     def test_ignore(self):
@@ -313,8 +316,8 @@ class MonthlyTest(LinkedFixture):
         self.post(date(2026, 9, 5), self.savings, self.checking, "300")
         self.post(date(2026, 10, 5), self.checking, self.savings, "50")
         result = monthly_linked([self.goal.pk])[self.goal.pk]
-        self.assertEqual(result[SEPT], {"linked": D("1300"), "spent": D("0")})
-        self.assertEqual(result[OCT], {"linked": D("0"), "spent": D("50")})
+        self.assertEqual(result[SEPT], {"in": D("300"), "out": D("0"), "starting": D("1000")})
+        self.assertEqual(result[OCT], {"in": D("0"), "out": D("50"), "starting": D("0")})
 
     def test_with_progress_month_split(self):
         self.link()
@@ -430,7 +433,8 @@ class SetLinksTest(LinkedFixture):
 
 
 class GoalMonthlyTest(LinkedFixture):
-    def test_saved_and_spent_include_linked(self):
+    def test_moving_money_in_counts_towards_the_plan(self):
+        # Plan 50, moved in 300: the month saves the larger, 300, not both.
         from .services import goal_monthly
 
         self.link()
@@ -440,8 +444,25 @@ class GoalMonthlyTest(LinkedFixture):
         self.post(date(2026, 9, 6), self.goal.account, self.checking, "20")
         self.post(date(2026, 10, 6), self.checking, self.savings, "40")
         result = goal_monthly(self.book, [self.goal])[self.goal.pk]
-        self.assertEqual(result[SEPT], {"assigned": D("50"), "linked": D("300"), "saved": D("350"), "spent": D("20")})
-        self.assertEqual(result[OCT]["spent"], D("40"))
+        self.assertEqual(result[SEPT], {"assigned": D("50"), "linked": D("250"), "saved": D("300"), "spent": D("20")})
+        # Money leaving the linked account is a withdrawal, not spending.
+        self.assertEqual(result[OCT], {"assigned": D("0"), "linked": D("-40"), "saved": D("-40"), "spent": D("0")})
+
+    def test_plan_above_what_moved_in(self):
+        from .services import goal_monthly
+
+        self.link()
+        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=SEPT, amount=D("500"))
+        self.post(date(2026, 9, 5), self.savings, self.checking, "300")
+        self.assertEqual(goal_monthly(self.book, [self.goal])[self.goal.pk][SEPT]["saved"], D("500"))
+
+    def test_withdrawal_counts_in_full_whatever_moved_in(self):
+        self.link()
+        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=SEPT, amount=D("100"))
+        self.post(date(2026, 9, 5), self.savings, self.checking, "300")
+        with transaction.atomic():
+            GoalService(self.book).adjust(self.goal, SEPT, D("-150"))
+        self.assertEqual(self.numbers()["allocated"], D("150"))
 
 
 class AllocationReadsTest(TestCase):
@@ -454,6 +475,7 @@ class AllocationReadsTest(TestCase):
     ALLOWED = {
         "apps/budget/models.py",  # goal_assigned_subquery
         "apps/budget/services.py",  # writers + goal_monthly
+        "apps/budget/goal_ledger.py",  # books the plan into the ledger
         "apps/budget/views.py",  # assign/withdraw writers
         "apps/ynab_import/services/apply.py",  # bulk import
         "apps/portability/services/apply.py",  # import

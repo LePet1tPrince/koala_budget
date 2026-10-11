@@ -78,6 +78,17 @@ def _refusal(targets, entry_id, message):
     return {"kind": kind, "id": ident, "error": str(message)}
 
 
+def _goal_entries(targets):
+    """A goal's saving entries follow its plan; they are never voided or restored by hand."""
+    from .simple_edit import GOAL_ENTRY_REFUSAL
+
+    return [
+        _refusal(targets, entry_id, GOAL_ENTRY_REFUSAL)
+        for entry_id, entry in targets.entries.items()
+        if entry.source == JournalEntry.SOURCE_GOAL
+    ]
+
+
 @transaction.atomic
 def void(*, entries=(), rows=()):
     """
@@ -89,8 +100,10 @@ def void(*, entries=(), rows=()):
     """
     targets = _collect(entries, rows)
 
-    refused = []
+    refused = _goal_entries(targets)
     for entry_id, entry in targets.entries.items():
+        if entry.source == JournalEntry.SOURCE_GOAL:
+            continue
         _kind, _ident, own_account_id = targets.asked_by[entry_id]
         try:
             assert_entry_removable(entry, own_account_id=own_account_id, verb=_("voiding it"))
@@ -126,7 +139,7 @@ def restore(*, entries=(), rows=()):
     """
     targets = _collect(entries, rows)
 
-    refused = [
+    refused = _goal_entries(targets) + [
         _refusal(
             targets,
             entry_id,

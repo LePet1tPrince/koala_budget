@@ -81,6 +81,15 @@ class WipeCounts:
 
 def wipe_book(book) -> WipeCounts:
     """Delete every row this feature exports for `book`. See module docstring for the order."""
+    from apps.budget import goal_ledger
+
+    # Deleting links and plans asks the goal ledger to re-book their goals,
+    # which are about to go too.
+    with goal_ledger.suspended():
+        return _wipe_book(book)
+
+
+def _wipe_book(book) -> WipeCounts:
     counts = WipeCounts()
 
     # Break the FK from feed rows to entries before the entries are
