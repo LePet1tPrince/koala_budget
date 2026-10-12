@@ -67,7 +67,7 @@ class BucketSyncTest(BucketFixture):
         for account in (self.salary, self.groceries):
             bucket = bucket_of(account)
             self.assertIsNotNone(bucket)
-            self.assertEqual(bucket.name, account.name)
+            self.assertEqual(bucket.name, f"{account.name} (budget)")
             self.assertTrue(bucket.is_system)
             self.assertEqual(bucket.account_group.account_type, ACCOUNT_TYPE_BUDGET)
             self.assertTrue(bucket.account_group.is_system)
@@ -87,7 +87,7 @@ class BucketSyncTest(BucketFixture):
     def test_rename_follows_the_category(self):
         self.groceries.name = "Food"
         self.groceries.save()
-        self.assertEqual(bucket_of(self.groceries).name, "Food")
+        self.assertEqual(bucket_of(self.groceries).name, "Food (budget)")
 
     def test_moving_to_an_asset_group_removes_the_bucket(self):
         self.groceries.account_group = self.assets
@@ -103,7 +103,7 @@ class BucketSyncTest(BucketFixture):
         goal = Goal.objects.create(book=self.book, name="Car", target_amount=Decimal("5000"))
         bucket = bucket_of(goal.account)
         self.assertIsNotNone(bucket)
-        self.assertEqual(bucket.name, goal.account.name)
+        self.assertEqual(bucket.name, "Goal: Car (budget)")
         self.assertFalse(bucket.is_archived)
 
         goal.is_archived = True
@@ -127,8 +127,8 @@ class BucketSyncTest(BucketFixture):
         Account.objects.filter(pk=stale.pk).update(name="Old name")
         sync_book(self.book)
         sync_book(self.book)
-        self.assertEqual(bucket_of(created[0]).name, "Rent")
-        self.assertEqual(bucket_of(self.salary).name, "Salary")
+        self.assertEqual(bucket_of(created[0]).name, "Rent (budget)")
+        self.assertEqual(bucket_of(self.salary).name, "Salary (budget)")
         self.assertEqual(buckets(self.book).count(), 4)
 
     def test_a_template_chart_gets_its_buckets(self):

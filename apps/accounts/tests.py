@@ -1271,7 +1271,9 @@ class InstitutionAccountsTest(TestCase):
         self.url = reverse("accounts:institution_accounts", args=[*self.book.url_args, self.td.pk])
 
     def institutions(self):
-        return dict(Account.objects.filter(book=self.book).values_list("name", "institution__name"))
+        return dict(
+            Account.objects.filter(book=self.book).exclude_budget_buckets().values_list("name", "institution__name")
+        )
 
     def test_checklist_offers_assets_and_liabilities_only(self):
         response = self.client.get(self.td.get_absolute_url())

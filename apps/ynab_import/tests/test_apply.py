@@ -242,7 +242,7 @@ class SampleApplyTest(TestCase):
         # Every goal's account is planned with the chart (the four savings
         # categories), replacing the two expense accounts spending used to land in.
         # No `Uncategorized Expense`/`Income`: the rows that needed them wait in the Inbox.
-        self.assertEqual(Account.objects.filter(book=self.book).count(), 104)
+        self.assertEqual(Account.objects.filter(book=self.book).exclude_budget_buckets().count(), 104)
         # No `Budget` rows on goal categories: 56 of the old 1,872 were on them.
         self.assertEqual(Budget.objects.filter(book=self.book).count(), 1816)
         self.assertEqual(Goal.objects.filter(book=self.book).count(), 4)

@@ -83,10 +83,18 @@ def _wants_bucket(account, goal):
     return goal is not None or account.account_group.account_type in PAIRED_TYPES
 
 
+def bucket_name(account):
+    """
+    A bucket is named after its category, but never *as* it: lookups by name
+    ("the Groceries account") must keep finding the category alone.
+    """
+    return f"{account.name} (budget)"
+
+
 def _bucket_fields(account, goal):
     """What a bucket copies from its category. A goal's bucket is archived with the goal."""
     return {
-        "name": account.name,
+        "name": bucket_name(account),
         "is_archived": goal.is_archived if goal is not None else account.is_archived,
     }
 

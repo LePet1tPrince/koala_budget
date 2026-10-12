@@ -59,7 +59,7 @@ def backfill(apps, schema_editor):
             [
                 Account(
                     book_id=book_id,
-                    name=account.name,
+                    name=f"{account.name} (budget)",
                     account_group=group,
                     is_system=True,
                     paired_account=account,
