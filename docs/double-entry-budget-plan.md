@@ -11,8 +11,12 @@ Net worth = equity. We split equity into named buckets that say what each dollar
 |---|---|---|---|
 | **Unassigned** | book (system) | credit | Money with no job |
 | **Envelope** | expense category | credit | Money set aside for that category |
-| **Goal** | goal (exists today) | credit | Money saved for the goal |
+| **Goal bucket** | goal | credit | Money saved for the goal |
 | **Expected income** | income category | debit | Income budgeted but not yet received (only when "budget future income" is on) |
+
+All four are one stored account type, `budget`, with a `paired_account` link to the category they budget for (an expense, an income account, or a goal's own account); Unassigned is the one paired with nothing. The role is derived from the pair.
+
+**Goals work like expenses.** A goal's own account ("Goal: Car") stays the category that spending from the goal is categorized to; its paired goal bucket holds what was saved. Left in the goal = bucket − spending, exactly like an envelope's available.
 
 The existing Reconciliation Adjustments equity (opening balances, adjustments) merges into **Unassigned**.
 
@@ -55,9 +59,9 @@ Check: net worth 15,000 + salary still due 2,000 = 17,000 = Unassigned 1,500 + e
 | Opening balance | Dr Bank / Cr Unassigned |
 | Plan income | Dr Expected income / Cr Unassigned |
 | Receive income | Dr Bank / Cr Income. Income clears against Expected income, or against Unassigned if future income is off |
-| Assign / move / cover | Dr Unassigned (or Envelope A) / Cr Envelope or Goal |
+| Assign / move / cover | Dr Unassigned (or Envelope A) / Cr Envelope or Goal bucket |
 | Spend | Dr Expense / Cr Bank. Expense draws down its paired Envelope |
-| Spend from a goal | Dr Goal / Cr Bank (same as today) |
+| Spend from a goal | Dr Goal: Car / Cr Bank (same as today). The goal account draws down its paired Goal bucket |
 
 Resulting invariant, which the trial balance enforces for free:
 `Assets − Liabilities + Expected income = Unassigned + Envelopes + Goals`
@@ -69,14 +73,14 @@ Resulting invariant, which the trial balance enforces for free:
 4. **Reporting.** Budget entries are equity-to-equity, so they never touch the income statement. The balance sheet's equity section *becomes* the Dollar Map.
 
 ## Requirements (agreed)
-1. **Auto-paired buckets.** Creating an Expense account creates its Envelope, and creating an Income account creates its Expected-income account. Rename, archive, restore and delete follow the pair. A bucket has no form of its own.
-2. **Never shown as a category.** Unassigned, Envelope and Expected-income accounts are left out of every categorization picker:
+1. **Auto-paired buckets.** Creating an Expense account creates its Envelope, creating an Income account creates its Expected-income account, and creating a goal creates its Goal bucket. Rename, archive, restore and delete follow the pair. A bucket has no form of its own.
+2. **Never shown as a category.** Every budget bucket is left out of every categorization picker:
    - Bank Feed, categorize mode, CSV map, split legs and the Transactions edit modal.
    - Filtered in both shared helpers: `picker_accounts_data()` (`apps/budget/services.py`) on the server and `pickableAccounts` (`common/accountKind.js`) on the client.
 3. **Ledger guard: budget-only accounts stay in budget entries.**
    - New `JournalEntry.SOURCE_BUDGET`.
-   - Unassigned, Envelope and Expected income may appear only in `SOURCE_BUDGET` entries, and those entries may hold only budget accounts plus Goals.
-   - Goals are the one dual account: `Dr Goal / Cr Bank` is real goal spending, `Dr Unassigned / Cr Goal` is a budget move.
+   - Budget buckets may appear only in `SOURCE_BUDGET` entries, and those entries may hold only budget buckets.
+   - No exception for goals: their buckets are budget-only and their accounts are ordinary categories (`Dr Goal: Car / Cr Bank` is real goal spending, `Dr Unassigned / Cr Goal bucket` is a budget move).
    - Enforced in two layers:
      - the model, in `JournalLine.save()` / entry validation, so every path (API, import, admin) is covered;
      - `apps/accounts/guards.py::assert_category_allowed`, so the user sees a readable refusal.
@@ -88,7 +92,7 @@ Resulting invariant, which the trial balance enforces for free:
 
 ## Migration (mechanical)
 - `Budget` rows → monthly budget entries.
-- `GoalAllocation` rows → Unassigned→Goal entries.
+- `GoalAllocation` rows → Unassigned→Goal bucket entries.
 - Opening-balance equity → Unassigned.
 - Verify with the existing `compute_unassigned()`: it must equal the new Unassigned balance (after the overspend rule) for every month, then retire it.
 
@@ -96,3 +100,11 @@ Resulting invariant, which the trial balance enforces for free:
 - Per book, per month: old `compute_unassigned()` == new balance-derived Unassigned.
 - Trial balance holds.
 - The `apps/budget/test_unassigned.py` matrix passes unchanged.
+
+## Phases
+Each phase is its own branch off the `budget-ledger` integration branch (itself cut from `develop`, which stays untouched as the fallback).
+
+1. **Budget accounts + ledger guard** (`budget-ledger-phase-1-accounts`): the `budget` type, `Account.paired_account`, Unassigned and a bucket per income/expense/goal account (`apps/budget/buckets.py`, backfilled by `budget.0009`), buckets hidden from every picker and page, and `assert_budget_entry_rules` on every line write. No budget numbers change.
+2. **Budget entries:** `Budget` and `GoalAllocation` rows written as `SOURCE_BUDGET` entries alongside the old tables; old and new Unassigned must agree for every book and month.
+3. **Switch over:** budget page, goals, Dollar Map and balance sheet read balances; old tables and `compute_unassigned()` retired; Reconciliation Adjustments merged into Unassigned.
+4. **Portability:** buckets and budget entries in the export format, older archives still import.

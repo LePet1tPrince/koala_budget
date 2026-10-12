@@ -718,7 +718,11 @@ def transactions_home(request, team_slug, book_slug):
     # The edit modal's account and payee pickers, served with the page the same
     # way `bank_feed_home` serves them. A fetch on open would make the first row
     # click wait on a round trip for a list that rarely changes.
-    all_accounts = Account.for_book.select_related("account_group", "institution").order_by("name")
+    # System accounts stay (an opening-balance entry keeps its own category);
+    # budget buckets never appear in a transaction.
+    all_accounts = (
+        Account.for_book.exclude_budget_buckets().select_related("account_group", "institution").order_by("name")
+    )
     all_payees = Payee.for_book.all().order_by("name")
 
     return render(

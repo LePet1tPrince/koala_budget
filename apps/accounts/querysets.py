@@ -20,6 +20,17 @@ def _through(as_of):
 class AccountQuerySet(models.QuerySet):
     """Custom QuerySet for Account model with optimized balance calculation."""
 
+    def budget_buckets(self):
+        from apps.accounts.models import ACCOUNT_TYPE_BUDGET
+
+        return self.filter(account_group__account_type=ACCOUNT_TYPE_BUDGET)
+
+    def exclude_budget_buckets(self):
+        """Every account a user works with: everything but the app-maintained budget buckets."""
+        from apps.accounts.models import ACCOUNT_TYPE_BUDGET
+
+        return self.exclude(account_group__account_type=ACCOUNT_TYPE_BUDGET)
+
     def with_balance(self, as_of=None):
         """Annotate accounts with their calculated balance in a single query (optionally as of a date)."""
         counted = _counted() & _through(as_of)

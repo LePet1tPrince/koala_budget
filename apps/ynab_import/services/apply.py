@@ -21,6 +21,7 @@ from apps.accounts.models import ACCOUNT_TYPE_INCOME, Account, AccountGroup, Ins
 from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.transfer_detection import dismiss_all_candidates
 from apps.bank_feed.services.transfer_mirror import mirror_rows_for
+from apps.budget.buckets import sync_book
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
@@ -119,6 +120,8 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
 
     report(85, "Setting your savings goals")
     goals = _create_goals(book, plan, accounts)
+    # The accounts were bulk inserted, which sends no signals: give them their budget buckets.
+    sync_book(book)
 
     report(92, "Recording your opening balances")
     openings = _create_openings(book, plan, accounts)

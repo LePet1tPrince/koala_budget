@@ -851,13 +851,14 @@ def goal_left_by_account(book, month=None):
 def picker_accounts_data(book, month=None):
     """
     Accounts for a category picker, serialized: every account except system ones
-    (bookkeeping, never a category), with goal accounts marked and their balance
-    ("Car · $600 left").
+    (bookkeeping, never a category) and budget buckets (never in a transaction),
+    with goal accounts marked and their balance ("Car · $600 left").
     """
     from apps.accounts.serializers import PickerAccountSerializer
 
     accounts = (
         Account.objects.filter(book=book, is_system=False)
+        .exclude_budget_buckets()
         .select_related("account_group", "institution")
         .order_by("name")
     )

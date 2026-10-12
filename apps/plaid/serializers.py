@@ -56,7 +56,7 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
         # account to another tenant's ledger account or item
         request = self.context.get("request")
         if request is not None and getattr(request, "book", None):
-            self.fields["account"].queryset = Account.for_book.all()
+            self.fields["account"].queryset = Account.for_book.exclude_budget_buckets()
             self.fields["item"].queryset = PlaidItem.for_book.all()
 
 

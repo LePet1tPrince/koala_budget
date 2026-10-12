@@ -22,6 +22,7 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
+from apps.budget.buckets import sync_book
 from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
@@ -134,6 +135,8 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
 
     report(40, "Writing goals")
     goal_id_by_account_id = _insert_goals(book, tables.accounts, account_id_map)
+    # Bulk inserts send no signals: give the new categories and goals their budget buckets.
+    sync_book(book)
 
     report(50, "Writing budgets")
     _insert_budgets(book, tables.budget_rows, account_id_map)
