@@ -22,6 +22,7 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
+from apps.budget import ledger as budget_ledger
 from apps.budget.buckets import sync_book
 from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
 from apps.journal.models import JournalEntry, JournalLine
@@ -141,6 +142,8 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
     report(50, "Writing budgets")
     _insert_budgets(book, tables.budget_rows, account_id_map)
     _insert_goal_allocations(book, tables.budget_rows, account_id_map, goal_id_by_account_id)
+    # Bulk inserts again: write the budget entries the rows describe.
+    budget_ledger.sync_book(book)
 
     goal_links_created = _insert_goal_links(book, tables.goal_links, account_id_map, goal_id_by_account_id)
 

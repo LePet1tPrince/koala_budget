@@ -33,7 +33,7 @@ from .filters import (
     apply_ordering,
     facet_values,
 )
-from .models import JournalEntry, JournalLine, counted_entries
+from .models import JournalEntry, JournalLine, counted_entries, transaction_entries
 from .serializers import (
     JournalEntrySerializer,
     SimpleLineSerializer,
@@ -86,7 +86,12 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Get journal entries for the current book with optimized queries."""
-        return JournalEntry.for_book.select_related("payee").prefetch_related("lines__account")
+        # Budget entries are maintained by the app (apps.budget.ledger), never through this API.
+        return (
+            JournalEntry.for_book.filter(transaction_entries())
+            .select_related("payee")
+            .prefetch_related("lines__account")
+        )
 
     def perform_create(self, serializer):
         """Create journal entry in the current book."""
@@ -212,9 +217,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         - month: Month to filter by (YYYY-MM-DD format)
         """
         qs = (
-            JournalLine.objects.filter(
-                book=self.request.book,
-            )
+            JournalLine.objects.filter(transaction_entries("journal_entry__"), book=self.request.book)
             .select_related(
                 "account",
                 "account__account_group",
@@ -447,7 +450,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         unfiltered list pays for none of them.
         """
         return (
-            JournalEntry.for_book.filter(counted_entries())
+            JournalEntry.for_book.filter(counted_entries(), transaction_entries())
             .select_related("payee")
             .prefetch_related("lines__account")
             .annotate(**annotations_for(self.request.query_params, facet_column=facet_column))
@@ -502,9 +505,10 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         and it is called once per entry -- so a batch of two hundred would
         otherwise be a few hundred queries.
         """
-        return JournalEntry.for_book.select_related("payee").prefetch_related(
-            "lines__account__account_group",
-            "bank_feed_transactions",
+        return (
+            JournalEntry.for_book.filter(transaction_entries())
+            .select_related("payee")
+            .prefetch_related("lines__account__account_group", "bank_feed_transactions")
         )
 
     def load_for_edit(self, ids):

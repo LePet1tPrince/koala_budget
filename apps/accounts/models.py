@@ -118,6 +118,24 @@ class Account(BaseBookModel):
     def get_absolute_url(self):
         return reverse("accounts:account_detail", args=[*self.book.url_args, self.pk])
 
+    def delete(self, *args, **kwargs):
+        """
+        Delete, first releasing the budget-entry lines on this account's budget
+        bucket (or on it, if it is one) -- `JournalLine.account` is PROTECT, and
+        those lines only mirror budget rows that go with the account anyway. The
+        months they were in are rebuilt once the rows are gone.
+        """
+        from django.db import transaction
+
+        from apps.budget import ledger
+
+        with transaction.atomic():
+            buckets = [self] if self.is_budget_bucket else list(Account.objects.filter(paired_account=self))
+            touched = ledger.release_bucket_lines(buckets) if buckets else set()
+            result = super().delete(*args, **kwargs)
+            ledger.resync(touched)
+        return result
+
     @property
     def is_budget_bucket(self):
         return self.account_group.account_type == ACCOUNT_TYPE_BUDGET

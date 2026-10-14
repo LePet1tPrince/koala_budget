@@ -1,6 +1,6 @@
 from django import template
 
-from apps.journal.models import JournalEntry, counted_entries
+from apps.journal.models import JournalEntry, counted_entries, transaction_entries
 
 register = template.Library()
 
@@ -12,7 +12,7 @@ def first_entry_date(book):
         return ""
     first = (
         JournalEntry.objects.filter(book=book)
-        .filter(counted_entries())
+        .filter(counted_entries(), transaction_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
         .first()

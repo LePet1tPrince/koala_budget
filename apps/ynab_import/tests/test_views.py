@@ -19,7 +19,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Payee
 from apps.audit.models import AuditEvent
-from apps.journal.models import JournalEntry
+from apps.journal.models import JournalEntry, transaction_entries
 from apps.onboarding.models import OnboardingState
 from apps.ynab_import.models import YnabImport
 from apps.ynab_import.services.progress import ProgressChannel
@@ -145,7 +145,7 @@ class WizardTest(TestCase):
         self.assertEqual(status["status"], "done")
         self.assertEqual(status["result"]["created"]["entries"], 5)
         self.assertTrue(status["result"]["reconciliation"]["passed"])
-        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 5 + 2)
+        self.assertEqual(JournalEntry.objects.filter(transaction_entries(), book=self.book).count(), 5 + 2)
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
     def test_the_stored_export_is_cleared_once_it_is_in_the_ledger(self):

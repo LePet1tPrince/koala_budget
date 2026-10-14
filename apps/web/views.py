@@ -18,7 +18,7 @@ from apps.books.helpers import book_display_name, last_book_for_team, team_has_s
 from apps.budget.models import Budget, Goal
 from apps.budget.services import NetWorthService
 from apps.budget.unassigned import allocation_bar, compute_unassigned
-from apps.journal.models import JournalEntry, counted_entries
+from apps.journal.models import JournalEntry, counted_entries, transaction_entries
 from apps.monthly_review.models import MonthlyReviewState
 from apps.monthly_review.services.budget import _prev_month
 from apps.onboarding.views import get_or_create_state
@@ -97,7 +97,9 @@ def book_home(request, team_slug, book_slug):
     ynab_url = (
         reverse("ynab_import:home", args=book.url_args)
         if getattr(settings, "YNAB_IMPORT_ENABLED", False)
-        and not JournalEntry.objects.filter(book=book).exclude(status=JournalEntry.STATUS_VOID).exists()
+        and not JournalEntry.objects.filter(transaction_entries(), book=book)
+        .exclude(status=JournalEntry.STATUS_VOID)
+        .exists()
         else ""
     )
     # An import runs in a worker, so a user who closed the tab comes back *here*,
@@ -114,7 +116,7 @@ def book_home(request, team_slug, book_slug):
 
     first_entry_date = (
         JournalEntry.objects.filter(book=book)
-        .filter(counted_entries())
+        .filter(counted_entries(), transaction_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
         .first()
@@ -198,7 +200,10 @@ def _is_set_up(book) -> bool:
     """
     return (
         Account.objects.filter(book=book).exclude_budget_buckets().exists()
-        and (JournalEntry.objects.filter(book=book).exists() or BankTransaction.objects.filter(book=book).exists())
+        and (
+            JournalEntry.objects.filter(transaction_entries(), book=book).exists()
+            or BankTransaction.objects.filter(book=book).exists()
+        )
         and Budget.objects.filter(book=book).exists()
     )
 

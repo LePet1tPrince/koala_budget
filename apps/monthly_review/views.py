@@ -28,7 +28,7 @@ from django.views.decorators.http import require_POST
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
-from apps.journal.models import JournalEntry, counted_entries
+from apps.journal.models import JournalEntry, counted_entries, transaction_entries
 
 from .exports import export_monthly_review_csv
 from .models import MonthlyReviewState
@@ -101,7 +101,7 @@ def _book_has_activity_by(book, month) -> bool:
     """Whether the book had any (non-void) ledger activity on or before `month`."""
     first_entry_date = (
         JournalEntry.objects.filter(book=book)
-        .filter(counted_entries())
+        .filter(counted_entries(), transaction_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
         .first()
