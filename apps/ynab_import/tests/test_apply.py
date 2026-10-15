@@ -231,13 +231,13 @@ class SampleApplyTest(TestCase):
             (estimated_rows,) = cursor.fetchone()
         self.assertGreaterEqual(estimated_rows, JournalLine.objects.filter(book=self.book).count())
 
-    def test_budget_entries_mirror_the_budget(self):
+    def test_budget_entries_are_sound(self):
         # Five years of budgets and goal allocations, written into the ledger: every
-        # month's entry matches its rows, and Unassigned read off the buckets equals
-        # Unassigned read off the rows for every month of the book's history.
+        # month's entry is well formed, and Unassigned from the bucket balances equals
+        # Unassigned from the monthly walk for every month of the book's history.
         last = JournalEntry.objects.filter(book=self.book).order_by("-entry_date").first().entry_date
         result = ledger.check_book(self.book, through=last)
-        self.assertEqual(result.bucket_mismatches, [])
+        self.assertEqual(result.entry_problems, [])
         self.assertEqual(result.unassigned_mismatches, [])
         self.assertGreater(result.months_checked, 24)
 

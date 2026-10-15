@@ -148,11 +148,11 @@ class RoundTripTests(TestCase):
         self.dest_tables = read.read_archive(self.dest_bytes)
 
     def test_budget_entries_are_rebuilt_on_import(self):
-        # Budget entries don't travel (apps.budget.ledger); the destination writes
-        # its own from the imported rows.
+        # Budget entries don't travel as journal rows (apps.budget.ledger); budget.csv
+        # is read off them and the destination writes its own from it.
         for book in (self.source_book, self.dest_book):
             result = ledger.check_book(book)
-            self.assertEqual(result.bucket_mismatches, [], book)
+            self.assertEqual(result.entry_problems, [], book)
             self.assertEqual(result.unassigned_mismatches, [], book)
         self.assertEqual(
             JournalEntry.objects.filter(book=self.dest_book, source=JournalEntry.SOURCE_BUDGET).count(),
