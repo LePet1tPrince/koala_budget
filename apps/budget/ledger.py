@@ -12,9 +12,12 @@ budget bucket (`apps.budget.buckets`) plus one balancing line on Unassigned:
 Negative amounts post to the other side. Unassigned carries the net of the month,
 so the entry always balances.
 
-In this phase the `Budget` and `GoalAllocation` rows are still the source of
-truth: the entry is *derived* from them and rebuilt whenever they change, never
-edited on its own. `sync_month` is the one writer, wired by `post_save` signals
+The `Budget` and `GoalAllocation` rows are still what gets written: the entry is
+*derived* from them and rebuilt whenever they change, never edited on its own.
+Every figure is read off the entries, though (phase 3a): budgeted amounts
+(`budgeted_by_month_category`), goal allocations (`goal_assigned_by_month` and
+`apps.budget.models.goal_assigned_subquery`), and so every available, every goal's
+allocated/left and Unassigned. `sync_month` is the one writer, wired by `post_save` signals
 (`apps.budget.signals`) for single saves and called explicitly by every path that
 writes rows in bulk or deletes them. `check_book` proves the mirror faithful:
 each bucket's balance equals the rows behind it, and `ledger_unassigned` — the
@@ -195,6 +198,35 @@ def sync_book(book):
     sync_months(book, months)
 
 
+def resync_if_retyped(account):
+    """
+    Rewrite the months whose budget lines on `account`'s bucket no longer match its
+    rows. An income budget is a debit and an expense budget a credit, so a category
+    moved between an income and an expense group leaves every one of its lines on
+    the wrong side; nothing else about an account changes what its rows say.
+    """
+    from apps.budget.models import Budget
+
+    if account.pk is None or account.account_group.account_type not in (ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME):
+        return
+    posted = {
+        month: cr - dr
+        for month, dr, cr in _budget_lines(account.book)
+        .filter(account__paired_account=account)
+        .values_list("journal_entry__entry_date", "dr_amount", "cr_amount")
+    }
+    if not posted:
+        return
+    sign = -1 if account.account_group.account_type == ACCOUNT_TYPE_INCOME else 1
+    rows = {
+        _first(month): sign * amount
+        for month, amount in Budget.objects.filter(category=account).values_list("month", "budget_amount")
+        if amount
+    }
+    if posted != rows:
+        sync_months(account.book, posted.keys() | rows.keys())
+
+
 def release_bucket_lines(buckets):
     """
     Delete the budget-entry lines on `buckets` (accounts about to be deleted, whose
@@ -217,6 +249,100 @@ def resync(touched):
     for book_id, month in sorted(touched):
         if book_id in books:
             sync_month(books[book_id], month)
+
+
+# ---------------------------------------------------------------------------
+# Reading the budget off the ledger
+# ---------------------------------------------------------------------------
+
+
+def _budget_lines(book):
+    """Lines of `book`'s budget entries on paired buckets (Unassigned's balancing line left out)."""
+    from apps.journal.models import JournalEntry, JournalLine
+
+    return JournalLine.objects.filter(
+        book=book, journal_entry__source=JournalEntry.SOURCE_BUDGET, account__paired_account__isnull=False
+    )
+
+
+def budgeted_by_month_category(book, start_month=None, end_month=None, category_ids=None) -> dict:
+    """
+    `{(month, category_id): amount}` budgeted for income and expense categories,
+    months `start_month` through `end_month` inclusive. An envelope's budget is its
+    bucket's credit; expected income is debit-normal, so its budget is the debit.
+    Months with nothing budgeted are absent.
+    """
+    lines = _budget_lines(book).filter(
+        account__paired_account__account_group__account_type__in=(ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME)
+    )
+    if start_month is not None:
+        lines = lines.filter(journal_entry__entry_date__gte=_first(start_month))
+    if end_month is not None:
+        lines = lines.filter(journal_entry__entry_date__lt=_next(_first(end_month)))
+    if category_ids is not None:
+        lines = lines.filter(account__paired_account_id__in=category_ids)
+    result = {}
+    for month, category_id, account_type, dr, cr in lines.values_list(
+        "journal_entry__entry_date",
+        "account__paired_account_id",
+        "account__paired_account__account_group__account_type",
+        "dr_amount",
+        "cr_amount",
+    ):
+        amount = dr - cr if account_type == ACCOUNT_TYPE_INCOME else cr - dr
+        key = (month, category_id)
+        result[key] = result.get(key, ZERO) + amount
+    return result
+
+
+def budgeted_in_month(book, month, category_ids=None) -> dict:
+    """`{category_id: amount}` budgeted in `month`."""
+    month = _first(month)
+    return {
+        category_id: amount
+        for (_month, category_id), amount in budgeted_by_month_category(book, month, month, category_ids).items()
+    }
+
+
+def first_category_budget_month(book, category_ids=None):
+    """The earliest month with an income or expense budget, or None."""
+    lines = _budget_lines(book).filter(
+        account__paired_account__account_group__account_type__in=(ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME)
+    )
+    if category_ids is not None:
+        lines = lines.filter(account__paired_account_id__in=category_ids)
+    return lines.order_by("journal_entry__entry_date").values_list("journal_entry__entry_date", flat=True).first()
+
+
+def goal_assigned_by_month(book, goal_ids=None, start=None, end=None) -> dict:
+    """
+    `{(goal_id, month): amount}` of manual allocations, months from `start`
+    (inclusive) to `end` (exclusive): each goal bucket's credit on budget entries.
+    """
+    from apps.budget.models import Goal
+
+    goal_of_account = dict(
+        (Goal.objects.filter(book=book) if goal_ids is None else Goal.objects.filter(pk__in=goal_ids)).values_list(
+            "account_id", "pk"
+        )
+    )
+    lines = _budget_lines(book).filter(account__paired_account_id__in=goal_of_account.keys())
+    if start is not None:
+        lines = lines.filter(journal_entry__entry_date__gte=_first(start))
+    if end is not None:
+        lines = lines.filter(journal_entry__entry_date__lt=end)
+    result = {}
+    for account_id, month, dr, cr in lines.values_list(
+        "account__paired_account_id", "journal_entry__entry_date", "dr_amount", "cr_amount"
+    ):
+        key = (goal_of_account[account_id], month)
+        result[key] = result.get(key, ZERO) + cr - dr
+    return result
+
+
+def has_budget(book) -> bool:
+    """Whether any income or expense category in `book` has been budgeted."""
+    return first_category_budget_month(book) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -328,9 +454,11 @@ class CheckResult:
 
 def check_book(book, through: date | None = None) -> CheckResult:
     """
-    Compare the mirror with the rows: every budget entry against `month_claims`, and
-    `ledger_unassigned` against `compute_unassigned` for every month from the book's
-    first activity through `through` (default: this month).
+    Compare the mirror with the rows: every budget entry against `month_claims`. Then
+    `ledger_unassigned` (cumulative bucket balances) against `compute_unassigned` (the
+    month-by-month walk of availables) for every month from the book's first activity
+    through `through` (default: this month) -- both read the entries, so this checks
+    the two read paths agree, not the entries against the rows.
     """
     from apps.budget.services import BudgetService
     from apps.budget.unassigned import compute_unassigned

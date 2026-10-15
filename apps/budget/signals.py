@@ -16,6 +16,7 @@ from apps.budget.models import Budget, Goal, GoalAllocation
 def sync_bucket_for_account(sender, instance, raw=False, **kwargs):
     if not raw:
         sync_bucket(instance)
+        ledger.resync_if_retyped(instance)
 
 
 @receiver(post_save, sender=Goal, dispatch_uid="budget_sync_bucket_for_goal")

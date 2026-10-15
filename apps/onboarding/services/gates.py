@@ -117,7 +117,7 @@ class BookFacts:
 
 def book_facts(book) -> BookFacts:
     from apps.bank_feed.models import BankTransaction
-    from apps.budget.models import Budget
+    from apps.budget import ledger as budget_ledger
     from apps.journal.models import JournalEntry, counted_entries, transaction_entries
 
     return BookFacts(
@@ -126,7 +126,7 @@ def book_facts(book) -> BookFacts:
         # count as "you have categorized something" here either.
         # Budget entries (apps.budget.ledger) are not categorizing anything.
         has_entries=JournalEntry.objects.filter(book=book).filter(counted_entries(), transaction_entries()).exists(),
-        has_budget=Budget.objects.filter(book=book).exists(),
+        has_budget=budget_ledger.has_budget(book),
     )
 
 

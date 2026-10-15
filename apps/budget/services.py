@@ -88,8 +88,7 @@ class BudgetService:
         Get the budgeted amount for a category in a given month.
         Returns 0 if no budget exists.
         """
-        budget = Budget.objects.filter(book=self.book, category=category, month=month).first()
-        return budget.budget_amount if budget else Decimal("0")
+        return budget_ledger.budgeted_in_month(self.book, month, [category.pk]).get(category.pk, Decimal("0"))
 
     def available(self, category, month):
         """
@@ -102,7 +101,7 @@ class BudgetService:
         prev_month = month - relativedelta(months=1)
 
         # Base case: check if there are any budgets or transactions for this category
-        first_budget = Budget.objects.filter(book=self.book, category=category).order_by("month").first()
+        first_budget = budget_ledger.first_category_budget_month(self.book, [category.pk])
 
         first_txn = (
             JournalLine.objects.filter(book=self.book, account=category).order_by("journal_entry__entry_date").first()
@@ -110,9 +109,9 @@ class BudgetService:
 
         # Determine the earliest month we need to consider
         if first_budget and first_txn:
-            first_month = min(first_budget.month, self.month_start(first_txn.journal_entry.entry_date))
+            first_month = min(first_budget, self.month_start(first_txn.journal_entry.entry_date))
         elif first_budget:
-            first_month = first_budget.month
+            first_month = first_budget
         elif first_txn:
             first_month = self.month_start(first_txn.journal_entry.entry_date)
         else:
@@ -183,8 +182,8 @@ class BudgetService:
 
     def get_budgets_by_category(self, month):
         """
-        Get budgets for all categories in a given month.
-        Returns a dictionary mapping category_id to Budget instance.
+        The `Budget` rows of a given month, by category_id: the rows that are
+        written (forms, ids). Amounts to show come from `budget_ledger`.
         """
         return {
             b.category_id: b
@@ -199,9 +198,8 @@ class BudgetService:
         Get the earliest month with any budget or transaction for the book.
         Returns None if no activity exists.
         """
-        first_budget = Budget.objects.filter(book=self.book).order_by("month").values_list("month", flat=True).first()
+        first_budget = budget_ledger.first_category_budget_month(self.book)
 
-        # Budget entries mirror the Budget rows already counted above.
         first_txn_date = (
             JournalLine.objects.filter(transaction_entries("journal_entry__"), book=self.book)
             .order_by("journal_entry__entry_date")
@@ -223,13 +221,7 @@ class BudgetService:
         Fetch all budgets from start_month to end_month (inclusive).
         Returns dict: {(month, category_id): budget_amount}
         """
-        budgets = Budget.objects.filter(
-            book=self.book,
-            month__gte=start_month,
-            month__lte=end_month,
-        ).values("month", "category_id", "budget_amount")
-
-        return {(b["month"], b["category_id"]): b["budget_amount"] for b in budgets}
+        return budget_ledger.budgeted_by_month_category(self.book, start_month, end_month)
 
     def get_all_actuals_by_month_category(self, start_month, end_month):
         """
@@ -364,13 +356,14 @@ class BudgetService:
 
         actuals = self.get_actuals_by_category(month)
         budgets = self.get_budgets_by_category(month)
+        amounts = budget_ledger.budgeted_in_month(self.book, month)
 
         rows = []
 
         for account in accounts:
             budget = budgets.get(account.pk)
 
-            budgeted = budget.budget_amount if budget else Decimal("0")
+            budgeted = amounts.get(account.pk, Decimal("0"))
 
             actual = actuals.get(account.pk, Decimal("0"))
 
@@ -811,13 +804,8 @@ def goal_monthly(book, goals, start=None, end=None):
         month = month.date() if hasattr(month, "date") else month
         return result[goal_id].setdefault(month, {"assigned": zero, "linked": zero, "saved": zero, "spent": zero})
 
-    allocations = GoalAllocation.objects.filter(book=book, goal_id__in=goal_ids)
-    if start is not None:
-        allocations = allocations.filter(month__gte=start.replace(day=1))
-    if end is not None:
-        allocations = allocations.filter(month__lt=end)
-    for row in allocations.values("goal_id", "month").annotate(total=Sum("amount")):
-        cell(row["goal_id"], row["month"])["assigned"] += row["total"]
+    for (goal_id, month), amount in budget_ledger.goal_assigned_by_month(book, goal_ids, start, end).items():
+        cell(goal_id, month)["assigned"] += amount
 
     lines = _active_lines().filter(book=book, account_id__in=list(by_account))
     if start is not None:

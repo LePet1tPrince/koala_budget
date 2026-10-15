@@ -15,7 +15,8 @@ from apps.accounts.models import Account
 from apps.bank_feed.models import BankTransaction
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name, last_book_for_team, team_has_several_books
-from apps.budget.models import Budget, Goal
+from apps.budget import ledger as budget_ledger
+from apps.budget.models import Goal
 from apps.budget.services import NetWorthService
 from apps.budget.unassigned import allocation_bar, compute_unassigned
 from apps.journal.models import JournalEntry, counted_entries, transaction_entries
@@ -204,7 +205,7 @@ def _is_set_up(book) -> bool:
             JournalEntry.objects.filter(transaction_entries(), book=book).exists()
             or BankTransaction.objects.filter(book=book).exists()
         )
-        and Budget.objects.filter(book=book).exists()
+        and budget_ledger.has_budget(book)
     )
 
 

@@ -264,15 +264,21 @@ class ExpenseTest(UnassignedFixture):
 class GoalTest(UnassignedFixture):
     """A goal claims what's left in it; overspending it comes out of Unassigned."""
 
+    def allocate(self, month, amount):
+        # Saved, not `QuerySet.update()`: the budget entry is rebuilt on save.
+        allocation = GoalAllocation.objects.get(goal=self.goal, month=month)
+        allocation.amount = amount
+        allocation.save()
+
     def spend_from_goal(self, day, amount):
         self.post(day, self.goal.account, self.checking, amount)
 
     def test_allocating_last_month_lowers_it(self):
-        GoalAllocation.objects.filter(goal=self.goal, month=AUG).update(amount=Decimal("15500"))
+        self.allocate(AUG, Decimal("15500"))
         self.assertEqual(self.unassigned(), Decimal("1000"))
 
     def test_allocating_this_month_lowers_it(self):
-        GoalAllocation.objects.filter(goal=self.goal, month=SEPT).update(amount=Decimal("1200"))
+        self.allocate(SEPT, Decimal("1200"))
         self.assertEqual(self.unassigned(), Decimal("1300"))
 
     def test_next_months_allocation_does_not_count_yet(self):
@@ -293,7 +299,7 @@ class GoalTest(UnassignedFixture):
         self.assertEqual(u.goals_overspent, Decimal("1000"))
         self.assertEqual(u.amount, Decimal("500"))
         # Paying it back fills the hole first, which moves nothing.
-        GoalAllocation.objects.filter(goal=self.goal, month=SEPT).update(amount=Decimal("2000"))
+        self.allocate(SEPT, Decimal("2000"))
         self.assertEqual(self.unassigned(), Decimal("500"))
 
     def test_spending_after_the_month_does_not_count_yet(self):

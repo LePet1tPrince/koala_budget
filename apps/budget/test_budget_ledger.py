@@ -158,8 +158,9 @@ class LedgerUnassignedTest(LedgerFixture):
         line = ledger.budget_entry(self.book, AUG).lines.get(account=bucket_of(self.groceries))
         JournalLine.objects.filter(pk=line.pk).update(cr_amount=Decimal("1"))
         result = ledger.check_book(self.book, through=OCT)
-        self.assertTrue(result.bucket_mismatches)
-        self.assertTrue(result.unassigned_mismatches)
+        # Unassigned reads the entries both ways now, so the drift shows only
+        # against the rows.
+        self.assertEqual([month for month, _claims, _posted in result.bucket_mismatches], [AUG])
         ledger.sync_book(self.book)
         self.assert_mirrored()
 
@@ -249,4 +250,57 @@ class BackfillMigrationTest(LedgerFixture):
         self.assertFalse(JournalEntry.objects.filter(source="budget").exists())
         migration.backfill(django_apps, None)
         self.assertEqual({e.entry_date: lines_of(e) for e in JournalEntry.objects.filter(source="budget")}, expected)
+        self.assert_mirrored()
+
+
+class ReadsComeFromTheLedgerTest(LedgerFixture):
+    """Every budget figure is read off the budget entries, not the rows behind them."""
+
+    def drift(self, account, month, amount):
+        """Change a bucket's line without touching the row: only a reader of the ledger sees it."""
+        line = ledger.budget_entry(self.book, month).lines.get(account=bucket_of(account))
+        dr, cr = ledger._sides(Decimal(amount))
+        JournalLine.objects.filter(pk=line.pk).update(dr_amount=dr, cr_amount=cr)
+
+    def test_budgeted_and_available_follow_the_entry(self):
+        from .services import BudgetService
+
+        service = BudgetService(self.book)
+        self.assertEqual(service.budgeted(self.groceries, SEPT), Decimal("4000"))
+        self.assertEqual(service.budgeted(self.salary, SEPT), Decimal("5000"))
+        self.drift(self.groceries, SEPT, "4100")
+        self.assertEqual(service.budgeted(self.groceries, SEPT), Decimal("4100"))
+        self.assertEqual(service.available(self.groceries, SEPT), Decimal("7600"))
+        available, _previous = service.get_available_with_previous(SEPT, [self.groceries])
+        self.assertEqual(available[self.groceries.pk], Decimal("7600"))
+
+    def test_goal_figures_follow_the_entry(self):
+        from .services import goal_monthly
+
+        self.drift(self.goal.account, SEPT, "1200")
+        goal = Goal.objects.filter(pk=self.goal.pk).with_progress(SEPT).get()
+        self.assertEqual(goal.allocated, Decimal("16200"))
+        self.assertEqual(goal.saved_this_month, Decimal("1200"))
+        self.assertEqual(goal_monthly(self.book, [self.goal])[self.goal.pk][SEPT]["assigned"], Decimal("1200"))
+
+    def test_budget_page_shows_the_entry(self):
+        self.client.force_login(self.user)
+        self.drift(self.groceries, SEPT, "4100")
+        response = self.client.get(reverse("budget:budget_home", args=self.book.url_args), {"month": "2026-09"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="4100.00"')
+
+    def test_has_budget_needs_a_category_budget(self):
+        self.assertTrue(ledger.has_budget(self.book))
+        Budget.objects.filter(book=self.book).update(budget_amount=0)
+        ledger.sync_book(self.book)
+        self.assertFalse(ledger.has_budget(self.book))  # goal allocations alone don't count
+
+
+class RetypeTest(LedgerFixture):
+    def test_moving_a_category_between_income_and_expense_flips_its_lines(self):
+        income = AccountGroup.objects.get(book=self.book, name="Work")
+        self.groceries.account_group = income
+        self.groceries.save()
+        self.assertEqual(lines_of(ledger.budget_entry(self.book, SEPT))[bucket_of(self.groceries).pk], Decimal("-4000"))
         self.assert_mirrored()
