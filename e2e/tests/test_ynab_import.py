@@ -21,7 +21,8 @@ from playwright.sync_api import Page
 
 from apps.accounts.models import Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget, Goal
+from apps.budget.ledger import budgeted_by_month_category
+from apps.budget.models import Goal
 from apps.journal.models import JournalEntry, transaction_entries
 from apps.ynab_import.tests.fixtures import TINY_PLAN, TINY_REGISTER
 from e2e.factories import JournalEntryFactory
@@ -61,7 +62,7 @@ def test_wizard_walks_from_files_to_imported_books(import_page, tiny_export, tea
     # 5 transactions + 2 opening balances (the budget's own entries are not transactions)
     assert JournalEntry.objects.filter(transaction_entries(), book=team.default_book).count() == 7
     assert Account.objects.filter(book=team.default_book, name="Chequing").exists()
-    assert Budget.objects.filter(book=team.default_book).exists()
+    assert bool(budgeted_by_month_category(team.default_book))
     assert Goal.objects.filter(book=team.default_book, name="House").exists()
 
 
@@ -421,7 +422,7 @@ def test_a_real_five_year_export_imports_and_reconciles(import_page, team, requi
     assert JournalEntry.objects.filter(transaction_entries(), book=team.default_book).count() == 6615 + 13
     assert BankTransaction.objects.filter(book=team.default_book).count() == 6860
     # No `Budget` rows on goal categories (56 of the old 1,872 were on them).
-    assert Budget.objects.filter(book=team.default_book).count() == 1816
+    assert len(budgeted_by_month_category(team.default_book)) == 1816
     # Three open goals, plus `House` -- spent out, so it arrives closed with its history.
     assert Goal.objects.filter(book=team.default_book).count() == 4
     assert Goal.objects.filter(book=team.default_book, closed_at__isnull=True).count() == 3

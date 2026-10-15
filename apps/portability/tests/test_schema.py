@@ -83,6 +83,8 @@ class SchemaCompletenessTests(SimpleTestCase):
         quiet half of the same failure.
         """
         for filename, columns in schema.FILE_COLUMNS.items():
+            if filename in schema.LEDGER_FILES:
+                continue
             written = {
                 spec.name
                 for composition in schema.ROW_COMPOSITIONS[filename]

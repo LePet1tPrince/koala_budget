@@ -6,7 +6,8 @@ from django.test import TestCase
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.ledger import budgeted_by_month_category, goal_assigned_by_month
+from apps.budget.models import Goal
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
 from apps.portability.services.wipe import wipe_book
@@ -44,9 +45,9 @@ class WipeTeamTests(TestCase):
         self.assertFalse(Payee.objects.filter(book=self.book).exists())
         self.assertFalse(JournalEntry.objects.filter(book=self.book).exists())
         self.assertFalse(JournalLine.objects.filter(book=self.book).exists())
-        self.assertFalse(Budget.objects.filter(book=self.book).exists())
+        self.assertFalse(bool(budgeted_by_month_category(self.book)))
         self.assertFalse(Goal.objects.filter(book=self.book).exists())
-        self.assertFalse(GoalAllocation.objects.filter(book=self.book).exists())
+        self.assertFalse(bool(goal_assigned_by_month(self.book)))
         self.assertFalse(BankTransaction.objects.filter(book=self.book).exists())
         self.assertFalse(TransferMatchDismissal.objects.filter(book=self.book).exists())
 
@@ -69,9 +70,9 @@ class WipeTeamTests(TestCase):
         expected_payees = Payee.objects.filter(book=self.book).count()
         expected_institutions = Institution.objects.filter(book=self.book).count()
         expected_bank_tx = BankTransaction.objects.filter(book=self.book).count()
-        expected_budgets = Budget.objects.filter(book=self.book).count()
+        expected_budgets = len(budgeted_by_month_category(self.book))
         expected_goals = Goal.objects.filter(book=self.book).count()
-        expected_allocations = GoalAllocation.objects.filter(book=self.book).count()
+        expected_allocations = len(goal_assigned_by_month(self.book))
         expected_plaid_accounts = PlaidAccount.objects.filter(book=self.book).count()
         expected_plaid_items = PlaidItem.objects.filter(book=self.book).count()
 

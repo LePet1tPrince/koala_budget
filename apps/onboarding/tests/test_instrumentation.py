@@ -17,7 +17,7 @@ from django.urls import reverse
 from apps.accounts.models import Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget
+from apps.budget.ledger import set_budget
 from apps.journal.models import JournalEntry
 from apps.onboarding.models import OnboardingState
 from apps.teams.models import Team
@@ -135,9 +135,7 @@ class TaskEventsTest(InstrumentationTestCase):
         JournalEntry.objects.create(
             book=self.book, entry_date=date(2026, 9, 1), description="x", status=JournalEntry.STATUS_POSTED
         )
-        Budget.objects.create(
-            book=self.book, month=date(2026, 9, 1), category=self.category, budget_amount=Decimal("300")
-        )
+        set_budget(self.book, self.category, date(2026, 9, 1), Decimal("300"))
 
     def test_a_completed_task_is_recorded(self):
         self.do_the_work()
@@ -240,7 +238,7 @@ class ResumeCardTest(InstrumentationTestCase):
             description="x",
             source=BankTransaction.SOURCE_CSV,
         )
-        Budget.objects.create(book=self.book, month=date(2026, 9, 1), category=category, budget_amount=Decimal("1"))
+        set_budget(self.book, category, date(2026, 9, 1), Decimal("1"))
 
         self.assertFalse(self.client.get(self.dashboard).context["show_resume"])
 

@@ -14,7 +14,7 @@ from dateutil.relativedelta import relativedelta
 from playwright.sync_api import Page, expect
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
-from apps.budget.models import Budget
+from apps.budget.ledger import budget_amount
 from e2e.factories import (
     AccountFactory,
     AccountGroupFactory,
@@ -95,8 +95,8 @@ def test_leaving_with_unsaved_changes_asks_in_page(
     page.wait_for_url(lambda url: "/grid/" not in url)
 
     assert native == []
-    saved = Budget.objects.get(book=team.default_book, category=zed_category, month=jan)
-    assert saved.budget_amount == Decimal("150.00")
+    saved = budget_amount(team.default_book, zed_category, jan)
+    assert saved == Decimal("150.00")
 
 
 @pytest.mark.django_db(transaction=True)

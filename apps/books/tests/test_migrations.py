@@ -79,10 +79,12 @@ class BookMigrationTest(TransactionTestCase):
                 ("accounts", "Account"),
                 ("journal", "JournalEntry"),
                 ("journal", "JournalLine"),
-                ("budget", "Budget"),
             ):
                 model = new.get_model(label, name)
                 self.assertTrue(model.objects.filter(book_id=book.id).exists(), name)
+            # The budget row became the month's budget entry (budget 0010-0012).
+            budget_entries = new.get_model("journal", "JournalEntry").objects.filter(book_id=book.id, source="budget")
+            self.assertEqual(budget_entries.count(), 1)
             events = new.get_model("audit", "AuditEvent").objects.filter(team_id=team.id)
             self.assertIsNone(events.get(event_type="user_login").book_id)
             self.assertEqual(events.get(event_type="bulk_edit").book_id, book.id)

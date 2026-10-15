@@ -35,7 +35,7 @@ urlpatterns = [
     path("goals/<int:pk>/close/", views.goal_close_view, name="goal_close"),
     path("goals/links/<int:link_pk>/unlink/", views.goal_unlink, name="goal_unlink"),
     path(
-        "goals/contributions/<int:allocation_pk>/",
+        "goals/contributions/<int:line_pk>/",
         views.goal_contribution_edit,
         name="goal_contribution_edit",
     ),

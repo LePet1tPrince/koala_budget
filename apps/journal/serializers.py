@@ -43,7 +43,6 @@ class JournalLineSerializer(serializers.ModelSerializer):
             "amount",
             "is_cleared",
             "is_reconciled",
-            "budget",
             "direction",
             "created_at",
             "updated_at",
@@ -51,7 +50,6 @@ class JournalLineSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "account_name",
             "amount",
-            "budget",
             "direction",
             "created_at",
             "updated_at",

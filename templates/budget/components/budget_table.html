@@ -283,12 +283,8 @@
                     data-category-name="{{ row.category.name }}"
                     data-month="{{ month|date:'Y-m-d' }}">
                 {% csrf_token %}
-                {% if row.form.instance.pk %}
-                <input type="hidden" name="budget_id" value="{{ row.form.instance.pk }}">
-                {% else %}
                 <input type="hidden" name="category_id" value="{{ row.category.pk }}">
                 <input type="hidden" name="budget_month" value="{{ month|date:'Y-m-d' }}">
-                {% endif %}
                 {{ row.form.budget_amount }}
                 <span class="budget-status" data-budget-status aria-hidden="true"></span>
               </form>

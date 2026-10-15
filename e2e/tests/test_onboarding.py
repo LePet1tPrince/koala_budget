@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 from playwright.sync_api import Page
 
+from apps.budget.ledger import set_budget
 from e2e.pages.onboarding import DashboardOnboardingPage, OnboardingPage, TaskRailPage
 
 # A renting household with a paid-off car, kids, a student loan and a TFSA.
@@ -380,7 +381,6 @@ def test_a_set_up_team_sees_neither_rail_nor_card(authenticated_page: Page, live
     """
     from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE
     from apps.bank_feed.models import BankTransaction
-    from apps.budget.models import Budget
     from e2e.factories import AccountFactory, AccountGroupFactory
 
     assets = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_ASSET)
@@ -395,9 +395,7 @@ def test_a_set_up_team_sees_neither_rail_nor_card(authenticated_page: Page, live
         description="Coffee",
         source=BankTransaction.SOURCE_CSV,
     )
-    Budget.objects.create(
-        book=team.default_book, month=date.today().replace(day=1), category=category, budget_amount=Decimal("100.00")
-    )
+    set_budget(team.default_book, category, date.today().replace(day=1), Decimal("100.00"))
 
     dashboard = DashboardOnboardingPage(authenticated_page, live_server.url)
     dashboard.goto_dashboard(team.default_book)

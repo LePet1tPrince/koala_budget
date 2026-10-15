@@ -24,7 +24,7 @@ from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
 from apps.budget import ledger as budget_ledger
 from apps.budget.buckets import sync_book
-from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
+from apps.budget.models import Goal, GoalAccountLink
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
 from apps.reconciliation.models import Reconciliation
@@ -140,10 +140,7 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
     sync_book(book)
 
     report(50, "Writing budgets")
-    _insert_budgets(book, tables.budget_rows, account_id_map)
-    _insert_goal_allocations(book, tables.budget_rows, account_id_map, goal_id_by_account_id)
-    # Bulk inserts again: write the budget entries the rows describe.
-    budget_ledger.sync_book(book)
+    _write_budget(book, tables.budget_rows, account_id_map, goal_id_by_account_id)
 
     goal_links_created = _insert_goal_links(book, tables.goal_links, account_id_map, goal_id_by_account_id)
 
@@ -272,33 +269,17 @@ def _insert_goals(book, account_rows, account_id_map) -> dict[int, int]:
     return {obj.account_id: obj.id for obj in created}
 
 
-def _insert_budgets(book, budget_rows, account_id_map) -> None:
-    objs = [
-        Budget(
-            book=book,
-            category_id=account_id_map[row["account_id"]],
-            **schema.model_kwargs(schema.BUDGET, row, skip={"category"}),
-        )
-        for row in budget_rows
-        if row["kind"] == "budget"
-    ]
-    Budget.objects.bulk_create(objs)
-
-
-def _insert_goal_allocations(book, budget_rows, account_id_map, goal_id_by_account_id) -> None:
-    objs = []
+def _write_budget(book, budget_rows, account_id_map, goal_id_by_account_id) -> None:
+    """budget.csv into the ledger (`apps.budget.ledger`): one budget entry per month."""
+    budgets, allocations = {}, {}
     for row in budget_rows:
-        if row["kind"] != "goal":
-            continue
         new_account_id = account_id_map[row["account_id"]]
-        objs.append(
-            GoalAllocation(
-                book=book,
-                goal_id=goal_id_by_account_id[new_account_id],
-                **schema.model_kwargs(schema.GOAL_ALLOCATION, row, skip={"goal"}),
-            )
-        )
-    GoalAllocation.objects.bulk_create(objs)
+        if row["kind"] == "budget":
+            budgets[(new_account_id, row["month"])] = row["amount"]
+        elif row["kind"] == "goal":
+            allocations[(goal_id_by_account_id[new_account_id], row["month"])] = row["amount"]
+    budget_ledger.set_budgets(book, budgets)
+    budget_ledger.set_goal_allocations(book, allocations)
 
 
 def _insert_goal_links(book, rows, account_id_map, goal_id_by_account_id) -> int:
@@ -376,12 +357,9 @@ def _insert_journal(
         for row in line_rows_by_entry[file_id]
     ]
 
-    # (account_id, month) -> Budget.id, resolved once here rather than a query
-    # per line -- see JournalLine.save()'s own docstring on why that matters
-    # at import volume, and bulk_create_for_import for why it is the shared
-    # implementation rather than a second one that could drift from it.
-    budget_map = {(b.category_id, b.month): b.id for b in Budget.objects.filter(book=book)}
-    JournalLine.objects.bulk_create_for_import(line_objs, budget_map)
+    # bulk_create_for_import keeps JournalLine.save()'s ledger guard without a
+    # query per line -- see its docstring for why that matters at import volume.
+    JournalLine.objects.bulk_create_for_import(line_objs)
 
     return entry_id_map, uncategorized_rows, len(line_objs)
 
@@ -461,7 +439,9 @@ def _verify(tables: read.Tables, account_id_map: dict[int, int], book, entry_id_
     _require_equal("trial_balance", expected.get("trial_balance"), actual["trial_balance"])
     _require_equal("net_worth", expected.get("net_worth"), actual["net_worth"])
     _require_equal("date_range", expected.get("date_range"), actual["date_range"])
-    _require_equal("budget_totals", expected.get("budget_totals"), actual["budget_totals"])
+    # A month or goal totalling zero carries nothing in the ledger, where an older
+    # export (rows, some of them zero) still listed it.
+    _require_equal("budget_totals", _nonzero(expected.get("budget_totals")), _nonzero(actual["budget_totals"]))
     _require_equal("feed_counts", expected.get("feed_counts"), actual["feed_counts"])
     _require_equal("counts", expected.get("counts"), actual["counts"])
     if "statements" in expected:  # absent from version-1 archives, which carried none
@@ -470,7 +450,13 @@ def _verify(tables: read.Tables, account_id_map: dict[int, int], book, entry_id_
     _require_equal_remapped(
         "account_balances", expected.get("account_balances"), actual["account_balances"], account_id_map
     )
-    _require_equal_remapped("goal_totals", expected.get("goal_totals"), actual["goal_totals"], account_id_map)
+    _require_equal_remapped(
+        "goal_totals", _nonzero(expected.get("goal_totals")), _nonzero(actual["goal_totals"]), account_id_map
+    )
+
+
+def _nonzero(totals: dict | None) -> dict:
+    return {key: value for key, value in (totals or {}).items() if Decimal(value) != 0}
 
 
 def _require_equal(label: str, expected, actual) -> None:

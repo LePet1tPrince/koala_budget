@@ -14,7 +14,7 @@ from django.test import TestCase
 
 from apps.accounts.models import Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget
+from apps.budget.ledger import set_budget
 from apps.journal.models import JournalEntry
 from apps.onboarding.services.gates import (
     AVAILABLE,
@@ -123,9 +123,7 @@ class AfterCategorizingTest(GateTestCase):
     def test_budget_completes_when_a_budget_row_exists(self):
         self.assertEqual(self.states()["budget"], AVAILABLE)
 
-        Budget.objects.create(
-            book=self.book, month=date(2026, 9, 1), category=self.category, budget_amount=Decimal("400.00")
-        )
+        set_budget(self.book, self.category, date(2026, 9, 1), Decimal("400.00"))
         self.assertEqual(self.states()["budget"], DONE)
 
 

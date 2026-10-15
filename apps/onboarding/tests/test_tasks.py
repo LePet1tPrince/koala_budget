@@ -15,6 +15,7 @@ from django.urls import reverse
 
 from apps.accounts.models import Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
+from apps.budget.ledger import set_budget
 from apps.journal.models import JournalEntry
 from apps.onboarding.context_processors import onboarding_rail
 from apps.onboarding.models import OnboardingState
@@ -152,11 +153,10 @@ class MarkTaskTest(TaskTestCase):
     def test_finishing_every_task_ends_the_walkthrough(self):
         self.add_transaction()
         self.add_entry()
-        from apps.budget.models import Budget
 
         expenses = AccountGroup.objects.create(book=self.book, name="Regular", account_type="expense")
         category = Account.objects.create(book=self.book, name="Groceries", account_group=expenses)
-        Budget.objects.create(book=self.book, month=date(2026, 9, 1), category=category, budget_amount=Decimal("300"))
+        set_budget(self.book, category, date(2026, 9, 1), Decimal("300"))
 
         self.post_json({"slug": "report"})
         response = self.post_json({"slug": "net_worth"})

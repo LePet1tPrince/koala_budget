@@ -121,9 +121,9 @@ class Account(BaseBookModel):
     def delete(self, *args, **kwargs):
         """
         Delete, first releasing the budget-entry lines on this account's budget
-        bucket (or on it, if it is one) -- `JournalLine.account` is PROTECT, and
-        those lines only mirror budget rows that go with the account anyway. The
-        months they were in are rebuilt once the rows are gone.
+        bucket (or on it, if it is one) -- `JournalLine.account` is PROTECT, and a
+        category's budget goes with it. The months they were in are rebalanced
+        once the bucket is gone.
         """
         from django.db import transaction
 
@@ -133,7 +133,7 @@ class Account(BaseBookModel):
             buckets = [self] if self.is_budget_bucket else list(Account.objects.filter(paired_account=self))
             touched = ledger.release_bucket_lines(buckets) if buckets else set()
             result = super().delete(*args, **kwargs)
-            ledger.resync(touched)
+            ledger.rebalance(touched)
         return result
 
     @property

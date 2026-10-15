@@ -6,10 +6,8 @@ from django.db import models
 from django.db.models import Q, Sum
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.dateparse import parse_date
 
 from apps.books.models import BaseBookModel
-from apps.budget.models import Budget
 
 
 def counted_entries(path=""):
@@ -109,7 +107,7 @@ class JournalEntry(BaseBookModel):
         verbose_name = "Journal Entry"
         verbose_name_plural = "Journal Entries"
         constraints = [
-            # A month's budget is one entry (apps.budget.ledger.sync_month), dated the first.
+            # A month's budget is one entry (apps.budget.ledger.write_month), dated the first.
             models.UniqueConstraint(
                 fields=["book", "entry_date"],
                 condition=Q(source="budget"),
@@ -178,27 +176,21 @@ class JournalEntry(BaseBookModel):
 
 
 class JournalLineQuerySet(models.QuerySet):
-    def bulk_create_for_import(self, lines, budget_map, batch_size=1000):
+    def bulk_create_for_import(self, lines, batch_size=1000):
         """
-        Insert many lines at once, standing in for `save()`'s budget lookup.
+        Insert many lines at once, keeping `save()`'s ledger guard.
 
-        `JournalLine.save()` resolves `budget` with a query per line, and `post_save`
-        then writes an audit row: at import volumes (a YNAB export is ~13,000 lines)
-        that is tens of thousands of extra queries, the difference between an import
-        that takes seconds and one that takes minutes. `bulk_create` skips `save()`
-        and its signals, so the budget link has to be made here instead --
-        `budget_map` is `{(account_id, first_of_month): budget_id}`, built once from
-        the budgets the same import created.
+        `JournalLine.save()` checks the budget-entry rule and `post_save` then writes
+        an audit row: at import volumes (a YNAB export is ~13,000 lines) that is tens
+        of thousands of extra queries, the difference between an import that takes
+        seconds and one that takes minutes. `bulk_create` skips `save()` and its
+        signals, so the guard runs here instead, in one query for the accounts.
 
         Deliberate consequence: no row-level `AuditLog` entries are written. An
         import is one operation, and 13,000 field diffs describing it would be noise;
         the `AuditEvent` the importer records is the meaningful trail.
         """
         _assert_lines_respect_budget_rules(lines)
-        for line in lines:
-            if line.budget_id is None:
-                month = line.journal_entry.entry_date.replace(day=1)
-                line.budget_id = budget_map.get((line.account_id, month))
         return self.bulk_create(lines, batch_size=batch_size)
 
 
@@ -264,17 +256,6 @@ class JournalLine(BaseBookModel):
         help_text="Statement this line was ticked or reconciled on",
     )
 
-    # Budget foreign key - commented out until Budget model is ready
-    budget = models.ForeignKey(
-        "budget.Budget",
-        on_delete=models.SET_NULL,
-        related_name="journal_lines",
-        null=True,
-        blank=True,
-        editable=False,
-        help_text="Link to budget based on account_id and journal entry date month",
-    )
-
     objects = JournalLineQuerySet.as_manager()
 
     class Meta:
@@ -308,42 +289,16 @@ class JournalLine(BaseBookModel):
         if self.dr_amount < 0 or self.cr_amount < 0:
             raise ValidationError("Debit and credit amounts cannot be negative.")
 
-    ## Budget Auto linking
-
-    def _calculate_budget(self):
-        """
-        Calculate the budget based on the account and entry date.
-        """
-        if not self.journal_entry or not self.journal_entry.entry_date:
-            return None
-
-        entry_date = self.journal_entry.entry_date
-        if isinstance(entry_date, str):
-            entry_date = parse_date(entry_date)
-
-        month_start = entry_date.replace(day=1)
-
-        return Budget.objects.filter(
-            book=self.book,
-            category=self.account,
-            month=month_start,
-        ).first()
-
     def save(self, *args, **kwargs):
         """
-        Automatically link to budget based on account and entry date.
-
-        One query per line. Bulk paths skip `save()` entirely and must resolve the
-        same link themselves -- see `JournalLineQuerySet.bulk_create_for_import`,
-        which exists so the two cannot drift apart unnoticed.
-
-        Also the backstop for the budget ledger rule: a budget bucket only in a
-        budget entry, a budget entry only of buckets, whatever path saves the line.
+        The backstop for the budget ledger rule: a budget bucket only in a budget
+        entry, a budget entry only of buckets, whatever path saves the line. Bulk
+        paths skip `save()` and check it themselves
+        (`JournalLineQuerySet.bulk_create_for_import`).
         """
         from apps.accounts.guards import assert_budget_entry_rules
 
         assert_budget_entry_rules(self.journal_entry.source == JournalEntry.SOURCE_BUDGET, [self.account])
-        self.budget = self._calculate_budget()
         super().save(*args, **kwargs)
 
     @property

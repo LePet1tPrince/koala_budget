@@ -1525,9 +1525,6 @@ class BankFeedViewSet(
                 if tx.journal_entry:
                     tx.journal_entry.entry_date = new_date
                     tx.journal_entry.save()
-                    # Re-save lines so their auto-linked budget follows the new month
-                    for line in tx.journal_entry.lines.all():
-                        line.save()
 
             tx.save()
 

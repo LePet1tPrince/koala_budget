@@ -12,7 +12,7 @@ from django.utils.translation import gettext_lazy, ngettext
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
 from apps.budget import ledger as budget_ledger
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Goal
 from apps.journal.models import JournalLine, counted_entries, transaction_entries
 from apps.web.templatetags.currency_tags import currency
 
@@ -24,7 +24,7 @@ def budgeted_account_types(book) -> tuple[str, ...]:
 
     With the setting off, income categories leave the budget page, the grid and
     the monthly review, and the save endpoints refuse them -- the one place that
-    decides is here. Their existing `Budget` rows are kept, ignored, so turning
+    decides is here. Their budget lines stay in the ledger, ignored, so turning
     the setting back on restores them.
     """
     if book.budget_future_income:
@@ -88,7 +88,7 @@ class BudgetService:
         Get the budgeted amount for a category in a given month.
         Returns 0 if no budget exists.
         """
-        return budget_ledger.budgeted_in_month(self.book, month, [category.pk]).get(category.pk, Decimal("0"))
+        return budget_ledger.budget_amount(self.book, category, month)
 
     def available(self, category, month):
         """
@@ -179,19 +179,6 @@ class BudgetService:
             result[row["account_id"]] = row["actual"] or Decimal("0")
 
         return result
-
-    def get_budgets_by_category(self, month):
-        """
-        The `Budget` rows of a given month, by category_id: the rows that are
-        written (forms, ids). Amounts to show come from `budget_ledger`.
-        """
-        return {
-            b.category_id: b
-            for b in Budget.objects.filter(
-                book=self.book,
-                month=month,
-            )
-        }
 
     def get_first_activity_month(self):
         """
@@ -325,20 +312,14 @@ class BudgetService:
 
         return available, previous
 
-    @transaction.atomic
     def raise_budget(self, category, month, amount):
-        """Add `amount` to the category's budget for `month` (creating the row), and return it.
+        """Add `amount` to the category's budget for `month`, and return the new budget.
 
         Covering overspending from Unassigned is exactly this. The overspending
         already came out of Unassigned, so filling the hole doesn't move it again;
         only budget past the shortfall is a new claim.
         """
-        budget, _created = Budget.objects.select_for_update().get_or_create(
-            book=self.book, category=category, month=month.replace(day=1), defaults={"budget_amount": Decimal("0")}
-        )
-        budget.budget_amount += amount
-        budget.save(update_fields=["budget_amount", "updated_at"])
-        return budget
+        return budget_ledger.add_to_budget(self.book, category, month, amount)
 
     def build_budget_rows(self, month):
         """
@@ -355,14 +336,11 @@ class BudgetService:
         )
 
         actuals = self.get_actuals_by_category(month)
-        budgets = self.get_budgets_by_category(month)
         amounts = budget_ledger.budgeted_in_month(self.book, month)
 
         rows = []
 
         for account in accounts:
-            budget = budgets.get(account.pk)
-
             budgeted = amounts.get(account.pk, Decimal("0"))
 
             actual = actuals.get(account.pk, Decimal("0"))
@@ -376,7 +354,6 @@ class BudgetService:
                     "category_name": account.name,
                     "account_group": account.account_group.name,
                     "month": month,
-                    "budget_id": budget.id if budget else None,
                     "budgeted": budgeted,
                     "actual": actual,
                     "available": available,
@@ -441,17 +418,13 @@ class GoalService:
         }
 
     def update_allocation(self, goal, month, amount):
-        """Create or update a goal allocation for a specific month."""
-        month = month.replace(day=1)
-        allocation, created = GoalAllocation.objects.update_or_create(
-            book=self.book, goal=goal, month=month, defaults={"amount": amount}
-        )
-        return allocation
+        """Set `goal`'s allocation for `month` to `amount`."""
+        budget_ledger.set_goal_allocation(self.book, goal, month, amount)
 
-    def edit_allocation(self, allocation, amount):
+    def edit_allocation(self, goal, month, amount):
         """
-        Change a past month's manual contribution to `amount` (0 undoes it: the row
-        goes). Only `GoalAllocation`s -- money from linked accounts follows its
+        Change a past month's manual contribution to `amount` (0 undoes it). Only
+        the goal's own allocations -- money from linked accounts follows its
         transactions and is changed there.
 
         Refused on a closed or archived goal (closing wrote its own release into the
@@ -459,22 +432,22 @@ class GoalService:
         can't be left below zero by rewriting its past, the same cap a withdrawal has.
         Returns the old amount.
         """
+        month = month.replace(day=1)
         with transaction.atomic():
-            allocation = GoalAllocation.objects.select_for_update().select_related("goal").get(pk=allocation.pk)
-            goal = allocation.goal
+            goal = Goal.objects.select_for_update().get(pk=goal.pk)
             if goal.is_archived:
                 raise GoalAllocationError(_("This goal is archived. Its history can't be changed."))
             if goal.is_closed:
                 raise GoalAllocationError(_("This goal is closed. Its history can't be changed."))
-            old = allocation.amount
+            old = budget_ledger.goal_allocation(self.book, goal, month)
             if amount == old:
                 return old
             change = amount - old
             if change < 0:
                 # As of the latest month anything is recorded in, so a contribution
                 # dated ahead of today counts too.
-                latest = GoalAllocation.objects.filter(goal=goal).order_by("-month").values_list("month", flat=True)
-                as_of = max(timezone.localdate().replace(day=1), latest.first() or date.min)
+                months = [m for _g, m in budget_ledger.goal_assigned_by_month(self.book, [goal.pk])]
+                as_of = max([timezone.localdate().replace(day=1), *months])
                 left = self.left(goal, as_of)
                 if left + change < 0:
                     raise GoalAllocationError(
@@ -484,20 +457,12 @@ class GoalService:
                         )
                         % {"change": currency(-change), "goal": goal.name, "left": currency(max(left, Decimal("0")))}
                     )
-            if amount == 0:
-                allocation.delete()
-                budget_ledger.sync_month(self.book, allocation.month)
-            else:
-                allocation.amount = amount
-                allocation.save(update_fields=["amount", "updated_at"])
+            budget_ledger.set_goal_allocation(self.book, goal, month, amount)
             return old
 
     def add_to_allocation(self, goal, month, amount):
-        """Add `amount` (negative to take money out) to the month's allocation. Call inside a transaction."""
-        month = month.replace(day=1)
-        allocation = GoalAllocation.objects.select_for_update().filter(book=self.book, goal=goal, month=month).first()
-        current = allocation.amount if allocation else Decimal("0")
-        return self.update_allocation(goal, month, current + amount)
+        """Add `amount` (negative to take money out) to the month's allocation; return the new amount."""
+        return budget_ledger.add_to_goal_allocation(self.book, goal, month, amount)
 
     def left(self, goal, month):
         return Goal.objects.filter(pk=goal.pk).with_progress(month).values_list("left", flat=True).get()
@@ -617,11 +582,11 @@ class GoalService:
             "goal_name": goal.name,
             "allocated": str(numbers["allocated"] or Decimal("0")),
             "left": str(numbers["left"] or Decimal("0")),
-            "contributions": goal.allocations.count(),
+            "contributions": len(budget_ledger.goal_assigned_by_month(self.book, [goal.pk])),
             "linked_accounts": sorted({link.account.name for link in goal.account_links.select_related("account")}),
         }
         account = goal.account
-        goal.delete()  # allocations and links go with it
+        goal.delete()  # links go with it; its bucket's budget lines are released (signals)
         if account is not None:
             account.delete()
         return summary
@@ -780,7 +745,7 @@ def goal_monthly(book, goals, start=None, end=None):
     """
     Each goal's month-by-month figures: {goal id: {month: {...}}} with
 
-    - assigned: manual allocations (`GoalAllocation`; withdrawals negative)
+    - assigned: manual allocations (the goal bucket's budget lines; withdrawals negative)
     - linked: what linked accounts brought in (starting balances, flows)
     - saved: assigned + linked -- the month's share of `allocated`
     - spent: lines on the goal's own account plus linked spending
