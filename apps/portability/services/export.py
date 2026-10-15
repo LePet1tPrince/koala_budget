@@ -57,7 +57,7 @@ def build_row_count(book) -> int:
     The row count `EXPORT_MAX_ROWS` guards, without building anything. Cheap:
     three `count()` queries, no row construction.
     """
-    accounts = Account.objects.filter(book=book).count()
+    accounts = Account.objects.filter(book=book).exclude_budget_buckets().count()
     journal = (
         JournalLine.objects.filter(book=book).count()
         + BankTransaction.objects.filter(book=book, journal_entry__isnull=True).count()
@@ -117,6 +117,9 @@ def _build_accounts(book) -> list[dict]:
     """One row per account, with its group, institution and goal folded in (§2.1)."""
     accounts = (
         Account.objects.filter(book=book)
+        # Budget buckets are derived from the categories (apps.budget.buckets) and
+        # rebuilt on import, so they don't travel.
+        .exclude_budget_buckets()
         .select_related("account_group", "institution", "goal")
         .order_by(*Account._meta.ordering)
     )
@@ -334,7 +337,7 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
         "reconciled_lines": JournalLine.objects.filter(book=book, is_reconciled=True).count(),
     }
 
-    accounts_count = Account.objects.filter(book=book).count()
+    accounts_count = Account.objects.filter(book=book).exclude_budget_buckets().count()
     entries_count = JournalEntry.objects.filter(book=book).count()
     goals_count = Account.objects.filter(book=book, goal__isnull=False).count()
 

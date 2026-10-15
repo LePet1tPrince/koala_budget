@@ -19,7 +19,14 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from apps.accounts.guards import assert_category_allowed
-from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, Account, AccountGroup, Payee
+from apps.accounts.models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_BUDGET,
+    ACCOUNT_TYPE_LIABILITY,
+    Account,
+    AccountGroup,
+    Payee,
+)
 from apps.accounts.serializers import (
     AccountGroupSerializer,
     PayeeSerializer,
@@ -1191,11 +1198,11 @@ class BankFeedViewSet(
             return Response({"error": "account_group_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            account_group = AccountGroup.for_book.get(id=account_group_id)
+            account_group = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).get(id=account_group_id)
         except AccountGroup.DoesNotExist:
             return Response({"error": "Account group not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if Account.for_book.filter(name__iexact=name).exists():
+        if Account.for_book.exclude_budget_buckets().filter(name__iexact=name).exists():
             return Response({"error": f'An account named "{name}" already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
         account = Account.objects.create(
@@ -1216,7 +1223,7 @@ class BankFeedViewSet(
     @action(detail=False, methods=["get"], url_path="account_groups")
     def account_groups(self, request, team_slug=None, book_slug=None):
         """Return all account groups for the book, for use in account creation."""
-        groups = AccountGroup.for_book.all()
+        groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET)
         serializer = AccountGroupSerializer(groups, many=True)
         return Response(serializer.data)
 
@@ -1879,7 +1886,9 @@ def bank_feed_home(request, team_slug, book_slug):
 
     # Get all accounts, payees, and account groups for dropdowns
     all_payees = Payee.for_book.all().order_by("name")
-    all_account_groups = AccountGroup.for_book.all().order_by("account_type", "name")
+    all_account_groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).order_by(
+        "account_type", "name"
+    )
 
     all_accounts_data = picker_accounts_data(request.book)
     all_payees_data = PayeeSerializer(all_payees, many=True).data
@@ -1912,7 +1921,9 @@ def categorize_mode(request, team_slug, book_slug):
     """Categorize mode — gamified single-transaction categorization view."""
     from django.urls import reverse
 
-    all_account_groups = AccountGroup.for_book.all().order_by("account_type", "name")
+    all_account_groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).order_by(
+        "account_type", "name"
+    )
     all_payees = Payee.for_book.all().order_by("name")
 
     all_accounts_data = picker_accounts_data(request.book)

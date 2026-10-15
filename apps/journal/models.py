@@ -48,6 +48,10 @@ class JournalEntry(BaseBookModel):
     # An adjustment posted when a statement is finished with a difference
     # (apps.reconciliation). Its own source so undo can find it without guessing.
     SOURCE_RECONCILIATION = "reconciliation"
+    # A budget move between budget buckets (apps.budget.buckets). The only kind of
+    # entry a bucket may appear in, and it may hold nothing else
+    # (apps.accounts.guards.assert_budget_entry_rules).
+    SOURCE_BUDGET = "budget"
 
     SOURCE_CHOICES = [
         (SOURCE_MANUAL, "Manual Entry"),
@@ -55,6 +59,7 @@ class JournalEntry(BaseBookModel):
         (SOURCE_BANK_MATCH, "Bank Match"),
         (SOURCE_RECURRING, "Recurring Entry"),
         (SOURCE_RECONCILIATION, "Reconciliation Adjustment"),
+        (SOURCE_BUDGET, "Budget"),
     ]
 
     entry_date = models.DateField(help_text="Date of the journal entry")
@@ -168,11 +173,22 @@ class JournalLineQuerySet(models.QuerySet):
         import is one operation, and 13,000 field diffs describing it would be noise;
         the `AuditEvent` the importer records is the meaningful trail.
         """
+        _assert_lines_respect_budget_rules(lines)
         for line in lines:
             if line.budget_id is None:
                 month = line.journal_entry.entry_date.replace(day=1)
                 line.budget_id = budget_map.get((line.account_id, month))
         return self.bulk_create(lines, batch_size=batch_size)
+
+
+def _assert_lines_respect_budget_rules(lines):
+    """`assert_budget_entry_rules` over many unsaved lines, in one query for their accounts."""
+    from apps.accounts.guards import assert_budget_entry_rules
+    from apps.accounts.models import Account
+
+    accounts = Account.objects.select_related("account_group").in_bulk({line.account_id for line in lines})
+    for line in lines:
+        assert_budget_entry_rules(line.journal_entry.source == JournalEntry.SOURCE_BUDGET, [accounts[line.account_id]])
 
 
 class JournalLine(BaseBookModel):
@@ -299,7 +315,13 @@ class JournalLine(BaseBookModel):
         One query per line. Bulk paths skip `save()` entirely and must resolve the
         same link themselves -- see `JournalLineQuerySet.bulk_create_for_import`,
         which exists so the two cannot drift apart unnoticed.
+
+        Also the backstop for the budget ledger rule: a budget bucket only in a
+        budget entry, a budget entry only of buckets, whatever path saves the line.
         """
+        from apps.accounts.guards import assert_budget_entry_rules
+
+        assert_budget_entry_rules(self.journal_entry.source == JournalEntry.SOURCE_BUDGET, [self.account])
         self.budget = self._calculate_budget()
         super().save(*args, **kwargs)
 

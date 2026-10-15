@@ -197,7 +197,7 @@ def _is_set_up(book) -> bool:
     has accounts, transactions and a budget has no use for it, however they got there.
     """
     return (
-        Account.objects.filter(book=book).exists()
+        Account.objects.filter(book=book).exclude_budget_buckets().exists()
         and (JournalEntry.objects.filter(book=book).exists() or BankTransaction.objects.filter(book=book).exists())
         and Budget.objects.filter(book=book).exists()
     )

@@ -25,11 +25,19 @@ export const ACCOUNT_KIND_LABELS = {
 
 /**
  * System accounts are bookkeeping, never a category; the server refuses them too.
+ * Budget buckets (envelopes, Unassigned) never appear in a transaction at all.
  * Hidden accounts (the accounts board's eye) are left out of every picker.
  */
 export function pickableAccounts(accounts) {
   return (accounts || []).filter(
-    (account) => !(account.is_system || account.isSystem || account.is_hidden || account.isHidden),
+    (account) =>
+      !(
+        account.is_system ||
+        account.isSystem ||
+        account.is_hidden ||
+        account.isHidden ||
+        (account.account_type || account.accountType) === 'budget'
+      ),
   );
 }
 

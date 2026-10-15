@@ -382,6 +382,8 @@ ACCOUNT = FieldMap(
         "updated_at": _TIMESTAMP,
         "account_group": "denormalised onto this row via the ACCOUNT_GROUP field map, not carried as a raw id",
         "institution": "denormalised onto this row via the INSTITUTION field map, not carried as a raw id",
+        "paired_account": "set only on budget buckets, which are derived from their categories, left out of "
+        "the export and rebuilt on import (apps.budget.buckets.sync_book)",
     },
 )
 
