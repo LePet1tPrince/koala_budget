@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY
 from apps.bank_feed.models import BankTransaction
@@ -768,7 +768,8 @@ def test_adding_a_transaction_asks_for_its_account(requires_vite, authenticated_
 
     feed.click_account_card(two_accounts["chequing"].id)
     feed.click_add_transaction()
-    assert account_field.input_value() == "Zed Chequing"
+    # The modal presets the account in an effect after it opens: wait for it rather than read it once.
+    expect(account_field).to_have_value("Zed Chequing")
 
 
 @pytest.mark.django_db(transaction=True)
