@@ -34,10 +34,18 @@ BACKFILLED_BOOK_MODELS = [
     ("ynab_import", "ynabimport"),
 ]
 
-# Every book-scoped model: the backfilled ones plus any created since with a `book`
-# column from the start. Drives the isolation snapshots and the structure test.
+# Backfilled models since deleted: the budget rows, retired when the budget moved
+# into the ledger (`budget.0012_delete_budget_goalallocation`).
+RETIRED_BOOK_MODELS = [
+    ("budget", "budget"),
+    ("budget", "goalallocation"),
+]
+
+# Every book-scoped model: the backfilled ones still standing plus any created
+# since with a `book` column from the start. Drives the isolation snapshots and
+# the structure test.
 BOOK_MODELS = [
-    *BACKFILLED_BOOK_MODELS,
+    *(model for model in BACKFILLED_BOOK_MODELS if model not in RETIRED_BOOK_MODELS),
     ("budget", "goalaccountlink"),
 ]
 

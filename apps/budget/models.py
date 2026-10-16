@@ -12,37 +12,6 @@ from apps.books.models import BaseBookModel
 ZERO = Decimal("0")
 
 
-class BudgetQuerySet(models.QuerySet):
-    pass
-
-
-class Budget(BaseBookModel):
-    """
-    Budget model for monthly budget planning.
-    Automatically generates entries for income/expense accounts each month.
-    """
-
-    month = models.DateField(help_text="First day of the month")
-
-    category = models.ForeignKey(
-        Account,
-        on_delete=models.CASCADE,
-        related_name="budgets",
-        help_text="Income or expense category (account)",
-    )
-
-    budget_amount = models.DecimalField(max_digits=15, decimal_places=2, help_text="Planned budget amount")
-
-    objects = BudgetQuerySet.as_manager()
-
-    class Meta:
-        unique_together = ["book", "month", "category"]
-        ordering = ["-month", "category__name"]
-
-    def __str__(self):
-        return f"{self.month.strftime('%Y-%m')} - {self.category.name} - ${self.budget_amount}"
-
-
 GOALS_GROUP_NAME = "Goals"
 
 STATE_SAVING = "saving"
@@ -114,18 +83,21 @@ def goal_spent_subquery(start=None, end=None):
 
 
 def goal_assigned_subquery(start=None, end=None):
-    """Σ manual allocations (`GoalAllocation`) for months from `start` to `end` (exclusive)."""
-    filters = {}
-    if start is not None:
-        filters["month__gte"] = start.replace(day=1)
-    if end is not None:
-        filters["month__lt"] = end
-    total = (
-        GoalAllocation.objects.filter(goal=OuterRef("pk"), **filters)
-        .values("goal")
-        .annotate(total=Sum("amount"))
-        .values("total")
+    """
+    Σ manual allocations for months from `start` to `end` (exclusive), read off the
+    ledger: the credit balance of the goal's bucket on budget entries
+    (`apps.budget.ledger`), which carry each month's allocations.
+    """
+    from apps.journal.models import JournalEntry, JournalLine
+
+    lines = JournalLine.objects.filter(
+        journal_entry__source=JournalEntry.SOURCE_BUDGET, account__paired_account=OuterRef("account")
     )
+    if start is not None:
+        lines = lines.filter(journal_entry__entry_date__gte=start.replace(day=1))
+    if end is not None:
+        lines = lines.filter(journal_entry__entry_date__lt=end)
+    total = lines.values("account").annotate(total=Sum(F("cr_amount") - F("dr_amount"))).values("total")
     return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
 
 
@@ -187,7 +159,7 @@ class Goal(BaseBookModel):
     """
     A savings goal: a budget envelope that never resets.
 
-    Saving is an allocation of unassigned money (`GoalAllocation`); spending is a
+    Saving is an allocation of unassigned money (a budget entry line, `apps.budget.ledger`); spending is a
     real transaction categorized to the goal's backing equity account. Every goal
     has that account; not every equity account is a goal.
     """
@@ -355,40 +327,6 @@ class Goal(BaseBookModel):
         if self.target_amount > 0:
             return max(min(float(self.allocated_amount / self.target_amount * 100), 100), 0)
         return 0
-
-
-class GoalAllocation(BaseBookModel):
-    """
-    Monthly allocation towards a goal.
-    This represents how much is being saved toward the goal each month.
-    """
-
-    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="allocations", verbose_name=_("Goal"))
-
-    month = models.DateField(verbose_name=_("Month"), help_text=_("Month of this allocation (first day of month)"))
-
-    amount = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=Decimal("0"),
-        verbose_name=_("Amount"),
-        help_text=_("Amount allocated this month"),
-    )
-
-    notes = models.TextField(blank=True, verbose_name=_("Notes"))
-
-    class Meta:
-        unique_together = ["book", "goal", "month"]
-        ordering = ["-month"]
-        default_related_name = "budget_goal_allocations"
-
-    def __str__(self):
-        return f"{self.goal.name} - {self.month.strftime('%Y-%m')} - ${self.amount}"
-
-    def save(self, *args, **kwargs):
-        # Ensure month is always first day of month
-        self.month = self.month.replace(day=1)
-        super().save(*args, **kwargs)
 
 
 class GoalAccountLinkQuerySet(models.QuerySet):

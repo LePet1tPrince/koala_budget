@@ -13,8 +13,8 @@ Two things this order exists to get right:
 1. **`PROTECT` and `CASCADE` decide almost the whole order for us.** Once
    `PlaidAccount` (which `PROTECT`s `Account`) is out of the way, a single
    `Account.objects.filter(book=book).delete()` cascades `BankTransaction`,
-   `PlaidTransaction`, `TransferMatchDismissal`, `Budget`, `Goal` and
-   `GoalAllocation` in one call -- Django's collector resolves that graph,
+   `PlaidTransaction`, `TransferMatchDismissal`, `Goal` and the budget buckets
+   in one call -- Django's collector resolves that graph,
    and re-deriving its topological order by hand here would just be a second
    implementation that could drift from the models' own `on_delete` values.
 2. **The audit-signal trap only applies to `JournalLine`/`JournalEntry`.**
@@ -34,6 +34,7 @@ from dataclasses import dataclass
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction
+from apps.budget import ledger as budget_ledger
 from apps.budget.models import GoalAccountLink
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
@@ -88,6 +89,10 @@ def wipe_book(book) -> WipeCounts:
     # post_save signal, so this costs nothing extra on the audit trail.
     BankTransaction.objects.filter(book=book, journal_entry__isnull=False).update(journal_entry=None)
 
+    # The budget lives in the budget entries (apps.budget.ledger), which go with the lines.
+    counts.budgets = len(budget_ledger.budgeted_by_month_category(book))
+    counts.goal_allocations = len(budget_ledger.goal_assigned_by_month(book))
+
     lines = JournalLine.objects.filter(book=book)
     counts.lines = lines._raw_delete(lines.db)
 
@@ -108,7 +113,7 @@ def wipe_book(book) -> WipeCounts:
     goal_links.delete()
 
     # One call, one cascade: BankTransaction (-> PlaidTransaction,
-    # TransferMatchDismissal), Budget, Goal (-> GoalAllocation), Reconciliation
+    # TransferMatchDismissal), Goal, Reconciliation
     # (its lines are already gone, so nothing points back at it). The
     # collector's own breakdown is the "counted, not inferred" figure (§4.2).
     _total, breakdown = Account.objects.filter(book=book).delete()
@@ -116,9 +121,7 @@ def wipe_book(book) -> WipeCounts:
     counts.bank_transactions = breakdown.get("bank_feed.BankTransaction", 0)
     counts.plaid_transactions = breakdown.get("plaid.PlaidTransaction", 0)
     counts.transfer_dismissals = breakdown.get("bank_feed.TransferMatchDismissal", 0)
-    counts.budgets = breakdown.get("budget.Budget", 0)
     counts.goals = breakdown.get("budget.Goal", 0)
-    counts.goal_allocations = breakdown.get("budget.GoalAllocation", 0)
     counts.reconciliations = breakdown.get("reconciliation.Reconciliation", 0)
 
     account_groups = AccountGroup.objects.filter(book=book)

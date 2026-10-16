@@ -8,7 +8,7 @@ from apps.accounts.models import Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.books.helpers import create_book, reserved_book_slugs, unique_book_slug, url_segments
 from apps.books.models import DEFAULT_BOOK_NAME, DEFAULT_BOOK_SLUG, Book
-from apps.budget.models import Budget
+from apps.budget.ledger import budget_amount, set_budget
 from apps.budget.unassigned import compute_unassigned
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.models import OnboardingState
@@ -462,8 +462,8 @@ class FutureIncomeTest(TestCase):
         expense = AccountGroup.objects.create(book=cls.book, name="Living", account_type="expense")
         cls.salary = Account.objects.create(book=cls.book, name="Salary", account_group=income)
         cls.rent = Account.objects.create(book=cls.book, name="Rent", account_group=expense)
-        Budget.objects.create(book=cls.book, month=cls.MONTH, category=cls.salary, budget_amount=Decimal("5000"))
-        Budget.objects.create(book=cls.book, month=cls.MONTH, category=cls.rent, budget_amount=Decimal("1500"))
+        set_budget(cls.book, cls.salary, cls.MONTH, Decimal("5000"))
+        set_budget(cls.book, cls.rent, cls.MONTH, Decimal("1500"))
 
     def setUp(self):
         self.client.force_login(self.admin)
@@ -483,8 +483,8 @@ class FutureIncomeTest(TestCase):
         self.set_future_income(False)
         keys = [s["key"] for s in self.client.get(url).context["sections"] if s["groups"]]
         self.assertEqual(keys, ["expense"])
-        # The rows are kept, so switching back restores them.
-        self.assertTrue(Budget.objects.filter(book=self.book, category=self.salary).exists())
+        # The budget is kept, so switching back restores it.
+        self.assertEqual(budget_amount(self.book, self.salary, self.MONTH), Decimal("5000"))
         self.set_future_income(True)
         keys = [s["key"] for s in self.client.get(url).context["sections"] if s["groups"]]
         self.assertEqual(keys, ["income", "expense"])
@@ -503,7 +503,7 @@ class FutureIncomeTest(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(Budget.objects.get(book=self.book, category=self.salary).budget_amount, Decimal("5000"))
+        self.assertEqual(budget_amount(self.book, self.salary, self.MONTH), Decimal("5000"))
 
     def test_budget_vs_actual_hides_income_while_off(self):
         self.set_future_income(False)

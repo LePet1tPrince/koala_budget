@@ -536,8 +536,8 @@ def budget_vs_actual(request, team_slug, book_slug):
     """
     Budget vs Actual report: per-category meters for a single month, grouped by account group.
     """
-    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
-    from apps.budget.models import Budget
+    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
+    from apps.budget import ledger as budget_ledger
     from apps.budget.services import GoalService
     from apps.monthly_review.services.budget import build_section
 
@@ -551,12 +551,10 @@ def budget_vs_actual(request, team_slug, book_slug):
 
     service = ReportService(request.book)
     data = service.get_income_statement_data(month, month_end)
-    budgets = Budget.objects.filter(book=request.book, month=month).select_related(
-        "category", "category__account_group"
-    )
-
-    expense_budgets = [b for b in budgets if b.category.account_group.account_type == ACCOUNT_TYPE_EXPENSE]
-    income_budgets = [b for b in budgets if b.category.account_group.account_type == ACCOUNT_TYPE_INCOME]
+    amounts = budget_ledger.budgeted_in_month(request.book, month)
+    categories = Account.objects.filter(book=request.book, pk__in=amounts).select_related("account_group")
+    expense_budgets = {c: amounts[c.pk] for c in categories if c.account_group.account_type == ACCOUNT_TYPE_EXPENSE}
+    income_budgets = {c: amounts[c.pk] for c in categories if c.account_group.account_type == ACCOUNT_TYPE_INCOME}
     expense_groups, expense_totals = build_section(data["expenses"], expense_budgets, spending=True)
     # A book that doesn't budget income before it arrives has no income budgets to
     # measure against, so the section goes (its old rows are kept, not shown).

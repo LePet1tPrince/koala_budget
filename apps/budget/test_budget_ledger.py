@@ -1,17 +1,16 @@
-"""The budget written into the ledger (apps/budget/ledger.py): one budget entry per month, mirroring the rows."""
+"""The budget kept in the ledger (apps/budget/ledger.py): one budget entry per month."""
 
 import json
 from datetime import date
 from decimal import Decimal
-from importlib import import_module
 
-from django.apps import apps as django_apps
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Account, AccountGroup
 from apps.books.context import current_book
+from apps.budget.ledger import set_budget, set_goal_allocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.services.gates import book_facts, can_set_opening_balances
 from apps.teams.models import Team
@@ -21,7 +20,7 @@ from apps.ynab_import.services.apply import can_import
 
 from . import ledger
 from .buckets import unassigned_account
-from .models import Budget, Goal, GoalAllocation
+from .models import Goal
 from .services import GoalService
 
 AUG = date(2026, 8, 1)
@@ -59,11 +58,11 @@ class LedgerFixture(TestCase):
         cls.goal = Goal.objects.create(book=cls.book, name="House", target_amount=Decimal("50000"))
 
         cls.post(date(2026, 8, 2), cls.checking, cls.opening, "20000")
-        Budget.objects.create(book=cls.book, month=AUG, category=cls.groceries, budget_amount=Decimal("3500"))
-        Budget.objects.create(book=cls.book, month=SEPT, category=cls.groceries, budget_amount=Decimal("4000"))
-        Budget.objects.create(book=cls.book, month=SEPT, category=cls.salary, budget_amount=Decimal("5000"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=AUG, amount=Decimal("15000"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=SEPT, amount=Decimal("1000"))
+        set_budget(cls.book, cls.groceries, AUG, Decimal("3500"))
+        set_budget(cls.book, cls.groceries, SEPT, Decimal("4000"))
+        set_budget(cls.book, cls.salary, SEPT, Decimal("5000"))
+        set_goal_allocation(cls.book, cls.goal, AUG, Decimal("15000"))
+        set_goal_allocation(cls.book, cls.goal, SEPT, Decimal("1000"))
 
     @classmethod
     def post(cls, day, debit, credit, amount):
@@ -72,15 +71,15 @@ class LedgerFixture(TestCase):
         JournalLine.objects.create(book=cls.book, journal_entry=entry, account=credit, cr_amount=Decimal(amount))
         return entry
 
-    def assert_mirrored(self, through=OCT):
+    def assert_sound(self, through=OCT):
         result = ledger.check_book(self.book, through=through)
-        self.assertEqual(result.bucket_mismatches, [])
+        self.assertEqual(result.entry_problems, [])
         self.assertEqual(result.unassigned_mismatches, [])
         self.assertGreater(result.months_checked, 0)
 
 
 class BudgetEntryTest(LedgerFixture):
-    def test_each_month_is_one_entry_mirroring_its_rows(self):
+    def test_each_month_is_one_entry(self):
         aug, sept = ledger.budget_entry(self.book, AUG), ledger.budget_entry(self.book, SEPT)
         self.assertEqual(aug.source, JournalEntry.SOURCE_BUDGET)
         self.assertEqual(aug.status, JournalEntry.STATUS_POSTED)
@@ -107,61 +106,71 @@ class BudgetEntryTest(LedgerFixture):
 
     def test_changing_an_amount_rewrites_its_line_in_place(self):
         line = ledger.budget_entry(self.book, AUG).lines.get(account=bucket_of(self.groceries))
-        budget = Budget.objects.get(book=self.book, month=AUG, category=self.groceries)
-        budget.budget_amount = Decimal("3000")
-        budget.save()
+        set_budget(self.book, self.groceries, AUG, Decimal("3000"))
         line.refresh_from_db()
         self.assertEqual(line.cr_amount, Decimal("3000"))
         self.assertEqual(
             ledger.budget_entry(self.book, AUG).lines.get(account=unassigned_account(self.book)).dr_amount,
             Decimal("18000"),
         )
-        self.assert_mirrored()
+        self.assert_sound()
 
     def test_a_negative_amount_posts_to_the_other_side(self):
-        Budget.objects.create(book=self.book, month=OCT, category=self.fun, budget_amount=Decimal("-20"))
+        set_budget(self.book, self.fun, OCT, Decimal("-20"))
         self.assertEqual(lines_of(ledger.budget_entry(self.book, OCT))[bucket_of(self.fun).pk], Decimal("-20"))
-        self.assert_mirrored()
+        self.assert_sound()
 
     def test_zero_drops_the_line_and_an_empty_month_drops_the_entry(self):
-        Budget.objects.create(book=self.book, month=OCT, category=self.fun, budget_amount=Decimal("50"))
+        set_budget(self.book, self.fun, OCT, Decimal("50"))
         self.assertIsNotNone(ledger.budget_entry(self.book, OCT))
-        budget = Budget.objects.get(book=self.book, month=OCT, category=self.fun)
-        budget.budget_amount = Decimal("0")
-        budget.save()
+        set_budget(self.book, self.fun, OCT, Decimal("0"))
         self.assertIsNone(ledger.budget_entry(self.book, OCT))
 
-    def test_sync_is_idempotent(self):
+    def test_other_buckets_are_left_alone(self):
+        set_budget(self.book, self.fun, SEPT, Decimal("80"))
+        lines = lines_of(ledger.budget_entry(self.book, SEPT))
+        self.assertEqual(lines[bucket_of(self.groceries).pk], Decimal("4000"))
+        self.assertEqual(lines[bucket_of(self.fun).pk], Decimal("80"))
+        self.assertEqual(lines[unassigned_account(self.book).pk], Decimal("-80"))
+
+    def test_adding_to_a_budget_and_a_goal(self):
+        self.assertEqual(ledger.add_to_budget(self.book, self.groceries, SEPT, Decimal("250")), Decimal("4250"))
+        self.assertEqual(ledger.add_to_goal_allocation(self.book, self.goal, SEPT, Decimal("-300")), Decimal("700"))
+        self.assertEqual(ledger.budget_amount(self.book, self.groceries, SEPT), Decimal("4250"))
+        self.assertEqual(ledger.goal_allocation(self.book, self.goal, SEPT), Decimal("700"))
+        self.assert_sound()
+
+    def test_rebalance_is_idempotent(self):
         before = {e.pk: lines_of(e) for e in JournalEntry.objects.filter(source=JournalEntry.SOURCE_BUDGET)}
-        ledger.sync_book(self.book)
-        ledger.sync_book(self.book)
+        ledger.rebalance_book(self.book)
+        ledger.rebalance_book(self.book)
         after = {e.pk: lines_of(e) for e in JournalEntry.objects.filter(source=JournalEntry.SOURCE_BUDGET)}
         self.assertEqual(before, after)
 
 
 class LedgerUnassignedTest(LedgerFixture):
-    """Unassigned read off the buckets equals Unassigned read off the rows, month by month."""
+    """Unassigned from bucket balances equals Unassigned from the monthly walk, month by month."""
 
     def test_matches_with_spending_overspending_income_and_goal_spending(self):
         self.post(date(2026, 8, 10), self.groceries, self.checking, "4200")  # overspent in August
         self.post(date(2026, 9, 5), self.checking, self.salary, "4800")  # income short of budget
         self.post(date(2026, 9, 12), self.fun, self.checking, "75")  # unbudgeted spending
         self.post(date(2026, 9, 20), self.goal.account, self.checking, "500")  # spending from the goal
-        self.assert_mirrored()
+        self.assert_sound()
 
     def test_matches_with_future_income_off(self):
         self.book.budget_future_income = False
         self.book.save()
-        self.assert_mirrored()
+        self.assert_sound()
 
-    def test_a_drifted_entry_is_caught_and_fixed(self):
+    def test_an_unbalanced_entry_is_caught_and_fixed(self):
         line = ledger.budget_entry(self.book, AUG).lines.get(account=bucket_of(self.groceries))
         JournalLine.objects.filter(pk=line.pk).update(cr_amount=Decimal("1"))
         result = ledger.check_book(self.book, through=OCT)
-        self.assertTrue(result.bucket_mismatches)
-        self.assertTrue(result.unassigned_mismatches)
-        ledger.sync_book(self.book)
-        self.assert_mirrored()
+        self.assertEqual([month for month, _problem in result.entry_problems], [AUG])
+        ledger.rebalance_book(self.book)
+        self.assert_sound()
+        self.assertEqual(ledger.budget_amount(self.book, self.groceries, AUG), Decimal("1"))
 
 
 class DeletionTest(LedgerFixture):
@@ -170,19 +179,18 @@ class DeletionTest(LedgerFixture):
         self.groceries.delete()
         self.assertFalse(Account.objects.filter(name__startswith="Groceries").exists())
         self.assertNotIn(None, [e.is_balanced or None for e in JournalEntry.objects.filter(source="budget")])
-        self.assert_mirrored()
+        self.assert_sound()
 
     def test_deleting_a_goal_releases_its_bucket(self):
         bucket = bucket_of(self.goal.account)
         GoalService(self.book).delete(self.goal)
         self.assertFalse(Account.objects.filter(pk=bucket.pk).exists())
-        self.assert_mirrored()
+        self.assert_sound()
 
     def test_undoing_a_contribution_rewrites_the_month(self):
-        allocation = GoalAllocation.objects.get(goal=self.goal, month=SEPT)
-        GoalService(self.book).edit_allocation(allocation, Decimal("0"))
+        GoalService(self.book).edit_allocation(self.goal, SEPT, Decimal("0"))
         self.assertNotIn(bucket_of(self.goal.account).pk, lines_of(ledger.budget_entry(self.book, SEPT)))
-        self.assert_mirrored()
+        self.assert_sound()
 
 
 class BulkPathsTest(LedgerFixture):
@@ -207,7 +215,7 @@ class BulkPathsTest(LedgerFixture):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(lines_of(ledger.budget_entry(self.book, OCT))[bucket_of(self.fun).pk], Decimal("70"))
-        self.assert_mirrored()
+        self.assert_sound()
 
     def test_autofill_rewrites_the_month(self):
         response = self.client.post(
@@ -216,7 +224,7 @@ class BulkPathsTest(LedgerFixture):
         self.assertEqual(response.status_code, 302)
         # September's groceries now match August's 3,500.
         self.assertEqual(lines_of(ledger.budget_entry(self.book, SEPT))[bucket_of(self.groceries).pk], Decimal("3500"))
-        self.assert_mirrored()
+        self.assert_sound()
 
 
 class TransactionsIgnoreBudgetEntriesTest(LedgerFixture):
@@ -241,12 +249,52 @@ class TransactionsIgnoreBudgetEntriesTest(LedgerFixture):
         self.assertFalse(can_set_opening_balances(self.book))
 
 
-class BackfillMigrationTest(LedgerFixture):
-    def test_backfill_is_reversible_and_matches_sync(self):
-        migration = import_module("apps.budget.migrations.0010_budget_entries_backfill")
-        expected = {e.entry_date: lines_of(e) for e in JournalEntry.objects.filter(source="budget")}
-        migration.remove(django_apps, None)
-        self.assertFalse(JournalEntry.objects.filter(source="budget").exists())
-        migration.backfill(django_apps, None)
-        self.assertEqual({e.entry_date: lines_of(e) for e in JournalEntry.objects.filter(source="budget")}, expected)
-        self.assert_mirrored()
+class ReadsTest(LedgerFixture):
+    """Every budget figure is read off the budget entries."""
+
+    def test_budgeted_and_available(self):
+        from .services import BudgetService
+
+        service = BudgetService(self.book)
+        self.assertEqual(service.budgeted(self.groceries, SEPT), Decimal("4000"))
+        self.assertEqual(service.budgeted(self.salary, SEPT), Decimal("5000"))
+        self.assertEqual(service.available(self.groceries, SEPT), Decimal("7500"))
+        available, _previous = service.get_available_with_previous(SEPT, [self.groceries])
+        self.assertEqual(available[self.groceries.pk], Decimal("7500"))
+
+    def test_goal_figures(self):
+        from .services import goal_monthly
+
+        goal = Goal.objects.filter(pk=self.goal.pk).with_progress(SEPT).get()
+        self.assertEqual(goal.allocated, Decimal("16000"))
+        self.assertEqual(goal.saved_this_month, Decimal("1000"))
+        self.assertEqual(goal_monthly(self.book, [self.goal])[self.goal.pk][SEPT]["assigned"], Decimal("1000"))
+
+    def test_budget_page_shows_the_amount(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("budget:budget_home", args=self.book.url_args), {"month": "2026-09"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="4000.00"')
+
+    def test_has_budget_needs_a_category_budget(self):
+        self.assertTrue(ledger.has_budget(self.book))
+        ledger.set_budgets(
+            self.book, {(c.pk, m): 0 for c, m in ((self.groceries, AUG), (self.groceries, SEPT), (self.salary, SEPT))}
+        )
+        self.assertFalse(ledger.has_budget(self.book))  # goal allocations alone don't count
+
+
+class RetypeTest(LedgerFixture):
+    def test_moving_a_category_between_income_and_expense_flips_its_lines(self):
+        income = AccountGroup.objects.get(book=self.book, name="Work")
+        self.groceries.account_group = income
+        self.groceries.save()
+        self.assertEqual(lines_of(ledger.budget_entry(self.book, SEPT))[bucket_of(self.groceries).pk], Decimal("-4000"))
+        # The amount budgeted stays: it now reads as expected income.
+        self.assertEqual(ledger.budget_amount(self.book, self.groceries, SEPT), Decimal("4000"))
+        self.assert_sound()
+
+    def test_a_rename_leaves_the_lines_alone(self):
+        self.groceries.name = "Food"
+        self.groceries.save()
+        self.assertEqual(lines_of(ledger.budget_entry(self.book, SEPT))[bucket_of(self.groceries).pk], Decimal("4000"))

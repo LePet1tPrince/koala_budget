@@ -146,7 +146,7 @@ OBJECTS = {
     "budget:goal_complete": ("goal", "pk", "post"),
     "budget:goal_close": ("goal", "pk", "post"),
     "budget:goal_unlink": ("goal_link", "link_pk", "post"),
-    "budget:goal_contribution_edit": ("goal_allocation", "allocation_pk", "post"),
+    "budget:goal_contribution_edit": ("goal_allocation", "line_pk", "post"),
     "budget:category_visibility": ("account", "pk", "post"),
     "reports:account_activity": ("account", "account_id", "get"),
     "reports:export_account_activity": ("account", "account_id", "get"),
@@ -433,16 +433,16 @@ class BudgetCoverIsolationTest(TwoBooksTestCase):
 
 
 class BudgetFallbackTest(TwoBooksTestCase):
-    """The no-JS budget form post names rows by id; B's ids are 404s."""
+    """The no-JS budget form post names a category by id; B's categories are 404s."""
 
-    def test_budget_id_of_book_b_is_a_404(self):
+    def test_category_of_book_b_is_a_404(self):
+        before = snapshot(self.b.book)
         response = self.client.post(
             self.url("budget:budget_home") + "?month=2026-03-01",
-            {"budget_id": self.b.budget.id, "budget_amount": "1"},
+            {"category_id": self.b.groceries.id, "budget_month": "2026-03-01", "budget_amount": "1"},
         )
         self.assertEqual(response.status_code, 404)
-        self.b.budget.refresh_from_db()
-        self.assertEqual(str(self.b.budget.budget_amount), "300.00")
+        self.assertEqual(snapshot(self.b.book), before)
 
     def test_autofill_ignores_book_b_categories(self):
         before = snapshot(self.b.book)

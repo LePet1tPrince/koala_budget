@@ -7,7 +7,7 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.utils.amounts import evaluate_amount
 
-from .models import Budget, Goal
+from .models import Goal
 
 # budget_amount is max_digits=15 / decimal_places=2, so 13 integer digits
 MAX_BUDGET_AMOUNT = Decimal("9999999999999.99")
@@ -68,7 +68,7 @@ class BudgetAmountField(forms.DecimalField):
         return parsed
 
 
-class BudgetAmountForm(forms.ModelForm):
+class BudgetAmountForm(forms.Form):
     # A text input rather than a number input: the budget table binds Up/Down to
     # move between rows, which a number input would spend on its own spinner.
     # `max-w-24`, not `w-24`: the shared widget template prepends `w-full`.
@@ -87,10 +87,6 @@ class BudgetAmountForm(forms.ModelForm):
             }
         ),
     )
-
-    class Meta:
-        model = Budget
-        fields = ["budget_amount"]
 
     def clean_budget_amount(self):
         """Convert blank/empty values to 0."""

@@ -13,6 +13,7 @@ from django.urls import reverse
 
 from apps.accounts.models import Account, AccountGroup
 from apps.audit.models import AuditEvent
+from apps.budget.ledger import budget_entry, goal_allocation, set_goal_allocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.models import OnboardingState
 from apps.teams.models import Team
@@ -20,8 +21,9 @@ from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
 
 from . import goal_links
+from . import ledger as budget_ledger
 from .forms import GoalForm
-from .models import Goal, GoalAccountLink, GoalAllocation
+from .models import Goal, GoalAccountLink
 from .services import PLAN_BEHIND, PLAN_ON_TRACK, GoalAllocationError, GoalService, goal_plan
 from .views import _goal_card_progress
 
@@ -50,8 +52,8 @@ class Fixture(TestCase):
         cls.post(date(2026, 8, 1), cls.checking, cls.opening, "10000")
 
         cls.car = Goal.objects.create(book=cls.book, name="Car", target_amount=D("5000"))
-        cls.aug = GoalAllocation.objects.create(book=cls.book, goal=cls.car, month=AUG, amount=D("1000"))
-        cls.sept = GoalAllocation.objects.create(book=cls.book, goal=cls.car, month=SEPT, amount=D("500"))
+        set_goal_allocation(cls.book, cls.car, AUG, D("1000"))
+        set_goal_allocation(cls.book, cls.car, SEPT, D("500"))
 
     @classmethod
     def post(cls, day, debit, credit, amount):
@@ -145,9 +147,9 @@ class OpenEndedGoalTest(Fixture):
 
     def open_goal(self, this_month="0"):
         goal = Goal.objects.create(book=self.book, name="RESP", target_amount=D("0"), monthly_contribution=D("200"))
-        GoalAllocation.objects.create(book=self.book, goal=goal, month=AUG, amount=D("200"))
+        set_goal_allocation(self.book, goal, AUG, D("200"))
         if D(this_month):
-            GoalAllocation.objects.create(book=self.book, goal=goal, month=SEPT, amount=D(this_month))
+            set_goal_allocation(self.book, goal, SEPT, D(this_month))
         return Goal.objects.filter(pk=goal.pk).with_progress(SEPT).get()
 
     def test_plan_asks_for_the_contribution_every_month_with_no_finish(self):
@@ -210,53 +212,55 @@ class OpenEndedGoalTest(Fixture):
 
 
 class ContributionEditTest(Fixture):
-    def url(self, allocation):
-        return reverse("budget:goal_contribution_edit", args=[*self.book.url_args, allocation.pk])
+    def url(self, month):
+        """A contribution is named by its line on the month's budget entry."""
+        line = budget_entry(self.book, month).lines.get(account__paired_account=self.car.account)
+        return reverse("budget:goal_contribution_edit", args=[*self.book.url_args, line.pk])
+
+    def contribution(self, month):
+        return goal_allocation(self.book, self.car, month)
 
     def test_undo_removes_the_months_contribution(self):
-        response = self.client.post(self.url(self.aug), {"action": "undo"})
+        response = self.client.post(self.url(AUG), {"action": "undo"})
         self.assertRedirects(response, reverse("budget:goal_detail", args=[*self.book.url_args, self.car.pk]))
-        self.assertFalse(GoalAllocation.objects.filter(pk=self.aug.pk).exists())
+        self.assertEqual(self.contribution(AUG), D("0"))
         self.assertEqual(self.allocated(), D("500"))
         event = AuditEvent.objects.get(event_type=AuditEvent.GOAL_CONTRIBUTION_EDITED)
         self.assertEqual(event.metadata["from"], "1000.00")
         self.assertTrue(event.metadata["undo"])
 
     def test_edit_changes_the_amount(self):
-        self.client.post(self.url(self.aug), {"amount": "1,200+50"})
-        self.aug.refresh_from_db()
-        self.assertEqual(self.aug.amount, D("1250.00"))
+        self.client.post(self.url(AUG), {"amount": "1,200+50"})
+        self.assertEqual(self.contribution(AUG), D("1250.00"))
         self.assertEqual(self.allocated(), D("1750"))
 
     def test_editing_to_zero_is_an_undo(self):
-        self.client.post(self.url(self.sept), {"amount": "0"})
-        self.assertFalse(GoalAllocation.objects.filter(pk=self.sept.pk).exists())
+        self.client.post(self.url(SEPT), {"amount": "0"})
+        self.assertEqual(self.contribution(SEPT), D("0"))
 
     def test_a_withdrawal_can_be_undone(self):
-        withdrawal = GoalAllocation.objects.create(book=self.book, goal=self.car, month=OCT, amount=D("-300"))
-        self.client.post(self.url(withdrawal), {"action": "undo"})
+        set_goal_allocation(self.book, self.car, OCT, D("-300"))
+        self.client.post(self.url(OCT), {"action": "undo"})
         self.assertEqual(self.allocated(), D("1500"))
 
     def test_junk_amount_changes_nothing(self):
-        self.client.post(self.url(self.aug), {"amount": "lots"})
-        self.aug.refresh_from_db()
-        self.assertEqual(self.aug.amount, D("1000"))
+        self.client.post(self.url(AUG), {"amount": "lots"})
+        self.assertEqual(self.contribution(AUG), D("1000"))
         self.assertFalse(AuditEvent.objects.filter(event_type=AuditEvent.GOAL_CONTRIBUTION_EDITED).exists())
 
     def test_cannot_take_back_money_already_spent(self):
         # 1,200 of the 1,500 allocated has been spent: only 300 is left.
         self.post(date(2026, 9, 10), self.car.account, self.checking, "1200")
         with self.assertRaisesMessage(GoalAllocationError, "only $300.00 is left"):
-            GoalService(self.book).edit_allocation(self.aug, D("0"))
-        GoalService(self.book).edit_allocation(self.aug, D("700"))  # takes out exactly 300
-        self.aug.refresh_from_db()
-        self.assertEqual(self.aug.amount, D("700"))
+            GoalService(self.book).edit_allocation(self.car, AUG, D("0"))
+        GoalService(self.book).edit_allocation(self.car, AUG, D("700"))  # takes out exactly 300
+        self.assertEqual(self.contribution(AUG), D("700"))
 
     def test_refused_on_a_closed_goal(self):
         Goal.objects.filter(pk=self.car.pk).update(closed_at="2026-09-30T00:00:00Z")
-        response = self.client.post(self.url(self.aug), {"action": "undo"}, follow=True)
+        response = self.client.post(self.url(AUG), {"action": "undo"}, follow=True)
         self.assertContains(response, "This goal is closed.")
-        self.assertTrue(GoalAllocation.objects.filter(pk=self.aug.pk).exists())
+        self.assertEqual(self.contribution(AUG), D("1000"))
 
     def test_the_goal_page_offers_edit_and_undo_only_on_manual_rows(self):
         GoalAccountLink.objects.create(book=self.book, goal=self.car, account=self.savings, start_date=SEPT)
@@ -271,17 +275,17 @@ class ContributionEditTest(Fixture):
         self.assertNotContains(page, 'data-testid="contribution-undo-btn"')
 
     def test_get_is_refused(self):
-        self.assertEqual(self.client.get(self.url(self.aug)).status_code, 405)
+        self.assertEqual(self.client.get(self.url(AUG)).status_code, 405)
 
     def test_anonymous_and_non_members_cannot_edit(self):
         self.client.logout()
-        response = self.client.post(self.url(self.aug), {"action": "undo"})
+        response = self.client.post(self.url(AUG), {"action": "undo"})
         self.assertEqual(response.status_code, 302)
         CustomUser.objects.create_user(username="stranger@example.com", password="pass12345")
         self.client.login(username="stranger@example.com", password="pass12345")
-        response = self.client.post(self.url(self.aug), {"action": "undo"})
+        response = self.client.post(self.url(AUG), {"action": "undo"})
         self.assertIn(response.status_code, (302, 403, 404))
-        self.assertTrue(GoalAllocation.objects.filter(pk=self.aug.pk).exists())
+        self.assertEqual(self.contribution(AUG), D("1000"))
 
 
 class RelinkAfterCloseTest(Fixture):
@@ -344,7 +348,7 @@ class GoalDeleteTest(Fixture):
         response = self.client.post(self.url())
         self.assertRedirects(response, reverse("budget:goals_list", args=self.book.url_args))
         self.assertFalse(Goal.objects.filter(pk=self.car.pk).exists())
-        self.assertFalse(GoalAllocation.objects.filter(goal_id=self.car.pk).exists())
+        self.assertFalse(budget_ledger.goal_assigned_by_month(self.book))
         self.assertFalse(GoalAccountLink.objects.filter(goal_id=self.car.pk).exists())
         self.assertFalse(Account.objects.filter(pk=account_pk).exists())
         event = AuditEvent.objects.get(event_type=AuditEvent.GOAL_DELETED)

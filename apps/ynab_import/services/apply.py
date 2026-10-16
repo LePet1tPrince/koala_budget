@@ -23,7 +23,7 @@ from apps.bank_feed.services.transfer_detection import dismiss_all_candidates
 from apps.bank_feed.services.transfer_mirror import mirror_rows_for
 from apps.budget import ledger as budget_ledger
 from apps.budget.buckets import sync_book
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.models import Goal
 from apps.journal.models import JournalEntry, JournalLine, counted_entries, transaction_entries
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
 
@@ -82,7 +82,7 @@ def can_import(book) -> bool:
     """
     if BankTransaction.objects.filter(book=book).exists():
         return False
-    # Budget entries mirror budget rows, not history (apps.budget.ledger).
+    # Budget entries are the budget, not history (apps.budget.ledger).
     return not (
         JournalEntry.objects.filter(transaction_entries(), book=book).exclude(status=JournalEntry.STATUS_VOID).exists()
     )
@@ -107,11 +107,10 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
     report(15, "Creating your payees")
     payees = _create_payees(book, plan)
 
-    report(25, "Creating your budgets")
-    budgets = _create_budgets(book, plan, accounts)
+    budgets = _planned_budgets(book, plan, accounts)
 
     report(40, "Importing your transactions")
-    entries, lines, feed_rows = _create_entries(book, plan, accounts, payees, budgets, report)
+    entries, lines, feed_rows = _create_entries(book, plan, accounts, payees, report)
     inbox_rows = _create_inbox_rows(book, plan, accounts)
 
     report(82, "Checking for look-alike transfers")
@@ -123,11 +122,13 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
     dismissed = dismiss_all_candidates(book)
 
     report(85, "Setting your savings goals")
-    goals = _create_goals(book, plan, accounts)
-    # The accounts, budgets and allocations were bulk inserted, which sends no
-    # signals: give the accounts their budget buckets, then write the budget entries.
+    goals, allocations = _create_goals(book, plan, accounts)
+    # The accounts were bulk inserted, which sends no signals: give them their
+    # budget buckets, then write the budget into the ledger.
     sync_book(book)
-    budget_ledger.sync_book(book)
+    report(88, "Writing your budget")
+    budget_ledger.set_budgets(book, budgets)
+    budget_ledger.set_goal_allocations(book, allocations)
 
     report(92, "Recording your opening balances")
     openings = _create_openings(book, plan, accounts)
@@ -149,7 +150,7 @@ def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResu
 
 
 # Every table the import fills.
-ANALYZED_MODELS = (JournalLine, JournalEntry, Account, AccountGroup, Budget, GoalAllocation, Payee, BankTransaction)
+ANALYZED_MODELS = (JournalLine, JournalEntry, Account, AccountGroup, Payee, BankTransaction)
 
 
 def _refresh_planner_statistics():
@@ -256,13 +257,12 @@ def _create_payees(book, plan: ImportPlan) -> dict[str, Payee]:
     return {payee.name: payee for payee in Payee.objects.filter(book=book)}
 
 
-def _create_budgets(book, plan: ImportPlan, accounts) -> dict[tuple[int, object], Budget]:
+def _planned_budgets(book, plan: ImportPlan, accounts) -> dict[tuple[int, object], Decimal]:
     """
-    Budgets before transactions, because `JournalLine.budget` points at them.
+    `{(account_id, month): amount}` for the ledger (`apps.budget.ledger.set_budgets`).
 
-    Deduplicated on the way in: `Budget` is unique per book, month and category, and
-    two YNAB categories that the user merged into one account would otherwise collide
-    at the database rather than here.
+    Deduplicated on the way in: a budget is one amount per book, month and category,
+    and two YNAB categories that the user merged into one account keep the first.
     """
     # A book that doesn't budget income before it arrives gets no income budgets
     # (D1's back-fill exists only to zero an income envelope it won't show).
@@ -275,29 +275,20 @@ def _create_budgets(book, plan: ImportPlan, accounts) -> dict[tuple[int, object]
         if skip_income and account.account_group.account_type == ACCOUNT_TYPE_INCOME:
             continue
         seen.setdefault((account.id, spec.month), spec.amount)
-
-    Budget.objects.bulk_create(
-        [
-            Budget(book=book, category_id=account_id, month=month, budget_amount=amount)
-            for (account_id, month), amount in seen.items()
-        ],
-        batch_size=BATCH_SIZE,
-    )
-    return {(budget.category_id, budget.month): budget for budget in Budget.objects.filter(book=book)}
+    return seen
 
 
-def _create_entries(book, plan: ImportPlan, accounts, payees, budgets, report) -> tuple[int, int, int]:
+def _create_entries(book, plan: ImportPlan, accounts, payees, report) -> tuple[int, int, int]:
     """
     The transactions themselves, in batches of entries, their lines, their feed rows.
 
     Entries are inserted first because a line needs an entry id; the lines are then
-    inserted through `bulk_create_for_import`, which resolves the budget link from an
-    in-memory map rather than one query per line (see the queryset's docstring for
-    what that costs and what it skips). Feed rows last: each entry's own row, then
+    inserted through `bulk_create_for_import`, which keeps the ledger guard without a
+    query per line (see the queryset's docstring for what that costs and what it
+    skips). Feed rows last: each entry's own row, then
     the mirror rows the bank feed's rule derives from the lines -- the rows
     `sync_transfer` would have made, without a save per transfer.
     """
-    budget_map = {key: budget.id for key, budget in budgets.items()}
     total_entries = total_lines = total_feed = 0
     batches = max(1, (len(plan.entries) + BATCH_SIZE - 1) // BATCH_SIZE)
 
@@ -339,7 +330,7 @@ def _create_entries(book, plan: ImportPlan, accounts, payees, budgets, report) -
             ]
             lines.extend(entry_lines)
             lines_by_entry.append(entry_lines)
-        JournalLine.objects.bulk_create_for_import(lines, budget_map, batch_size=BATCH_SIZE)
+        JournalLine.objects.bulk_create_for_import(lines, batch_size=BATCH_SIZE)
 
         primaries = []
         for spec, entry, entry_lines in zip(chunk, entries, lines_by_entry, strict=True):
@@ -381,15 +372,17 @@ def _create_inbox_rows(book, plan: ImportPlan, accounts) -> int:
     return len(rows)
 
 
-def _create_goals(book, plan: ImportPlan, accounts) -> int:
+def _create_goals(book, plan: ImportPlan, accounts) -> tuple[int, dict]:
     """
-    A goal per savings category, funded month by month.
+    A goal per savings category, and its monthly allocations (`{(goal_id, month): amount}`)
+    for the ledger, written once every account has its budget bucket.
 
     Each goal gets the equity account the plan made for it, which the savings
     category's spending already posts to. Created one at a time: there are a
     handful, and `Goal.save()` still backs any goal whose account is missing.
     """
     created = 0
+    allocations = {}
     for spec in plan.goals:
         if Goal.objects.filter(book=book, name=spec.name).exists():
             continue
@@ -403,12 +396,10 @@ def _create_goals(book, plan: ImportPlan, accounts) -> int:
             is_complete=False,
             closed_at=timezone.now() if spec.closed else None,
         )
-        GoalAllocation.objects.bulk_create(
-            [GoalAllocation(book=book, goal=goal, month=month, amount=amount) for month, amount in spec.allocations],
-            batch_size=BATCH_SIZE,
-        )
+        for month, amount in spec.allocations:
+            allocations[(goal.pk, month)] = amount
         created += 1
-    return created
+    return created, allocations
 
 
 def _create_openings(book, plan: ImportPlan, accounts) -> int:

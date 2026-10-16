@@ -30,7 +30,7 @@ from apps.accounts.models import (
     Payee,
 )
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
+from apps.budget.models import Goal, GoalAccountLink
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.models import Reconciliation
 
@@ -96,7 +96,7 @@ FEED_SOURCES = frozenset(dict(BankTransaction.SOURCE_CHOICES))
 ACCOUNT_TYPES = frozenset(dict(ACCOUNT_TYPE_CHOICES))
 GOAL_OUTFLOWS = frozenset(dict(Goal.OUTFLOW_CHOICES))
 
-# budget.csv's `kind` column: which of the two models a row represents.
+# budget.csv's `kind` column: whether a row is a category's budget or a goal's allocation.
 KIND_BUDGET = "budget"
 KIND_GOAL = "goal"
 BUDGET_ROW_KINDS = frozenset({KIND_BUDGET, KIND_GOAL})
@@ -106,7 +106,7 @@ BUDGET_ROW_KINDS = frozenset({KIND_BUDGET, KIND_GOAL})
 INFORMATIONAL_COLUMNS = frozenset({"account_name"})
 
 # Columns the writer synthesizes to tell apart two models sharing one file
-# (budget.csv's `kind` says whether a row is a Budget or a GoalAllocation).
+# (budget.csv's `kind` says whether a row is a budget or a goal allocation).
 # Not sourced from any single field, so a FieldMap has nowhere to declare it.
 SYNTHETIC_COLUMNS = frozenset({"kind"})
 
@@ -317,7 +317,7 @@ def build_row(*pairs, columns=None) -> dict:
     kinds of column rely on that: the ones no model field produces at all
     (`account_name`, informational; `kind`, telling two models apart in one
     file -- both of which the caller then sets), and the ones only *one* of a
-    file's two models has (`notes` belongs to `GoalAllocation`, not `Budget`).
+    file's models has.
     """
     row: dict = {}
     for field_map, obj in pairs:
@@ -555,8 +555,6 @@ JOURNAL_LINE = FieldMap(
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "journal_entry": "same value as JournalEntry.id, carried once as entry_id",
-        "budget": "derived from (account, month) on import via bulk_create_for_import; carrying it risks "
-        "staleness (§2.6)",
     },
 )
 
@@ -630,49 +628,16 @@ JOURNAL_COLUMNS = (
 
 # --- budget.csv ---------------------------------------------------------
 #
-# One row per monthly amount -- a Budget row or a GoalAllocation, told apart
-# by `kind` (§2.1). A GoalAllocation's target is a Goal, identified the same
-# way a Goal is everywhere else in this format: by the account_id of the
-# equity account backing it.
-
-BUDGET = FieldMap(
-    model=Budget,
-    columns={
-        "month": ColumnSpec("month", KIND_DATE),
-        "category": ColumnSpec("account_id", KIND_INT, read=lambda budget: budget.category_id),
-        "budget_amount": ColumnSpec("amount", KIND_DECIMAL),
-        "is_archived": ColumnSpec("is_archived", KIND_BOOL),
-        "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
-    },
-    omitted={
-        "id": "no cross-reference needs a handle; a budget row is identified by (kind=budget, account_id, month), "
-        "which is already unique (Budget.Meta.unique_together)",
-        "book": _TENANT,
-        "created_at": _TIMESTAMP,
-        "updated_at": _TIMESTAMP,
-    },
-)
-
-GOAL_ALLOCATION = FieldMap(
-    model=GoalAllocation,
-    columns={
-        # Via allocation.goal.account_id -- a goal is identified by its
-        # account everywhere in this format (§2.1), not by its own id.
-        "goal": ColumnSpec("account_id", KIND_INT, read=lambda allocation: allocation.goal.account_id),
-        "month": ColumnSpec("month", KIND_DATE),
-        "amount": ColumnSpec("amount", KIND_DECIMAL),
-        "notes": ColumnSpec("notes", KIND_STR),
-        "is_archived": ColumnSpec("is_archived", KIND_BOOL),
-        "archived_at": ColumnSpec("archived_at", KIND_DATETIME),
-    },
-    omitted={
-        "id": "no cross-reference needs a handle; identified by (kind=goal, account_id, month), which is already "
-        "unique (GoalAllocation.Meta.unique_together)",
-        "book": _TENANT,
-        "created_at": _TIMESTAMP,
-        "updated_at": _TIMESTAMP,
-    },
-)
+# One row per monthly amount -- a category's budget or a goal's allocation,
+# told apart by `kind` (§2.1). A goal is identified the same way it is
+# everywhere else in this format: by the account_id of the equity account
+# backing it.
+#
+# No model stands behind these rows: the budget lives in the ledger, as one
+# budget entry per month (apps.budget.ledger), so the file is read off those
+# entries and written back through the ledger's setters rather than through a
+# FieldMap (`LEDGER_FILES`). `notes`, `is_archived` and `archived_at` are kept
+# so archives from before the ledger still read; they are blank or false.
 
 BUDGET_COLUMNS = (
     Column("kind", KIND_STR),
@@ -777,8 +742,6 @@ FIELD_MAPS = (
     JOURNAL_ENTRY,
     JOURNAL_LINE,
     BANK_TRANSACTION,
-    BUDGET,
-    GOAL_ALLOCATION,
     RECONCILIATION,
     GOAL_LINK,
 )
@@ -789,15 +752,10 @@ FIELD_MAPS = (
 #: `build_row` depends on, since a second writer silently overwrites the first.
 #:
 #: A file with more than one grouping writes *alternative* row kinds rather
-#: than a blend: budget.csv holds a `Budget` row or a `GoalAllocation` row, and
-#: its `kind` column is what says which.
+#: than a blend. budget.csv has none: it is read off the ledger (`LEDGER_FILES`).
 ROW_COMPOSITIONS = {
     ACCOUNTS_FILE: ((ACCOUNT, ACCOUNT_GROUP, INSTITUTION, GOAL),),
     JOURNAL_FILE: ((JOURNAL_ENTRY, JOURNAL_LINE, PAYEE, BANK_TRANSACTION),),
-    BUDGET_FILE: (
-        (BUDGET,),
-        (GOAL_ALLOCATION,),
-    ),
     RECONCILIATIONS_FILE: ((RECONCILIATION,),),
     GOAL_LINKS_FILE: ((GOAL_LINK,),),
 }
@@ -809,6 +767,12 @@ FILE_COLUMNS = {
     RECONCILIATIONS_FILE: RECONCILIATIONS_COLUMNS,
     GOAL_LINKS_FILE: GOAL_LINKS_COLUMNS,
 }
+
+
+#: Files with no model behind them, read off the ledger by `export.py` and
+#: written back through `apps.budget.ledger` by `apply.py`; their columns are
+#: their own declaration.
+LEDGER_FILES = frozenset({BUDGET_FILE})
 
 
 def validate_schema() -> None:
@@ -826,6 +790,8 @@ def validate_schema() -> None:
     mapped_column_names = {spec.name for fm in FIELD_MAPS for spec in fm.columns.values()}
     accounted_for = mapped_column_names | INFORMATIONAL_COLUMNS | SYNTHETIC_COLUMNS
     for file, columns in FILE_COLUMNS.items():
+        if file in LEDGER_FILES:
+            continue
         for column in columns:
             if column.name not in accounted_for:
                 raise AssertionError(

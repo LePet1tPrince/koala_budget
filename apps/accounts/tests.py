@@ -11,6 +11,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.books.context import current_book
+from apps.budget.ledger import set_budget
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
 from apps.teams.models import Team
@@ -528,15 +529,12 @@ class AccountViewTest(TestCase):
         from datetime import date
         from decimal import Decimal
 
-        from apps.budget.models import Budget
         from apps.journal.models import JournalEntry, JournalLine
 
         expense_group = AccountGroup.objects.create(book=self.book, name="Bills", account_type=ACCOUNT_TYPE_EXPENSE)
         asset = Account.objects.create(book=self.book, name="Chart Cash", account_group=self.account_group)
         expense = Account.objects.create(book=self.book, name="Chart Rent", account_group=expense_group)
-        Budget.objects.create(
-            book=self.book, category=expense, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
-        )
+        set_budget(self.book, expense, date(2024, 6, 1), Decimal("1500.00"))
         entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="Rent")
         JournalLine.objects.create(book=self.book, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
         JournalLine.objects.create(book=self.book, journal_entry=entry, account=asset, cr_amount=Decimal("1200.00"))

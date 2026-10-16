@@ -68,12 +68,6 @@ export interface JournalLine {
      */
     isReconciled?: boolean;
     /**
-     * Link to budget based on account_id and journal entry date month
-     * @type {number}
-     * @memberof JournalLine
-     */
-    readonly budget: number | null;
-    /**
      * 
      * @type {string}
      * @memberof JournalLine
@@ -101,7 +95,6 @@ export function instanceOfJournalLine(value: object): value is JournalLine {
     if (!('account' in value) || value['account'] === undefined) return false;
     if (!('accountName' in value) || value['accountName'] === undefined) return false;
     if (!('amount' in value) || value['amount'] === undefined) return false;
-    if (!('budget' in value) || value['budget'] === undefined) return false;
     if (!('direction' in value) || value['direction'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
@@ -126,7 +119,6 @@ export function JournalLineFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'amount': json['amount'],
         'isCleared': json['is_cleared'] == null ? undefined : json['is_cleared'],
         'isReconciled': json['is_reconciled'] == null ? undefined : json['is_reconciled'],
-        'budget': json['budget'],
         'direction': json['direction'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
@@ -137,7 +129,7 @@ export function JournalLineFromJSONTyped(json: any, ignoreDiscriminator: boolean
       return JournalLineToJSONTyped(json, false);
   }
 
-  export function JournalLineToJSONTyped(value?: Omit<JournalLine, 'id'|'account_name'|'amount'|'budget'|'direction'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function JournalLineToJSONTyped(value?: Omit<JournalLine, 'id'|'account_name'|'amount'|'direction'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

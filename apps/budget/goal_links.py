@@ -349,6 +349,15 @@ ACTIVITY_OUT = "out"
 ACTIVITY_SPENT = "spent"
 
 
+def _contribution_lines(goal):
+    """The goal's manual contributions: its bucket's lines on the budget entries (`apps.budget.ledger`)."""
+    from apps.journal.models import JournalEntry, JournalLine
+
+    return JournalLine.objects.filter(
+        account__paired_account_id=goal.account_id, journal_entry__source=JournalEntry.SOURCE_BUDGET
+    ).select_related("journal_entry")
+
+
 def goal_activity(goal, limit=100):
     """
     Everything that moved the goal, newest first: manual allocations (by month),
@@ -361,18 +370,19 @@ def goal_activity(goal, limit=100):
     from .linked import linked_lines, starting_balances
 
     events = []
-    for allocation in goal.allocations.exclude(amount=0):
+    for line in _contribution_lines(goal):
+        amount = line.cr_amount - line.dr_amount
         events.append(
             {
-                "date": allocation.month,
-                "kind": ACTIVITY_ASSIGNED if allocation.amount > 0 else ACTIVITY_WITHDRAWN,
+                "date": line.journal_entry.entry_date,
+                "kind": ACTIVITY_ASSIGNED if amount > 0 else ACTIVITY_WITHDRAWN,
                 "account": None,
                 "payee": "",
-                "memo": allocation.notes,
-                "amount": allocation.amount,
+                "memo": "",
+                "amount": amount,
                 "month_only": True,
-                # Manual: editable and undoable from the activity table.
-                "allocation_id": allocation.pk,
+                # Manual: editable and undoable from the activity table, by its budget line.
+                "line_id": line.pk,
             }
         )
     for link in starting_balances().filter(goal=goal).select_related("account").exclude(amount=0):
@@ -450,7 +460,7 @@ def link_drift(goal, left):
         return None
 
     reasons = []
-    assigned = sum((a.amount for a in goal.allocations.all()), ZERO)
+    assigned = sum((line.cr_amount - line.dr_amount for line in _contribution_lines(goal)), ZERO)
     if assigned:
         reasons.append(_("You assigned or withdrew %(amount)s by hand.") % {"amount": _money(assigned)})
     counted_start = {link.pk for link in starting_balances().filter(goal=goal)}

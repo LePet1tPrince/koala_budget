@@ -5,7 +5,8 @@ import zipfile
 
 from apps.accounts.models import Account, AccountGroup, Payee
 from apps.books.models import Book
-from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
+from apps.budget import ledger as budget_ledger
+from apps.budget.models import Goal, GoalAccountLink
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
 from apps.teams.models import Membership
@@ -136,12 +137,16 @@ def export_user_data(user):
             )
 
             # Budgets
-            budgets = Budget.objects.filter(book=book).select_related("category")
+            budgets = budget_ledger.budgeted_by_month_category(book)
+            category_names = dict(Account.objects.filter(book=book).values_list("pk", "name"))
             zf.writestr(
                 f"{prefix}/budgets.csv",
                 _build_csv(
                     ["month", "category", "budget_amount"],
-                    [[b.month.isoformat(), b.category.name, str(b.budget_amount)] for b in budgets],
+                    [
+                        [month.isoformat(), category_names[category_id], str(amount)]
+                        for (month, category_id), amount in sorted(budgets.items())
+                    ],
                 ),
             )
 
@@ -166,12 +171,16 @@ def export_user_data(user):
             )
 
             # Goal allocations
-            allocations = GoalAllocation.objects.filter(book=book).select_related("goal")
+            allocations = budget_ledger.goal_assigned_by_month(book)
+            goal_names = dict(goals.values_list("pk", "name"))
             zf.writestr(
                 f"{prefix}/goal_allocations.csv",
                 _build_csv(
                     ["goal", "month", "amount", "notes"],
-                    [[a.goal.name, a.month.isoformat(), str(a.amount), a.notes] for a in allocations],
+                    [
+                        [goal_names[goal_id], month.isoformat(), str(amount), ""]
+                        for (goal_id, month), amount in sorted(allocations.items())
+                    ],
                 ),
             )
 
