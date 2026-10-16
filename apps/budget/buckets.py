@@ -168,5 +168,7 @@ def sync_book(book):
 
     Account.objects.bulk_create(to_create)
     Account.objects.bulk_update(to_update, ["name", "is_archived"])
-    # What is left paired with an account that no longer takes a bucket.
-    Account.objects.filter(pk__in=[bucket.pk for bucket in buckets.values()]).delete()
+    # What is left paired with an account that no longer takes a bucket. One at a
+    # time: `Account.delete()` releases a bucket's budget lines first.
+    for bucket in buckets.values():
+        bucket.delete()

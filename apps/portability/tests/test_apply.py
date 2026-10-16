@@ -22,6 +22,7 @@ from apps.accounts.models import Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.splits import is_split
+from apps.budget import ledger
 from apps.budget.models import Budget, Goal
 from apps.journal.models import JournalEntry, JournalLine
 from apps.portability.services import apply, export, read, write
@@ -144,6 +145,18 @@ class RoundTripTests(TestCase):
         self.dest_bytes = export_bytes(self.dest_book)
         self.source_tables = read.read_archive(self.source_bytes)
         self.dest_tables = read.read_archive(self.dest_bytes)
+
+    def test_budget_entries_are_rebuilt_on_import(self):
+        # Budget entries don't travel (apps.budget.ledger); the destination writes
+        # its own from the imported rows.
+        for book in (self.source_book, self.dest_book):
+            result = ledger.check_book(book)
+            self.assertEqual(result.bucket_mismatches, [], book)
+            self.assertEqual(result.unassigned_mismatches, [], book)
+        self.assertEqual(
+            JournalEntry.objects.filter(book=self.dest_book, source=JournalEntry.SOURCE_BUDGET).count(),
+            JournalEntry.objects.filter(book=self.source_book, source=JournalEntry.SOURCE_BUDGET).count(),
+        )
 
     def test_apply_does_not_raise(self):
         pass  # setUp already ran it; a raise there fails this test

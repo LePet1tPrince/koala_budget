@@ -11,8 +11,9 @@ from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, ngettext
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
+from apps.budget import ledger as budget_ledger
 from apps.budget.models import Budget, Goal, GoalAllocation
-from apps.journal.models import JournalLine, counted_entries
+from apps.journal.models import JournalLine, counted_entries, transaction_entries
 from apps.web.templatetags.currency_tags import currency
 
 
@@ -200,8 +201,9 @@ class BudgetService:
         """
         first_budget = Budget.objects.filter(book=self.book).order_by("month").values_list("month", flat=True).first()
 
+        # Budget entries mirror the Budget rows already counted above.
         first_txn_date = (
-            JournalLine.objects.filter(book=self.book)
+            JournalLine.objects.filter(transaction_entries("journal_entry__"), book=self.book)
             .order_by("journal_entry__entry_date")
             .values_list("journal_entry__entry_date", flat=True)
             .first()
@@ -491,6 +493,7 @@ class GoalService:
                     )
             if amount == 0:
                 allocation.delete()
+                budget_ledger.sync_month(self.book, allocation.month)
             else:
                 allocation.amount = amount
                 allocation.save(update_fields=["amount", "updated_at"])

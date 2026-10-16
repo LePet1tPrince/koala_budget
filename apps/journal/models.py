@@ -25,6 +25,19 @@ def counted_entries(path=""):
     return ~Q(**{f"{path}status": JournalEntry.STATUS_VOID})
 
 
+def transaction_entries(path=""):
+    """
+    `Q` selecting entries that are transactions: everything but the budget entries
+    (`apps.budget.ledger`), which move money between budget buckets and never between
+    real accounts. Anything that lists, counts or dates "transactions" -- the
+    Transactions page, the journal API, "does this book have any history yet",
+    exports -- filters on this. Balances don't need to: a budget entry's lines are
+    all on budget buckets, which no report or balance reads. `path` as for
+    `counted_entries`.
+    """
+    return ~Q(**{f"{path}source": JournalEntry.SOURCE_BUDGET})
+
+
 class JournalEntry(BaseBookModel):
     """
     Journal Entry model for double-entry bookkeeping.
@@ -95,6 +108,14 @@ class JournalEntry(BaseBookModel):
         ordering = ["-entry_date", "-created_at"]
         verbose_name = "Journal Entry"
         verbose_name_plural = "Journal Entries"
+        constraints = [
+            # A month's budget is one entry (apps.budget.ledger.sync_month), dated the first.
+            models.UniqueConstraint(
+                fields=["book", "entry_date"],
+                condition=Q(source="budget"),
+                name="one_budget_entry_per_book_month",
+            ),
+        ]
 
     def __str__(self):
         return f"JE-{self.id} - {self.entry_date} - {self.description[:50]}"

@@ -14,9 +14,10 @@ from django.db.models import Sum
 from django.test import TestCase
 
 from apps.accounts.models import Account, AccountGroup
+from apps.budget import ledger
 from apps.budget.models import Budget, Goal, GoalAllocation
 from apps.budget.services import BudgetService, NetWorthService
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry, JournalLine, transaction_entries
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -63,7 +64,7 @@ class TinyApplyTest(TestCase):
         self.assertIn(("Reconciliation Adjustments", "goal"), types)
 
     def test_every_entry_is_posted_and_balanced(self):
-        entries = JournalEntry.objects.filter(book=self.book)
+        entries = JournalEntry.objects.filter(transaction_entries(), book=self.book)
         self.assertTrue(all(entry.status == JournalEntry.STATUS_POSTED for entry in entries))
         self.assertTrue(all(entry.is_balanced for entry in entries))
         self.assertEqual(
@@ -231,14 +232,26 @@ class SampleApplyTest(TestCase):
             (estimated_rows,) = cursor.fetchone()
         self.assertGreaterEqual(estimated_rows, JournalLine.objects.filter(book=self.book).count())
 
+    def test_budget_entries_mirror_the_budget(self):
+        # Five years of budgets and goal allocations, written into the ledger: every
+        # month's entry matches its rows, and Unassigned read off the buckets equals
+        # Unassigned read off the rows for every month of the book's history.
+        last = JournalEntry.objects.filter(book=self.book).order_by("-entry_date").first().entry_date
+        result = ledger.check_book(self.book, through=last)
+        self.assertEqual(result.bucket_mismatches, [])
+        self.assertEqual(result.unassigned_mismatches, [])
+        self.assertGreater(result.months_checked, 24)
+
     def test_everything_was_written(self):
         # 6,623 transactions plus 13 opening balances: 8 of the export's 21
         # `Starting Balance` rows are for accounts that were added empty, and an
         # entry with nothing on either side is not a journal entry.
         self.assertEqual(self.plan.stats["zero_openings"], 8)
         # 8 rows YNAB never categorised wait in the Inbox rather than posting anywhere.
-        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 6615 + 13)
-        self.assertEqual(JournalLine.objects.filter(book=self.book).count(), 13319 + 13 * 2)
+        self.assertEqual(JournalEntry.objects.filter(transaction_entries(), book=self.book).count(), 6615 + 13)
+        self.assertEqual(
+            JournalLine.objects.filter(transaction_entries("journal_entry__"), book=self.book).count(), 13319 + 13 * 2
+        )
         # Every goal's account is planned with the chart (the four savings
         # categories), replacing the two expense accounts spending used to land in.
         # No `Uncategorized Expense`/`Income`: the rows that needed them wait in the Inbox.

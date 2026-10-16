@@ -18,7 +18,7 @@ from django.db.models import Max, Min, Q
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.budget.models import Budget, GoalAccountLink, GoalAllocation
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry, JournalLine, transaction_entries
 from apps.reconciliation.models import Reconciliation
 
 from . import schema
@@ -59,7 +59,7 @@ def build_row_count(book) -> int:
     """
     accounts = Account.objects.filter(book=book).exclude_budget_buckets().count()
     journal = (
-        JournalLine.objects.filter(book=book).count()
+        JournalLine.objects.filter(transaction_entries("journal_entry__"), book=book).count()
         + BankTransaction.objects.filter(book=book, journal_entry__isnull=True).count()
     )
     budget = Budget.objects.filter(book=book).count() + GoalAllocation.objects.filter(book=book).count()
@@ -168,7 +168,9 @@ def _place_feed_rows(book) -> tuple[dict[tuple[int, int], BankTransaction], list
     than done quietly.
     """
     line_accounts: set[tuple[int, int]] = set(
-        JournalLine.objects.filter(book=book).values_list("journal_entry_id", "account_id")
+        JournalLine.objects.filter(transaction_entries("journal_entry__"), book=book).values_list(
+            "journal_entry_id", "account_id"
+        )
     )
 
     lookup: dict[tuple[int, int], BankTransaction] = {}
@@ -195,8 +197,9 @@ def _build_journal_rows(book) -> list[dict]:
     """
     feed_lookup, unplaceable = _place_feed_rows(book)
 
+    # Budget entries are derived from budget.csv and rebuilt on import (apps.budget.ledger).
     lines = (
-        JournalLine.objects.filter(book=book)
+        JournalLine.objects.filter(transaction_entries("journal_entry__"), book=book)
         .select_related("journal_entry", "journal_entry__payee", "account")
         .order_by("journal_entry__entry_date", "journal_entry_id", "id")
     )
@@ -301,7 +304,7 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
     checks were written before their entries were voided (`upgrade_6_to_7`).
     """
     non_void_lines = (
-        JournalLine.objects.filter(book=book)
+        JournalLine.objects.filter(transaction_entries("journal_entry__"), book=book)
         .filter(~Q(journal_entry__status=JournalEntry.STATUS_VOID) | Q(journal_entry_id__in=set(count_entry_ids)))
         .select_related("account", "account__account_group")
     )
@@ -328,7 +331,9 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
         if allocation.goal.account_id:
             goal_totals[allocation.goal.account_id] += allocation.amount
 
-    date_bounds = JournalEntry.objects.filter(book=book).aggregate(first=Min("entry_date"), last=Max("entry_date"))
+    date_bounds = JournalEntry.objects.filter(transaction_entries(), book=book).aggregate(
+        first=Min("entry_date"), last=Max("entry_date")
+    )
 
     statements = Reconciliation.objects.filter(book=book)
     statement_counts = {
@@ -338,7 +343,7 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
     }
 
     accounts_count = Account.objects.filter(book=book).exclude_budget_buckets().count()
-    entries_count = JournalEntry.objects.filter(book=book).count()
+    entries_count = JournalEntry.objects.filter(transaction_entries(), book=book).count()
     goals_count = Account.objects.filter(book=book, goal__isnull=False).count()
 
     # `uncategorized` counts what the *file* will hold as uncategorized, which

@@ -27,6 +27,7 @@ from apps.utils.amounts import evaluate_amount
 from apps.web.templatetags.currency_tags import currency
 
 from . import goal_links
+from . import ledger as budget_ledger
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Budget, Goal, GoalAccountLink, GoalAllocation
 from .services import (
@@ -600,6 +601,9 @@ def budget_autofill_view(request, team_slug, book_slug):
         Budget.objects.bulk_update(updates, ["budget_amount"])
         messages.success(request, _("Budgets adjusted so all available amounts are zero."))
 
+    # The writes above are bulk, which sends no signals: rebuild the month's budget entry.
+    budget_ledger.sync_month(request.book, month)
+
     tab = f"&tab={section}" if section in types else ""
     return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}{tab}")
 
@@ -838,6 +842,8 @@ def budget_grid_save(request, team_slug, book_slug):
             Budget.objects.bulk_update(updates, ["budget_amount"])
         if creates:
             Budget.objects.bulk_create(creates)
+        # Bulk writes send no signals: rebuild each touched month's budget entry.
+        budget_ledger.sync_months(request.book, {month for _cid, month in merged})
 
     log_event(
         AuditEvent.BULK_EDIT,

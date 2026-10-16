@@ -459,6 +459,8 @@ class AllocationReadsTest(TestCase):
         "apps/portability/services/apply.py",  # import
         "apps/portability/services/export.py",  # raw export
         "apps/users/services.py",  # raw user data export
+        "apps/budget/ledger.py",  # mirrors the rows into budget entries
+        "apps/budget/migrations/0010_budget_entries_backfill.py",  # the same, frozen
     }
 
     def test_no_new_direct_reads(self):
