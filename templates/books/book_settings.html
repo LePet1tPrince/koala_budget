@@ -61,6 +61,11 @@
       </p>
     </section>
 
+    <section class="space-y-2 border-t border-base-300 pt-6" aria-labelledby="book-reports-heading">
+      <h3 id="book-reports-heading" class="font-semibold">{% translate "Reports" %}</h3>
+      {% render_select_input form.report_timeframe %}
+    </section>
+
     <div class="border-t border-base-300 pt-4">
       <button type="submit" class="btn btn-primary" data-testid="book-settings-save">{% translate "Save" %}</button>
     </div>

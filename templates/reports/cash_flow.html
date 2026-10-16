@@ -37,7 +37,7 @@
       {% endif %}
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div id="month-range-picker"></div>
+      <div id="month-range-picker" data-start-month="{{ start_date|date:'Y-m' }}" data-end-month="{{ end_date|date:'Y-m' }}"></div>
     </div>
   </div>
 

@@ -222,18 +222,24 @@ def book_settings(request, team_slug, book_slug):
     old_slug = book.slug
     # Read before validating: `is_valid()` copies the posted values onto the instance.
     before = book.budget_future_income
+    timeframe_before = book.report_timeframe
     # Not `request.POST or None` alone: an unticked checkbox sends nothing, and
     # the form must still bind.
     form = BookSettingsForm(request.POST if request.method == "POST" else None, instance=book)
     if request.method == "POST" and form.is_valid():
         book = form.save()
+        changed = {}
         if before != book.budget_future_income:
+            changed["budget_future_income"] = book.budget_future_income
+        if timeframe_before != book.report_timeframe:
+            changed["report_timeframe"] = book.report_timeframe
+        if changed:
             log_event(
                 AuditEvent.BOOK_SETTINGS_CHANGED,
                 request=request,
                 team=request.team,
                 book=book,
-                metadata={"budget_future_income": book.budget_future_income},
+                metadata=changed,
             )
         messages.success(request, _("Saved."))
         if book.slug != old_slug:
@@ -255,6 +261,6 @@ def book_settings(request, team_slug, book_slug):
             "settings_section": "book",
             "settings_page_title": _("This book"),
             "page_title": _("This book"),
-            "settings_page_blurb": _("Its name, web address and how it budgets income."),
+            "settings_page_blurb": _("Its name, web address, how it budgets income and the dates reports open on."),
         },
     )

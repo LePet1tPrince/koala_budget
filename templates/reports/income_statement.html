@@ -89,7 +89,7 @@
       {% endif %}
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div id="date-range-picker" data-all-time-start="{% first_entry_date request.book %}"></div>
+      <div id="date-range-picker" data-start-date="{{ start_date|date:'Y-m-d' }}" data-end-date="{{ end_date|date:'Y-m-d' }}" data-all-time-start="{% first_entry_date request.book %}"></div>
       <div class="join" data-testid="display-toggle">
         <a href="?{{ total_view_qs }}" class="btn btn-sm join-item {% if not period %}btn-active{% endif %}">{% translate "Total" %}</a>
         <div class="dropdown dropdown-end join-item">

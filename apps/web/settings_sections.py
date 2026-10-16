@@ -94,7 +94,7 @@ def sections_for(request) -> list[SettingsSection]:
                 SettingsSection(
                     key="book",
                     label=_("General"),
-                    blurb=_("What this book is called, its web address, and how it budgets income."),
+                    blurb=_("Its name, web address, how it budgets income and the dates reports open on."),
                     icon="book-open",
                     url=reverse("books:settings", args=book.url_args),
                     group=GROUP_BOOK,
