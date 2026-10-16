@@ -114,18 +114,21 @@ def goal_spent_subquery(start=None, end=None):
 
 
 def goal_assigned_subquery(start=None, end=None):
-    """Σ manual allocations (`GoalAllocation`) for months from `start` to `end` (exclusive)."""
-    filters = {}
-    if start is not None:
-        filters["month__gte"] = start.replace(day=1)
-    if end is not None:
-        filters["month__lt"] = end
-    total = (
-        GoalAllocation.objects.filter(goal=OuterRef("pk"), **filters)
-        .values("goal")
-        .annotate(total=Sum("amount"))
-        .values("total")
+    """
+    Σ manual allocations for months from `start` to `end` (exclusive), read off the
+    ledger: the credit balance of the goal's bucket on budget entries
+    (`apps.budget.ledger`), which carry each month's `GoalAllocation`s.
+    """
+    from apps.journal.models import JournalEntry, JournalLine
+
+    lines = JournalLine.objects.filter(
+        journal_entry__source=JournalEntry.SOURCE_BUDGET, account__paired_account=OuterRef("account")
     )
+    if start is not None:
+        lines = lines.filter(journal_entry__entry_date__gte=start.replace(day=1))
+    if end is not None:
+        lines = lines.filter(journal_entry__entry_date__lt=end)
+    total = lines.values("account").annotate(total=Sum(F("cr_amount") - F("dr_amount"))).values("total")
     return Coalesce(Subquery(total, output_field=DecimalField(max_digits=15, decimal_places=2)), ZERO)
 
 

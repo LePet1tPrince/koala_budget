@@ -84,8 +84,10 @@ def _budget_figures(book, month):
     service = BudgetService(book)
     categories = list(_budget_categories(book))
 
-    # Rows are created lazily on first save; a category without one shows zero.
+    # Amounts come from the budget entries (apps.budget.ledger); the rows are only
+    # what the forms write. Rows are created lazily on first save.
     existing_budgets = {b.category_id: b for b in Budget.objects.filter(book=book, month=month)}
+    budgeted_map = budget_ledger.budgeted_in_month(book, month)
     actuals_map = service.get_actuals_by_category(month)
     # This month's balances and last month's (what rolled in) from one walk of
     # the budget history.
@@ -105,7 +107,7 @@ def _budget_figures(book, month):
 
     for category in categories:
         budget = existing_budgets.get(category.pk)
-        budgeted = budget.budget_amount if budget else Decimal("0")
+        budgeted = budgeted_map.get(category.pk, Decimal("0"))
         actual = actuals_map.get(category.pk, Decimal("0"))
         available = available_map.get(category.pk, Decimal("0"))
 
@@ -120,7 +122,7 @@ def _budget_figures(book, month):
             group = section["groups"][-1]
 
         # The input has no visible label — the category is its row header.
-        form = BudgetAmountForm(instance=budget)
+        form = BudgetAmountForm(instance=budget, initial={"budget_amount": budgeted} if budgeted else None)
         form.fields["budget_amount"].widget.attrs["aria-label"] = _("%(category)s budget") % {"category": category.name}
 
         group["rows"].append(
@@ -727,9 +729,12 @@ def budget_grid_view(request, team_slug, book_slug):
     categories = list(_budget_categories(request.book).filter(hidden_from_budget=False))
     actual_modes, actuals = _grid_actuals(request.book, categories, date.today())
 
+    # From the budget entries: a month budgeted at zero has no line, so it shows blank.
     amounts = {}
-    for budget in Budget.objects.filter(book=request.book, month__gte=months[0], month__lte=months[-1]):
-        amounts.setdefault(budget.category_id, {})[budget.month.isoformat()] = str(budget.budget_amount)
+    for (month, category_id), amount in budget_ledger.budgeted_by_month_category(
+        request.book, months[0], months[-1]
+    ).items():
+        amounts.setdefault(category_id, {})[month.isoformat()] = str(amount)
 
     groups = []
     for category in categories:
