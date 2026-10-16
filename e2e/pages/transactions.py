@@ -197,6 +197,17 @@ class TransactionsPage(BasePage):
         grid.wait_for(timeout=5_000)
         grid.get_by_role("button", name=str(day), exact=True).click()
 
+    def type_date(self, testid: str, text: str):
+        """Open a `common/DateField`, type a date into its text box and take it with Enter."""
+        self.page.locator(f"button[data-testid='{testid}']").click()
+        box = self.page.locator(f"[data-testid='{testid}-text']")
+        box.wait_for(timeout=5_000)
+        box.fill(text)
+        box.press("Enter")
+
+    def date_label(self, testid: str) -> str:
+        return self.page.locator(f"button[data-testid='{testid}']").inner_text().strip()
+
     # --- splits ----------------------------------------------------------
 
     def start_split(self):

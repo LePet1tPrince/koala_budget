@@ -52,6 +52,9 @@ class BookSettingsPage(BasePage):
     def consequence(self) -> str:
         return self.page.locator("[data-testid='budget-future-income-consequence']").inner_text()
 
+    def set_report_timeframe(self, value: str):
+        self.page.locator("[data-testid='report-timeframe']").select_option(value)
+
     def save(self):
         self.page.locator("[data-testid='book-settings-save']").click()
         self.page.wait_for_load_state("domcontentloaded")

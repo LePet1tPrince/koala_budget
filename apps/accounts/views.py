@@ -571,25 +571,20 @@ class AccountDetailView(AccountViewMixin, DetailView):
         return Account.objects.filter(book=self.request.book).select_related("account_group", "institution")
 
     def get_context_data(self, **kwargs):
-        from datetime import date, datetime
+        from datetime import date
 
         from apps.reports.services import ReportService
+        from apps.reports.timeframes import date_range_from_request
 
         context = super().get_context_data(**kwargs)
         account = self.object
         book = self.request.book
 
-        # Activity section (same components as the reports drill-down):
-        # date range from ?start_date/?end_date, defaulting to this year --
-        # matches the "year" default the date-range picker sets client-side
-        # (data-default-range="year" on account_detail.html).
-        try:
-            start_date = datetime.strptime(self.request.GET.get("start_date", ""), "%Y-%m-%d").date()
-            end_date = datetime.strptime(self.request.GET.get("end_date", ""), "%Y-%m-%d").date()
-        except ValueError:
-            today = date.today()
-            start_date = today.replace(month=1, day=1)
-            end_date = today
+        # Activity section (same components as the reports drill-down): date range
+        # from ?start_date/?end_date, else the book's report timeframe, else this year.
+        # The picker reflects whatever this resolves to (data-start-date on the page).
+        today = date.today()
+        start_date, end_date = date_range_from_request(self.request, (today.replace(month=1, day=1), today))
 
         service = ReportService(book)
         report_data = service.get_account_activity(account, start_date, end_date)
