@@ -17,6 +17,7 @@ from playwright.sync_api import Page
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY
 from apps.bank_feed.models import BankTransaction
+from apps.reconciliation.services.adjustment import offset_account
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
 from e2e.pages.bank_feed import BankFeedPage
 
@@ -716,6 +717,25 @@ def test_editing_a_row_across_accounts_keeps_it_in_its_account(
     assert sav.description == "SAV-RENAMED"
     assert sav.account_id == two_accounts["savings"].id
     assert feed.row_account(sav.id) == "Zed Savings"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_opening_balance_can_be_categorized_to_the_system_equity_account(
+    requires_vite, authenticated_page, live_server, team, two_accounts
+):
+    """Reconciliation Adjustments is offered as a category, so an opening balance can be entered by hand."""
+    (row,) = _rows(team, two_accounts["chequing"], "OPEN", 1)
+    equity = offset_account(team.default_book)
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+    feed.open_row(row.id)
+    feed.choose_category("Reconciliation Adjustments")
+    feed.save_modal()
+
+    row.refresh_from_db()
+    assert set(row.journal_entry.lines.values_list("account_id", flat=True)) == {two_accounts["chequing"].id, equity.id}
 
 
 @pytest.mark.django_db(transaction=True)

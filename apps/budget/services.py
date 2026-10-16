@@ -806,14 +806,15 @@ def goal_left_by_account(book, month=None):
 
 def picker_accounts_data(book, month=None):
     """
-    Accounts for a category picker, serialized: every account except system ones
-    (bookkeeping, never a category) and budget buckets (never in a transaction),
-    with goal accounts marked and their balance ("Car · $600 left").
+    Accounts for a category picker, serialized: every account except budget
+    buckets (never in a transaction), with goal accounts marked and their balance
+    ("Car · $600 left"). The system equity account (Reconciliation Adjustments) is
+    included: opening balances and equity adjustments are categorized to it.
     """
     from apps.accounts.serializers import PickerAccountSerializer
 
     accounts = (
-        Account.objects.filter(book=book, is_system=False)
+        Account.objects.filter(book=book)
         .exclude_budget_buckets()
         .select_related("account_group", "institution")
         .order_by("name")
