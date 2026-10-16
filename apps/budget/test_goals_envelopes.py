@@ -15,6 +15,7 @@ from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
 from apps.books.context import current_book
+from apps.budget.buckets import unassigned_account
 from apps.budget.ledger import budget_amount, set_budget, set_goal_allocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
@@ -293,10 +294,13 @@ class GoalsGroupTest(GoalsFixture):
 
 
 class PickerAccountsTest(GoalsFixture):
-    def test_system_accounts_are_left_out_and_goals_carry_left(self):
+    def test_budget_buckets_are_left_out_and_goals_carry_left(self):
         self.spend_from_car(date(2026, 9, 5), "1000")
         data = {row["id"]: row for row in picker_accounts_data(self.book, SEPT)}
-        self.assertNotIn(self.system.pk, data)
+        self.assertFalse(Account.objects.filter(pk__in=data).budget_buckets().exists())
+        # The system equity account is where opening balances are categorized.
+        self.assertTrue(data[self.system.pk]["is_system"])
+        self.assertFalse(data[self.system.pk]["is_goal"])
         self.assertTrue(data[self.car.account_id]["is_goal"])
         self.assertEqual(data[self.car.account_id]["goal_left"], "4000.00")
         # Plain equity is not a goal.
@@ -308,8 +312,8 @@ class PickerAccountsTest(GoalsFixture):
         self.assertEqual(set(goal_left_by_account(self.book)), {self.car.account_id})
 
 
-class SystemCategoryRefusedTest(GoalsFixture):
-    """Every endpoint that takes a category refuses the system account."""
+class CategoryRulesTest(GoalsFixture):
+    """Every endpoint that takes a category refuses a budget bucket and accepts the system equity account."""
 
     def setUp(self):
         self.api = APIClient()
@@ -331,53 +335,69 @@ class SystemCategoryRefusedTest(GoalsFixture):
     def manual(self, **extra):
         return {"date": "2026-09-05", "account": self.checking.pk, "outflow": "25.00", "description": "x", **extra}
 
-    def test_each_endpoint(self):
-        cases = {
+    def cases(self, category):
+        return {
             "categorize": (
                 "post",
                 f"{self.feed}categorize/",
-                {"rows": [{"id": self.tx.pk}], "category_id": self.system.pk},
+                {"rows": [{"id": self.tx.pk}], "category_id": category.pk},
             ),
-            "create": ("post", self.feed, self.manual(category=self.system.pk)),
+            "create": ("post", self.feed, self.manual(category=category.pk)),
             "create splits": (
                 "post",
                 self.feed,
                 self.manual(
                     splits=[
-                        {"category": self.system.pk, "amount": "10"},
+                        {"category": category.pk, "amount": "10"},
                         {"category": self.groceries.pk, "amount": "15"},
                     ]
                 ),
             ),
-            "update": ("put", f"{self.feed}{self.tx.pk}/", self.manual(category=self.system.pk)),
-            "batch_edit": ("patch", f"{self.feed}batch_edit/", {"ids": [self.tx.pk], "category_id": self.system.pk}),
+            "update": ("put", f"{self.feed}{self.tx.pk}/", self.manual(category=category.pk)),
+            "batch_edit": ("patch", f"{self.feed}batch_edit/", {"ids": [self.tx.pk], "category_id": category.pk}),
             "journal line": (
                 "post",
                 f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/",
                 {
                     "date": "2026-09-05",
                     "account": self.checking.pk,
-                    "category": self.system.pk,
+                    "category": category.pk,
                     "outflow": "10.00",
                     "description": "x",
                 },
             ),
         }
-        for name, (method, url, data) in cases.items():
+
+    def test_each_endpoint_refuses_a_budget_bucket(self):
+        bucket = unassigned_account(self.book)
+        for name, (method, url, data) in self.cases(bucket).items():
             with self.subTest(name):
                 response = self.call(method, url, data)
                 self.assertEqual(response.status_code, 400, (name, response.content))
-                self.assertIn("bookkeeping account", response.content.decode())
+                self.assertIn("budget account", response.content.decode())
 
-    def test_recategorize_refuses_the_system_account(self):
+    def test_each_endpoint_accepts_the_system_equity_account(self):
+        for name, (method, url, data) in self.cases(self.system).items():
+            with self.subTest(name):
+                response = self.call(method, url, data)
+                self.assertLess(response.status_code, 300, (name, response.content))
+        self.assertTrue(JournalLine.objects.filter(account=self.system).exists())
+
+    def recategorize(self, category):
         entry = self.post(date(2026, 9, 5), self.groceries, self.checking, "10")
         line = entry.lines.get(account=self.groceries)
-        response = self.call(
+        return self.call(
             "post",
             f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/{line.pk}/recategorize/",
-            {"new_category_id": self.system.pk},
+            {"new_category_id": category.pk},
         )
-        self.assertEqual(response.status_code, 400)
+
+    def test_recategorize_refuses_a_budget_bucket(self):
+        self.assertEqual(self.recategorize(unassigned_account(self.book)).status_code, 400)
+
+    def test_recategorize_accepts_the_system_equity_account(self):
+        response = self.recategorize(self.system)
+        self.assertLess(response.status_code, 300, response.content)
 
     def test_a_transaction_already_on_the_system_account_can_be_resaved(self):
         with current_book(self.book):
