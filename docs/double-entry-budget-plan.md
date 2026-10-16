@@ -18,7 +18,7 @@ All four are one stored account type, `budget`, with a `paired_account` link to 
 
 **Goals work like expenses.** A goal's own account ("Goal: Car") stays the category that spending from the goal is categorized to; its paired goal bucket holds what was saved. Left in the goal = bucket − spending, exactly like an envelope's available.
 
-The existing Reconciliation Adjustments equity (opening balances, adjustments) merges into **Unassigned**.
+The existing Reconciliation Adjustments equity (opening balances, adjustments) stays plain system equity. Merging it into Unassigned was planned as phase 3c and dropped; see **Phases**.
 
 ## Example chart of accounts
 Pairing rule: each bucket is paired with its Income or Expense account by matching the last digits (3110 ↔ 5110). "Available" is the bucket's balance minus its paired account's activity.
@@ -56,7 +56,7 @@ Check: net worth 15,000 + salary still due 2,000 = 17,000 = Unassigned 1,500 + e
 ## The six events
 | Event | Entry |
 |---|---|
-| Opening balance | Dr Bank / Cr Unassigned |
+| Opening balance | Dr Bank / Cr Reconciliation Adjustments (unchanged; see 3c) |
 | Plan income | Dr Expected income / Cr Unassigned |
 | Receive income | Dr Bank / Cr Income. Income clears against Expected income, or against Unassigned if future income is off |
 | Assign / move / cover | Dr Unassigned (or Envelope A) / Cr Envelope or Goal bucket |
@@ -93,7 +93,6 @@ Resulting invariant, which the trial balance enforces for free:
 ## Migration (mechanical)
 - `Budget` rows → monthly budget entries.
 - `GoalAllocation` rows → Unassigned→Goal bucket entries.
-- Opening-balance equity → Unassigned.
 - Verify with the existing `compute_unassigned()`: it must equal the new Unassigned balance (after the overspend rule) for every month, then retire it.
 
 ## Verification (when built)
@@ -109,5 +108,11 @@ Each phase is its own branch off the `budget-ledger` integration branch (itself 
 3. **Switch over**, in three steps:
    - **3a — reads** (`budget-ledger-phase-3a-reads`): every budget and goal figure is read off the budget entries; the rows are still what gets written. `ledger.budgeted_by_month_category` / `budgeted_in_month` / `first_category_budget_month` / `has_budget` replace every `Budget` amount read (budget page, grid, `BudgetService`, monthly review, Budget vs Actual, the account budget chart, the set-up gates); `goal_assigned_subquery` and `goal_monthly` read goal buckets. So every available, goal allocated/left and Unassigned follows the ledger. `ledger.resync_if_retyped` rewrites a category's lines when it moves between income and expense (the sign of every line flips). `check_book`'s entry-vs-rows check is the mirror proof; its Unassigned check now compares two ledger read paths.
    - **3b — writes** (`budget-ledger-phase-3b-writes`): the budget entries are the budget. Every writer goes through `apps/budget/ledger.py` (`set_budget`/`set_budgets`/`add_to_budget`, `set_goal_allocation`/`set_goal_allocations`/`add_to_goal_allocation`, all via `write_month`, which sets the given bucket lines and rebalances Unassigned). `Budget`, `GoalAllocation` and `JournalLine.budget` are dropped (`budget.0011` re-syncs the entries from the rows one last time, refusing allocation notes it can't keep; `journal.0008`; `budget.0012`; all reversible — the reverse rebuilds the rows and the line links from the entries). A goal contribution is addressed by its budget line. Portability keeps format v7: budget.csv is read off and written back through the ledger. `compute_unassigned` stays (it already reads the ledger); `check_book` now checks entry integrity plus the two Unassigned read paths.
-   - **3c:** Reconciliation Adjustments merged into Unassigned (moves balance-sheet equity — confirm first).
-4. **Portability:** buckets and budget entries in the export format, older archives still import.
+   - **3c — dropped.** Merging Reconciliation Adjustments into Unassigned would change no budget figure: displayed Unassigned is net-worth based, and the Unassigned bucket's own balance is read nowhere. Its costs:
+     - an exception to requirement 3: opening balances, reconciliation adjustments and YNAB starting balances would post to a budget bucket outside a budget entry;
+     - the balance sheet's Equity section would lose its Reconciliation Adjustments row;
+     - export format v8: journal rows would reference an account that accounts.csv leaves out;
+     - adjustment feed rows and report contra links would point at a hidden account, which 404s.
+
+     Reconciliation Adjustments stays plain system equity.
+4. **Portability — not needed.** Export format v7 already carries the budget: budget.csv is read off the ledger and written back through its setters (3b). Buckets and budget entries are rebuilt on import, so they don't travel.
