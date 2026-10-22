@@ -274,6 +274,13 @@ class BankFeedPage(BasePage):
         self.page.locator(f"[data-testid='split-category-{index}']").fill(name)
         self.page.get_by_role("option", name=name, exact=False).first.click()
 
+    def choose_category(self, name: str):
+        """Pick the edit modal's category (unsplit transaction)."""
+        field = self.page.locator("[data-testid='transaction-category']")
+        field.click()
+        field.fill(name)
+        self.page.get_by_role("option", name=name, exact=False).first.click()
+
     def add_split_leg(self):
         self.page.locator("[data-testid='split-add-btn']").click()
 
