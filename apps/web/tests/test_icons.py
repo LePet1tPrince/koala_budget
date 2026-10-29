@@ -20,7 +20,7 @@ def render(source, **context):
 
 
 def source_files():
-    for root, patterns in (("templates", ("*.html",)), ("assets", ("*.jsx", "*.vue"))):
+    for root, patterns in (("templates", ("*.html",)), ("assets", ("*.jsx",))):
         for pattern in patterns:
             yield from (REPO_ROOT / root).rglob(pattern)
 

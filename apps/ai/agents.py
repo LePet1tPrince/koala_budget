@@ -15,7 +15,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.toolsets import AbstractToolset
 
-from apps.ai.tools import admin_db, email_toolset, employee_toolset, weather_toolset
+from apps.ai.tools import admin_db, email_toolset, weather_toolset
 from apps.ai.types import UserDependencies
 from apps.chat.prompts import get_default_system_prompt
 from apps.users.models import CustomUser
@@ -39,7 +39,6 @@ DEFAULT_INSTRUCTIONS = [get_default_system_prompt(), add_user_name, add_user_ema
 class AgentTypes(StrEnum):
     WEATHER = "weather"
     ADMIN = "admin"
-    EMPLOYEES = "employees"
 
 
 def get_agent(agent_type: AgentTypes):
@@ -47,8 +46,6 @@ def get_agent(agent_type: AgentTypes):
         return get_weather_agent()
     elif agent_type == AgentTypes.ADMIN:
         return get_admin_agent()
-    elif agent_type == AgentTypes.EMPLOYEES:
-        return get_employees_agent()
     else:
         raise ValueError(f"Invalid agent type: {agent_type}")
 
@@ -59,10 +56,6 @@ def get_weather_agent():
 
 def get_admin_agent():
     return _get_agent([admin_db, email_toolset])
-
-
-def get_employees_agent():
-    return _get_agent([employee_toolset])
 
 
 def _get_agent(toolsets: list[AbstractToolset]):

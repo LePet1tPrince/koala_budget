@@ -1,12 +1,10 @@
 import { defineConfig } from 'vite';
 import path from 'path';
 import react from '@vitejs/plugin-react';
-import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
   plugins: [
     react(),
-    vue(),
   ],
   resolve: {
     alias: {
@@ -29,9 +27,6 @@ export default defineConfig({
         'app': path.resolve(__dirname, './assets/javascript/app.js'),
         'teams': path.resolve(__dirname, './assets/javascript/teams/teams.jsx'),
         'edit-team': path.resolve(__dirname, './assets/javascript/teams/edit-team.jsx'),
-        'pegasus': path.resolve(__dirname, './assets/javascript/pegasus/pegasus.js'),
-        'react-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/react/react-object-lifecycle.jsx'),
-        'vue-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/vue/vue-object-lifecycle.js'),
         'chat': path.resolve(__dirname, './assets/javascript/chat/chat.jsx'),
         'reports': path.resolve(__dirname, './assets/javascript/reports/ReportsDateRangePicker.jsx'),
         'bank-feed': path.resolve(__dirname, './assets/javascript/bank_feed/react/line-app.jsx'),

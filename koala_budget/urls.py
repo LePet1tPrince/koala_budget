@@ -45,7 +45,6 @@ team_level_urlpatterns = [
     path("subscription/", include(subscriptions_team_urls)),
     path("team/", include(single_team_urls)),
     path("books/", include(books_team_urls)),
-    path("example/", include("apps.teams_example.urls")),
 ]
 
 # Everything that reads or writes money data lives in a set of books, under
@@ -91,8 +90,6 @@ urlpatterns = [
     path("subscriptions/", include("apps.subscriptions.urls")),
     path("teams/", include("apps.teams.urls")),
     path("", include("apps.web.urls")),
-    path("pegasus/", include("pegasus.apps.examples.urls")),
-    path("pegasus/employees/", include("pegasus.apps.employees.urls")),
     path("support/", include("apps.support.urls")),
     path("celery-progress/", include("celery_progress.urls")),
     # API docs

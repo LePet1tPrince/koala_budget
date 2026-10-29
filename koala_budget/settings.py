@@ -81,10 +81,7 @@ THIRD_PARTY_APPS = [
     "django_celery_beat",
 ]
 
-PEGASUS_APPS = [
-    "pegasus.apps.examples.apps.PegasusExamplesConfig",
-    "pegasus.apps.employees.apps.PegasusEmployeesConfig",
-]
+PEGASUS_APPS = []
 
 # Put your project-specific apps here
 PROJECT_APPS = [
@@ -95,7 +92,6 @@ PROJECT_APPS = [
     "apps.utils",
     "apps.web",
     "apps.teams.apps.TeamConfig",
-    "apps.teams_example.apps.TeamsExampleConfig",
     "apps.books.apps.BooksConfig",
     "apps.chat",
     "apps.ai.apps.AiConfig",
@@ -501,11 +497,6 @@ FLOWER_URL_PREFIX = "flower"
 
 # Add tasks to this dict and run `python manage.py bootstrap_celery_tasks` to create them
 SCHEDULED_TASKS = {
-    "test-celerybeat": {
-        "task": "pegasus.apps.examples.tasks.example_log_task",
-        "schedule": 60,
-        "expire_seconds": 60,
-    },
     # Example of a crontab schedule
     # from celery import schedules
     # "daily-4am-task": {

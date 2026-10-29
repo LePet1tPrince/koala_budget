@@ -12,10 +12,6 @@ const sidebarNavItems = [
     href: "/dashboard/profile",
   },
   {
-    title: "Employee App",
-    href: "/dashboard/employees",
-  },
-  {
     title: "Navigation Demo",
     href: "/dashboard/navigation/tab1",
     fuzzyMatchActivePath: "/dashboard/navigation/",

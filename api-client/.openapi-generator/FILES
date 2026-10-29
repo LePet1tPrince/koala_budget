@@ -3,7 +3,6 @@ apis/AApi.ts
 apis/AuditApi.ts
 apis/BankFeedApi.ts
 apis/JournalApi.ts
-apis/PegasusApi.ts
 apis/PlaidApi.ts
 apis/ReconciliationApi.ts
 apis/TeamsApi.ts
@@ -13,7 +12,6 @@ models/Account.ts
 models/AccountGroup.ts
 models/AccountTypeEnum.ts
 models/ActionEnum.ts
-models/AggregateEmployeeData.ts
 models/AuditEvent.ts
 models/AuditLog.ts
 models/BankFeedRow.ts
@@ -21,8 +19,6 @@ models/BankFeedRowSourceEnum.ts
 models/BatchIds.ts
 models/CategorizeTransactionsRequest.ts
 models/CategorySuggestion.ts
-models/DepartmentEnum.ts
-models/Employee.ts
 models/EventTypeEnum.ts
 models/ExchangePublicTokenRequest.ts
 models/ExchangePublicTokenResponse.ts
@@ -41,7 +37,6 @@ models/PaginatedAccountGroupList.ts
 models/PaginatedAuditEventList.ts
 models/PaginatedAuditLogList.ts
 models/PaginatedBankFeedRowList.ts
-models/PaginatedEmployeeList.ts
 models/PaginatedFeedAccountList.ts
 models/PaginatedInvitationList.ts
 models/PaginatedJournalEntryList.ts
@@ -54,7 +49,6 @@ models/PaginatedTransactionRowList.ts
 models/ParsedTransaction.ts
 models/PatchedBankFeedRow.ts
 models/PatchedBatchEditRequest.ts
-models/PatchedEmployee.ts
 models/PatchedInvitation.ts
 models/PatchedJournalEntry.ts
 models/PatchedPlaidAccount.ts
