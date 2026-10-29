@@ -91,7 +91,7 @@ TASKS: tuple[Task, ...] = (
         _("See where the money went"),
         NEEDS_ENTRIES,
         auto_detected=False,
-        url_name="reports:income_statement",
+        url_name="reports:spending",
         blurb=_("Your income and spending, side by side."),
     ),
     Task(
@@ -99,7 +99,7 @@ TASKS: tuple[Task, ...] = (
         _("Watch your net worth move"),
         NEEDS_ENTRIES,
         auto_detected=False,
-        url_name="reports:net_worth_trend",
+        url_name="reports:net_worth",
         blurb=_("Add what you already have, then see the whole picture."),
         dialog="opening_balances",
     ),

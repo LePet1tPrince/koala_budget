@@ -6,7 +6,7 @@
 {% load account_nav %}
 
 {% block page_head %}
-{% include "reports/consolidated/_statement_styles.html" %}
+{% include "reports/_statement_styles.html" %}
 {% endblock %}
 
 {% block app %}
@@ -162,7 +162,7 @@
             </td>
             <td class="text-right money whitespace-nowrap">{{ section.start|currency }}</td>
             <td class="text-right money whitespace-nowrap">{{ section.end|currency }}</td>
-            {% include "reports/consolidated/_change_cell.html" with change=section.change kind=section.key %}
+            {% include "reports/_change_cell.html" with change=section.change kind=section.key %}
           </tr>
           {% for group_data in section.groups %}
           <tr x-show="open.{{ section.key }} ?? true" class="row-group font-semibold cursor-pointer select-none" @click="open.g{{ group_data.group.pk }} = !(open.g{{ group_data.group.pk }} ?? true)">
@@ -172,7 +172,7 @@
             </td>
             <td class="text-right money whitespace-nowrap">{{ group_data.start|currency }}</td>
             <td class="text-right money whitespace-nowrap">{{ group_data.end|currency }}</td>
-            {% include "reports/consolidated/_change_cell.html" with change=group_data.change kind=section.key %}
+            {% include "reports/_change_cell.html" with change=group_data.change kind=section.key %}
           </tr>
           {% for row in group_data.rows %}
           <tr x-show="(open.{{ section.key }} ?? true) && (open.g{{ group_data.group.pk }} ?? true)" class="row-account">
@@ -180,7 +180,7 @@
             <td class="pl-10 whitespace-nowrap"><a href="{% return_here account_url|add:'?'|add:drill_qs %}" class="link link-hover link-primary">{{ row.account.name }}</a></td>
             <td class="text-right money whitespace-nowrap {% if not row.start %}opacity-40{% endif %}">{{ row.start|currency }}</td>
             <td class="text-right money whitespace-nowrap {% if not row.end %}opacity-40{% endif %}">{{ row.end|currency }}</td>
-            {% include "reports/consolidated/_change_cell.html" with change=row.change kind=section.key %}
+            {% include "reports/_change_cell.html" with change=row.change kind=section.key %}
           </tr>
           {% endfor %}
           {% empty %}
@@ -195,7 +195,7 @@
             <td>{% translate "Net worth" %}</td>
             <td class="text-right money whitespace-nowrap">{{ stats.start_net_worth|currency }}</td>
             <td class="text-right money whitespace-nowrap {% if stats.net_worth < 0 %}text-error{% endif %}">{{ stats.net_worth|currency }}</td>
-            {% include "reports/consolidated/_change_cell.html" with change=stats.change kind="assets" %}
+            {% include "reports/_change_cell.html" with change=stats.change kind="assets" %}
           </tr>
         </tfoot>
       </table>

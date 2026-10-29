@@ -1,9 +1,10 @@
 # Reports consolidation
 
 Reference for replacing the seven standalone reports with three reports plus
-progress bars on the budget page. The new reports live beside the old ones
-(nothing old was changed) so the two sets can be compared before the old ones
-are deleted.
+progress bars on the budget page. **Done**: the seven old reports and the
+`reports:account_activity` drill-down are deleted (§6). Reports are now four —
+Monthly Review, Income & Spending, Net Worth, Budget & Goals — on Reports home
+and in the sidebar's Reports popout.
 
 ## 1. What exists today
 
@@ -207,7 +208,7 @@ Map per-envelope / overspent / income-due lists (now totals), Balance Sheet
 equity section, monthly tables on Cash Flow and Net Worth Trend, arbitrary as-of
 day, BvA's rollover-blind "Left".
 
-## 6. Deleting the old reports later
+## 6. Deleting the old reports (done)
 
 Remove the seven views, their templates, their `urls.py` entries, their rows in
 `apps/books/tests/test_isolation.py`, their `BACK_LABELS` entries, their tests,
@@ -244,3 +245,24 @@ unchanged at `/reconcile/`) now renders inside the Accounts shell
 with a matching sidebar sub-item; the per-account workspace and statement pages
 highlight Accounts → Reconciliations in the nav. The hub keeps its
 `reconcile-hub` testid, so the E2E page object is unchanged.
+
+## 8. What the deletion did
+
+- `apps/reports/views_consolidated.py` merged into `views.py`; templates moved from
+  `templates/reports/consolidated/` to `templates/reports/`. Each report view passes
+  `active_report` (`spending` / `net_worth` / `budget_goals`), which highlights its
+  item in the Reports popout (`templates/web/components/app_nav_menu_items.html`,
+  testids `nav-monthly-review`, `nav-report-spending|net-worth|budget-goals`).
+- Every link in the §6 table repointed. The budget table's category link opens the
+  account page with the month's range and `return_to` = the budget page for that month
+  (not the request path: the table is also rendered by hide/unhide POSTs).
+- `reports:export_account_activity` is kept and is now linked from the account page's
+  Activity header (`account-export-csv`), since the drill-down that linked it is gone.
+- Deleted: `apps/reports/forms.py` (only its tests used it), `BalanceSheetDatePicker.jsx`,
+  `expense-trend-chart.js`, `balance-composition-chart.js`, `goal-progress-chart.js`
+  and their Vite entries; `BACK_LABELS` for the old reports.
+- Tests ported: Dollar Map → `budget_goals` (`test_unassigned.py`), income statement /
+  cash flow / BvA / goal progress → `spending` / `budget_goals`
+  (`test_goals_envelopes.py`), BvA income hiding → the account budget chart
+  (`test_books.py`), the report back label (`apps/accounts/tests.py`), E2E
+  `test_reports.py` / `test_accounts.py` / `test_goals.py`.

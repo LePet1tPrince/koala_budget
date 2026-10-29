@@ -1,13 +1,12 @@
 """
 E2E tests for the Reports section.
 
-The reports home page is Django-template rendered. The income statement,
-balance sheet, and net worth trend pages are also Django-template rendered
-with small React components for date pickers (Vite dev server required for
-interactive date filtering, but the page structure itself is server-rendered).
+Reports are Monthly Review plus three server-rendered reports -- Income &
+Spending, Net Worth, Budget & Goals -- with small React date pickers (Vite dev
+server required for those, though the page structure is server-rendered).
 
-Covers: reports home navigation links, income statement with seeded data,
-export CSV button presence.
+Covers: reports home and the sidebar popout list exactly those four, Income &
+Spending with seeded data, export CSV button presence.
 """
 
 import pytest
@@ -21,33 +20,45 @@ from e2e.factories import (
     JournalEntryFactory,
     JournalLineFactory,
 )
-from e2e.pages.reports import ReportsPage
+from e2e.pages.reports import REPORT_KEYS, ReportsPage
 
 
 @pytest.mark.django_db(transaction=True)
-def test_reports_home_shows_all_report_links(authenticated_page: Page, live_server, team):
-    """The reports home page shows links to all three main reports."""
+def test_reports_home_lists_the_four_reports(authenticated_page: Page, live_server, team):
     reports = ReportsPage(authenticated_page, live_server.url)
     reports.goto_home(team.default_book)
 
-    assert reports.has_income_statement_link()
-    assert reports.has_balance_sheet_link()
-    assert reports.has_net_worth_trend_link()
+    assert reports.report_links() == list(REPORT_KEYS)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_income_statement_link_navigates_to_report(authenticated_page: Page, live_server, team):
-    """Clicking 'View Report' on the Income Statement card navigates to the report."""
+def test_reports_popout_lists_the_four_reports(authenticated_page: Page, live_server, team):
     reports = ReportsPage(authenticated_page, live_server.url)
     reports.goto_home(team.default_book)
-    reports.click_income_statement()
 
-    assert f"{team.default_book.base_url}reports/income-statement/" in authenticated_page.url
+    authenticated_page.locator("aside [data-testid='nav-reports-toggle']").click()
+    sidebar = authenticated_page.locator("aside")
+    for testid in ("nav-monthly-review", "nav-report-spending", "nav-report-net-worth", "nav-report-budget-goals"):
+        assert sidebar.locator(f"[data-testid='{testid}']").is_visible(), testid
+    assert sidebar.locator("[data-testid^='nav-report-']").count() == 3
 
 
 @pytest.mark.django_db(transaction=True)
-def test_income_statement_shows_summary_with_data(authenticated_page: Page, live_server, team):
-    """Income statement renders summary stats and tables when there is journal data."""
+@pytest.mark.parametrize(
+    "key, path",
+    [("spending", "spending/"), ("net-worth", "net-worth/"), ("budget-goals", "budget-and-goals/")],
+)
+def test_reports_home_navigates_to_each_report(authenticated_page: Page, live_server, team, key, path):
+    reports = ReportsPage(authenticated_page, live_server.url)
+    reports.goto_home(team.default_book)
+    reports.click_report(key)
+
+    authenticated_page.wait_for_url(f"**{team.default_book.base_url}reports/{path}", timeout=10_000)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_spending_shows_summary_with_data(authenticated_page: Page, live_server, team):
+    """Income & Spending renders its stats and statement when there is journal data."""
     income_group = IncomeAccountGroupFactory(team=team)
     expense_group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
     income_acct = AccountFactory(team=team, account_group=income_group)
@@ -58,28 +69,8 @@ def test_income_statement_shows_summary_with_data(authenticated_page: Page, live
     JournalLineFactory(team=team, journal_entry=entry, account=expense_acct, dr_amount="2000.00")
 
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_income_statement(team.default_book)
+    reports.goto_spending(team.default_book)
 
     assert reports.has_summary()
-    assert reports.has_income_table()
-    assert reports.has_expenses_table()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_income_statement_export_csv_button_present(authenticated_page: Page, live_server, team):
-    """The Export CSV button is always visible on the income statement page."""
-    reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_income_statement(team.default_book)
-
+    assert reports.has_statement()
     assert reports.has_export_btn()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_reports_home_navigates_to_balance_sheet(authenticated_page: Page, live_server, team):
-    """The balance sheet link navigates to the balance sheet page."""
-    reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_home(team.default_book)
-    authenticated_page.locator("[data-testid='report-link-balance-sheet']").click()
-
-    authenticated_page.wait_for_url(f"**{team.default_book.base_url}reports/balance-sheet/", timeout=10_000)
-    assert f"{team.default_book.base_url}reports/balance-sheet/" in authenticated_page.url

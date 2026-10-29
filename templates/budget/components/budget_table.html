@@ -1,6 +1,7 @@
 {% load i18n %}
 {% load currency_tags %}
 {% load icons %}
+{% load account_nav %}
 
 <!-- Budget Table -->
 <style>
@@ -259,8 +260,13 @@
           {% endif %}
             <td class="budget-name">
               <div class="flex items-baseline gap-2 min-w-0">
-                <a href="{% url 'reports:account_activity' request.team.slug request.book.slug row.category.pk %}?start_date={{ month|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}&source=budget"
+                {% url 'accounts:account_detail' request.team.slug request.book.slug row.category.pk as account_url %}
+                {% url 'budget:budget_home' request.team.slug request.book.slug as budget_url %}
+                {% with start_iso=month|date:'Y-m-d' end_iso=end_date|date:'Y-m-d' %}
+                {% comment %}The return path is the budget page itself: this table is also rendered by POST endpoints (hide/unhide), whose own path is no place to come back to.{% endcomment %}
+                <a href="{% pass_return_to account_url|add:'?start_date='|add:start_iso|add:'&end_date='|add:end_iso budget_url|add:'?month='|add:start_iso %}"
                    class="link link-primary font-medium truncate" title="{{ row.category.name }}">{{ row.category.name }}</a>
+                {% endwith %}
                 {% if group.hidden %}<span class="text-xs text-base-content/70 truncate">{{ row.category.account_group.name }}</span>{% endif %}
               </div>
             </td>
