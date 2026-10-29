@@ -19,6 +19,7 @@
  * * `income` - Income
  * * `expense` - Expense
  * * `goal` - Goal
+ * * `budget` - Budget
  * @export
  */
 export const AccountTypeEnum = {
@@ -26,7 +27,8 @@ export const AccountTypeEnum = {
     Liability: 'liability',
     Income: 'income',
     Expense: 'expense',
-    Goal: 'goal'
+    Goal: 'goal',
+    Budget: 'budget'
 } as const;
 export type AccountTypeEnum = typeof AccountTypeEnum[keyof typeof AccountTypeEnum];
 

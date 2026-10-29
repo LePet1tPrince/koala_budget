@@ -68,6 +68,12 @@ export interface SimpleAccount {
      */
     readonly isSystem: boolean;
     /**
+     * Left out of every account picker and the Inbox. A display choice only: its transactions and balance still count everywhere.
+     * @type {boolean}
+     * @memberof SimpleAccount
+     */
+    isHidden?: boolean;
+    /**
      * Set to true to archive this item
      * @type {boolean}
      * @memberof SimpleAccount
@@ -114,6 +120,7 @@ export function SimpleAccountFromJSONTyped(json: any, ignoreDiscriminator: boole
         'institutionName': json['institution_name'],
         'hasFeed': json['has_feed'] == null ? undefined : json['has_feed'],
         'isSystem': json['is_system'],
+        'isHidden': json['is_hidden'] == null ? undefined : json['is_hidden'],
         'isArchived': json['is_archived'] == null ? undefined : json['is_archived'],
         'archivedAt': (json['archived_at'] == null ? null : new Date(json['archived_at'])),
     };
@@ -133,6 +140,7 @@ export function SimpleAccountFromJSONTyped(json: any, ignoreDiscriminator: boole
         'name': value['name'],
         'account_group': value['accountGroup'],
         'has_feed': value['hasFeed'],
+        'is_hidden': value['isHidden'],
         'is_archived': value['isArchived'],
     };
 }

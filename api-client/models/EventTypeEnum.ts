@@ -44,6 +44,8 @@
  * * `goal_account_linked` - Account Linked To Goal
  * * `goal_account_unlinked` - Account Unlinked From Goal
  * * `goal_outflow_changed` - Goal Outflow Setting Changed
+ * * `goal_contribution_edited` - Goal Contribution Edited
+ * * `goal_deleted` - Goal Deleted
  * * `onboarding_started` - Onboarding Started
  * * `onboarding_phase_completed` - Onboarding Phase Completed
  * * `onboarding_completed` - Onboarding Questionnaire Completed
@@ -101,6 +103,8 @@ export const EventTypeEnum = {
     GoalAccountLinked: 'goal_account_linked',
     GoalAccountUnlinked: 'goal_account_unlinked',
     GoalOutflowChanged: 'goal_outflow_changed',
+    GoalContributionEdited: 'goal_contribution_edited',
+    GoalDeleted: 'goal_deleted',
     OnboardingStarted: 'onboarding_started',
     OnboardingPhaseCompleted: 'onboarding_phase_completed',
     OnboardingCompleted: 'onboarding_completed',
