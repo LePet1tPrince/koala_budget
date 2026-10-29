@@ -2,11 +2,11 @@
 {% load currency_tags %}
 {% load icons %}
 {% comment %}
-Edit / Undo for one manual contribution (a GoalAllocation) in the goal page's
+Edit / Undo for one manual contribution (its line on the month's budget entry) in the goal page's
 activity table. Each button opens a <dialog> holding the real form, so a click
 can't change history by accident. Context: event (from goal_activity), goal.
 {% endcomment %}
-{% with pk=event.allocation_id month=event.date|date:"F Y" %}
+{% with pk=event.line_id month=event.date|date:"F Y" %}
 <div class="inline-flex gap-1">
   <button type="button" class="btn btn-ghost btn-xs" data-testid="contribution-edit-btn"
           onclick="document.getElementById('contribution-edit-{{ pk }}').showModal()">
@@ -20,7 +20,7 @@ can't change history by accident. Context: event (from goal_activity), goal.
 
 <dialog id="contribution-edit-{{ pk }}" class="modal text-left" data-testid="contribution-edit-dialog">
   <form method="post" class="modal-box max-w-sm whitespace-normal"
-        action="{% url 'budget:goal_contribution_edit' team_slug=request.team.slug book_slug=request.book.slug allocation_pk=pk %}">
+        action="{% url 'budget:goal_contribution_edit' team_slug=request.team.slug book_slug=request.book.slug line_pk=pk %}">
     {% csrf_token %}
     <h3 class="font-bold text-lg">
       {% blocktranslate trimmed %}Change {{ month }}{% endblocktranslate %}
@@ -44,7 +44,7 @@ can't change history by accident. Context: event (from goal_activity), goal.
 
 <dialog id="contribution-undo-{{ pk }}" class="modal text-left" data-testid="contribution-undo-dialog">
   <form method="post" class="modal-box max-w-sm whitespace-normal"
-        action="{% url 'budget:goal_contribution_edit' team_slug=request.team.slug book_slug=request.book.slug allocation_pk=pk %}">
+        action="{% url 'budget:goal_contribution_edit' team_slug=request.team.slug book_slug=request.book.slug line_pk=pk %}">
     {% csrf_token %}
     <input type="hidden" name="action" value="undo">
     <h3 class="font-bold text-lg">

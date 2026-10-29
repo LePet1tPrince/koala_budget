@@ -15,6 +15,7 @@ from decimal import Decimal
 from django.utils.translation import gettext as _
 
 from .services import ReportService
+from .wealth_rank import global_rank
 
 ZERO = Decimal("0")
 
@@ -140,7 +141,14 @@ def net_worth_report(book, start_date, end_date):
         composition_data["net_worth"] = chart_data["net_worth"]
         if not composition_data["groups"]:
             composition_data = None
-    return {"sections": sections, "stats": stats, "chart_data": chart_data, "composition_data": composition_data}
+    return {
+        "sections": sections,
+        "stats": stats,
+        "chart_data": chart_data,
+        "composition_data": composition_data,
+        "wealth_rank": global_rank(end_worth, book.household_adults),
+        "household_adults": book.household_adults,
+    }
 
 
 # Band counts per side. Each side has its own validated hue order in

@@ -17,7 +17,8 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.bank_feed.services.splits import apply_splits
 from apps.bank_feed.services.transfer_mirror import sync_transfer
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.ledger import set_budget, set_goal_allocation
+from apps.budget.models import Goal
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
@@ -257,14 +258,10 @@ def build_db_fixture_team(name: str = "Fixture Team", slug: str = "fixture-team"
     )
 
     # Budgets and a goal contribution/withdrawal.
-    Budget.objects.create(book=book, month=date(2026, 1, 1), category=groceries, budget_amount=Decimal("400.00"))
-    Budget.objects.create(book=book, month=date(2026, 1, 1), category=paycheck, budget_amount=Decimal("2000.00"))
-    GoalAllocation.objects.create(
-        book=book, goal=goal, month=date(2026, 1, 1), amount=Decimal("300.00"), notes="paycheck transfer"
-    )
-    GoalAllocation.objects.create(
-        book=book, goal=goal, month=date(2026, 2, 1), amount=Decimal("-100.00"), notes="withdrew for repair"
-    )
+    set_budget(book, groceries, date(2026, 1, 1), Decimal("400.00"))
+    set_budget(book, paycheck, date(2026, 1, 1), Decimal("2000.00"))
+    set_goal_allocation(book, goal, date(2026, 1, 1), Decimal("300.00"))
+    set_goal_allocation(book, goal, date(2026, 2, 1), Decimal("-100.00"))
 
     handles = {
         "chequing": chequing.id,

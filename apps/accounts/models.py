@@ -14,7 +14,13 @@ ACCOUNT_TYPE_LIABILITY = "liability"
 ACCOUNT_TYPE_INCOME = "income"
 ACCOUNT_TYPE_EXPENSE = "expense"
 ACCOUNT_TYPE_EQUITY = "goal"
+# Budget buckets (Unassigned, envelopes, expected income, goal buckets): equity
+# that says what money is for. Never a category, never in a real transaction;
+# see `apps.budget.buckets` and `apps.accounts.guards.assert_budget_entry_rules`.
+ACCOUNT_TYPE_BUDGET = "budget"
 
+# The types a user can pick. Budget buckets are maintained by the app, so the
+# budget type is only in the model field's choices, never in a form or API.
 ACCOUNT_TYPE_CHOICES = [
     (ACCOUNT_TYPE_ASSET, "Asset"),
     (ACCOUNT_TYPE_LIABILITY, "Liability"),
@@ -22,6 +28,7 @@ ACCOUNT_TYPE_CHOICES = [
     (ACCOUNT_TYPE_EXPENSE, "Expense"),
     (ACCOUNT_TYPE_EQUITY, "Goal"),
 ]
+ALL_ACCOUNT_TYPE_CHOICES = [*ACCOUNT_TYPE_CHOICES, (ACCOUNT_TYPE_BUDGET, "Budget")]
 
 
 class AccountGroup(BaseBookModel):
@@ -30,7 +37,7 @@ class AccountGroup(BaseBookModel):
     """
 
     name = models.CharField(max_length=200)
-    account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES)
+    account_type = models.CharField(max_length=20, choices=ALL_ACCOUNT_TYPE_CHOICES)
     description = models.TextField(blank=True)
     is_system = models.BooleanField(default=False, help_text="System groups cannot be deleted by users")
     sort_order = models.PositiveIntegerField(default=0, help_text="Manual display order within the account type")
@@ -81,6 +88,16 @@ class Account(BaseBookModel):
         help_text="Left out of every account picker and the Inbox. A display choice only: "
         "its transactions and balance still count everywhere.",
     )
+    # Set on a budget bucket: the income, expense or goal account it budgets for.
+    # Null on Unassigned. Deleting the category deletes its bucket.
+    paired_account = models.OneToOneField(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="budget_bucket",
+        help_text="The category this budget bucket budgets for",
+    )
 
     # Override managers to use AccountQuerySet for optimized balance queries
     objects = AccountQuerySet.as_manager()
@@ -100,6 +117,28 @@ class Account(BaseBookModel):
 
     def get_absolute_url(self):
         return reverse("accounts:account_detail", args=[*self.book.url_args, self.pk])
+
+    def delete(self, *args, **kwargs):
+        """
+        Delete, first releasing the budget-entry lines on this account's budget
+        bucket (or on it, if it is one) -- `JournalLine.account` is PROTECT, and a
+        category's budget goes with it. The months they were in are rebalanced
+        once the bucket is gone.
+        """
+        from django.db import transaction
+
+        from apps.budget import ledger
+
+        with transaction.atomic():
+            buckets = [self] if self.is_budget_bucket else list(Account.objects.filter(paired_account=self))
+            touched = ledger.release_bucket_lines(buckets) if buckets else set()
+            result = super().delete(*args, **kwargs)
+            ledger.rebalance(touched)
+        return result
+
+    @property
+    def is_budget_bucket(self):
+        return self.account_group.account_type == ACCOUNT_TYPE_BUDGET
 
     @property
     def balance(self):

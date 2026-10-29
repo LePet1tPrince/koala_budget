@@ -39,11 +39,11 @@ class ApplyGeneratedTemplateTest(TestCase):
         apply_template(book=self.book, template=template)
 
         self.assertEqual(
-            Account.objects.filter(book=self.book).count(),
+            Account.objects.filter(book=self.book).exclude_budget_buckets().count(),
             len(template["accounts"]),
         )
         self.assertEqual(
-            AccountGroup.objects.filter(book=self.book).count(),
+            AccountGroup.objects.filter(book=self.book).exclude(account_type="budget").count(),
             len(template["account_groups"]),
         )
 
@@ -60,7 +60,9 @@ class ApplyGeneratedTemplateTest(TestCase):
         apply_template(book=self.book, template=template)
         apply_template(book=self.book, template=template)
 
-        self.assertEqual(Account.objects.filter(book=self.book).count(), len(template["accounts"]))
+        self.assertEqual(
+            Account.objects.filter(book=self.book).exclude_budget_buckets().count(), len(template["accounts"])
+        )
 
     def test_re_running_with_wider_answers_merges(self):
         """Changing an answer during review adds; it never destroys."""

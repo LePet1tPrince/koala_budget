@@ -13,20 +13,23 @@ from decimal import Decimal
 from django.db.models import Count
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
-from apps.budget.models import Budget
+from apps.budget import ledger as budget_ledger
 from apps.budget.services import BudgetService
 from apps.budget.views import _budget_categories
 from apps.journal.models import JournalLine, counted_entries
 
 
-def build_section(items, budget_rows, spending=True):
-    """Merge budgeted categories with actual activity into grouped meter rows."""
+def build_section(items, budgets, spending=True):
+    """
+    Merge budgeted categories with actual activity into grouped meter rows.
+    `budgets` is `{category account: amount budgeted}`.
+    """
     actual_by_account = {item["account"].pk: item["amount"] for item in items}
     accounts = {item["account"].pk: item["account"] for item in items}
     budget_by_account = {}
-    for budget in budget_rows:
-        budget_by_account[budget.category_id] = budget.budget_amount
-        accounts.setdefault(budget.category_id, budget.category)
+    for category, amount in budgets.items():
+        budget_by_account[category.pk] = amount
+        accounts.setdefault(category.pk, category)
 
     groups = {}
     totals = {"budget": Decimal("0"), "actual": Decimal("0"), "over_count": 0}
@@ -113,11 +116,7 @@ def budget_breakdown(book, month) -> dict:
     this_actuals = service.get_actuals_by_category(month_start)
     prev_actuals = service.get_actuals_by_category(prev_month)
     available_map = service.get_available_by_category(month_start, categories)
-    budgets = dict(
-        Budget.objects.filter(book=book, month=month_start, category_id__in=category_ids).values_list(
-            "category_id", "budget_amount"
-        )
-    )
+    budgets = budget_ledger.budgeted_in_month(book, month_start, category_ids)
     counts = dict(
         JournalLine.objects.filter(
             book=book,

@@ -18,6 +18,7 @@ from apps.accounts.models import (
     Account,
     AccountGroup,
 )
+from apps.budget.ledger import set_budget, set_goal_allocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
@@ -402,17 +403,10 @@ class ReportServiceTest(TestCase):
 
     def test_budget_vs_actual_chart_expense_with_rollover(self):
         """Expense chart: per-month budgeted/actual, Available rolls forward from pre-range months."""
-        from apps.budget.models import Budget
 
-        Budget.objects.create(
-            book=self.book, category=self.expense_account, month=date(2024, 5, 1), budget_amount=Decimal("100.00")
-        )
-        Budget.objects.create(
-            book=self.book, category=self.expense_account, month=date(2024, 6, 1), budget_amount=Decimal("100.00")
-        )
-        Budget.objects.create(
-            book=self.book, category=self.expense_account, month=date(2024, 7, 1), budget_amount=Decimal("150.00")
-        )
+        set_budget(self.book, self.expense_account, date(2024, 5, 1), Decimal("100.00"))
+        set_budget(self.book, self.expense_account, date(2024, 6, 1), Decimal("100.00"))
+        set_budget(self.book, self.expense_account, date(2024, 7, 1), Decimal("150.00"))
         # May: spend 80 of 100 (rolls 20 into June); June: spend 120
         self._record_transfer(self.expense_account, self.asset_account, Decimal("80.00"), date(2024, 5, 10))
         self._record_transfer(self.expense_account, self.asset_account, Decimal("120.00"), date(2024, 6, 15))
@@ -428,11 +422,8 @@ class ReportServiceTest(TestCase):
 
     def test_budget_vs_actual_chart_income_sign(self):
         """Income chart: Available = Actual - Budget (earning above plan is positive)."""
-        from apps.budget.models import Budget
 
-        Budget.objects.create(
-            book=self.book, category=self.income_account, month=date(2024, 6, 1), budget_amount=Decimal("1000.00")
-        )
+        set_budget(self.book, self.income_account, date(2024, 6, 1), Decimal("1000.00"))
         self._record_transfer(self.asset_account, self.income_account, Decimal("1200.00"), date(2024, 6, 5))
 
         data = self.service.get_budget_vs_actual_chart_data(self.income_account, date(2024, 6, 1), date(2024, 6, 30))
@@ -669,11 +660,8 @@ class AccountActivityViewTest(TestCase):
 
     def test_account_activity_expense_account_gets_budget_chart_not_balance(self):
         """Income/expense drill-downs keep the plain table but gain a budget-vs-actual chart."""
-        from apps.budget.models import Budget
 
-        Budget.objects.create(
-            book=self.book, category=self.expense_account, month=date(2024, 6, 1), budget_amount=Decimal("1500.00")
-        )
+        set_budget(self.book, self.expense_account, date(2024, 6, 1), Decimal("1500.00"))
         entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="June rent")
         JournalLine.objects.create(
             book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("1200.00")
@@ -1096,8 +1084,6 @@ class BudgetVsActualViewTest(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        from apps.budget.models import Budget
-
         cls.team = Team.objects.create(name="BVA Team", slug="bva-team")
         cls.book = cls.team.default_book
         cls.user = CustomUser.objects.create_user(username="bvauser", email="bva@example.com", password="testpass123")
@@ -1109,8 +1095,8 @@ class BudgetVsActualViewTest(TestCase):
         cls.food = Account.objects.create(book=cls.book, name="Food", account_group=cls.expense_group)
         cls.fun = Account.objects.create(book=cls.book, name="Fun", account_group=cls.expense_group)
 
-        Budget.objects.create(book=cls.book, month=date(2024, 6, 1), category=cls.rent, budget_amount=Decimal("1500"))
-        Budget.objects.create(book=cls.book, month=date(2024, 6, 1), category=cls.food, budget_amount=Decimal("400"))
+        set_budget(cls.book, cls.rent, date(2024, 6, 1), Decimal("1500"))
+        set_budget(cls.book, cls.food, date(2024, 6, 1), Decimal("400"))
 
     def setUp(self):
         self.client.login(username="bvauser", password="testpass123")
@@ -1169,7 +1155,7 @@ class GoalProgressViewTest(TestCase):
         self.client.login(username="gpuser", password="testpass123")
 
     def test_goal_progress_chart_and_pace(self):
-        from apps.budget.models import Goal, GoalAllocation
+        from apps.budget.models import Goal
 
         today_month = date.today().replace(day=1)
 
@@ -1183,12 +1169,8 @@ class GoalProgressViewTest(TestCase):
             target_amount=Decimal("1200.00"),
             target_date=add_months(today_month, 4),
         )
-        GoalAllocation.objects.create(
-            book=self.book, goal=goal, month=add_months(today_month, -2), amount=Decimal("100")
-        )
-        GoalAllocation.objects.create(
-            book=self.book, goal=goal, month=add_months(today_month, -1), amount=Decimal("100")
-        )
+        set_goal_allocation(self.book, goal, add_months(today_month, -2), Decimal("100"))
+        set_goal_allocation(self.book, goal, add_months(today_month, -1), Decimal("100"))
 
         url = reverse("reports:goal_progress", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)

@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .models import (
     ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_BUDGET,
     ACCOUNT_TYPE_CHOICES,
     ACCOUNT_TYPE_LIABILITY,
     Account,
@@ -51,6 +52,8 @@ class AccountGroupForm(BookUniqueNameMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # The model also knows the budget type; budget groups belong to the app.
+        self.fields["account_type"].choices = [("", "---------"), *ACCOUNT_TYPE_CHOICES]
         # A group's type is its accounts' type: changing it would silently turn,
         # say, expense accounts into assets. Locked once the group holds any.
         if self.instance.pk and (self.instance.is_system or self.instance.accounts.exists()):
@@ -105,7 +108,7 @@ class AccountForm(forms.ModelForm):
                 self.fields["account_group"].queryset = AccountGroup.for_book.filter(account_type=account_type_value)
             else:
                 # Show all account groups (grouped by type in the label)
-                self.fields["account_group"].queryset = AccountGroup.for_book.all()
+                self.fields["account_group"].queryset = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET)
                 # Update help text to guide user
                 self.fields["account_group"].help_text = _("Select an account type first for filtered options")
 

@@ -34,6 +34,7 @@ from apps.reconciliation.services.signs import is_reconcilable
 from .forms import AccountForm, AccountGroupForm, InstitutionForm, PayeeForm
 from .models import (
     ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_BUDGET,
     ACCOUNT_TYPE_CHOICES,
     ACCOUNT_TYPE_EQUITY,
     ACCOUNT_TYPE_EXPENSE,
@@ -134,6 +135,7 @@ class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
         accounts_by_group = {}
         accounts = (
             Account.objects.filter(book=book)
+            .exclude_budget_buckets()
             .with_balance()
             .select_related("institution", "account_group")
             .order_by("sort_order", "name")
@@ -146,7 +148,11 @@ class AccountsHomeView(LoginAndBookRequiredMixin, TemplateView):
         # The equity type is stored as "goal" but also holds plain equity (opening
         # balances), so it is shown as two sections: groups holding goals, and the rest.
         sections = {account_type: [] for account_type in (*ACCOUNT_TYPE_ORDER, SECTION_EQUITY)}
-        for group in AccountGroup.objects.filter(book=book).order_by("sort_order", "name"):
+        for group in (
+            AccountGroup.objects.filter(book=book)
+            .exclude(account_type=ACCOUNT_TYPE_BUDGET)
+            .order_by("sort_order", "name")
+        ):
             accounts_in_group = accounts_by_group.get(group.pk, [])
             key = group.account_type
             if key == ACCOUNT_TYPE_EQUITY and not (
@@ -427,12 +433,20 @@ class AccountGroupViewMixin(ManageSectionMixin):
     back_label = _("Back to Groups")
     new_title = _("New group")
 
+    def get_queryset(self):
+        # The budget group belongs to the app (apps.budget.buckets): no page of its own.
+        return super().get_queryset().exclude(account_type=ACCOUNT_TYPE_BUDGET)
+
 
 class AccountGroupListView(AccountGroupViewMixin, ListView):
     """Account groups, sectioned by type in board order."""
 
     def get_queryset(self):
-        return AccountGroup.objects.filter(book=self.request.book).annotate(account_count=Count("accounts"))
+        return (
+            AccountGroup.objects.filter(book=self.request.book)
+            .exclude(account_type=ACCOUNT_TYPE_BUDGET)
+            .annotate(account_count=Count("accounts"))
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -501,6 +515,10 @@ class AccountViewMixin(ManageSectionMixin):
     back_label = _("Back to Accounts")
     new_title = _("New account")
 
+    def get_queryset(self):
+        # Budget buckets belong to the app (apps.budget.buckets): no page of their own.
+        return super().get_queryset().exclude_budget_buckets()
+
 
 class AccountCreateView(AccountViewMixin, CreateView):
     """Create a new account."""
@@ -568,7 +586,7 @@ class AccountDetailView(AccountViewMixin, DetailView):
     """An account: what it is, its statements, and its activity over a date range."""
 
     def get_queryset(self):
-        return Account.objects.filter(book=self.request.book).select_related("account_group", "institution")
+        return super().get_queryset().select_related("account_group", "institution")
 
     def get_context_data(self, **kwargs):
         from datetime import date, datetime
@@ -1041,7 +1059,12 @@ def api_reorder_accounts(request, team_slug, book_slug):
                 return JsonResponse({"error": _("An account appears more than once.")}, status=400)
             placements[account_id] = (entry.get("group_id"), position)
 
-    groups = {g.pk: g for g in AccountGroup.objects.filter(book=request.book, pk__in=group_ids)}
+    groups = {
+        g.pk: g
+        for g in AccountGroup.objects.filter(book=request.book, pk__in=group_ids).exclude(
+            account_type=ACCOUNT_TYPE_BUDGET
+        )
+    }
     if len(groups) != len(set(group_ids)):
         return JsonResponse({"error": _("Unknown account group.")}, status=400)
 
@@ -1121,7 +1144,11 @@ def api_create_account(request, team_slug, book_slug):
     if not name or len(name) > 200:
         return JsonResponse({"error": _("Enter an account name (max 200 characters).")}, status=400)
 
-    group = AccountGroup.objects.filter(book=request.book, pk=payload.get("group_id")).first()
+    group = (
+        AccountGroup.objects.filter(book=request.book, pk=payload.get("group_id"))
+        .exclude(account_type=ACCOUNT_TYPE_BUDGET)
+        .first()
+    )
     if group is None:
         return JsonResponse({"error": _("Unknown account group.")}, status=400)
 

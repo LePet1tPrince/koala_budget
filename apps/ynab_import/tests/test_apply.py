@@ -14,9 +14,17 @@ from django.db.models import Sum
 from django.test import TestCase
 
 from apps.accounts.models import Account, AccountGroup
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget import ledger
+from apps.budget.ledger import (
+    budget_amount,
+    budget_entry,
+    budgeted_by_month_category,
+    goal_allocation,
+    goal_assigned_by_month,
+)
+from apps.budget.models import Goal
 from apps.budget.services import BudgetService, NetWorthService
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry, JournalLine, transaction_entries
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -63,7 +71,7 @@ class TinyApplyTest(TestCase):
         self.assertIn(("Reconciliation Adjustments", "goal"), types)
 
     def test_every_entry_is_posted_and_balanced(self):
-        entries = JournalEntry.objects.filter(book=self.book)
+        entries = JournalEntry.objects.filter(transaction_entries(), book=self.book)
         self.assertTrue(all(entry.status == JournalEntry.STATUS_POSTED for entry in entries))
         self.assertTrue(all(entry.is_balanced for entry in entries))
         self.assertEqual(
@@ -92,18 +100,10 @@ class TinyApplyTest(TestCase):
         self.assertTrue(flags["Chequing"])
         self.assertFalse(flags["Groceries"])
 
-    def test_lines_are_linked_to_the_budget_for_their_month(self):
-        # `bulk_create` skips `JournalLine.save()`, so this link is made by the
-        # import rather than by the model -- and a NULL here is invisible until
-        # something reads it.
-        line = JournalLine.objects.get(
-            book=self.book,
-            account=self.account("Groceries"),
-            journal_entry__description="Weekly shop",
-        )
-        self.assertIsNotNone(line.budget_id)
-        self.assertEqual(line.budget.month, date(2024, 1, 1))
-        self.assertEqual(line.budget.budget_amount, Decimal("100.00"))
+    def test_budgets_land_in_the_ledger(self):
+        # Written through `apps.budget.ledger` once every account has its bucket.
+        self.assertEqual(budget_amount(self.book, self.account("Groceries"), date(2024, 1, 1)), Decimal("100.00"))
+        self.assertIsNotNone(budget_entry(self.book, date(2024, 1, 1)))
 
     def test_goals_arrive_funded_but_not_complete(self):
         goal = Goal.objects.get(book=self.book, name="House")
@@ -113,7 +113,7 @@ class TinyApplyTest(TestCase):
         # The backing equity account the rest of the app expects a goal to have.
         self.assertIsNotNone(goal.account_id)
         self.assertEqual(
-            GoalAllocation.objects.get(book=self.book, goal=goal, month=date(2024, 1, 1)).amount,
+            goal_allocation(self.book, goal, date(2024, 1, 1)),
             Decimal("300.00"),
         )
 
@@ -231,20 +231,32 @@ class SampleApplyTest(TestCase):
             (estimated_rows,) = cursor.fetchone()
         self.assertGreaterEqual(estimated_rows, JournalLine.objects.filter(book=self.book).count())
 
+    def test_budget_entries_are_sound(self):
+        # Five years of budgets and goal allocations, written into the ledger: every
+        # month's entry is well formed, and Unassigned from the bucket balances equals
+        # Unassigned from the monthly walk for every month of the book's history.
+        last = JournalEntry.objects.filter(book=self.book).order_by("-entry_date").first().entry_date
+        result = ledger.check_book(self.book, through=last)
+        self.assertEqual(result.entry_problems, [])
+        self.assertEqual(result.unassigned_mismatches, [])
+        self.assertGreater(result.months_checked, 24)
+
     def test_everything_was_written(self):
         # 6,623 transactions plus 13 opening balances: 8 of the export's 21
         # `Starting Balance` rows are for accounts that were added empty, and an
         # entry with nothing on either side is not a journal entry.
         self.assertEqual(self.plan.stats["zero_openings"], 8)
         # 8 rows YNAB never categorised wait in the Inbox rather than posting anywhere.
-        self.assertEqual(JournalEntry.objects.filter(book=self.book).count(), 6615 + 13)
-        self.assertEqual(JournalLine.objects.filter(book=self.book).count(), 13319 + 13 * 2)
+        self.assertEqual(JournalEntry.objects.filter(transaction_entries(), book=self.book).count(), 6615 + 13)
+        self.assertEqual(
+            JournalLine.objects.filter(transaction_entries("journal_entry__"), book=self.book).count(), 13319 + 13 * 2
+        )
         # Every goal's account is planned with the chart (the four savings
         # categories), replacing the two expense accounts spending used to land in.
         # No `Uncategorized Expense`/`Income`: the rows that needed them wait in the Inbox.
-        self.assertEqual(Account.objects.filter(book=self.book).count(), 104)
+        self.assertEqual(Account.objects.filter(book=self.book).exclude_budget_buckets().count(), 104)
         # No `Budget` rows on goal categories: 56 of the old 1,872 were on them.
-        self.assertEqual(Budget.objects.filter(book=self.book).count(), 1816)
+        self.assertEqual(len(budgeted_by_month_category(self.book)), 1816)
         self.assertEqual(Goal.objects.filter(book=self.book).count(), 4)
 
     def test_every_goal_has_its_account_outside_the_system_group(self):
@@ -258,12 +270,14 @@ class SampleApplyTest(TestCase):
     def test_spending_from_a_savings_category_lands_on_the_goal(self):
         goal_lines = JournalLine.objects.filter(book=self.book, account__goal__isnull=False).count()
         self.assertEqual(goal_lines, 24)
-        self.assertFalse(Budget.objects.filter(book=self.book, category__goal__isnull=False).exists())
+        goal_accounts = set(Goal.objects.filter(book=self.book).values_list("account_id", flat=True))
+        budgeted = {category_id for _month, category_id in budgeted_by_month_category(self.book)}
+        self.assertFalse(budgeted & goal_accounts)
 
     def test_a_spent_out_savings_category_arrives_closed_with_its_history(self):
         house = Goal.objects.get(book=self.book, name="House")
         self.assertIsNotNone(house.closed_at)
-        self.assertTrue(house.allocations.exists())
+        self.assertTrue(goal_assigned_by_month(self.book, [house.pk]))
 
     def test_every_entry_balances(self):
         totals = (

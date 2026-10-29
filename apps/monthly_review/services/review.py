@@ -23,7 +23,7 @@ from django.utils.translation import gettext as _
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_LIABILITY
 from apps.bank_feed.models import BankTransaction
-from apps.journal.models import JournalEntry, JournalLine, counted_entries
+from apps.journal.models import JournalEntry, JournalLine, counted_entries, transaction_entries
 from apps.reports.services import ReportService
 
 from .baselines import ALL_TIME, MonthlyMatrix, build_baselines
@@ -60,7 +60,7 @@ def _drill_limit():
 def _book_first_activity_month(book):
     first_date = (
         JournalEntry.objects.filter(book=book)
-        .filter(counted_entries())
+        .filter(counted_entries(), transaction_entries())
         .order_by("entry_date")
         .values_list("entry_date", flat=True)
         .first()

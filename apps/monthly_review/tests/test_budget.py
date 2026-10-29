@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account, AccountGroup
-from apps.budget.models import Budget
+from apps.budget.ledger import set_budget
 from apps.journal.models import JournalEntry, JournalLine
 from apps.monthly_review.services.budget import budget_breakdown
 from apps.teams.models import Team
@@ -36,7 +36,7 @@ class BudgetBreakdownTests(TestCase):
         JournalLine.objects.create(book=self.book, journal_entry=entry, account=self.chequing, cr_amount=amount)
 
     def _budget(self, category, month, amount):
-        Budget.objects.create(book=self.book, category=category, month=month, budget_amount=Decimal(amount))
+        set_budget(self.book, category, month, Decimal(amount))
 
     def test_overspent_category_with_real_carried_over_balance(self):
         # July: budgeted 200, spent 100 -> available carries +100 into August.

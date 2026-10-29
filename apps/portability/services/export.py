@@ -17,8 +17,9 @@ from django.db.models import Max, Min, Q
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
-from apps.budget.models import Budget, GoalAccountLink, GoalAllocation
-from apps.journal.models import JournalEntry, JournalLine
+from apps.budget import ledger as budget_ledger
+from apps.budget.models import Goal, GoalAccountLink
+from apps.journal.models import JournalEntry, JournalLine, transaction_entries
 from apps.reconciliation.models import Reconciliation
 
 from . import schema
@@ -57,12 +58,12 @@ def build_row_count(book) -> int:
     The row count `EXPORT_MAX_ROWS` guards, without building anything. Cheap:
     three `count()` queries, no row construction.
     """
-    accounts = Account.objects.filter(book=book).count()
+    accounts = Account.objects.filter(book=book).exclude_budget_buckets().count()
     journal = (
-        JournalLine.objects.filter(book=book).count()
+        JournalLine.objects.filter(transaction_entries("journal_entry__"), book=book).count()
         + BankTransaction.objects.filter(book=book, journal_entry__isnull=True).count()
     )
-    budget = Budget.objects.filter(book=book).count() + GoalAllocation.objects.filter(book=book).count()
+    budget = len(budget_ledger.budgeted_by_month_category(book)) + len(budget_ledger.goal_assigned_by_month(book))
     return accounts + journal + budget
 
 
@@ -117,6 +118,9 @@ def _build_accounts(book) -> list[dict]:
     """One row per account, with its group, institution and goal folded in (§2.1)."""
     accounts = (
         Account.objects.filter(book=book)
+        # Budget buckets are derived from the categories (apps.budget.buckets) and
+        # rebuilt on import, so they don't travel.
+        .exclude_budget_buckets()
         .select_related("account_group", "institution", "goal")
         .order_by(*Account._meta.ordering)
     )
@@ -165,7 +169,9 @@ def _place_feed_rows(book) -> tuple[dict[tuple[int, int], BankTransaction], list
     than done quietly.
     """
     line_accounts: set[tuple[int, int]] = set(
-        JournalLine.objects.filter(book=book).values_list("journal_entry_id", "account_id")
+        JournalLine.objects.filter(transaction_entries("journal_entry__"), book=book).values_list(
+            "journal_entry_id", "account_id"
+        )
     )
 
     lookup: dict[tuple[int, int], BankTransaction] = {}
@@ -192,8 +198,9 @@ def _build_journal_rows(book) -> list[dict]:
     """
     feed_lookup, unplaceable = _place_feed_rows(book)
 
+    # Budget entries are derived from budget.csv and rebuilt on import (apps.budget.ledger).
     lines = (
-        JournalLine.objects.filter(book=book)
+        JournalLine.objects.filter(transaction_entries("journal_entry__"), book=book)
         .select_related("journal_entry", "journal_entry__payee", "account")
         .order_by("journal_entry__entry_date", "journal_entry_id", "id")
     )
@@ -265,27 +272,32 @@ def build_goal_link_rows(book) -> list[dict]:
     return [schema.build_row((schema.GOAL_LINK, link), columns=schema.GOAL_LINKS_COLUMNS) for link in links]
 
 
+def _budget_row(kind, month, account_id, account_name, amount) -> dict:
+    row = {column.name: schema.blank_value(column.kind) for column in schema.BUDGET_COLUMNS}
+    row.update(kind=kind, month=month, account_id=account_id, account_name=account_name, amount=amount)
+    row["is_archived"] = False
+    return row
+
+
 def _build_budget_rows(book) -> list[dict]:
-    """One row per monthly amount -- a `Budget` or a `GoalAllocation`, told apart by `kind` (§2.1)."""
-    rows = []
+    """
+    One row per monthly amount -- a category's budget or a goal's allocation, told
+    apart by `kind` (§2.1) -- read off the budget entries (`apps.budget.ledger`).
+    """
+    names = dict(Account.objects.filter(book=book).values_list("pk", "name"))
+    rows = [
+        _budget_row(KIND_BUDGET, month, category_id, names[category_id], amount)
+        for (month, category_id), amount in budget_ledger.budgeted_by_month_category(book).items()
+    ]
+    rows.sort(key=lambda row: (row["month"], row["account_name"]))
 
-    budgets = Budget.objects.filter(book=book).select_related("category").order_by("month", "category__name")
-    for budget in budgets:
-        row = schema.build_row((schema.BUDGET, budget), columns=schema.BUDGET_COLUMNS)
-        row["kind"] = KIND_BUDGET
-        row["account_name"] = budget.category.name
-        rows.append(row)
-
-    allocations = (
-        GoalAllocation.objects.filter(book=book).select_related("goal", "goal__account").order_by("month", "goal__name")
-    )
-    for allocation in allocations:
-        row = schema.build_row((schema.GOAL_ALLOCATION, allocation), columns=schema.BUDGET_COLUMNS)
-        row["kind"] = KIND_GOAL
-        row["account_name"] = allocation.goal.account.name if allocation.goal.account_id else allocation.goal.name
-        rows.append(row)
-
-    return rows
+    goal_accounts = dict(Goal.objects.filter(book=book).values_list("pk", "account_id"))
+    goal_rows = [
+        _budget_row(KIND_GOAL, month, goal_accounts[goal_id], names[goal_accounts[goal_id]], amount)
+        for (goal_id, month), amount in budget_ledger.goal_assigned_by_month(book).items()
+    ]
+    goal_rows.sort(key=lambda row: (row["month"], row["account_name"]))
+    return rows + goal_rows
 
 
 def build_checks(book, *, count_entry_ids=()) -> dict:
@@ -298,7 +310,7 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
     checks were written before their entries were voided (`upgrade_6_to_7`).
     """
     non_void_lines = (
-        JournalLine.objects.filter(book=book)
+        JournalLine.objects.filter(transaction_entries("journal_entry__"), book=book)
         .filter(~Q(journal_entry__status=JournalEntry.STATUS_VOID) | Q(journal_entry_id__in=set(count_entry_ids)))
         .select_related("account", "account__account_group")
     )
@@ -317,15 +329,18 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
             net_worth += dr - cr
 
     budget_totals: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    for budget in Budget.objects.filter(book=book):
-        budget_totals[budget.month.isoformat()] += budget.budget_amount
+    for (month, _category_id), amount in budget_ledger.budgeted_by_month_category(book).items():
+        budget_totals[month.isoformat()] += amount
 
+    goal_accounts = dict(Goal.objects.filter(book=book).values_list("pk", "account_id"))
     goal_totals: dict[int, Decimal] = defaultdict(lambda: ZERO)
-    for allocation in GoalAllocation.objects.filter(book=book).select_related("goal"):
-        if allocation.goal.account_id:
-            goal_totals[allocation.goal.account_id] += allocation.amount
+    for (goal_id, _month), amount in budget_ledger.goal_assigned_by_month(book).items():
+        if goal_accounts.get(goal_id):
+            goal_totals[goal_accounts[goal_id]] += amount
 
-    date_bounds = JournalEntry.objects.filter(book=book).aggregate(first=Min("entry_date"), last=Max("entry_date"))
+    date_bounds = JournalEntry.objects.filter(transaction_entries(), book=book).aggregate(
+        first=Min("entry_date"), last=Max("entry_date")
+    )
 
     statements = Reconciliation.objects.filter(book=book)
     statement_counts = {
@@ -334,8 +349,8 @@ def build_checks(book, *, count_entry_ids=()) -> dict:
         "reconciled_lines": JournalLine.objects.filter(book=book, is_reconciled=True).count(),
     }
 
-    accounts_count = Account.objects.filter(book=book).count()
-    entries_count = JournalEntry.objects.filter(book=book).count()
+    accounts_count = Account.objects.filter(book=book).exclude_budget_buckets().count()
+    entries_count = JournalEntry.objects.filter(transaction_entries(), book=book).count()
     goals_count = Account.objects.filter(book=book, goal__isnull=False).count()
 
     # `uncategorized` counts what the *file* will hold as uncategorized, which

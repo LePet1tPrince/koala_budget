@@ -27,7 +27,6 @@ from apps.accounts.models import (
 )
 from apps.audit.models import AuditEvent, AuditLog
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Budget
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN, ROLE_MEMBER
 from apps.users.models import CustomUser
@@ -369,22 +368,6 @@ class ApplyEditsTest(TransactionEditTestCase):
         after = resolve_sides(entry).home_line
         self.assertEqual(after.id, home.id)
         self.assertTrue(after.is_cleared)
-
-    def test_date_change_relinks_the_budget(self):
-        september = Budget.objects.create(
-            book=self.book, category=self.groceries, month=date(2026, 9, 1), budget_amount=Decimal("500")
-        )
-        october = Budget.objects.create(
-            book=self.book, category=self.groceries, month=date(2026, 10, 1), budget_amount=Decimal("500")
-        )
-        entry = self.make_plain(entry_date=date(2026, 9, 14))
-        self.assertEqual(entry.lines.get(account=self.groceries).budget_id, september.id)
-
-        self.edit(entry, date=date(2026, 10, 3))
-
-        entry.refresh_from_db()
-        self.assertEqual(entry.entry_date, date(2026, 10, 3))
-        self.assertEqual(entry.lines.get(account=self.groceries).budget_id, october.id)
 
     def test_categorizing_to_the_account_itself_is_refused(self):
         entry = self.make_plain()

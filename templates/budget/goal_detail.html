@@ -279,7 +279,7 @@
                 <td class="text-right money {% if event.amount < 0 %}text-error{% endif %}">{{ event.amount|currency }}</td>
                 {% if can_edit_contributions %}
                 <td class="text-right whitespace-nowrap">
-                  {% if event.allocation_id %}
+                  {% if event.line_id %}
                     {% include "budget/components/goal_contribution_actions.html" %}
                   {% endif %}
                 </td>

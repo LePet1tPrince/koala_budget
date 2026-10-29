@@ -14,7 +14,8 @@ from apps.accounts.models import (
     Account,
     AccountGroup,
 )
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.ledger import set_budget, set_goal_allocation
+from apps.budget.models import Goal
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
@@ -199,10 +200,10 @@ class PlanFixture(ConsolidatedReportsBase):
     def setUpTestData(cls):
         super().setUpTestData()
         may, june = date(2026, 5, 1), date(2026, 6, 1)
-        Budget.objects.create(book=cls.book, month=may, category=cls.food, budget_amount=Decimal("400"))
-        Budget.objects.create(book=cls.book, month=june, category=cls.food, budget_amount=Decimal("400"))
-        Budget.objects.create(book=cls.book, month=june, category=cls.rent, budget_amount=Decimal("1000"))
-        Budget.objects.create(book=cls.book, month=june, category=cls.salary, budget_amount=Decimal("3000"))
+        set_budget(cls.book, cls.food, may, Decimal("400"))
+        set_budget(cls.book, cls.food, june, Decimal("400"))
+        set_budget(cls.book, cls.rent, june, Decimal("1000"))
+        set_budget(cls.book, cls.salary, june, Decimal("3000"))
         cls.post(date(2026, 5, 10), cls.food, cls.bank, "100.00")  # 300 rolls into June
         cls.post(date(2026, 6, 10), cls.food, cls.bank, "600.00")  # over June's 400, covered by rollover
         cls.post(date(2026, 6, 11), cls.rent, cls.bank, "1100.00")  # overspent
@@ -210,8 +211,8 @@ class PlanFixture(ConsolidatedReportsBase):
         cls.goal = Goal.objects.create(
             book=cls.book, name="Zq Car", target_amount=Decimal("1200"), target_date=date(2026, 11, 30)
         )
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=may, amount=Decimal("200"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=june, amount=Decimal("100"))
+        set_goal_allocation(cls.book, cls.goal, may, Decimal("200"))
+        set_goal_allocation(cls.book, cls.goal, june, Decimal("100"))
 
 
 class BudgetGoalsReportTest(PlanFixture):

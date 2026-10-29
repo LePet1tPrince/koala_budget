@@ -7,15 +7,24 @@ import json
 from datetime import date
 from decimal import Decimal
 
-from django.db import IntegrityError
 from django.test import TestCase
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account, AccountGroup
+from apps.budget.ledger import (
+    budget_amount,
+    budget_entry,
+    budgeted_by_month_category,
+    budgeted_in_month,
+    goal_allocation,
+    goal_assigned_by_month,
+    set_budget,
+    set_goal_allocation,
+)
 from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 
 from .forms import BudgetAmountForm, GoalForm, parse_budget_amount
-from .models import Budget, Goal, GoalAllocation
+from .models import Goal
 from .services import BudgetService
 
 
@@ -37,66 +46,23 @@ class BudgetModelTest(TestCase):
         )
         cls.income_account = Account.objects.create(book=cls.book, name="Model Salary", account_group=cls.income_group)
 
-    def test_create_budget(self):
-        """Test creating a budget."""
-        budget = Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-        self.assertEqual(budget.budget_amount, Decimal("500.00"))
-        self.assertEqual(budget.category, self.expense_account)
-        self.assertEqual(budget.month, date(2025, 12, 1))
+    def test_set_budget(self):
+        """A budget is set in the ledger and read back."""
+        set_budget(self.book, self.expense_account, date(2025, 12, 1), Decimal("500.00"))
+        self.assertEqual(budget_amount(self.book, self.expense_account, date(2025, 12, 1)), Decimal("500.00"))
 
-    def test_budget_str(self):
-        """Test string representation of budget."""
-        budget = Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-        self.assertIn("2025-12", str(budget))
-        self.assertIn("Groceries", str(budget))
-        self.assertIn("$500.00", str(budget))
+    def test_setting_again_replaces(self):
+        """One budget per category and month: setting it again replaces it."""
+        set_budget(self.book, self.expense_account, date(2025, 12, 1), Decimal("500.00"))
+        set_budget(self.book, self.expense_account, date(2025, 12, 15), Decimal("600.00"))
+        self.assertEqual(budget_amount(self.book, self.expense_account, date(2025, 12, 1)), Decimal("600.00"))
+        self.assertEqual(budget_entry(self.book, date(2025, 12, 1)).lines.count(), 2)
 
-    def test_unique_together_constraint(self):
-        """Test that budgets have unique team/month/category combinations."""
-        Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-
-        # Should raise IntegrityError for duplicate
-        with self.assertRaises(IntegrityError):
-            Budget.objects.create(
-                book=self.book,
-                month=date(2025, 12, 1),
-                category=self.expense_account,
-                budget_amount=Decimal("600.00"),
-            )
-
-    def test_budget_ordering(self):
-        """Test that budgets are ordered by month descending."""
-        budget1 = Budget.objects.create(
-            book=self.book,
-            month=date(2025, 11, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-        budget2 = Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("600.00"),
-        )
-
-        budgets = list(Budget.objects.all())
-        self.assertEqual(budgets[0], budget2)  # December first (newer)
-        self.assertEqual(budgets[1], budget1)  # November second
+    def test_months_are_separate(self):
+        set_budget(self.book, self.expense_account, date(2025, 11, 1), Decimal("500.00"))
+        set_budget(self.book, self.expense_account, date(2025, 12, 1), Decimal("600.00"))
+        self.assertEqual(budget_amount(self.book, self.expense_account, date(2025, 11, 1)), Decimal("500.00"))
+        self.assertEqual(budget_amount(self.book, self.expense_account, date(2025, 12, 1)), Decimal("600.00"))
 
 
 class BudgetServiceTest(TestCase):
@@ -164,12 +130,7 @@ class BudgetServiceTest(TestCase):
     def test_available_expense_account_basic(self):
         """Test available calculation for expense accounts (budget - actual)."""
         # Create budget
-        Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
+        set_budget(self.book, self.expense_account, date(2025, 12, 1), Decimal("500.00"))
 
         # Create transaction
         entry = JournalEntry.objects.create(
@@ -188,12 +149,7 @@ class BudgetServiceTest(TestCase):
     def test_available_income_account_basic(self):
         """Test available calculation for income accounts (actual - budget)."""
         # Create budget
-        Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.income_account,
-            budget_amount=Decimal("1500.00"),
-        )
+        set_budget(self.book, self.income_account, date(2025, 12, 1), Decimal("1500.00"))
 
         # Create transaction
         entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 15), description="Salary payment")
@@ -210,12 +166,7 @@ class BudgetServiceTest(TestCase):
     def test_available_recursive_calculation(self):
         """Test available calculation rolls forward from previous months."""
         # November budget: $500, actual: $100, available: $400
-        Budget.objects.create(
-            book=self.book,
-            month=date(2025, 11, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
+        set_budget(self.book, self.expense_account, date(2025, 11, 1), Decimal("500.00"))
         entry_nov = JournalEntry.objects.create(
             book=self.book, entry_date=date(2025, 11, 15), description="November expense"
         )
@@ -228,12 +179,7 @@ class BudgetServiceTest(TestCase):
 
         # December budget: $300, actual: $50
         # Available should be: 300 - 50 + 400 = 650
-        Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("300.00"),
-        )
+        set_budget(self.book, self.expense_account, date(2025, 12, 1), Decimal("300.00"))
         entry_dec = JournalEntry.objects.create(
             book=self.book, entry_date=date(2025, 12, 15), description="December expense"
         )
@@ -278,18 +224,8 @@ class BudgetServiceTest(TestCase):
     def test_build_budget_rows(self):
         """Test build_budget_rows includes expense and income accounts."""
         # Create budgets and transactions
-        Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-        Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.income_account,
-            budget_amount=Decimal("1500.00"),
-        )
+        set_budget(self.book, self.expense_account, date(2025, 12, 1), Decimal("500.00"))
+        set_budget(self.book, self.income_account, date(2025, 12, 1), Decimal("1500.00"))
 
         entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 15), description="Transactions")
         JournalLine.objects.create(
@@ -341,63 +277,35 @@ class BudgetAmountFormTest(TestCase):
 
     def test_form_valid(self):
         """Test form validation with valid data."""
-        budget = Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-
         form_data = {"budget_amount": "750.00"}
-        form = BudgetAmountForm(data=form_data, instance=budget)
+        form = BudgetAmountForm(data=form_data)
         self.assertTrue(form.is_valid())
 
     def test_form_decimal_input(self):
         """Test form handles decimal input correctly."""
-        budget = Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-
         form_data = {"budget_amount": "123.45"}
-        form = BudgetAmountForm(data=form_data, instance=budget)
+        form = BudgetAmountForm(data=form_data)
         self.assertTrue(form.is_valid())
         self.assertEqual(form.cleaned_data["budget_amount"], Decimal("123.45"))
 
     def test_form_blank_input_converts_to_zero(self):
         """Test form converts blank input to 0."""
-        budget = Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-
         # Test empty string
         form_data = {"budget_amount": ""}
-        form = BudgetAmountForm(data=form_data, instance=budget)
+        form = BudgetAmountForm(data=form_data)
         self.assertTrue(form.is_valid())
         self.assertEqual(form.cleaned_data["budget_amount"], Decimal("0"))
 
         # Test missing field (None)
         form_data = {}
-        form = BudgetAmountForm(data=form_data, instance=budget)
+        form = BudgetAmountForm(data=form_data)
         self.assertTrue(form.is_valid())
         self.assertEqual(form.cleaned_data["budget_amount"], Decimal("0"))
 
     def test_form_field_not_required(self):
         """Test that budget_amount field is not required."""
-        budget = Budget.objects.create(
-            book=self.book,
-            month=date(2025, 12, 1),
-            category=self.expense_account,
-            budget_amount=Decimal("500.00"),
-        )
-
         form_data = {}  # No budget_amount field
-        form = BudgetAmountForm(data=form_data, instance=budget)
+        form = BudgetAmountForm(data=form_data)
         self.assertTrue(form.is_valid())
         self.assertEqual(form.cleaned_data["budget_amount"], Decimal("0"))
 
@@ -424,14 +332,14 @@ class BudgetMonthViewTest(TestCase):
     def setUp(self):
         self.client.login(username="budgetuser@example.com", password="testpass123")
 
-    def test_get_does_not_create_budget_rows(self):
-        """Merely viewing a month must not insert Budget rows."""
+    def test_get_does_not_write_a_budget(self):
+        """Merely viewing a month must not write a budget entry."""
         response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2030-01-01")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Budget.objects.filter(book=self.book).count(), 0)
+        self.assertEqual(len(budgeted_by_month_category(self.book)), 0)
 
     def test_post_creates_budget_lazily_for_category(self):
-        """Saving an amount for a category without a Budget row creates it."""
+        """Saving an amount for a category with no budget yet sets it."""
         response = self.client.post(
             f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01",
             {
@@ -441,25 +349,19 @@ class BudgetMonthViewTest(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        budget = Budget.objects.get(book=self.book, category=self.expense_account, month=date(2025, 6, 1))
-        self.assertEqual(budget.budget_amount, Decimal("123.45"))
+        budget = budget_amount(self.book, self.expense_account, date(2025, 6, 1))
+        self.assertEqual(budget, Decimal("123.45"))
 
     def test_post_updates_existing_budget(self):
-        """Saving an amount for an existing Budget row updates it in place."""
-        budget = Budget.objects.create(
-            book=self.book,
-            category=self.expense_account,
-            month=date(2025, 6, 1),
-            budget_amount=Decimal("10.00"),
-        )
+        """Saving an amount over an existing budget replaces it."""
+        set_budget(self.book, self.expense_account, date(2025, 6, 1), Decimal("10.00"))
         response = self.client.post(
             f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01",
-            {"budget_id": budget.pk, "budget_amount": "55.00"},
+            {"category_id": self.expense_account.pk, "budget_month": "2025-06-01", "budget_amount": "55.00"},
         )
         self.assertEqual(response.status_code, 302)
-        budget.refresh_from_db()
-        self.assertEqual(budget.budget_amount, Decimal("55.00"))
-        self.assertEqual(Budget.objects.filter(book=self.book).count(), 1)
+        self.assertEqual(budget_amount(self.book, self.expense_account, date(2025, 6, 1)), Decimal("55.00"))
+        self.assertEqual(len(budgeted_by_month_category(self.book)), 1)
 
 
 class BudgetSaveAmountViewTest(TestCase):
@@ -518,18 +420,15 @@ class BudgetSaveAmountViewTest(TestCase):
     def test_creates_budget_row_lazily(self):
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="123.45")
         self.assertEqual(response.status_code, 200)
-        budget = Budget.objects.get(book=self.book, category=self.groceries, month=self.month)
-        self.assertEqual(budget.budget_amount, Decimal("123.45"))
+        budget = budget_amount(self.book, self.groceries, self.month)
+        self.assertEqual(budget, Decimal("123.45"))
 
     def test_updates_existing_budget_in_place(self):
-        budget = Budget.objects.create(
-            book=self.book, category=self.groceries, month=self.month, budget_amount=Decimal("10.00")
-        )
+        set_budget(self.book, self.groceries, self.month, Decimal("10.00"))
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="55")
         self.assertEqual(response.status_code, 200)
-        budget.refresh_from_db()
-        self.assertEqual(budget.budget_amount, Decimal("55.00"))
-        self.assertEqual(Budget.objects.filter(book=self.book).count(), 1)
+        self.assertEqual(budget_amount(self.book, self.groceries, self.month), Decimal("55.00"))
+        self.assertEqual(len(budgeted_by_month_category(self.book)), 1)
 
     def test_does_not_redirect(self):
         """The whole point: a save must not navigate, or the page scrolls back to the top."""
@@ -556,18 +455,19 @@ class BudgetSaveAmountViewTest(TestCase):
     def test_accepts_a_pasted_spreadsheet_amount(self):
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="$1,234.56")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Budget.objects.get(book=self.book, category=self.groceries).budget_amount, Decimal("1234.56"))
+        self.assertEqual(budget_amount(self.book, self.groceries, self.month), Decimal("1234.56"))
 
-    def test_blank_amount_clears_the_row_to_zero(self):
-        Budget.objects.create(book=self.book, category=self.groceries, month=self.month, budget_amount=Decimal("99.00"))
+    def test_blank_amount_clears_the_budget(self):
+        set_budget(self.book, self.groceries, self.month, Decimal("99.00"))
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Budget.objects.get(book=self.book, category=self.groceries).budget_amount, Decimal("0.00"))
+        self.assertEqual(budget_amount(self.book, self.groceries, self.month), Decimal("0.00"))
+        self.assertIsNone(budget_entry(self.book, self.month))
 
     def test_rejects_a_non_numeric_amount(self):
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="abc")
         self.assertEqual(response.status_code, 400)
-        self.assertFalse(Budget.objects.filter(book=self.book).exists())
+        self.assertFalse(bool(budgeted_by_month_category(self.book)))
 
     def test_rejects_an_invalid_month(self):
         response = self.post(category_id=self.groceries.pk, month="not-a-date", amount="10")
@@ -577,18 +477,18 @@ class BudgetSaveAmountViewTest(TestCase):
         """Only income/expense accounts are budget categories."""
         response = self.post(category_id=self.checking.pk, month="2025-06-01", amount="10")
         self.assertEqual(response.status_code, 400)
-        self.assertFalse(Budget.objects.filter(book=self.book).exists())
+        self.assertFalse(bool(budgeted_by_month_category(self.book)))
 
     def test_rejects_another_teams_category(self):
         response = self.post(category_id=self.foreign_category.pk, month="2025-06-01", amount="10")
         self.assertEqual(response.status_code, 400)
-        self.assertFalse(Budget.objects.exists())
+        self.assertFalse(budgeted_by_month_category(self.other_book))
 
     def test_requires_login(self):
         self.client.logout()
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="10")
         self.assertIn(response.status_code, (302, 403, 404))
-        self.assertFalse(Budget.objects.filter(book=self.book).exists())
+        self.assertFalse(bool(budgeted_by_month_category(self.book)))
 
     def test_rejects_a_non_numeric_category_id(self):
         response = self.post(category_id="abc", month="2025-06-01", amount="10")
@@ -600,7 +500,8 @@ class BudgetSaveAmountViewTest(TestCase):
 
     def test_month_is_normalized_to_the_first(self):
         self.post(category_id=self.salary.pk, month="2025-06-17", amount="42")
-        self.assertTrue(Budget.objects.filter(book=self.book, category=self.salary, month=self.month).exists())
+        self.assertEqual(budget_amount(self.book, self.salary, self.month), Decimal("42.00"))
+        self.assertEqual(budget_entry(self.book, self.month).entry_date, self.month)
 
 
 class BudgetFiguresViewTest(TestCase):
@@ -623,7 +524,7 @@ class BudgetFiguresViewTest(TestCase):
         cls.checking = Account.objects.create(book=cls.book, name="Fig Checking", account_group=assets)
         cls.month = date(2025, 6, 1)
         for category in (cls.groceries, cls.dining):
-            Budget.objects.create(book=cls.book, category=category, month=cls.month, budget_amount=Decimal("100"))
+            set_budget(cls.book, category, cls.month, Decimal("100"))
 
     def setUp(self):
         self.client.login(username="figures@example.com", password="testpass123")
@@ -748,12 +649,8 @@ class BudgetAutofillViewTest(TestCase):
         self.client.login(username="autofilluser@example.com", password="testpass123")
         self.prev_month = date(2025, 5, 1)
         self.month = date(2025, 6, 1)
-        Budget.objects.create(
-            book=self.book, category=self.groceries, month=self.prev_month, budget_amount=Decimal("100.00")
-        )
-        Budget.objects.create(
-            book=self.book, category=self.rent, month=self.prev_month, budget_amount=Decimal("900.00")
-        )
+        set_budget(self.book, self.groceries, self.prev_month, Decimal("100.00"))
+        set_budget(self.book, self.rent, self.prev_month, Decimal("900.00"))
 
     def test_assigned_last_month_applies_to_all_when_not_filtered(self):
         """Without the 'filtered' marker (no-JS fallback), the action applies to every category."""
@@ -762,10 +659,10 @@ class BudgetAutofillViewTest(TestCase):
             {"month": "2025-06-01", "action": "assigned_last_month"},
         )
         self.assertEqual(response.status_code, 302)
-        groceries_budget = Budget.objects.get(book=self.book, category=self.groceries, month=self.month)
-        rent_budget = Budget.objects.get(book=self.book, category=self.rent, month=self.month)
-        self.assertEqual(groceries_budget.budget_amount, Decimal("100.00"))
-        self.assertEqual(rent_budget.budget_amount, Decimal("900.00"))
+        groceries_budget = budget_amount(self.book, self.groceries, self.month)
+        rent_budget = budget_amount(self.book, self.rent, self.month)
+        self.assertEqual(groceries_budget, Decimal("100.00"))
+        self.assertEqual(rent_budget, Decimal("900.00"))
 
     def test_assigned_last_month_respects_category_selection(self):
         """When filtered, only the selected category_ids are touched."""
@@ -779,9 +676,9 @@ class BudgetAutofillViewTest(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        groceries_budget = Budget.objects.get(book=self.book, category=self.groceries, month=self.month)
-        self.assertEqual(groceries_budget.budget_amount, Decimal("100.00"))
-        self.assertFalse(Budget.objects.filter(book=self.book, category=self.rent, month=self.month).exists())
+        groceries_budget = budget_amount(self.book, self.groceries, self.month)
+        self.assertEqual(groceries_budget, Decimal("100.00"))
+        self.assertEqual(budget_amount(self.book, self.rent, self.month), Decimal("0"))
 
 
 class BudgetGridViewTest(TestCase):
@@ -829,9 +726,7 @@ class BudgetGridViewTest(TestCase):
     # ------------------------------------------------------------------ GET
 
     def test_grid_view_renders_with_existing_amounts(self):
-        Budget.objects.create(
-            book=self.book, category=self.groceries, month=date(2026, 3, 1), budget_amount=Decimal("250.00")
-        )
+        set_budget(self.book, self.groceries, date(2026, 3, 1), Decimal("250.00"))
         response = self.client.get(f"{self.grid_url}?start=2026-01-01")
         self.assertEqual(response.status_code, 200)
         props = response.context["grid_props"]
@@ -845,7 +740,7 @@ class BudgetGridViewTest(TestCase):
     def test_grid_view_does_not_create_budget_rows(self):
         response = self.client.get(f"{self.grid_url}?start=2031-01-01")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Budget.objects.filter(book=self.book).count(), 0)
+        self.assertEqual(len(budgeted_by_month_category(self.book)), 0)
 
     def test_grid_view_excludes_other_teams_accounts(self):
         response = self.client.get(self.grid_url)
@@ -938,9 +833,7 @@ class BudgetGridViewTest(TestCase):
     # ----------------------------------------------------------------- POST
 
     def test_save_creates_and_updates_budgets(self):
-        existing = Budget.objects.create(
-            book=self.book, category=self.groceries, month=date(2026, 1, 1), budget_amount=Decimal("100.00")
-        )
+        set_budget(self.book, self.groceries, date(2026, 1, 1), Decimal("100.00"))
         response = self.post_save(
             [
                 {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "150.00"},
@@ -950,14 +843,13 @@ class BudgetGridViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"saved": 3})
-        existing.refresh_from_db()
-        self.assertEqual(existing.budget_amount, Decimal("150.00"))
+        self.assertEqual(budget_amount(self.book, self.groceries, date(2026, 1, 1)), Decimal("150.00"))
         self.assertEqual(
-            Budget.objects.get(book=self.book, category=self.groceries, month=date(2026, 2, 1)).budget_amount,
+            budget_amount(self.book, self.groceries, date(2026, 2, 1)),
             Decimal("175.50"),
         )
         self.assertEqual(
-            Budget.objects.get(book=self.book, category=self.salary, month=date(2026, 1, 1)).budget_amount,
+            budget_amount(self.book, self.salary, date(2026, 1, 1)),
             Decimal("4000.00"),
         )
 
@@ -978,12 +870,12 @@ class BudgetGridViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         # All-or-nothing: the valid change must not have been applied either
-        self.assertEqual(Budget.objects.count(), 0)
+        self.assertFalse(budgeted_by_month_category(self.book))
 
     def test_save_rejects_invalid_amount(self):
         response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "abc"}])
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(Budget.objects.count(), 0)
+        self.assertFalse(budgeted_by_month_category(self.book))
 
     def test_save_rejects_invalid_month(self):
         response = self.post_save([{"category_id": self.groceries.pk, "month": "not-a-date", "amount": "10"}])
@@ -998,7 +890,7 @@ class BudgetGridViewTest(TestCase):
     def test_save_normalizes_month_to_first_day(self):
         response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-15", "amount": "20"}])
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(Budget.objects.filter(book=self.book, category=self.groceries, month=date(2026, 1, 1)).exists())
+        self.assertEqual(budget_amount(self.book, self.groceries, date(2026, 1, 1)), Decimal("20.00"))
 
     def test_save_last_write_wins_for_duplicate_cells(self):
         response = self.post_save(
@@ -1010,7 +902,7 @@ class BudgetGridViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"saved": 1})
         self.assertEqual(
-            Budget.objects.get(book=self.book, category=self.groceries, month=date(2026, 1, 1)).budget_amount,
+            budget_amount(self.book, self.groceries, date(2026, 1, 1)),
             Decimal("30.00"),
         )
 
@@ -1055,12 +947,8 @@ class BudgetSectionOrderingTest(TestCase):
         self.client.login(username="orderuser@example.com", password="testpass123")
 
     def test_month_view_sections_income_first_with_totals(self):
-        Budget.objects.create(
-            book=self.book, category=self.income_account, month=date(2026, 5, 1), budget_amount=Decimal("4000.00")
-        )
-        Budget.objects.create(
-            book=self.book, category=self.expense_account, month=date(2026, 5, 1), budget_amount=Decimal("1500.00")
-        )
+        set_budget(self.book, self.income_account, date(2026, 5, 1), Decimal("4000.00"))
+        set_budget(self.book, self.expense_account, date(2026, 5, 1), Decimal("1500.00"))
         response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2026-05-01")
         self.assertEqual(response.status_code, 200)
         income_section, expense_section = response.context["sections"]
@@ -1132,8 +1020,8 @@ class GoalAssignAvailableTest(TestCase):
         self.assertEqual(data["new_pct"], 40.0)
         self.assertEqual(data["new_available"], 0.0)
         self.assertFalse(data["completed"])
-        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 2, 1))
-        self.assertEqual(allocation.amount, Decimal("2000.00"))
+        allocation = goal_allocation(self.book, self.goal, date(2026, 2, 1))
+        self.assertEqual(allocation, Decimal("2000.00"))
 
     def test_quick_assign_clamps_to_goal_remaining(self):
         small = Goal.objects.create(book=self.book, name="Assign Small", target_amount=Decimal("500.00"))
@@ -1145,24 +1033,24 @@ class GoalAssignAvailableTest(TestCase):
         self.assertEqual(data["new_available"], 1500.0)
 
     def test_quick_assign_adds_to_existing_month_allocation(self):
-        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=date(2026, 2, 1), amount=Decimal("300"))
+        set_goal_allocation(self.book, self.goal, date(2026, 2, 1), Decimal("300"))
         response = self.post_assign()
         self.assertEqual(response.status_code, 200)
         data = response.json()
         # 300 already saved leaves available = 2000 - 300 = 1700
         self.assertEqual(data["assigned"], 1700.0)
         self.assertEqual(data["this_month"], 2000.0)
-        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 2, 1))
-        self.assertEqual(allocation.amount, Decimal("2000.00"))
+        allocation = goal_allocation(self.book, self.goal, date(2026, 2, 1))
+        self.assertEqual(allocation, Decimal("2000.00"))
 
     def test_quick_assign_rejects_when_nothing_available(self):
-        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=date(2026, 1, 1), amount=Decimal("2000"))
+        set_goal_allocation(self.book, self.goal, date(2026, 1, 1), Decimal("2000"))
         response = self.post_assign()
         self.assertEqual(response.status_code, 400)
         self.assertIn("available", response.json()["error"].lower())
 
     def test_quick_assign_rejects_fully_funded_goal(self):
-        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=date(2026, 1, 1), amount=Decimal("5000"))
+        set_goal_allocation(self.book, self.goal, date(2026, 1, 1), Decimal("5000"))
         response = self.post_assign()
         self.assertEqual(response.status_code, 400)
         self.assertIn("fully funded", response.json()["error"])
@@ -1182,15 +1070,15 @@ class GoalAssignAvailableTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["assigned"], 123.45)
         response = self.post_assign({"month": self.month, "amount": "100"})
-        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 2, 1))
-        self.assertEqual(allocation.amount, Decimal("223.45"))
+        allocation = goal_allocation(self.book, self.goal, date(2026, 2, 1))
+        self.assertEqual(allocation, Decimal("223.45"))
 
     def test_custom_amount_rejects_invalid_values(self):
         for bad in ("abc", "-5", "0"):
             body = {"month": self.month, "amount": bad}
             response = self.post_assign(body)
             self.assertEqual(response.status_code, 400, bad)
-        self.assertFalse(GoalAllocation.objects.filter(book=self.book).exists())
+        self.assertFalse(bool(goal_assigned_by_month(self.book)))
 
     def test_assign_logs_audit_event(self):
         from apps.audit.models import AuditEvent
@@ -1232,8 +1120,8 @@ class GoalsListViewTest(TestCase):
         cls.goal = Goal.objects.create(
             book=cls.book, name="Page Trip", target_amount=Decimal("1000.00"), target_date=date(2026, 12, 1)
         )
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("100"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("150"))
+        set_goal_allocation(cls.book, cls.goal, date(2026, 1, 1), Decimal("100"))
+        set_goal_allocation(cls.book, cls.goal, date(2026, 2, 1), Decimal("150"))
         cls.url = f"/a/{cls.team.slug}/{cls.book.slug}/budget/goals/"
 
     def setUp(self):
@@ -1296,9 +1184,9 @@ class GoalWithdrawTest(TestCase):
 
         cls.goal = Goal.objects.create(book=cls.book, name="Withdraw Trip", target_amount=Decimal("5000.00"))
         # Saved 700 across two prior months + 100 in the selected month = 800 total
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 1, 1), amount=Decimal("300"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 2, 1), amount=Decimal("400"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=date(2026, 3, 1), amount=Decimal("100"))
+        set_goal_allocation(cls.book, cls.goal, date(2026, 1, 1), Decimal("300"))
+        set_goal_allocation(cls.book, cls.goal, date(2026, 2, 1), Decimal("400"))
+        set_goal_allocation(cls.book, cls.goal, date(2026, 3, 1), Decimal("100"))
         cls.month = "2026-03-01"
 
     def setUp(self):
@@ -1321,22 +1209,22 @@ class GoalWithdrawTest(TestCase):
         self.assertEqual(data["this_month"], 50.0)
         # available was 2000 - 800 = 1200; withdrawing 50 frees it back up
         self.assertEqual(data["new_available"], 1250.0)
-        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 3, 1))
-        self.assertEqual(allocation.amount, Decimal("50.00"))
+        allocation = goal_allocation(self.book, self.goal, date(2026, 3, 1))
+        self.assertEqual(allocation, Decimal("50.00"))
 
     def test_withdraw_beyond_this_month_goes_negative_and_keeps_history(self):
         response = self.post_withdraw({"month": self.month, "amount": "500"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["this_month"], -400.0)
-        this_month = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 3, 1))
-        self.assertEqual(this_month.amount, Decimal("-400.00"))
+        this_month = goal_allocation(self.book, self.goal, date(2026, 3, 1))
+        self.assertEqual(this_month, Decimal("-400.00"))
         # Prior months untouched
         self.assertEqual(
-            GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 1, 1)).amount,
+            goal_allocation(self.book, self.goal, date(2026, 1, 1)),
             Decimal("300.00"),
         )
         self.assertEqual(
-            GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 2, 1)).amount,
+            goal_allocation(self.book, self.goal, date(2026, 2, 1)),
             Decimal("400.00"),
         )
 
@@ -1347,14 +1235,14 @@ class GoalWithdrawTest(TestCase):
         self.assertEqual(data["withdrawn"], 800.0)
         self.assertEqual(data["new_saved"], 0.0)
         self.assertEqual(data["new_available"], 2000.0)
-        this_month = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 3, 1))
-        self.assertEqual(this_month.amount, Decimal("-700.00"))
+        this_month = goal_allocation(self.book, self.goal, date(2026, 3, 1))
+        self.assertEqual(this_month, Decimal("-700.00"))
 
     def test_withdraw_creates_negative_allocation_in_untouched_month(self):
         response = self.post_withdraw({"month": "2026-04-01", "amount": "100"})
         self.assertEqual(response.status_code, 200)
-        allocation = GoalAllocation.objects.get(book=self.book, goal=self.goal, month=date(2026, 4, 1))
-        self.assertEqual(allocation.amount, Decimal("-100.00"))
+        allocation = goal_allocation(self.book, self.goal, date(2026, 4, 1))
+        self.assertEqual(allocation, Decimal("-100.00"))
 
     def test_withdraw_more_than_saved_is_rejected(self):
         response = self.post_withdraw({"month": self.month, "amount": "800.01"})
@@ -1386,7 +1274,7 @@ class GoalWithdrawTest(TestCase):
         self.assertIn("archived", response.json()["error"])
 
     def test_withdraw_unfunds_a_funded_goal(self):
-        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=date(2025, 12, 1), amount=Decimal("4200"))
+        set_goal_allocation(self.book, self.goal, date(2025, 12, 1), Decimal("4200"))
         response = self.post_withdraw({"month": self.month, "amount": "1000"})
         data = response.json()
         self.assertEqual(data["old_pct"], 100.0)
@@ -1446,7 +1334,7 @@ class HiddenCategoryTest(TestCase):
         cls.foreign = Account.objects.create(book=cls.other_book, name="Other Gym", account_group=other_group)
 
         cls.month = date(2025, 6, 1)
-        Budget.objects.create(book=cls.book, category=cls.gym, month=cls.month, budget_amount=Decimal("30.00"))
+        set_budget(cls.book, cls.gym, cls.month, Decimal("30.00"))
         entry = JournalEntry.objects.create(book=cls.book, entry_date=date(2025, 6, 10), description="Gym")
         JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.gym, dr_amount=Decimal("50.00"))
         JournalLine.objects.create(book=cls.book, journal_entry=entry, account=cls.checking, cr_amount=Decimal("50.00"))
@@ -1538,7 +1426,7 @@ class HiddenCategoryTest(TestCase):
             f"/a/{self.team.slug}/{self.book.slug}/budget/autofill/",
             {"action": "assign_zero", "month": "2025-06-01"},
         )
-        self.assertEqual(Budget.objects.get(category=self.gym, month=self.month).budget_amount, Decimal("30.00"))
+        self.assertEqual(budget_amount(self.book, self.gym, self.month), Decimal("30.00"))
 
     def test_hidden_category_still_takes_a_budget_amount(self):
         self.hide(self.gym)
@@ -1598,11 +1486,9 @@ class BudgetTabsTest(TestCase):
 
         cls.month = date(2025, 6, 1)
         for category, amount in ((cls.salary, "3000"), (cls.groceries, "400"), (cls.rent, "1000")):
-            Budget.objects.create(book=cls.book, category=category, month=cls.month, budget_amount=Decimal(amount))
+            set_budget(cls.book, category, cls.month, Decimal(amount))
         # May: 50 of groceries left over. June: rent overspent by 200, salary received in full.
-        Budget.objects.create(
-            book=cls.book, category=cls.groceries, month=date(2025, 5, 1), budget_amount=Decimal("50")
-        )
+        set_budget(cls.book, cls.groceries, date(2025, 5, 1), Decimal("50"))
         cls._entry(cls.rent, cls.checking, "1200", date(2025, 6, 2))
         cls._entry(cls.checking, cls.salary, "3000", date(2025, 6, 15))
 
@@ -1692,19 +1578,19 @@ class BudgetTabsTest(TestCase):
             f"{self.base}autofill/", {"month": "2025-06-01", "action": "assign_zero", "section": "income"}
         )
         self.assertRedirects(response, f"{self.base}?month=2025-06-01&tab=income", fetch_redirect_response=False)
-        amounts = dict(Budget.objects.filter(month=self.month).values_list("category_id", "budget_amount"))
-        self.assertEqual(amounts[self.salary.pk], Decimal("0"))
-        self.assertEqual(amounts[self.groceries.pk], Decimal("400"))
-        self.assertEqual(amounts[self.rent.pk], Decimal("1000"))
+        amounts = budgeted_in_month(self.book, self.month)
+        self.assertEqual(amounts.get(self.salary.pk, 0), Decimal("0"))
+        self.assertEqual(amounts.get(self.groceries.pk, 0), Decimal("400"))
+        self.assertEqual(amounts.get(self.rent.pk, 0), Decimal("1000"))
 
     def test_autofill_cannot_reach_income_when_the_book_does_not_budget_it(self):
         self.book.budget_future_income = False
         self.book.save()
         self.client.post(f"{self.base}autofill/", {"month": "2025-06-01", "action": "assign_zero", "section": "income"})
-        amounts = dict(Budget.objects.filter(month=self.month).values_list("category_id", "budget_amount"))
-        self.assertEqual(amounts[self.salary.pk], Decimal("3000"))
+        amounts = budgeted_in_month(self.book, self.month)
+        self.assertEqual(amounts.get(self.salary.pk, 0), Decimal("3000"))
         # An unbudgeted section is ignored, so the action covers what the book does budget.
-        self.assertEqual(amounts[self.groceries.pk], Decimal("0"))
+        self.assertEqual(amounts.get(self.groceries.pk, 0), Decimal("0"))
 
     def test_hiding_redraws_the_categorys_own_tab(self):
         response = self.client.post(

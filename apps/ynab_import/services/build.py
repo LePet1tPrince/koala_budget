@@ -427,7 +427,7 @@ def build(analysis: Analysis, choices: Choices | None = None) -> ImportPlan:
 
     entries, openings, allocations, consumed, inbox_rows = _build_entries(analysis, resolver)
     goals, spent_goals = _build_goals(analysis, choices, allocations, categories)
-    # Goal categories never get a `Budget`: what was assigned to them became goal allocations.
+    # Goal categories never get a budget: what was assigned to them became goal allocations.
     budget_categories = {key: account for key, account in categories.items() if not resolver.is_goal_category(*key)}
     budgets, budget_stats = _build_budgets(analysis, choices, budget_categories, entries, income)
 
@@ -994,7 +994,7 @@ def budget_amount(assigned: Decimal, previous_available: Decimal | None) -> Deci
 
 def _build_budgets(analysis, choices, categories, entries, income):
     """
-    A `Budget` row per category-month, plus the income back-fill.
+    A budget per category-month, plus the income back-fill.
 
     Income is the gap YNAB leaves: it never assigns to income categories, so there is
     nothing in the export to import. Setting each income budget to that month's own

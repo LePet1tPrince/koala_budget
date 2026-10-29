@@ -22,7 +22,9 @@ from apps.accounts.models import Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.splits import is_split
-from apps.budget.models import Budget, Goal
+from apps.budget import ledger
+from apps.budget.ledger import budget_amount
+from apps.budget.models import Goal
 from apps.journal.models import JournalEntry, JournalLine
 from apps.portability.services import apply, export, read, write
 from apps.portability.services.schema import UNCATEGORIZED_STATUS, DocumentError
@@ -145,6 +147,18 @@ class RoundTripTests(TestCase):
         self.source_tables = read.read_archive(self.source_bytes)
         self.dest_tables = read.read_archive(self.dest_bytes)
 
+    def test_budget_entries_are_rebuilt_on_import(self):
+        # Budget entries don't travel as journal rows (apps.budget.ledger); budget.csv
+        # is read off them and the destination writes its own from it.
+        for book in (self.source_book, self.dest_book):
+            result = ledger.check_book(book)
+            self.assertEqual(result.entry_problems, [], book)
+            self.assertEqual(result.unassigned_mismatches, [], book)
+        self.assertEqual(
+            JournalEntry.objects.filter(book=self.dest_book, source=JournalEntry.SOURCE_BUDGET).count(),
+            JournalEntry.objects.filter(book=self.source_book, source=JournalEntry.SOURCE_BUDGET).count(),
+        )
+
     def test_apply_does_not_raise(self):
         pass  # setUp already ran it; a raise there fails this test
 
@@ -197,15 +211,10 @@ class RoundTripTests(TestCase):
         ]
         self.assertIn(Decimal("-100.00"), [row["amount"] for row in allocations])
 
-    def test_journal_line_budget_link_is_rederived(self):
-        # Every JournalLine on the destination team's Groceries account in
-        # January should be linked to that month's Budget row -- proof
-        # bulk_create_for_import's (account, month) resolution ran.
+    def test_budget_lands_in_the_ledger(self):
+        # budget.csv is written back as budget entries (apps.budget.ledger).
         groceries = Account.objects.get(book=self.dest_book, name="Groceries")
-        budget = Budget.objects.get(book=self.dest_book, category=groceries, month=date(2026, 1, 1))
-        lines = JournalLine.objects.filter(book=self.dest_book, account=groceries, dr_amount__gt=0)
-        self.assertTrue(lines.exists())
-        self.assertTrue(all(line.budget_id == budget.id for line in lines))
+        self.assertEqual(budget_amount(self.dest_book, groceries, date(2026, 1, 1)), Decimal("400.00"))
 
     def test_result_counts_are_sane(self):
         self.assertEqual(self.result.accounts, len(self.source_tables.accounts))

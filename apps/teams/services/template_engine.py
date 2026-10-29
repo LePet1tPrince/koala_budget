@@ -39,7 +39,8 @@ def apply_template(book, template):
     # Accounts
     # -------------------------
     for a in template["accounts"]:
-        Account.objects.get_or_create(
+        # Budget buckets are the app's (apps.budget.buckets), never a template's.
+        Account.objects.exclude_budget_buckets().get_or_create(
             book=book,
             name=a["name"],
             defaults={
