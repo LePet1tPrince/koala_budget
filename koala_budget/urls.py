@@ -69,26 +69,6 @@ book_urlpatterns = [
 ]
 
 urlpatterns = [
-    path("", include(web_team_urls)),
-    path("subscription/", include(subscriptions_team_urls)),
-    path("team/", include(single_team_urls)),
-    path("example/", include("apps.teams_example.urls")),
-    # path("budgeting/", include("apps.budgeting.urls")),
-    path("accounts/", include("apps.accounts.urls")),
-    path("journal/", include("apps.journal.urls")),
-    path("audit/", include("apps.audit.urls")),
-    path("budget/", include("apps.budget.urls")),
-    path("reports/", include("apps.reports.urls")),
-    path("reports/monthly-review/", include("apps.monthly_review.urls")),
-    path("plaid/", include("apps.plaid.urls")),
-    path("bankfeed/", include("apps.bank_feed.urls")),
-    path("onboarding/", include("apps.onboarding.urls")),
-    path("ynab-import/", include("apps.ynab_import.urls")),
-    path("data/", include("apps.portability.urls")),
-    path("reconcile/", include("apps.reconciliation.urls")),
-]
-
-urlpatterns = [
     path("__reload__/", include("django_browser_reload.urls")),
     path("admin/doc/", include("django.contrib.admindocs.urls")),
     # redirect Django admin login to main login page
