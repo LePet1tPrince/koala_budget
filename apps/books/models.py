@@ -45,8 +45,11 @@ class Book(BaseModel):
     # How many adults share this book's net worth. Wealth rankings compare one adult
     # with another (household wealth split equally between its adults), so a couple
     # sharing one book is ranked on half of it.
+    # `db_default` too: an insert that leaves the column out (a historical model in a
+    # migration that predates it) still gets 1 rather than violating NOT NULL.
     household_adults = models.PositiveSmallIntegerField(
         default=1,
+        db_default=1,
         validators=[MinValueValidator(1), MaxValueValidator(MAX_HOUSEHOLD_ADULTS)],
         help_text=_("Adults who share this book's net worth, for comparing it with other people's."),
     )
