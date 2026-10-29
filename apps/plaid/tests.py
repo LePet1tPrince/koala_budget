@@ -186,6 +186,24 @@ class PlaidSyncTaskTest(TestCase):
         self.run_sync(self.page(added=[self.tx(account_id="acc-unknown")]))
         self.assertFalse(BankTransaction.objects.filter(book=self.book).exists())
 
+    def test_a_missing_personal_finance_category_does_not_fail_the_sync(self):
+        # Plaid documents the field as nullable; one such row must not abort the
+        # whole sync and leave the cursor where it was.
+        result, _ = self.run_sync(
+            self.page(added=[self.tx(personal_finance_category=None, location=None, merchant_metadata=None)])
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(self.item.cursor, "c1")
+        detail = BankTransaction.objects.get(book=self.book).plaid_transaction
+        self.assertIsNone(detail.personal_finance_category)
+        self.assertIsNone(detail.location)
+
+    def test_nullable_details_on_a_modified_row_do_not_fail_the_sync(self):
+        self.run_sync(self.page(added=[self.tx()]))
+        result, _ = self.run_sync(self.page(modified=[self.tx(personal_finance_category=None)], next_cursor="c2"))
+        self.assertTrue(result["success"])
+        self.assertIsNone(BankTransaction.objects.get(book=self.book).plaid_transaction.personal_finance_category)
+
     def test_modified_rewrites_an_uncategorized_row(self):
         self.run_sync(self.page(added=[self.tx()]))
         self.run_sync(self.page(modified=[self.tx(amount="15.00", name="COFFEE SHOP #2")], next_cursor="c2"))
