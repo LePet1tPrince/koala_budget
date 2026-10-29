@@ -12,6 +12,7 @@ import {
   subYears,
 } from 'date-fns';
 
+import DateTextInput from './DateTextInput';
 import PickerPopover, {
   CalendarIcon,
   DayGrid,
@@ -38,6 +39,9 @@ const presetRanges = [
   { label: 'Last 30 days', value: 'last30days' },
   { label: 'This month', value: 'thisMonth' },
   { label: 'Last month', value: 'lastMonth' },
+  { label: 'Last 3 months', value: 'last3Months' },
+  { label: 'Last 6 months', value: 'last6Months' },
+  { label: 'Last 12 months', value: 'last12Months' },
   { label: 'This year', value: 'thisYear' },
   { label: 'Last year', value: 'lastYear' },
   { label: 'All time', value: 'allTime' },
@@ -54,9 +58,14 @@ const getPresetRange = (value, allTimeStart) => {
       return { start: subDays(now, 29), end: now };
     case 'thisMonth':
       return { start: startOfMonth(now), end: endOfMonth(now) };
-    case 'lastMonth': {
-      const d = subMonths(now, 1);
-      return { start: startOfMonth(d), end: endOfMonth(d) };
+    case 'lastMonth':
+    case 'last3Months':
+    case 'last6Months':
+    case 'last12Months': {
+      // Full months before this one -- the same ranges as a book's default
+      // report timeframe (apps/reports/timeframes.py).
+      const months = { lastMonth: 1, last3Months: 3, last6Months: 6, last12Months: 12 }[value];
+      return { start: startOfMonth(subMonths(now, months)), end: endOfMonth(subMonths(now, 1)) };
     }
     case 'thisYear':
       return { start: startOfYear(now), end: endOfYear(now) };
@@ -73,18 +82,26 @@ const getPresetRange = (value, allTimeStart) => {
   }
 };
 
+// The preset a range is, if any -- so a report opened on the book's default
+// timeframe shows "Last 3 months" ticked rather than a bare pair of dates.
+const presetFor = (start, end, allTimeStart) =>
+  presetRanges.find(({ value }) => {
+    const range = getPresetRange(value, allTimeStart);
+    return safeFormat(range.start) === (start || '') && safeFormat(range.end) === (end || '');
+  })?.value || '';
+
 const DateRangePicker = ({ startDate, endDate, onApply, preset, allTimeStart }) => {
   const [tempStart, setTempStart] = useState(startDate || '');
   const [tempEnd, setTempEnd] = useState(endDate || '');
-  const [activeRange, setActiveRange] = useState(preset || '');
+  const [activeRange, setActiveRange] = useState(preset || presetFor(startDate, endDate, allTimeStart));
   const [editing, setEditing] = useState('start');
   const [gridMonth, setGridMonth] = useState(startOfMonth(new Date()));
 
   useEffect(() => {
     setTempStart(startDate || '');
     setTempEnd(endDate || '');
-    setActiveRange(preset || '');
-  }, [startDate, endDate, preset]);
+    setActiveRange(preset || presetFor(startDate, endDate, allTimeStart));
+  }, [startDate, endDate, preset, allTimeStart]);
 
   // A `preset` with no dates yet means "apply this range on mount".
   useEffect(() => {
@@ -117,17 +134,22 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset, allTimeStart }) 
     setEditing('start');
   };
 
-  const handleDaySelect = (iso) => {
+  // Set the side being edited, keeping the range ordered.
+  const setEditedSide = (iso) => {
     setActiveRange('');
     if (editing === 'start') {
       setTempStart(iso);
-      // Keep the range ordered, then move on to the end date.
       if (tempEnd && iso > tempEnd) setTempEnd(iso);
-      setEditing('end');
     } else {
       setTempEnd(iso);
       if (tempStart && iso < tempStart) setTempStart(iso);
     }
+  };
+
+  const handleDaySelect = (iso) => {
+    setEditedSide(iso);
+    // Move on to the end date.
+    if (editing === 'start') setEditing('end');
   };
 
   const getDisplayText = () => {
@@ -155,6 +177,27 @@ const DateRangePicker = ({ startDate, endDate, onApply, preset, allTimeStart }) 
               onEditingChange={setEditing}
               startLabel={formatDisplay(tempStart)}
               endLabel={formatDisplay(tempEnd)}
+            />
+
+            {/* Typing a date sets the side being edited as soon as it is a real
+                date; Enter on the start moves to the end, Enter on the end applies.
+                Keyed by side so switching sides starts the box afresh. */}
+            <DateTextInput
+              key={editing}
+              value={editedValue}
+              autoFocus
+              label={editing === 'start' ? 'Type start date' : 'Type end date'}
+              onPreview={setEditedSide}
+              onCommit={(iso) => {
+                if (editing === 'start') {
+                  setEditing('end');
+                  return;
+                }
+                const start = tempStart && tempStart <= iso ? tempStart : iso;
+                onApply(start, iso);
+                close();
+              }}
+              testId={`date-range-${editing}-text`}
             />
 
             <DayGrid

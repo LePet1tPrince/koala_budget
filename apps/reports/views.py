@@ -15,6 +15,7 @@ from .exports import (
     export_transactions_csv,
 )
 from .services import ReportService
+from .timeframes import date_range_from_request, default_range, month_range_from_request
 
 
 @login_and_book_required
@@ -83,29 +84,8 @@ def income_statement(request, team_slug, book_slug):
     """
     service = ReportService(request.book)
 
-    report_data = None
-    start_date = None
-    end_date = None
-
-    # Check for direct start_date and end_date parameters
-    start_date_param = request.GET.get("start_date")
-    end_date_param = request.GET.get("end_date")
-
-    if start_date_param and end_date_param:
-        # Parse dates directly from URL parameters
-        try:
-            start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
-            end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
-        except ValueError:
-            # Invalid date format, fall back to defaults
-            today = date.today()
-            start_date = today.replace(day=1)
-            end_date = today
-    else:
-        # No parameters provided, set defaults for current month
-        today = date.today()
-        start_date = today.replace(day=1)
-        end_date = today
+    today = date.today()
+    start_date, end_date = date_range_from_request(request, (today.replace(day=1), today))
 
     period_views = {"monthly": "month", "quarterly": "quarter", "yearly": "year"}
     period = period_views.get(request.GET.get("view"))
@@ -267,26 +247,8 @@ def account_activity(request, team_slug, book_slug, account_id):
     account = get_object_or_404(Account, book=request.book, pk=account_id)
 
     if account:
-        # Check for direct start_date and end_date parameters
-        start_date_param = request.GET.get("start_date")
-        end_date_param = request.GET.get("end_date")
-
-        if start_date_param and end_date_param:
-            # Parse dates directly from URL parameters
-            try:
-                start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
-                end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
-            except ValueError:
-                # Invalid date format, fall back to defaults
-                today = date.today()
-                start_date = today.replace(day=1)
-                end_date = today
-        else:
-            # No parameters provided, set defaults for current month
-            today = date.today()
-            start_date = today.replace(day=1)
-            end_date = today
-
+        today = date.today()
+        start_date, end_date = date_range_from_request(request, (today.replace(day=1), today))
         report_data = service.get_account_activity(account, start_date, end_date)
 
     balance_chart_data = (
@@ -356,21 +318,11 @@ def _fold_float_series(series, limit=CHART_SERIES_LIMIT):
 def _parse_month_range(request):
     """
     Parse start_month/end_month GET params (YYYY-MM) into a (start_date, end_date)
-    range of whole months, defaulting to the last 12 months.
+    range of whole months, defaulting to the book's report timeframe, else the
+    last 12 months.
     """
-    start_month_param = request.GET.get("start_month")
-    end_month_param = request.GET.get("end_month")
-    if start_month_param and end_month_param:
-        try:
-            start_year, start_month_num = map(int, start_month_param.split("-"))
-            end_year, end_month_num = map(int, end_month_param.split("-"))
-            start_date = date(start_year, start_month_num, 1)
-            end_date = (date(end_year, end_month_num, 1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            return start_date, end_date
-        except ValueError:
-            pass
     today = date.today()
-    return date(today.year - 1, today.month, 1), today
+    return month_range_from_request(request, (date(today.year - 1, today.month, 1), today))
 
 
 @login_and_book_required
@@ -380,42 +332,8 @@ def net_worth_trend(request, team_slug, book_slug):
     """
     service = ReportService(request.book)
 
-    report_data = None
-    start_date = None
-    end_date = None
-
-    # Check for direct start_month and end_month parameters (YYYY-MM format)
-    start_month_param = request.GET.get("start_month")
-    end_month_param = request.GET.get("end_month")
-
-    if start_month_param and end_month_param:
-        try:
-            # Parse YYYY-MM format
-            start_year, start_month_num = map(int, start_month_param.split("-"))
-            end_year, end_month_num = map(int, end_month_param.split("-"))
-
-            # Create start_date as first day of start month
-            start_date = date(start_year, start_month_num, 1)
-
-            # Create end_date as last day of end month
-            if end_month_num == 12:
-                end_date = date(end_year + 1, 1, 1) - timedelta(days=1)
-            else:
-                end_date = date(end_year, end_month_num + 1, 1) - timedelta(days=1)
-
-            report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
-        except (ValueError, IndexError):
-            # Invalid format, fall back to defaults
-            today = date.today()
-            start_date = date(today.year - 1, today.month, 1)
-            end_date = today
-            report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
-    else:
-        # No parameters provided, set defaults for last 12 months
-        today = date.today()
-        start_date = date(today.year - 1, today.month, 1)
-        end_date = today
-        report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
+    start_date, end_date = _parse_month_range(request)
+    report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
 
     # Month-over-month change for the table (first month has no prior point)
     previous_net_worth = None
@@ -758,18 +676,19 @@ def goal_progress(request, team_slug, book_slug):
 
 
 def _parse_date_range(request):
-    """Parse start_date and end_date from GET params, with defaults to current month."""
+    """
+    Parse start_date and end_date from GET params. A missing side takes the book's
+    default report range (else this month to today); an unparseable one, the whole range.
+    """
     today = date.today()
+    default_start, default_end = default_range(request.book, (today.replace(day=1), today))
     start_date_param = request.GET.get("start_date")
     end_date_param = request.GET.get("end_date")
     try:
-        start_date = (
-            datetime.strptime(start_date_param, "%Y-%m-%d").date() if start_date_param else today.replace(day=1)
-        )  # noqa: E501
-        end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date() if end_date_param else today
+        start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date() if start_date_param else default_start
+        end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date() if end_date_param else default_end
     except ValueError:
-        start_date = today.replace(day=1)
-        end_date = today
+        start_date, end_date = default_start, default_end
     return start_date, end_date
 
 

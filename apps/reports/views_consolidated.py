@@ -4,7 +4,7 @@ seven original reports, which are untouched, so the two sets can be compared.
 """
 
 import contextlib
-from datetime import date, datetime
+from datetime import date
 from urllib.parse import urlencode
 
 from django.shortcuts import render
@@ -18,6 +18,7 @@ from .consolidated import (
     shift_month,
     spending_report,
 )
+from .timeframes import date_range_from_request
 from .views import _parse_month_range
 
 
@@ -30,12 +31,7 @@ def _drill_qs(start_date, end_date):
 def spending(request, team_slug, book_slug):
     """Income & Spending: money in and out over a range, with the statement and the flow."""
     today = date.today()
-    start_date, end_date = date(today.year, 1, 1), today
-    with contextlib.suppress(KeyError, ValueError):
-        start_date, end_date = (
-            datetime.strptime(request.GET["start_date"], "%Y-%m-%d").date(),
-            datetime.strptime(request.GET["end_date"], "%Y-%m-%d").date(),
-        )
+    start_date, end_date = date_range_from_request(request, (date(today.year, 1, 1), today))
     if start_date > end_date:
         start_date, end_date = end_date, start_date
 
