@@ -3,7 +3,9 @@
 import json
 from datetime import date
 from decimal import Decimal
+from io import StringIO
 
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -298,3 +300,40 @@ class RetypeTest(LedgerFixture):
         self.groceries.name = "Food"
         self.groceries.save()
         self.assertEqual(lines_of(ledger.budget_entry(self.book, SEPT))[bucket_of(self.groceries).pk], Decimal("4000"))
+
+
+class LedgerCheckCommandTest(LedgerFixture):
+    """`manage.py budget_ledger_check`: the operator's integrity check on budget entries."""
+
+    def run_check(self, *args):
+        out = StringIO()
+        call_command("budget_ledger_check", "--team", self.team.slug, *args, stdout=out)
+        return out.getvalue()
+
+    def unbalance(self):
+        # A raw update skips every writer, the way drift would arrive.
+        JournalLine.objects.filter(
+            book=self.book, journal_entry__source=JournalEntry.SOURCE_BUDGET, account=unassigned_account(self.book)
+        ).update(dr_amount=Decimal("1"), cr_amount=Decimal("0"))
+
+    def test_a_sound_book_reports_ok(self):
+        out = self.run_check()
+        self.assertIn(f"OK    {self.team.slug}/{self.book.slug}", out)
+        self.assertIn("Every book's budget entries check out.", out)
+
+    def test_an_unbalanced_entry_is_reported(self):
+        self.unbalance()
+        out = self.run_check()
+        self.assertIn(f"FAIL  {self.team.slug}/{self.book.slug}", out)
+        self.assertIn("1 book(s) failed.", out)
+
+    def test_fix_rebalances_the_unassigned_line(self):
+        self.unbalance()
+        out = self.run_check("--fix")
+        self.assertIn(f"OK    {self.team.slug}/{self.book.slug}", out)
+        self.assertEqual(ledger.check_book(self.book).entry_problems, [])
+
+    def test_filters_narrow_to_the_named_book(self):
+        out = self.run_check("--book", "no-such-book")
+        self.assertNotIn("OK    ", out)
+        self.assertIn("Every book's budget entries check out.", out)
