@@ -24,13 +24,18 @@ export const ACCOUNT_KIND_LABELS = {
 };
 
 /**
- * System accounts are bookkeeping, never a category; the server refuses them too.
+ * Budget buckets (envelopes, Unassigned) never appear in a transaction; the server
+ * refuses them too. Of the other system accounts only the equity one
+ * (Reconciliation Adjustments, where opening balances go) is a category, so a
+ * system account whose type isn't known is left out to be safe.
  * Hidden accounts (the accounts board's eye) are left out of every picker.
  */
 export function pickableAccounts(accounts) {
-  return (accounts || []).filter(
-    (account) => !(account.is_system || account.isSystem || account.is_hidden || account.isHidden),
-  );
+  return (accounts || []).filter((account) => {
+    const kind = accountKind(account);
+    const isSystem = account.is_system || account.isSystem;
+    return !(account.is_hidden || account.isHidden || kind === 'budget' || (isSystem && kind !== 'equity'));
+  });
 }
 
 function formatMoney(value) {

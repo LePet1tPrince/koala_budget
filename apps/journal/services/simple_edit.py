@@ -386,10 +386,7 @@ def _write(plan, edits, *, book):
 
     entry, sides = plan.entry, plan.sides
 
-    # The entry is saved before its lines, because `JournalLine.save()` resolves
-    # its budget link from `journal_entry.entry_date` -- writing lines first
-    # would file them under the month the transaction just left.
-    date_moved = edits.date is not UNSET and edits.date != entry.entry_date
+    # The entry is saved before its lines, so the lines are written against it as it now is.
     if edits.date is not UNSET:
         entry.entry_date = edits.date
     if edits.description is not UNSET:
@@ -412,17 +409,6 @@ def _write(plan, edits, *, book):
         write_lines(entry, plan.account, plan.legs, total=plan.total, book=book)
     except SplitError as exc:
         raise EditRefused(str(exc)) from exc
-
-    if date_moved:
-        # `write_lines` leaves a line whose amount did not change exactly as it
-        # is -- which is what keeps a transfer's far side reconciled. But a
-        # line's `budget` is resolved from its entry's date by `save()`, so on a
-        # date edit an untouched line would stay filed under the month the
-        # transaction just left. Re-save them; the bank feed's `batch_edit` does
-        # the same at its own call site, for the same reason.
-        for line in entry.lines.all():
-            line.journal_entry = entry
-            line.save()
 
     _sync_bank_row(sides, entry, account=plan.account, total=plan.total)
 

@@ -10,6 +10,7 @@ more than one book and no query spans two. See `docs/books-plan.md`.
 import logging
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
@@ -21,6 +22,7 @@ from .context import EmptyBookContextException, get_current_book
 
 DEFAULT_BOOK_NAME = "Personal"
 DEFAULT_BOOK_SLUG = "personal"
+MAX_HOUSEHOLD_ADULTS = 10
 
 
 class ReportTimeframe(models.TextChoices):
@@ -60,11 +62,24 @@ class Book(BaseModel):
         default=False,
         help_text=_("Budget income before it arrives: this month's expected income counts toward Unassigned."),
     )
+    # `db_default` for the same reason as `household_adults` below.
     report_timeframe = models.CharField(
         max_length=20,
         choices=ReportTimeframe.choices,
         default=ReportTimeframe.REPORT,
+        db_default=ReportTimeframe.REPORT,
         help_text=_("The dates a report shows when you open it."),
+    )
+    # How many adults share this book's net worth. Wealth rankings compare one adult
+    # with another (household wealth split equally between its adults), so a couple
+    # sharing one book is ranked on half of it.
+    # `db_default` too: an insert that leaves the column out (a historical model in a
+    # migration that predates it) still gets 1 rather than violating NOT NULL.
+    household_adults = models.PositiveSmallIntegerField(
+        default=1,
+        db_default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(MAX_HOUSEHOLD_ADULTS)],
+        help_text=_("Adults who share this book's net worth, for comparing it with other people's."),
     )
     sort_order = models.IntegerField(default=0)
 

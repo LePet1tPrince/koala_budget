@@ -172,10 +172,10 @@ def export_account_activity_csv(book, account, start_date, end_date):
 
 def export_transactions_csv(book, start_date=None, end_date=None):
     """Export all journal entries and lines as a CSV HttpResponse."""
-    from apps.journal.models import JournalEntry
+    from apps.journal.models import JournalEntry, transaction_entries
 
     queryset = (
-        JournalEntry.objects.filter(book=book)
+        JournalEntry.objects.filter(transaction_entries(), book=book)
         .select_related("payee")
         .prefetch_related("lines__account", "lines__account__account_group")
         .order_by("entry_date")

@@ -427,7 +427,7 @@ class ReportService:
         from django.db.models import F, Sum
         from django.db.models.functions import TruncMonth
 
-        from apps.budget.models import Budget
+        from apps.budget import ledger as budget_ledger
 
         account_type = account.account_group.account_type
         if account.pk in self.goal_account_ids():
@@ -444,12 +444,7 @@ class ReportService:
         month_after_last = (months[-1] + timedelta(days=32)).replace(day=1)
 
         # Available accumulates from the account's first budget/activity month.
-        first_budget_month = (
-            Budget.objects.filter(book=self.book, category=account)
-            .order_by("month")
-            .values_list("month", flat=True)
-            .first()
-        )
+        first_budget_month = budget_ledger.first_category_budget_month(self.book, [account.pk])
         first_activity_date = (
             JournalLine.objects.filter(book=self.book, account=account)
             .filter(counted_entries("journal_entry__"))
@@ -464,11 +459,12 @@ class ReportService:
             candidates.append(first_activity_date.replace(day=1))
         first_month = min(candidates)
 
-        budgets = dict(
-            Budget.objects.filter(
-                book=self.book, category=account, month__gte=first_month, month__lt=month_after_last
-            ).values_list("month", "budget_amount")
-        )
+        budgets = {
+            month: amount
+            for (month, _category), amount in budget_ledger.budgeted_by_month_category(
+                self.book, first_month, months[-1], [account.pk]
+            ).items()
+        }
 
         if account_type == ACCOUNT_TYPE_INCOME:
             signed_amount = F("cr_amount") - F("dr_amount")

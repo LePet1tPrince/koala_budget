@@ -16,7 +16,8 @@ from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.books.helpers import create_book
 from apps.books.migration_utils import BOOK_MODELS
-from apps.budget.models import Budget, Goal, GoalAccountLink, GoalAllocation
+from apps.budget.ledger import budget_entry, set_budget, set_goal_allocation
+from apps.budget.models import Goal, GoalAccountLink
 from apps.journal.models import JournalEntry, JournalLine
 from apps.monthly_review.models import MonthlyReviewState
 from apps.onboarding.models import OnboardingState
@@ -46,9 +47,9 @@ class BookData:
     categorized_tx: BankTransaction
     uncategorized_tx: BankTransaction
     other_tx: BankTransaction
-    budget: Budget
     goal: Goal
-    allocation: GoalAllocation
+    # The goal's contribution: its bucket's line on the month's budget entry.
+    allocation: JournalLine
     goal_link: GoalAccountLink
     reconciliation: Reconciliation
     plaid_item: PlaidItem
@@ -133,9 +134,10 @@ def build_book_data(book, marker: str, user=None) -> BookData:
     )
     TransferMatchDismissal.record(book, uncategorized_tx.id, other_tx.id)
 
-    budget = Budget.objects.create(book=book, month=MONTH, category=groceries, budget_amount=Decimal("300.00"))
+    set_budget(book, groceries, MONTH, Decimal("300.00"))
     goal = Goal.objects.create(book=book, name=f"Trip {marker}", target_amount=Decimal("1000"))
-    allocation = GoalAllocation.objects.create(book=book, goal=goal, month=MONTH, amount=Decimal("50"))
+    set_goal_allocation(book, goal, MONTH, Decimal("50"))
+    allocation = budget_entry(book, MONTH).lines.get(account__paired_account=goal.account)
     goal_link = GoalAccountLink.objects.create(book=book, goal=goal, account=savings, start_date=MONTH)
     reconciliation = Reconciliation.objects.create(
         book=book, account=savings, statement_date=MONTH.replace(day=28), statement_balance=Decimal("0")
@@ -189,7 +191,6 @@ def build_book_data(book, marker: str, user=None) -> BookData:
         categorized_tx=categorized_tx,
         uncategorized_tx=uncategorized_tx,
         other_tx=other_tx,
-        budget=budget,
         goal=goal,
         allocation=allocation,
         goal_link=goal_link,

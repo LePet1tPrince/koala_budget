@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
+from apps.budget.ledger import set_goal_allocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
 from apps.teams.models import Team
@@ -18,7 +19,7 @@ from apps.teams.models import Team
 from . import goal_links
 from .goal_links import LinkError, LinkRow
 from .linked import monthly_linked
-from .models import Goal, GoalAccountLink, GoalAllocation
+from .models import Goal, GoalAccountLink
 from .services import GoalService
 from .unassigned import compute_unassigned
 
@@ -318,7 +319,7 @@ class MonthlyTest(LinkedFixture):
 
     def test_with_progress_month_split(self):
         self.link()
-        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=AUG, amount=D("100"))
+        set_goal_allocation(self.book, self.goal, AUG, D("100"))
         self.post(date(2026, 9, 5), self.savings, self.checking, "300")
         goal = Goal.objects.filter(pk=self.goal.pk).with_progress(SEPT).get()
         self.assertEqual(goal.saved_previous, D("100"))
@@ -435,7 +436,7 @@ class GoalMonthlyTest(LinkedFixture):
 
         self.link()
         self.set_outflow(Goal.OUTFLOW_SPEND)
-        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=SEPT, amount=D("50"))
+        set_goal_allocation(self.book, self.goal, SEPT, D("50"))
         self.post(date(2026, 9, 5), self.savings, self.checking, "300")
         self.post(date(2026, 9, 6), self.goal.account, self.checking, "20")
         self.post(date(2026, 10, 6), self.checking, self.savings, "40")
@@ -447,17 +448,16 @@ class GoalMonthlyTest(LinkedFixture):
 class AllocationReadsTest(TestCase):
     """
     Per-month goal figures go through `goal_monthly` (or `with_progress`), never a
-    direct `GoalAllocation` read, or a month's "saved" would leave out what a
-    linked account brought in. Writers and raw data exports are the exceptions.
+    direct read of a goal's manual allocations (`ledger.goal_assigned_by_month`),
+    or a month's "saved" would leave out what a linked account brought in. The
+    ledger itself, writers and raw data exports are the exceptions.
     """
 
     ALLOWED = {
-        "apps/budget/models.py",  # goal_assigned_subquery
-        "apps/budget/services.py",  # writers + goal_monthly
-        "apps/budget/views.py",  # assign/withdraw writers
-        "apps/ynab_import/services/apply.py",  # bulk import
-        "apps/portability/services/apply.py",  # import
+        "apps/budget/ledger.py",  # defines it
+        "apps/budget/services.py",  # goal_monthly + the contribution writers
         "apps/portability/services/export.py",  # raw export
+        "apps/portability/services/wipe.py",  # counts what a wipe removes
         "apps/users/services.py",  # raw user data export
     }
 
@@ -468,9 +468,9 @@ class AllocationReadsTest(TestCase):
         offenders = []
         for path in (root / "apps").rglob("*.py"):
             rel = path.relative_to(root).as_posix()
-            if "test" in path.name or "/tests/" in rel or rel in self.ALLOWED:
+            if "test" in path.name or "/tests/" in rel or "/migrations/" in rel or rel in self.ALLOWED:
                 continue
-            if "GoalAllocation.objects" in path.read_text():
+            if "goal_assigned_by_month(" in path.read_text():
                 offenders.append(rel)
         self.assertEqual(offenders, [])
 

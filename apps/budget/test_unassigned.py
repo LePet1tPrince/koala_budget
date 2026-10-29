@@ -7,13 +7,14 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.accounts.models import Account, AccountGroup
+from apps.budget.ledger import set_budget, set_goal_allocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.onboarding.models import OnboardingState
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
 
-from .models import Budget, Goal, GoalAllocation
+from .models import Goal
 from .services import BudgetService, NetWorthService
 from .unassigned import (
     STATE_NEGATIVE,
@@ -53,12 +54,12 @@ class UnassignedFixture(TestCase):
         cls.fun = Account.objects.create(book=cls.book, name="Fun", account_group=expense)
 
         cls.post(date(2026, 8, 2), cls.checking, cls.opening, "20000")
-        Budget.objects.create(book=cls.book, month=SEPT, category=cls.salary, budget_amount=Decimal("5000"))
-        Budget.objects.create(book=cls.book, month=AUG, category=cls.groceries, budget_amount=Decimal("3500"))
-        Budget.objects.create(book=cls.book, month=SEPT, category=cls.groceries, budget_amount=Decimal("4000"))
+        set_budget(cls.book, cls.salary, SEPT, Decimal("5000"))
+        set_budget(cls.book, cls.groceries, AUG, Decimal("3500"))
+        set_budget(cls.book, cls.groceries, SEPT, Decimal("4000"))
         cls.goal = Goal.objects.create(book=cls.book, name="House", target_amount=Decimal("50000"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=AUG, amount=Decimal("15000"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.goal, month=SEPT, amount=Decimal("1000"))
+        set_goal_allocation(cls.book, cls.goal, AUG, Decimal("15000"))
+        set_goal_allocation(cls.book, cls.goal, SEPT, Decimal("1000"))
 
     @classmethod
     def post(cls, day, debit, credit, amount):
@@ -68,9 +69,7 @@ class UnassignedFixture(TestCase):
         return entry
 
     def budget(self, category, month, amount):
-        Budget.objects.update_or_create(
-            book=self.book, category=category, month=month, defaults={"budget_amount": Decimal(amount)}
-        )
+        set_budget(self.book, category, month, Decimal(amount))
 
     def unassigned(self, month=SEPT):
         return compute_unassigned(self.book, month).amount
@@ -264,19 +263,22 @@ class ExpenseTest(UnassignedFixture):
 class GoalTest(UnassignedFixture):
     """A goal claims what's left in it; overspending it comes out of Unassigned."""
 
+    def allocate(self, month, amount):
+        set_goal_allocation(self.book, self.goal, month, amount)
+
     def spend_from_goal(self, day, amount):
         self.post(day, self.goal.account, self.checking, amount)
 
     def test_allocating_last_month_lowers_it(self):
-        GoalAllocation.objects.filter(goal=self.goal, month=AUG).update(amount=Decimal("15500"))
+        self.allocate(AUG, Decimal("15500"))
         self.assertEqual(self.unassigned(), Decimal("1000"))
 
     def test_allocating_this_month_lowers_it(self):
-        GoalAllocation.objects.filter(goal=self.goal, month=SEPT).update(amount=Decimal("1200"))
+        self.allocate(SEPT, Decimal("1200"))
         self.assertEqual(self.unassigned(), Decimal("1300"))
 
     def test_next_months_allocation_does_not_count_yet(self):
-        GoalAllocation.objects.create(book=self.book, goal=self.goal, month=OCT, amount=Decimal("1000"))
+        set_goal_allocation(self.book, self.goal, OCT, Decimal("1000"))
         self.assertEqual(self.unassigned(), Decimal("1500"))
         # Seen from October it is a claim like any other.
         self.assertEqual(self.unassigned(OCT), Decimal("500"))
@@ -293,7 +295,7 @@ class GoalTest(UnassignedFixture):
         self.assertEqual(u.goals_overspent, Decimal("1000"))
         self.assertEqual(u.amount, Decimal("500"))
         # Paying it back fills the hole first, which moves nothing.
-        GoalAllocation.objects.filter(goal=self.goal, month=SEPT).update(amount=Decimal("2000"))
+        self.allocate(SEPT, Decimal("2000"))
         self.assertEqual(self.unassigned(), Decimal("500"))
 
     def test_spending_after_the_month_does_not_count_yet(self):

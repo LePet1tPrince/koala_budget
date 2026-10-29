@@ -15,6 +15,8 @@ from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
 from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
 from apps.books.context import current_book
+from apps.budget.buckets import unassigned_account
+from apps.budget.ledger import budget_amount, set_budget, set_goal_allocation
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
 from apps.onboarding.models import OnboardingState
@@ -28,9 +30,7 @@ from .models import (
     STATE_FUNDED,
     STATE_SAVING,
     STATE_SPENDING,
-    Budget,
     Goal,
-    GoalAllocation,
 )
 from .services import GoalCloseError, GoalService, goal_left_by_account, picker_accounts_data
 from .unassigned import compute_unassigned, waterfall
@@ -74,12 +74,12 @@ class GoalsFixture(TestCase):
         cls.salary = Account.objects.create(book=cls.book, name="Salary", account_group=income)
 
         cls.post(date(2026, 8, 1), cls.checking, cls.opening, "20000")
-        Budget.objects.create(book=cls.book, month=SEPT, category=cls.groceries, budget_amount=Decimal("400"))
+        set_budget(cls.book, cls.groceries, SEPT, Decimal("400"))
         cls.car = Goal.objects.create(
             book=cls.book, name="Car", target_amount=Decimal("20000"), target_date=date(2027, 2, 15)
         )
-        GoalAllocation.objects.create(book=cls.book, goal=cls.car, month=AUG, amount=Decimal("3000"))
-        GoalAllocation.objects.create(book=cls.book, goal=cls.car, month=SEPT, amount=Decimal("2000"))
+        set_goal_allocation(cls.book, cls.car, AUG, Decimal("3000"))
+        set_goal_allocation(cls.book, cls.car, SEPT, Decimal("2000"))
 
     def setUp(self):
         self.client.login(username="envelope@example.com", password="pass12345")
@@ -125,7 +125,7 @@ class GoalMathsTest(GoalsFixture):
         self.assertEqual(self.numbers()["spent"], Decimal("1000"))
 
     def test_a_withdrawal_is_a_negative_allocation(self):
-        GoalAllocation.objects.create(book=self.book, goal=self.car, month=OCT, amount=Decimal("-500"))
+        set_goal_allocation(self.book, self.car, OCT, Decimal("-500"))
         self.assertEqual(self.numbers(OCT)["allocated"], Decimal("4500"))
 
     def test_void_and_feed_voided_entries_do_not_count(self):
@@ -294,10 +294,13 @@ class GoalsGroupTest(GoalsFixture):
 
 
 class PickerAccountsTest(GoalsFixture):
-    def test_system_accounts_are_left_out_and_goals_carry_left(self):
+    def test_budget_buckets_are_left_out_and_goals_carry_left(self):
         self.spend_from_car(date(2026, 9, 5), "1000")
         data = {row["id"]: row for row in picker_accounts_data(self.book, SEPT)}
-        self.assertNotIn(self.system.pk, data)
+        self.assertFalse(Account.objects.filter(pk__in=data).budget_buckets().exists())
+        # The system equity account is where opening balances are categorized.
+        self.assertTrue(data[self.system.pk]["is_system"])
+        self.assertFalse(data[self.system.pk]["is_goal"])
         self.assertTrue(data[self.car.account_id]["is_goal"])
         self.assertEqual(data[self.car.account_id]["goal_left"], "4000.00")
         # Plain equity is not a goal.
@@ -309,8 +312,8 @@ class PickerAccountsTest(GoalsFixture):
         self.assertEqual(set(goal_left_by_account(self.book)), {self.car.account_id})
 
 
-class SystemCategoryRefusedTest(GoalsFixture):
-    """Every endpoint that takes a category refuses the system account."""
+class CategoryRulesTest(GoalsFixture):
+    """Every endpoint that takes a category refuses a budget bucket and accepts the system equity account."""
 
     def setUp(self):
         self.api = APIClient()
@@ -332,53 +335,69 @@ class SystemCategoryRefusedTest(GoalsFixture):
     def manual(self, **extra):
         return {"date": "2026-09-05", "account": self.checking.pk, "outflow": "25.00", "description": "x", **extra}
 
-    def test_each_endpoint(self):
-        cases = {
+    def cases(self, category):
+        return {
             "categorize": (
                 "post",
                 f"{self.feed}categorize/",
-                {"rows": [{"id": self.tx.pk}], "category_id": self.system.pk},
+                {"rows": [{"id": self.tx.pk}], "category_id": category.pk},
             ),
-            "create": ("post", self.feed, self.manual(category=self.system.pk)),
+            "create": ("post", self.feed, self.manual(category=category.pk)),
             "create splits": (
                 "post",
                 self.feed,
                 self.manual(
                     splits=[
-                        {"category": self.system.pk, "amount": "10"},
+                        {"category": category.pk, "amount": "10"},
                         {"category": self.groceries.pk, "amount": "15"},
                     ]
                 ),
             ),
-            "update": ("put", f"{self.feed}{self.tx.pk}/", self.manual(category=self.system.pk)),
-            "batch_edit": ("patch", f"{self.feed}batch_edit/", {"ids": [self.tx.pk], "category_id": self.system.pk}),
+            "update": ("put", f"{self.feed}{self.tx.pk}/", self.manual(category=category.pk)),
+            "batch_edit": ("patch", f"{self.feed}batch_edit/", {"ids": [self.tx.pk], "category_id": category.pk}),
             "journal line": (
                 "post",
                 f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/",
                 {
                     "date": "2026-09-05",
                     "account": self.checking.pk,
-                    "category": self.system.pk,
+                    "category": category.pk,
                     "outflow": "10.00",
                     "description": "x",
                 },
             ),
         }
-        for name, (method, url, data) in cases.items():
+
+    def test_each_endpoint_refuses_a_budget_bucket(self):
+        bucket = unassigned_account(self.book)
+        for name, (method, url, data) in self.cases(bucket).items():
             with self.subTest(name):
                 response = self.call(method, url, data)
                 self.assertEqual(response.status_code, 400, (name, response.content))
-                self.assertIn("bookkeeping account", response.content.decode())
+                self.assertIn("budget account", response.content.decode())
 
-    def test_recategorize_refuses_the_system_account(self):
+    def test_each_endpoint_accepts_the_system_equity_account(self):
+        for name, (method, url, data) in self.cases(self.system).items():
+            with self.subTest(name):
+                response = self.call(method, url, data)
+                self.assertLess(response.status_code, 300, (name, response.content))
+        self.assertTrue(JournalLine.objects.filter(account=self.system).exists())
+
+    def recategorize(self, category):
         entry = self.post(date(2026, 9, 5), self.groceries, self.checking, "10")
         line = entry.lines.get(account=self.groceries)
-        response = self.call(
+        return self.call(
             "post",
             f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/{line.pk}/recategorize/",
-            {"new_category_id": self.system.pk},
+            {"new_category_id": category.pk},
         )
-        self.assertEqual(response.status_code, 400)
+
+    def test_recategorize_refuses_a_budget_bucket(self):
+        self.assertEqual(self.recategorize(unassigned_account(self.book)).status_code, 400)
+
+    def test_recategorize_accepts_the_system_equity_account(self):
+        response = self.recategorize(self.system)
+        self.assertLess(response.status_code, 300, response.content)
 
     def test_a_transaction_already_on_the_system_account_can_be_resaved(self):
         with current_book(self.book):
@@ -520,7 +539,7 @@ class CoverOverspendingTest(GoalsFixture):
         )
 
     def groceries_budget(self):
-        return Budget.objects.get(book=self.book, category=self.groceries, month=SEPT).budget_amount
+        return budget_amount(self.book, self.groceries, SEPT)
 
     def test_from_a_goal_the_goal_gives_and_unassigned_gets_it_back(self):
         self.post(date(2026, 9, 5), self.groceries, self.checking, "550")  # 150 over budget
@@ -547,8 +566,8 @@ class CoverOverspendingTest(GoalsFixture):
         self.assertEqual(self.unassigned(), before)
         self.assertEqual(data["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
 
-    def test_from_unassigned_creates_the_budget_row_when_there_is_none(self):
-        Budget.objects.filter(book=self.book, category=self.groceries).delete()
+    def test_from_unassigned_sets_a_budget_when_there_is_none(self):
+        set_budget(self.book, self.groceries, SEPT, Decimal("0"))
         response = self.cover(source="unassigned", amount="75")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(self.groceries_budget(), Decimal("75"))

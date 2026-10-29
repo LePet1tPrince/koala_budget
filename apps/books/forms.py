@@ -53,14 +53,19 @@ class BookCreateForm(BookNameMixin, forms.ModelForm):
 class BookSettingsForm(BookNameMixin, forms.ModelForm):
     class Meta:
         model = Book
-        fields = ["name", "slug", "budget_future_income", "report_timeframe"]
+        fields = ["name", "slug", "budget_future_income", "household_adults", "report_timeframe"]
         labels = {
             "slug": _("Web address"),
             "budget_future_income": _("Budget income before it arrives"),
+            "household_adults": _("Adults sharing this money"),
             "report_timeframe": _("Default timeframe"),
         }
         help_texts = {
             "slug": _("The part of the address after the team. Changing it breaks links to the old one."),
+            "household_adults": _(
+                "Wealth rankings compare one adult with another. If two of you share this money, your net worth "
+                "is split between you before it is ranked."
+            ),
             "report_timeframe": _(
                 "The dates a report opens on. “Last 3 months” is the three full months before this one."
             ),
@@ -68,14 +73,22 @@ class BookSettingsForm(BookNameMixin, forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"class": INPUT, "maxlength": 100}),
             "slug": forms.TextInput(attrs={"class": INPUT + " font-mono", "maxlength": 50}),
+            "household_adults": forms.NumberInput(
+                attrs={"class": INPUT + " max-w-24", "min": 1, "max": 10, "data-testid": "household-adults-input"}
+            ),
             "report_timeframe": forms.Select(attrs={"class": "select w-full", "data-testid": "report-timeframe"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.team = self.instance.team
-        # A post without it (an older page, a script) keeps the setting as it is.
+        # Not required: a post that leaves either out keeps the saved value.
+        self.fields["household_adults"].required = False
         self.fields["report_timeframe"].required = False
+
+    def clean_household_adults(self):
+        value = self.cleaned_data.get("household_adults")
+        return self.instance.household_adults if value is None else value
 
     def clean_report_timeframe(self):
         return self.cleaned_data["report_timeframe"] or self.instance.report_timeframe

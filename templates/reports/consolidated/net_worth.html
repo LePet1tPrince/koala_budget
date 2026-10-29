@@ -69,6 +69,55 @@
     </div>
   </div>
 
+  {% if wealth_rank %}
+  <div class="rounded-box border border-base-300 p-4 mb-4" data-testid="wealth-rank">
+    <div class="flex flex-wrap justify-between items-baseline gap-x-3 gap-y-1 mb-2">
+      <h2 class="font-semibold">{% translate "Where you rank" %}</h2>
+      <p class="text-xs text-base-content/70" data-testid="wealth-rank-basis">
+        {% if household_adults > 1 %}
+          {% blocktranslate with amount=wealth_rank.wealth|currency adults=household_adults trimmed %}
+            Ranked on <span class="money">{{ amount }}</span> per adult: your net worth split between {{ adults }} adults.
+          {% endblocktranslate %}
+        {% else %}
+          {% blocktranslate with amount=wealth_rank.wealth|currency trimmed %}
+            Ranked on your net worth of <span class="money">{{ amount }}</span>, as one adult.
+          {% endblocktranslate %}
+        {% endif %}
+        <a href="{% url 'books:settings' request.team.slug request.book.slug %}" class="link link-primary">{% translate "Change" %}</a>
+      </p>
+    </div>
+    <div class="stats stats-vertical sm:stats-horizontal w-full">
+      <div class="stat px-0 py-2" data-testid="global-wealth-rank">
+        <div class="stat-figure text-primary hidden sm:block">{% icon "globe" class="inline-block shrink-0 w-5 h-5" %}</div>
+        <div class="stat-title">{% translate "In the world" %}</div>
+        <div class="stat-value text-2xl money" data-testid="global-wealth-rank-value">#{{ wealth_rank.rank|floatformat:"0g" }}</div>
+        <div class="stat-desc" data-testid="global-wealth-rank-top">
+          {% blocktranslate with top=wealth_rank.top_pct_display adults=wealth_rank.population_billions|floatformat:2 trimmed %}
+            Top {{ top }}% of {{ adults }} billion adults
+          {% endblocktranslate %}
+        </div>
+        {% if wealth_rank.places_per_dollar %}
+        <div class="stat-desc" data-testid="global-wealth-rank-step">
+          {% if wealth_rank.places_per_dollar >= 10 %}
+            {% blocktranslate with places=wealth_rank.places_per_dollar|floatformat:"0g" trimmed %}+{{ places }} places for every $1 more{% endblocktranslate %}
+          {% elif wealth_rank.places_per_dollar >= 1 %}
+            {% blocktranslate with places=wealth_rank.places_per_dollar|floatformat:1 trimmed %}+{{ places }} places for every $1 more{% endblocktranslate %}
+          {% else %}
+            {% blocktranslate with amount=wealth_rank.dollars_per_place|currency trimmed %}{{ amount }} more moves you up one place{% endblocktranslate %}
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <p class="text-xs text-base-content/70 mt-2">
+      {% blocktranslate with source=wealth_rank.source year=wealth_rank.data_year prices=wealth_rank.price_year trimmed %}
+        {{ source }}: net personal wealth of adults 20 and over, {{ year }} data in {{ prices }} dollars, converted
+        at the {{ prices }} market exchange rate. Ranks are interpolated between published percentiles.
+      {% endblocktranslate %}
+    </p>
+  </div>
+  {% endif %}
+
   {% if chart_data %}
   <div class="rounded-box border border-base-300 p-4 mb-4" x-data="{ view: '{% if composition_data %}groups{% else %}totals{% endif %}' }">
     {% if composition_data %}

@@ -9,7 +9,7 @@ from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
-from apps.accounts.guards import assert_category_allowed
+from apps.accounts.guards import BudgetAccountError, assert_budget_entry_rules, assert_category_allowed
 from apps.accounts.models import (
     Account,
     Payee,
@@ -43,7 +43,6 @@ class JournalLineSerializer(serializers.ModelSerializer):
             "amount",
             "is_cleared",
             "is_reconciled",
-            "budget",
             "direction",
             "created_at",
             "updated_at",
@@ -51,7 +50,6 @@ class JournalLineSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "account_name",
             "amount",
-            "budget",
             "direction",
             "created_at",
             "updated_at",
@@ -140,6 +138,14 @@ class JournalEntrySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"payee": "Unknown payee."})
             if any(line["account"].book_id != book.id for line in lines if line.get("account")):
                 raise serializers.ValidationError({"lines": "Unknown account."})
+
+        source = data.get("source") or (self.instance.source if self.instance else JournalEntry.SOURCE_MANUAL)
+        try:
+            assert_budget_entry_rules(
+                source == JournalEntry.SOURCE_BUDGET, [line["account"] for line in lines if line.get("account")]
+            )
+        except BudgetAccountError as exc:
+            raise serializers.ValidationError({"lines": str(exc)}) from exc
 
         return data
 

@@ -117,15 +117,16 @@ class BookFacts:
 
 def book_facts(book) -> BookFacts:
     from apps.bank_feed.models import BankTransaction
-    from apps.budget.models import Budget
-    from apps.journal.models import JournalEntry, counted_entries
+    from apps.budget import ledger as budget_ledger
+    from apps.journal.models import JournalEntry, counted_entries, transaction_entries
 
     return BookFacts(
         has_transactions=BankTransaction.objects.filter(book=book).exists(),
         # A voided entry is excluded everywhere else in the app, so it must not
         # count as "you have categorized something" here either.
-        has_entries=JournalEntry.objects.filter(book=book).filter(counted_entries()).exists(),
-        has_budget=Budget.objects.filter(book=book).exists(),
+        # Budget entries (apps.budget.ledger) are not categorizing anything.
+        has_entries=JournalEntry.objects.filter(book=book).filter(counted_entries(), transaction_entries()).exists(),
+        has_budget=budget_ledger.has_budget(book),
     )
 
 

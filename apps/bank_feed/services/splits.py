@@ -198,9 +198,8 @@ def write_lines(entry, home_account, legs, *, total, book):
     # The home line takes the opposite side of the total.
     home_line.dr_amount = -total if total < 0 else Decimal("0")
     home_line.cr_amount = total if total > 0 else Decimal("0")
-    # Re-point at the caller's entry object so `JournalLine.save()` resolves the
-    # budget link from the entry date the caller just set, rather than from the
-    # stale one its own FK cache is holding.
+    # Re-point at the caller's entry object, rather than the stale one the line's
+    # own FK cache is holding.
     home_line.journal_entry = entry
     home_line.save()
 

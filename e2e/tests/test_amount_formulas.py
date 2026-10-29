@@ -16,7 +16,8 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.ledger import budgeted_by_month_category, goal_allocation
+from apps.budget.models import Goal
 from e2e.factories import (
     AccountFactory,
     AccountGroupFactory,
@@ -43,8 +44,8 @@ def test_budget_amount_formula_is_evaluated_and_saved(requires_vite, authenticat
 
     assert response.value.ok
     expect(field).to_have_value("190.00")
-    saved = Budget.objects.get(book=team.default_book, category=category)
-    assert saved.budget_amount == Decimal("190.00")
+    saved = budgeted_by_month_category(team.default_book, category_ids=[category.pk])
+    assert list(saved.values()) == [Decimal("190.00")]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -66,8 +67,8 @@ def test_goal_custom_amount_formula_is_assigned(requires_vite, authenticated_pag
     field.press("Enter")
 
     expect(field).to_have_value("", timeout=10_000)  # cleared once the assignment lands
-    allocation = GoalAllocation.objects.get(book=team.default_book, goal=goal, month=month)
-    assert allocation.amount == Decimal("150.00")
+    allocation = goal_allocation(team.default_book, goal, month)
+    assert allocation == Decimal("150.00")
 
 
 @pytest.fixture

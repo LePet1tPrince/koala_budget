@@ -7,7 +7,8 @@ from django.urls import reverse
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
 from apps.books.context import current_book
-from apps.budget.models import Budget, Goal, GoalAllocation
+from apps.budget.ledger import set_budget, set_goal_allocation
+from apps.budget.models import Goal
 from apps.onboarding.models import OnboardingState
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_MEMBER
@@ -59,7 +60,7 @@ class TeamHomeDashboardTest(TestCase):
     def test_dashboard_shows_goals(self):
         with current_book(self.book):
             goal = Goal.objects.create(book=self.book, name="Vacation", target_amount=Decimal("1000.00"))
-            GoalAllocation.objects.create(book=self.book, goal=goal, month=date(2026, 1, 1), amount=Decimal("250.00"))
+            set_goal_allocation(self.book, goal, date(2026, 1, 1), Decimal("250.00"))
         response = self.client.get(self.url)
         self.assertContains(response, "Vacation")
 
@@ -72,9 +73,9 @@ class TeamHomeDashboardTest(TestCase):
     def test_amount_to_reach_all_goals_sums_remaining(self):
         with current_book(self.book):
             goal1 = Goal.objects.create(book=self.book, name="Vacation", target_amount=Decimal("1000.00"))
-            GoalAllocation.objects.create(book=self.book, goal=goal1, month=date(2026, 1, 1), amount=Decimal("250.00"))
+            set_goal_allocation(self.book, goal1, date(2026, 1, 1), Decimal("250.00"))
             goal2 = Goal.objects.create(book=self.book, name="Emergency Fund", target_amount=Decimal("500.00"))
-            GoalAllocation.objects.create(book=self.book, goal=goal2, month=date(2026, 1, 1), amount=Decimal("500.00"))
+            set_goal_allocation(self.book, goal2, date(2026, 1, 1), Decimal("500.00"))
         response = self.client.get(self.url)
         # goal1 needs 750 more; goal2 is fully funded (0 remaining, clamped at 0)
         self.assertEqual(response.context["amount_to_reach_goals"], Decimal("750.00"))
@@ -118,7 +119,7 @@ class TeamHomeDashboardTest(TestCase):
                 posted_date="2026-01-15",
                 description="Coffee",
             )
-            Budget.objects.create(book=self.book, category=account, month="2026-01-01", budget_amount=Decimal("100.00"))
+            set_budget(self.book, account, "2026-01-01", Decimal("100.00"))
 
         # A team that skipped the guide but has since set itself up has no use for
         # an offer to pick it back up.

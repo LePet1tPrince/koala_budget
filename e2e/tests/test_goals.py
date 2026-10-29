@@ -15,7 +15,8 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from apps.bank_feed.models import BankTransaction
-from apps.budget.models import Goal, GoalAllocation
+from apps.budget.ledger import set_goal_allocation
+from apps.budget.models import Goal
 from e2e.factories import AccountGroupFactory, AssetAccountFactory, JournalEntryFactory, JournalLineFactory
 from e2e.pages.budget import BudgetPage
 from e2e.pages.categorize import CategorizePage
@@ -36,7 +37,7 @@ def goal_fixture(team):
     JournalLineFactory(team=team, journal_entry=entry, account=opening, cr_amount=Decimal("5000.00"))
 
     goal = Goal.objects.create(book=team.default_book, name="Zed Car", target_amount=Decimal("3000.00"))
-    GoalAllocation.objects.create(book=team.default_book, goal=goal, month=month, amount=Decimal("1000.00"))
+    set_goal_allocation(team.default_book, goal, month, Decimal("1000.00"))
     row = BankTransaction.objects.create(
         book=team.default_book,
         account=checking,

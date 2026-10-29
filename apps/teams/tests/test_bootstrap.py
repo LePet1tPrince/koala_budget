@@ -27,11 +27,11 @@ class ApplyTemplateTest(TestCase):
         apply_template(book=self.book, template=PERSONAL_BUDGET_TEMPLATE)
 
         self.assertEqual(
-            AccountGroup.objects.filter(book=self.book).count(),
+            AccountGroup.objects.filter(book=self.book).exclude(account_type="budget").count(),
             len(PERSONAL_BUDGET_TEMPLATE["account_groups"]),
         )
         self.assertEqual(
-            Account.objects.filter(book=self.book).count(),
+            Account.objects.filter(book=self.book).exclude_budget_buckets().count(),
             len(PERSONAL_BUDGET_TEMPLATE["accounts"]),
         )
         self.assertEqual(
@@ -51,7 +51,7 @@ class ApplyTemplateTest(TestCase):
         apply_template(book=self.book, template=PERSONAL_BUDGET_TEMPLATE)
 
         self.assertEqual(
-            Account.objects.filter(book=self.book).count(),
+            Account.objects.filter(book=self.book).exclude_budget_buckets().count(),
             len(PERSONAL_BUDGET_TEMPLATE["accounts"]),
         )
 
