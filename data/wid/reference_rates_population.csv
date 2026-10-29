@@ -1,0 +1,373 @@
+region,year,variable,value,meaning
+CA,1995,inyixxi999,0.5078294277191162,price index (2025=1)
+CA,1995,npopuli992,21452373,adult (20+) population
+CA,1995,xlcuspi999,1.12251079082489,"PPP factor, LCU per USD"
+CA,1995,xlcusxi999,1.372445464134216,"market exchange rate, LCU per USD"
+CA,1996,inyixxi999,0.516336977481842,price index (2025=1)
+CA,1996,npopuli992,21727455,adult (20+) population
+CA,1996,xlcuspi999,1.120796918869019,"PPP factor, LCU per USD"
+CA,1996,xlcusxi999,1.363521695137024,"market exchange rate, LCU per USD"
+CA,1997,inyixxi999,0.522262454032898,price index (2025=1)
+CA,1997,npopuli992,22001988,adult (20+) population
+CA,1997,xlcuspi999,1.114441156387329,"PPP factor, LCU per USD"
+CA,1997,xlcusxi999,1.384598016738892,"market exchange rate, LCU per USD"
+CA,1998,inyixxi999,0.5213291645050049,price index (2025=1)
+CA,1998,npopuli992,22267926,adult (20+) population
+CA,1998,xlcuspi999,1.100085973739624,"PPP factor, LCU per USD"
+CA,1998,xlcusxi999,1.483505249023438,"market exchange rate, LCU per USD"
+CA,1999,inyixxi999,0.531359076499939,price index (2025=1)
+CA,1999,npopuli992,22543086,adult (20+) population
+CA,1999,xlcuspi999,1.105605363845825,"PPP factor, LCU per USD"
+CA,1999,xlcusxi999,1.485704779624939,"market exchange rate, LCU per USD"
+CA,2000,inyixxi999,0.554600179195404,price index (2025=1)
+CA,2000,npopuli992,22848553,adult (20+) population
+CA,2000,xlcuspi999,1.128402948379517,"PPP factor, LCU per USD"
+CA,2000,xlcusxi999,1.48539412021637,"market exchange rate, LCU per USD"
+CA,2001,inyixxi999,0.5633276700973511,price index (2025=1)
+CA,2001,npopuli992,23183967,adult (20+) population
+CA,2001,xlcuspi999,1.120920181274414,"PPP factor, LCU per USD"
+CA,2001,xlcusxi999,1.548839926719666,"market exchange rate, LCU per USD"
+CA,2002,inyixxi999,0.5704110264778137,price index (2025=1)
+CA,2002,npopuli992,23524045,adult (20+) population
+CA,2002,xlcuspi999,1.11764669418335,"PPP factor, LCU per USD"
+CA,2002,xlcusxi999,1.570342779159546,"market exchange rate, LCU per USD"
+CA,2003,inyixxi999,0.5889468193054199,price index (2025=1)
+CA,2003,npopuli992,23851219,adult (20+) population
+CA,2003,xlcuspi999,1.131623268127441,"PPP factor, LCU per USD"
+CA,2003,xlcusxi999,1.401014566421509,"market exchange rate, LCU per USD"
+CA,2004,inyixxi999,0.608152449131012,price index (2025=1)
+CA,2004,npopuli992,24174494,adult (20+) population
+CA,2004,xlcuspi999,1.13792610168457,"PPP factor, LCU per USD"
+CA,2004,xlcusxi999,1.301281571388245,"market exchange rate, LCU per USD"
+CA,2005,inyixxi999,0.6271104216575623,price index (2025=1)
+CA,2005,npopuli992,24503412,adult (20+) population
+CA,2005,xlcuspi999,1.137725710868835,"PPP factor, LCU per USD"
+CA,2005,xlcusxi999,1.211405158042908,"market exchange rate, LCU per USD"
+CA,2006,inyixxi999,0.6432335376739502,price index (2025=1)
+CA,2006,npopuli992,24837209,adult (20+) population
+CA,2006,xlcuspi999,1.132065892219543,"PPP factor, LCU per USD"
+CA,2006,xlcusxi999,1.134344696998596,"market exchange rate, LCU per USD"
+CA,2007,inyixxi999,0.6644508242607117,price index (2025=1)
+CA,2007,npopuli992,25174010,adult (20+) population
+CA,2007,xlcuspi999,1.138560771942139,"PPP factor, LCU per USD"
+CA,2007,xlcusxi999,1.074045658111572,"market exchange rate, LCU per USD"
+CA,2008,inyixxi999,0.6910043954849243,price index (2025=1)
+CA,2008,npopuli992,25523943,adult (20+) population
+CA,2008,xlcuspi999,1.161679267883301,"PPP factor, LCU per USD"
+CA,2008,xlcusxi999,1.067086935043335,"market exchange rate, LCU per USD"
+CA,2009,inyixxi999,0.6749386787414551,price index (2025=1)
+CA,2009,npopuli992,25895387,adult (20+) population
+CA,2009,xlcuspi999,1.127714991569519,"PPP factor, LCU per USD"
+CA,2009,xlcusxi999,1.141535401344299,"market exchange rate, LCU per USD"
+CA,2010,inyixxi999,0.6941660046577454,price index (2025=1)
+CA,2010,npopuli992,26268705,adult (20+) population
+CA,2010,xlcuspi999,1.145914435386658,"PPP factor, LCU per USD"
+CA,2010,xlcusxi999,1.030112743377686,"market exchange rate, LCU per USD"
+CA,2011,inyixxi999,0.716687023639679,price index (2025=1)
+CA,2011,npopuli992,26634410,adult (20+) population
+CA,2011,xlcuspi999,1.159176707267761,"PPP factor, LCU per USD"
+CA,2011,xlcusxi999,0.9892581701278687,"market exchange rate, LCU per USD"
+CA,2012,inyixxi999,0.725417971611023,price index (2025=1)
+CA,2012,npopuli992,27007336,adult (20+) population
+CA,2012,xlcuspi999,1.151848793029785,"PPP factor, LCU per USD"
+CA,2012,xlcusxi999,0.9993647336959839,"market exchange rate, LCU per USD"
+CA,2013,inyixxi999,0.738046407699585,price index (2025=1)
+CA,2013,npopuli992,27377592,adult (20+) population
+CA,2013,xlcuspi999,1.152290225028992,"PPP factor, LCU per USD"
+CA,2013,xlcusxi999,1.030137419700623,"market exchange rate, LCU per USD"
+CA,2014,inyixxi999,0.7523744702339172,price index (2025=1)
+CA,2014,npopuli992,27709332,adult (20+) population
+CA,2014,xlcuspi999,1.154552340507507,"PPP factor, LCU per USD"
+CA,2014,xlcusxi999,1.104747176170349,"market exchange rate, LCU per USD"
+CA,2015,inyixxi999,0.7458457350730896,price index (2025=1)
+CA,2015,npopuli992,28011691,adult (20+) population
+CA,2015,xlcuspi999,1.134009480476379,"PPP factor, LCU per USD"
+CA,2015,xlcusxi999,1.278786182403564,"market exchange rate, LCU per USD"
+CA,2016,inyixxi999,0.7511945366859436,price index (2025=1)
+CA,2016,npopuli992,28351297,adult (20+) population
+CA,2016,xlcuspi999,1.13139009475708,"PPP factor, LCU per USD"
+CA,2016,xlcusxi999,1.325615167617798,"market exchange rate, LCU per USD"
+CA,2017,inyixxi999,0.7705070972442627,price index (2025=1)
+CA,2017,npopuli992,28744520,adult (20+) population
+CA,2017,xlcuspi999,1.140061020851135,"PPP factor, LCU per USD"
+CA,2017,xlcusxi999,1.297935843467712,"market exchange rate, LCU per USD"
+CA,2018,inyixxi999,0.7832301259040833,price index (2025=1)
+CA,2018,npopuli992,29174795,adult (20+) population
+CA,2018,xlcuspi999,1.132932066917419,"PPP factor, LCU per USD"
+CA,2018,xlcusxi999,1.295817971229553,"market exchange rate, LCU per USD"
+CA,2019,inyixxi999,0.7953383326530457,price index (2025=1)
+CA,2019,npopuli992,29620191,adult (20+) population
+CA,2019,xlcuspi999,1.131767630577087,"PPP factor, LCU per USD"
+CA,2019,xlcusxi999,1.326793313026428,"market exchange rate, LCU per USD"
+CA,2020,inyixxi999,0.8038552403450012,price index (2025=1)
+CA,2020,npopuli992,30005021,adult (20+) population
+CA,2020,xlcuspi999,1.128707647323608,"PPP factor, LCU per USD"
+CA,2020,xlcusxi999,1.341152667999268,"market exchange rate, LCU per USD"
+CA,2021,inyixxi999,0.8664364218711853,price index (2025=1)
+CA,2021,npopuli992,30319326,adult (20+) population
+CA,2021,xlcuspi999,1.16349196434021,"PPP factor, LCU per USD"
+CA,2021,xlcusxi999,1.253876924514771,"market exchange rate, LCU per USD"
+CA,2022,inyixxi999,0.9347338676452637,price index (2025=1)
+CA,2022,npopuli992,30693680,adult (20+) population
+CA,2022,xlcuspi999,1.17185378074646,"PPP factor, LCU per USD"
+CA,2022,xlcusxi999,1.301554799079895,"market exchange rate, LCU per USD"
+CA,2023,inyixxi999,0.9491715431213379,price index (2025=1)
+CA,2023,npopuli992,31148252,adult (20+) population
+CA,2023,xlcuspi999,1.147495031356812,"PPP factor, LCU per USD"
+CA,2023,xlcusxi999,1.349908590316772,"market exchange rate, LCU per USD"
+CA,2024,inyixxi999,0.9751049876213074,price index (2025=1)
+CA,2024,npopuli992,31560664,adult (20+) population
+CA,2024,xlcuspi999,1.150291681289673,"PPP factor, LCU per USD"
+CA,2024,xlcusxi999,1.369359731674194,"market exchange rate, LCU per USD"
+CA,2025,inyixxi999,1,price index (2025=1)
+CA,2025,npopuli992,31912150,adult (20+) population
+CA,2025,xlcuspi999,1.147119164466858,"PPP factor, LCU per USD"
+CA,2025,xlcusxi999,1.360676050186157,"market exchange rate, LCU per USD"
+WO-MER,1995,inyixxi999,0.6035541721861495,price index (2025=1)
+WO-MER,1995,npopuli992,3389115859,adult (20+) population
+WO-MER,1995,xlcuspi999,0.7605718132896165,"PPP factor, LCU per USD"
+WO-MER,1995,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,1996,inyixxi999,0.5987758299985378,price index (2025=1)
+WO-MER,1996,npopuli992,3453043148,adult (20+) population
+WO-MER,1996,xlcuspi999,0.7401655936611671,"PPP factor, LCU per USD"
+WO-MER,1996,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,1997,inyixxi999,0.5743867937565055,price index (2025=1)
+WO-MER,1997,npopuli992,3516987010,adult (20+) population
+WO-MER,1997,xlcuspi999,0.6984386364189278,"PPP factor, LCU per USD"
+WO-MER,1997,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,1998,inyixxi999,0.5571222699147252,price index (2025=1)
+WO-MER,1998,npopuli992,3582111661,adult (20+) population
+WO-MER,1998,xlcuspi999,0.6746158931276239,"PPP factor, LCU per USD"
+WO-MER,1998,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,1999,inyixxi999,0.5571966892599554,price index (2025=1)
+WO-MER,1999,npopuli992,3649413552,adult (20+) population
+WO-MER,1999,xlcuspi999,0.6647649192315678,"PPP factor, LCU per USD"
+WO-MER,1999,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2000,inyixxi999,0.5493511838944012,price index (2025=1)
+WO-MER,2000,npopuli992,3719020167,adult (20+) population
+WO-MER,2000,xlcuspi999,0.6391796145420777,"PPP factor, LCU per USD"
+WO-MER,2000,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2001,inyixxi999,0.5364746765064072,price index (2025=1)
+WO-MER,2001,npopuli992,3790336779,adult (20+) population
+WO-MER,2001,xlcuspi999,0.6078035119057917,"PPP factor, LCU per USD"
+WO-MER,2001,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2002,inyixxi999,0.5456855783416367,price index (2025=1)
+WO-MER,2002,npopuli992,3863420740,adult (20+) population
+WO-MER,2002,xlcuspi999,0.6047674691856344,"PPP factor, LCU per USD"
+WO-MER,2002,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2003,inyixxi999,0.5942041395427775,price index (2025=1)
+WO-MER,2003,npopuli992,3937159524,adult (20+) population
+WO-MER,2003,xlcuspi999,0.6417721278782983,"PPP factor, LCU per USD"
+WO-MER,2003,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2004,inyixxi999,0.6402960285885219,price index (2025=1)
+WO-MER,2004,npopuli992,4011511986,adult (20+) population
+WO-MER,2004,xlcuspi999,0.6684634731865946,"PPP factor, LCU per USD"
+WO-MER,2004,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2005,inyixxi999,0.6689347033258702,price index (2025=1)
+WO-MER,2005,npopuli992,4087697632,adult (20+) population
+WO-MER,2005,xlcuspi999,0.6733357610294786,"PPP factor, LCU per USD"
+WO-MER,2005,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2006,inyixxi999,0.6947747612176942,price index (2025=1)
+WO-MER,2006,npopuli992,4166144704,adult (20+) population
+WO-MER,2006,xlcuspi999,0.6729821112246407,"PPP factor, LCU per USD"
+WO-MER,2006,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2007,inyixxi999,0.752165173706448,price index (2025=1)
+WO-MER,2007,npopuli992,4247162222,adult (20+) population
+WO-MER,2007,xlcuspi999,0.7027262183448582,"PPP factor, LCU per USD"
+WO-MER,2007,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2008,inyixxi999,0.8121896016228695,price index (2025=1)
+WO-MER,2008,npopuli992,4328348044,adult (20+) population
+WO-MER,2008,xlcuspi999,0.7364410948523582,"PPP factor, LCU per USD"
+WO-MER,2008,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2009,inyixxi999,0.7831604200440888,price index (2025=1)
+WO-MER,2009,npopuli992,4409537868,adult (20+) population
+WO-MER,2009,xlcuspi999,0.6990721246557975,"PPP factor, LCU per USD"
+WO-MER,2009,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2010,inyixxi999,0.8234635841456392,price index (2025=1)
+WO-MER,2010,npopuli992,4492134423,adult (20+) population
+WO-MER,2010,xlcuspi999,0.7227735677252606,"PPP factor, LCU per USD"
+WO-MER,2010,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2011,inyixxi999,0.889494331286017,price index (2025=1)
+WO-MER,2011,npopuli992,4572784795,adult (20+) population
+WO-MER,2011,xlcuspi999,0.7602366466116295,"PPP factor, LCU per USD"
+WO-MER,2011,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2012,inyixxi999,0.8872928806007732,price index (2025=1)
+WO-MER,2012,npopuli992,4649928217,adult (20+) population
+WO-MER,2012,xlcuspi999,0.7401057344737755,"PPP factor, LCU per USD"
+WO-MER,2012,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2013,inyixxi999,0.8910257835695172,price index (2025=1)
+WO-MER,2013,npopuli992,4725280326,adult (20+) population
+WO-MER,2013,xlcuspi999,0.7269410075111031,"PPP factor, LCU per USD"
+WO-MER,2013,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2014,inyixxi999,0.889996590060087,price index (2025=1)
+WO-MER,2014,npopuli992,4799250857,adult (20+) population
+WO-MER,2014,xlcuspi999,0.7103582213857632,"PPP factor, LCU per USD"
+WO-MER,2014,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2015,inyixxi999,0.8180363822601244,price index (2025=1)
+WO-MER,2015,npopuli992,4872450301,adult (20+) population
+WO-MER,2015,xlcuspi999,0.6441977346524955,"PPP factor, LCU per USD"
+WO-MER,2015,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2016,inyixxi999,0.8096099479790168,price index (2025=1)
+WO-MER,2016,npopuli992,4944731085,adult (20+) population
+WO-MER,2016,xlcuspi999,0.6283703049153547,"PPP factor, LCU per USD"
+WO-MER,2016,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2017,inyixxi999,0.8333945430133276,price index (2025=1)
+WO-MER,2017,npopuli992,5015768937,adult (20+) population
+WO-MER,2017,xlcuspi999,0.6333960053409284,"PPP factor, LCU per USD"
+WO-MER,2017,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2018,inyixxi999,0.8573588503496915,price index (2025=1)
+WO-MER,2018,npopuli992,5086119240,adult (20+) population
+WO-MER,2018,xlcuspi999,0.6344282075037845,"PPP factor, LCU per USD"
+WO-MER,2018,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2019,inyixxi999,0.8481594033471235,price index (2025=1)
+WO-MER,2019,npopuli992,5156235366,adult (20+) population
+WO-MER,2019,xlcuspi999,0.6153159143512285,"PPP factor, LCU per USD"
+WO-MER,2019,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2020,inyixxi999,0.8528224125663785,price index (2025=1)
+WO-MER,2020,npopuli992,5224763674,adult (20+) population
+WO-MER,2020,xlcuspi999,0.6076422657072825,"PPP factor, LCU per USD"
+WO-MER,2020,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2021,inyixxi999,0.915509637713085,price index (2025=1)
+WO-MER,2021,npopuli992,5288724785,adult (20+) population
+WO-MER,2021,xlcuspi999,0.6249226061910438,"PPP factor, LCU per USD"
+WO-MER,2021,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2022,inyixxi999,0.9227183018332323,price index (2025=1)
+WO-MER,2022,npopuli992,5353649182,adult (20+) population
+WO-MER,2022,xlcuspi999,0.5866223649291741,"PPP factor, LCU per USD"
+WO-MER,2022,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2023,inyixxi999,0.9376489720317622,price index (2025=1)
+WO-MER,2023,npopuli992,5423215686,adult (20+) population
+WO-MER,2023,xlcuspi999,0.570543850009047,"PPP factor, LCU per USD"
+WO-MER,2023,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2024,inyixxi999,0.9498993210293685,price index (2025=1)
+WO-MER,2024,npopuli992,5493281049,adult (20+) population
+WO-MER,2024,xlcuspi999,0.5605184411596751,"PPP factor, LCU per USD"
+WO-MER,2024,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-MER,2025,inyixxi999,1,price index (2025=1)
+WO-MER,2025,npopuli992,5563443164,adult (20+) population
+WO-MER,2025,xlcuspi999,0.5702924861440468,"PPP factor, LCU per USD"
+WO-MER,2025,xlcusxi999,1,"market exchange rate, LCU per USD"
+WO-PPP,1995,inyixxi999,0.5189623856554145,price index (2025=1)
+WO-PPP,1995,npopuli992,3389115859,adult (20+) population
+WO-PPP,1995,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,1995,xlcusxi999,1.314800236515223,"market exchange rate, LCU per USD"
+WO-PPP,1996,inyixxi999,0.5284633089237393,price index (2025=1)
+WO-PPP,1996,npopuli992,3453043148,adult (20+) population
+WO-PPP,1996,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,1996,xlcusxi999,1.351049020062637,"market exchange rate, LCU per USD"
+WO-PPP,1997,inyixxi999,0.5375763815118365,price index (2025=1)
+WO-PPP,1997,npopuli992,3516987010,adult (20+) population
+WO-PPP,1997,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,1997,xlcusxi999,1.431765008200654,"market exchange rate, LCU per USD"
+WO-PPP,1998,inyixxi999,0.5436181483123386,price index (2025=1)
+WO-PPP,1998,npopuli992,3582111661,adult (20+) population
+WO-PPP,1998,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,1998,xlcusxi999,1.482324994396211,"market exchange rate, LCU per USD"
+WO-PPP,1999,inyixxi999,0.551310779687268,price index (2025=1)
+WO-PPP,1999,npopuli992,3649413552,adult (20+) population
+WO-PPP,1999,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,1999,xlcusxi999,1.504291172819326,"market exchange rate, LCU per USD"
+WO-PPP,2000,inyixxi999,0.5637990251032083,price index (2025=1)
+WO-PPP,2000,npopuli992,3719020167,adult (20+) population
+WO-PPP,2000,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2000,xlcusxi999,1.564505464894124,"market exchange rate, LCU per USD"
+WO-PPP,2001,inyixxi999,0.5764941611817914,price index (2025=1)
+WO-PPP,2001,npopuli992,3790336779,adult (20+) population
+WO-PPP,2001,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2001,xlcusxi999,1.645268545527914,"market exchange rate, LCU per USD"
+WO-PPP,2002,inyixxi999,0.5854528584172476,price index (2025=1)
+WO-PPP,2002,npopuli992,3863420740,adult (20+) population
+WO-PPP,2002,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2002,xlcusxi999,1.653528092948809,"market exchange rate, LCU per USD"
+WO-PPP,2003,inyixxi999,0.5970115757121053,price index (2025=1)
+WO-PPP,2003,npopuli992,3937159524,adult (20+) population
+WO-PPP,2003,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2003,xlcusxi999,1.558185462659472,"market exchange rate, LCU per USD"
+WO-PPP,2004,inyixxi999,0.613065603671248,price index (2025=1)
+WO-PPP,2004,npopuli992,4011511986,adult (20+) population
+WO-PPP,2004,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2004,xlcusxi999,1.495968052275102,"market exchange rate, LCU per USD"
+WO-PPP,2005,inyixxi999,0.6322880431589903,price index (2025=1)
+WO-PPP,2005,npopuli992,4087697632,adult (20+) population
+WO-PPP,2005,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2005,xlcusxi999,1.485143160183676,"market exchange rate, LCU per USD"
+WO-PPP,2006,inyixxi999,0.6517867467175434,price index (2025=1)
+WO-PPP,2006,npopuli992,4166144704,adult (20+) population
+WO-PPP,2006,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2006,xlcusxi999,1.485923597850584,"market exchange rate, LCU per USD"
+WO-PPP,2007,inyixxi999,0.6694454010900934,price index (2025=1)
+WO-PPP,2007,npopuli992,4247162222,adult (20+) population
+WO-PPP,2007,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2007,xlcusxi999,1.423029302016531,"market exchange rate, LCU per USD"
+WO-PPP,2008,inyixxi999,0.6823436082514223,price index (2025=1)
+WO-PPP,2008,npopuli992,4328348044,adult (20+) population
+WO-PPP,2008,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2008,xlcusxi999,1.357881855032113,"market exchange rate, LCU per USD"
+WO-PPP,2009,inyixxi999,0.6865521136931477,price index (2025=1)
+WO-PPP,2009,npopuli992,4409537868,adult (20+) population
+WO-PPP,2009,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2009,xlcusxi999,1.43046756512051,"market exchange rate, LCU per USD"
+WO-PPP,2010,inyixxi999,0.6948958064669873,price index (2025=1)
+WO-PPP,2010,npopuli992,4492134423,adult (20+) population
+WO-PPP,2010,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2010,xlcusxi999,1.383559173514378,"market exchange rate, LCU per USD"
+WO-PPP,2011,inyixxi999,0.7092321568491337,price index (2025=1)
+WO-PPP,2011,npopuli992,4572784795,adult (20+) population
+WO-PPP,2011,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2011,xlcusxi999,1.315379894480218,"market exchange rate, LCU per USD"
+WO-PPP,2012,inyixxi999,0.7224392908573365,price index (2025=1)
+WO-PPP,2012,npopuli992,4649928217,adult (20+) population
+WO-PPP,2012,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2012,xlcusxi999,1.351158291877055,"market exchange rate, LCU per USD"
+WO-PPP,2013,inyixxi999,0.7347343000871762,price index (2025=1)
+WO-PPP,2013,npopuli992,4725280326,adult (20+) population
+WO-PPP,2013,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2013,xlcusxi999,1.375627443860671,"market exchange rate, LCU per USD"
+WO-PPP,2014,inyixxi999,0.7475305910466172,price index (2025=1)
+WO-PPP,2014,npopuli992,4799250857,adult (20+) population
+WO-PPP,2014,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2014,xlcusxi999,1.40774044685399,"market exchange rate, LCU per USD"
+WO-PPP,2015,inyixxi999,0.7544680871897034,price index (2025=1)
+WO-PPP,2015,npopuli992,4872450301,adult (20+) population
+WO-PPP,2015,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2015,xlcusxi999,1.55231840506151,"market exchange rate, LCU per USD"
+WO-PPP,2016,inyixxi999,0.7616379296254284,price index (2025=1)
+WO-PPP,2016,npopuli992,4944731085,adult (20+) population
+WO-PPP,2016,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2016,xlcusxi999,1.591418296150557,"market exchange rate, LCU per USD"
+WO-PPP,2017,inyixxi999,0.7752773230914731,price index (2025=1)
+WO-PPP,2017,npopuli992,5015768937,adult (20+) population
+WO-PPP,2017,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2017,xlcusxi999,1.578791137878656,"market exchange rate, LCU per USD"
+WO-PPP,2018,inyixxi999,0.7930381421925475,price index (2025=1)
+WO-PPP,2018,npopuli992,5086119240,adult (20+) population
+WO-PPP,2018,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2018,xlcusxi999,1.576222475880433,"market exchange rate, LCU per USD"
+WO-PPP,2019,inyixxi999,0.8061264770697785,price index (2025=1)
+WO-PPP,2019,npopuli992,5156235366,adult (20+) population
+WO-PPP,2019,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2019,xlcusxi999,1.625181433921421,"market exchange rate, LCU per USD"
+WO-PPP,2020,inyixxi999,0.8169677890687645,price index (2025=1)
+WO-PPP,2020,npopuli992,5224763674,adult (20+) population
+WO-PPP,2020,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2020,xlcusxi999,1.645705140072871,"market exchange rate, LCU per USD"
+WO-PPP,2021,inyixxi999,0.8542438164223386,price index (2025=1)
+WO-PPP,2021,npopuli992,5288724785,adult (20+) population
+WO-PPP,2021,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2021,xlcusxi999,1.600198152688194,"market exchange rate, LCU per USD"
+WO-PPP,2022,inyixxi999,0.9150041949315086,price index (2025=1)
+WO-PPP,2022,npopuli992,5353649182,adult (20+) population
+WO-PPP,2022,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2022,xlcusxi999,1.704674181866106,"market exchange rate, LCU per USD"
+WO-PPP,2023,inyixxi999,0.9488606488136161,price index (2025=1)
+WO-PPP,2023,npopuli992,5423215686,adult (20+) population
+WO-PPP,2023,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2023,xlcusxi999,1.752713660806515,"market exchange rate, LCU per USD"
+WO-PPP,2024,inyixxi999,0.9724156313252338,price index (2025=1)
+WO-PPP,2024,npopuli992,5493281049,adult (20+) population
+WO-PPP,2024,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2024,xlcusxi999,1.784062622330618,"market exchange rate, LCU per USD"
+WO-PPP,2025,inyixxi999,1,price index (2025=1)
+WO-PPP,2025,npopuli992,5563443164,adult (20+) population
+WO-PPP,2025,xlcuspi999,1,"PPP factor, LCU per USD"
+WO-PPP,2025,xlcusxi999,1.753486192254365,"market exchange rate, LCU per USD"
