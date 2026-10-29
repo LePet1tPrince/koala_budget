@@ -34,6 +34,38 @@ def json_safe(value):
     return value
 
 
+def _as_dict(value):
+    """A Plaid SDK model (which has `to_dict`), a plain dict, or None, as JSON-safe data."""
+    if value is None:
+        return None
+    return json_safe(value.to_dict() if hasattr(value, "to_dict") else value)
+
+
+def plaid_details(tx_data) -> dict:
+    """
+    The `PlaidTransaction` fields Plaid sends with a transaction, shared by the
+    added and modified paths.
+
+    Plaid documents `personal_finance_category`, `location` and
+    `merchant_metadata` as nullable. A present-but-null value must read as "no
+    detail", not crash: one such row would otherwise fail the whole sync and
+    leave the cursor where it was, so every later sync would fail on it too.
+    """
+    category = tx_data.get("personal_finance_category") or {}
+    return {
+        "authorized_date": tx_data.get("authorized_date"),
+        "pending": tx_data.get("pending") or False,
+        "pending_transaction_id": tx_data.get("pending_transaction_id"),
+        "personal_finance_category": category.get("primary"),
+        "personal_finance_category_id": category.get("detailed"),
+        "category_confidence": category.get("confidence_level"),
+        "payment_channel": tx_data.get("payment_channel"),
+        "transaction_type": tx_data.get("transaction_type"),
+        "location": _as_dict(tx_data.get("location")),
+        "merchant_metadata": _as_dict(tx_data.get("merchant_metadata")),
+    }
+
+
 @shared_task
 def sync_plaid_transactions(plaid_item_id: int):
     """
@@ -156,7 +188,7 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
         description=tx_data["name"],
         merchant_name=tx_data.get("merchant_name"),
         source=BankTransaction.SOURCE_PLAID,
-        raw=json_safe(tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data),
+        raw=_as_dict(tx_data),
     )
 
     # Create plaid transaction
@@ -167,18 +199,7 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
         plaid_account=plaid_account,
         iso_currency_code=tx_data.get("iso_currency_code"),
         unofficial_currency_code=tx_data.get("unofficial_currency_code"),
-        authorized_date=tx_data.get("authorized_date"),
-        pending=tx_data.get("pending", False),
-        pending_transaction_id=tx_data.get("pending_transaction_id"),
-        personal_finance_category=tx_data.get("personal_finance_category", {}).get("primary"),
-        personal_finance_category_id=tx_data.get("personal_finance_category", {}).get("detailed"),
-        category_confidence=tx_data.get("personal_finance_category", {}).get("confidence_level"),
-        payment_channel=tx_data.get("payment_channel"),
-        transaction_type=tx_data.get("transaction_type"),
-        location=json_safe(tx_data.get("location").to_dict() if tx_data.get("location") else None),
-        merchant_metadata=json_safe(
-            tx_data.get("merchant_metadata").to_dict() if tx_data.get("merchant_metadata") else None
-        ),
+        **plaid_details(tx_data),
     )
 
 
@@ -201,22 +222,12 @@ def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
             plaid_tx.bank_transaction.posted_date = tx_data["date"]
             plaid_tx.bank_transaction.description = tx_data["name"]
             plaid_tx.bank_transaction.merchant_name = tx_data.get("merchant_name")
-            plaid_tx.bank_transaction.raw = json_safe(tx_data.to_dict() if hasattr(tx_data, "to_dict") else tx_data)
+            plaid_tx.bank_transaction.raw = _as_dict(tx_data)
             plaid_tx.bank_transaction.save()
 
             # Update plaid transaction
-            plaid_tx.authorized_date = tx_data.get("authorized_date")
-            plaid_tx.pending = tx_data.get("pending", False)
-            plaid_tx.pending_transaction_id = tx_data.get("pending_transaction_id")
-            plaid_tx.personal_finance_category = tx_data.get("personal_finance_category", {}).get("primary")
-            plaid_tx.personal_finance_category_id = tx_data.get("personal_finance_category", {}).get("detailed")
-            plaid_tx.category_confidence = tx_data.get("personal_finance_category", {}).get("confidence_level")
-            plaid_tx.payment_channel = tx_data.get("payment_channel")
-            plaid_tx.transaction_type = tx_data.get("transaction_type")
-            plaid_tx.location = json_safe(tx_data.get("location").to_dict() if tx_data.get("location") else None)
-            plaid_tx.merchant_metadata = json_safe(
-                tx_data.get("merchant_metadata").to_dict() if tx_data.get("merchant_metadata") else None
-            )
+            for field, value in plaid_details(tx_data).items():
+                setattr(plaid_tx, field, value)
             plaid_tx.save()
 
     except PlaidTransaction.DoesNotExist:
