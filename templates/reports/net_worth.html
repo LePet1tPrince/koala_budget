@@ -25,7 +25,7 @@
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div id="month-range-picker"></div>
+      <div id="month-range-picker" data-start-month="{{ start_date|date:'Y-m' }}" data-end-month="{{ end_date|date:'Y-m' }}"></div>
       <a href="{% url 'reports:export_balance_sheet' request.team.slug request.book.slug %}?{{ export_qs }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
         {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Export CSV" %}

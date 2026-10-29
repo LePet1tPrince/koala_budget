@@ -25,6 +25,26 @@ DEFAULT_BOOK_SLUG = "personal"
 MAX_HOUSEHOLD_ADULTS = 10
 
 
+class ReportTimeframe(models.TextChoices):
+    """
+    The range a report opens on when its address names none (`Book.report_timeframe`).
+
+    `REPORT` keeps each report's own default (this year on Income & Spending, the
+    last 12 months on Net Worth). "Last N months"
+    are the N full months before this one, so they line up with "Last month".
+    The ranges themselves are computed in `apps.reports.timeframes`.
+    """
+
+    REPORT = "report", _("Each report's own default")
+    THIS_MONTH = "this_month", _("This month")
+    LAST_MONTH = "last_month", _("Last month")
+    LAST_3_MONTHS = "last_3_months", _("Last 3 months")
+    LAST_6_MONTHS = "last_6_months", _("Last 6 months")
+    LAST_12_MONTHS = "last_12_months", _("Last 12 months")
+    THIS_YEAR = "this_year", _("This year")
+    LAST_YEAR = "last_year", _("Last year")
+
+
 class Book(BaseModel):
     """A set of books: one chart of accounts, budget and ledger inside a team."""
 
@@ -41,6 +61,14 @@ class Book(BaseModel):
     budget_future_income = models.BooleanField(
         default=False,
         help_text=_("Budget income before it arrives: this month's expected income counts toward Unassigned."),
+    )
+    # `db_default` for the same reason as `household_adults` below.
+    report_timeframe = models.CharField(
+        max_length=20,
+        choices=ReportTimeframe.choices,
+        default=ReportTimeframe.REPORT,
+        db_default=ReportTimeframe.REPORT,
+        help_text=_("The dates a report shows when you open it."),
     )
     # How many adults share this book's net worth. Wealth rankings compare one adult
     # with another (household wealth split equally between its adults), so a couple

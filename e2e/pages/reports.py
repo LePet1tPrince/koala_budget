@@ -30,6 +30,34 @@ class ReportsPage(BasePage):
         )
 
     # ------------------------------------------------------------------
+    # Date range picker
+    # ------------------------------------------------------------------
+
+    def date_range_label(self) -> str:
+        trigger = self.page.locator("[data-testid='date-range-picker-trigger']")
+        trigger.wait_for(timeout=10_000)
+        return trigger.inner_text().strip()
+
+    def type_date_range(self, start: str, end: str):
+        """Type both ends of the range (DDMMYYYY); Enter on the end applies, which reloads the report."""
+        self.page.locator("[data-testid='date-range-picker-trigger']").click()
+        start_box = self.page.locator("[data-testid='date-range-start-text']")
+        start_box.fill(start)
+        start_box.press("Enter")
+        end_box = self.page.locator("[data-testid='date-range-end-text']")
+        end_box.fill(end)
+        with self.page.expect_navigation():
+            end_box.press("Enter")
+
+    def typed_date_error(self, side: str, text: str) -> str:
+        """Type an unparseable date into one side and return the error it shows."""
+        self.page.locator("[data-testid='date-range-picker-trigger']").click()
+        box = self.page.locator(f"[data-testid='date-range-{side}-text']")
+        box.fill(text)
+        box.press("Enter")
+        return self.page.locator("[role='dialog'] [role='alert']").inner_text().strip()
+
+    # ------------------------------------------------------------------
     # Reports home queries
     # ------------------------------------------------------------------
 

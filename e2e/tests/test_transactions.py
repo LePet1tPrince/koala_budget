@@ -375,6 +375,22 @@ def test_changing_the_category_updates_the_row_in_place(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_a_date_can_be_typed_in_the_editor(requires_vite, authenticated_page: Page, live_server, team, editable):
+    """DDMMYYYY and Enter takes the date, without submitting or closing the modal around it."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.default_book)
+    transactions.open_editor("Weekly shop")
+    transactions.type_date("transaction-date", "09032026")
+
+    assert transactions.date_label("transaction-date") == "Mar 9, 2026"
+    assert authenticated_page.locator("[data-testid='transaction-edit-modal']").is_visible()
+    transactions.save_editor()
+
+    editable.plain.refresh_from_db()
+    assert editable.plain.entry_date == date(2026, 3, 9)
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_reconciled_transaction_locks_its_amount_but_not_its_category(
     requires_vite, authenticated_page: Page, live_server, team, editable
 ):

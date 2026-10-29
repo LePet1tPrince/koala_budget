@@ -56,10 +56,17 @@ const PickerPopover = ({
 }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
+  const buttonRef = useRef(null);
   const panelRef = useRef(null);
   const panelId = useId();
 
-  const close = useCallback(() => setOpen(false), []);
+  // Hand focus back to the trigger when it was inside the panel (a date typed and
+  // taken with Enter, Apply pressed): otherwise it falls to <body> as the panel
+  // unmounts and a keyboard user starts again from the top of the page.
+  const close = useCallback(() => {
+    if (panelRef.current?.contains(document.activeElement)) buttonRef.current?.focus();
+    setOpen(false);
+  }, []);
 
   const { style: panelStyle } = useAnchoredPosition(open, rootRef, panelRef);
 
@@ -106,6 +113,7 @@ const PickerPopover = ({
   return (
     <div className={`relative ${rootClassName}`} ref={rootRef}>
       <button
+        ref={buttonRef}
         type="button"
         className={`${buttonClassName} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
         disabled={disabled}
@@ -153,8 +161,10 @@ const PickerPopover = ({
             style={
               panelStyle
                 ? { top: panelStyle.top, left: panelStyle.left, maxHeight: panelStyle.maxHeight }
-                : // Measured on first paint, so stay invisible until placed.
-                  { top: 0, left: 0, visibility: 'hidden' }
+                : // Measured on first paint, so stay invisible until placed. Transparent
+                  // rather than `visibility: hidden`, which would stop the panel's
+                  // date text box taking focus as it opens.
+                  { top: 0, left: 0, opacity: 0, pointerEvents: 'none' }
             }
           >
             {children({ close })}

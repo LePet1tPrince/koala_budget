@@ -5,7 +5,7 @@ CSV exports they link.
 """
 
 import contextlib
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from urllib.parse import urlencode
 
 from django.shortcuts import get_object_or_404, render
@@ -25,6 +25,7 @@ from .exports import (
     export_income_statement_csv,
     export_transactions_csv,
 )
+from .timeframes import date_range_from_request, default_range, month_range_from_request
 
 
 @login_and_book_required
@@ -55,21 +56,11 @@ def reports_home(request, team_slug, book_slug):
 def _parse_month_range(request):
     """
     Parse start_month/end_month GET params (YYYY-MM) into a (start_date, end_date)
-    range of whole months, defaulting to the last 12 months.
+    range of whole months, defaulting to the book's report timeframe, else the
+    last 12 months.
     """
-    start_month_param = request.GET.get("start_month")
-    end_month_param = request.GET.get("end_month")
-    if start_month_param and end_month_param:
-        try:
-            start_year, start_month_num = map(int, start_month_param.split("-"))
-            end_year, end_month_num = map(int, end_month_param.split("-"))
-            start_date = date(start_year, start_month_num, 1)
-            end_date = (date(end_year, end_month_num, 1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            return start_date, end_date
-        except ValueError:
-            pass
     today = date.today()
-    return date(today.year - 1, today.month, 1), today
+    return month_range_from_request(request, (date(today.year - 1, today.month, 1), today))
 
 
 def _drill_qs(start_date, end_date):
@@ -81,12 +72,7 @@ def _drill_qs(start_date, end_date):
 def spending(request, team_slug, book_slug):
     """Income & Spending: money in and out over a range, with the statement and the flow."""
     today = date.today()
-    start_date, end_date = date(today.year, 1, 1), today
-    with contextlib.suppress(KeyError, ValueError):
-        start_date, end_date = (
-            datetime.strptime(request.GET["start_date"], "%Y-%m-%d").date(),
-            datetime.strptime(request.GET["end_date"], "%Y-%m-%d").date(),
-        )
+    start_date, end_date = date_range_from_request(request, (date(today.year, 1, 1), today))
     if start_date > end_date:
         start_date, end_date = end_date, start_date
 
@@ -170,18 +156,19 @@ def budget_goals(request, team_slug, book_slug):
 
 
 def _parse_date_range(request):
-    """Parse start_date and end_date from GET params, with defaults to current month."""
+    """
+    Parse start_date and end_date from GET params. A missing side takes the book's
+    default report range (else this month to today); an unparseable one, the whole range.
+    """
     today = date.today()
+    default_start, default_end = default_range(request.book, (today.replace(day=1), today))
     start_date_param = request.GET.get("start_date")
     end_date_param = request.GET.get("end_date")
     try:
-        start_date = (
-            datetime.strptime(start_date_param, "%Y-%m-%d").date() if start_date_param else today.replace(day=1)
-        )  # noqa: E501
-        end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date() if end_date_param else today
+        start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date() if start_date_param else default_start
+        end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date() if end_date_param else default_end
     except ValueError:
-        start_date = today.replace(day=1)
-        end_date = today
+        start_date, end_date = default_start, default_end
     return start_date, end_date
 
 

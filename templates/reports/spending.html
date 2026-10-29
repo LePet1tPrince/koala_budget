@@ -26,7 +26,7 @@
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div id="date-range-picker" data-default-range="year" data-all-time-start="{% first_entry_date request.book %}"></div>
+      <div id="date-range-picker" data-start-date="{{ start_date|date:'Y-m-d' }}" data-end-date="{{ end_date|date:'Y-m-d' }}" data-all-time-start="{% first_entry_date request.book %}"></div>
       <a href="{% url 'reports:export_income_statement' request.team.slug request.book.slug %}?{{ export_qs }}" class="btn btn-outline btn-sm" data-testid="export-csv-btn">
         {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
         {% translate "Export CSV" %}

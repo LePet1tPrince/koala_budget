@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { format, parseISO, startOfMonth } from 'date-fns';
 
+import DateTextInput from './DateTextInput';
 import PickerPopover, { CalendarIcon, DayGrid } from './PickerPopover';
 
 /* globals gettext */
@@ -15,11 +16,16 @@ import PickerPopover, { CalendarIcon, DayGrid } from './PickerPopover';
  *
  * `value` and `onChange` speak ISO `yyyy-MM-dd` — the format the API takes and the
  * one the old `type="date"` inputs produced, so callers are unchanged.
+ *
+ * The panel opens with a text box focused, so a date can be typed (`ddmmyyyy`)
+ * and taken with Enter instead of clicked: open, type, Enter.
  */
 const DateField = ({ label, value, onChange, testId, allowClear = false, disabled = false, className = '' }) => {
   const parsed = value ? parseISO(value) : null;
   const valid = parsed && !Number.isNaN(parsed.getTime());
   const [month, setMonth] = useState(() => startOfMonth(valid ? parsed : new Date()));
+  // A complete date typed but not yet taken: highlighted in the grid meanwhile.
+  const [typed, setTyped] = useState('');
 
   // Follow an externally-set value (the reconcile dialog defaults the date from
   // the selection) rather than staying on whatever month was last browsed.
@@ -39,18 +45,35 @@ const DateField = ({ label, value, onChange, testId, allowClear = false, disable
         onClear={allowClear && value ? () => onChange('') : null}
         buttonClassName="input input-bordered flex w-full items-center gap-2 font-normal justify-start"
         rootClassName="block w-full"
+        onOpen={() => setTyped('')}
       >
         {({ close }) => (
-          <DayGrid
-            month={month}
-            onMonthChange={setMonth}
-            value={value}
-            onSelect={(iso) => {
-              onChange(iso);
-              close();
-            }}
-            testId={testId ? `${testId}-grid` : undefined}
-          />
+          <div className="flex flex-col gap-3">
+            <DateTextInput
+              value={value}
+              autoFocus
+              commitOnBlur
+              onPreview={(iso) => {
+                setTyped(iso);
+                setMonth(startOfMonth(parseISO(iso)));
+              }}
+              onCommit={(iso, { via }) => {
+                onChange(iso);
+                if (via === 'enter') close();
+              }}
+              testId={testId ? `${testId}-text` : undefined}
+            />
+            <DayGrid
+              month={month}
+              onMonthChange={setMonth}
+              value={typed || value}
+              onSelect={(iso) => {
+                onChange(iso);
+                close();
+              }}
+              testId={testId ? `${testId}-grid` : undefined}
+            />
+          </div>
         )}
       </PickerPopover>
     </label>
