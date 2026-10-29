@@ -295,6 +295,21 @@ class BookSettingsTest(TestCase):
         self.client.force_login(member)
         self.assertEqual(self.post(name="Hijacked", slug="business").status_code, 404)
 
+    def test_household_adults_save_and_are_kept_when_left_out(self):
+        self.post(name="Business", slug="business", household_adults=2)
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.household_adults, 2)
+        self.post(name="Business", slug="business")
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.household_adults, 2)
+
+    def test_household_adults_out_of_range_are_refused(self):
+        for value in (0, 11):
+            with self.subTest(value=value):
+                self.assertEqual(self.post(name="Business", slug="business", household_adults=value).status_code, 200)
+                self.book.refresh_from_db()
+                self.assertEqual(self.book.household_adults, 1)
+
     def test_name_and_budgeting_save_together(self):
         """One page, one Save: the name and the future-income setting land in the same post."""
         self.assertFalse(self.book.budget_future_income)

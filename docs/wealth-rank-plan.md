@@ -1,6 +1,6 @@
 # Wealth rank — plan
 
-Status: **research + plan, phase 1 (global) only.** Nothing built yet.
+Status: **phase 1 (global) built.** See §9 for what the build settled.
 
 Goal: on the Net Worth report (`reports:net_worth`), show where the book's net worth ranks among
 the world's adults, as a percentile **and** an absolute place ("#2,780,000 of 5.6 billion"), plus how
@@ -200,13 +200,34 @@ plus a population.
 
 ## 8. Open items / blockers
 
-1. **Network:** `wid.world`, `wir2026.wid.world` and `ubs.com` are blocked in this cloud session.
-   The build step needs either `wid.world` allowed in the environment's network settings, or the
-   WID world CSV supplied (Data → Download full dataset → `WID_data_WO*.csv` +
-   `WID_data_CA.csv`).
+1. ~~Network~~: resolved, the extract was supplied in `data/wid/`.
 2. Confirm on download:
    - the MER world region code
    - the latest data year
    - the exact licence text, so the attribution string is correct
 3. Decisions: `household_adults` on the book (recommended), and market rates rather than PPP
    (recommended).
+
+---
+
+## 9. Built (phase 1)
+
+- **Data**: the WID bulk download (6.4 GB) was reduced offline by `data/wid/build_extract.py` to
+  `data/wid/` (1.7 MB: every year, Canada + world at market rates + world PPP, plus exchange rates
+  and population). The app ships only `apps/reports/data/global_wealth.json` (2.9 KB: 127 knots, CAD),
+  built from that extract by `manage.py build_wealth_distribution`.
+- **Units settled**: WID series `thwealj992`/`ahwealj992`, region `WO-MER`, **2024 data in constant 2025
+  prices**, so thresholds are converted at the **2025** CAD/USD market rate (1.3607). The price-year
+  caveat in §3 mostly goes away: thresholds are already in 2025 dollars. 5,493,281,049 adults (2024).
+- **Cross-check**: WID puts 50.0% of adults below US$10k (UBS: ~41%) and 1.3% above US$1M (UBS: ~1.5%).
+  Same region, different methods; WID is used as is.
+- **Tail**: the Pareto alpha comes from the top bracket's average (`alpha = avg / (avg - threshold)`)
+  rather than `bhweal`; same thing, already in the extract.
+- **Code**: `apps/reports/wealth_rank.py` (`Distribution.locate`/`rank_for`, `global_rank(net_worth,
+  adults)`); `Book.household_adults` (1-10, books migration `0004`) on book General settings;
+  "Where you rank" card on `reports:net_worth` (`wealth-rank`, `global-wealth-rank*` testids) ranking the
+  end-of-range net worth. Rank = `floor(N × (1 − p/100)) + 1`. Tests: `apps/reports/test_wealth_rank.py`
+  (including agreement with the extract's own `data/wid/wealth_rank.py`).
+- **Not yet**: Canada and local levels (§7). The extract already holds Canada's distribution, but WID
+  rates its quality low (0.1, imputed, no negative wealth, plateaus): phase 2 should compare it with
+  Statistics Canada's SFS before using it.
