@@ -43,18 +43,18 @@ def with_return_to(url, return_to):
     return f"{url}{separator}{urlencode({RETURN_TO_PARAM: return_to})}"
 
 
-def _named(model_path, template=None):
+def _named(model_path):
     """Label for a page about one object, looked up in the request's book."""
 
     def build(request, kwargs):
         from django.apps import apps
 
         model = apps.get_model(model_path)
-        pk = kwargs.get("pk") or kwargs.get("account_id")
+        pk = kwargs.get("pk")
         obj = model.objects.filter(book=request.book, pk=pk).only("name").first() if pk else None
         if obj is None:
             return _("Back")
-        return (template() if template else _("Back to %(name)s")) % {"name": obj.name}
+        return _("Back to %(name)s") % {"name": obj.name}
 
     return build
 
@@ -69,11 +69,6 @@ BACK_LABELS = {
     "accounts:accountgroup_detail": _named("accounts.AccountGroup"),
     "accounts:payee_detail": _named("accounts.Payee"),
     "accounts:institution_detail": _named("accounts.Institution"),
-    # The report drill-down and the account's own page share a name, so say which
-    "reports:account_activity": _named("accounts.Account", lambda: _("Back to %(name)s report")),
-    "reports:income_statement": lambda r, k: _("Back to Income Statement"),
-    "reports:balance_sheet": lambda r, k: _("Back to Balance Sheet"),
-    "reports:budget_vs_actual": lambda r, k: _("Back to Budget vs Actual"),
     "reports:spending": lambda r, k: _("Back to Income & Spending"),
     "reports:net_worth": lambda r, k: _("Back to Net Worth"),
     "reports:budget_goals": lambda r, k: _("Back to Budget & Goals"),

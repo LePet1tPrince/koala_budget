@@ -113,35 +113,20 @@
         {% icon "calendar" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Monthly Review" %}
       </a>
-      <a href="{% url 'reports:income_statement' nav_team.slug nav_book.slug %}"
-         class="side-link side-link-sub" data-testid="nav-report-income-statement">
+      <a href="{% url 'reports:spending' nav_team.slug nav_book.slug %}"
+         class="side-link side-link-sub {% if active_report == 'spending' %}side-link-active{% endif %}" data-testid="nav-report-spending">
         {% icon "chart-bar" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Income Statement" %}
+        {% translate "Income & Spending" %}
       </a>
-      <a href="{% url 'reports:balance_sheet' nav_team.slug nav_book.slug %}"
-         class="side-link side-link-sub" data-testid="nav-report-balance-sheet">
-        {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Balance Sheet" %}
-      </a>
-      <a href="{% url 'reports:net_worth_trend' nav_team.slug nav_book.slug %}"
-         class="side-link side-link-sub" data-testid="nav-report-net-worth-trend">
+      <a href="{% url 'reports:net_worth' nav_team.slug nav_book.slug %}"
+         class="side-link side-link-sub {% if active_report == 'net_worth' %}side-link-active{% endif %}" data-testid="nav-report-net-worth">
         {% icon "chart-line" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Net Worth Trend" %}
+        {% translate "Net Worth" %}
       </a>
-      <a href="{% url 'reports:cash_flow' nav_team.slug nav_book.slug %}"
-         class="side-link side-link-sub" data-testid="nav-report-cash-flow">
-        {% icon "exchange" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Cash Flow" %}
-      </a>
-      <a href="{% url 'reports:budget_vs_actual' nav_team.slug nav_book.slug %}"
-         class="side-link side-link-sub" data-testid="nav-report-budget-vs-actual">
+      <a href="{% url 'reports:budget_goals' nav_team.slug nav_book.slug %}"
+         class="side-link side-link-sub {% if active_report == 'budget_goals' %}side-link-active{% endif %}" data-testid="nav-report-budget-goals">
         {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Budget vs Actual" %}
-      </a>
-      <a href="{% url 'reports:goal_progress' nav_team.slug nav_book.slug %}"
-         class="side-link side-link-sub" data-testid="nav-report-goal-progress">
-        {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Goal Progress" %}
+        {% translate "Budget & Goals" %}
       </a>
     </div>
   </div>

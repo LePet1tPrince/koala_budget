@@ -114,7 +114,13 @@
 <section class="app-card" data-testid="account-activity">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <h2 class="text-base font-semibold">{% translate "Activity" %}</h2>
-    <div id="date-range-picker" data-start-date="{{ start_date|date:'Y-m-d' }}" data-end-date="{{ end_date|date:'Y-m-d' }}" data-all-time-start="{% first_entry_date request.book %}"></div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div id="date-range-picker" data-start-date="{{ start_date|date:'Y-m-d' }}" data-end-date="{{ end_date|date:'Y-m-d' }}" data-all-time-start="{% first_entry_date request.book %}"></div>
+      <a href="{% url 'reports:export_account_activity' request.team.slug request.book.slug account.pk %}?start_date={{ start_date|date:'Y-m-d' }}&amp;end_date={{ end_date|date:'Y-m-d' }}" class="btn btn-ghost btn-sm" data-testid="account-export-csv">
+        {% icon "download" class="inline-block shrink-0 w-4 h-4" %}
+        {% translate "Export CSV" %}
+      </a>
+    </div>
   </div>
   {% include "reports/components/account_activity_section.html" %}
 </section>

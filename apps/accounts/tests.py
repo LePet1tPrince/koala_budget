@@ -1346,7 +1346,7 @@ class ReturnToNavigationTest(TestCase):
         cls.team.members.add(cls.user, through_defaults={"role": ROLE_ADMIN})
         cls.group = AccountGroup.objects.create(book=cls.book, name="Food", account_type=ACCOUNT_TYPE_EXPENSE)
         cls.account = Account.objects.create(book=cls.book, name="Groceries", account_group=cls.group)
-        cls.report = reverse("reports:account_activity", args=[*cls.book.url_args, cls.account.pk]) + "?source=x"
+        cls.report = reverse("reports:spending", args=cls.book.url_args) + "?start_date=2026-01-01"
 
     def setUp(self):
         self.client.login(username="testuser@example.com", password="testpass123")
@@ -1358,7 +1358,7 @@ class ReturnToNavigationTest(TestCase):
 
     def test_back_link_returns_to_report(self):
         response = self.client.get(self.account.get_absolute_url(), {"return_to": self.report})
-        self.assertEqual(response.context["back"], {"url": self.report, "label": "Back to Groceries report"})
+        self.assertEqual(response.context["back"], {"url": self.report, "label": "Back to Income & Spending"})
 
     def test_back_link_labels_group_page(self):
         response = self.client.get(self.account.get_absolute_url(), {"return_to": self.group.get_absolute_url()})

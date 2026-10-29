@@ -75,44 +75,39 @@ class ReportDefaultsTest(TestCase):
         mock_date.today.return_value = TODAY
         self.set_timeframe(ReportTimeframe.LAST_3_MONTHS)
         expected = (date(2026, 7, 1), date(2026, 9, 30))
-        self.assertEqual(self.range_of("reports:income_statement"), expected)
         self.assertEqual(self.range_of("reports:spending"), expected)
-        self.assertEqual(self.range_of("reports:account_activity", self.bank.pk), expected)
         self.assertEqual(self.range_of("accounts:account_detail", self.bank.pk), expected)
 
     def test_month_range_reports_open_on_the_books_timeframe(self, mock_date):
         mock_date.today.return_value = TODAY
         self.set_timeframe(ReportTimeframe.LAST_YEAR)
         expected = (date(2025, 1, 1), date(2025, 12, 31))
-        self.assertEqual(self.range_of("reports:net_worth_trend"), expected)
-        self.assertEqual(self.range_of("reports:cash_flow"), expected)
         self.assertEqual(self.range_of("reports:net_worth"), expected)
 
     def test_the_address_wins_over_the_setting(self, mock_date):
         mock_date.today.return_value = TODAY
         self.set_timeframe(ReportTimeframe.LAST_YEAR)
         self.assertEqual(
-            self.range_of("reports:income_statement", start_date="2026-02-01", end_date="2026-02-10"),
+            self.range_of("reports:spending", start_date="2026-02-01", end_date="2026-02-10"),
             (date(2026, 2, 1), date(2026, 2, 10)),
         )
         self.assertEqual(
-            self.range_of("reports:cash_flow", start_month="2026-02", end_month="2026-03"),
+            self.range_of("reports:net_worth", start_month="2026-02", end_month="2026-03"),
             (date(2026, 2, 1), date(2026, 3, 31)),
         )
 
     def test_report_default_keeps_each_reports_own(self, mock_date):
         today = date.today()
         self.assertEqual(self.book.report_timeframe, ReportTimeframe.REPORT)
-        self.assertEqual(self.range_of("reports:income_statement"), (today.replace(day=1), today))
         self.assertEqual(self.range_of("reports:spending"), (date(today.year, 1, 1), today))
-        self.assertEqual(self.range_of("reports:cash_flow"), (date(today.year - 1, today.month, 1), today))
+        self.assertEqual(self.range_of("reports:net_worth"), (date(today.year - 1, today.month, 1), today))
 
     def test_the_picker_is_given_the_range_the_report_shows(self, mock_date):
         mock_date.today.return_value = TODAY
         self.set_timeframe(ReportTimeframe.LAST_MONTH)
-        income = self.client.get(reverse("reports:income_statement", args=self.book.url_args))
-        self.assertContains(income, 'data-start-date="2026-09-01" data-end-date="2026-09-30"')
-        trend = self.client.get(reverse("reports:net_worth_trend", args=self.book.url_args))
+        spending = self.client.get(reverse("reports:spending", args=self.book.url_args))
+        self.assertContains(spending, 'data-start-date="2026-09-01" data-end-date="2026-09-30"')
+        trend = self.client.get(reverse("reports:net_worth", args=self.book.url_args))
         self.assertContains(trend, 'data-start-month="2026-09" data-end-month="2026-09"')
 
 

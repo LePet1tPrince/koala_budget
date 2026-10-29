@@ -643,47 +643,33 @@ class GoalReportsTest(GoalsFixture):
         self.assertIn(self.opening, equity_accounts)
         self.assertNotIn(self.car.account, equity_accounts)
 
-    def test_income_statement_page_and_csv(self):
+    def test_spending_report_and_csv(self):
         qs = "?start_date=2026-09-01&end_date=2026-09-30"
-        page = self.client.get(reverse("reports:income_statement", args=self.book.url_args) + qs)
-        self.assertContains(page, 'data-testid="goal-spending-table"')
-        self.assertContains(page, 'data-testid="net-after-goal-spending"')
+        page = self.client.get(reverse("reports:spending", args=self.book.url_args) + qs)
+        self.assertContains(page, 'data-testid="spending-goals"')
+        self.assertContains(page, 'data-testid="spending-goal-spending"')
         self.assertEqual(page.context["sankey_data"]["goal_spending"], 19400.0)
-        # Savings rate reads the operating net.
-        self.assertEqual(round(page.context["savings_rate"]), 30)
+        # Savings rate reads the operating net; the net shown is after goal spending.
+        self.assertEqual(round(page.context["stats"]["savings_rate"]), 30)
+        self.assertEqual(page.context["stats"]["net_after_goals"], Decimal("-17600"))
+        self.assertEqual(page.context["chart_data"]["goal_spending"], [19400.0])
         csv = self.client.get(reverse("reports:export_income_statement", args=self.book.url_args) + qs)
         body = csv.content.decode()
         self.assertIn("GOAL SPENDING", body)
         self.assertIn("Net After Goal Spending,-17600.00", body)
 
-    def test_spending_trends_toggle(self):
-        base = (
-            reverse("reports:income_statement", args=self.book.url_args)
-            + "?start_date=2026-09-01&end_date=2026-09-30&view=monthly"
-        )
-        off = self.client.get(base)
-        self.assertNotIn("Goal spending", [s["name"] for s in off.context["trend_chart_data"]["expense_groups"]])
-        on = self.client.get(base + "&goals=1")
-        self.assertIn("Goal spending", [s["name"] for s in on.context["trend_chart_data"]["expense_groups"]])
-        self.assertIn("view=monthly", on.context["goals_toggle_qs"])
-
-    def test_cash_flow_net_is_after_goal_spending(self):
-        page = self.client.get(
-            reverse("reports:cash_flow", args=self.book.url_args) + "?start_month=2026-09&end_month=2026-09"
-        )
-        self.assertEqual(page.context["stats"]["net"], Decimal("-17600"))
-        self.assertEqual(page.context["chart_data"]["goal_spending"], [19400.0])
-
-    def test_budget_vs_actual_leads_with_goals(self):
-        page = self.client.get(reverse("reports:budget_vs_actual", args=self.book.url_args) + "?month=2026-09")
+    def test_budget_goals_report_measures_need_from_the_start_of_the_month(self):
+        page = self.client.get(reverse("reports:budget_goals", args=self.book.url_args) + "?month=2026-09")
         row = page.context["goal_rows"][0]
         # Needed is measured from the start of the month: (20,000 − 3,000) over
         # Sept..Feb = 6 months, whatever was assigned in September.
         self.assertEqual(row["needed"], Decimal("2833.33"))
         self.assertEqual(row["assigned"], Decimal("2000"))
         self.assertEqual(row["spent"], Decimal("19400"))
-        body = page.content.decode()
-        self.assertLess(body.index('data-testid="bva-goals-table"'), body.index('data-testid="bva-expenses-table"'))
+        goal = row["goal"]
+        self.assertEqual(
+            (goal.allocated, goal.spent, goal.left), (Decimal("5000"), Decimal("19400"), Decimal("-14400"))
+        )
 
     def test_account_activity_reads_a_goal_like_an_expense(self):
         from apps.reports.services import ReportService
@@ -697,14 +683,6 @@ class GoalReportsTest(GoalsFixture):
         self.assertEqual(chart["budgeted"], [2000.0])
         self.assertEqual(chart["actual"], [19400.0])
         self.assertEqual(chart["available"], [-14400.0])
-
-    def test_goal_progress_report_has_spent_and_left(self):
-        page = self.client.get(reverse("reports:goal_progress", args=self.book.url_args))
-        row = page.context["goal_rows"][0]
-        self.assertEqual(
-            (row["saved"], row["spent"], row["left"]), (Decimal("5000"), Decimal("19400"), Decimal("-14400"))
-        )
-        self.assertIsNotNone(page.context["chart_data"]["goals"][0]["spent"])
 
     def test_monthly_review_goal_spending_card(self):
         from apps.monthly_review.services.review import build_review

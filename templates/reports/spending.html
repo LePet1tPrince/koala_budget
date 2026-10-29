@@ -7,7 +7,7 @@
 {% load account_nav %}
 
 {% block page_head %}
-{% include "reports/consolidated/_statement_styles.html" %}
+{% include "reports/_statement_styles.html" %}
 {% endblock %}
 
 {% block app %}
@@ -114,8 +114,8 @@
             </tr>
           </thead>
 
-          {% include "reports/consolidated/_statement_section.html" with key="income" label=_("Income") row_class="row-in" tone="text-success" groups=data.income_groups total=data.total_income per_period=data.total_income_per_period empty=_("No income in this period") testid="spending-income" %}
-          {% include "reports/consolidated/_statement_section.html" with key="expenses" label=_("Expenses") row_class="row-out" tone="text-error" groups=data.expense_groups total=data.total_expenses per_period=data.total_expenses_per_period empty=_("No spending in this period") testid="spending-expenses" %}
+          {% include "reports/_statement_section.html" with key="income" label=_("Income") row_class="row-in" tone="text-success" groups=data.income_groups total=data.total_income per_period=data.total_income_per_period empty=_("No income in this period") testid="spending-income" %}
+          {% include "reports/_statement_section.html" with key="expenses" label=_("Expenses") row_class="row-out" tone="text-error" groups=data.expense_groups total=data.total_expenses per_period=data.total_expenses_per_period empty=_("No spending in this period") testid="spending-expenses" %}
 
           {% if data.goal_spending.items %}
           <tbody data-testid="spending-goals">

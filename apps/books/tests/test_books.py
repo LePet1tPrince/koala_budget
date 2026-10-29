@@ -520,10 +520,8 @@ class FutureIncomeTest(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(budget_amount(self.book, self.salary, self.MONTH), Decimal("5000"))
 
-    def test_budget_vs_actual_hides_income_while_off(self):
+    def test_income_budget_chart_is_hidden_while_off(self):
         self.set_future_income(False)
-        response = self.client.get(reverse("reports:budget_vs_actual", args=self.book.url_args))
-        self.assertEqual(response.context["income_groups"], [])
         chart = ReportService(self.book).get_budget_vs_actual_chart_data(self.salary, self.MONTH, self.MONTH)
         self.assertIsNone(chart)
 

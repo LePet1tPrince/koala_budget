@@ -403,39 +403,35 @@ class UnassignedViewsTest(UnassignedFixture):
         self.assertNotContains(response, 'data-testid="metric-budget-available"')
         self.assertEqual(response.context["unassigned"].amount, compute_unassigned(self.book, date.today()).amount)
 
-    def test_dollar_map_report(self):
-        url = reverse("reports:dollar_map", args=[self.team.slug, self.book.slug])
+    def test_budget_goals_report(self):
+        url = reverse("reports:budget_goals", args=[self.team.slug, self.book.slug])
         response = self.client.get(url, {"month": "2026-09"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["month"], SEPT)
-        self.assertContains(response, 'data-testid="dollar-map-waterfall"')
+        self.assertContains(response, 'data-testid="plan-waterfall"')
         self.assertContains(response, "House")
-        self.assertContains(response, "Groceries")
         self.assertEqual(response.context["waterfall"][-1]["key"], "unassigned")
 
-    def test_dollar_map_uses_the_shared_month_picker(self):
-        # The picker navigates with ?month=YYYY-MM-DD; the view must read that form too.
+    def test_budget_goals_reads_a_full_date_month(self):
         response = self.client.get(
-            reverse("reports:dollar_map", args=[self.team.slug, self.book.slug]), {"month": "2026-08-01"}
+            reverse("reports:budget_goals", args=[self.team.slug, self.book.slug]), {"month": "2026-08-01"}
         )
         self.assertEqual(response.context["month"], AUG)
-        self.assertContains(response, 'id="budget-month-picker" data-month="2026-08-01"')
-        self.assertContains(response, "budget-month-picker-app")
 
-    def test_dollar_map_ignores_a_malformed_month(self):
+    def test_budget_goals_ignores_a_malformed_month(self):
         response = self.client.get(
-            reverse("reports:dollar_map", args=[self.team.slug, self.book.slug]), {"month": "nope"}
+            reverse("reports:budget_goals", args=[self.team.slug, self.book.slug]), {"month": "nope"}
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["month"], date.today().replace(day=1))
 
-    def test_dollar_map_refuses_non_members(self):
+    def test_budget_goals_refuses_non_members(self):
         self.client.logout()
         self.client.login(username="outsider-u@example.com", password="testpass123")
         self.assertEqual(
-            self.client.get(reverse("reports:dollar_map", args=[self.team.slug, self.book.slug])).status_code, 404
+            self.client.get(reverse("reports:budget_goals", args=[self.team.slug, self.book.slug])).status_code, 404
         )
 
-    def test_reports_home_links_the_dollar_map(self):
+    def test_reports_home_links_budget_and_goals(self):
         response = self.client.get(reverse("reports:reports_home", args=[self.team.slug, self.book.slug]))
-        self.assertContains(response, 'data-testid="report-link-dollar-map"')
+        self.assertContains(response, 'data-testid="report-link-budget-goals"')

@@ -83,7 +83,7 @@ def test_categorizing_a_purchase_to_a_goal_spends_from_it(
     assert budget.unassigned_pill_value() == pill_before
 
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_income_statement(team.default_book)
+    reports.goto_spending(team.default_book)
     assert reports.goal_spending_rows() == ["Zed Car"]
 
 

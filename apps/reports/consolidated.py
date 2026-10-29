@@ -1,5 +1,5 @@
 """
-Data for the three consolidated reports (docs/reports-consolidation.md):
+Data for the three reports beside Monthly Review (docs/reports-consolidation.md):
 
 - spending_report: Income & Spending -- money in/out over a range (Income Statement + Cash Flow)
 - net_worth_report: Net Worth -- balances and their change over a range (Balance Sheet + Net Worth Trend)

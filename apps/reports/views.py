@@ -1,20 +1,30 @@
+"""
+Reports: Monthly Review (its own app) plus the three reports below -- Income &
+Spending, Net Worth, Budget & Goals (docs/reports-consolidation.md) -- and the
+CSV exports they link.
+"""
+
 import contextlib
-from datetime import date, datetime, timedelta
-from decimal import Decimal
+from datetime import date, datetime
+from urllib.parse import urlencode
 
 from django.shortcuts import get_object_or_404, render
 from django.utils.translation import gettext_lazy as _
 
 from apps.books.decorators import login_and_book_required
 
-# Forms are no longer needed as we use React components with URL parameters
+from .consolidated import (
+    budget_goals_report,
+    net_worth_report,
+    shift_month,
+    spending_report,
+)
 from .exports import (
     export_account_activity_csv,
     export_balance_sheet_csv,
     export_income_statement_csv,
     export_transactions_csv,
 )
-from .services import ReportService
 from .timeframes import date_range_from_request, default_range, month_range_from_request
 
 
@@ -43,278 +53,6 @@ def reports_home(request, team_slug, book_slug):
     )
 
 
-CHART_SERIES_LIMIT = 8  # matches the categorical palette in chart-theme.js
-
-
-def _fold_group_series(groups, num_periods, limit=CHART_SERIES_LIMIT):
-    """
-    Turn grouped per-period report data into chart series, folding the tail
-    beyond `limit` into a single "Other" series (categorical palettes don't
-    stretch past the validated hue count).
-
-    Input: [{'group': AccountGroup, 'per_period': [Decimal, ...]}, ...]
-    Output: [{'name': str, 'values': [float, ...]}, ...] sorted largest-first.
-    """
-    series = [
-        {
-            "name": group_data["group"].name,
-            "total": group_data["subtotal"],
-            "values": [float(a) for a in group_data["per_period"]],
-        }
-        for group_data in groups
-    ]
-    series.sort(key=lambda s: s["total"], reverse=True)
-    if len(series) > limit:
-        head, tail = series[: limit - 1], series[limit - 1 :]
-        other_values = [0.0] * num_periods
-        for tail_series in tail:
-            for i, value in enumerate(tail_series["values"]):
-                other_values[i] += value
-        head.append({"name": "Other", "total": Decimal("0"), "values": other_values})
-        series = head
-    for entry in series:
-        del entry["total"]
-    return series
-
-
-@login_and_book_required
-def income_statement(request, team_slug, book_slug):
-    """
-    Income Statement (Profit & Loss) report view.
-    """
-    service = ReportService(request.book)
-
-    today = date.today()
-    start_date, end_date = date_range_from_request(request, (today.replace(day=1), today))
-
-    period_views = {"monthly": "month", "quarterly": "quarter", "yearly": "year"}
-    period = period_views.get(request.GET.get("view"))
-    report_data = service.get_income_statement_data(start_date, end_date, period=period)
-
-    savings_rate = None
-    if report_data and report_data["total_income"]:
-        savings_rate = report_data["net_profit"] / report_data["total_income"] * 100
-
-    # Querystrings for the Total / By Month|Quarter|Year display toggle (preserve other params)
-    toggle_params = request.GET.copy()
-    toggle_params.pop("view", None)
-    total_view_qs = toggle_params.urlencode()
-    period_view_qs = {}
-    for view_name in period_views:
-        toggle_params["view"] = view_name
-        period_view_qs[view_name] = toggle_params.urlencode()
-
-    sankey_data = None
-    if report_data:
-        sankey_data = {
-            "income": [
-                {
-                    "name": item["account"].name,
-                    "amount": float(item["amount"]),
-                    "group": item["account"].account_group.name,
-                }
-                for item in report_data["income"]
-            ],
-            "expenses": [
-                {
-                    "name": item["account"].name,
-                    "amount": float(item["amount"]),
-                    "group": item["account"].account_group.name,
-                }
-                for item in report_data["expenses"]
-            ],
-            "income_groups": [
-                {"name": group_data["group"].name, "amount": float(group_data["subtotal"])}
-                for group_data in report_data["income_groups"]
-            ],
-            "expense_groups": [
-                {"name": group_data["group"].name, "amount": float(group_data["subtotal"])}
-                for group_data in report_data["expense_groups"]
-            ],
-            "net_profit": float(report_data["net_profit"]),
-            "goal_spending": float(report_data["goal_spending"]["total"]),
-        }
-
-    # Spending-by-group-over-time chart, only meaningful with a period breakdown.
-    # Operating spending by default; `?goals=1` adds goal spending as its own
-    # series (URL-driven so the choice survives the period dropdown and can be linked).
-    include_goals = request.GET.get("goals") == "1"
-    goal_spending = report_data["goal_spending"]
-    trend_chart_data = None
-    if period and report_data["periods"] and (report_data["expense_groups"] or goal_spending["items"]):
-        series = _fold_group_series(report_data["expense_groups"], len(report_data["periods"]))
-        if include_goals and goal_spending["items"]:
-            series.append({"name": str(_("Goal spending")), "values": [float(a) for a in goal_spending["per_period"]]})
-        trend_chart_data = {"labels": report_data["period_labels"], "expense_groups": series}
-
-    goals_toggle_params = request.GET.copy()
-    goals_toggle_params["tab"] = "trends"
-    if include_goals:
-        goals_toggle_params.pop("goals", None)
-    else:
-        goals_toggle_params["goals"] = "1"
-    initial_tab = request.GET.get("tab") if request.GET.get("tab") in ("statement", "flow", "trends") else "statement"
-    if initial_tab == "trends" and not trend_chart_data:
-        initial_tab = "statement"
-
-    return render(
-        request,
-        "reports/income_statement.html",
-        {
-            "active_tab": "reports",
-            "page_title": _("Income Statement"),
-            "report_data": report_data,
-            "sankey_data": sankey_data,
-            "trend_chart_data": trend_chart_data,
-            "include_goal_spending": include_goals,
-            "has_goal_spending": bool(goal_spending["items"]),
-            "goals_toggle_qs": goals_toggle_params.urlencode(),
-            "initial_tab": initial_tab,
-            "savings_rate": savings_rate,
-            "period": period,
-            "total_view_qs": total_view_qs,
-            "period_view_qs": period_view_qs,
-            "start_date": start_date,
-            "end_date": end_date,
-        },
-    )
-
-
-@login_and_book_required
-def balance_sheet(request, team_slug, book_slug):
-    """
-    Balance Sheet report view.
-    """
-    from urllib.parse import urlencode
-
-    service = ReportService(request.book)
-
-    # Check for direct as_of_date parameter
-    as_of_date_param = request.GET.get("as_of_date")
-
-    as_of_date = date.today()
-    if as_of_date_param:
-        # Parse date directly from URL parameter (invalid format falls back to today)
-        with contextlib.suppress(ValueError):
-            as_of_date = datetime.strptime(as_of_date_param, "%Y-%m-%d").date()
-
-    report_data = service.get_balance_sheet_data(as_of_date)
-
-    debt_ratio = None
-    if report_data["total_assets"]:
-        debt_ratio = report_data["total_liabilities"] / report_data["total_assets"] * 100
-
-    # Account drill-down links: year-to-date activity up to the as-of date, with a
-    # source marker so the activity page links back here.
-    drill_qs = urlencode(
-        {
-            "source": "balance_sheet",
-            "as_of_date": as_of_date.isoformat(),
-            "start_date": date(as_of_date.year, 1, 1).isoformat(),
-            "end_date": as_of_date.isoformat(),
-        }
-    )
-
-    return render(
-        request,
-        "reports/balance_sheet.html",
-        {
-            "active_tab": "reports",
-            "page_title": _("Balance Sheet"),
-            "report_data": report_data,
-            "as_of_date": as_of_date,
-            "debt_ratio": debt_ratio,
-            "drill_qs": drill_qs,
-        },
-    )
-
-
-@login_and_book_required
-def account_activity(request, team_slug, book_slug, account_id):
-    """
-    Account activity drill-down view showing detailed transactions for a specific account.
-    """
-    from apps.accounts.models import Account
-
-    service = ReportService(request.book)
-
-    account = None
-    report_data = None
-    start_date = None
-    end_date = None
-
-    # Another book's account is a 404 like any other object URL, not an empty page.
-    account = get_object_or_404(Account, book=request.book, pk=account_id)
-
-    if account:
-        today = date.today()
-        start_date, end_date = date_range_from_request(request, (today.replace(day=1), today))
-        report_data = service.get_account_activity(account, start_date, end_date)
-
-    balance_chart_data = (
-        ReportService.build_balance_chart_data(report_data, start_date, end_date) if report_data else None
-    )
-    budget_chart_data = service.get_budget_vs_actual_chart_data(account, start_date, end_date) if account else None
-
-    # Determine back navigation based on source parameter
-    source = request.GET.get("source")
-    if source == "budget":
-        from django.urls import reverse
-
-        back_url = reverse("budget:budget_home", args=[team_slug, book_slug])
-        if start_date:
-            back_url += f"?month={start_date.isoformat()}"
-        back_label = _("Back to Budget")
-    elif source == "balance_sheet":
-        from django.urls import reverse
-
-        back_url = reverse("reports:balance_sheet", args=[team_slug, book_slug])
-        as_of_date_param = request.GET.get("as_of_date")
-        if as_of_date_param:
-            back_url += f"?as_of_date={as_of_date_param}"
-        back_label = _("Back to Balance Sheet")
-    else:
-        from django.urls import reverse
-
-        back_url = reverse("reports:income_statement", args=[team_slug, book_slug])
-        # Forward date params to income statement
-        query_params = request.GET.copy()
-        query_params.pop("source", None)
-        if query_params:
-            back_url += f"?{query_params.urlencode()}"
-        back_label = _("Back to Income Statement")
-
-    return render(
-        request,
-        "reports/account_activity.html",
-        {
-            "active_tab": "reports",
-            "page_title": _("Account Activity"),
-            "account": account,
-            "report_data": report_data,
-            "balance_chart_data": balance_chart_data,
-            "budget_chart_data": budget_chart_data,
-            "start_date": start_date,
-            "end_date": end_date,
-            "back_url": back_url,
-            "back_label": back_label,
-        },
-    )
-
-
-def _fold_float_series(series, limit=CHART_SERIES_LIMIT):
-    """Fold chart series [{'name', 'values': [float, ...]}] beyond `limit` into an 'Other' series."""
-    if len(series) <= limit:
-        return series
-    head, tail = series[: limit - 1], series[limit - 1 :]
-    other_values = [0.0] * len(tail[0]["values"])
-    for tail_series in tail:
-        for i, value in enumerate(tail_series["values"]):
-            other_values[i] += value
-    head.append({"name": "Other", "values": other_values})
-    return head
-
-
 def _parse_month_range(request):
     """
     Parse start_month/end_month GET params (YYYY-MM) into a (start_date, end_date)
@@ -325,61 +63,40 @@ def _parse_month_range(request):
     return month_range_from_request(request, (date(today.year - 1, today.month, 1), today))
 
 
+def _drill_qs(start_date, end_date):
+    """Query string that opens an account page on the report's own range."""
+    return urlencode({"start_date": start_date.isoformat(), "end_date": end_date.isoformat()})
+
+
 @login_and_book_required
-def net_worth_trend(request, team_slug, book_slug):
-    """
-    Net Worth Trend report view.
-    """
-    service = ReportService(request.book)
+def spending(request, team_slug, book_slug):
+    """Income & Spending: money in and out over a range, with the statement and the flow."""
+    today = date.today()
+    start_date, end_date = date_range_from_request(request, (date(today.year, 1, 1), today))
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
 
-    start_date, end_date = _parse_month_range(request)
-    report_data = service.get_net_worth_trend_data_by_date_range(start_date, end_date)
+    by_period = request.GET.get("columns") == "period"
+    columns_params = request.GET.copy()
+    columns_params.pop("columns", None)
+    total_qs = columns_params.urlencode()
+    columns_params["columns"] = "period"
+    period_qs = columns_params.urlencode()
 
-    # Month-over-month change for the table (first month has no prior point)
-    previous_net_worth = None
-    for item in report_data:
-        item["change"] = item["net_worth"] - previous_net_worth if previous_net_worth is not None else None
-        previous_net_worth = item["net_worth"]
-
-    trend_stats = None
-    chart_data = None
-    if report_data:
-        first, latest = report_data[0], report_data[-1]
-        change = latest["net_worth"] - first["net_worth"]
-        trend_stats = {
-            "latest": latest,
-            "change": change,
-            "pct_change": change / abs(first["net_worth"]) * 100 if first["net_worth"] else None,
-            "num_months": len(report_data),
-        }
-        chart_data = {
-            "labels": [item["date"].isoformat() for item in report_data],
-            "net_worth": [float(item["net_worth"]) for item in report_data],
-            "assets": [float(item["assets"]) for item in report_data],
-            "liabilities": [float(item["liabilities"]) for item in report_data],
-        }
-
-    # Composition tab: stacked-area balances per account group
-    composition_chart_data = None
-    if report_data:
-        composition = service.get_balance_composition_data(start_date, end_date)
-        if composition["asset_groups"] or composition["liability_groups"]:
-            composition_chart_data = {
-                "labels": composition["labels"],
-                "asset_groups": _fold_float_series(composition["asset_groups"]),
-                "liability_groups": _fold_float_series(composition["liability_groups"]),
-            }
-
+    report = spending_report(request.book, start_date, end_date)
     return render(
         request,
-        "reports/net_worth_trend.html",
+        "reports/spending.html",
         {
             "active_tab": "reports",
-            "page_title": _("Net Worth Trend"),
-            "report_data": report_data,
-            "trend_stats": trend_stats,
-            "chart_data": chart_data,
-            "composition_chart_data": composition_chart_data,
+            "active_report": "spending",
+            "page_title": _("Income & Spending"),
+            **report,
+            "by_period": by_period,
+            "total_qs": total_qs,
+            "period_qs": period_qs,
+            "export_qs": _drill_qs(start_date, end_date),
+            "drill_qs": _drill_qs(start_date, end_date),
             "start_date": start_date,
             "end_date": end_date,
         },
@@ -387,62 +104,24 @@ def net_worth_trend(request, team_slug, book_slug):
 
 
 @login_and_book_required
-def cash_flow(request, team_slug, book_slug):
-    """
-    Cash Flow report: money in vs money out per month with the net kept.
-    """
-    service = ReportService(request.book)
+def net_worth(request, team_slug, book_slug):
+    """Net Worth: what you own and owe at the end of a range, and what changed since its start."""
     start_date, end_date = _parse_month_range(request)
-    data = service.get_income_statement_data(start_date, end_date, period="month")
+    end_date = min(end_date, date.today())
+    if start_date > end_date:
+        start_date = end_date.replace(day=1)
 
-    # Goal spending is money out too, shown as its own series; Net is after it.
-    goal_spending = data["goal_spending"]
-    has_goal_spending = bool(goal_spending["items"])
-    months = []
-    for i, bucket in enumerate(data["periods"]):
-        income = data["total_income_per_period"][i]
-        expenses = data["total_expenses_per_period"][i]
-        goals = goal_spending["per_period"][i]
-        months.append(
-            {
-                "date": bucket,
-                "label": data["period_labels"][i],
-                "income": income,
-                "expenses": expenses,
-                "goal_spending": goals,
-                "net": income - expenses - goals,
-            }
-        )
-
-    net = data["net_after_goal_spending"]
-    stats = {
-        "total_income": data["total_income"],
-        "total_expenses": data["total_expenses"],
-        "total_goal_spending": goal_spending["total"],
-        "net": net,
-        "avg_net": net / len(months) if months else Decimal("0"),
-        "num_months": len(months),
-    }
-    chart_data = None
-    if months:
-        chart_data = {
-            "labels": data["period_labels"],
-            "income": [float(a) for a in data["total_income_per_period"]],
-            "expenses": [float(a) for a in data["total_expenses_per_period"]],
-            "goal_spending": [float(a) for a in goal_spending["per_period"]] if has_goal_spending else None,
-            "net": [float(a) for a in data["net_after_goal_spending_per_period"]],
-        }
-
+    report = net_worth_report(request.book, start_date, end_date)
     return render(
         request,
-        "reports/cash_flow.html",
+        "reports/net_worth.html",
         {
             "active_tab": "reports",
-            "page_title": _("Cash Flow"),
-            "months": months,
-            "stats": stats,
-            "has_goal_spending": has_goal_spending,
-            "chart_data": chart_data,
+            "active_report": "net_worth",
+            "page_title": _("Net Worth"),
+            **report,
+            "drill_qs": _drill_qs(start_date, end_date),
+            "export_qs": urlencode({"as_of_date": end_date.isoformat()}),
             "start_date": start_date,
             "end_date": end_date,
         },
@@ -450,224 +129,25 @@ def cash_flow(request, team_slug, book_slug):
 
 
 @login_and_book_required
-def budget_vs_actual(request, team_slug, book_slug):
-    """
-    Budget vs Actual report: per-category meters for a single month, grouped by account group.
-    """
-    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
-    from apps.budget import ledger as budget_ledger
-    from apps.budget.services import GoalService
-    from apps.monthly_review.services.budget import build_section
-
+def budget_goals(request, team_slug, book_slug):
+    """Budget & Goals: where every dollar is going this month -- goals, envelopes (one total), Unassigned."""
     month = date.today().replace(day=1)
-    month_param = request.GET.get("month")
-    if month_param:
-        with contextlib.suppress(ValueError):
-            year, month_num = map(int, month_param.split("-"))
-            month = date(year, month_num, 1)
-    month_end = (month + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    with contextlib.suppress(ValueError):
+        year, month_num = map(int, request.GET.get("month", "").split("-")[:2])
+        month = date(year, month_num, 1)
 
-    service = ReportService(request.book)
-    data = service.get_income_statement_data(month, month_end)
-    amounts = budget_ledger.budgeted_in_month(request.book, month)
-    categories = Account.objects.filter(book=request.book, pk__in=amounts).select_related("account_group")
-    expense_budgets = {c: amounts[c.pk] for c in categories if c.account_group.account_type == ACCOUNT_TYPE_EXPENSE}
-    income_budgets = {c: amounts[c.pk] for c in categories if c.account_group.account_type == ACCOUNT_TYPE_INCOME}
-    expense_groups, expense_totals = build_section(data["expenses"], expense_budgets, spending=True)
-    # A book that doesn't budget income before it arrives has no income budgets to
-    # measure against, so the section goes (its old rows are kept, not shown).
-    if request.book.budget_future_income:
-        income_groups, income_totals = build_section(data["income"], income_budgets, spending=False)
-    else:
-        income_groups, income_totals = [], None
-    goal_rows, goal_totals = GoalService(request.book).month_rows(month)
-
+    report = budget_goals_report(request.book, month)
     return render(
         request,
-        "reports/budget_vs_actual.html",
+        "reports/budget_goals.html",
         {
             "active_tab": "reports",
-            "page_title": _("Budget vs Actual"),
+            "active_report": "budget_goals",
+            "page_title": _("Budget & Goals"),
+            **report,
             "month": month,
-            "prev_month": (month - timedelta(days=1)).replace(day=1),
-            "next_month": (month + timedelta(days=32)).replace(day=1),
-            "expense_groups": expense_groups,
-            "expense_totals": expense_totals,
-            "income_groups": income_groups,
-            "income_totals": income_totals,
-            "goal_rows": goal_rows,
-            "goal_totals": goal_totals,
-        },
-    )
-
-
-@login_and_book_required
-def dollar_map(request, team_slug, book_slug):
-    """
-    Dollar Map: where every dollar of net worth is going for one month — goals,
-    budget envelopes and what is still unassigned (docs/unassigned-plan.md §3).
-    """
-    from apps.budget.unassigned import allocation_bar, compute_unassigned, waterfall
-
-    month = date.today().replace(day=1)
-    month_param = request.GET.get("month")
-    if month_param:
-        with contextlib.suppress(ValueError):
-            year, month_num = map(int, month_param.split("-")[:2])
-            month = date(year, month_num, 1)
-
-    unassigned = compute_unassigned(request.book, month, detail=True)
-    detail = unassigned.detail
-    envelopes = sorted(detail["envelopes"], key=lambda e: -e["amount"])
-
-    return render(
-        request,
-        "reports/dollar_map.html",
-        {
-            "active_tab": "reports",
-            "page_title": _("Dollar Map"),
-            "month": month,
-            "unassigned": unassigned,
-            "bar": allocation_bar(unassigned),
-            "goals": [g for g in detail["goals"] if g["amount"] > 0],
-            "envelopes": [e for e in envelopes if e["amount"] > 0],
-            "overspent": [e for e in reversed(envelopes) if e["amount"] < 0]
-            + [g for g in detail["goals"] if g["amount"] < 0],
-            "income_due": detail["income_due"],
-            "waterfall": waterfall(unassigned),
-        },
-    )
-
-
-@login_and_book_required
-def goal_progress(request, team_slug, book_slug):
-    """
-    Goal Progress report: cumulative allocations per goal over time, with a
-    projected path to each goal's target, and what was spent from each goal.
-    """
-    from apps.budget.models import Goal
-    from apps.budget.services import goal_monthly
-
-    goals = list(Goal.objects.filter(book=request.book).active().with_progress())
-
-    # goal id -> {month: Decimal}: what each goal was given (assigned + from
-    # linked accounts) and what was spent from it.
-    allocations, spent = {}, {}
-    for goal_id, months in goal_monthly(request.book, goals).items():
-        for month, values in sorted(months.items()):
-            if values["saved"]:
-                allocations.setdefault(goal_id, {})[month] = values["saved"]
-            if values["spent"]:
-                spent.setdefault(goal_id, {})[month] = values["spent"]
-
-    today_month = date.today().replace(day=1)
-
-    # Month axis: earliest allocation through the latest of (today, last allocation, latest target date)
-    all_months = [m for goal_months in allocations.values() for m in goal_months] + [
-        m for goal_months in spent.values() for m in goal_months
-    ]
-    axis_start = min(all_months, default=today_month)
-    axis_end = max([today_month, *all_months, *[g.target_date.replace(day=1) for g in goals if g.target_date]])
-    months = []
-    current = axis_start
-    while current <= axis_end:
-        months.append(current)
-        current = (current + timedelta(days=32)).replace(day=1)
-
-    month_index = {month: i for i, month in enumerate(months)}
-    chart_goals = []
-    for goal in goals[:CHART_SERIES_LIMIT]:
-        goal_allocations = allocations.get(goal.pk, {})
-        actual = []
-        running = Decimal("0")
-        started = False
-        for month in months:
-            if month in goal_allocations:
-                started = True
-            running += goal_allocations.get(month, Decimal("0"))
-            # Track record up to the current month; nothing to plot before the
-            # first allocation or after today.
-            actual.append(float(running) if started and month <= today_month else None)
-
-        # Dashed projection from the current position to the target
-        projection = [None] * len(months)
-        if goal.target_date and goal.target_amount and not goal.is_complete:
-            target_month = goal.target_date.replace(day=1)
-            anchor_month = today_month if today_month in month_index else months[-1]
-            if target_month in month_index and target_month > anchor_month:
-                projection[month_index[anchor_month]] = float(running)
-                projection[month_index[target_month]] = float(goal.target_amount)
-
-        # Cumulative spending from the goal, only for goals that have any.
-        goal_spent = spent.get(goal.pk, {})
-        spent_series = None
-        if goal_spent:
-            spent_series = []
-            running_spent = Decimal("0")
-            spent_started = False
-            for month in months:
-                if month in goal_spent:
-                    spent_started = True
-                running_spent += goal_spent.get(month, Decimal("0"))
-                spent_series.append(float(running_spent) if spent_started and month <= today_month else None)
-
-        chart_goals.append({"name": goal.name, "actual": actual, "projection": projection, "spent": spent_series})
-
-    chart_data = None
-    if goals and months:
-        chart_data = {"labels": [m.isoformat() for m in months], "goals": chart_goals}
-
-    # Table rows with the pace needed to hit each target on time
-    goal_rows = []
-    # `toward_target`: what goals with a target hold -- the only fair numerator for
-    # the overall %, since an open-ended goal adds savings but no target.
-    totals = {
-        "saved": Decimal("0"),
-        "target": Decimal("0"),
-        "spent": Decimal("0"),
-        "left": Decimal("0"),
-        "toward_target": Decimal("0"),
-    }
-    for goal in goals:
-        saved = goal.allocated
-        remaining = goal.target_amount - saved if goal.has_target else None
-        months_left = None
-        needed_per_month = None
-        if goal.target_date and goal.target_date >= date.today() and remaining and remaining > 0:
-            target_month = goal.target_date.replace(day=1)
-            months_left = max((target_month.year - today_month.year) * 12 + target_month.month - today_month.month, 1)
-            needed_per_month = remaining / months_left
-        goal_rows.append(
-            {
-                "goal": goal,
-                "saved": saved,
-                "spent": goal.spent,
-                "left": goal.left,
-                "remaining": remaining,
-                "months_left": months_left,
-                "needed_per_month": needed_per_month,
-            }
-        )
-        totals["spent"] += goal.spent
-        totals["left"] += goal.left
-        totals["saved"] += saved
-        totals["target"] += goal.target_amount
-        if goal.has_target:
-            totals["toward_target"] += saved
-
-    totals["pct"] = totals["toward_target"] / totals["target"] * 100 if totals["target"] else None
-
-    return render(
-        request,
-        "reports/goal_progress.html",
-        {
-            "active_tab": "reports",
-            "page_title": _("Goal Progress"),
-            "goal_rows": goal_rows,
-            "totals": totals,
-            "chart_data": chart_data,
-            "num_charted": len(chart_goals),
-            "num_goals": len(goals),
+            "prev_month": shift_month(month, -1),
+            "next_month": shift_month(month, 1),
         },
     )
 
@@ -712,16 +192,10 @@ def export_balance_sheet(request, team_slug, book_slug):
 
 @login_and_book_required
 def export_account_activity_view(request, team_slug, book_slug, account_id):
-    """Export account activity as CSV."""
+    """Export one account's activity (the account page's table) as CSV."""
     from apps.accounts.models import Account
 
-    try:
-        account = Account.objects.get(book=request.book, pk=account_id)
-    except Account.DoesNotExist as err:
-        from django.http import Http404
-
-        raise Http404("Account not found") from err
-
+    account = get_object_or_404(Account, book=request.book, pk=account_id)
     start_date, end_date = _parse_date_range(request)
     return export_account_activity_csv(request.book, account, start_date, end_date)
 

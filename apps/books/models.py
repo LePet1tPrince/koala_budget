@@ -29,8 +29,8 @@ class ReportTimeframe(models.TextChoices):
     """
     The range a report opens on when its address names none (`Book.report_timeframe`).
 
-    `REPORT` keeps each report's own default (this month on the income statement,
-    this year on Income & Spending, the last 12 months on net worth). "Last N months"
+    `REPORT` keeps each report's own default (this year on Income & Spending, the
+    last 12 months on Net Worth). "Last N months"
     are the N full months before this one, so they line up with "Last month".
     The ranges themselves are computed in `apps.reports.timeframes`.
     """
