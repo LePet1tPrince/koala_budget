@@ -388,7 +388,7 @@ class StatusReportingTest(TestCase):
         return self.client.get(f"{url}?import_id={self.record.id}").json()
 
     def live(self, **info):
-        return patch("apps.ynab_import.views._live_progress", return_value=info)
+        return patch("apps.utils.progress.live_progress", return_value=info)
 
     def test_a_running_import_reports_elapsed_and_an_estimate(self):
         payload = self.status()
@@ -430,7 +430,7 @@ class StatusReportingTest(TestCase):
         self.assertEqual(self.record.status, YnabImport.STATUS_FAILED)
 
     def test_without_a_result_backend_the_row_is_still_reported(self):
-        with patch("apps.ynab_import.views._live_progress", return_value=None):
+        with patch("apps.utils.progress.live_progress", return_value=None):
             payload = self.status()
         self.assertEqual(payload["progress"], 40)
         self.assertEqual(payload["status"], "running")

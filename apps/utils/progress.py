@@ -28,6 +28,8 @@ that two copies meant a fix to one would silently miss the other.
 import contextlib
 import logging
 
+from celery.result import AsyncResult
+from celery_progress.backend import Progress
 from django.db import DEFAULT_DB_ALIAS, connections
 from django.utils import timezone
 
@@ -126,3 +128,93 @@ class ProgressChannel:
             timezone.now(),
             self.import_id,
         ]
+
+
+# ---------------------------------------------------------------------------
+# Reading it back: the status endpoint both import wizards poll
+# ---------------------------------------------------------------------------
+
+# The bar never shows a full sweep while work is still going on: 100% is reserved
+# for a row that says so.
+NEARLY_DONE = 99
+
+# How long a task Celery calls finished may leave its row untouched before it is
+# treated as a worker that died rather than one that is a moment behind.
+DEAD_WORKER_GRACE_SECONDS = 20
+
+WORKER_DIED_ERROR = (
+    "The import stopped before it finished. Nothing was written -- it is applied in one go, so a "
+    "run that does not reach the end leaves your books exactly as they were. Check the worker log, "
+    "then start again."
+)
+
+
+def live_progress(record) -> dict | None:
+    """What Celery makes of the task, or None when there is no result backend to ask."""
+    try:
+        return Progress(AsyncResult(record.task_id)).get_info()
+    except Exception:  # noqa: BLE001 - a missing result backend must not break the page
+        logger.debug("No live progress for %s %s", type(record).__name__, record.id, exc_info=True)
+        return None
+
+
+def worker_is_gone(record) -> bool:
+    """
+    Whether a task Celery calls finished has stopped writing to its row.
+
+    The grace period is what separates a dead worker from the ordinary race: the
+    task returns, and a moment later the same worker commits the row. Only silence
+    that outlasts the grace period is a death.
+    """
+    last_seen = record.updated_at or record.started_at
+    if last_seen is None:
+        return True
+    return (timezone.now() - last_seen).total_seconds() > DEAD_WORKER_GRACE_SECONDS
+
+
+def status_payload(record) -> dict:
+    """
+    Where an import has got to, for the wizard's status poll.
+
+    `record` is a `YnabImport` or a `DataImport`: a row with `as_dict()`,
+    `is_finished`, `task_id`, `status`/`error`/`finished_at` and `STATUS_FAILED`.
+
+    The row is authoritative -- a reloaded page must show a finished import as
+    finished -- and Celery is consulted only for progress the row has not caught up
+    with yet, since the two are written from the same worker microseconds apart.
+
+    The one thing Celery is trusted for outright is *death*. A worker that is
+    killed (an out-of-memory container, a deploy mid-import) never reaches the code
+    that marks the row failed, so the row says "running" forever. Without this the
+    wizard sits at whatever it last saw, waiting for a worker that is not coming.
+    """
+    payload = record.as_dict()
+    if record.is_finished or not record.task_id:
+        return payload
+
+    live = live_progress(record)
+    if live is None:
+        return payload
+
+    if live["complete"]:
+        # `celery_progress` reports 100% for a finished task whether it succeeded or
+        # failed, so that number must never reach the bar while the row still says
+        # running -- that is the full-bar-forever the user would otherwise stare at.
+        if worker_is_gone(record):
+            record.status = record.STATUS_FAILED
+            record.error = WORKER_DIED_ERROR
+            record.finished_at = timezone.now()
+            record.save(update_fields=["status", "error", "finished_at", "updated_at"])
+            return record.as_dict()
+        # Still within the moment between the task returning and the row being
+        # written: report near-complete rather than complete, and let the next poll
+        # see the row itself.
+        payload["progress"] = max(payload["progress"], NEARLY_DONE)
+        return payload
+
+    progress = live.get("progress") or {}
+    percent = int(progress.get("percent") or 0)
+    payload["progress"] = min(NEARLY_DONE, max(payload["progress"], percent))
+    payload["step"] = progress.get("description") or payload["step"]
+    payload["started"] = payload["started"] or not progress.get("pending")
+    return payload

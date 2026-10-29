@@ -9,7 +9,6 @@ Every endpoint is book-scoped through `@login_and_book_required`, and the state 
 read and written server-side -- the client never decides what phase it is on.
 """
 
-import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -31,6 +30,7 @@ from apps.budget.models import Goal
 from apps.budget.services import NetWorthService
 from apps.teams.services.template_budget import PERSONAL_BUDGET_TEMPLATE
 from apps.teams.services.template_engine import apply_template
+from apps.utils.json_views import json_body
 
 from .models import OnboardingState
 from .questions import (
@@ -124,14 +124,6 @@ def onboarding_home(request, team_slug, book_slug):
             },
         },
     )
-
-
-def _json_body(request) -> dict:
-    try:
-        body = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return {}
-    return body if isinstance(body, dict) else {}
 
 
 def _clean_answers(raw: dict) -> dict:
@@ -234,7 +226,7 @@ def api_answers(request, team_slug, book_slug):
     if state.is_finished:
         return JsonResponse({"error": "Onboarding is already finished."}, status=409)
 
-    body = _json_body(request)
+    body = json_body(request)
     state.answers = {**state.answers, **_clean_answers(body.get("answers", {}))}
     state.catalog_version = CATALOG_VERSION
 
@@ -274,7 +266,7 @@ def api_preview_coa(request, team_slug, book_slug):
     """
     state = get_or_create_state(request.book)
 
-    body = _json_body(request)
+    body = json_body(request)
     answers = {**state.answers, **_clean_answers(body.get("answers", {}))}
 
     template = build_template(answers)
@@ -299,7 +291,7 @@ def api_complete(request, team_slug, book_slug):
     if state.is_finished:
         return JsonResponse({"redirect": reverse("web_book:home", args=[team_slug, book_slug])})
 
-    body = _json_body(request)
+    body = json_body(request)
     if answers := _clean_answers(body.get("answers", {})):
         state.answers = {**state.answers, **answers}
 
@@ -367,7 +359,7 @@ def api_task(request, team_slug, book_slug):
     imported transactions when they did not.
     """
     state = get_or_create_state(request.book)
-    body = _json_body(request)
+    body = json_body(request)
 
     if body.get("action") == "resume":
         state.phase = OnboardingState.PHASE_TASKS
@@ -476,7 +468,7 @@ def api_opening_balances(request, team_slug, book_slug):
             }
         )
 
-    body = _json_body(request)
+    body = json_body(request)
     before = _net_worth(book)
 
     try:

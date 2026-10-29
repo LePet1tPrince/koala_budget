@@ -9,13 +9,6 @@ server-side (§4.4.4): the confirmation the browser enforces is a courtesy,
 not the guard.
 """
 
-import functools
-import json
-import logging
-
-from celery.result import AsyncResult
-from celery_progress.backend import Progress
-from django.conf import settings
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -30,6 +23,8 @@ from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
 from apps.books.decorators import book_admin_required, login_and_book_required
 from apps.plaid.models import PlaidAccount
+from apps.utils.json_views import json_body, json_errors
+from apps.utils.progress import status_payload
 
 from .models import MAX_UPLOAD_BYTES, DataImport
 from .services import export, read, write
@@ -37,30 +32,7 @@ from .services.export import ExportError
 from .services.schema import DocumentError
 from .tasks import run_data_import
 
-logger = logging.getLogger(__name__)
-
-# Same reasoning as the YNAB importer's apply screen (apps/ynab_import/views.py):
-# 100% is reserved for a row that actually says so.
-NEARLY_DONE = 99
-DEAD_WORKER_GRACE_SECONDS = 20
-
-
-def json_errors(view):
-    """Answer an unexpected exception with JSON, not Django's HTML error page -- every endpoint here is `fetch`ed."""
-
-    @functools.wraps(view)
-    def wrapped(request, *args, **kwargs):
-        try:
-            return view(request, *args, **kwargs)
-        except Exception as error:  # noqa: BLE001 - the wizard must say something, whatever broke
-            logger.exception("Data export/import request failed: %s", request.path)
-            detail = f"{type(error).__name__}: {error}" if settings.DEBUG else ""
-            return JsonResponse(
-                {"error": "The server could not complete that step.", "detail": detail},
-                status=500,
-            )
-
-    return wrapped
+portability_json_errors = json_errors(log_label="Data export/import request")
 
 
 def _archive_filename(book, *, suffix: str = "") -> str:
@@ -155,17 +127,9 @@ def portability_home(request, team_slug, book_slug):
     )
 
 
-def _json_body(request) -> dict:
-    try:
-        body = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return {}
-    return body if isinstance(body, dict) else {}
-
-
 @require_POST
 @book_admin_required
-@json_errors
+@portability_json_errors
 def api_upload(request, team_slug, book_slug):
     """
     Parse and validate the uploaded archive, and show what it will replace.
@@ -208,14 +172,14 @@ def api_upload(request, team_slug, book_slug):
 
 @require_POST
 @book_admin_required
-@json_errors
+@portability_json_errors
 def api_apply(request, team_slug, book_slug):
     """
     Start the import. The typed book name is checked here, server-side --
     the confirmation dialog the browser shows is a courtesy, not the guard
     (§4.4.4).
     """
-    body = _json_body(request)
+    body = json_body(request)
     record = DataImport.objects.filter(book=request.book, id=body.get("import_id")).first()
     if record is None:
         return JsonResponse({"error": "That upload is no longer available. Start again."}, status=404)
@@ -244,42 +208,14 @@ def api_apply(request, team_slug, book_slug):
 
 
 @book_admin_required
-@json_errors
+@portability_json_errors
 def api_status(request, team_slug, book_slug):
-    """Where the import has got to. Modelled on the YNAB importer's own status endpoint -- same reasoning throughout."""
+    """Where the import has got to. See `apps.utils.progress.status_payload`."""
     record = DataImport.objects.filter(book=request.book, id=request.GET.get("import_id")).first()
     if record is None:
         return JsonResponse({"error": "That import is no longer available."}, status=404)
 
-    payload = record.as_dict()
-    if record.is_finished or not record.task_id:
-        return JsonResponse(payload)
-
-    live = _live_progress(record)
-    if live is None:
-        return JsonResponse(payload)
-
-    if live["complete"]:
-        if _worker_is_gone(record):
-            record.status = DataImport.STATUS_FAILED
-            record.error = (
-                "The import stopped before it finished. Nothing was written -- it is applied in one go, so a "
-                "run that does not reach the end leaves your books exactly as they were. Check the worker log, "
-                "then start again."
-            )
-            record.finished_at = timezone.now()
-            record.save(update_fields=["status", "error", "finished_at", "updated_at"])
-            return JsonResponse(record.as_dict())
-        payload["progress"] = max(payload["progress"], NEARLY_DONE)
-        return JsonResponse(payload)
-
-    progress = live.get("progress") or {}
-    percent = int(progress.get("percent") or 0)
-    payload["progress"] = min(NEARLY_DONE, max(payload["progress"], percent))
-    payload["step"] = progress.get("description") or payload["step"]
-    payload["started"] = payload["started"] or not progress.get("pending")
-
-    return JsonResponse(payload)
+    return JsonResponse(status_payload(record))
 
 
 @book_admin_required
@@ -289,18 +225,3 @@ def api_safety_export(request, team_slug, book_slug):
     if record is None or not record.safety_archive_available:
         raise Http404
     return _archive_response(bytes(record.safety_archive), _archive_filename(request.book, suffix="before-import"))
-
-
-def _live_progress(record) -> dict | None:
-    try:
-        return Progress(AsyncResult(record.task_id)).get_info()
-    except Exception:  # noqa: BLE001 - a missing result backend must not break the page
-        logger.debug("No live progress for data import %s", record.id, exc_info=True)
-        return None
-
-
-def _worker_is_gone(record) -> bool:
-    last_seen = record.updated_at or record.started_at
-    if last_seen is None:
-        return True
-    return (timezone.now() - last_seen).total_seconds() > DEAD_WORKER_GRACE_SECONDS
