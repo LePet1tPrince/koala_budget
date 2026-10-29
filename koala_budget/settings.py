@@ -60,7 +60,6 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
     "allauth.socialaccount.providers.github",
-    "channels",
     "django_vite",
     "allauth.mfa",
     "rest_framework",
@@ -110,10 +109,6 @@ PROJECT_APPS = [
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
-
-if DEBUG:
-    # in debug mode, add daphne to the beginning of INSTALLED_APPS to enable async support
-    INSTALLED_APPS.insert(0, "daphne")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -503,18 +498,6 @@ SCHEDULED_TASKS = {
     #     "task": "some.task.path",
     #     "schedule": schedules.crontab(minute=0, hour=4),
     # },
-}
-
-# Channels / Daphne setup
-
-ASGI_APPLICATION = "koala_budget.asgi.application"
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [REDIS_URL],
-        },
-    },
 }
 
 # Health Checks
