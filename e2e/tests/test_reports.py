@@ -12,7 +12,7 @@ Spending with seeded data, export CSV button presence.
 from datetime import date, timedelta
 
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
 from e2e.factories import (
@@ -39,10 +39,15 @@ def test_reports_popout_lists_the_four_reports(authenticated_page: Page, live_se
     reports = ReportsPage(authenticated_page, live_server.url)
     reports.goto_home(team.default_book)
 
+    # The popout is Alpine state: a click that lands before Alpine binds the group does nothing.
+    authenticated_page.wait_for_function(
+        "() => document.querySelector(\"aside [data-testid='nav-reports-toggle']\")"
+        "?.closest('.side-group')?._x_dataStack"
+    )
     authenticated_page.locator("aside [data-testid='nav-reports-toggle']").click()
     sidebar = authenticated_page.locator("aside")
     for testid in ("nav-monthly-review", "nav-report-spending", "nav-report-net-worth", "nav-report-budget-goals"):
-        assert sidebar.locator(f"[data-testid='{testid}']").is_visible(), testid
+        expect(sidebar.locator(f"[data-testid='{testid}']")).to_be_visible()
     assert sidebar.locator("[data-testid^='nav-report-']").count() == 3
 
 
