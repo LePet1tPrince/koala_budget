@@ -57,11 +57,6 @@ def assert_line_removable(line, *, own=True, verb=None):
         _refuse(own, verb or _("removing it"))
 
 
-def assert_entry_voidable(entry):
-    """Voiding drops every line out of every balance -- including reconciled ones."""
-    assert_entry_removable(entry, verb=_("voiding it"))
-
-
 def assert_line_mutable(line, *, new_account=None, new_amount=None, own=True):
     """
     Refuse to move a reconciled line to another account or change its amount.

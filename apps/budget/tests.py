@@ -221,45 +221,6 @@ class BudgetServiceTest(TestCase):
         self.assertEqual(actuals[self.expense_account.pk], Decimal("100.00"))
         self.assertEqual(actuals[self.income_account.pk], Decimal("2000.00"))
 
-    def test_build_budget_rows(self):
-        """Test build_budget_rows includes expense and income accounts."""
-        # Create budgets and transactions
-        set_budget(self.book, self.expense_account, date(2025, 12, 1), Decimal("500.00"))
-        set_budget(self.book, self.income_account, date(2025, 12, 1), Decimal("1500.00"))
-
-        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2025, 12, 15), description="Transactions")
-        JournalLine.objects.create(
-            book=self.book, journal_entry=entry, account=self.expense_account, dr_amount=Decimal("100.00")
-        )
-        JournalLine.objects.create(
-            book=self.book, journal_entry=entry, account=self.asset_account, cr_amount=Decimal("100.00")
-        )
-        JournalLine.objects.create(
-            book=self.book, journal_entry=entry, account=self.asset_account, dr_amount=Decimal("2000.00")
-        )
-        JournalLine.objects.create(
-            book=self.book, journal_entry=entry, account=self.income_account, cr_amount=Decimal("2000.00")
-        )
-
-        rows = self.service.build_budget_rows(date(2025, 12, 1))
-
-        # Should have 2 rows (expense and income accounts)
-        self.assertEqual(len(rows), 2)
-
-        # Find rows by account
-        expense_row = next(r for r in rows if r["category_id"] == self.expense_account.pk)
-        income_row = next(r for r in rows if r["category_id"] == self.income_account.pk)
-
-        # Check expense row calculations
-        self.assertEqual(expense_row["budgeted"], Decimal("500.00"))
-        self.assertEqual(expense_row["actual"], Decimal("100.00"))
-        self.assertEqual(expense_row["available"], Decimal("400.00"))  # 500 - 100
-
-        # Check income row calculations
-        self.assertEqual(income_row["budgeted"], Decimal("1500.00"))
-        self.assertEqual(income_row["actual"], Decimal("2000.00"))
-        self.assertEqual(income_row["available"], Decimal("500.00"))  # 2000 - 1500
-
 
 class BudgetAmountFormTest(TestCase):
     """Tests for BudgetAmountForm."""

@@ -66,20 +66,6 @@ def _is_split_entry(entry) -> bool:
     return bool(entry) and entry.lines.count() > 2
 
 
-def linked_legs(tx):
-    """
-    The other BankTransaction leg(s) sharing this transfer's journal entry, if any.
-
-    A transfer's legs share one entry, so they are voided and restored together
-    (`apps.journal.services.voiding`) — voiding one side alone would leave it
-    half-hidden in one feed. A split
-    with transfer legs has one row per feed account it touches; they go together too.
-    """
-    if tx.journal_entry_id is None:
-        return BankTransaction.objects.none()
-    return BankTransaction.objects.filter(journal_entry_id=tx.journal_entry_id).exclude(id=tx.id)
-
-
 def mirror_rows_for(primary, lines) -> list[BankTransaction]:
     """
     The mirror rows `primary`'s entry should have, unsaved.

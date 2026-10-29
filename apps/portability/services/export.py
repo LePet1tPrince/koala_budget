@@ -49,10 +49,6 @@ def _money(value) -> str:
     return encode_cell(KIND_DECIMAL, value if value is not None else ZERO)
 
 
-def _not_void(**extra):
-    return JournalLine.objects.filter(**extra).exclude(journal_entry__status=JournalEntry.STATUS_VOID)
-
-
 def build_row_count(book) -> int:
     """
     The row count `EXPORT_MAX_ROWS` guards, without building anything. Cheap:

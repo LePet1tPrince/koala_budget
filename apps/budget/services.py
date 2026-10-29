@@ -321,47 +321,6 @@ class BudgetService:
         """
         return budget_ledger.add_to_budget(self.book, category, month, amount)
 
-    def build_budget_rows(self, month):
-        """
-        Build budget rows for API response.
-        Returns a list of dictionaries with budget data for each account.
-        """
-        accounts = (
-            Account.objects.filter(
-                book=self.book,
-                account_group__account_type__in=("expense", "income"),
-            )
-            .select_related("account_group")
-            .order_by("name")
-        )
-
-        actuals = self.get_actuals_by_category(month)
-        amounts = budget_ledger.budgeted_in_month(self.book, month)
-
-        rows = []
-
-        for account in accounts:
-            budgeted = amounts.get(account.pk, Decimal("0"))
-
-            actual = actuals.get(account.pk, Decimal("0"))
-
-            # Calculate available based on account type
-            available = actual - budgeted if account.account_group.account_type == "income" else budgeted - actual
-
-            rows.append(
-                {
-                    "category_id": account.pk,
-                    "category_name": account.name,
-                    "account_group": account.account_group.name,
-                    "month": month,
-                    "budgeted": budgeted,
-                    "actual": actual,
-                    "available": available,
-                }
-            )
-
-        return rows
-
 
 class GoalCloseError(ValueError):
     """A goal can't be closed as asked; the message says why and what to do."""

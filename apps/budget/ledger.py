@@ -169,23 +169,6 @@ def write_months(book, credits_by_month: dict):
         write_month(book, month, credits)
 
 
-def _posted_credit(book, month, bucket_id):
-    """What `month`'s entry holds on one bucket, as a credit. Call after `_lock`."""
-    from apps.journal.models import JournalEntry, JournalLine
-
-    line = (
-        JournalLine.objects.filter(
-            book=book,
-            account_id=bucket_id,
-            journal_entry__source=JournalEntry.SOURCE_BUDGET,
-            journal_entry__entry_date=_first(month),
-        )
-        .values_list("dr_amount", "cr_amount")
-        .first()
-    )
-    return line[1] - line[0] if line else ZERO
-
-
 def set_budgets(book, amounts: dict):
     """
     Set income and expense budgets: `{(category_id, month): amount}`. Categories

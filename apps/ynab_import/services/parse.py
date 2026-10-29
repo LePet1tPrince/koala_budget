@@ -15,7 +15,6 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import BinaryIO
 
 from apps.bank_feed.services.csv_upload import detect_encoding, parse_amount
 
@@ -272,9 +271,3 @@ def _require(row: dict, columns: tuple[str, ...], what: str):
     missing = [column for column in columns if column not in row]
     if missing:
         raise ParseError(f"The {what} file is missing the column(s): {', '.join(missing)}.")
-
-
-def read_upload(upload: BinaryIO) -> bytes:
-    """Read an uploaded file whole. Both exports are small enough to hold in memory."""
-    upload.seek(0)
-    return upload.read()

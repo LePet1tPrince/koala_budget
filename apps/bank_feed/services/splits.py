@@ -233,15 +233,3 @@ def apply_splits(bank_tx, legs, *, total):
         total=total,
         book=bank_tx.book,
     )
-
-
-@transaction.atomic
-def collapse_split(bank_tx, category_account, *, total):
-    """
-    Turn a split back into a plain two-line entry on `category_account`.
-
-    This is what the editor's "Remove split" does. Bulk operations must not do
-    it implicitly: silently collapsing a four-way split because it was caught in
-    a select-all destroys work the user did deliberately.
-    """
-    return apply_splits(bank_tx, [(category_account, total)], total=total)

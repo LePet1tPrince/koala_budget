@@ -96,9 +96,6 @@ class TransactionEdits:
     def touches_amount(self) -> bool:
         return self.inflow is not UNSET or self.outflow is not UNSET
 
-    def touches_category(self) -> bool:
-        return self.category_id is not UNSET or self.legs is not UNSET or self.remove_split
-
 
 # ---------------------------------------------------------------------------
 # Public API
