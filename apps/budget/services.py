@@ -14,6 +14,7 @@ from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Acco
 from apps.budget import ledger as budget_ledger
 from apps.budget.models import Goal
 from apps.journal.models import JournalLine, counted_entries, transaction_entries
+from apps.utils.months import add_months, months_between
 from apps.web.templatetags.currency_tags import currency
 
 
@@ -44,7 +45,7 @@ class BudgetService:
     def month_bounds(self, month: date):
         """Return start and end dates for a given month."""
         start = month.replace(day=1)
-        end = start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
+        end = add_months(start, 1)
         return start, end
 
     def month_start(self, date_obj: date):
@@ -615,11 +616,6 @@ PLAN_LABELS = {
 }
 
 
-def _months_between(start, end):
-    """Whole months from `start`'s month to `end`'s month (0 when the same month)."""
-    return (end.year - start.year) * 12 + end.month - start.month
-
-
 def goal_plan(goal, month):
     """
     The goal's plan for `month` (docs/goal-linked-accounts-plan.md §9), from a goal
@@ -650,8 +646,8 @@ def goal_plan(goal, month):
         line_rate = rate
     elif goal.target_date and target > 0:
         target_month = goal.target_date.replace(day=1)
-        rate = (to_fund_before / max(_months_between(month, target_month) + 1, 1)).quantize(Decimal("0.01"))
-        line_rate = target / max(_months_between(started, target_month) + 1, 1)
+        rate = (to_fund_before / max(months_between(month, target_month) + 1, 1)).quantize(Decimal("0.01"))
+        line_rate = target / max(months_between(started, target_month) + 1, 1)
     else:
         return None
 
@@ -681,7 +677,7 @@ def goal_plan(goal, month):
 
     status = None
     if not goal.is_funded and target > 0:
-        elapsed = max(_months_between(started, month) + 1, 0)
+        elapsed = max(months_between(started, month) + 1, 0)
         expected = min(target, line_rate * elapsed)
         allocated = goal.allocated or Decimal("0")
         if allocated >= min(target, expected + line_rate):

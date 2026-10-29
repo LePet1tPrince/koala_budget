@@ -46,6 +46,7 @@ from decimal import Decimal
 from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
+from apps.utils.months import add_months
 
 ZERO = Decimal("0")
 
@@ -122,7 +123,7 @@ def compute_unassigned(
     only once it has landed, so `income_due` is zero; the budgeting settings page
     passes the opposite of the setting to show what flipping it would do.
     """
-    from apps.budget.models import Goal, goal_allocated_subquery, goal_spent_subquery, month_after
+    from apps.budget.models import Goal, goal_allocated_subquery, goal_spent_subquery
     from apps.budget.services import BudgetService, NetWorthService
 
     month = month.replace(day=1)
@@ -142,8 +143,8 @@ def compute_unassigned(
     goals = list(
         Goal.objects.filter(book=book, is_archived=False)
         .annotate(
-            allocated_to_date=goal_allocated_subquery(end=month_after(month)),
-            spent_to_date=goal_spent_subquery(end=month_after(month)),
+            allocated_to_date=goal_allocated_subquery(end=add_months(month, 1)),
+            spent_to_date=goal_spent_subquery(end=add_months(month, 1)),
         )
         .order_by("order", "target_date", "name")
     )

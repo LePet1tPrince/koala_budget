@@ -32,6 +32,7 @@ from django.db import transaction
 from django.db.models import Q, Sum
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME, Account
+from apps.utils.months import add_months
 
 ZERO = Decimal("0")
 PAIRED_TYPES = (ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME)
@@ -44,10 +45,6 @@ def _first(month) -> date:
     if isinstance(month, datetime):
         month = month.date()
     return month.replace(day=1)
-
-
-def _next(month: date) -> date:
-    return month.replace(year=month.year + 1, month=1) if month.month == 12 else month.replace(month=month.month + 1)
 
 
 def _sides(amount) -> tuple[Decimal, Decimal]:
@@ -229,7 +226,7 @@ def set_goal_allocation(book, goal, month, amount):
 
 def goal_allocation(book, goal, month):
     """`goal`'s allocation for `month` (0 when there is none)."""
-    return goal_assigned_by_month(book, [goal.pk], _first(month), _next(_first(month))).get(
+    return goal_assigned_by_month(book, [goal.pk], _first(month), add_months(_first(month), 1)).get(
         (goal.pk, _first(month)), ZERO
     )
 
@@ -325,7 +322,7 @@ def budgeted_by_month_category(book, start_month=None, end_month=None, category_
     if start_month is not None:
         lines = lines.filter(journal_entry__entry_date__gte=_first(start_month))
     if end_month is not None:
-        lines = lines.filter(journal_entry__entry_date__lt=_next(_first(end_month)))
+        lines = lines.filter(journal_entry__entry_date__lt=add_months(_first(end_month), 1))
     if category_ids is not None:
         lines = lines.filter(account__paired_account_id__in=category_ids)
     result = {}
@@ -456,12 +453,12 @@ def ledger_unassigned(book, month, future_income: bool | None = None):
     must agree; `check_book` holds them to it.
     """
     from apps.budget.linked import linked_allocated_subquery
-    from apps.budget.models import Goal, goal_spent_subquery, month_after
+    from apps.budget.models import Goal, goal_spent_subquery
     from apps.budget.services import NetWorthService
     from apps.budget.unassigned import Unassigned, _positive, budget_categories
 
     month = _first(month)
-    end = month_after(month)
+    end = add_months(month, 1)
     if future_income is None:
         future_income = book.budget_future_income
     categories = budget_categories(book)
@@ -554,5 +551,5 @@ def check_book(book, through: date | None = None) -> CheckResult:
             result.months_checked += 1
             if expected != actual:
                 result.unassigned_mismatches.append((month, expected, actual))
-            month = _next(month)
+            month = add_months(month, 1)
     return result

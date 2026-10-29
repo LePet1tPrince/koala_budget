@@ -24,6 +24,7 @@ from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.utils.amounts import evaluate_amount
+from apps.utils.months import months_between
 from apps.web.templatetags.currency_tags import currency
 
 from . import goal_links
@@ -627,7 +628,7 @@ def _grid_actuals(book, categories, today):
             if first is None:
                 row[mode] = None
                 continue
-            months = (last.year - first.year) * 12 + last.month - first.month + 1
+            months = months_between(first, last) + 1
             total = sum(
                 (by_month.get((first + relativedelta(months=i), category.pk), Decimal("0")) for i in range(months)),
                 Decimal("0"),
@@ -850,7 +851,7 @@ def goals_list_view(request, team_slug, book_slug):
             needed_per_month = plan["rate"]
             if plan["finish"]:
                 finish = plan["finish"]
-                months_left = max((finish.year - month.year) * 12 + finish.month - month.month, 1)
+                months_left = max(months_between(month, finish), 1)
 
         # Projection from the recent saving rate (average of the last 3 months)
         recent = [amounts.get(month - relativedelta(months=i), Decimal("0")) for i in range(3)]

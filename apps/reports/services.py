@@ -12,6 +12,7 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_LIABILITY,
 )
 from apps.journal.models import JournalLine, counted_entries
+from apps.utils.months import add_months
 
 
 class ReportService:
@@ -501,8 +502,7 @@ class ReportService:
                 budgeted_series.append(float(budgeted))
                 actual_series.append(float(actual))
                 available_series.append(float(available))
-            month = current.month + 1
-            current = date(current.year + (month - 1) // 12, (month - 1) % 12 + 1, 1)
+            current = add_months(current, 1)
 
         return {
             "labels": [self._period_label(bucket, "month") for bucket in months],
@@ -544,8 +544,7 @@ class ReportService:
                 allocated_series.append(float(month_allocated))
                 spent_series.append(float(month_spent))
                 left_series.append(float(left))
-            month = current.month + 1
-            current = date(current.year + (month - 1) // 12, (month - 1) % 12 + 1, 1)
+            current = add_months(current, 1)
 
         return {
             "labels": [self._period_label(bucket, "month") for bucket in months],

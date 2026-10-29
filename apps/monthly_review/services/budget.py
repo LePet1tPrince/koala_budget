@@ -17,6 +17,7 @@ from apps.budget import ledger as budget_ledger
 from apps.budget.services import BudgetService
 from apps.budget.views import _budget_categories
 from apps.journal.models import JournalLine, counted_entries
+from apps.utils.months import add_months
 
 
 def build_section(items, budgets, spending=True):
@@ -68,18 +69,6 @@ def build_section(items, budgets, spending=True):
     return section_groups, totals
 
 
-def _prev_month(month):
-    if month.month == 1:
-        return month.replace(year=month.year - 1, month=12)
-    return month.replace(month=month.month - 1)
-
-
-def _next_month(month):
-    if month.month == 12:
-        return month.replace(year=month.year + 1, month=1)
-    return month.replace(month=month.month + 1)
-
-
 def _month_bounds(month):
     start = month.replace(day=1)
     end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
@@ -110,7 +99,7 @@ def budget_breakdown(book, month) -> dict:
     categories = list(_budget_categories(book))
     category_ids = [c.pk for c in categories]
     month_start, month_end = _month_bounds(month)
-    prev_month = _prev_month(month_start)
+    prev_month = add_months(month_start, -1)
 
     service = BudgetService(book)
     this_actuals = service.get_actuals_by_category(month_start)

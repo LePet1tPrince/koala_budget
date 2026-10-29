@@ -21,6 +21,8 @@ from decimal import Decimal
 
 from django.utils.formats import date_format
 
+from apps.utils.months import add_months
+
 METRICS = ("income", "spend", "net", "saved")
 
 # The "all time" baseline: every month from the book's first activity up to the
@@ -63,12 +65,6 @@ class MonthlyMatrix:
     first_month: date | None = None
 
 
-def _prev_month(month: date) -> date:
-    if month.month == 1:
-        return date(month.year - 1, 12, 1)
-    return date(month.year, month.month - 1, 1)
-
-
 def _month_span_label(window: list) -> str:
     if not window:
         return ""
@@ -88,12 +84,12 @@ def clamp_window(month: date, months, first_month: date | None) -> list:
     if first_month is None:
         return []
     window = []
-    cursor = _prev_month(month)
+    cursor = add_months(month, -1)
     while months == ALL_TIME or len(window) < months:
         if cursor < first_month:
             break
         window.append(cursor)
-        cursor = _prev_month(cursor)
+        cursor = add_months(cursor, -1)
     window.reverse()
     return window
 
@@ -135,7 +131,7 @@ def _stream_rows(streams: dict, window: list, month: date) -> list:
 
 
 def _goal_rows(goals: dict, window: list, month: date) -> list:
-    prev_month = _prev_month(month)
+    prev_month = add_months(month, -1)
     rows = []
     for entry in goals.values():
         by_month = entry["by_month"]

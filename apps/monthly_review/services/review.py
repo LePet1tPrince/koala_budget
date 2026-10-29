@@ -25,16 +25,11 @@ from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOU
 from apps.bank_feed.models import BankTransaction
 from apps.journal.models import JournalEntry, JournalLine, counted_entries, transaction_entries
 from apps.reports.services import ReportService
+from apps.utils.months import add_months
 
 from .baselines import ALL_TIME, MonthlyMatrix, build_baselines
-from .budget import _month_bounds, _prev_month, budget_breakdown
+from .budget import _month_bounds, budget_breakdown
 from .health import account_health
-
-
-def _add_months(d: date, n: int) -> date:
-    total = d.year * 12 + (d.month - 1) + n
-    year, month = divmod(total, 12)
-    return date(year, month + 1, 1)
 
 
 def _baseline_months_setting():
@@ -47,7 +42,7 @@ def _window_start(month: date, baseline_months, first_month: date | None) -> dat
     baseline, and back to the book's first activity when "all time" is offered.
     """
     numeric = [m for m in baseline_months if m != ALL_TIME]
-    start = _add_months(month, -max(numeric, default=0))
+    start = add_months(month, -max(numeric, default=0))
     if ALL_TIME in baseline_months and first_month and first_month < start:
         start = first_month
     return start
@@ -95,11 +90,11 @@ def _stream_series(book, window_start, month_end):
 
 
 def _goal_series(book, window_start, month_end):
-    from apps.budget.models import Goal, month_after
+    from apps.budget.models import Goal
     from apps.budget.services import goal_monthly
 
     goals = list(Goal.objects.filter(book=book, is_archived=False))
-    monthly = goal_monthly(book, goals, window_start, month_after(month_end))
+    monthly = goal_monthly(book, goals, window_start, add_months(month_end, 1))
     series = {}
     for goal in goals:
         months = monthly.get(goal.pk) or {}
@@ -363,7 +358,7 @@ def _net_worth_section(book, window_start, month, month_end, report_service, bas
     stack = _net_worth_bands(book, window_start, month_end, [point["key"] for point in series])
 
     now_data = report_service.get_balance_sheet_data(month_end)
-    prev_month_end = _month_bounds(_prev_month(month))[1]
+    prev_month_end = _month_bounds(add_months(month, -1))[1]
     prev_data = report_service.get_balance_sheet_data(prev_month_end)
 
     return {
@@ -389,12 +384,12 @@ def _goal_spending(book, month: date) -> list:
     aside, never overspending. Each: name, amount, months_funded (months with a
     positive allocation up to this one).
     """
-    from apps.budget.models import Goal, month_after
+    from apps.budget.models import Goal
     from apps.budget.services import goal_monthly
 
     rows = []
     goals = list(Goal.objects.filter(book=book).with_progress(month).exclude(spent_this_month=0))
-    monthly = goal_monthly(book, goals, end=month_after(month))
+    monthly = goal_monthly(book, goals, end=add_months(month, 1))
     for goal in goals:
         months_funded = sum(1 for v in monthly[goal.pk].values() if v["saved"] > 0)
         rows.append({"name": goal.name, "amount": goal.spent_this_month, "months_funded": months_funded})
@@ -427,7 +422,7 @@ def build_review(book, month: date) -> dict:
     review = {
         "month": month.isoformat(),
         "month_label": date_format(month, "F Y"),
-        "prev_label": date_format(_prev_month(month), "F Y"),
+        "prev_label": date_format(add_months(month, -1), "F Y"),
         "is_current_month": month == date.today().replace(day=1),
         "health": health,
         "current": _current_figures(matrix, month, transaction_count),

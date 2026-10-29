@@ -9,11 +9,7 @@ import contextlib
 from datetime import date, datetime, timedelta
 
 from apps.books.models import ReportTimeframe
-
-
-def _month_start(day, months_back=0):
-    index = day.year * 12 + day.month - 1 - months_back
-    return date(index // 12, index % 12 + 1, 1)
+from apps.utils.months import add_months
 
 
 def timeframe_range(timeframe, today=None):
@@ -24,7 +20,7 @@ def timeframe_range(timeframe, today=None):
     before this one.
     """
     today = today or date.today()
-    this_month = _month_start(today)
+    this_month = today.replace(day=1)
     last_month_end = this_month - timedelta(days=1)
     full_months = {
         ReportTimeframe.LAST_MONTH: 1,
@@ -33,7 +29,7 @@ def timeframe_range(timeframe, today=None):
         ReportTimeframe.LAST_12_MONTHS: 12,
     }
     if timeframe in full_months:
-        return _month_start(today, full_months[timeframe]), last_month_end
+        return add_months(today, -full_months[timeframe]), last_month_end
     if timeframe == ReportTimeframe.THIS_MONTH:
         return this_month, today
     if timeframe == ReportTimeframe.THIS_YEAR:
@@ -71,6 +67,6 @@ def month_range_from_request(request, fallback):
         start_year, start_month = map(int, request.GET["start_month"].split("-"))
         end_year, end_month = map(int, request.GET["end_month"].split("-"))
         start = date(start_year, start_month, 1)
-        end = _month_start(date(end_year, end_month, 1), -1) - timedelta(days=1)
+        end = add_months(date(end_year, end_month, 1), 1) - timedelta(days=1)
         return start, end
     return default_range(request.book, fallback)

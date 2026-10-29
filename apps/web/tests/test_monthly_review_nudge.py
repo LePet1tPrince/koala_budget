@@ -7,11 +7,11 @@ from django.urls import reverse
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_INCOME, Account, AccountGroup
 from apps.journal.models import JournalEntry, JournalLine
 from apps.monthly_review.models import MonthlyReviewState
-from apps.monthly_review.services.budget import _prev_month
 from apps.onboarding.models import OnboardingState
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_MEMBER
 from apps.users.models import CustomUser
+from apps.utils.months import add_months
 
 
 class MonthlyReviewNudgeTest(TestCase):
@@ -36,7 +36,7 @@ class MonthlyReviewNudgeTest(TestCase):
         self.client.login(username="nudgeuser@example.com", password="testpass123")
 
     def _give_last_month_activity(self):
-        last_month = _prev_month(date.today().replace(day=1))
+        last_month = add_months(date.today(), -1)
         entry = JournalEntry.objects.create(
             book=self.book, entry_date=last_month, description="pay", status=JournalEntry.STATUS_POSTED
         )
