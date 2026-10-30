@@ -977,3 +977,38 @@ def test_a_pending_plaid_row_is_marked_pending(requires_vite, authenticated_page
 
     expect(authenticated_page.get_by_test_id(f"pending-badge-{pending.id}")).to_be_visible()
     expect(authenticated_page.get_by_test_id(f"pending-badge-{posted.id}")).to_have_count(0)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_bank_needing_attention_is_flagged_in_the_inbox(requires_vite, authenticated_page, live_server, team):
+    """A connection that needs a fresh sign-in, or has accounts not imported, says so above the feed."""
+    from apps.plaid.models import PlaidAccount, PlaidItem
+
+    account = AssetAccountFactory(team=team, name="Plaid Chequing", has_feed=True)
+    item = PlaidItem.objects.create(
+        book=team.default_book,
+        plaid_item_id="item-attention",
+        access_token="t",
+        institution_name="Desjardins",
+        status=PlaidItem.STATUS_LOGIN_REQUIRED,
+    )
+    for plaid_id, ledger in (("acc-1", account), ("acc-2", None)):
+        PlaidAccount.objects.create(
+            book=team.default_book,
+            item=item,
+            account=ledger,
+            plaid_account_id=plaid_id,
+            name=plaid_id,
+            subtype="checking",
+            type="depository",
+        )
+    feed_transaction(team, account, description="ROW", source="plaid")
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.wait_for_table()
+
+    alert = authenticated_page.get_by_test_id(f"plaid-item-alert-{item.id}")
+    expect(alert).to_contain_text("Desjardins needs you to sign in again")
+    expect(authenticated_page.get_by_test_id(f"plaid-reconnect-{item.id}")).to_be_visible()
+    expect(authenticated_page.get_by_test_id(f"plaid-unmapped-alert-{item.id}")).to_contain_text("1 account")
