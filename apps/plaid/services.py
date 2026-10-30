@@ -159,6 +159,13 @@ def exchange_public_token(public_token: str):
     }
 
 
+def remove_item(access_token: str):
+    """Remove an item at Plaid (/item/remove): it stops syncing, billing and sending webhooks."""
+    from plaid.model.item_remove_request import ItemRemoveRequest
+
+    get_plaid_client().item_remove(ItemRemoveRequest(access_token=access_token))
+
+
 def get_accounts(access_token: str):
     """
     Get accounts for a Plaid item.

@@ -36,6 +36,7 @@ class PlaidBookTestCase(TestCase):
             plaid_item_id="item-1",
             access_token="access-sandbox-1",
             institution_name="RBC Royal Bank",
+            institution_id="ins_rbc",
             cursor="c0",
         )
         self.plaid_checking = PlaidAccount.objects.create(

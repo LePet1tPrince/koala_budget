@@ -86,7 +86,14 @@ export const usePlaidLinkFlow = ({ book, allAccounts, onSuccess, plaidClient, it
       setShowMapper(true);
     } catch (err) {
       console.error('Error exchanging token:', err);
-      setError(err.message || gettext('Failed to link account. Please try again.'));
+      // A 409 means this bank login is already linked here; the server says which.
+      let message = null;
+      try {
+        message = (await err.response?.json())?.error;
+      } catch {
+        // not JSON: fall through to the generic message
+      }
+      setError(message || gettext('Failed to link account. Please try again.'));
     } finally {
       setLoading(false);
     }

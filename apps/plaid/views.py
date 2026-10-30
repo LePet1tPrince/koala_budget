@@ -7,7 +7,6 @@ import json
 import logging
 
 from django.conf import settings
-from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -24,7 +23,7 @@ from rest_framework.response import Response
 from apps.books.permissions import BookModelAccessPermissions
 
 from . import item_status, webhook_verification
-from .linking import add_accounts
+from .linking import DuplicateItem, add_accounts, link_item, unlink_item
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .serializers import (
     ExchangePublicTokenResponseSerializer,
@@ -34,7 +33,7 @@ from .serializers import (
     PlaidItemSerializer,
     PlaidTransactionSerializer,
 )
-from .services import create_link_token, create_update_link_token, exchange_public_token, get_accounts, get_institution
+from .services import create_link_token, create_update_link_token, get_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +151,16 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
             }
         )
 
+    @extend_schema(operation_id="plaid_items_remove", tags=["plaid"], request=None, responses={204: None})
+    @action(detail=True, methods=["post"])
+    def remove(self, request, pk=None, team_slug=None, book_slug=None):
+        """
+        Disconnect this bank. It stops syncing; the transactions it imported stay
+        in the feed (they may be categorized or reconciled).
+        """
+        unlink_item(self.get_object(), user=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 @extend_schema_view(
     list=extend_schema(operation_id="plaid_accounts_list", tags=["plaid"]),
@@ -193,19 +202,6 @@ class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 # Plaid Link API Endpoints
-
-
-def _institution_name(institution_id, fallback=None):
-    """
-    The institution's display name. A failed lookup must not fail the link --
-    the bank is already connected at Plaid by then -- so Link's own metadata
-    name stands in.
-    """
-    try:
-        return get_institution(institution_id).get("name") or fallback or "Unknown Institution"
-    except Exception:
-        logger.warning("Plaid institution lookup failed for %s", institution_id, exc_info=True)
-        return fallback or "Unknown Institution"
 
 
 @extend_schema(
@@ -251,7 +247,6 @@ def create_link_token_view(request, team_slug=None, book_slug=None):
 )
 @api_view(["POST"])
 @permission_classes([BookModelAccessPermissions])
-@transaction.atomic
 def exchange_public_token_view(request, team_slug=None, book_slug=None):
     """
     Exchange a public token for an access token and create PlaidItem and PlaidAccount records.
@@ -270,38 +265,37 @@ def exchange_public_token_view(request, team_slug=None, book_slug=None):
         )
 
     try:
-        # Exchange public token for access token
-        exchange_result = exchange_public_token(public_token)
-        access_token = exchange_result["access_token"]
-        item_id = exchange_result["item_id"]
-
-        institution_name = _institution_name(institution_id, request.data.get("institution_name"))
-
-        # Create PlaidItem
-        plaid_item = PlaidItem.objects.create(
-            book=request.book,
-            plaid_item_id=item_id,
-            access_token=access_token,
-            institution_name=institution_name,
+        plaid_item, created_accounts = link_item(
+            request.book,
+            public_token=public_token,
+            institution_id=institution_id,
+            institution_name=request.data.get("institution_name"),
+            accounts=request.data.get("accounts") or (),
+            user=request.user,
         )
-
-        # The new accounts start unmapped; the user maps them in the UI.
-        created_accounts = add_accounts(plaid_item, get_accounts(access_token))
-
+    except DuplicateItem as exc:
         return Response(
             {
-                "success": True,
-                "item_id": plaid_item.id,
-                "accounts": PlaidAccountSerializer(created_accounts, many=True).data,
-            }
+                "error": f"{exc.item.institution_name} is already linked in this set of books. "
+                "If it stopped syncing, reconnect it from the Inbox instead.",
+                "item_id": exc.item.pk,
+            },
+            status=status.HTTP_409_CONFLICT,
         )
-
     except Exception:
         logger.exception("Failed to exchange Plaid public token")
         return Response(
             {"error": "Failed to link bank account. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+    return Response(
+        {
+            "success": True,
+            "item_id": plaid_item.id,
+            "accounts": PlaidAccountSerializer(created_accounts, many=True).data,
+        }
+    )
 
 
 # Plaid Webhooks

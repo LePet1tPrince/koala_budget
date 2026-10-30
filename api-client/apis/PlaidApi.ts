@@ -118,6 +118,12 @@ export interface PlaidItemsRefreshRequest {
     teamSlug: string;
 }
 
+export interface PlaidItemsRemoveRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+}
+
 export interface PlaidItemsRetrieveRequest {
     bookSlug: string;
     id: number;
@@ -663,6 +669,59 @@ export class PlaidApi extends runtime.BaseAPI {
     async plaidItemsRefresh(requestParameters: PlaidItemsRefreshRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ItemRefreshResponse> {
         const response = await this.plaidItemsRefreshRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * Disconnect this bank. It stops syncing; the transactions it imported stay in the feed (they may be categorized or reconciled).
+     */
+    async plaidItemsRemoveRaw(requestParameters: PlaidItemsRemoveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsRemove().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidItemsRemove().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling plaidItemsRemove().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/remove/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Disconnect this bank. It stops syncing; the transactions it imported stay in the feed (they may be categorized or reconciled).
+     */
+    async plaidItemsRemove(requestParameters: PlaidItemsRemoveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.plaidItemsRemoveRaw(requestParameters, initOverrides);
     }
 
     /**

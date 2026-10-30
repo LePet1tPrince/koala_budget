@@ -7,6 +7,7 @@ import Modal from '../../common/Modal';
 
 import AccountGrid from './AccountGrid';
 import LineTable from './LineTable';
+import DisconnectBankButton from './DisconnectBankButton';
 import PlaidItemAlerts from './PlaidItemAlerts';
 import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
@@ -1072,6 +1073,14 @@ const LineApp = ({
               <span className="text-xs text-base-content/70" title={selectedPlaidItem.institutionName}>
                 {refreshing ? gettext('Syncing…') : formatLastSynced(selectedPlaidItem.lastSyncedAt)}
               </span>
+            )}
+            {selectedPlaidItem && (
+              <DisconnectBankButton
+                item={selectedPlaidItem}
+                book={book}
+                plaidClient={plaidClient}
+                onDisconnected={loadPlaidStatus}
+              />
             )}
             {!selectedAccount && refreshing && (
               <span className="text-xs text-base-content/70">{gettext('Syncing…')}</span>

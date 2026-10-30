@@ -47,6 +47,9 @@ class PlaidItem(BaseBookModel):
     # user's bank transactions.
     access_token = EncryptedTextField(help_text="Access token for Plaid API (encrypted at rest)")
     institution_name = models.CharField(max_length=255, help_text="Name of the financial institution")
+    institution_id = models.CharField(
+        max_length=64, blank=True, default="", help_text="Plaid's institution id (for spotting a duplicate link)"
+    )
 
     cursor = models.CharField(
         max_length=255,

@@ -146,6 +146,7 @@ OBJECTS = {
     "plaid:plaid-item-sync": ("plaid_item", "pk", "post"),
     "plaid:plaid-item-link-token": ("plaid_item", "pk", "post"),
     "plaid:plaid-item-refresh": ("plaid_item", "pk", "post"),
+    "plaid:plaid-item-remove": ("plaid_item", "pk", "post"),
     "plaid:plaid-account-detail": ("plaid_account", "pk", "get"),
     "plaid:imported-transaction-detail": ("plaid_transaction", "pk", "get"),
     "bank_feed:bank-feed-detail": ("bank_transaction", "pk", "put"),
