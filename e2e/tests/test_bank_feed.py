@@ -939,3 +939,41 @@ def test_duplicating_several_rows_counts_them(requires_vite, authenticated_page,
 
     assert "2 transactions duplicated" in message
     assert BankTransaction.objects.filter(description__startswith="DUP-MANY").count() == 4
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_pending_plaid_row_is_marked_pending(requires_vite, authenticated_page, live_server, team):
+    """A pending authorization may change when it posts, so the Inbox says it is pending."""
+    from apps.plaid.models import PlaidAccount, PlaidItem, PlaidTransaction
+
+    account = AssetAccountFactory(team=team, name="Plaid Chequing", has_feed=True)
+    item = PlaidItem.objects.create(
+        book=team.default_book, plaid_item_id="item-e2e", access_token="t", institution_name="RBC"
+    )
+    plaid_account = PlaidAccount.objects.create(
+        book=team.default_book,
+        item=item,
+        account=account,
+        plaid_account_id="acc-e2e",
+        name="Chequing",
+        subtype="checking",
+        type="depository",
+    )
+    pending = feed_transaction(team, account, description="THE KEG", source="plaid")
+    posted = feed_transaction(team, account, description="LOBLAWS", source="plaid")
+    for tx_id, row, is_pending in (("tx-p", pending, True), ("tx-q", posted, False)):
+        PlaidTransaction.objects.create(
+            book=team.default_book,
+            plaid_transaction_id=tx_id,
+            bank_transaction=row,
+            plaid_account=plaid_account,
+            pending=is_pending,
+        )
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.click_account_card(account.id)
+    feed.wait_for_table()
+
+    expect(authenticated_page.get_by_test_id(f"pending-badge-{pending.id}")).to_be_visible()
+    expect(authenticated_page.get_by_test_id(f"pending-badge-{posted.id}")).to_have_count(0)

@@ -682,6 +682,17 @@ const LineTable = ({
                             {row.isSplit && (
                               <span className="badge badge-ghost badge-sm shrink-0">{gettext('Split')}</span>
                             )}
+                            {/* Still an authorization: the bank may change the amount or
+                                date when it posts, and a cancelled one is voided. */}
+                            {row.isPending && (
+                              <span
+                                className="badge badge-info badge-soft badge-sm shrink-0"
+                                title={gettext('Pending at the bank: the amount or date may change when it posts')}
+                                data-testid={`pending-badge-${row.id}`}
+                              >
+                                {gettext('Pending')}
+                              </span>
+                            )}
                             <span className="truncate">{row.description || ''}</span>
                           </span>
                         </td>
