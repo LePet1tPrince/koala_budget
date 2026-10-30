@@ -6,6 +6,7 @@ Handles all interactions with the Plaid API.
 import json
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 from django.utils import translation
 from plaid.api import plaid_api
@@ -35,10 +36,29 @@ def plaid_error_code(exc) -> str | None:
     return data.get("error_code") if isinstance(data, dict) else None
 
 
+#: PLAID_ENV may name an environment instead of giving its URL. (Plaid retired
+#: "development" in 2024; sandbox and production are what remain.)
+PLAID_HOSTS = {
+    "sandbox": "https://sandbox.plaid.com",
+    "production": "https://production.plaid.com",
+}
+
+
+def plaid_host() -> str:
+    """The Plaid API host for PLAID_ENV: a URL as given, or an environment name."""
+    env = (getattr(settings, "PLAID_ENV", "") or "sandbox").strip()
+    if env.startswith("http"):
+        return env
+    try:
+        return PLAID_HOSTS[env.lower()]
+    except KeyError:
+        raise ImproperlyConfigured(f"PLAID_ENV must be a URL or one of {sorted(PLAID_HOSTS)}, not {env!r}.") from None
+
+
 def get_plaid_client():
     """Get configured Plaid API client."""
     configuration = Configuration(
-        host=getattr(settings, "PLAID_ENV", "https://sandbox.plaid.com"),
+        host=plaid_host(),
         api_key={
             "clientId": getattr(settings, "PLAID_CLIENT_ID", ""),
             "secret": getattr(settings, "PLAID_SECRET", ""),

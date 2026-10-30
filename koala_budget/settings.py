@@ -575,7 +575,7 @@ BASE_CURRENCY = env("BASE_CURRENCY", default="CAD")
 # Note: don't edit these values here - edit them in your .env file or environment variables!
 PLAID_CLIENT_ID = env("PLAID_CLIENT_ID", default="")
 PLAID_SECRET = env("PLAID_SECRET", default="")
-# Environment: sandbox, development, or production
+# Environment: "sandbox" or "production", or the API's URL
 PLAID_ENV = env("PLAID_ENV", default="https://sandbox.plaid.com")
 # Countries whose banks Plaid Link offers. Koala Budget launches in Canada, so CA
 # comes first; each code must also be enabled for your client in the Plaid
