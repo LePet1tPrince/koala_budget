@@ -16,12 +16,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         created_task_names = []
-        for task_name, task_config in settings.SCHEDULED_TASKS.items():
+        for task_name, configured in settings.SCHEDULED_TASKS.items():
+            # A copy: popping from the settings dict itself would leave it without a
+            # schedule for any later call in the same process (tests, a second run).
+            task_config = dict(configured)
             schedule_spec = task_config.pop("schedule")
             try:
                 schedule, field = ModelEntry.to_model_schedule(schedule_spec)
-            except ValueError:
+            except (ValueError, AttributeError, TypeError):
                 self.stderr.write(self.style.ERROR(f"Invalid schedule type for task {task_name}: {schedule_spec!r}"))
+                continue
 
             task_config[field] = schedule
             task, created = PeriodicTask.objects.update_or_create(
