@@ -80,7 +80,7 @@ export interface PlaidAccountsPartialUpdateRequest {
     bookSlug: string;
     id: number;
     teamSlug: string;
-    patchedPlaidAccount?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'>;
+    patchedPlaidAccount?: Omit<PatchedPlaidAccount, 'id'|'plaid_account_id'|'item'|'item_details'|'account_details'|'name'|'mask'|'subtype'|'type'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'>;
 }
 
 export interface PlaidAccountsRetrieveRequest {

@@ -151,3 +151,18 @@ class BackfillOnMappingTest(PlaidBookTestCase):
             sync_plaid_transactions(self.item.pk)
         self.item.refresh_from_db()
         self.assertIsNone(self.item.cursor)
+
+
+class PlaidAccountReadOnlyFieldsTest(PlaidBookTestCase):
+    def test_plaids_own_fields_cannot_be_rewritten(self):
+        response = self.client.patch(
+            self.url(f"accounts/{self.plaid_checking.pk}/"),
+            {"plaid_account_id": "acc-hijacked", "name": "Renamed", "mask": "0000"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.plaid_checking.refresh_from_db()
+        self.assertEqual(
+            (self.plaid_checking.plaid_account_id, self.plaid_checking.name, self.plaid_checking.mask),
+            ("acc-checking", "Chequing", "1234"),
+        )

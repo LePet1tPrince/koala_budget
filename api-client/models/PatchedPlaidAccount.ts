@@ -45,13 +45,13 @@ export interface PatchedPlaidAccount {
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    plaidAccountId?: string;
+    readonly plaidAccountId?: string;
     /**
      * The Plaid item this account belongs to
      * @type {number}
      * @memberof PatchedPlaidAccount
      */
-    item?: number;
+    readonly item?: number;
     /**
      * 
      * @type {PlaidItem}
@@ -81,25 +81,25 @@ export interface PatchedPlaidAccount {
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    name?: string;
+    readonly name?: string;
     /**
      * Last 4 digits of account number
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    mask?: string;
+    readonly mask?: string;
     /**
      * Account subtype (e.g., checking, savings)
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    subtype?: string;
+    readonly subtype?: string;
     /**
      * Account type (e.g., depository, credit)
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    type?: string;
+    readonly type?: string;
     /**
      * The account's currency (ISO code, or Plaid's unofficial code for e.g. crypto)
      * @type {string}
@@ -165,21 +165,15 @@ export function PatchedPlaidAccountFromJSONTyped(json: any, ignoreDiscriminator:
       return PatchedPlaidAccountToJSONTyped(json, false);
   }
 
-  export function PatchedPlaidAccountToJSONTyped(value?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PatchedPlaidAccountToJSONTyped(value?: Omit<PatchedPlaidAccount, 'id'|'plaid_account_id'|'item'|'item_details'|'account_details'|'name'|'mask'|'subtype'|'type'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
-        'plaid_account_id': value['plaidAccountId'],
-        'item': value['item'],
         'account': value['account'],
         'is_ignored': value['isIgnored'],
-        'name': value['name'],
-        'mask': value['mask'],
-        'subtype': value['subtype'],
-        'type': value['type'],
     };
 }
 

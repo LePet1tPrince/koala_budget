@@ -45,13 +45,13 @@ export interface PlaidAccount {
      * @type {string}
      * @memberof PlaidAccount
      */
-    plaidAccountId: string;
+    readonly plaidAccountId: string;
     /**
      * The Plaid item this account belongs to
      * @type {number}
      * @memberof PlaidAccount
      */
-    item: number;
+    readonly item: number;
     /**
      * 
      * @type {PlaidItem}
@@ -81,25 +81,25 @@ export interface PlaidAccount {
      * @type {string}
      * @memberof PlaidAccount
      */
-    name: string;
+    readonly name: string;
     /**
      * Last 4 digits of account number
      * @type {string}
      * @memberof PlaidAccount
      */
-    mask?: string;
+    readonly mask: string;
     /**
      * Account subtype (e.g., checking, savings)
      * @type {string}
      * @memberof PlaidAccount
      */
-    subtype: string;
+    readonly subtype: string;
     /**
      * Account type (e.g., depository, credit)
      * @type {string}
      * @memberof PlaidAccount
      */
-    type: string;
+    readonly type: string;
     /**
      * The account's currency (ISO code, or Plaid's unofficial code for e.g. crypto)
      * @type {string}
@@ -136,6 +136,7 @@ export function instanceOfPlaidAccount(value: object): value is PlaidAccount {
     if (!('itemDetails' in value) || value['itemDetails'] === undefined) return false;
     if (!('accountDetails' in value) || value['accountDetails'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
+    if (!('mask' in value) || value['mask'] === undefined) return false;
     if (!('subtype' in value) || value['subtype'] === undefined) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
     if (!('isoCurrencyCode' in value) || value['isoCurrencyCode'] === undefined) return false;
@@ -163,7 +164,7 @@ export function PlaidAccountFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'accountDetails': AccountFromJSON(json['account_details']),
         'isIgnored': json['is_ignored'] == null ? undefined : json['is_ignored'],
         'name': json['name'],
-        'mask': json['mask'] == null ? undefined : json['mask'],
+        'mask': json['mask'],
         'subtype': json['subtype'],
         'type': json['type'],
         'isoCurrencyCode': json['iso_currency_code'],
@@ -177,21 +178,15 @@ export function PlaidAccountFromJSONTyped(json: any, ignoreDiscriminator: boolea
       return PlaidAccountToJSONTyped(json, false);
   }
 
-  export function PlaidAccountToJSONTyped(value?: Omit<PlaidAccount, 'id'|'item_details'|'account_details'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PlaidAccountToJSONTyped(value?: Omit<PlaidAccount, 'id'|'plaid_account_id'|'item'|'item_details'|'account_details'|'name'|'mask'|'subtype'|'type'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
-        'plaid_account_id': value['plaidAccountId'],
-        'item': value['item'],
         'account': value['account'],
         'is_ignored': value['isIgnored'],
-        'name': value['name'],
-        'mask': value['mask'],
-        'subtype': value['subtype'],
-        'type': value['type'],
     };
 }
 

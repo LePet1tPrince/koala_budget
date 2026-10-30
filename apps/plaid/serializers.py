@@ -77,16 +77,29 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["iso_currency_code", "is_foreign_currency", "created_at", "updated_at"]
+        # Only the mapping is the user's to change. Everything else is Plaid's:
+        # rewriting plaid_account_id or item would detach the account from the
+        # transactions the sync delivers for it.
+        read_only_fields = [
+            "plaid_account_id",
+            "item",
+            "name",
+            "mask",
+            "subtype",
+            "type",
+            "iso_currency_code",
+            "is_foreign_currency",
+            "created_at",
+            "updated_at",
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Scope writable FKs to the current book so a PATCH can't link a Plaid
-        # account to another tenant's ledger account or item
+        # Scope the writable FK to the current book so a PATCH can't link a Plaid
+        # account to another tenant's ledger account
         request = self.context.get("request")
         if request is not None and getattr(request, "book", None):
             self.fields["account"].queryset = Account.for_book.exclude_budget_buckets()
-            self.fields["item"].queryset = PlaidItem.for_book.all()
 
     def validate_account(self, account):
         """
