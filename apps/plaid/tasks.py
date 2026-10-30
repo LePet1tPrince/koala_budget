@@ -4,12 +4,14 @@ Handles background transaction syncing and updates.
 """
 
 import logging
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
+from plaid import ApiException
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
@@ -17,7 +19,7 @@ from apps.bank_feed.models import BankTransaction
 from apps.books.context import set_current_book, unset_current_book
 
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
-from .services import sync_transactions
+from .services import plaid_error_code, sync_transactions
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,55 @@ def plaid_details(tx_data) -> dict:
     }
 
 
+#: How often a sync restarts from its saved cursor when Plaid reports that the
+#: data changed under it mid-pagination, before giving up until the next sync.
+MAX_PAGINATION_RESTARTS = 3
+
+MUTATION_DURING_PAGINATION = "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION"
+
+
+class PaginationRestartsExhausted(RuntimeError):
+    """Plaid kept changing the data mid-pagination; the next sync will try again."""
+
+
+@dataclass
+class SyncUpdates:
+    added: list = field(default_factory=list)
+    modified: list = field(default_factory=list)
+    removed: list = field(default_factory=list)
+    next_cursor: str | None = None
+
+
+def fetch_updates(plaid_item: PlaidItem) -> SyncUpdates:
+    """
+    Every page of /transactions/sync from the item's saved cursor, collected
+    before anything is applied.
+
+    Plaid's contract: if the data changes while the pages are being read, the
+    call fails with TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION and the whole
+    read must restart from the cursor it began with -- pages already read are
+    void. Applying page by page (as this used to) would have committed them.
+    """
+    for _attempt in range(MAX_PAGINATION_RESTARTS + 1):
+        updates = SyncUpdates()
+        cursor = plaid_item.cursor
+        try:
+            while True:
+                result = sync_transactions(access_token=plaid_item.access_token, cursor=cursor)
+                updates.added.extend(result["added"])
+                updates.modified.extend(result["modified"])
+                updates.removed.extend(result["removed"])
+                cursor = result["next_cursor"]
+                if not result["has_more"]:
+                    updates.next_cursor = cursor
+                    return updates
+        except ApiException as exc:
+            if plaid_error_code(exc) != MUTATION_DURING_PAGINATION:
+                raise
+            logger.info("Plaid data changed mid-sync for item %s; restarting from the saved cursor", plaid_item.id)
+    raise PaginationRestartsExhausted(f"Plaid kept changing data mid-sync for item {plaid_item.id}")
+
+
 @shared_task
 def sync_plaid_transactions(plaid_item_id: int):
     """
@@ -87,44 +138,28 @@ def sync_plaid_transactions(plaid_item_id: int):
 
         log_event(AuditEvent.PLAID_SYNC_STARTED, book=plaid_item.book, metadata={"plaid_item_id": plaid_item_id})
 
-        # Get the cursor for incremental sync
-        cursor = plaid_item.cursor
+        updates = fetch_updates(plaid_item)
 
-        has_more = True
-        total_added = 0
-        total_modified = 0
-        total_removed = 0
-
-        while has_more:
-            # Sync transactions
-            result = sync_transactions(
-                access_token=plaid_item.access_token,
-                cursor=cursor,
-            )
-
-            # Process added transactions
-            for tx_data in result["added"]:
+        # The rows and the cursor commit together. Saving the cursor separately
+        # would let a crash between the two either skip updates (cursor saved,
+        # rows not) or re-apply them; applying everything at once also means a
+        # posted transaction and the removal of its pending one are always seen
+        # side by side, whichever page Plaid put them on.
+        with transaction.atomic():
+            for tx_data in updates.added:
                 process_added_transaction(plaid_item, tx_data)
-                total_added += 1
-
-            # Process modified transactions
-            for tx_data in result["modified"]:
+            for tx_data in updates.modified:
                 process_modified_transaction(plaid_item, tx_data)
-                total_modified += 1
-
-            # Process removed transactions
-            for tx_data in result["removed"]:
+            for tx_data in updates.removed:
                 process_removed_transaction(plaid_item, tx_data)
-                total_removed += 1
 
-            # Update cursor and check if there's more
-            cursor = result["next_cursor"]
-            has_more = result["has_more"]
+            plaid_item.cursor = updates.next_cursor
+            plaid_item.last_synced_at = timezone.now()
+            plaid_item.save(update_fields=["cursor", "last_synced_at", "updated_at"])
 
-        # Save the final cursor and record the successful sync time
-        plaid_item.cursor = cursor
-        plaid_item.last_synced_at = timezone.now()
-        plaid_item.save()
+        total_added = len(updates.added)
+        total_modified = len(updates.modified)
+        total_removed = len(updates.removed)
 
         log_event(
             AuditEvent.PLAID_SYNC_COMPLETED,

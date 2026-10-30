@@ -2,11 +2,13 @@
 Tests for the Plaid app: webhook receiver and the transaction sync task.
 """
 
+import json
 from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase
+from plaid import ApiException
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, Account, AccountGroup
 from apps.audit.models import AuditEvent
@@ -14,7 +16,7 @@ from apps.bank_feed.models import BankTransaction
 from apps.books.context import get_current_book
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
-from apps.plaid.tasks import sync_plaid_transactions
+from apps.plaid.tasks import PaginationRestartsExhausted, sync_plaid_transactions
 from apps.teams.models import Team
 
 
@@ -242,6 +244,53 @@ class PlaidSyncTaskTest(TestCase):
         self.assertEqual(self.item.cursor, "c0")
         self.assertTrue(AuditEvent.objects.filter(book=self.book, event_type=AuditEvent.PLAID_SYNC_FAILED).exists())
         self.assertIsNone(get_current_book())
+
+    def test_mutation_during_pagination_restarts_from_the_saved_cursor(self):
+        """Pages read before Plaid's data changed are void; the read starts again from c0."""
+        mutation = ApiException(status=400)
+        mutation.body = json.dumps({"error_code": "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION"})
+        result, mock_sync = self.run_sync(
+            self.page(added=[self.tx("tx-stale")], next_cursor="c1", has_more=True),
+            mutation,
+            self.page(added=[self.tx("tx-1")], next_cursor="c1", has_more=True),
+            self.page(added=[self.tx("tx-2")], next_cursor="c2"),
+        )
+        self.assertEqual([call.kwargs["cursor"] for call in mock_sync.call_args_list], ["c0", "c1", "c0", "c1"])
+        self.assertEqual(result["added"], 2)
+        ids = set(BankTransaction.objects.values_list("plaid_transaction__plaid_transaction_id", flat=True))
+        self.assertEqual(ids, {"tx-1", "tx-2"})
+        self.assertEqual(self.item.cursor, "c2")
+
+    def test_endless_mutation_gives_up_without_writing(self):
+        def mutation(*args, **kwargs):
+            exc = ApiException(status=400)
+            exc.body = json.dumps({"error_code": "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION"})
+            raise exc
+
+        with (
+            patch("apps.plaid.tasks.sync_transactions", side_effect=mutation),
+            self.assertRaises(PaginationRestartsExhausted),
+            self.assertLogs("apps.plaid.tasks", level="ERROR"),
+        ):
+            sync_plaid_transactions(self.item.id)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.cursor, "c0")
+
+    def test_a_failure_while_applying_writes_nothing_and_keeps_the_cursor(self):
+        """Rows and cursor commit together, so a crash part-way leaves both as they were."""
+        with (
+            patch("apps.plaid.tasks.process_modified_transaction", side_effect=RuntimeError("boom")),
+            patch(
+                "apps.plaid.tasks.sync_transactions",
+                return_value=self.page(added=[self.tx("tx-1")], modified=[self.tx("tx-2")]),
+            ),
+            self.assertRaises(RuntimeError),
+            self.assertLogs("apps.plaid.tasks", level="ERROR"),
+        ):
+            sync_plaid_transactions(self.item.id)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.cursor, "c0")
+        self.assertFalse(BankTransaction.objects.filter(book=self.book).exists())
 
     def test_an_unknown_item_reports_rather_than_raises(self):
         self.assertEqual(sync_plaid_transactions(999999), {"success": False, "error": "PlaidItem not found"})

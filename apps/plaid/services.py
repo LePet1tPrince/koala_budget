@@ -3,6 +3,8 @@ Plaid API service layer.
 Handles all interactions with the Plaid API.
 """
 
+import json
+
 from django.conf import settings
 from django.urls import reverse
 from django.utils import translation
@@ -15,6 +17,21 @@ from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUse
 from plaid.model.link_token_transactions import LinkTokenTransactions
 from plaid.model.products import Products
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
+
+
+def plaid_error_code(exc) -> str | None:
+    """
+    The `error_code` of a failed Plaid API call (e.g. ITEM_LOGIN_REQUIRED), or
+    None when `exc` is not a Plaid API error or carries no readable body.
+    """
+    body = getattr(exc, "body", None)
+    if not body:
+        return None
+    try:
+        data = json.loads(body)
+    except (TypeError, ValueError):
+        return None
+    return data.get("error_code") if isinstance(data, dict) else None
 
 
 def get_plaid_client():
