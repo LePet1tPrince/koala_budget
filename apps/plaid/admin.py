@@ -20,7 +20,8 @@ class PlaidItemAdmin(admin.ModelAdmin):
     fields = [
         "plaid_item_id",
         "institution_name",
-        "access_token",
+        "status",
+        "error_code",
         "cursor",
         "is_archived",
         "book",

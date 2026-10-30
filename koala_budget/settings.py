@@ -604,10 +604,12 @@ PLAID_SCHEDULED_SYNC_STAGGER_SECONDS = env.int("PLAID_SCHEDULED_SYNC_STAGGER_SEC
 # How much history a newly linked bank backfills (Plaid's default is 90, the max 730).
 PLAID_TRANSACTIONS_DAYS_REQUESTED = env.int("PLAID_TRANSACTIONS_DAYS_REQUESTED", default=730)
 
-# django-encrypted-model-fields configuration
-# Generate a proper Fernet key from the SECRET_KEY
-# In production, set FIELD_ENCRYPTION_KEY in your .env file to a proper Fernet key
-# You can generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Key(s) for encrypted model fields (apps.utils.fields.EncryptedTextField, e.g.
+# PlaidItem.access_token). The default derives one from SECRET_KEY; in production
+# set FIELD_ENCRYPTION_KEY to a real Fernet key, kept apart from SECRET_KEY:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# To rotate, put the new key first and keep the old ones after it, comma-separated:
+# values are written with the first and read with any.
 import base64  # noqa: E402
 import hashlib  # noqa: E402
 

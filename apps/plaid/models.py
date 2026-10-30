@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.books.models import BaseBookModel
+from apps.utils.fields import EncryptedTextField
 
 
 def is_foreign_currency(code) -> bool:
@@ -42,9 +43,9 @@ class PlaidItem(BaseBookModel):
     BLOCKED_STATUSES = (STATUS_LOGIN_REQUIRED, STATUS_REVOKED)
 
     plaid_item_id = models.CharField(max_length=255, unique=True, help_text="Plaid's unique identifier for this item")
-    # TODO: Encrypt this field in production using django-encrypted-model-fields or similar
-    access_token = models.CharField(max_length=512, help_text="Access token for Plaid API")
-    # access_token = EncryptedCharField(max_length=512, help_text="Access token for Plaid API")
+    # Encrypted at rest with FIELD_ENCRYPTION_KEY: whoever holds it can read the
+    # user's bank transactions.
+    access_token = EncryptedTextField(help_text="Access token for Plaid API (encrypted at rest)")
     institution_name = models.CharField(max_length=255, help_text="Name of the financial institution")
 
     cursor = models.CharField(
