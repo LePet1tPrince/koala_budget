@@ -14,8 +14,8 @@ from django.db.models import Count
 
 from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
 from apps.budget import ledger as budget_ledger
+from apps.budget.figures import budget_categories
 from apps.budget.services import BudgetService
-from apps.budget.views import _budget_categories
 from apps.journal.models import JournalLine, counted_entries
 from apps.utils.months import add_months
 
@@ -96,7 +96,7 @@ def budget_breakdown(book, month) -> dict:
           "over_assigned": [ same shape, ...],
         }
     """
-    categories = list(_budget_categories(book))
+    categories = list(budget_categories(book))
     category_ids = [c.pk for c in categories]
     month_start, month_end = _month_bounds(month)
     prev_month = add_months(month_start, -1)
