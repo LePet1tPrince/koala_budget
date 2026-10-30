@@ -39,6 +39,18 @@ class PlaidItem(BaseBookModel):
         help_text="When transactions were last successfully synced from Plaid",
     )
 
+    # The sync lock (see apps.plaid.sync_lock): set while a sync runs, so a
+    # webhook, the schedule and the Refresh button never sync one item at once.
+    sync_lock_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="A sync holds this item until then (expires, so a crashed worker can't hold it forever)",
+    )
+    sync_requested = models.BooleanField(
+        default=False,
+        help_text="A sync was asked for while one was running; the running one goes again when done",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Plaid Item"

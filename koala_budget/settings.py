@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import environ
+from celery import schedules
 from corsheaders.defaults import default_headers
 from django.utils.translation import gettext_lazy
 
@@ -498,6 +499,12 @@ SCHEDULED_TASKS = {
     #     "task": "some.task.path",
     #     "schedule": schedules.crontab(minute=0, hour=4),
     # },
+    # Catch up Plaid items a webhook missed. Hourly, off the top of the hour; each
+    # run only touches items not synced in PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS.
+    "plaid-sync-catch-up": {
+        "task": "apps.plaid.tasks.sync_all_plaid_items",
+        "schedule": schedules.crontab(minute=23),
+    },
 }
 
 # Health Checks
@@ -586,6 +593,11 @@ PLAID_WEBHOOK_URL = env("PLAID_WEBHOOK_URL", default="")
 # OAuth redirect URI, required by OAuth institutions. Must be registered in the
 # Plaid dashboard. Blank sends none.
 PLAID_REDIRECT_URI = env("PLAID_REDIRECT_URI", default="")
+# The scheduled catch-up sync (SCHEDULED_TASKS["plaid-sync-catch-up"]): which
+# items it picks up, how many per run, and how far apart it starts them.
+PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS = env.int("PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS", default=6)
+PLAID_SCHEDULED_SYNC_BATCH_SIZE = env.int("PLAID_SCHEDULED_SYNC_BATCH_SIZE", default=500)
+PLAID_SCHEDULED_SYNC_STAGGER_SECONDS = env.int("PLAID_SCHEDULED_SYNC_STAGGER_SECONDS", default=2)
 # How much history a newly linked bank backfills (Plaid's default is 90, the max 730).
 PLAID_TRANSACTIONS_DAYS_REQUESTED = env.int("PLAID_TRANSACTIONS_DAYS_REQUESTED", default=730)
 

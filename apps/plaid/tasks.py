@@ -6,11 +6,13 @@ Handles background transaction syncing and updates.
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
+from django.db.models import F, Q
 from django.utils import timezone
 from plaid import ApiException
 
@@ -21,6 +23,7 @@ from apps.bank_feed.services.bank_revision import Revision, difference_rows, rev
 from apps.books.context import set_current_book, unset_current_book
 from apps.journal.services import voiding
 
+from . import sync_lock
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .services import plaid_error_code, sync_transactions
 
@@ -120,11 +123,47 @@ def fetch_updates(plaid_item: PlaidItem) -> SyncUpdates:
     raise PaginationRestartsExhausted(f"Plaid kept changing data mid-sync for item {plaid_item.id}")
 
 
+#: How many times one sync goes round for reruns requested while it ran.
+MAX_RERUNS = 3
+
+
 @shared_task
-def sync_plaid_transactions(plaid_item_id: int):
+def sync_plaid_transactions(plaid_item_id: int, scheduled: bool = False):
     """
-    Sync transactions for a specific Plaid item.
-    Uses the /transactions/sync endpoint with cursor-based pagination.
+    Sync transactions for a specific Plaid item, holding its sync lock.
+
+    When another sync holds the lock, a webhook- or user-triggered sync asks it
+    to go round again (so the new data is not missed) and returns; a scheduled
+    one just skips -- the item is being synced anyway.
+
+    Args:
+        plaid_item_id: ID of the PlaidItem to sync
+        scheduled: True for the periodic catch-up (`sync_all_plaid_items`)
+    """
+    if not PlaidItem.objects.filter(pk=plaid_item_id).exists():
+        return {"success": False, "error": "PlaidItem not found"}
+
+    if not sync_lock.claim(plaid_item_id):
+        if not scheduled and sync_lock.request_rerun(plaid_item_id):
+            return {"success": True, "status": "rerun_requested"}
+        if scheduled or not sync_lock.claim(plaid_item_id):
+            return {"success": False, "status": "busy"}
+
+    try:
+        for _round in range(MAX_RERUNS + 1):
+            result = _sync_item(plaid_item_id)
+            if sync_lock.release(plaid_item_id):
+                return result
+        sync_lock.force_release(plaid_item_id)
+        return result
+    except BaseException:
+        sync_lock.force_release(plaid_item_id)
+        raise
+
+
+def _sync_item(plaid_item_id: int):
+    """
+    One pass of /transactions/sync for an item, from its saved cursor.
 
     Args:
         plaid_item_id: ID of the PlaidItem to sync
@@ -356,14 +395,30 @@ def process_removed_transaction(plaid_item: PlaidItem, tx_data: dict) -> str:
 @shared_task
 def sync_all_plaid_items():
     """
-    Sync transactions for all Plaid items.
-    This can be run on a schedule (e.g., every hour).
+    The scheduled catch-up (SCHEDULED_TASKS["plaid-sync-catch-up"]).
+
+    Sync is driven by Plaid's webhooks; this catches what a missed or failed
+    webhook would otherwise leave behind. It queues only items not synced in
+    PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS (so a webhook-fed item costs nothing),
+    stalest first, at most PLAID_SCHEDULED_SYNC_BATCH_SIZE per run, staggered
+    PLAID_SCHEDULED_SYNC_STAGGER_SECONDS apart so a run doesn't hit Plaid all at
+    once. Each runs with `scheduled=True`: an item already syncing is skipped.
     """
-    all_items = PlaidItem.objects.all()
+    cutoff = timezone.now() - timedelta(hours=settings.PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS)
+    items = list(
+        PlaidItem.objects.filter(is_archived=False)
+        .filter(Q(last_synced_at__isnull=True) | Q(last_synced_at__lt=cutoff))
+        .order_by(F("last_synced_at").asc(nulls_first=True), "pk")
+        .values_list("pk", flat=True)[: settings.PLAID_SCHEDULED_SYNC_BATCH_SIZE]
+    )
 
     results = []
-    for item in all_items:
-        result = sync_plaid_transactions.delay(item.id)
-        results.append({"item_id": item.id, "task_id": result.id})
+    for position, item_id in enumerate(items):
+        task = sync_plaid_transactions.apply_async(
+            args=[item_id],
+            kwargs={"scheduled": True},
+            countdown=position * settings.PLAID_SCHEDULED_SYNC_STAGGER_SECONDS,
+        )
+        results.append({"item_id": item_id, "task_id": task.id})
 
     return {"success": True, "synced_items": len(results), "tasks": results}
