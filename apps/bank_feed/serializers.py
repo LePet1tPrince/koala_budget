@@ -542,3 +542,80 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "split_count": len(split_legs),
         "splits": split_legs,
     }
+
+
+class ManualTransactionSerializer(serializers.Serializer):
+    """Serializer for creating/updating manual transactions."""
+
+    date = serializers.DateField(help_text="Transaction date")
+    category = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="Category account ID (optional; leave blank to keep the transaction uncategorized)",
+    )
+    inflow = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        default=Decimal("0"),
+        help_text="Money coming in",
+    )
+    outflow = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        default=Decimal("0"),
+        help_text="Money going out",
+    )
+    payee = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Payee/merchant name",
+    )
+    description = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Transaction description",
+    )
+    account = serializers.IntegerField(help_text="Bank account ID")
+    splits = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text=(
+            "Split this transaction across categories. Each item is "
+            '{"category": <account id>, "amount": "<signed decimal>"}, positive for an '
+            "outflow. The amounts must add up to outflow - inflow. Mutually exclusive "
+            "with `category`."
+        ),
+    )
+    remove_split = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text=(
+            "Collapse an existing split back onto the single `category` given. "
+            "Required because dropping a split is destructive, so it must be asked "
+            "for rather than implied by a request that simply omits `splits`."
+        ),
+    )
+
+    def validate(self, data):
+        inflow = data.get("inflow") or Decimal("0")
+        outflow = data.get("outflow") or Decimal("0")
+        if inflow < 0 or outflow < 0:
+            raise serializers.ValidationError("Inflow and outflow must not be negative.")
+        if inflow > 0 and outflow > 0:
+            raise serializers.ValidationError("Specify either inflow or outflow, not both.")
+        if inflow == 0 and outflow == 0:
+            raise serializers.ValidationError("Either inflow or outflow must be greater than zero.")
+        # The leg contents are validated by `parse_legs`, so the rules and their
+        # wording live in one place; only the either/or belongs here.
+        if data.get("splits") is not None and data.get("category") is not None:
+            raise serializers.ValidationError("Send either a single category or splits, not both.")
+        return data

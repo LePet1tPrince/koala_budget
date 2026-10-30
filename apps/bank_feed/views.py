@@ -3,14 +3,12 @@ Views for bank_feed app.
 Provides API endpoints for imported transactions and unified bank feed.
 """
 
-from decimal import Decimal
-
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import mixins, serializers, status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
@@ -40,6 +38,7 @@ from .serializers import (
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
     FeedAccountSerializer,
+    ManualTransactionSerializer,
     SimilarCategorySuggestionSerializer,
     TransferDismissRequestSerializer,
     TransferMatchRequestSerializer,
@@ -64,83 +63,6 @@ from .services.transfer_match import MatchError, ProposalChanged, match_transfer
 # Upper bound on how many transactions one similar-category request may ask about.
 # The categorize view only ever needs the handful of cards it is about to show.
 MAX_SIMILAR_CATEGORY_IDS = 50
-
-
-class ManualTransactionSerializer(serializers.Serializer):
-    """Serializer for creating/updating manual transactions."""
-
-    date = serializers.DateField(help_text="Transaction date")
-    category = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        default=None,
-        help_text="Category account ID (optional; leave blank to keep the transaction uncategorized)",
-    )
-    inflow = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        required=False,
-        default=Decimal("0"),
-        help_text="Money coming in",
-    )
-    outflow = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        required=False,
-        default=Decimal("0"),
-        help_text="Money going out",
-    )
-    payee = serializers.CharField(
-        max_length=255,
-        required=False,
-        allow_blank=True,
-        default="",
-        help_text="Payee/merchant name",
-    )
-    description = serializers.CharField(
-        max_length=255,
-        required=False,
-        allow_blank=True,
-        default="",
-        help_text="Transaction description",
-    )
-    account = serializers.IntegerField(help_text="Bank account ID")
-    splits = serializers.ListField(
-        child=serializers.DictField(),
-        required=False,
-        allow_null=True,
-        default=None,
-        help_text=(
-            "Split this transaction across categories. Each item is "
-            '{"category": <account id>, "amount": "<signed decimal>"}, positive for an '
-            "outflow. The amounts must add up to outflow - inflow. Mutually exclusive "
-            "with `category`."
-        ),
-    )
-    remove_split = serializers.BooleanField(
-        required=False,
-        default=False,
-        help_text=(
-            "Collapse an existing split back onto the single `category` given. "
-            "Required because dropping a split is destructive, so it must be asked "
-            "for rather than implied by a request that simply omits `splits`."
-        ),
-    )
-
-    def validate(self, data):
-        inflow = data.get("inflow") or Decimal("0")
-        outflow = data.get("outflow") or Decimal("0")
-        if inflow < 0 or outflow < 0:
-            raise serializers.ValidationError("Inflow and outflow must not be negative.")
-        if inflow > 0 and outflow > 0:
-            raise serializers.ValidationError("Specify either inflow or outflow, not both.")
-        if inflow == 0 and outflow == 0:
-            raise serializers.ValidationError("Either inflow or outflow must be greater than zero.")
-        # The leg contents are validated by `parse_legs`, so the rules and their
-        # wording live in one place; only the either/or belongs here.
-        if data.get("splits") is not None and data.get("category") is not None:
-            raise serializers.ValidationError("Send either a single category or splits, not both.")
-        return data
 
 
 FEED_QUERY_PARAMETERS = [
@@ -423,7 +345,6 @@ class BankFeedViewSet(
         - payee: Payee/merchant name (optional)
         - description: Transaction description (optional)
         - account: Bank account ID
-        - splits / remove_split: see `ManualTransactionSerializer`
         """
         try:
             bank_tx = manual.editable_transaction(request.book, pk)
@@ -1081,6 +1002,17 @@ class BankFeedViewSet(
 # # Template Views
 
 
+def _picker_context(book):
+    """The category, payee and account-group options both feed pages hand their React mounts."""
+    return {
+        "all_accounts": picker_accounts_data(book),
+        "all_payees": PayeeSerializer(Payee.objects.filter(book=book).order_by("name"), many=True).data,
+        "all_account_groups": AccountGroupSerializer(
+            category_groups(book).order_by("account_type", "name"), many=True
+        ).data,
+    }
+
+
 @login_and_book_required
 def bank_feed_home(request, team_slug, book_slug):
     """
@@ -1089,14 +1021,6 @@ def bank_feed_home(request, team_slug, book_slug):
     """
     # Serialize accounts for React
     accounts_data = FeedAccountSerializer(feed_accounts(request.book), many=True).data
-
-    # Get all accounts, payees, and account groups for dropdowns
-    all_payees = Payee.for_book.all().order_by("name")
-    all_account_groups = category_groups(request.book).order_by("account_type", "name")
-
-    all_accounts_data = picker_accounts_data(request.book)
-    all_payees_data = PayeeSerializer(all_payees, many=True).data
-    all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
 
     # API URLs
     api_urls = {
@@ -1112,9 +1036,7 @@ def bank_feed_home(request, team_slug, book_slug):
             "active_tab": "bank-feed",
             "page_title": _("Bank Feed | {name}").format(name=book_display_name(request.book)),
             "accounts": accounts_data,
-            "all_accounts": all_accounts_data,
-            "all_payees": all_payees_data,
-            "all_account_groups": all_account_groups_data,
+            **_picker_context(request.book),
             "api_urls": api_urls,
         },
     )
@@ -1125,13 +1047,6 @@ def categorize_mode(request, team_slug, book_slug):
     """Categorize mode — gamified single-transaction categorization view."""
     from django.urls import reverse
 
-    all_account_groups = category_groups(request.book).order_by("account_type", "name")
-    all_payees = Payee.for_book.all().order_by("name")
-
-    all_accounts_data = picker_accounts_data(request.book)
-    all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
-    all_payees_data = PayeeSerializer(all_payees, many=True).data
-
     back_url = reverse("bank_feed:bank_feed_home", kwargs={"team_slug": team_slug, "book_slug": book_slug})
 
     return render(
@@ -1139,9 +1054,7 @@ def categorize_mode(request, team_slug, book_slug):
         "bank_feed/categorize_mode.html",
         {
             "page_title": _("Categorize Mode | {name}").format(name=book_display_name(request.book)),
-            "all_accounts": all_accounts_data,
-            "all_account_groups": all_account_groups_data,
-            "all_payees": all_payees_data,
+            **_picker_context(request.book),
             "back_url": back_url,
         },
     )
