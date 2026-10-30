@@ -212,11 +212,14 @@ class PlaidSyncTaskTest(TestCase):
         self.assertEqual(bank_tx.amount, Decimal("15.00"))
         self.assertEqual(bank_tx.description, "COFFEE SHOP #2")
 
-    def test_modified_leaves_a_categorized_row_alone(self):
+    def test_modified_carries_the_amount_onto_a_categorized_row(self):
+        """The bank's figure wins; the category stays (see test_pending for the guards)."""
         self.run_sync(self.page(added=[self.tx()]))
         self.categorize(BankTransaction.objects.get(book=self.book))
         self.run_sync(self.page(modified=[self.tx(amount="99.00")], next_cursor="c2"))
-        self.assertEqual(BankTransaction.objects.get(book=self.book).amount, Decimal("12.50"))
+        bank_tx = BankTransaction.objects.get(book=self.book)
+        self.assertEqual(bank_tx.amount, Decimal("99.00"))
+        self.assertEqual(bank_tx.journal_entry.lines.get(account=self.groceries).dr_amount, Decimal("99.00"))
 
     def test_modified_for_an_unknown_row_adds_it(self):
         self.run_sync(self.page(modified=[self.tx("tx-new")]))
@@ -227,11 +230,13 @@ class PlaidSyncTaskTest(TestCase):
         self.run_sync(self.page(removed=[{"transaction_id": "tx-1"}], next_cursor="c2"))
         self.assertFalse(BankTransaction.objects.filter(book=self.book).exists())
 
-    def test_removed_keeps_a_categorized_row(self):
+    def test_removed_voids_a_categorized_row(self):
         self.run_sync(self.page(added=[self.tx()]))
         self.categorize(BankTransaction.objects.get(book=self.book))
         self.run_sync(self.page(removed=[{"transaction_id": "tx-1"}], next_cursor="c2"))
-        self.assertTrue(BankTransaction.objects.filter(book=self.book).exists())
+        bank_tx = BankTransaction.objects.get(book=self.book)
+        self.assertTrue(bank_tx.is_void)
+        self.assertEqual(bank_tx.journal_entry.status, JournalEntry.STATUS_VOID)
 
     def test_a_failed_sync_is_logged_and_keeps_the_cursor(self):
         with (

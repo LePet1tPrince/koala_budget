@@ -4,6 +4,7 @@ Handles background transaction syncing and updates.
 """
 
 import logging
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -16,7 +17,9 @@ from plaid import ApiException
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
+from apps.bank_feed.services.bank_revision import Revision, difference_rows, revise
 from apps.books.context import set_current_book, unset_current_book
+from apps.journal.services import voiding
 
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .services import plaid_error_code, sync_transactions
@@ -145,13 +148,16 @@ def sync_plaid_transactions(plaid_item_id: int):
         # rows not) or re-apply them; applying everything at once also means a
         # posted transaction and the removal of its pending one are always seen
         # side by side, whichever page Plaid put them on.
+        outcomes = Counter()
         with transaction.atomic():
+            # Added first: a posted transaction must claim its pending row before
+            # the pending one's removal is processed.
             for tx_data in updates.added:
-                process_added_transaction(plaid_item, tx_data)
+                outcomes[process_added_transaction(plaid_item, tx_data)] += 1
             for tx_data in updates.modified:
-                process_modified_transaction(plaid_item, tx_data)
+                outcomes[process_modified_transaction(plaid_item, tx_data)] += 1
             for tx_data in updates.removed:
-                process_removed_transaction(plaid_item, tx_data)
+                outcomes[f"removed_{process_removed_transaction(plaid_item, tx_data)}"] += 1
 
             plaid_item.cursor = updates.next_cursor
             plaid_item.last_synced_at = timezone.now()
@@ -169,6 +175,7 @@ def sync_plaid_transactions(plaid_item_id: int):
                 "added": total_added,
                 "modified": total_modified,
                 "removed": total_removed,
+                "outcomes": dict(outcomes),
             },
         )
 
@@ -194,13 +201,48 @@ def sync_plaid_transactions(plaid_item_id: int):
             unset_current_book(context_token)
 
 
+def _revision(tx_data) -> Revision:
+    return Revision(
+        amount=Decimal(str(tx_data["amount"])),
+        posted_date=tx_data["date"],
+        description=tx_data["name"],
+        merchant_name=tx_data.get("merchant_name"),
+    )
+
+
+def _plaid_tx(plaid_item, transaction_id):
+    """The item's PlaidTransaction for a Plaid transaction id, or None."""
+    return (
+        PlaidTransaction.objects.select_related("bank_transaction")
+        .filter(plaid_transaction_id=transaction_id, plaid_account__item=plaid_item)
+        .first()
+    )
+
+
+def _apply_plaid_fields(plaid_tx, tx_data):
+    plaid_tx.iso_currency_code = tx_data.get("iso_currency_code")
+    plaid_tx.unofficial_currency_code = tx_data.get("unofficial_currency_code")
+    for name, value in plaid_details(tx_data).items():
+        setattr(plaid_tx, name, value)
+
+
 @transaction.atomic
-def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
+def process_added_transaction(plaid_item: PlaidItem, tx_data: dict) -> str:
     """
-    Process a newly added transaction from Plaid.
-    Creates BankTransaction and PlaidTransaction records.
+    Process a newly added transaction from Plaid: a new feed row, or -- for a
+    posted transaction that settles a pending one -- the pending row carried
+    forward. Returns what happened ("added", "settled" or "skipped").
     """
-    # Get the plaid account
+    if PlaidTransaction.objects.filter(plaid_transaction_id=tx_data["transaction_id"]).exists():
+        return "skipped"
+
+    pending_id = tx_data.get("pending_transaction_id")
+    if pending_id:
+        pending = _plaid_tx(plaid_item, pending_id)
+        if pending is not None and not pending.bank_transaction.is_void:
+            settle_pending(pending, tx_data)
+            return "settled"
+
     plaid_account = PlaidAccount.objects.filter(
         item=plaid_item,
         plaid_account_id=tx_data["account_id"],
@@ -208,11 +250,7 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
 
     if not plaid_account or not plaid_account.account:
         # Skip if account not found or not mapped to ledger account
-        return
-
-    # Check if transaction already exists
-    if PlaidTransaction.objects.filter(plaid_transaction_id=tx_data["transaction_id"]).exists():
-        return
+        return "skipped"
 
     # Create bank transaction
     bank_transaction = BankTransaction.objects.create(
@@ -236,60 +274,83 @@ def process_added_transaction(plaid_item: PlaidItem, tx_data: dict):
         unofficial_currency_code=tx_data.get("unofficial_currency_code"),
         **plaid_details(tx_data),
     )
+    return "added"
 
 
 @transaction.atomic
-def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict):
+def settle_pending(pending: PlaidTransaction, tx_data: dict):
     """
-    Process a modified transaction from Plaid.
-    Updates the existing BankTransaction and PlaidTransaction records.
+    Carry a posted transaction onto the row its pending authorization made.
+
+    Plaid reports a settlement as a new posted transaction (whose
+    `pending_transaction_id` names the pending one) plus the pending one in
+    `removed`. Taken literally, that deletes or orphans the row the user may
+    already have categorized and adds a second, uncategorized row for the same
+    money -- which double-counts once categorized. Instead the existing row
+    becomes the posted transaction: it takes the posted id (so the removal of
+    the pending id finds nothing) and the bank's posted amount and date, through
+    `bank_revision.revise`, which keeps the category and respects reconciliation.
     """
-    try:
-        plaid_tx = PlaidTransaction.objects.select_related("bank_transaction").get(
-            plaid_transaction_id=tx_data["transaction_id"],
-            book=plaid_item.book,
-        )
+    bank_tx = pending.bank_transaction
+    pending.plaid_transaction_id = tx_data["transaction_id"]
+    _apply_plaid_fields(pending, tx_data)
+    pending.pending_transaction_id = pending.pending_transaction_id or tx_data.get("pending_transaction_id")
+    pending.save()
 
-        # Only update if not yet categorized (journal_entry is null)
-        if plaid_tx.bank_transaction.journal_entry is None:
-            # Update bank transaction
-            plaid_tx.bank_transaction.amount = tx_data["amount"]
-            plaid_tx.bank_transaction.posted_date = tx_data["date"]
-            plaid_tx.bank_transaction.description = tx_data["name"]
-            plaid_tx.bank_transaction.merchant_name = tx_data.get("merchant_name")
-            plaid_tx.bank_transaction.raw = _as_dict(tx_data)
-            plaid_tx.bank_transaction.save()
+    revise(bank_tx, _revision(tx_data))
+    BankTransaction.objects.filter(pk=bank_tx.pk).update(raw=_as_dict(tx_data))
 
-            # Update plaid transaction
-            for field, value in plaid_details(tx_data).items():
-                setattr(plaid_tx, field, value)
-            plaid_tx.save()
 
-    except PlaidTransaction.DoesNotExist:
+@transaction.atomic
+def process_modified_transaction(plaid_item: PlaidItem, tx_data: dict) -> str:
+    """
+    Process a modified transaction from Plaid: the bank's new figures carried
+    onto the existing row, categorized or not (`bank_revision.revise`).
+    """
+    plaid_tx = _plaid_tx(plaid_item, tx_data["transaction_id"])
+    if plaid_tx is None:
         # If not found, treat as new
-        process_added_transaction(plaid_item, tx_data)
+        return process_added_transaction(plaid_item, tx_data)
+
+    _apply_plaid_fields(plaid_tx, tx_data)
+    plaid_tx.save()
+    revise(plaid_tx.bank_transaction, _revision(tx_data))
+    BankTransaction.objects.filter(pk=plaid_tx.bank_transaction_id).update(raw=_as_dict(tx_data))
+    return "revised"
 
 
 @transaction.atomic
-def process_removed_transaction(plaid_item: PlaidItem, tx_data: dict):
+def process_removed_transaction(plaid_item: PlaidItem, tx_data: dict) -> str:
     """
-    Process a removed transaction from Plaid.
-    Deletes the BankTransaction and PlaidTransaction if it hasn't been categorized.
+    Process a transaction Plaid no longer reports -- typically a pending
+    authorization that was cancelled (a settled one was already carried forward
+    by `settle_pending`, so its pending id finds nothing here).
+
+    - Uncategorized: deleted; nothing refers to it.
+    - Categorized: voided (with any difference rows), so it drops out of every
+      balance but stays in the Inbox's Voided view, where the user can restore
+      it if the bank was wrong. Keeping it live would leave spending in the
+      books that never happened.
+    - Reconciled: kept, since voiding would falsify a statement; logged.
     """
+    plaid_tx = _plaid_tx(plaid_item, tx_data["transaction_id"])
+    if plaid_tx is None:
+        return "skipped"
+    bank_tx = plaid_tx.bank_transaction
+    if bank_tx.is_void:
+        return "skipped"
+    if bank_tx.journal_entry_id is None:
+        # Delete bank transaction (this will cascade to plaid transaction due to OneToOneField)
+        bank_tx.delete()
+        return "deleted"
     try:
-        plaid_tx = PlaidTransaction.objects.select_related("bank_transaction").get(
-            plaid_transaction_id=tx_data["transaction_id"],
-            book=plaid_item.book,
+        voiding.void(rows=[bank_tx, *difference_rows(bank_tx).filter(is_void=False)])
+    except voiding.VoidRefused:
+        logger.warning(
+            "Plaid removed transaction %s, but its row %s is reconciled; kept", tx_data["transaction_id"], bank_tx.pk
         )
-
-        # Only delete if not yet categorized (journal_entry is null)
-        if plaid_tx.bank_transaction.journal_entry is None:
-            # Delete bank transaction (this will cascade to plaid transaction due to OneToOneField)
-            plaid_tx.bank_transaction.delete()
-
-    except PlaidTransaction.DoesNotExist:
-        # Already deleted or never existed
-        pass
+        return "kept"
+    return "voided"
 
 
 @shared_task
