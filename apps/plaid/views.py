@@ -20,7 +20,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.books.permissions import BookModelAccessPermissions
+from apps.books.permissions import BookAdminWritePermissions, BookModelAccessPermissions
 
 from . import item_status, webhook_verification
 from .linking import DuplicateItem, add_accounts, link_item, unlink_item
@@ -211,11 +211,14 @@ class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     responses={200: {"type": "object", "properties": {"link_token": {"type": "string"}}}},
 )
 @api_view(["POST"])
-@permission_classes([BookModelAccessPermissions])
+@permission_classes([BookAdminWritePermissions])
 def create_link_token_view(request, team_slug=None, book_slug=None):
     """
     Create a Plaid Link token for initializing Plaid Link.
     Returns a link_token that can be used to initialize Plaid Link in the frontend.
+
+    Admins only, like every other Plaid write: a member who linked a bank could
+    not map its accounts, sync it or disconnect it.
     """
     try:
         link_token = create_link_token(user_id=request.user.id)
@@ -246,7 +249,7 @@ def create_link_token_view(request, team_slug=None, book_slug=None):
     responses={200: ExchangePublicTokenResponseSerializer},
 )
 @api_view(["POST"])
-@permission_classes([BookModelAccessPermissions])
+@permission_classes([BookAdminWritePermissions])
 def exchange_public_token_view(request, team_slug=None, book_slug=None):
     """
     Exchange a public token for an access token and create PlaidItem and PlaidAccount records.

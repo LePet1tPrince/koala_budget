@@ -112,3 +112,30 @@ class ExchangeResponseTest(PlaidBookTestCase):
         props = schema["components"]["schemas"]["ExchangePublicTokenResponse"]["properties"]
         self.assertIn("accounts", props)
         self.assertIn("item_id", props)
+
+
+class LinkPermissionTest(PlaidBookTestCase):
+    """Members read; admins write -- linking included, or a member's link could never be mapped."""
+
+    @patch("apps.plaid.services.exchange_public_token")
+    def test_a_member_cannot_link_a_bank(self, exchange):
+        self.client.force_authenticate(user=self.member)
+        response = self.client.post(
+            self.url("exchange-token/"), {"public_token": "p", "institution_id": "ins"}, format="json"
+        )
+        self.assertEqual(response.status_code, 403)
+        exchange.assert_not_called()
+
+    @patch("apps.plaid.views.create_link_token")
+    def test_a_member_cannot_open_link(self, create):
+        self.client.force_authenticate(user=self.member)
+        self.assertEqual(self.client.post(self.url("link-token/")).status_code, 403)
+        create.assert_not_called()
+
+    @patch("apps.plaid.views.create_link_token", return_value="link-1")
+    def test_an_admin_can(self, _create):
+        self.assertEqual(self.client.post(self.url("link-token/")).json(), {"link_token": "link-1"})
+
+    def test_a_member_can_still_read(self):
+        self.client.force_authenticate(user=self.member)
+        self.assertEqual(self.client.get(self.url("items/")).status_code, 200)
