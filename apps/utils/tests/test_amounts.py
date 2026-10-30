@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.test import SimpleTestCase
 
-from apps.utils.amounts import evaluate_amount
+from apps.utils.amounts import evaluate_amount, json_amount
 
 
 class EvaluateAmountTest(SimpleTestCase):
@@ -43,3 +43,17 @@ class EvaluateAmountTest(SimpleTestCase):
 
     def test_negative_zero_is_zero(self):
         self.assertEqual(str(evaluate_amount("-0.001*1")), "0.00")
+
+
+class JsonAmountTest(SimpleTestCase):
+    """Amounts read from a JSON body: plain numbers only, rounded to cents, within a limit."""
+
+    def test_numbers_and_numeric_strings(self):
+        for raw, expected in ((12, "12.00"), ("12.345", "12.35"), (-0.5, "-0.50"), ("1e2", "100.00")):
+            with self.subTest(raw=raw):
+                self.assertEqual(json_amount(raw, limit=Decimal("1000")), Decimal(expected))
+
+    def test_rejects_what_is_not_a_finite_number_within_the_limit(self):
+        for raw in (None, "", "abc", "1+2", "$5", "NaN", "Infinity", "1e40", "1000.01", "-1000.01"):
+            with self.subTest(raw=raw):
+                self.assertIsNone(json_amount(raw, limit=Decimal("1000")))

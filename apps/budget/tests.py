@@ -727,7 +727,7 @@ class BudgetGridViewTest(TestCase):
         return entry
 
     def test_grid_actuals_modes(self):
-        from .views import _grid_actuals
+        from .grid import grid_actuals as _grid_actuals
 
         # Last year: $1,200 over two months → $100/month across all 12.
         self._spend(date(2025, 3, 10), "700.00")
@@ -757,7 +757,7 @@ class BudgetGridViewTest(TestCase):
         )
 
     def test_grid_actuals_in_january_has_no_this_year_average(self):
-        from .views import _grid_actuals
+        from .grid import grid_actuals as _grid_actuals
 
         self._spend(date(2025, 12, 15), "240.00")
         modes, actuals = _grid_actuals(self.book, [self.groceries], date(2026, 1, 15))

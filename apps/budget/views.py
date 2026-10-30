@@ -25,7 +25,7 @@ from apps.utils.amounts import evaluate_amount
 from apps.utils.months import months_between
 from apps.web.templatetags.currency_tags import currency
 
-from . import autofill, figures, goal_links
+from . import autofill, figures, goal_links, grid
 from . import ledger as budget_ledger
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Goal, GoalAccountLink
@@ -286,84 +286,6 @@ def budget_autofill_view(request, team_slug, book_slug):
 # Multi-month grid editor
 # =============================================================================
 
-GRID_MAX_MONTHS = 24
-GRID_DEFAULT_MONTHS = 12
-GRID_MAX_AMOUNT = MAX_BUDGET_AMOUNT
-
-
-# Reference figures shown beside the grid's month columns. Each mode is a window of
-# whole months measured from today (not from the grid's range), so planning next
-# year reads against this year's and last year's real spending.
-GRID_ACTUAL_MODES = ("avg_this_year", "avg_last_year", "last_month")
-CENTS = Decimal("0.01")
-
-
-def _grid_actual_windows(today):
-    """`{mode: (first_month, last_month, label, detail)}` for each actuals mode, or a
-    `None` window when the mode has no complete month yet (January's "this year").
-
-    Only complete months count: the running month would drag an average down."""
-    this_month = today.replace(day=1)
-    last_month = this_month - relativedelta(months=1)
-    year_start = this_month.replace(month=1)
-    last_year_start = year_start.replace(year=year_start.year - 1)
-    last_year_end = year_start - relativedelta(months=1)
-
-    def span(first, last):
-        if first == last:
-            return first.strftime("%b %Y")
-        return f"{first.strftime('%b')}–{last.strftime('%b %Y')}"
-
-    this_year = (year_start, last_month) if last_month >= year_start else None
-    return {
-        "avg_this_year": (
-            *(this_year or (None, None)),
-            _("Average this year"),
-            _("Monthly average, %(span)s") % {"span": span(*this_year)} if this_year else _("No complete month yet"),
-        ),
-        "avg_last_year": (
-            last_year_start,
-            last_year_end,
-            _("Average last year"),
-            _("Monthly average, %(span)s") % {"span": span(last_year_start, last_year_end)},
-        ),
-        "last_month": (last_month, last_month, _("Last month"), last_month.strftime("%b %Y")),
-    }
-
-
-def _grid_actuals(book, categories, today):
-    """Per-category actuals for every mode in `GRID_ACTUAL_MODES`.
-
-    Returns `(modes, actuals)`: `modes` is `[{key, label, detail}]` for the picker,
-    `actuals` is `{category_id: {mode: "123.45" | None}}` — None only when the mode's
-    window holds no complete month. Averages divide by every month in the window, so
-    a month with no spending counts as $0. One query covers all three windows."""
-    windows = _grid_actual_windows(today)
-    firsts = [w[0] for w in windows.values() if w[0]]
-    lasts = [w[1] for w in windows.values() if w[1]]
-    by_month = BudgetService(book).get_all_actuals_by_month_category(min(firsts), max(lasts))
-
-    actuals = {}
-    for category in categories:
-        row = {}
-        for mode in GRID_ACTUAL_MODES:
-            first, last = windows[mode][0], windows[mode][1]
-            if first is None:
-                row[mode] = None
-                continue
-            months = months_between(first, last) + 1
-            total = sum(
-                (by_month.get((first + relativedelta(months=i), category.pk), Decimal("0")) for i in range(months)),
-                Decimal("0"),
-            )
-            row[mode] = str((total / months).quantize(CENTS, rounding=ROUND_HALF_UP))
-        actuals[category.pk] = row
-
-    modes = [
-        {"key": mode, "label": str(windows[mode][2]), "detail": str(windows[mode][3])} for mode in GRID_ACTUAL_MODES
-    ]
-    return modes, actuals
-
 
 @login_and_book_required
 def budget_grid_view(request, team_slug, book_slug):
@@ -373,37 +295,12 @@ def budget_grid_view(request, team_slug, book_slug):
     start = _parse_month(start_param) if start_param else date.today().replace(month=1, day=1)
 
     try:
-        num_months = int(request.GET.get("months", GRID_DEFAULT_MONTHS))
+        num_months = int(request.GET.get("months", grid.DEFAULT_MONTHS))
     except (TypeError, ValueError):
-        num_months = GRID_DEFAULT_MONTHS
-    num_months = max(1, min(num_months, GRID_MAX_MONTHS))
-
-    months = [start + relativedelta(months=i) for i in range(num_months)]
-
-    # Hidden categories stay off the grid as they stay collapsed on the month page.
-    categories = list(figures.budget_categories(request.book).filter(hidden_from_budget=False))
-    actual_modes, actuals = _grid_actuals(request.book, categories, date.today())
-
-    # From the budget entries: a month budgeted at zero has no line, so it shows blank.
-    amounts = {}
-    for (month, category_id), amount in budget_ledger.budgeted_by_month_category(
-        request.book, months[0], months[-1]
-    ).items():
-        amounts.setdefault(category_id, {})[month.isoformat()] = str(amount)
-
-    groups = []
-    for category in categories:
-        group_name = category.account_group.name
-        if not groups or groups[-1]["name"] != group_name:
-            groups.append({"name": group_name, "type": category.account_group.account_type, "rows": []})
-        groups[-1]["rows"].append(
-            {
-                "id": category.pk,
-                "name": category.name,
-                "amounts": amounts.get(category.pk, {}),
-                "actuals": actuals[category.pk],
-            }
-        )
+        num_months = grid.DEFAULT_MONTHS
+    months = grid.grid_months(start, num_months)
+    num_months = len(months)
+    groups, actual_modes = grid.grid_groups(request.book, months, date.today())
 
     grid_props = {
         "months": [{"key": m.isoformat(), "label": m.strftime("%b %Y")} for m in months],
@@ -443,39 +340,10 @@ def budget_grid_save(request, team_slug, book_slug):
         changes = payload["changes"]
     except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError):
         return JsonResponse({"error": "Invalid request body."}, status=400)
-    if not isinstance(changes, list):
-        return JsonResponse({"error": "Invalid request body."}, status=400)
-    if len(changes) > 10000:
-        return JsonResponse({"error": "Too many changes in one request."}, status=400)
-
-    category_ids = {c.get("category_id") for c in changes if isinstance(c, dict)}
-    valid_category_ids = set(
-        figures.budget_categories(request.book).filter(pk__in=category_ids).values_list("pk", flat=True)
-    )
-
-    # Last write wins if the same cell appears twice
-    merged = {}
-    for change in changes:
-        if not isinstance(change, dict):
-            return JsonResponse({"error": "Invalid request body."}, status=400)
-
-        category_id = change.get("category_id")
-        if category_id not in valid_category_ids:
-            return JsonResponse({"error": "Unknown budget category."}, status=400)
-
-        month = parse_date(str(change.get("month") or ""))
-        if month is None:
-            return JsonResponse({"error": "Invalid month."}, status=400)
-        month = month.replace(day=1)
-
-        try:
-            amount = Decimal(str(change.get("amount"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        except (InvalidOperation, TypeError, ValueError):
-            return JsonResponse({"error": "Invalid amount."}, status=400)
-        if not amount.is_finite() or abs(amount) > GRID_MAX_AMOUNT:
-            return JsonResponse({"error": "Invalid amount."}, status=400)
-
-        merged[(category_id, month)] = amount
+    try:
+        merged = grid.parse_changes(request.book, changes)
+    except grid.GridError as e:
+        return JsonResponse({"error": str(e)}, status=400)
 
     if not merged:
         return JsonResponse({"saved": 0})
@@ -719,7 +587,7 @@ def goal_assign_available(request, team_slug, book_slug, pk):
                 amount = Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             except (InvalidOperation, TypeError, ValueError):
                 return JsonResponse({"error": "Invalid amount."}, status=400)
-            if not amount.is_finite() or amount <= 0 or amount > GRID_MAX_AMOUNT:
+            if not amount.is_finite() or amount <= 0 or amount > MAX_BUDGET_AMOUNT:
                 return JsonResponse({"error": "Invalid amount."}, status=400)
 
         amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -807,7 +675,7 @@ def goal_withdraw(request, team_slug, book_slug, pk):
                 amount = Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             except (InvalidOperation, TypeError, ValueError):
                 return JsonResponse({"error": "Invalid amount."}, status=400)
-            if not amount.is_finite() or amount <= 0 or amount > GRID_MAX_AMOUNT:
+            if not amount.is_finite() or amount <= 0 or amount > MAX_BUDGET_AMOUNT:
                 return JsonResponse({"error": "Invalid amount."}, status=400)
             if amount > left:
                 return JsonResponse(
@@ -1101,7 +969,7 @@ def goal_contribution_edit(request, team_slug, book_slug, line_pk):
         amount = Decimal("0")
     else:
         amount = evaluate_amount(request.POST.get("amount", ""))
-        if amount is None or abs(amount) > GRID_MAX_AMOUNT:
+        if amount is None or abs(amount) > MAX_BUDGET_AMOUNT:
             messages.error(request, _("Enter an amount, like 250 or -40 for a withdrawal."))
             return back
 
@@ -1353,7 +1221,7 @@ def budget_cover(request, team_slug, book_slug):
     month = month.replace(day=1)
 
     amount = parse_budget_amount(payload.get("amount"))
-    if amount is None or amount <= 0 or amount > GRID_MAX_AMOUNT:
+    if amount is None or amount <= 0 or amount > MAX_BUDGET_AMOUNT:
         return JsonResponse({"error": _("Enter an amount greater than zero.")}, status=400)
 
     if goal is None:
