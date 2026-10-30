@@ -560,6 +560,10 @@ if "test" in sys.argv:
     SILENCED_SYSTEM_CHECKS.append("djstripe.I002")
 
 
+# The currency the books are kept in. Nothing converts between currencies: a
+# bank account in another currency is imported at face value and flagged.
+BASE_CURRENCY = env("BASE_CURRENCY", default="CAD")
+
 # Plaid config
 # Note: don't edit these values here - edit them in your .env file or environment variables!
 PLAID_CLIENT_ID = env("PLAID_CLIENT_ID", default="")

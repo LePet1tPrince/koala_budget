@@ -29,7 +29,7 @@ from .serializers import (
     PlaidItemSerializer,
     PlaidTransactionSerializer,
 )
-from .services import create_link_token, exchange_public_token, get_accounts, get_institution
+from .services import account_currency, create_link_token, exchange_public_token, get_accounts, get_institution
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +242,7 @@ def exchange_public_token_view(request, team_slug=None, book_slug=None):
                 mask=account.get("mask", ""),
                 subtype=account.get("subtype", ""),
                 type=account.get("type", ""),
+                iso_currency_code=account_currency(account),
             )
             created_accounts.append(plaid_account)
 

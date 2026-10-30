@@ -95,6 +95,18 @@ export interface PlaidAccount {
      */
     type: string;
     /**
+     * The account's currency (ISO code, or Plaid's unofficial code for e.g. crypto)
+     * @type {string}
+     * @memberof PlaidAccount
+     */
+    readonly isoCurrencyCode: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof PlaidAccount
+     */
+    readonly isForeignCurrency: boolean;
+    /**
      * 
      * @type {Date}
      * @memberof PlaidAccount
@@ -120,6 +132,8 @@ export function instanceOfPlaidAccount(value: object): value is PlaidAccount {
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('subtype' in value) || value['subtype'] === undefined) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
+    if (!('isoCurrencyCode' in value) || value['isoCurrencyCode'] === undefined) return false;
+    if (!('isForeignCurrency' in value) || value['isForeignCurrency'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -145,6 +159,8 @@ export function PlaidAccountFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'mask': json['mask'] == null ? undefined : json['mask'],
         'subtype': json['subtype'],
         'type': json['type'],
+        'isoCurrencyCode': json['iso_currency_code'],
+        'isForeignCurrency': json['is_foreign_currency'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
     };
@@ -154,7 +170,7 @@ export function PlaidAccountFromJSONTyped(json: any, ignoreDiscriminator: boolea
       return PlaidAccountToJSONTyped(json, false);
   }
 
-  export function PlaidAccountToJSONTyped(value?: Omit<PlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PlaidAccountToJSONTyped(value?: Omit<PlaidAccount, 'id'|'item_details'|'account_details'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

@@ -18,6 +18,19 @@ const NO_MATCHES = new Map();
 // Stable default, so the rows don't re-render for a fresh `new Set()` each time
 const NO_PENDING = new Set();
 
+/**
+ * The bank's currency beside an amount kept in another currency than the
+ * books'. Nothing converts it, so the figure must not pass for the home one.
+ */
+const CurrencyTag = ({ code }) => (
+  <span
+    className="badge badge-ghost badge-xs ml-1 align-middle"
+    title={interpolate(gettext('In %s, not converted'), [code])}
+  >
+    {code}
+  </span>
+);
+
 /** The possible-transfer suggestion a row belongs to, if any. */
 const matchFor = (matchByTxId, row) => matchByTxId.get(row.importedTransactionId ?? row.imported_transaction_id);
 
@@ -632,9 +645,11 @@ const LineTable = ({
                         </td>
                         <td className="money whitespace-nowrap text-right">
                           {row.inflow && parseFloat(row.inflow) > 0 ? formatCurrency(row.inflow) : ''}
+                          {row.isForeignCurrency && parseFloat(row.inflow) > 0 && <CurrencyTag code={row.currency} />}
                         </td>
                         <td className="money whitespace-nowrap text-right">
                           {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
+                          {row.isForeignCurrency && parseFloat(row.outflow) > 0 && <CurrencyTag code={row.currency} />}
                         </td>
                         <td title={row.description || ''}>
                           <span className="flex min-w-0 items-center gap-1">

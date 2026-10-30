@@ -95,6 +95,18 @@ export interface PatchedPlaidAccount {
      */
     type?: string;
     /**
+     * The account's currency (ISO code, or Plaid's unofficial code for e.g. crypto)
+     * @type {string}
+     * @memberof PatchedPlaidAccount
+     */
+    readonly isoCurrencyCode?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof PatchedPlaidAccount
+     */
+    readonly isForeignCurrency?: boolean;
+    /**
      * 
      * @type {Date}
      * @memberof PatchedPlaidAccount
@@ -135,6 +147,8 @@ export function PatchedPlaidAccountFromJSONTyped(json: any, ignoreDiscriminator:
         'mask': json['mask'] == null ? undefined : json['mask'],
         'subtype': json['subtype'] == null ? undefined : json['subtype'],
         'type': json['type'] == null ? undefined : json['type'],
+        'isoCurrencyCode': json['iso_currency_code'] == null ? undefined : json['iso_currency_code'],
+        'isForeignCurrency': json['is_foreign_currency'] == null ? undefined : json['is_foreign_currency'],
         'createdAt': json['created_at'] == null ? undefined : (new Date(json['created_at'])),
         'updatedAt': json['updated_at'] == null ? undefined : (new Date(json['updated_at'])),
     };
@@ -144,7 +158,7 @@ export function PatchedPlaidAccountFromJSONTyped(json: any, ignoreDiscriminator:
       return PatchedPlaidAccountToJSONTyped(json, false);
   }
 
-  export function PatchedPlaidAccountToJSONTyped(value?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PatchedPlaidAccountToJSONTyped(value?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

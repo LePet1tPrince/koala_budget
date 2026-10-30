@@ -135,6 +135,15 @@ def get_accounts(access_token: str):
     return response["accounts"]
 
 
+def account_currency(account) -> str | None:
+    """
+    A Plaid account's currency, from its balances: the ISO code, or Plaid's
+    unofficial code when there is no ISO one (e.g. crypto). None when unknown.
+    """
+    balances = account.get("balances") or {}
+    return balances.get("iso_currency_code") or balances.get("unofficial_currency_code") or None
+
+
 def get_institution(institution_id: str):
     """
     Get institution details.

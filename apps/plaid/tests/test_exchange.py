@@ -33,7 +33,10 @@ class ExchangePublicTokenTest(PlaidBookTestCase):
         self.assertEqual(item.book, self.book)
         self.assertEqual(item.institution_name, "TD Canada Trust")
         self.assertEqual(list(item.accounts.values_list("plaid_account_id", flat=True)), ["acc-new-1"])
-        self.assertIsNone(PlaidAccount.objects.get(plaid_account_id="acc-new-1").account)
+        account = PlaidAccount.objects.get(plaid_account_id="acc-new-1")
+        self.assertIsNone(account.account)
+        self.assertEqual(account.iso_currency_code, "CAD")
+        self.assertFalse(account.is_foreign_currency)
 
     @patch("apps.plaid.views.get_institution", side_effect=RuntimeError("INSTITUTION_NOT_FOUND"))
     def test_failed_institution_lookup_uses_links_name(self, _inst, _exchange, _accounts):

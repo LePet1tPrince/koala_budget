@@ -29,6 +29,8 @@ class PlaidItemSerializer(serializers.ModelSerializer):
 class PlaidAccountSerializer(serializers.ModelSerializer):
     """Serializer for PlaidAccount model."""
 
+    is_foreign_currency = serializers.BooleanField(read_only=True)
+
     account_details = AccountSerializer(source="account", read_only=True)
     item_details = PlaidItemSerializer(source="item", read_only=True)
 
@@ -45,10 +47,12 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
             "mask",
             "subtype",
             "type",
+            "iso_currency_code",
+            "is_foreign_currency",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["iso_currency_code", "is_foreign_currency", "created_at", "updated_at"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

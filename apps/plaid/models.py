@@ -3,9 +3,15 @@ Plaid integration models.
 Stores Plaid items, accounts, and imported transactions.
 """
 
+from django.conf import settings
 from django.db import models
 
 from apps.books.models import BaseBookModel
+
+
+def is_foreign_currency(code) -> bool:
+    """True for a known currency that isn't the books' own. Unknown (None) is not flagged."""
+    return bool(code) and code.upper() != settings.BASE_CURRENCY.upper()
 
 
 class PlaidItem(BaseBookModel):
@@ -73,6 +79,12 @@ class PlaidAccount(BaseBookModel):
     mask = models.CharField(max_length=10, blank=True, help_text="Last 4 digits of account number")
     subtype = models.CharField(max_length=100, help_text="Account subtype (e.g., checking, savings)")
     type = models.CharField(max_length=100, help_text="Account type (e.g., depository, credit)")
+    iso_currency_code = models.CharField(
+        max_length=10,
+        null=True,
+        blank=True,
+        help_text="The account's currency (ISO code, or Plaid's unofficial code for e.g. crypto)",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -88,6 +100,11 @@ class PlaidAccount(BaseBookModel):
     def is_mapped(self):
         """Check if this Plaid account is mapped to a ledger account."""
         return self.account is not None
+
+    @property
+    def is_foreign_currency(self):
+        """True when the account is kept in a currency other than the books' (`BASE_CURRENCY`)."""
+        return is_foreign_currency(self.iso_currency_code)
 
     def can_sync_transactions(self):
         """
@@ -177,6 +194,10 @@ class PlaidTransaction(BaseBookModel):
             models.Index(fields=["plaid_account"]),
             models.Index(fields=["pending"]),
         ]
+
+    @property
+    def currency(self):
+        return self.iso_currency_code or self.unofficial_currency_code
 
     def __str__(self):
         return f"{self.bank_transaction.posted_date} - {self.bank_transaction.description} - ${self.bank_transaction.amount}"  # noqa: E501

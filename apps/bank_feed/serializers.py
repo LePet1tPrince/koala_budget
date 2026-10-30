@@ -8,6 +8,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
+from apps.plaid.models import is_foreign_currency
 
 from .models import BankTransaction
 
@@ -248,6 +249,15 @@ class BankFeedRowSerializer(serializers.Serializer):
     )
 
     is_pending = serializers.BooleanField(help_text="Whether transaction is pending")
+    currency = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="The bank's currency for this transaction, when the bank reported one (Plaid)",
+    )
+    is_foreign_currency = serializers.BooleanField(
+        required=False,
+        help_text="Whether the amount is in a currency other than the books' own (it is not converted)",
+    )
     is_cleared = serializers.BooleanField(help_text="Whether transaction is cleared")
     is_void = serializers.BooleanField(help_text="Whether transaction is void (counts toward nothing)")
     is_reconciled = serializers.BooleanField(help_text="Whether transaction is reconciled")
@@ -473,6 +483,7 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     is_pending = plaid_tx.pending if plaid_tx else False
     payment_channel = plaid_tx.payment_channel if plaid_tx else None
     category_confidence = plaid_tx.category_confidence if plaid_tx else None
+    currency = plaid_tx.currency if plaid_tx else None
 
     # Get category and reconciliation status from JournalEntry if categorized
     category = None
@@ -527,6 +538,8 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "inflow": inflow,
         "outflow": outflow,
         "is_pending": is_pending,
+        "currency": currency,
+        "is_foreign_currency": is_foreign_currency(currency),
         "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
         "is_void": tx.is_void,
         "is_reconciled": is_reconciled,  # From the bank account's journal line

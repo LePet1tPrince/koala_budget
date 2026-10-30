@@ -1,4 +1,4 @@
-/* globals gettext */
+/* globals gettext, interpolate */
 
 import React, { useState } from 'react';
 import Icon from '../../common/Icon';
@@ -124,7 +124,16 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
                 <div className="text-sm text-base-content/70">
                   <div>
                     {plaidAccount.subtype} • ****{plaidAccount.mask}
+                    {plaidAccount.isoCurrencyCode && ` • ${plaidAccount.isoCurrencyCode}`}
                   </div>
+                  {plaidAccount.isForeignCurrency && (
+                    <div className="text-warning" data-testid="plaid-foreign-currency">
+                      {interpolate(
+                        gettext('This account is in %s. Its amounts are imported as they are, not converted.'),
+                        [plaidAccount.isoCurrencyCode],
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
