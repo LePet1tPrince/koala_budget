@@ -20,3 +20,14 @@ class FeedError(Exception):
     def not_found(cls, message):
         return cls(message, status=404)
 
+
+class RowsRefused(FeedError):
+    """
+    A refused batch: nothing was written. `refused` names every row that blocked
+    it (`[{kind, id, error}]`), so the page can offer to deselect them rather
+    than only report the first.
+    """
+
+    def __init__(self, refused):
+        super().__init__(refused[0]["error"])
+        self.refused = refused
