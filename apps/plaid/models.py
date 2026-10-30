@@ -89,6 +89,13 @@ class PlaidAccount(BaseBookModel):
         """Check if this Plaid account is mapped to a ledger account."""
         return self.account is not None
 
+    def can_sync_transactions(self):
+        """
+        Check if this account is ready to sync transactions.
+        Requires a mapped ledger account.
+        """
+        return self.is_mapped
+
 
 class PlaidTransaction(BaseBookModel):
     """
