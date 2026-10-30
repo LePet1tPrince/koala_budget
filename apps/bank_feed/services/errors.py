@@ -19,3 +19,4 @@ class FeedError(Exception):
     @classmethod
     def not_found(cls, message):
         return cls(message, status=404)
+

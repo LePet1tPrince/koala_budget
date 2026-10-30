@@ -3,18 +3,20 @@ Give a feed transaction a single category.
 
 The one write path for "this bank transaction is <category>": create its journal
 entry the first time, re-point its category line after that, and keep a transfer's
-mirror leg in step either way. Used by the feed's categorize and batch-edit
-endpoints and by transfer matching.
+mirror leg in step either way -- and `decategorize` to take the category away.
+Used by the feed's categorize, edit and batch-edit endpoints and by transfer
+matching.
 """
 
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils.translation import gettext
 
 from apps.journal.models import JournalEntry, JournalLine
-from apps.reconciliation.services.guards import assert_line_mutable
+from apps.reconciliation.services.guards import assert_entry_removable, assert_line_mutable
 
-from ..models import VOID_ROW_MESSAGE, VoidRowError
+from ..models import VOID_ROW_MESSAGE, BankTransaction, VoidRowError
 from .splits import SplitError, is_split
 from .transfer_mirror import sync_transfer, would_orphan_primary
 
@@ -100,3 +102,26 @@ def repoint_category(bank_tx, category_account):
     # The category drives whether this is a transfer: add/move/remove the
     # counterpart leg (and move the primary if the mirror was re-pointed).
     sync_transfer(bank_tx)
+
+
+@transaction.atomic
+def decategorize(bank_tx):
+    """
+    Remove a transaction's categorization: unlink and delete its journal entry
+    (and any auto-created transfer mirror leg sharing it). The BankTransaction
+    stays in the feed as an uncategorized row.
+    """
+    entry = bank_tx.journal_entry
+    if entry is None:
+        return
+    assert_entry_removable(entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category"))
+
+    # A transfer's counterpart mirror leg only exists to surface the shared
+    # entry in the other feed; drop it so it doesn't linger as an orphan.
+    for leg in BankTransaction.objects.filter(journal_entry=entry).exclude(id=bank_tx.id):
+        if leg.is_transfer_mirror:
+            leg.delete()
+
+    bank_tx.journal_entry = None
+    bank_tx.save(update_fields=["journal_entry", "updated_at"])
+    entry.delete()
