@@ -104,7 +104,7 @@ The Inbox shows a **Pending** badge (the flag was in the API and unused).
 | API client | Missing `institutionName`, exchange `accounts` | Regenerated with openapi-generator 7.9.0 at each endpoint change |
 
 Coverage: `apps/plaid` 96% (tasks 96%, views 96%, services 99%; `bank_revision.py` 97%;
-was 17% / 67% / 33%). Backend suite 2,125 tests (was 2,007); `e2e/tests/test_bank_feed.py`
+was 17% / 67% / 33%). Backend suite 2,138 tests (was 2,007); `e2e/tests/test_bank_feed.py`
 44 tests, all passing.
 
 ## Deliberately left — needs the owner
