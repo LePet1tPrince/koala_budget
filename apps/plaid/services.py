@@ -213,6 +213,15 @@ def get_institution(institution_id: str):
     return response["institution"]
 
 
+def get_webhook_verification_key(key_id: str) -> dict:
+    """The JWK Plaid signs webhooks with, for a key id (/webhook_verification_key/get)."""
+    from plaid.model.webhook_verification_key_get_request import WebhookVerificationKeyGetRequest
+
+    response = get_plaid_client().webhook_verification_key_get(WebhookVerificationKeyGetRequest(key_id=key_id))
+    key = response["key"]
+    return key.to_dict() if hasattr(key, "to_dict") else dict(key)
+
+
 def sync_transactions(access_token: str, cursor: str = None):
     """
     Sync transactions using Plaid's /transactions/sync endpoint.

@@ -590,6 +590,9 @@ PLAID_LINK_LANGUAGES = env.list("PLAID_LINK_LANGUAGES", default=["en", "fr"])
 # Where Plaid sends this app's webhooks. Blank derives it from the Site domain
 # (`/plaid/webhook/`); set it explicitly when that domain isn't public.
 PLAID_WEBHOOK_URL = env("PLAID_WEBHOOK_URL", default="")
+# Refuse webhooks without a valid Plaid-Verification signature. Only turn this off
+# for local development against the sandbox.
+PLAID_VERIFY_WEBHOOKS = env.bool("PLAID_VERIFY_WEBHOOKS", default=True)
 # OAuth redirect URI, required by OAuth institutions. Must be registered in the
 # Plaid dashboard. Blank sends none.
 PLAID_REDIRECT_URI = env("PLAID_REDIRECT_URI", default="")

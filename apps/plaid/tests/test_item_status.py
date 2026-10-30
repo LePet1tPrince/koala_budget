@@ -20,6 +20,7 @@ def plaid_error(code, message="Sign in again"):
     return exc
 
 
+@override_settings(PLAID_VERIFY_WEBHOOKS=False)
 class ItemWebhookTest(PlaidBookTestCase):
     def webhook(self, code, **payload):
         return self.client.post(

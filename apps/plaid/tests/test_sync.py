@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from plaid import ApiException
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, Account, AccountGroup
@@ -20,6 +20,7 @@ from apps.plaid.tasks import PaginationRestartsExhausted, sync_plaid_transaction
 from apps.teams.models import Team
 
 
+@override_settings(PLAID_VERIFY_WEBHOOKS=False)
 class PlaidWebhookTest(TestCase):
     """Tests for the global Plaid webhook endpoint."""
 

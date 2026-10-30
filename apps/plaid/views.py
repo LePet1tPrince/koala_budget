@@ -6,6 +6,7 @@ Provides bank feed API, Plaid Link integration, and account management.
 import json
 import logging
 
+from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -22,7 +23,7 @@ from rest_framework.response import Response
 
 from apps.books.permissions import BookModelAccessPermissions
 
-from . import item_status
+from . import item_status, webhook_verification
 from .linking import add_accounts
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .serializers import (
@@ -321,9 +322,20 @@ def plaid_webhook_view(request):
     consent expiring, access revoked, new accounts to share) on the item's
     status -- see apps.plaid.item_status -- and LOGIN_REPAIRED queues a sync.
 
-    Always returns 200 so Plaid doesn't retry storms on payloads we ignore.
+    The request must carry Plaid's signature (apps.plaid.webhook_verification,
+    switched off only by PLAID_VERIFY_WEBHOOKS=False for local development);
+    an unverified one is refused with 400 and does nothing.
+
+    Otherwise always returns 200 so Plaid doesn't retry storms on payloads we ignore.
     """
     from .tasks import sync_plaid_transactions
+
+    if settings.PLAID_VERIFY_WEBHOOKS:
+        try:
+            webhook_verification.verify(request.body, request.headers.get("Plaid-Verification"))
+        except webhook_verification.WebhookVerificationError as exc:
+            logger.warning("Refused an unverified Plaid webhook: %s", exc)
+            return JsonResponse({"status": "unverified"}, status=400)
 
     try:
         payload = json.loads(request.body)
