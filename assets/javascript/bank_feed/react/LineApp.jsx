@@ -146,6 +146,7 @@ const LineApp = ({
   // Plaid sync status: ledger account id -> PlaidItem (for "last synced" display)
   const [plaidItemsByAccountId, setPlaidItemsByAccountId] = useState({});
   const [plaidItems, setPlaidItems] = useState([]);
+  const [plaidAccounts, setPlaidAccounts] = useState([]);
 
   // Category suggestions: merchant/payee name -> {id, name} of last-used category
   const [categorySuggestions, setCategorySuggestions] = useState({});
@@ -271,6 +272,7 @@ const LineApp = ({
       });
       setPlaidItemsByAccountId(map);
       setPlaidItems(itemsData.results || []);
+      setPlaidAccounts(accountsData.results || []);
     } catch (err) {
       console.error('Failed to load Plaid sync status:', err);
     }
@@ -993,6 +995,7 @@ const LineApp = ({
     <div className="space-y-6">
       <PlaidItemAlerts
         items={plaidItems}
+        plaidAccounts={plaidAccounts}
         book={book}
         allAccounts={allAccounts}
         plaidClient={plaidClient}

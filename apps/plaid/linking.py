@@ -81,6 +81,22 @@ def link_item(book, *, public_token, institution_id, institution_name, accounts=
     return item, created
 
 
+def backfill_item(item):
+    """
+    Re-read the item's whole history, after an account was mapped.
+
+    A sync skips transactions on unmapped accounts and its cursor moves past
+    them, so mapping an account later would otherwise only ever import what
+    arrives from then on. Clearing the cursor makes the next sync deliver every
+    transaction again; the ones already imported are recognised by id and
+    skipped, and the newly mapped account's history lands.
+    """
+    from .tasks import sync_plaid_transactions
+
+    PlaidItem.objects.filter(pk=item.pk).update(cursor=None)
+    transaction.on_commit(lambda: sync_plaid_transactions.delay(item.pk))
+
+
 def institution_name_for(institution_id, fallback=None):
     """
     The institution's display name. A failed lookup must not fail the link --

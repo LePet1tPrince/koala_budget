@@ -23,7 +23,7 @@ from rest_framework.response import Response
 from apps.books.permissions import BookAdminWritePermissions, BookModelAccessPermissions
 
 from . import item_status, webhook_verification
-from .linking import DuplicateItem, add_accounts, link_item, unlink_item
+from .linking import DuplicateItem, add_accounts, backfill_item, link_item, unlink_item
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .serializers import (
     ExchangePublicTokenResponseSerializer,
@@ -52,7 +52,7 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = PlaidItem.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
-        return PlaidItem.for_book.all()
+        return PlaidItem.for_book.prefetch_related("accounts")
 
     @extend_schema(
         operation_id="plaid_items_sync",
@@ -68,22 +68,13 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
         Trigger transaction sync for this Plaid item.
         Starts a background Celery task to sync transactions from Plaid.
 
-        Validates that all accounts are mapped before syncing.
+        Accounts not mapped yet are skipped; mapping one later backfills its
+        history (PlaidAccountViewSet.perform_update), so nothing is lost by
+        syncing the others now.
         """
         from .tasks import sync_plaid_transactions
 
         plaid_item = self.get_object()
-
-        # Check if all accounts are mapped to ledger accounts
-        unmapped_accounts = plaid_item.accounts.filter(account__isnull=True)
-        if unmapped_accounts.exists():
-            return Response(
-                {
-                    "error": "Cannot sync transactions. Please map all bank accounts to ledger accounts first.",
-                    "unmapped_accounts": PlaidAccountSerializer(unmapped_accounts, many=True).data,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         # Trigger Celery task
         task = sync_plaid_transactions.delay(plaid_item.id)
@@ -180,6 +171,12 @@ class PlaidAccountViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return PlaidAccount.for_book.select_related("item", "account").all()
+
+    def perform_update(self, serializer):
+        was_mapped = serializer.instance.account_id is not None
+        account = serializer.save()
+        if account.account_id is not None and not was_mapped:
+            backfill_item(account.item)
 
 
 @extend_schema_view(

@@ -409,7 +409,7 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
-     * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.
+     * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.  Admins only, like every other Plaid write: a member who linked a bank could not map its accounts, sync it or disconnect it.
      */
     async plaidCreateLinkTokenRaw(requestParameters: PlaidCreateLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidCreateLinkToken200Response>> {
         if (requestParameters['bookSlug'] == null) {
@@ -448,7 +448,7 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
-     * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.
+     * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.  Admins only, like every other Plaid write: a member who linked a bank could not map its accounts, sync it or disconnect it.
      */
     async plaidCreateLinkToken(requestParameters: PlaidCreateLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PlaidCreateLinkToken200Response> {
         const response = await this.plaidCreateLinkTokenRaw(requestParameters, initOverrides);
@@ -779,7 +779,7 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
-     * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Validates that all accounts are mapped before syncing.
+     * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Accounts not mapped yet are skipped; mapping one later backfills its history (PlaidAccountViewSet.perform_update), so nothing is lost by syncing the others now.
      */
     async plaidItemsSyncRaw(requestParameters: PlaidItemsSyncRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidItemsSync200Response>> {
         if (requestParameters['bookSlug'] == null) {
@@ -825,7 +825,7 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
-     * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Validates that all accounts are mapped before syncing.
+     * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Accounts not mapped yet are skipped; mapping one later backfills its history (PlaidAccountViewSet.perform_update), so nothing is lost by syncing the others now.
      */
     async plaidItemsSync(requestParameters: PlaidItemsSyncRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PlaidItemsSync200Response> {
         const response = await this.plaidItemsSyncRaw(requestParameters, initOverrides);

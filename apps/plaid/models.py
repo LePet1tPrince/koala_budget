@@ -127,6 +127,11 @@ class PlaidAccount(BaseBookModel):
         help_text="Ledger account this Plaid account feeds into",
     )
 
+    is_ignored = models.BooleanField(
+        default=False,
+        help_text="The user chose not to import this account (e.g. a mortgage tracked elsewhere)",
+    )
+
     name = models.CharField(max_length=255, help_text="Account name from Plaid")
     mask = models.CharField(max_length=10, blank=True, help_text="Last 4 digits of account number")
     subtype = models.CharField(max_length=100, help_text="Account subtype (e.g., checking, savings)")

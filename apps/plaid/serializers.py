@@ -14,6 +14,12 @@ class PlaidItemSerializer(serializers.ModelSerializer):
     """Serializer for PlaidItem model."""
 
     needs_attention = serializers.BooleanField(read_only=True)
+    unmapped_accounts = serializers.SerializerMethodField(
+        help_text="Accounts neither mapped to a ledger account nor ignored: their transactions aren't imported yet"
+    )
+
+    def get_unmapped_accounts(self, item) -> int:
+        return sum(1 for a in item.accounts.all() if a.account_id is None and not a.is_ignored)
 
     class Meta:
         model = PlaidItem
@@ -28,6 +34,7 @@ class PlaidItemSerializer(serializers.ModelSerializer):
             "consent_expiration_time",
             "new_accounts_available",
             "needs_attention",
+            "unmapped_accounts",
             "created_at",
             "updated_at",
         ]
@@ -60,6 +67,7 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
             "item_details",
             "account",
             "account_details",
+            "is_ignored",
             "name",
             "mask",
             "subtype",
@@ -100,6 +108,11 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
         return account
 
     def update(self, instance, validated_data):
+        # Mapping an account is the opposite of ignoring it.
+        if validated_data.get("account") is not None:
+            validated_data["is_ignored"] = False
+        elif validated_data.get("is_ignored"):
+            validated_data["account"] = None
         instance = super().update(instance, validated_data)
         # A mapped account's transactions land in the Inbox, which lists only
         # accounts with a feed -- without this they would arrive and be invisible.

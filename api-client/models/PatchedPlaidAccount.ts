@@ -71,6 +71,12 @@ export interface PatchedPlaidAccount {
      */
     readonly accountDetails?: Account;
     /**
+     * The user chose not to import this account (e.g. a mortgage tracked elsewhere)
+     * @type {boolean}
+     * @memberof PatchedPlaidAccount
+     */
+    isIgnored?: boolean;
+    /**
      * Account name from Plaid
      * @type {string}
      * @memberof PatchedPlaidAccount
@@ -143,6 +149,7 @@ export function PatchedPlaidAccountFromJSONTyped(json: any, ignoreDiscriminator:
         'itemDetails': json['item_details'] == null ? undefined : PlaidItemFromJSON(json['item_details']),
         'account': json['account'] == null ? undefined : json['account'],
         'accountDetails': json['account_details'] == null ? undefined : AccountFromJSON(json['account_details']),
+        'isIgnored': json['is_ignored'] == null ? undefined : json['is_ignored'],
         'name': json['name'] == null ? undefined : json['name'],
         'mask': json['mask'] == null ? undefined : json['mask'],
         'subtype': json['subtype'] == null ? undefined : json['subtype'],
@@ -168,6 +175,7 @@ export function PatchedPlaidAccountFromJSONTyped(json: any, ignoreDiscriminator:
         'plaid_account_id': value['plaidAccountId'],
         'item': value['item'],
         'account': value['account'],
+        'is_ignored': value['isIgnored'],
         'name': value['name'],
         'mask': value['mask'],
         'subtype': value['subtype'],

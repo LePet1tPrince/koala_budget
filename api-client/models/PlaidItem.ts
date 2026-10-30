@@ -88,6 +88,12 @@ export interface PlaidItem {
      */
     readonly needsAttention: boolean;
     /**
+     * Accounts neither mapped to a ledger account nor ignored: their transactions aren't imported yet
+     * @type {number}
+     * @memberof PlaidItem
+     */
+    readonly unmappedAccounts: number;
+    /**
      * 
      * @type {Date}
      * @memberof PlaidItem
@@ -117,6 +123,7 @@ export function instanceOfPlaidItem(value: object): value is PlaidItem {
     if (!('consentExpirationTime' in value) || value['consentExpirationTime'] === undefined) return false;
     if (!('newAccountsAvailable' in value) || value['newAccountsAvailable'] === undefined) return false;
     if (!('needsAttention' in value) || value['needsAttention'] === undefined) return false;
+    if (!('unmappedAccounts' in value) || value['unmappedAccounts'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -142,6 +149,7 @@ export function PlaidItemFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'consentExpirationTime': (json['consent_expiration_time'] == null ? null : new Date(json['consent_expiration_time'])),
         'newAccountsAvailable': json['new_accounts_available'],
         'needsAttention': json['needs_attention'],
+        'unmappedAccounts': json['unmapped_accounts'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
     };
@@ -151,7 +159,7 @@ export function PlaidItemFromJSONTyped(json: any, ignoreDiscriminator: boolean):
       return PlaidItemToJSONTyped(json, false);
   }
 
-  export function PlaidItemToJSONTyped(value?: Omit<PlaidItem, 'id'|'last_synced_at'|'status'|'error_code'|'error_message'|'consent_expiration_time'|'new_accounts_available'|'needs_attention'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PlaidItemToJSONTyped(value?: Omit<PlaidItem, 'id'|'last_synced_at'|'status'|'error_code'|'error_message'|'consent_expiration_time'|'new_accounts_available'|'needs_attention'|'unmapped_accounts'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

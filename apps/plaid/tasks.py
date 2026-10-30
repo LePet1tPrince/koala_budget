@@ -222,9 +222,14 @@ def _sync_item(plaid_item_id: int):
             for tx_data in updates.removed:
                 outcomes[f"removed_{process_removed_transaction(plaid_item, tx_data)}"] += 1
 
-            plaid_item.cursor = updates.next_cursor
-            plaid_item.last_synced_at = timezone.now()
-            plaid_item.save(update_fields=["cursor", "last_synced_at", "updated_at"])
+            # Only from the cursor this sync started at: if it was reset meanwhile
+            # (an account was just mapped -- linking.backfill_item), the reset
+            # must survive, and the rerun that reset queued reads from the start.
+            now = timezone.now()
+            PlaidItem.objects.filter(pk=plaid_item.pk, cursor=plaid_item.cursor).update(
+                cursor=updates.next_cursor, last_synced_at=now, updated_at=now
+            )
+            plaid_item.refresh_from_db()
             item_status.record_sync_success(plaid_item)
 
         total_added = len(updates.added)

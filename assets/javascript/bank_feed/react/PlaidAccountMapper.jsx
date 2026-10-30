@@ -20,6 +20,9 @@ import Icon from '../../common/Icon';
 /** A bank account feeds an asset or a liability; the server refuses anything else. */
 const FEEDABLE_TYPES = new Set(['asset', 'liability']);
 
+/** The mapping choice for "don't import this account" (a mortgage tracked elsewhere, say). */
+const IGNORE = 'ignore';
+
 const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, onComplete, onCancel }) => {
   const [mappings, setMappings] = useState({});
   const feedable = ledgerAccounts.filter(
@@ -48,7 +51,7 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
     );
 
     if (unmappedAccounts.length > 0) {
-      setError(gettext('Please map all accounts before saving.'));
+      setError(gettext('Choose an account, or “Don’t import”, for each bank account.'));
       return;
     }
 
@@ -61,9 +64,8 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
         return plaidClient.plaidAccountsPartialUpdate({
           ...book.params,
           id: parseInt(plaidAccountId, 10),
-          patchedPlaidAccount: {
-            account: parseInt(ledgerAccountId, 10),
-          },
+          patchedPlaidAccount:
+            ledgerAccountId === IGNORE ? { isIgnored: true } : { account: parseInt(ledgerAccountId, 10) },
         });
       });
 
@@ -149,6 +151,7 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
                   onChange={(e) => handleMappingChange(plaidAccount.id, e.target.value)}
                 >
                   <option value="">{gettext('Select an account...')}</option>
+                  <option value={IGNORE}>{gettext("Don't import this account")}</option>
                   {feedable.map(account => (
                     <option key={account.id} value={account.id}>
                       {account.account_group_name} - {account.name}

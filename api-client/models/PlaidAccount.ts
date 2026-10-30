@@ -71,6 +71,12 @@ export interface PlaidAccount {
      */
     readonly accountDetails: Account;
     /**
+     * The user chose not to import this account (e.g. a mortgage tracked elsewhere)
+     * @type {boolean}
+     * @memberof PlaidAccount
+     */
+    isIgnored?: boolean;
+    /**
      * Account name from Plaid
      * @type {string}
      * @memberof PlaidAccount
@@ -155,6 +161,7 @@ export function PlaidAccountFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'itemDetails': PlaidItemFromJSON(json['item_details']),
         'account': json['account'] == null ? undefined : json['account'],
         'accountDetails': AccountFromJSON(json['account_details']),
+        'isIgnored': json['is_ignored'] == null ? undefined : json['is_ignored'],
         'name': json['name'],
         'mask': json['mask'] == null ? undefined : json['mask'],
         'subtype': json['subtype'],
@@ -180,6 +187,7 @@ export function PlaidAccountFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'plaid_account_id': value['plaidAccountId'],
         'item': value['item'],
         'account': value['account'],
+        'is_ignored': value['isIgnored'],
         'name': value['name'],
         'mask': value['mask'],
         'subtype': value['subtype'],

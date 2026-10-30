@@ -1,8 +1,9 @@
-/* globals gettext, interpolate */
+/* globals gettext, interpolate, ngettext */
 
-import React from 'react';
+import React, { useState } from 'react';
 
 import Icon from '../../common/Icon';
+import PlaidAccountMapper from './PlaidAccountMapper';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
 
 /** What each connection status asks of the user (apps.plaid.models.PlaidItem.STATUS_*). */
@@ -55,23 +56,77 @@ const ItemAlert = ({ item, book, allAccounts, plaidClient, onReconnected }) => {
 };
 
 /**
- * One alert per bank connection that needs the user: sign in again, renew
- * consent, or share accounts Plaid found. Each opens Link's update mode.
+ * A linked bank with accounts that are neither mapped nor ignored: their
+ * transactions aren't imported until the user picks a ledger account (which
+ * backfills their history) or says not to import them.
  */
-const PlaidItemAlerts = ({ items, book, allAccounts, plaidClient, onReconnected }) => {
-  const needing = items.filter((item) => item.needsAttention);
-  if (needing.length === 0) return null;
+const UnmappedAlert = ({ item, plaidAccounts, book, allAccounts, plaidClient, onMapped }) => {
+  const [open, setOpen] = useState(false);
+  const unmapped = plaidAccounts.filter((pa) => pa.item === item.id && pa.account == null && !pa.isIgnored);
+  if (unmapped.length === 0) return null;
+  return (
+    <div className="alert alert-info alert-soft" role="status" data-testid={`plaid-unmapped-alert-${item.id}`}>
+      <Icon name="exclamation-triangle" className="inline-block shrink-0 w-4 h-4" />
+      <span>
+        {interpolate(
+          ngettext(
+            '%s has %s account whose transactions are not imported yet.',
+            '%s has %s accounts whose transactions are not imported yet.',
+            unmapped.length,
+          ),
+          [item.institutionName, unmapped.length],
+        )}
+      </span>
+      <button type="button" className="btn btn-sm" onClick={() => setOpen(true)} data-testid={`plaid-map-${item.id}`}>
+        {gettext('Choose accounts')}
+      </button>
+      {open && (
+        <PlaidAccountMapper
+          book={book}
+          plaidAccounts={unmapped}
+          ledgerAccounts={allAccounts}
+          plaidClient={plaidClient}
+          onComplete={() => {
+            setOpen(false);
+            if (onMapped) onMapped();
+          }}
+          onCancel={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+/**
+ * One alert per bank connection that needs the user: sign in again, renew
+ * consent, or share accounts Plaid found (each opens Link's update mode) --
+ * or map accounts whose transactions aren't imported yet.
+ */
+const PlaidItemAlerts = ({ items, plaidAccounts = [], book, allAccounts, plaidClient, onReconnected }) => {
+  const shown = items.filter((item) => item.needsAttention || item.unmappedAccounts > 0);
+  if (shown.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">
-      {needing.map((item) => (
-        <ItemAlert
-          key={item.id}
-          item={item}
-          book={book}
-          allAccounts={allAccounts}
-          plaidClient={plaidClient}
-          onReconnected={onReconnected}
-        />
+      {shown.map((item) => (
+        <React.Fragment key={item.id}>
+          {item.needsAttention && (
+            <ItemAlert
+              item={item}
+              book={book}
+              allAccounts={allAccounts}
+              plaidClient={plaidClient}
+              onReconnected={onReconnected}
+            />
+          )}
+          <UnmappedAlert
+            item={item}
+            plaidAccounts={plaidAccounts}
+            book={book}
+            allAccounts={allAccounts}
+            plaidClient={plaidClient}
+            onMapped={onReconnected}
+          />
+        </React.Fragment>
       ))}
     </div>
   );
