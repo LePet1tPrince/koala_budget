@@ -1,14 +1,10 @@
 import json
-import math
-from collections import defaultdict
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from urllib.parse import urlencode
+from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -22,10 +18,9 @@ from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.utils.amounts import evaluate_amount
-from apps.utils.months import months_between
 from apps.web.templatetags.currency_tags import currency
 
-from . import autofill, figures, goal_links, grid
+from . import autofill, figures, goal_cards, goal_funds, goal_links, grid
 from . import ledger as budget_ledger
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Goal, GoalAccountLink
@@ -37,7 +32,6 @@ from .services import (
     GoalService,
     NetWorthService,
     budgeted_account_types,
-    goal_monthly,
     goal_plan,
     picker_accounts_data,
 )
@@ -367,37 +361,6 @@ def budget_grid_save(request, team_slug, book_slug):
 # =============================================================================
 
 
-def _goal_streak(saved_months, month):
-    """Consecutive months with a positive allocation, counting backwards from the
-    selected month (a not-yet-funded selected month doesn't break the streak)."""
-    cursor = month
-    if cursor not in saved_months:
-        cursor -= relativedelta(months=1)
-    streak = 0
-    while cursor in saved_months:
-        streak += 1
-        cursor -= relativedelta(months=1)
-    return streak
-
-
-def _goal_card_progress(goal, saved, this_month):
-    """
-    (pct, remaining) for a goal card: what its bar shows and what it still asks for.
-
-    A goal with a target measures `saved` against the target. An open-ended goal
-    (no target) measures this month's contribution against its monthly plan, so
-    the bar fills each month and empties the next.
-    """
-    zero = Decimal("0")
-    if goal.has_target:
-        pct = max(min(float(saved / goal.target_amount * 100), 100), 0)
-        return pct, max(goal.target_amount - saved, zero)
-    rate = goal.monthly_contribution or zero
-    if rate <= 0:
-        return 0, zero
-    return max(min(float(this_month / rate * 100), 100), 0), max(rate - this_month, zero)
-
-
 @login_and_book_required
 def goals_list_view(request, team_slug, book_slug):
     """List all goals with progress for the selected month."""
@@ -406,83 +369,9 @@ def goals_list_view(request, team_slug, book_slug):
     service = GoalService(request.book)
     summary = service.get_goal_summary(month, closed=show_closed)
     goals = summary["goals"]
-    closed_count = (
-        Goal.objects.filter(book=request.book).filter(Q(closed_at__isnull=False) | Q(is_archived=True)).count()
-    )
+    closed_count = Goal.objects.filter(book=request.book).finished().count()
 
-    # What each goal was given per month (assigned + from linked accounts);
-    # used for streaks and pace.
-    amounts_by_goal = {
-        goal_id: {m: values["saved"] for m, values in months.items()}
-        for goal_id, months in goal_monthly(request.book, goals).items()
-    }
-
-    links_by_goal = defaultdict(list)
-    for link in GoalAccountLink.objects.open().filter(goal__in=goals).select_related("account"):
-        links_by_goal[link.goal_id].append(link.account.name)
-
-    goal_items = []
-    for goal in goals:
-        amounts = amounts_by_goal.get(goal.pk, {})
-        saved = goal.allocated
-        this_month = goal.saved_this_month or Decimal("0")
-        if goal.has_target:
-            remaining, pct = goal.to_fund, goal.progress_percentage
-        else:
-            pct, remaining = _goal_card_progress(goal, saved, this_month)
-        # The spent part of the fill, drawn hatched: spending doesn't slide the bar back.
-        spent_pct = min(max(float(goal.spent / goal.target_amount * 100), 0), pct) if goal.has_target else 0
-
-        saved_months = {m for m, amt in amounts.items() if amt > 0}
-        streak = _goal_streak(saved_months, month)
-
-        # The plan: a monthly contribution, or the pace to hit the target date.
-        plan = goal_plan(goal, month)
-        months_left = None
-        needed_per_month = None
-        if plan and plan["rate"] > 0 and (remaining > 0 or not goal.has_target):
-            needed_per_month = plan["rate"]
-            if plan["finish"]:
-                finish = plan["finish"]
-                months_left = max(months_between(month, finish), 1)
-
-        # Projection from the recent saving rate (average of the last 3 months)
-        recent = [amounts.get(month - relativedelta(months=i), Decimal("0")) for i in range(3)]
-        recent_avg = sum(recent) / 3
-        projected_date = None
-        if goal.has_target and remaining > 0 and recent_avg > 0:
-            projected_date = month + relativedelta(months=math.ceil(remaining / recent_avg))
-        behind_pace = bool(plan and plan["status"] == "behind")
-
-        goal_items.append(
-            {
-                "goal": goal,
-                "saved": saved,
-                "remaining": remaining,
-                "pct": pct,
-                "this_month": this_month,
-                "has_target": goal.has_target,
-                "streak": streak,
-                "months_left": months_left,
-                "needed_per_month": needed_per_month,
-                "plan_finish": plan["finish"] if plan else None,
-                "plan_status": plan["status"] if plan else None,
-                "plan_status_label": plan["status_label"] if plan else None,
-                "links": links_by_goal.get(goal.pk, []),
-                "projected_date": projected_date,
-                "behind_pace": behind_pace,
-                "funded": goal.is_funded,
-                "spent": goal.spent,
-                "spent_this_month": goal.spent_this_month,
-                "left": goal.left,
-                "cover_amount": max(-goal.left, Decimal("0")),
-                "spent_pct": spent_pct,
-                "state": goal.state,
-                "state_label": goal.state_label,
-                "closed": goal.is_closed,
-                "spending_url": _goal_spending_url(goal, request.book),
-            }
-        )
+    goal_items = goal_cards.goal_items(request.book, goals, month)
 
     # Get net worth card data
     net_worth_service = NetWorthService(request.book)
@@ -523,22 +412,6 @@ def goals_list_view(request, team_slug, book_slug):
     )
 
 
-def _goal_spending_url(goal, book):
-    """The Transactions page filtered to the goal's account (its spending)."""
-    if not goal.account_id:
-        return None
-    base = reverse("journal:transactions_home", args=book.url_args)
-    return f"{base}?{urlencode({'f_debit_account': f'a:{goal.account_id}'})}"
-
-
-def _goal_numbers(goal, month):
-    """(allocated, spent, saved in `month`) for `goal` as of the end of `month`."""
-    numbers = (
-        Goal.objects.filter(pk=goal.pk).with_progress(month).values("allocated", "spent", "saved_this_month").get()
-    )
-    return numbers["allocated"], numbers["spent"], numbers["saved_this_month"] or Decimal("0")
-
-
 @login_and_book_required
 @require_POST
 def goal_assign_available(request, team_slug, book_slug, pk):
@@ -557,45 +430,12 @@ def goal_assign_available(request, team_slug, book_slug, pk):
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
-    if goal.is_archived or goal.is_closed:
-        return JsonResponse({"error": "This goal is no longer active."}, status=400)
-    # A funded goal stops asking for money (no quick-assign), but an explicit
-    # amount still goes in -- that's how an overspent goal is covered or paid back.
-    if goal.is_complete and payload.get("amount") is None:
-        return JsonResponse({"error": "This goal is already fully funded."}, status=400)
-
     month = _parse_month(payload.get("month"))
-
-    with transaction.atomic():
-        budget_ledger.lock(request.book)
-        month_amount = budget_ledger.goal_allocation(request.book, goal, month)
-        old_saved, spent, saved_month = _goal_numbers(goal, month)
-        _, remaining = _goal_card_progress(goal, old_saved, saved_month)
-        available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
-
-        raw_amount = payload.get("amount")
-        if raw_amount is None:
-            if goal.has_target and remaining <= 0:
-                return JsonResponse({"error": "This goal is already fully funded."}, status=400)
-            # An open-ended goal asks for this month's contribution; once that's
-            # in, "add all available" means exactly that.
-            amount = min(available, remaining) if remaining > 0 else available
-            if amount <= 0:
-                return JsonResponse({"error": "No available funds to assign right now."}, status=400)
-        else:
-            try:
-                amount = Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            except (InvalidOperation, TypeError, ValueError):
-                return JsonResponse({"error": "Invalid amount."}, status=400)
-            if not amount.is_finite() or amount <= 0 or amount > MAX_BUDGET_AMOUNT:
-                return JsonResponse({"error": "Invalid amount."}, status=400)
-
-        amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        GoalService(request.book).update_allocation(goal, month, month_amount + amount)
-
-    new_saved = old_saved + amount
-    old_pct, _ = _goal_card_progress(goal, old_saved, saved_month)
-    new_pct, new_remaining = _goal_card_progress(goal, new_saved, saved_month + amount)
+    raw_amount = payload.get("amount")
+    try:
+        amount, result = goal_funds.assign(request.book, goal, month, raw_amount)
+    except goal_funds.GoalFundsError as e:
+        return JsonResponse({"error": str(e)}, status=400)
 
     log_event(
         AuditEvent.GOAL_FUNDS_ASSIGNED,
@@ -608,25 +448,7 @@ def goal_assign_available(request, team_slug, book_slug, pk):
             "quick_assign": raw_amount is None,
         },
     )
-
-    return JsonResponse(
-        {
-            "goal_id": goal.pk,
-            "goal_name": goal.name,
-            "assigned": float(amount),
-            "old_saved": float(old_saved),
-            "new_saved": float(new_saved),
-            "old_pct": old_pct,
-            "new_pct": new_pct,
-            "remaining": float(new_remaining),
-            "this_month": float(month_amount + amount),
-            "new_available": float(available - amount),
-            "completed": goal.has_target and new_saved >= goal.target_amount,
-            "open_ended": not goal.has_target,
-            "spent": float(spent),
-            "left": float(new_saved - spent),
-        }
-    )
+    return JsonResponse(result)
 
 
 @login_and_book_required
@@ -649,46 +471,12 @@ def goal_withdraw(request, team_slug, book_slug, pk):
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
-    # Funded goals stay withdrawable — that's how a finished goal is cashed out
-    if goal.is_archived:
-        return JsonResponse({"error": "This goal is archived."}, status=400)
-    if goal.is_closed:
-        return JsonResponse({"error": "This goal is closed."}, status=400)
-
     month = _parse_month(payload.get("month"))
-
-    with transaction.atomic():
-        budget_ledger.lock(request.book)
-        month_amount = budget_ledger.goal_allocation(request.book, goal, month)
-        old_saved, spent, saved_month = _goal_numbers(goal, month)
-        left = old_saved - spent
-        available = NetWorthService(request.book).get_net_worth_card_data(month)["available"]
-
-        if left <= 0:
-            return JsonResponse({"error": "Nothing left in this goal to withdraw."}, status=400)
-
-        raw_amount = payload.get("amount")
-        if raw_amount is None:
-            amount = left
-        else:
-            try:
-                amount = Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            except (InvalidOperation, TypeError, ValueError):
-                return JsonResponse({"error": "Invalid amount."}, status=400)
-            if not amount.is_finite() or amount <= 0 or amount > MAX_BUDGET_AMOUNT:
-                return JsonResponse({"error": "Invalid amount."}, status=400)
-            if amount > left:
-                return JsonResponse(
-                    {"error": f"This goal only has ${left:,.2f} left."},
-                    status=400,
-                )
-
-        amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        GoalService(request.book).update_allocation(goal, month, month_amount - amount)
-
-    new_saved = old_saved - amount
-    old_pct, _ = _goal_card_progress(goal, old_saved, saved_month)
-    new_pct, new_remaining = _goal_card_progress(goal, new_saved, saved_month - amount)
+    raw_amount = payload.get("amount")
+    try:
+        amount, result = goal_funds.withdraw(request.book, goal, month, raw_amount)
+    except goal_funds.GoalFundsError as e:
+        return JsonResponse({"error": str(e)}, status=400)
 
     log_event(
         AuditEvent.GOAL_FUNDS_WITHDRAWN,
@@ -701,25 +489,7 @@ def goal_withdraw(request, team_slug, book_slug, pk):
             "withdraw_all": raw_amount is None,
         },
     )
-
-    return JsonResponse(
-        {
-            "goal_id": goal.pk,
-            "goal_name": goal.name,
-            "withdrawn": float(amount),
-            "old_saved": float(old_saved),
-            "new_saved": float(new_saved),
-            "old_pct": old_pct,
-            "new_pct": new_pct,
-            "remaining": float(new_remaining),
-            "this_month": float(month_amount - amount),
-            "new_available": float(available + amount),
-            "funded": goal.has_target and new_saved >= goal.target_amount,
-            "open_ended": not goal.has_target,
-            "spent": float(spent),
-            "left": float(new_saved - spent),
-        }
-    )
+    return JsonResponse(result)
 
 
 def _log_link_changes(request, goal, changes, outflow_before=None):
@@ -863,7 +633,9 @@ def goal_detail_view(request, team_slug, book_slug, pk):
             "page_title": f"{goal.name} | {book_display_name(request.book)}",
             "goal": goal,
             "plan": goal_plan(goal, month),
-            "progress_pct": _goal_card_progress(goal, goal.allocated, goal.saved_this_month or Decimal("0"))[0],
+            "progress_pct": goal_cards.goal_card_progress(goal, goal.allocated, goal.saved_this_month or Decimal("0"))[
+                0
+            ],
             "open_links": [link for link in links if link.is_open],
             "past_links": [link for link in links if not link.is_open],
             "activity": goal_links.goal_activity(goal),
@@ -872,7 +644,7 @@ def goal_detail_view(request, team_slug, book_slug, pk):
             "delete_blocked": GoalService(request.book).delete_blocked_reason(goal),
             "spending": GoalService(request.book).spending_lines(goal, limit=50),
             "drift": goal_links.link_drift(goal, goal.left),
-            "spending_url": _goal_spending_url(goal, request.book),
+            "spending_url": goal_cards.goal_spending_url(goal, request.book),
         },
     )
 

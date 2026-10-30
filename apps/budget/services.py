@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, ngettext
@@ -353,11 +353,7 @@ class GoalService:
         """
         qs = Goal.objects.filter(book=self.book)
         if closed is True:
-            return (
-                qs.filter(Q(closed_at__isnull=False) | Q(is_archived=True))
-                .with_progress(month)
-                .select_related("account")
-            )
+            return qs.finished().with_progress(month).select_related("account")
         if not include_archived:
             qs = qs.filter(is_archived=False)
         if closed is not None:
