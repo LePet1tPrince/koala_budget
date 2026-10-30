@@ -13,8 +13,16 @@
  */
 
 import { mapValues } from '../runtime';
+import type { PlaidAccount } from './PlaidAccount';
+import {
+    PlaidAccountFromJSON,
+    PlaidAccountFromJSONTyped,
+    PlaidAccountToJSON,
+    PlaidAccountToJSONTyped,
+} from './PlaidAccount';
+
 /**
- * 
+ * What linking a bank returns: the new item and the accounts to map.
  * @export
  * @interface ExchangePublicTokenResponse
  */
@@ -25,6 +33,18 @@ export interface ExchangePublicTokenResponse {
      * @memberof ExchangePublicTokenResponse
      */
     success: boolean;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExchangePublicTokenResponse
+     */
+    itemId: number;
+    /**
+     * 
+     * @type {Array<PlaidAccount>}
+     * @memberof ExchangePublicTokenResponse
+     */
+    accounts: Array<PlaidAccount>;
 }
 
 /**
@@ -32,6 +52,8 @@ export interface ExchangePublicTokenResponse {
  */
 export function instanceOfExchangePublicTokenResponse(value: object): value is ExchangePublicTokenResponse {
     if (!('success' in value) || value['success'] === undefined) return false;
+    if (!('itemId' in value) || value['itemId'] === undefined) return false;
+    if (!('accounts' in value) || value['accounts'] === undefined) return false;
     return true;
 }
 
@@ -46,6 +68,8 @@ export function ExchangePublicTokenResponseFromJSONTyped(json: any, ignoreDiscri
     return {
         
         'success': json['success'],
+        'itemId': json['item_id'],
+        'accounts': ((json['accounts'] as Array<any>).map(PlaidAccountFromJSON)),
     };
 }
 
@@ -61,6 +85,8 @@ export function ExchangePublicTokenResponseFromJSONTyped(json: any, ignoreDiscri
     return {
         
         'success': value['success'],
+        'item_id': value['itemId'],
+        'accounts': ((value['accounts'] as Array<any>).map(PlaidAccountToJSON)),
     };
 }
 

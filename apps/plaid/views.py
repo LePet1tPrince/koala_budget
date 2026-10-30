@@ -24,6 +24,7 @@ from apps.books.permissions import BookModelAccessPermissions
 
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .serializers import (
+    ExchangePublicTokenResponseSerializer,
     PlaidAccountSerializer,
     PlaidItemSerializer,
     PlaidTransactionSerializer,
@@ -186,14 +187,7 @@ def create_link_token_view(request, team_slug=None, book_slug=None):
             ),
         },
     ),
-    responses={
-        200: inline_serializer(
-            name="ExchangePublicTokenResponse",
-            fields={
-                "success": drf_serializers.BooleanField(),
-            },
-        ),
-    },
+    responses={200: ExchangePublicTokenResponseSerializer},
 )
 @api_view(["POST"])
 @permission_classes([BookModelAccessPermissions])

@@ -17,8 +17,14 @@ import Icon from '../../common/Icon';
  * - onComplete: Callback when mapping is complete
  * - onCancel: Callback when user cancels
  */
+/** A bank account feeds an asset or a liability; the server refuses anything else. */
+const FEEDABLE_TYPES = new Set(['asset', 'liability']);
+
 const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, onComplete, onCancel }) => {
   const [mappings, setMappings] = useState({});
+  const feedable = ledgerAccounts.filter(
+    (account) => FEEDABLE_TYPES.has(account.account_type) && !account.is_system && !account.is_archived,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -116,9 +122,6 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
                   </span>
                 </div>
                 <div className="text-sm text-base-content/70">
-                  {plaidAccount.official_name && (
-                    <div>{plaidAccount.official_name}</div>
-                  )}
                   <div>
                     {plaidAccount.subtype} • ****{plaidAccount.mask}
                   </div>
@@ -137,7 +140,7 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
                   onChange={(e) => handleMappingChange(plaidAccount.id, e.target.value)}
                 >
                   <option value="">{gettext('Select an account...')}</option>
-                  {ledgerAccounts.map(account => (
+                  {feedable.map(account => (
                     <option key={account.id} value={account.id}>
                       {account.account_group_name} - {account.name}
                     </option>

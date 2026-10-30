@@ -50,3 +50,26 @@ class ExchangePublicTokenTest(PlaidBookTestCase):
         self.client.force_authenticate(user=self.outsider)
         self.assertIn(self.post().status_code, (403, 404))
         self.assertFalse(PlaidItem.objects.filter(plaid_item_id="item-new").exists())
+
+
+@patch("apps.plaid.views.get_institution", return_value={"name": "TD"})
+@patch("apps.plaid.views.get_accounts", return_value=ACCOUNTS)
+@patch("apps.plaid.views.exchange_public_token", return_value={"access_token": "access-new", "item_id": "item-new"})
+class ExchangeResponseTest(PlaidBookTestCase):
+    def test_response_carries_the_accounts_to_map(self, *_mocks):
+        """The account mapper is built from this list; the schema used to drop it."""
+        response = self.client.post(
+            self.url("exchange-token/"), {"public_token": "p", "institution_id": "ins_td"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["item_id"], PlaidItem.objects.get(plaid_item_id="item-new").pk)
+        self.assertEqual([a["plaid_account_id"] for a in body["accounts"]], ["acc-new-1"])
+
+    def test_schema_declares_the_accounts(self, *_mocks):
+        from drf_spectacular.generators import SchemaGenerator
+
+        schema = SchemaGenerator().get_schema(request=None, public=True)
+        props = schema["components"]["schemas"]["ExchangePublicTokenResponse"]["properties"]
+        self.assertIn("accounts", props)
+        self.assertIn("item_id", props)
