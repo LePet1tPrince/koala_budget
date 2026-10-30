@@ -566,6 +566,24 @@ PLAID_CLIENT_ID = env("PLAID_CLIENT_ID", default="")
 PLAID_SECRET = env("PLAID_SECRET", default="")
 # Environment: sandbox, development, or production
 PLAID_ENV = env("PLAID_ENV", default="https://sandbox.plaid.com")
+# Countries whose banks Plaid Link offers. Koala Budget launches in Canada, so CA
+# comes first; each code must also be enabled for your client in the Plaid
+# dashboard, or /link/token/create refuses it.
+PLAID_COUNTRY_CODES = env.list("PLAID_COUNTRY_CODES", default=["CA", "US"])
+# Plaid products requested at Link. `transactions` is available in CA and US.
+PLAID_PRODUCTS = env.list("PLAID_PRODUCTS", default=["transactions"])
+# Languages Plaid Link is shown in, chosen from the user's active language
+# (Plaid supports both en and fr for Canadian institutions); anything else gets
+# the first one.
+PLAID_LINK_LANGUAGES = env.list("PLAID_LINK_LANGUAGES", default=["en", "fr"])
+# Where Plaid sends this app's webhooks. Blank derives it from the Site domain
+# (`/plaid/webhook/`); set it explicitly when that domain isn't public.
+PLAID_WEBHOOK_URL = env("PLAID_WEBHOOK_URL", default="")
+# OAuth redirect URI, required by OAuth institutions. Must be registered in the
+# Plaid dashboard. Blank sends none.
+PLAID_REDIRECT_URI = env("PLAID_REDIRECT_URI", default="")
+# How much history a newly linked bank backfills (Plaid's default is 90, the max 730).
+PLAID_TRANSACTIONS_DAYS_REQUESTED = env.int("PLAID_TRANSACTIONS_DAYS_REQUESTED", default=730)
 
 # django-encrypted-model-fields configuration
 # Generate a proper Fernet key from the SECRET_KEY

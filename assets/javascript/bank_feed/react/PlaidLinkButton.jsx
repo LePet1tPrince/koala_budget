@@ -52,6 +52,7 @@ export const usePlaidLinkFlow = ({ book, allAccounts, onSuccess, plaidClient }) 
         exchangePublicTokenRequest: {
           publicToken: public_token,
           institutionId: metadata.institution?.institution_id ?? null,
+          institutionName: metadata.institution?.name ?? undefined,
           accounts: metadata.accounts,
         },
       });

@@ -134,6 +134,19 @@ class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 # Plaid Link API Endpoints
 
 
+def _institution_name(institution_id, fallback=None):
+    """
+    The institution's display name. A failed lookup must not fail the link --
+    the bank is already connected at Plaid by then -- so Link's own metadata
+    name stands in.
+    """
+    try:
+        return get_institution(institution_id).get("name") or fallback or "Unknown Institution"
+    except Exception:
+        logger.warning("Plaid institution lookup failed for %s", institution_id, exc_info=True)
+        return fallback or "Unknown Institution"
+
+
 @extend_schema(
     operation_id="plaid_create_link_token",
     tags=["plaid"],
@@ -166,6 +179,7 @@ def create_link_token_view(request, team_slug=None, book_slug=None):
         fields={
             "public_token": drf_serializers.CharField(),
             "institution_id": drf_serializers.CharField(),
+            "institution_name": drf_serializers.CharField(required=False),
             "accounts": drf_serializers.ListField(
                 child=drf_serializers.DictField(),
                 required=False,
@@ -207,9 +221,7 @@ def exchange_public_token_view(request, team_slug=None, book_slug=None):
         access_token = exchange_result["access_token"]
         item_id = exchange_result["item_id"]
 
-        # Get institution details
-        institution = get_institution(institution_id)
-        institution_name = institution.get("name", "Unknown Institution")
+        institution_name = _institution_name(institution_id, request.data.get("institution_name"))
 
         # Create PlaidItem
         plaid_item = PlaidItem.objects.create(

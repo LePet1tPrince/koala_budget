@@ -13,10 +13,9 @@ from apps.audit.models import AuditEvent
 from apps.bank_feed.models import BankTransaction
 from apps.books.context import get_current_book
 from apps.journal.models import JournalEntry, JournalLine
+from apps.plaid.models import PlaidAccount, PlaidItem
+from apps.plaid.tasks import sync_plaid_transactions
 from apps.teams.models import Team
-
-from .models import PlaidAccount, PlaidItem
-from .tasks import sync_plaid_transactions
 
 
 class PlaidWebhookTest(TestCase):
