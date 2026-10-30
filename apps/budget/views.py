@@ -17,7 +17,6 @@ from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.accounts.models import Account
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
@@ -26,7 +25,7 @@ from apps.utils.amounts import evaluate_amount
 from apps.utils.months import months_between
 from apps.web.templatetags.currency_tags import currency
 
-from . import figures, goal_links
+from . import autofill, figures, goal_links
 from . import ledger as budget_ledger
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Goal, GoalAccountLink
@@ -250,6 +249,14 @@ def budget_category_visibility(request, team_slug, book_slug, pk):
     return redirect(f"{reverse('budget:budget_home', args=request.book.url_args)}?month={month.isoformat()}&tab={tab}")
 
 
+AUTOFILL_MESSAGES = {
+    autofill.ASSIGNED_LAST_MONTH: _("Budgets set to last month's assigned amounts."),
+    autofill.SPENT_LAST_MONTH: _("Budgets set to last month's spending."),
+    autofill.ASSIGN_ZERO: _("Budgets set to zero."),
+    autofill.RESET_AVAILABLE_ZERO: _("Budgets adjusted so all available amounts are zero."),
+}
+
+
 @login_and_book_required
 def budget_autofill_view(request, team_slug, book_slug):
     """Handle auto-fill budget actions from the sidebar."""
@@ -258,64 +265,20 @@ def budget_autofill_view(request, team_slug, book_slug):
 
     action = request.POST.get("action")
     month = _parse_month(request.POST.get("month"))
-
-    prev_month = month - relativedelta(months=1)
-    service = BudgetService(request.book)
-
-    # One tab's categories: each tab carries its own Auto-Assign buttons, and a fill
-    # must not reach rows on a tab that isn't on screen. Without a `section` (an
-    # older form) it covers every budgeted type, as it always did.
-    types = budgeted_account_types(request.book)
     section = request.POST.get("section")
-    if section in types:
-        types = (section,)
-
-    # Hidden categories are left alone: a bulk fill is aimed at what is on screen.
-    categories = list(
-        Account.for_book.filter(account_group__account_type__in=types, hidden_from_budget=False)
-        .select_related("account_group")
-        .order_by("account_group__name", "name")
-    )
-
     # The frontend lets the user pick which categories this action applies to
     # (checkboxes next to each budget row). "filtered" distinguishes an explicit
     # empty selection from the no-JS fallback, which still applies to everything.
-    if request.POST.get("filtered"):
-        selected_ids = {cid for cid in request.POST.getlist("category_ids") if cid}
-        categories = [c for c in categories if str(c.pk) in selected_ids]
+    selected_ids = (
+        {cid for cid in request.POST.getlist("category_ids") if cid} if request.POST.get("filtered") else None
+    )
 
-    amounts = {}
-    if action == "assigned_last_month":
-        prev_budgets = budget_ledger.budgeted_in_month(request.book, prev_month)
-        amounts = {cat.pk: prev_budgets.get(cat.pk, Decimal("0")) for cat in categories}
-        messages.success(request, _("Budgets set to last month's assigned amounts."))
+    categories = autofill.autofill_categories(request.book, section, selected_ids)
+    autofill.autofill(request.book, action, month, categories)
+    if action in AUTOFILL_MESSAGES:
+        messages.success(request, AUTOFILL_MESSAGES[action])
 
-    elif action == "spent_last_month":
-        prev_actuals = service.get_actuals_by_category(prev_month)
-        amounts = {cat.pk: max(prev_actuals.get(cat.pk, Decimal("0")), Decimal("0")) for cat in categories}
-        messages.success(request, _("Budgets set to last month's spending."))
-
-    elif action == "assign_zero":
-        amounts = {cat.pk: Decimal("0") for cat in categories}
-        messages.success(request, _("Budgets set to zero."))
-
-    elif action == "reset_available_zero":
-        prev_available = service.get_available_by_category(prev_month, categories)
-        current_actuals = service.get_actuals_by_category(month)
-        for cat in categories:
-            actual = current_actuals.get(cat.pk, Decimal("0"))
-            prev_avail = prev_available.get(cat.pk, Decimal("0"))
-            if cat.account_group.account_type == "income":
-                # Available = Actual - Budget + prev_avail = 0, so Budget = Actual + prev_avail
-                amounts[cat.pk] = actual + prev_avail
-            else:
-                # Available = Budget - Actual + prev_avail = 0, so Budget = Actual - prev_avail
-                amounts[cat.pk] = actual - prev_avail
-        messages.success(request, _("Budgets adjusted so all available amounts are zero."))
-
-    budget_ledger.set_budgets(request.book, {(category_id, month): amount for category_id, amount in amounts.items()})
-
-    tab = f"&tab={section}" if section in types else ""
+    tab = f"&tab={section}" if section in budgeted_account_types(request.book) else ""
     return redirect(f"/a/{team_slug}/{book_slug}/budget/?month={month.isoformat()}{tab}")
 
 
