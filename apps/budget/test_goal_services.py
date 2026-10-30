@@ -20,7 +20,7 @@ AUG, SEPT, OCT = date(2026, 8, 1), date(2026, 9, 1), date(2026, 10, 1)
 D = Decimal
 
 
-class GoalServicesTest(TestCase):
+class Fixture(TestCase):
     """Checking holds 10,000 of opening balance; "Car" has 1,000 in August and 500 in September."""
 
     @classmethod
@@ -38,6 +38,8 @@ class GoalServicesTest(TestCase):
         set_goal_allocation(cls.book, cls.car, AUG, D("1000"))
         set_goal_allocation(cls.book, cls.car, SEPT, D("500"))
 
+
+class GoalServicesTest(Fixture):
     def test_streak_counts_back_from_the_month_and_forgives_an_unfunded_one(self):
         self.assertEqual(goal_cards.goal_streak({AUG, SEPT}, SEPT), 2)
         self.assertEqual(goal_cards.goal_streak({AUG, SEPT}, OCT), 2)
@@ -86,3 +88,28 @@ class GoalServicesTest(TestCase):
         self.assertEqual(amount, D("1400.00"))
         with self.assertRaisesMessage(goal_funds.GoalFundsError, "Nothing left"):
             goal_funds.withdraw(self.book, self.car, OCT)
+
+
+class GoalArchiveAndSaveTest(Fixture):
+    def test_archive_closes_an_open_goal_first(self):
+        from .services import GoalService
+
+        result = GoalService(self.book).archive(self.car, OCT)
+        self.assertEqual(result, {"released": D("1500"), "covered": D("0")})
+        self.car.refresh_from_db()
+        self.assertTrue(self.car.is_archived and self.car.is_closed)
+        # Already closed: archiving again just keeps it archived.
+        self.assertIsNone(GoalService(self.book).archive(self.car, OCT))
+
+    def test_save_goal_rolls_back_with_a_refused_link(self):
+        from . import goal_links
+
+        goal = Goal(book=self.book, name="Boat", target_amount=D("100"), closed_at="2026-01-01T00:00:00Z")
+        row = goal_links.LinkRow(
+            account=Account.objects.get(book=self.book, name="Checking"),
+            start_date=OCT,
+            include_starting_balance=False,
+        )
+        with self.assertRaises(goal_links.LinkError):
+            goal_links.save_goal(goal, [row])
+        self.assertFalse(Goal.objects.filter(book=self.book, name="Boat").exists())

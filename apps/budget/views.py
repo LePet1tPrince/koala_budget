@@ -4,7 +4,6 @@ from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
-from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -560,11 +559,9 @@ def _goal_form_view(request, goal=None):
             rows, link_error, link_error_goal = None, str(e), e.goal
         if form.is_valid() and link_error is None:
             try:
-                with transaction.atomic():
-                    saved = form.save(commit=False)
-                    saved.book = book
-                    saved.save()
-                    changes = goal_links.set_links(saved, rows)
+                saved = form.save(commit=False)
+                saved.book = book
+                changes = goal_links.save_goal(saved, rows)
             except goal_links.LinkError as e:
                 link_error, link_error_goal = str(e), e.goal
                 if is_new:
@@ -810,18 +807,13 @@ def goal_delete_view(request, team_slug, book_slug, pk):
     goal = get_object_or_404(Goal.objects.filter(book=request.book), pk=pk)
 
     if request.method == "POST":
-        # Archiving hides a goal. An open goal is closed first, which releases
-        # anything left in it -- a hidden goal must not keep holding money.
-        if not goal.is_closed:
-            try:
-                result = GoalService(request.book).close(goal, _month_from_request(request))
-            except GoalCloseError as e:
-                messages.error(request, str(e))
-                return redirect("budget:goal_detail", team_slug=team_slug, book_slug=book_slug, pk=pk)
-            goal.refresh_from_db()
+        try:
+            result = GoalService(request.book).archive(goal, _month_from_request(request))
+        except GoalCloseError as e:
+            messages.error(request, str(e))
+            return redirect("budget:goal_detail", team_slug=team_slug, book_slug=book_slug, pk=pk)
+        if result is not None:
             _log_goal_closed(request, goal, result, via="archive")
-        goal.is_archived = True
-        goal.save()
         messages.success(request, _("Goal archived successfully."))
         return redirect("budget:goals_list", team_slug=team_slug, book_slug=book_slug)
 

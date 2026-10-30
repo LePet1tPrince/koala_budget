@@ -199,6 +199,17 @@ def set_links(goal, rows, today=None):
 
 
 @transaction.atomic
+def save_goal(goal, rows, today=None):
+    """
+    Save a goal from its form together with its linked accounts (`set_links`), as
+    one write: a refused link rolls back the goal too, so a new goal is never left
+    half-made. Returns `LinkChanges`.
+    """
+    goal.save()
+    return set_links(goal, rows, today)
+
+
+@transaction.atomic
 def unlink(link, today=None):
     today = today or timezone.localdate()
     if link.end_date is not None:

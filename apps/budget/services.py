@@ -548,6 +548,21 @@ class GoalService:
         return summary
 
     @transaction.atomic
+    def archive(self, goal, month):
+        """
+        Archive (hide) a goal. An open goal is closed first, which releases anything
+        left in it -- a hidden goal must not keep holding money. Returns the close's
+        result, or None when the goal was already closed. Raises `GoalCloseError`.
+        """
+        result = None
+        if not goal.is_closed:
+            result = self.close(goal, month)
+            goal.refresh_from_db()
+        goal.is_archived = True
+        goal.save()
+        return result
+
+    @transaction.atomic
     def close(self, goal, month, cover=False):
         """
         Close a goal (docs/goals-envelopes-plan.md §4.3).
