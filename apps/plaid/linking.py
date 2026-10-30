@@ -69,7 +69,7 @@ def link_item(book, *, public_token, institution_id, institution_name, accounts=
             )
             created = add_accounts(item, plaid_accounts)
     except Exception:
-        _remove_at_plaid(access_token)
+        remove_at_plaid(access_token)
         raise
 
     log_event(
@@ -112,20 +112,20 @@ def institution_name_for(institution_id, fallback=None):
 
 def unlink_item(item, *, user=None):
     """
-    Disconnect a bank: remove the item at Plaid (so it stops billing and
-    sending webhooks), then delete it and its accounts here.
+    Disconnect a bank: delete it and its accounts here; deleting it removes it
+    at Plaid too (so it stops billing and sending webhooks).
 
     The feed rows it imported stay -- they are the user's history, and any of
     them may be categorized or reconciled. Only the Plaid bookkeeping beside
     them (PlaidTransaction) goes, with the accounts.
     """
-    _remove_at_plaid(item.access_token)
     book, pk, name = item.book, item.pk, item.institution_name
-    item.delete()
+    item.delete()  # apps.plaid.signals removes it at Plaid once this commits
     log_event(AuditEvent.PLAID_ITEM_REMOVED, user=user, book=book, metadata={"plaid_item_id": pk, "institution": name})
 
 
-def _remove_at_plaid(access_token):
+def remove_at_plaid(access_token):
+    """Remove an item at Plaid, best effort: tolerate one already gone, log anything else."""
     try:
         services.remove_item(access_token)
     except Exception as exc:

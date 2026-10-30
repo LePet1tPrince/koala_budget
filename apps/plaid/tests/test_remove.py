@@ -30,7 +30,8 @@ class RemoveItemTest(PlaidBookTestCase):
         )
 
     def remove(self):
-        return self.client.post(self.url(f"items/{self.item.pk}/remove/"))
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(self.url(f"items/{self.item.pk}/remove/"))
 
     @patch("apps.plaid.services.remove_item")
     def test_removes_at_plaid_and_here_but_keeps_the_feed_rows(self, remove_item):
@@ -69,3 +70,31 @@ class RemoveItemTest(PlaidBookTestCase):
         self.remove()
         BankTransaction.objects.filter(pk=self.row.pk).delete()
         self.checking.delete()
+
+
+class DeletedItemsAreRemovedAtPlaidTest(PlaidBookTestCase):
+    """Every path that deletes an item -- not just Disconnect -- removes it at Plaid."""
+
+    @patch("apps.plaid.services.remove_item")
+    def test_wiping_the_book_removes_its_items_at_plaid(self, remove_item):
+        from apps.portability.services.wipe import wipe_book
+
+        with self.captureOnCommitCallbacks(execute=True):
+            wipe_book(self.book)
+        remove_item.assert_called_once_with("access-sandbox-1")
+
+    @patch("apps.plaid.services.remove_item")
+    def test_a_rolled_back_delete_leaves_it_connected(self, remove_item):
+        from django.db import transaction
+
+        pk = self.item.pk
+        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+            try:
+                with transaction.atomic():
+                    self.item.delete()
+                    raise RuntimeError("rolled back")
+            except RuntimeError:
+                pass
+        self.assertEqual(callbacks, [])
+        remove_item.assert_not_called()
+        self.assertTrue(PlaidItem.objects.filter(pk=pk).exists())
