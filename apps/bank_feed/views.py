@@ -6,7 +6,6 @@ Provides API endpoints for imported transactions and unified bank feed.
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, F, Max
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils.translation import gettext
@@ -20,11 +19,7 @@ from rest_framework.response import Response
 
 from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import (
-    ACCOUNT_TYPE_ASSET,
-    ACCOUNT_TYPE_BUDGET,
-    ACCOUNT_TYPE_LIABILITY,
     Account,
-    AccountGroup,
     Payee,
 )
 from apps.accounts.serializers import (
@@ -40,14 +35,12 @@ from apps.books.permissions import BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
-from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services.guards import (
     ReconciledLineError,
     assert_date_change_allowed,
     assert_entry_removable,
     assert_line_mutable,
 )
-from apps.reconciliation.services.integrity import intact_map
 
 from .models import BankTransaction, TransferMatchDismissal
 from .serializers import (
@@ -72,6 +65,8 @@ from .serializers import (
 from .services import feed_query
 from .services.categorize import MIRROR_EDIT_ERROR, create_entry, repoint_category
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
+from .services.errors import FeedError
+from .services.feed_accounts import category_groups, create_category_account, feed_accounts
 from .services.sample_csv import build_sample_csv
 from .services.similar_transactions import suggest_categories
 from .services.splits import SplitError, apply_splits, check_legs_total, is_split, parse_legs
@@ -87,71 +82,6 @@ MAX_SIMILAR_CATEGORY_IDS = 50
 # part of the split and is edited from the split's own row.
 VOID_EDIT_ERROR = "This transaction is void. Restore it before editing it."
 SPLIT_MIRROR_ERROR = "This is one part of a split transaction in another account. Open the split there to change it."
-
-
-def _annotate_feed_account_activity(accounts, book):
-    """
-    Attach per-account review/activity fields to feed accounts: uncategorized_count,
-    latest_transaction_date, latest_reconciled_date, last_statement_date, last_statement_intact.
-
-    Computed as separate queries (not chained onto the with_balance()/with_reconciled_balance()
-    annotations) to avoid the join fan-out that would inflate the Sum()
-    balances: bank_transactions and journal_lines are different reverse relations, so annotating
-    both in one query would cross-multiply their rows per account.
-    """
-    uncategorized_counts = dict(
-        BankTransaction.objects.filter(
-            book=book,
-            account__has_feed=True,
-            account__is_hidden=False,
-            journal_entry__isnull=True,
-            is_void=False,
-        )
-        .values("account_id")
-        .annotate(count=Count("id"))
-        .values_list("account_id", "count")
-    )
-    latest_transaction_dates = dict(
-        BankTransaction.objects.filter(
-            book=book,
-            account__has_feed=True,
-            account__is_hidden=False,
-            is_void=False,
-        )
-        .values("account_id")
-        .annotate(latest_date=Max("posted_date"))
-        .values_list("account_id", "latest_date")
-    )
-    latest_reconciled_dates = dict(
-        BankTransaction.objects.filter(
-            book=book,
-            account__has_feed=True,
-            account__is_hidden=False,
-            is_void=False,
-            journal_entry__isnull=False,
-            journal_entry__lines__account_id=F("account_id"),
-            journal_entry__lines__is_reconciled=True,
-        )
-        .distinct("account_id")
-        .order_by("account_id", "-posted_date")
-        .values_list("account_id", "posted_date")
-    )
-    # The last finished statement per account and whether it still holds, so a
-    # card can say "Reconciled through Aug 31" (and warn when that changed).
-    last_statements = {}
-    for rec in Reconciliation.objects.filter(book=book, status=Reconciliation.STATUS_COMPLETED).order_by(
-        "account_id", "-statement_date", "-id"
-    ):
-        last_statements.setdefault(rec.account_id, rec)
-    intact = intact_map(list(last_statements.values()))
-
-    for account in accounts:
-        account.uncategorized_count = uncategorized_counts.get(account.id, 0)
-        account.latest_transaction_date = latest_transaction_dates.get(account.id)
-        account.latest_reconciled_date = latest_reconciled_dates.get(account.id)
-        statement = last_statements.get(account.id)
-        account.last_statement_date = statement.statement_date if statement else None
-        account.last_statement_intact = intact.get(statement.id) if statement else None
 
 
 class ManualTransactionSerializer(serializers.Serializer):
@@ -262,6 +192,11 @@ class FeedPagination(PageNumberPagination):
     max_page_size = max(feed_query.PAGE_SIZES)
 
 
+def error_response(error):
+    """A refusal a feed service raised (`FeedError`), as the feed's endpoints answer one."""
+    return Response({"error": error.message}, status=error.status)
+
+
 def refused_response(refused):
     """
     A refused batch: nothing was written. `refused` names every row that blocked
@@ -358,17 +293,7 @@ class BankFeedViewSet(
     @action(detail=False, methods=["get"])
     def feed_accounts(self, request, team_slug=None, book_slug=None):
         """Return feed accounts with up-to-date balances and review counts."""
-        accounts = list(
-            Account.for_book.filter(has_feed=True, is_hidden=False)
-            .with_balance()
-            .with_reconciled_balance()
-            .select_related("account_group", "institution")
-            .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
-        )
-
-        _annotate_feed_account_activity(accounts, request.book)
-
-        return Response(FeedAccountSerializer(accounts, many=True).data)
+        return Response(FeedAccountSerializer(feed_accounts(request.book), many=True).data)
 
     @extend_schema(
         operation_id="bank_feed_transactions_categorize",
@@ -1189,28 +1114,12 @@ class BankFeedViewSet(
         Create a new account for use in the CSV upload category mapping step.
         Body: name (str), account_group_id (int)
         """
-        name = request.data.get("name", "").strip()
-        account_group_id = request.data.get("account_group_id")
-
-        if not name:
-            return Response({"error": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
-        if not account_group_id:
-            return Response({"error": "account_group_id is required"}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
-            account_group = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).get(id=account_group_id)
-        except AccountGroup.DoesNotExist:
-            return Response({"error": "Account group not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        if Account.for_book.exclude_budget_buckets().filter(name__iexact=name).exists():
-            return Response({"error": f'An account named "{name}" already exists'}, status=status.HTTP_400_BAD_REQUEST)
-
-        account = Account.objects.create(
-            name=name,
-            account_group=account_group,
-            book=request.book,
-            has_feed=account_group.account_type in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY),
-        )
+            account = create_category_account(
+                request.book, request.data.get("name", "").strip(), request.data.get("account_group_id")
+            )
+        except FeedError as e:
+            return error_response(e)
 
         serializer = SimpleAccountSerializer(account)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -1223,8 +1132,7 @@ class BankFeedViewSet(
     @action(detail=False, methods=["get"], url_path="account_groups")
     def account_groups(self, request, team_slug=None, book_slug=None):
         """Return all account groups for the book, for use in account creation."""
-        groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET)
-        serializer = AccountGroupSerializer(groups, many=True)
+        serializer = AccountGroupSerializer(category_groups(request.book), many=True)
         return Response(serializer.data)
 
     @extend_schema(
@@ -1867,25 +1775,12 @@ def bank_feed_home(request, team_slug, book_slug):
     Main bank feed page view.
     Displays accounts with bank feeds and bank transactions table.
     """
-    # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
-    accounts_with_feeds = list(
-        Account.for_book.filter(has_feed=True, is_hidden=False)
-        .with_balance()
-        .with_reconciled_balance()
-        .select_related("account_group", "institution")
-        .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
-    )  # noqa: E501
-
-    _annotate_feed_account_activity(accounts_with_feeds, request.book)
-
     # Serialize accounts for React
-    accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data
+    accounts_data = FeedAccountSerializer(feed_accounts(request.book), many=True).data
 
     # Get all accounts, payees, and account groups for dropdowns
     all_payees = Payee.for_book.all().order_by("name")
-    all_account_groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).order_by(
-        "account_type", "name"
-    )
+    all_account_groups = category_groups(request.book).order_by("account_type", "name")
 
     all_accounts_data = picker_accounts_data(request.book)
     all_payees_data = PayeeSerializer(all_payees, many=True).data
@@ -1918,9 +1813,7 @@ def categorize_mode(request, team_slug, book_slug):
     """Categorize mode — gamified single-transaction categorization view."""
     from django.urls import reverse
 
-    all_account_groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).order_by(
-        "account_type", "name"
-    )
+    all_account_groups = category_groups(request.book).order_by("account_type", "name")
     all_payees = Payee.for_book.all().order_by("name")
 
     all_accounts_data = picker_accounts_data(request.book)

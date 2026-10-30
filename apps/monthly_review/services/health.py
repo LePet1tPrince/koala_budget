@@ -2,7 +2,7 @@
 Step 1 of the guided monthly review: is this month's data trustworthy?
 
 Computed per feed account, following the same fan-out-safe three-query pattern
-as `apps.bank_feed.views._annotate_feed_account_activity` (separate queries
+as `apps.bank_feed.services.feed_accounts.annotate_activity` (separate queries
 rather than chained annotations, since bank_transactions and journal_lines are
 different reverse relations and chaining them cross-multiplies the Sum()s).
 
