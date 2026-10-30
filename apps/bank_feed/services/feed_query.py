@@ -45,6 +45,7 @@ from apps.journal.models import JournalLine
 from apps.reconciliation.models import Reconciliation
 
 from ..models import BankTransaction
+from .errors import FeedError
 
 #: Page sizes the Inbox offers. A request for any other is refused, not clamped:
 #: a page that silently came back a different size would page wrongly.
@@ -279,6 +280,54 @@ def filtered(book, params, *, transfer_ids=None):
     if params.ids:
         rows = rows.filter(pk__in=params.ids)
     return rows
+
+
+def matching(book, params):
+    """`filtered`, with the book-wide transfer pass run only when `params.transfers` asks for it."""
+    return filtered(book, params, transfer_ids=transfer_candidate_ids(book) if params.transfers else None)
+
+
+class SelectionTooLarge(FeedError):
+    """ "Select all" matched more than `MAX_IDS` rows; `count` says how many."""
+
+    def __init__(self, count):
+        super().__init__(f"Narrow the filters to select more than {MAX_IDS} transactions.")
+        self.count = count
+
+
+def select_all(book, params):
+    """
+    Every row matching the filters, in list order, as the batch bar reads it:
+    `(count, rows)`. Refused above `MAX_IDS` -- a batch write that large is one
+    this app does not attempt -- with the count, so the page can say so.
+    """
+    rows = matching(book, params)
+    total = rows.count()
+    if total > MAX_IDS:
+        raise SelectionTooLarge(total)
+    return total, selection_rows(ordered(rows, params))
+
+
+def locate(book, params, *, row=None, journal_entry=None, in_account=None):
+    """
+    Which page of the list `params` describes a row is on: `{id, page, is_void}`.
+
+    Name the row by `row`, or by `journal_entry` + `in_account` (the other leg of
+    a transfer: the same entry's row in the other account). `page` is None when
+    the filters hide the row; `id` is None when no such row exists at all.
+    """
+    target = BankTransaction.objects.filter(book=book)
+    if row is not None:
+        target = target.filter(pk=row)
+    else:
+        target = target.filter(journal_entry_id=journal_entry, account_id=in_account)
+    found = target.order_by("is_transfer_mirror", "pk").values("pk", "is_void").first()
+    if found is None:
+        return {"id": None, "page": None, "is_void": None}
+
+    position = position_of(matching(book, params), params, found["pk"])
+    page = None if position is None else (position - 1) // params.page_size + 1
+    return {"id": found["pk"], "page": page, "is_void": found["is_void"]}
 
 
 def ordered(rows, params):

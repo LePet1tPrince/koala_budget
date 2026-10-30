@@ -17,6 +17,7 @@ from django.conf import settings
 from apps.journal.models import counted_entries
 
 from ..models import BankTransaction, TransferMatchDismissal
+from .errors import FeedError
 
 # How many days apart the two legs of a transfer may post and still be paired.
 # ACH transfers commonly clear the two accounts a few business days apart.
@@ -150,3 +151,16 @@ def dismiss_all_candidates(book, window_days=None) -> int:
         TransferMatchDismissal.objects.bulk_create(rows, ignore_conflicts=True)
         dismissed += len(rows)
     return dismissed
+
+
+def dismiss_pair(book, transaction_a, transaction_b):
+    """
+    Record that two rows are not a duplicate transfer, so the pair stops being
+    suggested. Both must be this book's rows (`FeedError`, not found, otherwise).
+    """
+    found = set(
+        BankTransaction.objects.filter(id__in=[transaction_a, transaction_b], book=book).values_list("id", flat=True)
+    )
+    if found != {transaction_a, transaction_b}:
+        raise FeedError.not_found("One or both transactions not found.")
+    TransferMatchDismissal.record(book, transaction_a, transaction_b)

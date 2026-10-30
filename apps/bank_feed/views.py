@@ -32,7 +32,7 @@ from apps.books.permissions import BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
 from apps.journal.services import voiding
 
-from .models import BankTransaction, TransferMatchDismissal
+from .models import BankTransaction
 from .serializers import (
     BankFeedRowSerializer,
     BatchEditRequestSerializer,
@@ -57,9 +57,9 @@ from .services.csv_upload import create_transactions, parse_file, preview_transa
 from .services.errors import FeedError, RowsRefused
 from .services.feed_accounts import category_groups, create_category_account, feed_accounts
 from .services.sample_csv import build_sample_csv
-from .services.similar_transactions import suggest_categories
-from .services.transfer_detection import find_transfer_candidates
-from .services.transfer_match import MatchError, ProposalChanged, match_transfer, propose_pairs
+from .services.similar_transactions import latest_category_by_merchant, suggestion_rows
+from .services.transfer_detection import dismiss_pair
+from .services.transfer_match import MatchError, ProposalChanged, match_transfer, suggestions
 
 # Upper bound on how many transactions one similar-category request may ask about.
 # The categorize view only ever needs the handful of cards it is about to show.
@@ -248,12 +248,7 @@ class BankFeedViewSet(
         if self.action != "list":
             return BankTransaction.objects.filter(book=self.request.book)
         params = self.feed_params
-        rows = feed_query.filtered(
-            self.request.book,
-            params,
-            transfer_ids=feed_query.transfer_candidate_ids(self.request.book) if params.transfers else None,
-        )
-        return self._for_rows(feed_query.ordered(rows, params))
+        return self._for_rows(feed_query.ordered(feed_query.matching(self.request.book, params), params))
 
     @staticmethod
     def _for_rows(queryset):
@@ -352,22 +347,11 @@ class BankFeedViewSet(
         Refused above `MAX_IDS` matches -- a batch write that large is one this
         app does not attempt -- with the count, so the page can say so.
         """
-        params = self.feed_params
-        rows = feed_query.filtered(
-            request.book,
-            params,
-            transfer_ids=feed_query.transfer_candidate_ids(request.book) if params.transfers else None,
-        )
-        total = rows.count()
-        if total > feed_query.MAX_IDS:
-            return Response(
-                {
-                    "error": f"Narrow the filters to select more than {feed_query.MAX_IDS} transactions.",
-                    "count": total,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return Response({"count": total, "results": feed_query.selection_rows(feed_query.ordered(rows, params))})
+        try:
+            total, rows = feed_query.select_all(request.book, self.feed_params)
+        except feed_query.SelectionTooLarge as e:
+            return Response({"error": e.message, "count": e.count}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"count": total, "results": rows})
 
     @extend_schema(
         operation_id="bank_feed_locate",
@@ -391,29 +375,17 @@ class BankFeedViewSet(
         `{id, page, is_void}` -- `id` null when no such row exists at all.
         """
         params = self.feed_params
-        target = BankTransaction.objects.filter(book=request.book)
         try:
             if request.query_params.get("row"):
-                target = target.filter(pk=int(request.query_params["row"]))
+                target = {"row": int(request.query_params["row"])}
             else:
-                target = target.filter(
-                    journal_entry_id=int(request.query_params["journal_entry"]),
-                    account_id=int(request.query_params["in_account"]),
-                )
+                target = {
+                    "journal_entry": int(request.query_params["journal_entry"]),
+                    "in_account": int(request.query_params["in_account"]),
+                }
         except (KeyError, ValueError):
             return Response({"error": "Pass row, or journal_entry and in_account."}, status=status.HTTP_400_BAD_REQUEST)
-        found = target.order_by("is_transfer_mirror", "pk").values("pk", "is_void").first()
-        if found is None:
-            return Response({"id": None, "page": None, "is_void": None})
-
-        rows = feed_query.filtered(
-            request.book,
-            params,
-            transfer_ids=feed_query.transfer_candidate_ids(request.book) if params.transfers else None,
-        )
-        position = feed_query.position_of(rows, params, found["pk"])
-        page = None if position is None else (position - 1) // params.page_size + 1
-        return Response({"id": found["pk"], "page": page, "is_void": found["is_void"]})
+        return Response(feed_query.locate(request.book, params, **target))
 
     def create(self, request, team_slug=None, book_slug=None):
         """
@@ -788,31 +760,7 @@ class BankFeedViewSet(
         Suggest a category per merchant based on the most recent categorization.
         Used to pre-fill the category when editing an uncategorized transaction.
         """
-        transactions = (
-            BankTransaction.objects.filter(book=request.book, journal_entry__isnull=False)
-            .exclude(merchant_name__isnull=True)
-            .exclude(merchant_name="")
-            .select_related("account")
-            .prefetch_related("journal_entry__lines__account")
-            .order_by("-posted_date", "-created_at")[:1000]
-        )
-
-        suggestions = {}
-        for tx in transactions:
-            if tx.merchant_name in suggestions:
-                continue  # already have a more recent categorization
-            category_line = next(
-                (line for line in tx.journal_entry.lines.all() if line.account_id != tx.account_id),
-                None,
-            )
-            if category_line:
-                suggestions[tx.merchant_name] = {
-                    "merchant_name": tx.merchant_name,
-                    "category_id": category_line.account_id,
-                    "category_name": category_line.account.name,
-                }
-
-        serializer = CategorySuggestionSerializer(list(suggestions.values()), many=True)
+        serializer = CategorySuggestionSerializer(latest_category_by_merchant(request.book), many=True)
         return Response(serializer.data)
 
     @extend_schema(
@@ -863,17 +811,7 @@ class BankFeedViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        transactions = BankTransaction.objects.filter(book=request.book, id__in=ids)
-        suggestions_by_transaction = suggest_categories(request.book, transactions)
-
-        # Preserve the order the client asked in, so it can pair responses up
-        # without re-sorting.
-        rows = []
-        for transaction_id in ids:
-            for suggestion in suggestions_by_transaction.get(transaction_id, ()):
-                rows.append({"transaction_id": transaction_id, **suggestion})
-
-        serializer = SimilarCategorySuggestionSerializer(rows, many=True)
+        serializer = SimilarCategorySuggestionSerializer(suggestion_rows(request.book, ids), many=True)
         return Response(serializer.data)
 
     # Batch Operations
@@ -1056,17 +994,15 @@ class BankFeedViewSet(
         Each pair carries both legs and a `proposal`: which leg Match would keep
         and archive, or why Match is unavailable. Read-only; nothing is changed.
         """
-        candidates = find_transfer_candidates(request.book)
-        # Filter after the book-wide pass: pairing is greedy, so filtering first
-        # could pair a leg with a different counterpart than the other feed shows.
         account_id = request.query_params.get("account")
         if account_id:
             try:
                 account_id = int(account_id)
             except ValueError:
                 return Response({"error": "account must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
-            candidates = [p for p in candidates if account_id in (p["outflow"].account_id, p["inflow"].account_id)]
-        serializer = TransferSuggestionSerializer(propose_pairs(candidates), many=True)
+        else:
+            account_id = None
+        serializer = TransferSuggestionSerializer(suggestions(request.book, account_id), many=True)
         return Response(serializer.data)
 
     @extend_schema(
@@ -1130,15 +1066,10 @@ class BankFeedViewSet(
         tx_a = serializer.validated_data["transaction_a"]
         tx_b = serializer.validated_data["transaction_b"]
 
-        # Both transactions must belong to this book before recording a dismissal.
-        found = set(BankTransaction.objects.filter(id__in=[tx_a, tx_b], book=request.book).values_list("id", flat=True))
-        if found != {tx_a, tx_b}:
-            return Response(
-                {"error": "One or both transactions not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        TransferMatchDismissal.record(request.book, tx_a, tx_b)
+        try:
+            dismiss_pair(request.book, tx_a, tx_b)
+        except FeedError as e:
+            return error_response(e)
         log_event(
             AuditEvent.TRANSFER_DUP_DISMISSED,
             request=request,
