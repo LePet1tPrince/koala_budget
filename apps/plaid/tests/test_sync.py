@@ -68,7 +68,7 @@ class PlaidWebhookTest(TestCase):
     def test_unrelated_webhook_is_ignored(self, mock_delay):
         response = self.client.post(
             "/plaid/webhook/",
-            {"webhook_type": "ITEM", "webhook_code": "ERROR", "item_id": "item-abc"},
+            {"webhook_type": "AUTH", "webhook_code": "AUTOMATICALLY_VERIFIED", "item_id": "item-abc"},
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)

@@ -23,6 +23,7 @@
  * * `plaid_sync_started` - Plaid Sync Started
  * * `plaid_sync_completed` - Plaid Sync Completed
  * * `plaid_sync_failed` - Plaid Sync Failed
+ * * `plaid_item_status_changed` - Plaid Connection Status Changed
  * * `bulk_categorize` - Bulk Categorize
  * * `bulk_edit` - Bulk Edit
  * * `bulk_reconcile` - Bulk Reconcile
@@ -82,6 +83,7 @@ export const EventTypeEnum = {
     PlaidSyncStarted: 'plaid_sync_started',
     PlaidSyncCompleted: 'plaid_sync_completed',
     PlaidSyncFailed: 'plaid_sync_failed',
+    PlaidItemStatusChanged: 'plaid_item_status_changed',
     BulkCategorize: 'bulk_categorize',
     BulkEdit: 'bulk_edit',
     BulkReconcile: 'bulk_reconcile',

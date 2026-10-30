@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { PlaidItemStatusEnum } from './PlaidItemStatusEnum';
+import {
+    PlaidItemStatusEnumFromJSON,
+    PlaidItemStatusEnumFromJSONTyped,
+    PlaidItemStatusEnumToJSON,
+    PlaidItemStatusEnumToJSONTyped,
+} from './PlaidItemStatusEnum';
+
 /**
  * Serializer for PlaidItem model.
  * @export
@@ -45,6 +53,42 @@ export interface PlaidItem {
     readonly lastSyncedAt: Date | null;
     /**
      * 
+     * @type {PlaidItemStatusEnum}
+     * @memberof PlaidItem
+     */
+    readonly status: PlaidItemStatusEnum;
+    /**
+     * Plaid's error_code, when status says so
+     * @type {string}
+     * @memberof PlaidItem
+     */
+    readonly errorCode: string;
+    /**
+     * Plaid's display message for the error, if any
+     * @type {string}
+     * @memberof PlaidItem
+     */
+    readonly errorMessage: string;
+    /**
+     * When the user's consent at the institution runs out
+     * @type {Date}
+     * @memberof PlaidItem
+     */
+    readonly consentExpirationTime: Date | null;
+    /**
+     * Plaid found accounts at this bank the user hasn't shared yet
+     * @type {boolean}
+     * @memberof PlaidItem
+     */
+    readonly newAccountsAvailable: boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof PlaidItem
+     */
+    readonly needsAttention: boolean;
+    /**
+     * 
      * @type {Date}
      * @memberof PlaidItem
      */
@@ -57,6 +101,8 @@ export interface PlaidItem {
     readonly updatedAt: Date;
 }
 
+
+
 /**
  * Check if a given object implements the PlaidItem interface.
  */
@@ -65,6 +111,12 @@ export function instanceOfPlaidItem(value: object): value is PlaidItem {
     if (!('plaidItemId' in value) || value['plaidItemId'] === undefined) return false;
     if (!('institutionName' in value) || value['institutionName'] === undefined) return false;
     if (!('lastSyncedAt' in value) || value['lastSyncedAt'] === undefined) return false;
+    if (!('status' in value) || value['status'] === undefined) return false;
+    if (!('errorCode' in value) || value['errorCode'] === undefined) return false;
+    if (!('errorMessage' in value) || value['errorMessage'] === undefined) return false;
+    if (!('consentExpirationTime' in value) || value['consentExpirationTime'] === undefined) return false;
+    if (!('newAccountsAvailable' in value) || value['newAccountsAvailable'] === undefined) return false;
+    if (!('needsAttention' in value) || value['needsAttention'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -84,6 +136,12 @@ export function PlaidItemFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'plaidItemId': json['plaid_item_id'],
         'institutionName': json['institution_name'],
         'lastSyncedAt': (json['last_synced_at'] == null ? null : new Date(json['last_synced_at'])),
+        'status': PlaidItemStatusEnumFromJSON(json['status']),
+        'errorCode': json['error_code'],
+        'errorMessage': json['error_message'],
+        'consentExpirationTime': (json['consent_expiration_time'] == null ? null : new Date(json['consent_expiration_time'])),
+        'newAccountsAvailable': json['new_accounts_available'],
+        'needsAttention': json['needs_attention'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
     };
@@ -93,7 +151,7 @@ export function PlaidItemFromJSONTyped(json: any, ignoreDiscriminator: boolean):
       return PlaidItemToJSONTyped(json, false);
   }
 
-  export function PlaidItemToJSONTyped(value?: Omit<PlaidItem, 'id'|'last_synced_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PlaidItemToJSONTyped(value?: Omit<PlaidItem, 'id'|'last_synced_at'|'status'|'error_code'|'error_message'|'consent_expiration_time'|'new_accounts_available'|'needs_attention'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

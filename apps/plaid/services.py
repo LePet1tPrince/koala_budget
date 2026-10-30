@@ -13,6 +13,7 @@ from plaid.configuration import Configuration
 from plaid.model.country_code import CountryCode
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
+from plaid.model.link_token_create_request_update import LinkTokenCreateRequestUpdate
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.link_token_transactions import LinkTokenTransactions
 from plaid.model.products import Products
@@ -74,6 +75,20 @@ def webhook_url():
     return absolute_url(reverse("plaid_webhook"))
 
 
+def _link_kwargs(user_id, client_name):
+    """What every link token carries, new link or update mode."""
+    kwargs = {
+        "user": LinkTokenCreateRequestUser(client_user_id=str(user_id)),
+        "client_name": client_name,
+        "country_codes": country_codes(),
+        "language": link_language(),
+        "webhook": webhook_url(),
+    }
+    if settings.PLAID_REDIRECT_URI:
+        kwargs["redirect_uri"] = settings.PLAID_REDIRECT_URI
+    return kwargs
+
+
 def link_token_request(user_id, client_name: str = "Koala Budget") -> LinkTokenCreateRequest:
     """
     The /link/token/create request for linking a new bank.
@@ -81,19 +96,31 @@ def link_token_request(user_id, client_name: str = "Koala Budget") -> LinkTokenC
     Without `webhook` Plaid never notifies this app of new transactions, so the
     item would only ever sync when the user pressed Refresh.
     """
-    kwargs = {
-        "user": LinkTokenCreateRequestUser(client_user_id=str(user_id)),
-        "client_name": client_name,
-        "products": [Products(product) for product in settings.PLAID_PRODUCTS],
-        "country_codes": country_codes(),
-        "language": link_language(),
-        "webhook": webhook_url(),
-    }
+    kwargs = _link_kwargs(user_id, client_name)
+    kwargs["products"] = [Products(product) for product in settings.PLAID_PRODUCTS]
     if "transactions" in settings.PLAID_PRODUCTS:
         kwargs["transactions"] = LinkTokenTransactions(days_requested=settings.PLAID_TRANSACTIONS_DAYS_REQUESTED)
-    if settings.PLAID_REDIRECT_URI:
-        kwargs["redirect_uri"] = settings.PLAID_REDIRECT_URI
     return LinkTokenCreateRequest(**kwargs)
+
+
+def update_link_token_request(item, user_id, client_name: str = "Koala Budget") -> LinkTokenCreateRequest:
+    """
+    The /link/token/create request for Link's update mode on an existing item:
+    the user signs in again, renews consent, or -- when the bank has accounts
+    they haven't shared -- picks which to add. No `products` (Plaid refuses them
+    in update mode); the item keeps the ones it has.
+    """
+    kwargs = _link_kwargs(user_id, client_name)
+    kwargs["access_token"] = item.access_token
+    if item.new_accounts_available:
+        kwargs["update"] = LinkTokenCreateRequestUpdate(account_selection_enabled=True)
+    return LinkTokenCreateRequest(**kwargs)
+
+
+def create_update_link_token(item, user_id, client_name: str = "Koala Budget"):
+    """A Link token that opens update mode for `item`."""
+    response = get_plaid_client().link_token_create(update_link_token_request(item, user_id, client_name))
+    return response["link_token"]
 
 
 def create_link_token(user_id, client_name: str = "Koala Budget"):

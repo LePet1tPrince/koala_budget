@@ -20,6 +20,27 @@ class PlaidItem(BaseBookModel):
     Each item can have multiple accounts.
     """
 
+    # What the bank connection needs from the user, if anything. Set from Plaid's
+    # ITEM webhooks and from errors a sync hits (apps.plaid.item_status).
+    STATUS_HEALTHY = "healthy"
+    STATUS_LOGIN_REQUIRED = "login_required"  # the bank wants the user to sign in again
+    STATUS_PENDING_EXPIRATION = "pending_expiration"  # consent runs out soon
+    STATUS_PENDING_DISCONNECT = "pending_disconnect"  # the institution will drop the connection soon
+    STATUS_REVOKED = "revoked"  # the user withdrew access at the bank
+    STATUS_ERROR = "error"  # any other item error Plaid reported
+
+    STATUS_CHOICES = [
+        (STATUS_HEALTHY, "Healthy"),
+        (STATUS_LOGIN_REQUIRED, "Sign-in required"),
+        (STATUS_PENDING_EXPIRATION, "Access expiring"),
+        (STATUS_PENDING_DISCONNECT, "Disconnecting soon"),
+        (STATUS_REVOKED, "Access revoked"),
+        (STATUS_ERROR, "Error"),
+    ]
+
+    #: Statuses a sync cannot get past until the user reconnects.
+    BLOCKED_STATUSES = (STATUS_LOGIN_REQUIRED, STATUS_REVOKED)
+
     plaid_item_id = models.CharField(max_length=255, unique=True, help_text="Plaid's unique identifier for this item")
     # TODO: Encrypt this field in production using django-encrypted-model-fields or similar
     access_token = models.CharField(max_length=512, help_text="Access token for Plaid API")
@@ -46,6 +67,16 @@ class PlaidItem(BaseBookModel):
         blank=True,
         help_text="A sync holds this item until then (expires, so a crashed worker can't hold it forever)",
     )
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_HEALTHY)
+    error_code = models.CharField(max_length=100, blank=True, help_text="Plaid's error_code, when status says so")
+    error_message = models.TextField(blank=True, help_text="Plaid's display message for the error, if any")
+    consent_expiration_time = models.DateTimeField(
+        null=True, blank=True, help_text="When the user's consent at the institution runs out"
+    )
+    new_accounts_available = models.BooleanField(
+        default=False, help_text="Plaid found accounts at this bank the user hasn't shared yet"
+    )
+
     sync_requested = models.BooleanField(
         default=False,
         help_text="A sync was asked for while one was running; the running one goes again when done",
@@ -58,6 +89,11 @@ class PlaidItem(BaseBookModel):
 
     def __str__(self):
         return f"{self.institution_name} ({self.plaid_item_id})"
+
+    @property
+    def needs_attention(self):
+        """True when the user should reconnect (or re-share accounts) through Link update mode."""
+        return self.status != self.STATUS_HEALTHY or self.new_accounts_available
 
 
 class PlaidAccount(BaseBookModel):

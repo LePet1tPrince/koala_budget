@@ -3,6 +3,7 @@ Celery tasks for Plaid app.
 Handles background transaction syncing and updates.
 """
 
+import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
@@ -23,7 +24,8 @@ from apps.bank_feed.services.bank_revision import Revision, difference_rows, rev
 from apps.books.context import set_current_book, unset_current_book
 from apps.journal.services import voiding
 
-from . import sync_lock
+from . import item_status, sync_lock
+from .item_status import TRANSIENT_CODES
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .services import plaid_error_code, sync_transactions
 
@@ -161,6 +163,15 @@ def sync_plaid_transactions(plaid_item_id: int, scheduled: bool = False):
         raise
 
 
+def _display_message(exc) -> str:
+    """Plaid's user-facing message from a failed API call, if it sent one."""
+    try:
+        body = json.loads(exc.body or "{}")
+    except (TypeError, ValueError):
+        return ""
+    return (body.get("display_message") or body.get("error_message") or "") if isinstance(body, dict) else ""
+
+
 def _sync_item(plaid_item_id: int):
     """
     One pass of /transactions/sync for an item, from its saved cursor.
@@ -180,7 +191,20 @@ def _sync_item(plaid_item_id: int):
 
         log_event(AuditEvent.PLAID_SYNC_STARTED, book=plaid_item.book, metadata={"plaid_item_id": plaid_item_id})
 
-        updates = fetch_updates(plaid_item)
+        try:
+            updates = fetch_updates(plaid_item)
+        except ApiException as exc:
+            code = plaid_error_code(exc)
+            if not (item_status.record_error(plaid_item, code, _display_message(exc)) or code in TRANSIENT_CODES):
+                raise
+            # The connection needs the user (or the bank needs time): nothing to
+            # retry until then, so report it rather than raise into a retry loop.
+            log_event(
+                AuditEvent.PLAID_SYNC_FAILED,
+                book=plaid_item.book,
+                metadata={"plaid_item_id": plaid_item_id, "error_code": code},
+            )
+            return {"success": False, "error_code": code}
 
         # The rows and the cursor commit together. Saving the cursor separately
         # would let a crash between the two either skip updates (cursor saved,
@@ -201,6 +225,7 @@ def _sync_item(plaid_item_id: int):
             plaid_item.cursor = updates.next_cursor
             plaid_item.last_synced_at = timezone.now()
             plaid_item.save(update_fields=["cursor", "last_synced_at", "updated_at"])
+            item_status.record_sync_success(plaid_item)
 
         total_added = len(updates.added)
         total_modified = len(updates.modified)
@@ -407,6 +432,8 @@ def sync_all_plaid_items():
     cutoff = timezone.now() - timedelta(hours=settings.PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS)
     items = list(
         PlaidItem.objects.filter(is_archived=False)
+        # Nothing to fetch until the user reconnects; Plaid would only refuse again.
+        .exclude(status__in=PlaidItem.BLOCKED_STATUSES)
         .filter(Q(last_synced_at__isnull=True) | Q(last_synced_at__lt=cutoff))
         .order_by(F("last_synced_at").asc(nulls_first=True), "pk")
         .values_list("pk", flat=True)[: settings.PLAID_SCHEDULED_SYNC_BATCH_SIZE]

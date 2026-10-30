@@ -13,8 +13,13 @@ import Icon from '../../common/Icon';
  * public_token, show the account mapper) and hands back a `handleClick`
  * trigger plus a `modal` element to render (error alert + account mapper
  * dialog) so callers can supply their own trigger UI (button, menu item, …).
+ *
+ * With an `item`, it runs Link's update mode on that existing bank connection
+ * instead (sign in again, renew consent, share new accounts): the token comes
+ * from the item, and on success the item is refreshed and only the accounts
+ * the user just shared go to the mapper.
  */
-export const usePlaidLinkFlow = ({ book, allAccounts, onSuccess, plaidClient }) => {
+export const usePlaidLinkFlow = ({ book, allAccounts, onSuccess, plaidClient, item = null }) => {
   const [linkToken, setLinkToken] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -28,9 +33,9 @@ export const usePlaidLinkFlow = ({ book, allAccounts, onSuccess, plaidClient }) 
     setLoading(true);
     setError(null);
     try {
-      const data = await plaidClient.plaidCreateLinkToken({
-        ...book.params,
-      });
+      const data = item
+        ? await plaidClient.plaidItemsLinkToken({ ...book.params, id: item.id })
+        : await plaidClient.plaidCreateLinkToken({ ...book.params });
       setLinkToken(data.linkToken);
     } catch (err) {
       console.error('Error fetching link token:', err);
@@ -46,6 +51,25 @@ export const usePlaidLinkFlow = ({ book, allAccounts, onSuccess, plaidClient }) 
    */
   const onPlaidSuccess = useCallback(async (public_token, metadata) => {
     setLoading(true);
+    if (item) {
+      // Update mode hands back no new item: the existing one is reconnected.
+      try {
+        const data = await plaidClient.plaidItemsRefresh({ ...book.params, id: item.id });
+        if (data.newAccounts?.length) {
+          setNewPlaidAccounts(data.newAccounts);
+          setShowMapper(true);
+        } else {
+          setLinkToken(null);
+          if (onSuccess) onSuccess();
+        }
+      } catch (err) {
+        console.error('Error refreshing the bank connection:', err);
+        setError(gettext('Reconnected, but the bank accounts could not be refreshed. Please try again.'));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     try {
       const data = await plaidClient.plaidExchangePublicToken({
         ...book.params,
@@ -66,7 +90,7 @@ export const usePlaidLinkFlow = ({ book, allAccounts, onSuccess, plaidClient }) 
     } finally {
       setLoading(false);
     }
-  }, [book, plaidClient]);
+  }, [book, plaidClient, item, onSuccess]);
 
   /**
    * Handle Plaid Link exit (user closed without completing)

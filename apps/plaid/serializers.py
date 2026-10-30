@@ -13,6 +13,8 @@ from .models import PlaidAccount, PlaidItem, PlaidTransaction
 class PlaidItemSerializer(serializers.ModelSerializer):
     """Serializer for PlaidItem model."""
 
+    needs_attention = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = PlaidItem
         fields = [
@@ -20,10 +22,25 @@ class PlaidItemSerializer(serializers.ModelSerializer):
             "plaid_item_id",
             "institution_name",
             "last_synced_at",
+            "status",
+            "error_code",
+            "error_message",
+            "consent_expiration_time",
+            "new_accounts_available",
+            "needs_attention",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["last_synced_at", "created_at", "updated_at"]
+        read_only_fields = [
+            "last_synced_at",
+            "status",
+            "error_code",
+            "error_message",
+            "consent_expiration_time",
+            "new_accounts_available",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class PlaidAccountSerializer(serializers.ModelSerializer):
@@ -91,6 +108,17 @@ class PlaidAccountSerializer(serializers.ModelSerializer):
             account.has_feed = True
             account.save(update_fields=["has_feed", "updated_at"])
         return instance
+
+
+class LinkTokenResponseSerializer(serializers.Serializer):
+    link_token = serializers.CharField()
+
+
+class ItemRefreshResponseSerializer(serializers.Serializer):
+    """After update mode: the bank's accounts this app hadn't seen, to be mapped."""
+
+    item = PlaidItemSerializer()
+    new_accounts = PlaidAccountSerializer(many=True)
 
 
 class ExchangePublicTokenResponseSerializer(serializers.Serializer):

@@ -7,6 +7,7 @@ import Modal from '../../common/Modal';
 
 import AccountGrid from './AccountGrid';
 import LineTable from './LineTable';
+import PlaidItemAlerts from './PlaidItemAlerts';
 import PlaidLinkButton from './PlaidLinkButton';
 import { CSVUploadWizard } from './CSVUploadWizard';
 import BatchActionBar from './BatchActionBar';
@@ -143,6 +144,7 @@ const LineApp = ({
 
   // Plaid sync status: ledger account id -> PlaidItem (for "last synced" display)
   const [plaidItemsByAccountId, setPlaidItemsByAccountId] = useState({});
+  const [plaidItems, setPlaidItems] = useState([]);
 
   // Category suggestions: merchant/payee name -> {id, name} of last-used category
   const [categorySuggestions, setCategorySuggestions] = useState({});
@@ -267,6 +269,7 @@ const LineApp = ({
         }
       });
       setPlaidItemsByAccountId(map);
+      setPlaidItems(itemsData.results || []);
     } catch (err) {
       console.error('Failed to load Plaid sync status:', err);
     }
@@ -987,6 +990,17 @@ const LineApp = ({
 
   return (
     <div className="space-y-6">
+      <PlaidItemAlerts
+        items={plaidItems}
+        book={book}
+        allAccounts={allAccounts}
+        plaidClient={plaidClient}
+        onReconnected={() => {
+          loadPlaidStatus();
+          loadAccounts();
+        }}
+      />
+
       {/* Account cards: a filter on the table below, not a gate in front of it */}
       <section className="app-card">
         <div className="flex justify-between items-center mb-4">

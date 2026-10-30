@@ -17,6 +17,8 @@ import * as runtime from '../runtime';
 import type {
   ExchangePublicTokenRequest,
   ExchangePublicTokenResponse,
+  ItemRefreshResponse,
+  LinkTokenResponse,
   PaginatedPlaidAccountList,
   PaginatedPlaidItemList,
   PaginatedPlaidTransactionList,
@@ -32,6 +34,10 @@ import {
     ExchangePublicTokenRequestToJSON,
     ExchangePublicTokenResponseFromJSON,
     ExchangePublicTokenResponseToJSON,
+    ItemRefreshResponseFromJSON,
+    ItemRefreshResponseToJSON,
+    LinkTokenResponseFromJSON,
+    LinkTokenResponseToJSON,
     PaginatedPlaidAccountListFromJSON,
     PaginatedPlaidAccountListToJSON,
     PaginatedPlaidItemListFromJSON,
@@ -94,10 +100,22 @@ export interface PlaidExchangePublicTokenRequest {
     exchangePublicTokenRequest: ExchangePublicTokenRequest;
 }
 
+export interface PlaidItemsLinkTokenRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+}
+
 export interface PlaidItemsListRequest {
     bookSlug: string;
     teamSlug: string;
     page?: number;
+}
+
+export interface PlaidItemsRefreshRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
 }
 
 export interface PlaidItemsRetrieveRequest {
@@ -489,6 +507,60 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
+     * A Link token in update mode for this item: the user signs in to the bank again, renews consent, or shares accounts Plaid found since linking.
+     */
+    async plaidItemsLinkTokenRaw(requestParameters: PlaidItemsLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LinkTokenResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsLinkToken().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidItemsLinkToken().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling plaidItemsLinkToken().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/link-token/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => LinkTokenResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * A Link token in update mode for this item: the user signs in to the bank again, renews consent, or shares accounts Plaid found since linking.
+     */
+    async plaidItemsLinkToken(requestParameters: PlaidItemsLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LinkTokenResponse> {
+        const response = await this.plaidItemsLinkTokenRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * ViewSet for PlaidItem model (read-only).
      */
     async plaidItemsListRaw(requestParameters: PlaidItemsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedPlaidItemList>> {
@@ -536,6 +608,60 @@ export class PlaidApi extends runtime.BaseAPI {
      */
     async plaidItemsList(requestParameters: PlaidItemsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedPlaidItemList> {
         const response = await this.plaidItemsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * After Link\'s update mode succeeds: mark the connection healthy, add any accounts the user just shared (returned for mapping), and queue a sync.
+     */
+    async plaidItemsRefreshRaw(requestParameters: PlaidItemsRefreshRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ItemRefreshResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsRefresh().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidItemsRefresh().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling plaidItemsRefresh().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/refresh/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ItemRefreshResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * After Link\'s update mode succeeds: mark the connection healthy, add any accounts the user just shared (returned for mapping), and queue a sync.
+     */
+    async plaidItemsRefresh(requestParameters: PlaidItemsRefreshRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ItemRefreshResponse> {
+        const response = await this.plaidItemsRefreshRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

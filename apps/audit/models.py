@@ -22,6 +22,7 @@ class AuditEvent(models.Model):
     PLAID_SYNC_STARTED = "plaid_sync_started"
     PLAID_SYNC_COMPLETED = "plaid_sync_completed"
     PLAID_SYNC_FAILED = "plaid_sync_failed"
+    PLAID_ITEM_STATUS_CHANGED = "plaid_item_status_changed"
     BULK_CATEGORIZE = "bulk_categorize"
     BULK_EDIT = "bulk_edit"
     BULK_RECONCILE = "bulk_reconcile"
@@ -80,6 +81,7 @@ class AuditEvent(models.Model):
         (PLAID_SYNC_STARTED, "Plaid Sync Started"),
         (PLAID_SYNC_COMPLETED, "Plaid Sync Completed"),
         (PLAID_SYNC_FAILED, "Plaid Sync Failed"),
+        (PLAID_ITEM_STATUS_CHANGED, "Plaid Connection Status Changed"),
         (BULK_CATEGORIZE, "Bulk Categorize"),
         (BULK_EDIT, "Bulk Edit"),
         (BULK_RECONCILE, "Bulk Reconcile"),
