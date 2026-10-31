@@ -104,7 +104,7 @@ def repoint_category(bank_tx, category_account):
             bank_tx.account_id,
             [(category_account, amount)],
             total=amount,
-            book=bank_tx.book_id,
+            book=bank_tx.book,
             repoint=True,
             lines=lines,
         )
