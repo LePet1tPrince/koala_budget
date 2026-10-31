@@ -385,12 +385,24 @@ a real LLM in a test.
 ## 13. As built
 
 - Everything in §§2–11 shipped as described.
-- The rule page reorders with up/down buttons (keyboard-reachable, no new drag
+- The rules page reorders with up/down buttons (keyboard-reachable, no new drag
   dependency); the accounts board's @dnd-kit was not pulled in for a list.
 - "Apply all rules to the Inbox" (a page-level button) was not built: per-rule
   Apply covers it with a preview, and an all-rules run's preview would be a
   table of rules, not a count.
-- `api-client/`: hand-patched to the generator's conventions (no generator jar
-  in this environment): `BankFeedRow.categorizedBy`, the widened
-  `SimilarCategorySuggestion`, and `AuditLog.via`. The rules API is called
-  through `common/http.js`, like the other hand-written page APIs.
+- Picking a rule's suggestion in categorize mode applies the rule's renames
+  too (sent as a `batch_edit`, as a hand-edited card is), so a rule suggestion
+  files a row the same way the rule would have on arrival.
+- The "can this user write rules" flag reaches React pages through one template
+  tag, `{% can_manage_rules_script %}` (`categorization_tags`), rather than a
+  context variable in each bank-feed view.
+- `api-client/` regenerated with openapi-generator 7.9.0 (output additive
+  only). Two schema settings came with it: `ENUM_NAME_OVERRIDES` for the
+  source and match choice sets, and `ENUM_ADD_EXPLICIT_BLANK_NULL_CHOICE =
+  False`, because a rule's "any" match is the blank choice and the
+  typescript-fetch generator cannot serialize the `oneOf` the default emits
+  (no existing schema used a blank or null enum). The rules page calls its API
+  through `common/http.js`, like the other page APIs; the generated
+  `CategorizationApi` exists for anything that wants it.
+- E2E tests (`e2e/tests/test_categorization_rules.py`, POM `e2e/pages/rules.py`)
+  were written but not run in the build environment.
