@@ -117,4 +117,3 @@ class DRFThrottleSettingsTest(TestCase):
         rates = settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
         self.assertEqual(rates["anon"], "100/hour")
         self.assertEqual(rates["user"], "1000/hour")
-        self.assertEqual(rates["auth"], "5/minute")

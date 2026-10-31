@@ -3,12 +3,15 @@ import io
 import json
 import zipfile
 
+from django.db import transaction
+
 from apps.accounts.models import Account, AccountGroup, Payee
 from apps.books.models import Book
 from apps.budget import ledger as budget_ledger
 from apps.budget.models import Goal, GoalAccountLink
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
+from apps.portability.services.wipe import wipe_book
 from apps.teams.models import Membership
 
 
@@ -239,13 +242,17 @@ def _build_csv(headers, rows):
     return output.getvalue()
 
 
+@transaction.atomic
 def delete_user_account(user):
     """Permanently delete a user account and all associated data.
 
-    For teams where the user is the sole admin, the entire team and its
-    data are deleted. Models with PROTECT foreign keys must be deleted
-    in dependency order before the team itself can be removed.
-    For teams with other admins, only the user's membership is removed.
+    For a team where the user is the only member, the team and every one of
+    its books are deleted. Each book is emptied with `wipe_book` first -- the
+    one place that knows the order the books' PROTECT foreign keys need --
+    and the team's delete cascades the rest. For a team with other members,
+    only the user's membership is removed.
+
+    All or nothing: a failure part-way must not leave a user half-deleted.
     """
     memberships = Membership.objects.filter(user=user).select_related("team")
 
@@ -254,15 +261,10 @@ def delete_user_account(user):
         other_members = Membership.objects.filter(team=team).exclude(user=user)
 
         if not other_members.exists():
-            # Last member — delete all team data in dependency order to
-            # respect PROTECT foreign keys, then delete the team.
-            PlaidAccount.objects.filter(book__team=team).delete()
-            PlaidItem.objects.filter(book__team=team).delete()
-            JournalLine.objects.filter(book__team=team).delete()
-            JournalEntry.objects.filter(book__team=team).delete()
-            Account.objects.filter(book__team=team).delete()
-            AccountGroup.objects.filter(book__team=team).delete()
-            Payee.objects.filter(book__team=team).delete()
+            # Last member: empty every book (archived ones too), then the
+            # team's delete cascades the books and everything left on them.
+            for book in Book.objects.filter(team=team):
+                wipe_book(book)
             team.delete()
         else:
             # Other members exist — never destroy their data. If this user was

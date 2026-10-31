@@ -1,7 +1,6 @@
 import React from 'react';
 import ErrorPage from "../error-page";
 import Profile from "../pages/dashboard/Profile";
-import EmployeeApp from "../pages/dashboard/Employees";
 import Dashboard from "../pages/dashboard/Dashboard";
 import {NavigationDemo, NavigationDemoRoutes} from "../pages/dashboard/NavigationDemo";
 
@@ -24,10 +23,6 @@ export const dashboardRoutes = [
             element: <NavigationDemoRoutes />,
           }
         ]
-      },
-      {
-        path: "/dashboard/employees/*",
-        element: <EmployeeApp />,
       },
     ]
   }

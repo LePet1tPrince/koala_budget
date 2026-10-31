@@ -11,10 +11,6 @@ if TYPE_CHECKING:
 _context: ContextVar["Team | None"] = ContextVar("team", default=None)
 
 
-class EmptyTeamContextException(Exception):
-    pass
-
-
 def get_current_team() -> "Team | None":
     """
     Util to get the team that has been set in the current thread/context using `set_current_team`.

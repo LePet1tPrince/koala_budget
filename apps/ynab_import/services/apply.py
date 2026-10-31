@@ -24,10 +24,10 @@ from apps.bank_feed.services.transfer_mirror import mirror_rows_for
 from apps.budget import ledger as budget_ledger
 from apps.budget.buckets import sync_book
 from apps.budget.models import Goal
-from apps.journal.models import JournalEntry, JournalLine, counted_entries, transaction_entries
+from apps.journal.models import JournalEntry, JournalLine, transaction_entries
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
 
-from .build import ASSET, EQUITY_TYPE, ImportPlan
+from .build import ImportPlan
 
 logger = logging.getLogger(__name__)
 
@@ -422,22 +422,3 @@ def _create_openings(book, plan: ImportPlan, accounts) -> int:
     for as_of, rows in sorted(by_date.items()):
         created += len(create_opening_balances(book, rows, as_of=as_of))
     return created
-
-
-def equity_account(book) -> Account | None:
-    return Account.objects.filter(book=book, is_system=True, account_group__account_type=EQUITY_TYPE).first()
-
-
-def net_worth_of(book) -> Decimal:
-    """Assets minus liabilities, the same sum the dashboard runs."""
-    from django.db.models import Sum
-
-    totals = (
-        JournalLine.objects.filter(
-            book=book,
-            account__account_group__account_type__in=(ASSET, "liability"),
-        )
-        .filter(counted_entries("journal_entry__"))
-        .aggregate(dr=Sum("dr_amount"), cr=Sum("cr_amount"))
-    )
-    return (totals["dr"] or ZERO) - (totals["cr"] or ZERO)

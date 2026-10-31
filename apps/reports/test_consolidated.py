@@ -20,8 +20,9 @@ from apps.journal.models import JournalEntry, JournalLine
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
+from apps.utils.months import add_months
 
-from .consolidated import bucket_for, budget_goals_report, net_worth_report, shift_month, spending_report
+from .consolidated import bucket_for, budget_goals_report, net_worth_report, spending_report
 
 
 class ConsolidatedReportsBase(TestCase):
@@ -68,8 +69,8 @@ class HelpersTest(TestCase):
         self.assertEqual(bucket_for(date(2016, 1, 1), date(2026, 1, 1)), "year")
 
     def test_shift_month_crosses_years(self):
-        self.assertEqual(shift_month(date(2026, 1, 1), -1), date(2025, 12, 1))
-        self.assertEqual(shift_month(date(2026, 12, 1), 1), date(2027, 1, 1))
+        self.assertEqual(add_months(date(2026, 1, 1), -1), date(2025, 12, 1))
+        self.assertEqual(add_months(date(2026, 12, 1), 1), date(2027, 1, 1))
 
 
 class SpendingReportTest(ConsolidatedReportsBase):

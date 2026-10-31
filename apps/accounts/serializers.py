@@ -4,7 +4,7 @@ Serializers for accounts app.
 
 from rest_framework import serializers
 
-from .models import Account, AccountGroup, Institution, Payee
+from .models import Account, AccountGroup, Payee
 
 
 class AccountGroupSerializer(serializers.ModelSerializer):
@@ -126,15 +126,6 @@ class PickerAccountSerializer(SimpleAccountSerializer):
     def get_goal_left(self, obj) -> str | None:
         left = self.context.get("goal_left", {}).get(obj.pk)
         return None if left is None else f"{left:.2f}"
-
-
-class InstitutionSerializer(serializers.ModelSerializer):
-    """Serializer for Institution model."""
-
-    class Meta:
-        model = Institution
-        fields = ["id", "name", "created_at", "updated_at"]
-        read_only_fields = ["created_at", "updated_at"]
 
 
 class PayeeSerializer(serializers.ModelSerializer):

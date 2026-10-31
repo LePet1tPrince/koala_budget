@@ -10,7 +10,6 @@ The whole review ships in one `json_script` payload (§2): there is no data
 endpoint for the walkthrough or the dashboard, only these small state writes.
 """
 
-import json
 from dataclasses import asdict as dataclass_asdict
 from dataclasses import is_dataclass
 from datetime import date, datetime
@@ -29,10 +28,11 @@ from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.journal.models import JournalEntry, counted_entries, transaction_entries
+from apps.utils.json_views import json_body
+from apps.utils.months import add_months
 
 from .exports import export_monthly_review_csv
 from .models import MonthlyReviewState
-from .services.budget import _next_month, _prev_month
 from .services.review import build_review
 
 
@@ -46,7 +46,7 @@ def _parse_month(value):
 
 def _default_month():
     """The last complete month -- a half-finished month has nothing to review."""
-    return _prev_month(date.today().replace(day=1))
+    return add_months(date.today(), -1)
 
 
 def _month_from_request(request):
@@ -61,14 +61,6 @@ def _month_from_request(request):
     if stored and (month := _parse_month(stored)):
         return month
     return _default_month()
-
-
-def _json_body(request) -> dict:
-    try:
-        body = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return {}
-    return body if isinstance(body, dict) else {}
 
 
 def _json_safe(value):
@@ -124,8 +116,8 @@ def monthly_review_home(request, team_slug, book_slug):
         "active_tab": "monthly-review",
         "page_title": _("Monthly Review"),
         "month": month,
-        "prev_month": _prev_month(month),
-        "next_month": _next_month(month),
+        "prev_month": add_months(month, -1),
+        "next_month": add_months(month, 1),
         "empty_state": not _book_has_activity_by(request.book, month),
     }
 
@@ -157,7 +149,7 @@ def monthly_review_home(request, team_slug, book_slug):
 @require_POST
 @login_and_book_required
 def api_step(request, team_slug, book_slug):
-    body = _json_body(request)
+    body = json_body(request)
     month = _parse_month(body.get("month")) or _default_month()
     state = _get_or_create_state(request.book, month)
 
@@ -190,7 +182,7 @@ def api_step(request, team_slug, book_slug):
 @require_POST
 @login_and_book_required
 def api_complete(request, team_slug, book_slug):
-    body = _json_body(request)
+    body = json_body(request)
     month = _parse_month(body.get("month")) or _default_month()
     state = _get_or_create_state(request.book, month)
 
@@ -216,7 +208,7 @@ def api_complete(request, team_slug, book_slug):
 @require_POST
 @login_and_book_required
 def api_dismiss(request, team_slug, book_slug):
-    body = _json_body(request)
+    body = json_body(request)
     month = _parse_month(body.get("month")) or _default_month()
     state = _get_or_create_state(request.book, month)
 

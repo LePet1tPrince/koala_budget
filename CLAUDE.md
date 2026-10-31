@@ -25,7 +25,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 | `budget` | Monthly budgets and savings goals — Budget, Goal, GoalAllocation |
 | `bank_feed` | Transaction import staging — BankTransaction |
 | `plaid` | Plaid live-sync integration — PlaidItem, PlaidAccount |
-| `chat` / `ai` | AI chat interface and pydantic-ai agents |
+| `chat` / `ai` | "Ask Koala" AI chat — still the Pegasus demo agents (weather, admin DB/email); no access to budget data |
 | `teams` | People and billing — Team, Membership, Invitation |
 | `books` | The money tenant — Book (a set of books), request plumbing, legacy redirect, book settings |
 | `users` | Custom user model, avatars, preferences |
@@ -301,6 +301,8 @@ deploy/            # Docker Compose and DigitalOcean configs
 
 - Reports: **the seven old reports are deleted** (completes `docs/reports-consolidation.md`, §8 lists what moved). Reports are four — **Monthly Review**, **Income & Spending** (`reports:spending`), **Net Worth** (`reports:net_worth`), **Budget & Goals** (`reports:budget_goals`) — on Reports home (`report-link-<key>`) and in the sidebar's Reports popout (`nav-monthly-review`, `nav-report-spending|net-worth|budget-goals`; each report view passes `active_report` to highlight its item). Gone: Income Statement, Balance Sheet, Net Worth Trend, Cash Flow, Budget vs Actual, Goal Progress, Dollar Map and the `reports:account_activity` drill-down (views, URLs, templates, isolation rows, `BACK_LABELS`, tests), plus `apps/reports/forms.py`, `BalanceSheetDatePicker.jsx` and the `expense-trend-chart`/`balance-composition-chart`/`goal-progress-chart` entries. `views_consolidated.py` merged into `apps/reports/views.py`; templates moved from `templates/reports/consolidated/` up to `templates/reports/`. Links repointed: dashboard + Unassigned pill → Budget & Goals, dashboard P&L → Income & Spending, net worth chart → Net Worth, onboarding task rail (`gates.py`) → `spending`/`net_worth`; the budget table's category link → the account page (month range, `return_to` = the budget page for that month, not the request path, since hide/unhide POSTs render the table too). The CSV exports stay; `export_account_activity` is now linked from the account page's Activity header (`account-export-csv`).
 
+- Audit (Oct 2026, report: `docs/audit-2026-10.md`). **Removed:** the Pegasus demo apps (`pegasus/apps/examples`, `pegasus/apps/employees`, `apps/teams_example`, the React/Vue object-lifecycle demos, the employees AI agent, the every-minute `test-celerybeat` schedule) — with them `BaseTeamModel`, `TeamScopedManager`, `apps/teams/mixins.py`, `Icon.vue` and every Vue dependency; `web/0003` drops the two demo tables. **Django Channels is gone** (`channels_urls.py` was empty): `asgi.py` is plain `get_asgi_application()`, no `CHANNEL_LAYERS`, no daphne. Also removed: `purge_sample_transactions` (broken since books — it filtered `BankTransaction.team`), `AuthRateThrottle` + the unused `"auth"` DRF rate, ~20 dead functions/serializers, unused templates/images, three unused PostCSS plugins. **Shared helpers** (use these, don't re-add copies): `apps/utils/months.py` (`add_months`, `months_between` — replaced ~15 hand-rolled versions), `apps/utils/json_views.py` (`json_body`, `json_errors(message, log_label=)`), `apps/utils/progress.py::status_payload` (the import wizards' status poll), and on the frontend `assets/javascript/common/http.js` (`jsonHeaders`/`readJson`/`sendJson`/`getJson`/`postJson`/`postForm`, used by the ynab_import/portability/reconcile/onboarding/monthly_review page APIs). **Fixed:** `NetWorthTrendMonthPicker.jsx` was never a Vite input, so the Net Worth report's picker was missing from production builds; deleting a user account 500'd when a goal was linked to an account (`delete_user_account` now uses `wipe_book` per book, in one transaction). Plaid is untouched here (its overhaul is its own branch, `claude/plaid-overhaul`). `api-client/` regenerated (it lacked `SimpleAccount.is_hidden`, the `budget` account type/source and two event types). New tests: user export/deletion, `budget_ledger_check`, the new utils.
+
 ---
 
 ## Known Issues
@@ -309,6 +311,9 @@ deploy/            # Docker Compose and DigitalOcean configs
 - E2E tests require `make start-bg` (Vite dev server) before running
 - Coverage threshold set at 50% — many apps have minimal test coverage
 - Plaid webhook receiver does not verify Plaid's JWT signature — a spoofed request can only trigger an extra sync, but add verification before production
+- Plaid Link is created with `country_codes=["US"]` (`apps/plaid/services.py`) although the go-to-market is Canadian
+- Plaid pending→posted: a categorized pending row is kept on `removed`, and the posted transaction arrives as a second, uncategorized row
+- `PROJECT_METADATA["IMAGE"]` (social share image) is still the Pegasus logo
 
 ---
 

@@ -7,18 +7,11 @@ only endpoint that changes anything is `api_apply`, and it hands the work to a
 Celery task rather than doing it while the browser waits.
 """
 
-import functools
-import json
-import logging
-
-from celery.result import AsyncResult
-from celery_progress.backend import Progress
 from django.conf import settings
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
-from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
@@ -28,6 +21,8 @@ from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.onboarding.models import OnboardingState
+from apps.utils.json_views import json_body, json_errors
+from apps.utils.progress import status_payload
 
 from .models import MAX_UPLOAD_BYTES, YnabImport
 from .services.apply import can_import
@@ -38,49 +33,11 @@ from .services.reconcile import reconcile
 from .services.session import analyse_record
 from .tasks import run_ynab_import
 
-logger = logging.getLogger(__name__)
-
-# The bar never shows a full sweep while work is still going on: 100% is reserved
-# for a row that says so.
-NEARLY_DONE = 99
-
-# How long a task Celery calls finished may leave its row untouched before it is
-# treated as a worker that died rather than one that is a moment behind.
-DEAD_WORKER_GRACE_SECONDS = 20
-
-
-def json_errors(view):
-    """
-    Answer an unexpected exception with JSON, not with Django's HTML error page.
-
-    Every endpoint here is called by `fetch`, which reads `error` off the body. An
-    unhandled exception returns an HTML page instead, so the wizard has nothing to
-    show but "Something went wrong." -- which is exactly the least useful thing to
-    say to someone whose migrations have not been run. The exception is still
-    logged with its traceback, so an error tracker reading the log sees it, and in
-    DEBUG the reason itself is handed to the browser, because a developer looking
-    at the wizard is the person who can act on it.
-    """
-
-    @functools.wraps(view)
-    def wrapped(request, *args, **kwargs):
-        try:
-            return view(request, *args, **kwargs)
-        except Exception as error:  # noqa: BLE001 - the wizard must say something, whatever broke
-            logger.exception("YNAB import request failed: %s", request.path)
-            detail = f"{type(error).__name__}: {error}" if settings.DEBUG else ""
-            return JsonResponse(
-                {
-                    "error": (
-                        "The server could not complete that step. If this book was set up from a new "
-                        "version of the app, its database may need migrating."
-                    ),
-                    "detail": detail,
-                },
-                status=500,
-            )
-
-    return wrapped
+ynab_json_errors = json_errors(
+    "The server could not complete that step. If this book was set up from a new "
+    "version of the app, its database may need migrating.",
+    log_label="YNAB import request",
+)
 
 
 @ensure_csrf_cookie
@@ -148,14 +105,6 @@ def _close_url(book) -> str:
     return reverse("web_team:settings", args=[book.team.slug])
 
 
-def _json_body(request) -> dict:
-    try:
-        body = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return {}
-    return body if isinstance(body, dict) else {}
-
-
 def _record(request, body) -> YnabImport | None:
     """The import this request is about, scoped to the book -- never by id alone."""
     return YnabImport.objects.filter(book=request.book, id=body.get("import_id")).first()
@@ -163,7 +112,7 @@ def _record(request, body) -> YnabImport | None:
 
 @require_POST
 @login_and_book_required
-@json_errors
+@ynab_json_errors
 def api_upload(request, team_slug, book_slug):
     """
     Take both exports, work out which is which, and hand back what we found.
@@ -216,7 +165,7 @@ def api_upload(request, team_slug, book_slug):
 
 @require_POST
 @login_and_book_required
-@json_errors
+@ynab_json_errors
 def api_preview(request, team_slug, book_slug):
     """
     What the import will produce, given the answers so far.
@@ -224,7 +173,7 @@ def api_preview(request, team_slug, book_slug):
     Built from the same `build()` the apply step runs, so the preview cannot promise
     something the import does not do.
     """
-    body = _json_body(request)
+    body = json_body(request)
     record = _record(request, body)
     if record is None:
         return JsonResponse({"error": "That import is no longer available. Start again."}, status=404)
@@ -249,7 +198,7 @@ def api_preview(request, team_slug, book_slug):
 
 @require_POST
 @login_and_book_required
-@json_errors
+@ynab_json_errors
 def api_apply(request, team_slug, book_slug):
     """
     Start the import.
@@ -258,7 +207,7 @@ def api_apply(request, team_slug, book_slug):
     is queued is a message the user sees immediately, while the one inside the
     transaction is what actually makes it safe.
     """
-    body = _json_body(request)
+    body = json_body(request)
     record = _record(request, body)
     if record is None:
         return JsonResponse({"error": "That import is no longer available. Start again."}, status=404)
@@ -296,79 +245,11 @@ def api_apply(request, team_slug, book_slug):
 
 
 @login_and_book_required
-@json_errors
+@ynab_json_errors
 def api_status(request, team_slug, book_slug):
-    """
-    Where the import has got to.
-
-    The row is authoritative -- a reloaded page must show a finished import as
-    finished -- and Celery is consulted only for progress the row has not caught up
-    with yet, since the two are written from the same worker microseconds apart.
-
-    The one thing Celery is trusted for outright is *death*. A worker that is
-    killed (an out-of-memory container, a deploy mid-import) never reaches the code
-    that marks the row failed, so the row says "running" forever. Without this the
-    wizard sits at whatever it last saw, waiting for a worker that is not coming.
-    """
+    """Where the import has got to. See `apps.utils.progress.status_payload`."""
     record = YnabImport.objects.filter(book=request.book, id=request.GET.get("import_id")).first()
     if record is None:
         return JsonResponse({"error": "That import is no longer available."}, status=404)
 
-    payload = record.as_dict()
-    if record.is_finished or not record.task_id:
-        return JsonResponse(payload)
-
-    live = _live_progress(record)
-    if live is None:
-        return JsonResponse(payload)
-
-    if live["complete"]:
-        # `celery_progress` reports 100% for a finished task whether it succeeded or
-        # failed, so that number must never reach the bar while the row still says
-        # running -- that is the full-bar-forever the user would otherwise stare at.
-        if _worker_is_gone(record):
-            record.status = YnabImport.STATUS_FAILED
-            record.error = (
-                "The import stopped before it finished. Nothing was written -- it is applied in one go, so a "
-                "run that does not reach the end leaves your books exactly as they were. Check the worker log, "
-                "then start again."
-            )
-            record.finished_at = timezone.now()
-            record.save(update_fields=["status", "error", "finished_at", "updated_at"])
-            return JsonResponse(record.as_dict())
-        # Still within the moment between the task returning and the row being
-        # written: report near-complete rather than complete, and let the next poll
-        # see the row itself.
-        payload["progress"] = max(payload["progress"], NEARLY_DONE)
-        return JsonResponse(payload)
-
-    progress = live.get("progress") or {}
-    percent = int(progress.get("percent") or 0)
-    payload["progress"] = min(NEARLY_DONE, max(payload["progress"], percent))
-    payload["step"] = progress.get("description") or payload["step"]
-    payload["started"] = payload["started"] or not progress.get("pending")
-
-    return JsonResponse(payload)
-
-
-def _live_progress(record) -> dict | None:
-    """What Celery makes of the task, or None when there is no result backend to ask."""
-    try:
-        return Progress(AsyncResult(record.task_id)).get_info()
-    except Exception:  # noqa: BLE001 - a missing result backend must not break the page
-        logger.debug("No live progress for YNAB import %s", record.id, exc_info=True)
-        return None
-
-
-def _worker_is_gone(record) -> bool:
-    """
-    Whether a task Celery calls finished has stopped writing to its row.
-
-    The grace period is what separates a dead worker from the ordinary race: the
-    task returns, and a moment later the same worker commits the row. Only silence
-    that outlasts the grace period is a death.
-    """
-    last_seen = record.updated_at or record.started_at
-    if last_seen is None:
-        return True
-    return (timezone.now() - last_seen).total_seconds() > DEAD_WORKER_GRACE_SECONDS
+    return JsonResponse(status_payload(record))

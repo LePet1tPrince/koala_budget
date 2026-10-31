@@ -1,12 +1,13 @@
 """
 Deleting a set of books (§4.2, §4.3 of `docs/export-import-plan.md`).
 
-`wipe_book(book)` is the single most destructive operation in this feature,
-and it never runs on its own -- it is always called from inside `apply.py`'s
-one `transaction.atomic` block, alongside the safety export that makes it
-recoverable. No `@transaction.atomic` here on purpose: that decorator belongs
-to the caller, which also has to decide whether a check failure after the
-wipe rolls the whole thing back (it does).
+`wipe_book(book)` is the single most destructive operation in this feature.
+It has two callers, each inside its own `transaction.atomic` block: `apply.py`
+(alongside the safety export that makes it recoverable) and
+`apps.users.services.delete_user_account` (emptying a sole member's books
+before the team goes). No `@transaction.atomic` here on purpose: that
+decorator belongs to the caller, which also has to decide whether a check
+failure after the wipe rolls the whole thing back (it does).
 
 Two things this order exists to get right:
 

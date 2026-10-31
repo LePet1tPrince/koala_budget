@@ -60,7 +60,6 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
     "allauth.socialaccount.providers.github",
-    "channels",
     "django_vite",
     "allauth.mfa",
     "rest_framework",
@@ -81,10 +80,7 @@ THIRD_PARTY_APPS = [
     "django_celery_beat",
 ]
 
-PEGASUS_APPS = [
-    "pegasus.apps.examples.apps.PegasusExamplesConfig",
-    "pegasus.apps.employees.apps.PegasusEmployeesConfig",
-]
+PEGASUS_APPS = []
 
 # Put your project-specific apps here
 PROJECT_APPS = [
@@ -95,7 +91,6 @@ PROJECT_APPS = [
     "apps.utils",
     "apps.web",
     "apps.teams.apps.TeamConfig",
-    "apps.teams_example.apps.TeamsExampleConfig",
     "apps.books.apps.BooksConfig",
     "apps.chat",
     "apps.ai.apps.AiConfig",
@@ -114,10 +109,6 @@ PROJECT_APPS = [
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
-
-if DEBUG:
-    # in debug mode, add daphne to the beginning of INSTALLED_APPS to enable async support
-    INSTALLED_APPS.insert(0, "daphne")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -445,7 +436,6 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "100/hour",
         "user": "1000/hour",
-        "auth": "5/minute",
     },
 }
 
@@ -502,29 +492,12 @@ FLOWER_URL_PREFIX = "flower"
 
 # Add tasks to this dict and run `python manage.py bootstrap_celery_tasks` to create them
 SCHEDULED_TASKS = {
-    "test-celerybeat": {
-        "task": "pegasus.apps.examples.tasks.example_log_task",
-        "schedule": 60,
-        "expire_seconds": 60,
-    },
     # Example of a crontab schedule
     # from celery import schedules
     # "daily-4am-task": {
     #     "task": "some.task.path",
     #     "schedule": schedules.crontab(minute=0, hour=4),
     # },
-}
-
-# Channels / Daphne setup
-
-ASGI_APPLICATION = "koala_budget.asgi.application"
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [REDIS_URL],
-        },
-    },
 }
 
 # Health Checks

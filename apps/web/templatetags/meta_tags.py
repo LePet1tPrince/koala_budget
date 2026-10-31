@@ -35,12 +35,3 @@ def get_image_url(project_meta, page_image=None):
 @register.simple_tag
 def absolute_url(path):
     return meta.absolute_url(path)
-
-
-@register.simple_tag
-def websocket_url(name, *args, **kwargs):
-    """
-    Generate a relative WebSocket URL using the websocket_reverse function.
-    Usage: {% websocket_url 'websocket_name' %}
-    """
-    return meta.websocket_absolute_url(meta.websocket_reverse(name, args=args, kwargs=kwargs))

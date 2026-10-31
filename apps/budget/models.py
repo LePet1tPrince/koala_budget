@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
 from apps.books.models import BaseBookModel
+from apps.utils.months import add_months
 
 ZERO = Decimal("0")
 
@@ -51,12 +52,6 @@ def goals_group(book):
     return AccountGroup.objects.create(
         book=book, account_type=ACCOUNT_TYPE_EQUITY, name=name, description="Savings goals"
     )
-
-
-def month_after(month):
-    """First day of the month after the one containing `month`."""
-    month = month.replace(day=1)
-    return month.replace(year=month.year + 1, month=1) if month.month == 12 else month.replace(month=month.month + 1)
 
 
 def goal_spent_subquery(start=None, end=None):
@@ -107,7 +102,7 @@ def goal_allocated_subquery(start=None, end=None):
     plus everything its linked accounts brought in (starting balances and linked
     flows, `apps.budget.linked`), dated from `start` (inclusive) to `end`
     (exclusive). Months are first-of-month dates, so a month range is
-    `(month, month_after(month))`.
+    `(month, add_months(month, 1))`.
     """
     from apps.budget.linked import linked_allocated_subquery
 
@@ -140,7 +135,7 @@ class GoalQuerySet(models.QuerySet):
         if month is None:
             month = timezone.now().date()
         month = month.replace(day=1)
-        end = month_after(month)
+        end = add_months(month, 1)
 
         return self.annotate(
             saved_previous=goal_allocated_subquery(end=month),

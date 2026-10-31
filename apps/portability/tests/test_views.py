@@ -8,12 +8,14 @@ would be dangerous without.
 """
 
 import zipfile
+from datetime import timedelta
 from io import BytesIO
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.portability.models import DataImport
 from apps.teams.models import Membership
@@ -134,6 +136,23 @@ class UploadApplyStatusFlowTests(TestCase):
 
         status = self.client.get(f"{self.url('api_status')}?import_id={record.id}").json()
         self.assertEqual(status["status"], "done")
+
+    def test_status_reports_a_dead_worker_as_failed(self):
+        # The status poll is shared with the YNAB importer
+        # (`apps.utils.progress.status_payload`); a row a finished task never
+        # updated is a worker that died, not one still running.
+        record = DataImport.objects.create(
+            book=self.dest_book,
+            archive=b"",
+            status=DataImport.STATUS_RUNNING,
+            task_id="task-1",
+            started_at=timezone.now() - timedelta(minutes=10),
+        )
+        DataImport.objects.filter(id=record.id).update(updated_at=timezone.now() - timedelta(minutes=5))
+        with patch("apps.utils.progress.live_progress", return_value={"complete": True, "progress": {"percent": 100}}):
+            status = self.client.get(f"{self.url('api_status')}?import_id={record.id}").json()
+        self.assertEqual(status["status"], "failed")
+        self.assertIn("stopped before it finished", status["error"])
 
     def test_status_404s_for_an_unknown_import_id(self):
         response = self.client.get(f"{self.url('api_status')}?import_id=999999")

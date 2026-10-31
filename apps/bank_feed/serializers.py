@@ -8,7 +8,6 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
-from apps.plaid.serializers import PlaidTransactionSerializer
 
 from .models import BankTransaction
 
@@ -30,66 +29,6 @@ class FeedAccountSerializer(AccountSerializer):
             "last_statement_date",
             "last_statement_intact",
         ]
-
-
-class BankTransactionSerializer(serializers.ModelSerializer):
-    """Serializer for BankTransaction model."""
-
-    # Nested PlaidTransaction details (accessed via reverse relation)
-    plaid_transaction = PlaidTransactionSerializer(read_only=True)
-    is_categorized = serializers.BooleanField(read_only=True)
-
-    # Computed fields from PlaidTransaction (if it exists)
-    pending = serializers.SerializerMethodField()
-    plaid_category = serializers.SerializerMethodField()
-    plaid_category_confidence = serializers.SerializerMethodField()
-    payment_channel = serializers.SerializerMethodField()
-
-    class Meta:
-        model = BankTransaction
-        fields = [
-            "id",
-            "source",
-            "amount",
-            "account",
-            "posted_date",
-            "pending",
-            "description",
-            "merchant_name",
-            "plaid_category",
-            "plaid_category_confidence",
-            "payment_channel",
-            "journal_entry",
-            "is_categorized",
-            "plaid_transaction",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["created_at", "updated_at"]
-
-    def get_pending(self, obj):
-        """Get pending status from PlaidTransaction if it exists."""
-        if hasattr(obj, "plaid_transaction"):
-            return obj.plaid_transaction.pending
-        return False
-
-    def get_plaid_category(self, obj):
-        """Get Plaid category from PlaidTransaction if it exists."""
-        if hasattr(obj, "plaid_transaction"):
-            return obj.plaid_transaction.personal_finance_category
-        return None
-
-    def get_plaid_category_confidence(self, obj):
-        """Get Plaid category confidence from PlaidTransaction if it exists."""
-        if hasattr(obj, "plaid_transaction"):
-            return obj.plaid_transaction.category_confidence
-        return None
-
-    def get_payment_channel(self, obj):
-        """Get payment channel from PlaidTransaction if it exists."""
-        if hasattr(obj, "plaid_transaction"):
-            return obj.plaid_transaction.payment_channel
-        return None
 
 
 class TransactionRowSerializer(serializers.Serializer):
@@ -371,62 +310,6 @@ class UploadParseResponseSerializer(serializers.Serializer):
     )
     total_rows = serializers.IntegerField(help_text="Total number of data rows")
     error = serializers.CharField(allow_null=True, help_text="Error message if parsing failed")
-
-
-class ColumnMappingSerializer(serializers.Serializer):
-    """Serializer for column mapping configuration."""
-
-    date = serializers.IntegerField(help_text="Column index for date")
-    description = serializers.IntegerField(help_text="Column index for description")
-    payee = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        help_text="Column index for payee (optional)",
-    )
-    category = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        help_text="Column index for category (optional)",
-    )
-    amount = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        help_text="Column index for single amount column",
-    )
-    inflow = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        help_text="Column index for inflow (dual column mode)",
-    )
-    outflow = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        help_text="Column index for outflow (dual column mode)",
-    )
-    invert_amounts = serializers.BooleanField(
-        required=False,
-        default=False,
-        help_text="Flip the sign of a single amount column, so its inflows become outflows and vice versa",
-    )
-
-
-class CategoryMappingSerializer(serializers.Serializer):
-    """Serializer for category mapping."""
-
-    category_name = serializers.CharField(help_text="Original category name from file")
-    account_id = serializers.IntegerField(help_text="Mapped account ID")
-
-
-class UploadPreviewRequestSerializer(serializers.Serializer):
-    """Request serializer for the upload_preview endpoint."""
-
-    account_id = serializers.IntegerField(help_text="Bank account ID to upload to")
-    column_mapping = ColumnMappingSerializer(help_text="Column mapping configuration")
-    category_mappings = CategoryMappingSerializer(
-        many=True,
-        required=False,
-        help_text="Category name to account ID mappings",
-    )
 
 
 class ParsedTransactionSerializer(serializers.Serializer):

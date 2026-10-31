@@ -568,25 +568,6 @@ class TransactionRowSerializer(serializers.Serializer):
         ]
 
 
-class TransactionLegSerializer(serializers.Serializer):
-    """
-    One category leg of a transaction.
-
-    Field-for-field the same shape as `apps.bank_feed.serializers.SplitLegSerializer`,
-    deliberately: `SplitEditor` is shared between the Bank Feed and the
-    Transactions page, and a component that had to guess which page's payload it
-    was holding would be a component with two ways to be wrong.
-    """
-
-    category_id = serializers.IntegerField(help_text="Account ID of this leg's category")
-    category_name = serializers.CharField(help_text="Name of this leg's category")
-    amount = serializers.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Signed share of the transaction total; positive is an outflow",
-    )
-
-
 class TransactionDetailSerializer(serializers.Serializer):
     """
     One transaction as the edit modal needs it: an account, a category or several,

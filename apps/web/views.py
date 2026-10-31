@@ -21,11 +21,11 @@ from apps.budget.services import NetWorthService
 from apps.budget.unassigned import allocation_bar, compute_unassigned
 from apps.journal.models import JournalEntry, counted_entries, transaction_entries
 from apps.monthly_review.models import MonthlyReviewState
-from apps.monthly_review.services.budget import _prev_month
 from apps.onboarding.views import get_or_create_state
 from apps.reports.services import ReportService
 from apps.teams.decorators import login_and_team_required
 from apps.teams.helpers import get_open_invitations_for_user
+from apps.utils.months import add_months
 
 # A pool of greetings that rotates day-to-day (deterministic per day, not per request)
 # so a user doesn't see the same one on every visit.
@@ -124,7 +124,7 @@ def book_home(request, team_slug, book_slug):
     )
     # A nudge to review last month, shown once there's a completed month worth
     # reviewing and it hasn't been reviewed or dismissed yet.
-    last_reviewable_month = _prev_month(month)
+    last_reviewable_month = add_months(month, -1)
     show_monthly_review_nudge = (
         settings.MONTHLY_REVIEW_ENABLED
         and first_entry_date is not None

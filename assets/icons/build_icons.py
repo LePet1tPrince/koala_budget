@@ -3,8 +3,7 @@
 
 The app ships icon geometry rather than pulling a font from a CDN (restyle plan
 Phase 6), so the SVG bodies are vendored into `lucide.json` and read at runtime
-by `apps/web/templatetags/icons.py`, `assets/javascript/common/Icon.jsx` and
-`assets/javascript/common/Icon.vue`.
+by `apps/web/templatetags/icons.py` and `assets/javascript/common/Icon.jsx`.
 
 `aliases.json` maps the names the call sites use — mostly the Font Awesome
 names they were converted from — onto Lucide names, and is hand-maintained.

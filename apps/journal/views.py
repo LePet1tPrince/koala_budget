@@ -25,6 +25,7 @@ from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.books.permissions import BookModelAccessPermissions
 from apps.reconciliation.services.guards import ReconciledLineError, assert_line_mutable
+from apps.utils.months import add_months
 
 from .filters import (
     COLUMNS,
@@ -241,10 +242,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
             month = parse_date(month_param)
             if month:
                 start = month.replace(day=1)
-                if start.month == 12:
-                    end = start.replace(year=start.year + 1, month=1)
-                else:
-                    end = start.replace(month=start.month + 1)
+                end = add_months(start, 1)
                 qs = qs.filter(
                     journal_entry__entry_date__gte=start,
                     journal_entry__entry_date__lt=end,

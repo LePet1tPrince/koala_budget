@@ -12,11 +12,11 @@ from django.shortcuts import get_object_or_404, render
 from django.utils.translation import gettext_lazy as _
 
 from apps.books.decorators import login_and_book_required
+from apps.utils.months import add_months
 
 from .consolidated import (
     budget_goals_report,
     net_worth_report,
-    shift_month,
     spending_report,
 )
 from .exports import (
@@ -34,9 +34,8 @@ def reports_home(request, team_slug, book_slug):
     Reports home page with navigation to different reports.
     """
     from apps.monthly_review.models import MonthlyReviewState
-    from apps.monthly_review.services.budget import _prev_month
 
-    last_reviewable_month = _prev_month(date.today().replace(day=1))
+    last_reviewable_month = add_months(date.today(), -1)
     reviewed = MonthlyReviewState.objects.filter(
         book=request.book, month=last_reviewable_month, completed_at__isnull=False
     ).exists()
@@ -146,8 +145,8 @@ def budget_goals(request, team_slug, book_slug):
             "page_title": _("Budget & Goals"),
             **report,
             "month": month,
-            "prev_month": shift_month(month, -1),
-            "next_month": shift_month(month, 1),
+            "prev_month": add_months(month, -1),
+            "next_month": add_months(month, 1),
         },
     )
 

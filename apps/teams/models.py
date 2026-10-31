@@ -1,4 +1,3 @@
-import logging
 import uuid
 
 from django.conf import settings
@@ -14,7 +13,6 @@ from apps.utils.models import BaseModel
 from apps.web.meta import absolute_url
 
 from . import roles
-from .context import EmptyTeamContextException, get_current_team
 
 
 class Team(SubscriptionModelBase, BaseModel):
@@ -96,46 +94,6 @@ class Invitation(BaseModel):
 
     def get_url(self) -> str:
         return absolute_url(reverse("teams:accept_invitation", args=[self.id]))
-
-
-class TeamScopedManager(models.Manager):
-    """Model manager that will automatically filter the queryset using the team from the global
-    team context. If no team is set in the context, it will return an empty queryset unless
-    the `STRICT_TEAM_CONTEXT` setting is `True` in which case it will raise an exception.
-    """
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        team = get_current_team()
-        if team is None:
-            if getattr(settings, "STRICT_TEAM_CONTEXT", False):
-                raise EmptyTeamContextException("Team missing from context")
-            else:
-                logging.warning("Team not available in filtered context. Use `set_current_team()`.")
-            return queryset.none()
-        return queryset.filter(team=team)
-
-
-class BaseTeamModel(BaseModel):
-    """
-    Abstract model for objects that are part of a team.
-
-    See `teams_example` app for usage.
-    """
-
-    team = models.ForeignKey(Team, verbose_name=gettext("Team"), on_delete=models.CASCADE)
-
-    # Default unfiltered manager
-    # Having the default manager unfiltered is useful for the Django Admin and anywhere
-    # else where the queryset is not easily customizable.
-    # See https://docs.djangoproject.com/en/stable/topics/db/managers/#default-managers
-    objects = models.Manager()
-
-    # pre-filtered to the current team
-    for_team = TeamScopedManager()
-
-    class Meta:
-        abstract = True
 
 
 class Flag(AbstractUserFlag):

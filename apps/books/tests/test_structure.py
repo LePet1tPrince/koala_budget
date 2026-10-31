@@ -12,7 +12,6 @@ from django.test import SimpleTestCase
 
 from apps.books.migration_utils import BOOK_MODELS
 from apps.books.models import BaseBookModel
-from apps.teams.models import BaseTeamModel
 
 APPS_DIR = Path(__file__).resolve().parents[2]
 BOOK_MODEL_NAMES = {apps.get_model(label, name).__name__ for label, name in BOOK_MODELS}
@@ -33,10 +32,6 @@ class BookModelStructureTest(SimpleTestCase):
             if issubclass(model, BaseBookModel):
                 with self.subTest(model=model._meta.label):
                     self.assertNotIn("team", {f.name for f in model._meta.get_fields()})
-
-    def test_only_the_demo_is_still_team_scoped(self):
-        team_models = {m._meta.label for m in project_models() if issubclass(m, BaseTeamModel)}
-        self.assertEqual(team_models, {"teams_example.Player"})
 
 
 class TeamFilterScanTest(SimpleTestCase):

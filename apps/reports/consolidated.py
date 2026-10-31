@@ -9,10 +9,12 @@ Data for the three reports beside Monthly Review (docs/reports-consolidation.md)
 Each builder returns a plain dict for its template; the views only parse params.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from django.utils.translation import gettext as _
+
+from apps.utils.months import months_between
 
 from .services import ReportService
 from .wealth_rank import global_rank
@@ -20,14 +22,9 @@ from .wealth_rank import global_rank
 ZERO = Decimal("0")
 
 
-def months_between(start_date, end_date):
-    """Calendar months the range touches, inclusive."""
-    return (end_date.year - start_date.year) * 12 + end_date.month - start_date.month + 1
-
-
 def bucket_for(start_date, end_date):
     """Chart/column period for a range: monthly up to two years, then quarterly, then yearly."""
-    months = months_between(start_date, end_date)
+    months = months_between(start_date, end_date) + 1
     if months <= 24:
         return "month"
     if months <= 96:
@@ -46,7 +43,7 @@ def spending_report(book, start_date, end_date):
     period = bucket_for(start_date, end_date)
     data = ReportService(book).get_income_statement_data(start_date, end_date, period=period)
     goal_spending = data["goal_spending"]
-    num_months = months_between(start_date, end_date)
+    num_months = months_between(start_date, end_date) + 1
 
     stats = {
         "income": data["total_income"],
@@ -264,8 +261,3 @@ def budget_goals_report(book, month):
         "envelopes": envelopes,
         "income_due": unassigned.income_due,
     }
-
-
-def shift_month(month, delta):
-    index = month.year * 12 + month.month - 1 + delta
-    return date(index // 12, index % 12 + 1, 1)

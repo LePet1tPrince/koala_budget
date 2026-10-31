@@ -45,7 +45,6 @@ team_level_urlpatterns = [
     path("subscription/", include(subscriptions_team_urls)),
     path("team/", include(single_team_urls)),
     path("books/", include(books_team_urls)),
-    path("example/", include("apps.teams_example.urls")),
 ]
 
 # Everything that reads or writes money data lives in a set of books, under
@@ -54,26 +53,6 @@ team_level_urlpatterns = [
 book_urlpatterns = [
     path("", include(web_book_urls)),
     path("settings/", include(books_book_urls)),
-    path("accounts/", include("apps.accounts.urls")),
-    path("journal/", include("apps.journal.urls")),
-    path("audit/", include("apps.audit.urls")),
-    path("budget/", include("apps.budget.urls")),
-    path("reports/", include("apps.reports.urls")),
-    path("reports/monthly-review/", include("apps.monthly_review.urls")),
-    path("plaid/", include("apps.plaid.urls")),
-    path("bankfeed/", include("apps.bank_feed.urls")),
-    path("onboarding/", include("apps.onboarding.urls")),
-    path("ynab-import/", include("apps.ynab_import.urls")),
-    path("data/", include("apps.portability.urls")),
-    path("reconcile/", include("apps.reconciliation.urls")),
-]
-
-urlpatterns = [
-    path("", include(web_team_urls)),
-    path("subscription/", include(subscriptions_team_urls)),
-    path("team/", include(single_team_urls)),
-    path("example/", include("apps.teams_example.urls")),
-    # path("budgeting/", include("apps.budgeting.urls")),
     path("accounts/", include("apps.accounts.urls")),
     path("journal/", include("apps.journal.urls")),
     path("audit/", include("apps.audit.urls")),
@@ -111,8 +90,6 @@ urlpatterns = [
     path("subscriptions/", include("apps.subscriptions.urls")),
     path("teams/", include("apps.teams.urls")),
     path("", include("apps.web.urls")),
-    path("pegasus/", include("pegasus.apps.examples.urls")),
-    path("pegasus/employees/", include("pegasus.apps.employees.urls")),
     path("support/", include("apps.support.urls")),
     path("celery-progress/", include("celery_progress.urls")),
     # API docs

@@ -1,12 +1,10 @@
 import { defineConfig } from 'vite';
 import path from 'path';
 import react from '@vitejs/plugin-react';
-import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
   plugins: [
     react(),
-    vue(),
   ],
   resolve: {
     alias: {
@@ -29,9 +27,6 @@ export default defineConfig({
         'app': path.resolve(__dirname, './assets/javascript/app.js'),
         'teams': path.resolve(__dirname, './assets/javascript/teams/teams.jsx'),
         'edit-team': path.resolve(__dirname, './assets/javascript/teams/edit-team.jsx'),
-        'pegasus': path.resolve(__dirname, './assets/javascript/pegasus/pegasus.js'),
-        'react-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/react/react-object-lifecycle.jsx'),
-        'vue-object-lifecycle': path.resolve(__dirname, './assets/javascript/pegasus/examples/vue/vue-object-lifecycle.js'),
         'chat': path.resolve(__dirname, './assets/javascript/chat/chat.jsx'),
         'reports': path.resolve(__dirname, './assets/javascript/reports/ReportsDateRangePicker.jsx'),
         'bank-feed': path.resolve(__dirname, './assets/javascript/bank_feed/react/line-app.jsx'),
@@ -57,6 +52,7 @@ export default defineConfig({
         'monthly-review-resume': path.resolve(__dirname, './assets/javascript/monthly_review/resume.js'),
         'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
         'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
+        'net-worth-month-picker': path.resolve(__dirname, './assets/javascript/reports/NetWorthTrendMonthPicker.jsx'),
         'net-worth-composition-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-composition-chart.js'),
         'home-net-worth-chart': path.resolve(__dirname, './assets/javascript/dashboard/home-net-worth-chart.js'),
         'cash-flow-chart': path.resolve(__dirname, './assets/javascript/reports/cash-flow-chart.js'),
