@@ -1,0 +1,14 @@
+{% load i18n %}
+{% load icons %}
+{% comment %}
+  A quiet line naming the book's closed period (`Book.locked_through`), above the
+  Transactions page and the Bank Feed. Nothing dated on or before it can change.
+{% endcomment %}
+{% if request.book.locked_through %}
+  <p class="mb-2 flex items-center gap-1.5 text-xs text-base-content/70" data-testid="period-lock-note">
+    {% icon "lock" class="h-3.5 w-3.5" %}
+    {% blocktranslate trimmed with date=request.book.locked_through|date:"DATE_FORMAT" %}
+      Books closed through {{ date }}
+    {% endblocktranslate %}
+  </p>
+{% endif %}

@@ -57,6 +57,7 @@ from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 
 from apps.journal.models import JournalLine
+from apps.journal.services import period_lock
 from apps.reconciliation.services.guards import assert_line_mutable, assert_line_removable
 
 ZERO = Decimal("0")
@@ -207,6 +208,8 @@ def write_lines(entry, home_account, legs, *, total, book, move_lines=(), repoin
 
     if entry is None:
         raise SplitError(_("This transaction has no journal entry to split."))
+    # A closed period's lines don't change (`period_lock`); a PeriodLockedError is a ValueError.
+    period_lock.assert_entry_mutable(entry, book=book)
 
     legs = expand_legs(legs)
     home_account_id = getattr(home_account, "id", home_account)

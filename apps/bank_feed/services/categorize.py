@@ -11,6 +11,7 @@ endpoints, CSV import and transfer matching. The lines themselves are written by
 from django.db import transaction
 
 from apps.journal.models import JournalEntry
+from apps.journal.services import period_lock
 from apps.journal.services.lines import signed_amount, write_lines
 
 from ..models import VOID_ROW_MESSAGE, VoidRowError
@@ -42,6 +43,7 @@ def create_entry(bank_tx, category_account):
         raise VoidRowError(VOID_ROW_MESSAGE)
 
     book = bank_tx.book
+    period_lock.assert_date_open(book, bank_tx.posted_date)
     journal_entry = JournalEntry.objects.create(
         book=book,
         entry_date=bank_tx.posted_date,
@@ -87,6 +89,7 @@ def repoint_category(bank_tx, category_account):
     # for in the editor, not implied by a bulk categorize.
     if is_split(bank_tx.journal_entry):
         raise SplitError("This is a split transaction. Open it to edit its categories, or remove the split first.")
+    period_lock.assert_entry_mutable(bank_tx.journal_entry)
 
     # On a transfer the category line is the other feed's bank line, so it is
     # re-pointed in place (`repoint=True`) rather than replaced: it keeps that

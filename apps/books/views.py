@@ -223,6 +223,7 @@ def book_settings(request, team_slug, book_slug):
     # Read before validating: `is_valid()` copies the posted values onto the instance.
     before = book.budget_future_income
     timeframe_before = book.report_timeframe
+    lock_before = book.locked_through
     # Not `request.POST or None` alone: an unticked checkbox sends nothing, and
     # the form must still bind.
     form = BookSettingsForm(request.POST if request.method == "POST" else None, instance=book)
@@ -233,6 +234,10 @@ def book_settings(request, team_slug, book_slug):
             changed["budget_future_income"] = book.budget_future_income
         if timeframe_before != book.report_timeframe:
             changed["report_timeframe"] = book.report_timeframe
+        if lock_before != book.locked_through:
+            # Both ends, so the audit trail says which period was closed or reopened.
+            changed["locked_through"] = book.locked_through.isoformat() if book.locked_through else None
+            changed["locked_through_before"] = lock_before.isoformat() if lock_before else None
         if changed:
             log_event(
                 AuditEvent.BOOK_SETTINGS_CHANGED,
@@ -248,6 +253,7 @@ def book_settings(request, team_slug, book_slug):
     # An invalid post has copied its values onto the instance; the consequence is
     # stated for the setting as saved.
     book.budget_future_income = before
+    book.locked_through = lock_before
     current, flipped = _unassigned_both_ways(book)
     return render(
         request,
@@ -261,6 +267,8 @@ def book_settings(request, team_slug, book_slug):
             "settings_section": "book",
             "settings_page_title": _("This book"),
             "page_title": _("This book"),
-            "settings_page_blurb": _("Its name, web address, how it budgets income and the dates reports open on."),
+            "settings_page_blurb": _(
+                "Its name, web address, how it budgets income, the dates reports open on and its closed period."
+            ),
         },
     )
