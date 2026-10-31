@@ -160,6 +160,14 @@ class PermissionTest(RuleTestCase):
         self.client.force_authenticate(user=None)
         self.assertIn(self.client.get(self.url("api/rules/")).status_code, (401, 403))
 
+    def test_the_bank_feed_pages_say_who_may_create_rules(self):
+        for user, expected in ((self.admin, "true"), (self.member, "false")):
+            self.client.force_login(user)
+            for path in ("", "categorize/"):
+                with self.subTest(user=user.username, path=path):
+                    response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/{path}")
+                    self.assertContains(response, f'<script id="can-manage-rules" type="application/json">{expected}')
+
     def test_the_page_renders_for_a_member(self):
         self.client.force_login(self.member)
         response = self.client.get(self.url())
