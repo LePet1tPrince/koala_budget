@@ -37,3 +37,14 @@ class BookModelAccessPermissions(permissions.BasePermission):
         if obj.book_id != request.book.id:
             return False
         return _view_for_members_edit_for_admins(request, request.team)
+
+
+class BookAdminWritePermissions(BookAccessPermissions):
+    """
+    For function views that write without an object to check: members read,
+    only admins write -- the same rule `BookModelAccessPermissions` applies to
+    an existing row, for an endpoint that creates one.
+    """
+
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and _view_for_members_edit_for_admins(request, request.team)

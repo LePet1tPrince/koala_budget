@@ -1,4 +1,4 @@
-/* globals gettext */
+/* globals gettext, interpolate */
 
 import React, { useState } from 'react';
 import Icon from '../../common/Icon';
@@ -17,8 +17,17 @@ import Icon from '../../common/Icon';
  * - onComplete: Callback when mapping is complete
  * - onCancel: Callback when user cancels
  */
+/** A bank account feeds an asset or a liability; the server refuses anything else. */
+const FEEDABLE_TYPES = new Set(['asset', 'liability']);
+
+/** The mapping choice for "don't import this account" (a mortgage tracked elsewhere, say). */
+const IGNORE = 'ignore';
+
 const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, onComplete, onCancel }) => {
   const [mappings, setMappings] = useState({});
+  const feedable = ledgerAccounts.filter(
+    (account) => FEEDABLE_TYPES.has(account.account_type) && !account.is_system && !account.is_archived,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -42,7 +51,7 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
     );
 
     if (unmappedAccounts.length > 0) {
-      setError(gettext('Please map all accounts before saving.'));
+      setError(gettext('Choose an account, or “Don’t import”, for each bank account.'));
       return;
     }
 
@@ -55,9 +64,8 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
         return plaidClient.plaidAccountsPartialUpdate({
           ...book.params,
           id: parseInt(plaidAccountId, 10),
-          patchedPlaidAccount: {
-            account: parseInt(ledgerAccountId, 10),
-          },
+          patchedPlaidAccount:
+            ledgerAccountId === IGNORE ? { isIgnored: true } : { account: parseInt(ledgerAccountId, 10) },
         });
       });
 
@@ -116,12 +124,18 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
                   </span>
                 </div>
                 <div className="text-sm text-base-content/70">
-                  {plaidAccount.official_name && (
-                    <div>{plaidAccount.official_name}</div>
-                  )}
                   <div>
                     {plaidAccount.subtype} • ****{plaidAccount.mask}
+                    {plaidAccount.isoCurrencyCode && ` • ${plaidAccount.isoCurrencyCode}`}
                   </div>
+                  {plaidAccount.isForeignCurrency && (
+                    <div className="text-warning" data-testid="plaid-foreign-currency">
+                      {interpolate(
+                        gettext('This account is in %s. Its amounts are imported as they are, not converted.'),
+                        [plaidAccount.isoCurrencyCode],
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -137,7 +151,8 @@ const PlaidAccountMapper = ({ book, plaidAccounts, ledgerAccounts, plaidClient, 
                   onChange={(e) => handleMappingChange(plaidAccount.id, e.target.value)}
                 >
                   <option value="">{gettext('Select an account...')}</option>
-                  {ledgerAccounts.map(account => (
+                  <option value={IGNORE}>{gettext("Don't import this account")}</option>
+                  {feedable.map(account => (
                     <option key={account.id} value={account.id}>
                       {account.account_group_name} - {account.name}
                     </option>

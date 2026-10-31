@@ -115,6 +115,18 @@ export interface BankFeedRow {
      */
     isPending: boolean;
     /**
+     * The bank's currency for this transaction, when the bank reported one (Plaid)
+     * @type {string}
+     * @memberof BankFeedRow
+     */
+    currency?: string | null;
+    /**
+     * Whether the amount is in a currency other than the books' own (it is not converted)
+     * @type {boolean}
+     * @memberof BankFeedRow
+     */
+    isForeignCurrency?: boolean;
+    /**
      * Whether transaction is cleared
      * @type {boolean}
      * @memberof BankFeedRow
@@ -247,6 +259,8 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'inflow': json['inflow'],
         'outflow': json['outflow'],
         'isPending': json['is_pending'],
+        'currency': json['currency'] == null ? undefined : json['currency'],
+        'isForeignCurrency': json['is_foreign_currency'] == null ? undefined : json['is_foreign_currency'],
         'isCleared': json['is_cleared'],
         'isVoid': json['is_void'],
         'isReconciled': json['is_reconciled'],
@@ -285,6 +299,8 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'inflow': value['inflow'],
         'outflow': value['outflow'],
         'is_pending': value['isPending'],
+        'currency': value['currency'],
+        'is_foreign_currency': value['isForeignCurrency'],
         'is_cleared': value['isCleared'],
         'is_void': value['isVoid'],
         'is_reconciled': value['isReconciled'],

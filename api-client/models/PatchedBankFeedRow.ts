@@ -115,6 +115,18 @@ export interface PatchedBankFeedRow {
      */
     isPending?: boolean;
     /**
+     * The bank's currency for this transaction, when the bank reported one (Plaid)
+     * @type {string}
+     * @memberof PatchedBankFeedRow
+     */
+    currency?: string | null;
+    /**
+     * Whether the amount is in a currency other than the books' own (it is not converted)
+     * @type {boolean}
+     * @memberof PatchedBankFeedRow
+     */
+    isForeignCurrency?: boolean;
+    /**
      * Whether transaction is cleared
      * @type {boolean}
      * @memberof PatchedBankFeedRow
@@ -224,6 +236,8 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'inflow': json['inflow'] == null ? undefined : json['inflow'],
         'outflow': json['outflow'] == null ? undefined : json['outflow'],
         'isPending': json['is_pending'] == null ? undefined : json['is_pending'],
+        'currency': json['currency'] == null ? undefined : json['currency'],
+        'isForeignCurrency': json['is_foreign_currency'] == null ? undefined : json['is_foreign_currency'],
         'isCleared': json['is_cleared'] == null ? undefined : json['is_cleared'],
         'isVoid': json['is_void'] == null ? undefined : json['is_void'],
         'isReconciled': json['is_reconciled'] == null ? undefined : json['is_reconciled'],
@@ -262,6 +276,8 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'inflow': value['inflow'],
         'outflow': value['outflow'],
         'is_pending': value['isPending'],
+        'currency': value['currency'],
+        'is_foreign_currency': value['isForeignCurrency'],
         'is_cleared': value['isCleared'],
         'is_void': value['isVoid'],
         'is_reconciled': value['isReconciled'],

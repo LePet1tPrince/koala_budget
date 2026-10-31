@@ -3,21 +3,62 @@ Plaid API service layer.
 Handles all interactions with the Plaid API.
 """
 
+import json
+
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+from django.urls import reverse
+from django.utils import translation
 from plaid.api import plaid_api
 from plaid.configuration import Configuration
 from plaid.model.country_code import CountryCode
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
+from plaid.model.link_token_create_request_update import LinkTokenCreateRequestUpdate
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+from plaid.model.link_token_transactions import LinkTokenTransactions
 from plaid.model.products import Products
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
+
+
+def plaid_error_code(exc) -> str | None:
+    """
+    The `error_code` of a failed Plaid API call (e.g. ITEM_LOGIN_REQUIRED), or
+    None when `exc` is not a Plaid API error or carries no readable body.
+    """
+    body = getattr(exc, "body", None)
+    if not body:
+        return None
+    try:
+        data = json.loads(body)
+    except (TypeError, ValueError):
+        return None
+    return data.get("error_code") if isinstance(data, dict) else None
+
+
+#: PLAID_ENV may name an environment instead of giving its URL. (Plaid retired
+#: "development" in 2024; sandbox and production are what remain.)
+PLAID_HOSTS = {
+    "sandbox": "https://sandbox.plaid.com",
+    "production": "https://production.plaid.com",
+}
+
+
+def plaid_host() -> str:
+    """The Plaid API host for PLAID_ENV: a URL as given, or an environment name."""
+    env = (getattr(settings, "PLAID_ENV", "") or "sandbox").strip()
+    if env.startswith("http"):
+        return env
+    try:
+        return PLAID_HOSTS[env.lower()]
+    except KeyError:
+        raise ImproperlyConfigured(f"PLAID_ENV must be a URL or one of {sorted(PLAID_HOSTS)}, not {env!r}.") from None
 
 
 def get_plaid_client():
     """Get configured Plaid API client."""
     configuration = Configuration(
-        host=getattr(settings, "PLAID_ENV", "https://sandbox.plaid.com"),
+        host=plaid_host(),
         api_key={
             "clientId": getattr(settings, "PLAID_CLIENT_ID", ""),
             "secret": getattr(settings, "PLAID_SECRET", ""),
@@ -27,7 +68,82 @@ def get_plaid_client():
     return api_client
 
 
-def create_link_token(user_id: str, client_name: str = "Koala Budget"):
+def country_codes():
+    """The countries Link offers banks from (`PLAID_COUNTRY_CODES`), as SDK values."""
+    return [CountryCode(code.strip().upper()) for code in settings.PLAID_COUNTRY_CODES if code.strip()]
+
+
+def link_language():
+    """
+    The language Plaid Link is shown in: the user's active language when Plaid
+    supports it (`PLAID_LINK_LANGUAGES`), else the first supported one.
+
+    French matters for Canada -- Quebec institutions present their own login in
+    French, and Plaid's consent pane should match.
+    """
+    supported = [code.strip().lower() for code in settings.PLAID_LINK_LANGUAGES if code.strip()] or ["en"]
+    active = (translation.get_language() or "").split("-")[0].lower()
+    return active if active in supported else supported[0]
+
+
+def webhook_url():
+    """The URL Plaid posts this app's webhooks to (`PLAID_WEBHOOK_URL`, else derived)."""
+    if settings.PLAID_WEBHOOK_URL:
+        return settings.PLAID_WEBHOOK_URL
+    from apps.web.meta import absolute_url
+
+    return absolute_url(reverse("plaid_webhook"))
+
+
+def _link_kwargs(user_id, client_name):
+    """What every link token carries, new link or update mode."""
+    kwargs = {
+        "user": LinkTokenCreateRequestUser(client_user_id=str(user_id)),
+        "client_name": client_name,
+        "country_codes": country_codes(),
+        "language": link_language(),
+        "webhook": webhook_url(),
+    }
+    if settings.PLAID_REDIRECT_URI:
+        kwargs["redirect_uri"] = settings.PLAID_REDIRECT_URI
+    return kwargs
+
+
+def link_token_request(user_id, client_name: str = "Koala Budget") -> LinkTokenCreateRequest:
+    """
+    The /link/token/create request for linking a new bank.
+
+    Without `webhook` Plaid never notifies this app of new transactions, so the
+    item would only ever sync when the user pressed Refresh.
+    """
+    kwargs = _link_kwargs(user_id, client_name)
+    kwargs["products"] = [Products(product) for product in settings.PLAID_PRODUCTS]
+    if "transactions" in settings.PLAID_PRODUCTS:
+        kwargs["transactions"] = LinkTokenTransactions(days_requested=settings.PLAID_TRANSACTIONS_DAYS_REQUESTED)
+    return LinkTokenCreateRequest(**kwargs)
+
+
+def update_link_token_request(item, user_id, client_name: str = "Koala Budget") -> LinkTokenCreateRequest:
+    """
+    The /link/token/create request for Link's update mode on an existing item:
+    the user signs in again, renews consent, or -- when the bank has accounts
+    they haven't shared -- picks which to add. No `products` (Plaid refuses them
+    in update mode); the item keeps the ones it has.
+    """
+    kwargs = _link_kwargs(user_id, client_name)
+    kwargs["access_token"] = item.access_token
+    if item.new_accounts_available:
+        kwargs["update"] = LinkTokenCreateRequestUpdate(account_selection_enabled=True)
+    return LinkTokenCreateRequest(**kwargs)
+
+
+def create_update_link_token(item, user_id, client_name: str = "Koala Budget"):
+    """A Link token that opens update mode for `item`."""
+    response = get_plaid_client().link_token_create(update_link_token_request(item, user_id, client_name))
+    return response["link_token"]
+
+
+def create_link_token(user_id, client_name: str = "Koala Budget"):
     """
     Create a Plaid Link token for initializing Plaid Link.
 
@@ -38,17 +154,7 @@ def create_link_token(user_id: str, client_name: str = "Koala Budget"):
     Returns:
         Link token string
     """
-    client = get_plaid_client()
-
-    request = LinkTokenCreateRequest(
-        user=LinkTokenCreateRequestUser(client_user_id=str(user_id)),
-        client_name=client_name,
-        products=[Products("transactions")],
-        country_codes=[CountryCode("US")],
-        language="en",
-    )
-
-    response = client.link_token_create(request)
+    response = get_plaid_client().link_token_create(link_token_request(user_id, client_name))
     return response["link_token"]
 
 
@@ -73,6 +179,13 @@ def exchange_public_token(public_token: str):
     }
 
 
+def remove_item(access_token: str):
+    """Remove an item at Plaid (/item/remove): it stops syncing, billing and sending webhooks."""
+    from plaid.model.item_remove_request import ItemRemoveRequest
+
+    get_plaid_client().item_remove(ItemRemoveRequest(access_token=access_token))
+
+
 def get_accounts(access_token: str):
     """
     Get accounts for a Plaid item.
@@ -93,6 +206,15 @@ def get_accounts(access_token: str):
     return response["accounts"]
 
 
+def account_currency(account) -> str | None:
+    """
+    A Plaid account's currency, from its balances: the ISO code, or Plaid's
+    unofficial code when there is no ISO one (e.g. crypto). None when unknown.
+    """
+    balances = account.get("balances") or {}
+    return balances.get("iso_currency_code") or balances.get("unofficial_currency_code") or None
+
+
 def get_institution(institution_id: str):
     """
     Get institution details.
@@ -109,11 +231,22 @@ def get_institution(institution_id: str):
 
     request = InstitutionsGetByIdRequest(
         institution_id=institution_id,
-        country_codes=[CountryCode("US")],
+        # Must include the institution's own country: a Canadian bank looked up
+        # with only US is "not found", which used to fail the whole link.
+        country_codes=country_codes(),
     )
 
     response = client.institutions_get_by_id(request)
     return response["institution"]
+
+
+def get_webhook_verification_key(key_id: str) -> dict:
+    """The JWK Plaid signs webhooks with, for a key id (/webhook_verification_key/get)."""
+    from plaid.model.webhook_verification_key_get_request import WebhookVerificationKeyGetRequest
+
+    response = get_plaid_client().webhook_verification_key_get(WebhookVerificationKeyGetRequest(key_id=key_id))
+    key = response["key"]
+    return key.to_dict() if hasattr(key, "to_dict") else dict(key)
 
 
 def sync_transactions(access_token: str, cursor: str = None):

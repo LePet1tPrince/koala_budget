@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import environ
+from celery import schedules
 from corsheaders.defaults import default_headers
 from django.utils.translation import gettext_lazy
 
@@ -498,6 +499,12 @@ SCHEDULED_TASKS = {
     #     "task": "some.task.path",
     #     "schedule": schedules.crontab(minute=0, hour=4),
     # },
+    # Catch up Plaid items a webhook missed. Hourly, off the top of the hour; each
+    # run only touches items not synced in PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS.
+    "plaid-sync-catch-up": {
+        "task": "apps.plaid.tasks.sync_all_plaid_items",
+        "schedule": schedules.crontab(minute=23),
+    },
 }
 
 # Health Checks
@@ -560,17 +567,49 @@ if "test" in sys.argv:
     SILENCED_SYSTEM_CHECKS.append("djstripe.I002")
 
 
+# The currency the books are kept in. Nothing converts between currencies: a
+# bank account in another currency is imported at face value and flagged.
+BASE_CURRENCY = env("BASE_CURRENCY", default="CAD")
+
 # Plaid config
 # Note: don't edit these values here - edit them in your .env file or environment variables!
 PLAID_CLIENT_ID = env("PLAID_CLIENT_ID", default="")
 PLAID_SECRET = env("PLAID_SECRET", default="")
-# Environment: sandbox, development, or production
+# Environment: "sandbox" or "production", or the API's URL
 PLAID_ENV = env("PLAID_ENV", default="https://sandbox.plaid.com")
+# Countries whose banks Plaid Link offers. Koala Budget launches in Canada, so CA
+# comes first; each code must also be enabled for your client in the Plaid
+# dashboard, or /link/token/create refuses it.
+PLAID_COUNTRY_CODES = env.list("PLAID_COUNTRY_CODES", default=["CA", "US"])
+# Plaid products requested at Link. `transactions` is available in CA and US.
+PLAID_PRODUCTS = env.list("PLAID_PRODUCTS", default=["transactions"])
+# Languages Plaid Link is shown in, chosen from the user's active language
+# (Plaid supports both en and fr for Canadian institutions); anything else gets
+# the first one.
+PLAID_LINK_LANGUAGES = env.list("PLAID_LINK_LANGUAGES", default=["en", "fr"])
+# Where Plaid sends this app's webhooks. Blank derives it from the Site domain
+# (`/plaid/webhook/`); set it explicitly when that domain isn't public.
+PLAID_WEBHOOK_URL = env("PLAID_WEBHOOK_URL", default="")
+# Refuse webhooks without a valid Plaid-Verification signature. Only turn this off
+# for local development against the sandbox.
+PLAID_VERIFY_WEBHOOKS = env.bool("PLAID_VERIFY_WEBHOOKS", default=True)
+# OAuth redirect URI, required by OAuth institutions. Must be registered in the
+# Plaid dashboard. Blank sends none.
+PLAID_REDIRECT_URI = env("PLAID_REDIRECT_URI", default="")
+# The scheduled catch-up sync (SCHEDULED_TASKS["plaid-sync-catch-up"]): which
+# items it picks up, how many per run, and how far apart it starts them.
+PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS = env.int("PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS", default=6)
+PLAID_SCHEDULED_SYNC_BATCH_SIZE = env.int("PLAID_SCHEDULED_SYNC_BATCH_SIZE", default=500)
+PLAID_SCHEDULED_SYNC_STAGGER_SECONDS = env.int("PLAID_SCHEDULED_SYNC_STAGGER_SECONDS", default=2)
+# How much history a newly linked bank backfills (Plaid's default is 90, the max 730).
+PLAID_TRANSACTIONS_DAYS_REQUESTED = env.int("PLAID_TRANSACTIONS_DAYS_REQUESTED", default=730)
 
-# django-encrypted-model-fields configuration
-# Generate a proper Fernet key from the SECRET_KEY
-# In production, set FIELD_ENCRYPTION_KEY in your .env file to a proper Fernet key
-# You can generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Key(s) for encrypted model fields (apps.utils.fields.EncryptedTextField, e.g.
+# PlaidItem.access_token). The default derives one from SECRET_KEY; in production
+# set FIELD_ENCRYPTION_KEY to a real Fernet key, kept apart from SECRET_KEY:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# To rotate, put the new key first and keep the old ones after it, comma-separated:
+# values are written with the first and read with any.
 import base64  # noqa: E402
 import hashlib  # noqa: E402
 

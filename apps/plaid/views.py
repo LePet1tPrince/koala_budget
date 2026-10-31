@@ -6,7 +6,7 @@ Provides bank feed API, Plaid Link integration, and account management.
 import json
 import logging
 
-from django.db import transaction
+from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -20,15 +20,20 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.books.permissions import BookModelAccessPermissions
+from apps.books.permissions import BookAdminWritePermissions, BookModelAccessPermissions
 
+from . import item_status, webhook_verification
+from .linking import DuplicateItem, add_accounts, backfill_item, link_item, unlink_item
 from .models import PlaidAccount, PlaidItem, PlaidTransaction
 from .serializers import (
+    ExchangePublicTokenResponseSerializer,
+    ItemRefreshResponseSerializer,
+    LinkTokenResponseSerializer,
     PlaidAccountSerializer,
     PlaidItemSerializer,
     PlaidTransactionSerializer,
 )
-from .services import create_link_token, exchange_public_token, get_accounts, get_institution
+from .services import create_link_token, create_update_link_token, get_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +52,7 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = PlaidItem.objects.none()  # for drf-spectacular schema generation
 
     def get_queryset(self):
-        return PlaidItem.for_book.all()
+        return PlaidItem.for_book.prefetch_related("accounts")
 
     @extend_schema(
         operation_id="plaid_items_sync",
@@ -63,22 +68,13 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
         Trigger transaction sync for this Plaid item.
         Starts a background Celery task to sync transactions from Plaid.
 
-        Validates that all accounts are mapped before syncing.
+        Accounts not mapped yet are skipped; mapping one later backfills its
+        history (PlaidAccountViewSet.perform_update), so nothing is lost by
+        syncing the others now.
         """
         from .tasks import sync_plaid_transactions
 
         plaid_item = self.get_object()
-
-        # Check if all accounts are mapped to ledger accounts
-        unmapped_accounts = plaid_item.accounts.filter(account__isnull=True)
-        if unmapped_accounts.exists():
-            return Response(
-                {
-                    "error": "Cannot sync transactions. Please map all bank accounts to ledger accounts first.",
-                    "unmapped_accounts": PlaidAccountSerializer(unmapped_accounts, many=True).data,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         # Trigger Celery task
         task = sync_plaid_transactions.delay(plaid_item.id)
@@ -90,6 +86,71 @@ class PlaidItemViewSet(viewsets.ReadOnlyModelViewSet):
                 "message": "Transaction sync started",
             }
         )
+
+    @extend_schema(
+        operation_id="plaid_items_link_token",
+        tags=["plaid"],
+        request=None,
+        responses={200: LinkTokenResponseSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="link-token")
+    def link_token(self, request, pk=None, team_slug=None, book_slug=None):
+        """
+        A Link token in update mode for this item: the user signs in to the bank
+        again, renews consent, or shares accounts Plaid found since linking.
+        """
+        plaid_item = self.get_object()
+        try:
+            token = create_update_link_token(plaid_item, user_id=request.user.id)
+        except Exception:
+            logger.exception("Failed to create a Plaid update-mode link token for item %s", plaid_item.pk)
+            return Response(
+                {"error": "Could not start reconnecting this bank. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response({"link_token": token})
+
+    @extend_schema(
+        operation_id="plaid_items_refresh",
+        tags=["plaid"],
+        request=None,
+        responses={200: ItemRefreshResponseSerializer},
+    )
+    @action(detail=True, methods=["post"])
+    def refresh(self, request, pk=None, team_slug=None, book_slug=None):
+        """
+        After Link's update mode succeeds: mark the connection healthy, add any
+        accounts the user just shared (returned for mapping), and queue a sync.
+        """
+        from .tasks import sync_plaid_transactions
+
+        plaid_item = self.get_object()
+        try:
+            new_accounts = add_accounts(plaid_item, get_accounts(plaid_item.access_token))
+        except Exception:
+            logger.exception("Failed to refresh Plaid accounts for item %s", plaid_item.pk)
+            return Response(
+                {"error": "Could not read this bank's accounts. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        item_status.record_reconnected(plaid_item)
+        sync_plaid_transactions.delay(plaid_item.id)
+        return Response(
+            {
+                "item": PlaidItemSerializer(plaid_item).data,
+                "new_accounts": PlaidAccountSerializer(new_accounts, many=True, context={"request": request}).data,
+            }
+        )
+
+    @extend_schema(operation_id="plaid_items_remove", tags=["plaid"], request=None, responses={204: None})
+    @action(detail=True, methods=["post"])
+    def remove(self, request, pk=None, team_slug=None, book_slug=None):
+        """
+        Disconnect this bank. It stops syncing; the transactions it imported stay
+        in the feed (they may be categorized or reconciled).
+        """
+        unlink_item(self.get_object(), user=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema_view(
@@ -110,6 +171,12 @@ class PlaidAccountViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return PlaidAccount.for_book.select_related("item", "account").all()
+
+    def perform_update(self, serializer):
+        was_mapped = serializer.instance.account_id is not None
+        account = serializer.save()
+        if account.account_id is not None and not was_mapped:
+            backfill_item(account.item)
 
 
 @extend_schema_view(
@@ -141,11 +208,14 @@ class PlaidTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     responses={200: {"type": "object", "properties": {"link_token": {"type": "string"}}}},
 )
 @api_view(["POST"])
-@permission_classes([BookModelAccessPermissions])
+@permission_classes([BookAdminWritePermissions])
 def create_link_token_view(request, team_slug=None, book_slug=None):
     """
     Create a Plaid Link token for initializing Plaid Link.
     Returns a link_token that can be used to initialize Plaid Link in the frontend.
+
+    Admins only, like every other Plaid write: a member who linked a bank could
+    not map its accounts, sync it or disconnect it.
     """
     try:
         link_token = create_link_token(user_id=request.user.id)
@@ -166,24 +236,17 @@ def create_link_token_view(request, team_slug=None, book_slug=None):
         fields={
             "public_token": drf_serializers.CharField(),
             "institution_id": drf_serializers.CharField(),
+            "institution_name": drf_serializers.CharField(required=False),
             "accounts": drf_serializers.ListField(
                 child=drf_serializers.DictField(),
                 required=False,
             ),
         },
     ),
-    responses={
-        200: inline_serializer(
-            name="ExchangePublicTokenResponse",
-            fields={
-                "success": drf_serializers.BooleanField(),
-            },
-        ),
-    },
+    responses={200: ExchangePublicTokenResponseSerializer},
 )
 @api_view(["POST"])
-@permission_classes([BookModelAccessPermissions])
-@transaction.atomic
+@permission_classes([BookAdminWritePermissions])
 def exchange_public_token_view(request, team_slug=None, book_slug=None):
     """
     Exchange a public token for an access token and create PlaidItem and PlaidAccount records.
@@ -202,51 +265,23 @@ def exchange_public_token_view(request, team_slug=None, book_slug=None):
         )
 
     try:
-        # Exchange public token for access token
-        exchange_result = exchange_public_token(public_token)
-        access_token = exchange_result["access_token"]
-        item_id = exchange_result["item_id"]
-
-        # Get institution details
-        institution = get_institution(institution_id)
-        institution_name = institution.get("name", "Unknown Institution")
-
-        # Create PlaidItem
-        plaid_item = PlaidItem.objects.create(
-            book=request.book,
-            plaid_item_id=item_id,
-            access_token=access_token,
-            institution_name=institution_name,
+        plaid_item, created_accounts = link_item(
+            request.book,
+            public_token=public_token,
+            institution_id=institution_id,
+            institution_name=request.data.get("institution_name"),
+            accounts=request.data.get("accounts") or (),
+            user=request.user,
         )
-
-        # Get full account details from Plaid
-        accounts = get_accounts(access_token)
-
-        # Create PlaidAccount records (will need manual mapping to ledger accounts)
-        created_accounts = []
-        for account in accounts:
-            # For now, we'll create the PlaidAccount without linking to a ledger account
-            # The user will need to map these manually in the UI
-            plaid_account = PlaidAccount.objects.create(
-                book=request.book,
-                plaid_account_id=account["account_id"],
-                item=plaid_item,
-                account=None,  # Will be set by user later
-                name=account.get("name", ""),
-                mask=account.get("mask", ""),
-                subtype=account.get("subtype", ""),
-                type=account.get("type", ""),
-            )
-            created_accounts.append(plaid_account)
-
+    except DuplicateItem as exc:
         return Response(
             {
-                "success": True,
-                "item_id": plaid_item.id,
-                "accounts": PlaidAccountSerializer(created_accounts, many=True).data,
-            }
+                "error": f"{exc.item.institution_name} is already linked in this set of books. "
+                "If it stopped syncing, reconnect it from the Inbox instead.",
+                "item_id": exc.item.pk,
+            },
+            status=status.HTTP_409_CONFLICT,
         )
-
     except Exception:
         logger.exception("Failed to exchange Plaid public token")
         return Response(
@@ -254,8 +289,20 @@ def exchange_public_token_view(request, team_slug=None, book_slug=None):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
+    return Response(
+        {
+            "success": True,
+            "item_id": plaid_item.id,
+            "accounts": PlaidAccountSerializer(created_accounts, many=True).data,
+        }
+    )
+
 
 # Plaid Webhooks
+
+#: TRANSACTIONS webhooks that mean "there is something to sync". The last three
+#: are the pre-/transactions/sync codes, still sent to older items.
+SYNC_WEBHOOK_CODES = ("SYNC_UPDATES_AVAILABLE", "INITIAL_UPDATE", "HISTORICAL_UPDATE", "DEFAULT_UPDATE")
 
 
 @csrf_exempt
@@ -264,15 +311,25 @@ def plaid_webhook_view(request):
     """
     Receive Plaid webhooks (global endpoint — Plaid can't know team slugs).
 
-    Handles TRANSACTIONS webhooks by enqueueing an incremental sync for the
-    item. The worst a spoofed request can do is trigger an extra sync, but
-    for defence in depth consider Plaid's JWT webhook verification
-    (https://plaid.com/docs/api/webhooks/webhook-verification/) before
-    relying on this in production.
+    TRANSACTIONS webhooks enqueue an incremental sync for the item. ITEM
+    webhooks record what the connection needs from the user (sign in again,
+    consent expiring, access revoked, new accounts to share) on the item's
+    status -- see apps.plaid.item_status -- and LOGIN_REPAIRED queues a sync.
 
-    Always returns 200 so Plaid doesn't retry storms on payloads we ignore.
+    The request must carry Plaid's signature (apps.plaid.webhook_verification,
+    switched off only by PLAID_VERIFY_WEBHOOKS=False for local development);
+    an unverified one is refused with 400 and does nothing.
+
+    Otherwise always returns 200 so Plaid doesn't retry storms on payloads we ignore.
     """
     from .tasks import sync_plaid_transactions
+
+    if settings.PLAID_VERIFY_WEBHOOKS:
+        try:
+            webhook_verification.verify(request.body, request.headers.get("Plaid-Verification"))
+        except webhook_verification.WebhookVerificationError as exc:
+            logger.warning("Refused an unverified Plaid webhook: %s", exc)
+            return JsonResponse({"status": "unverified"}, status=400)
 
     try:
         payload = json.loads(request.body)
@@ -283,16 +340,21 @@ def plaid_webhook_view(request):
     webhook_code = payload.get("webhook_code")
     item_id = payload.get("item_id")
 
-    if webhook_type == "TRANSACTIONS" and item_id:
-        if webhook_code in ("SYNC_UPDATES_AVAILABLE", "INITIAL_UPDATE", "HISTORICAL_UPDATE", "DEFAULT_UPDATE"):
-            try:
-                plaid_item = PlaidItem.objects.get(plaid_item_id=item_id)
-            except PlaidItem.DoesNotExist:
-                logger.warning("Plaid webhook for unknown item %s", item_id)
-                return JsonResponse({"status": "ignored"})
-            sync_plaid_transactions.delay(plaid_item.id)
-            return JsonResponse({"status": "sync_queued"})
-    elif webhook_type == "ITEM" and webhook_code == "ERROR":
-        logger.error("Plaid item error webhook for item %s: %s", item_id, payload.get("error"))
+    if not item_id or webhook_type not in ("TRANSACTIONS", "ITEM"):
+        return JsonResponse({"status": "ignored"})
+    if webhook_type == "TRANSACTIONS" and webhook_code not in SYNC_WEBHOOK_CODES:
+        return JsonResponse({"status": "ignored"})
 
-    return JsonResponse({"status": "ignored"})
+    plaid_item = PlaidItem.objects.select_related("book").filter(plaid_item_id=item_id).first()
+    if plaid_item is None:
+        logger.warning("Plaid webhook for unknown item %s", item_id)
+        return JsonResponse({"status": "ignored"})
+
+    if webhook_type == "TRANSACTIONS":
+        sync_plaid_transactions.delay(plaid_item.id)
+        return JsonResponse({"status": "sync_queued"})
+
+    if item_status.handle_item_webhook(plaid_item, webhook_code, payload):
+        sync_plaid_transactions.delay(plaid_item.id)
+        return JsonResponse({"status": "sync_queued"})
+    return JsonResponse({"status": "recorded"})

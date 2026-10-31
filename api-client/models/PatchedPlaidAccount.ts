@@ -45,13 +45,13 @@ export interface PatchedPlaidAccount {
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    plaidAccountId?: string;
+    readonly plaidAccountId?: string;
     /**
      * The Plaid item this account belongs to
      * @type {number}
      * @memberof PatchedPlaidAccount
      */
-    item?: number;
+    readonly item?: number;
     /**
      * 
      * @type {PlaidItem}
@@ -71,29 +71,47 @@ export interface PatchedPlaidAccount {
      */
     readonly accountDetails?: Account;
     /**
+     * The user chose not to import this account (e.g. a mortgage tracked elsewhere)
+     * @type {boolean}
+     * @memberof PatchedPlaidAccount
+     */
+    isIgnored?: boolean;
+    /**
      * Account name from Plaid
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    name?: string;
+    readonly name?: string;
     /**
      * Last 4 digits of account number
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    mask?: string;
+    readonly mask?: string;
     /**
      * Account subtype (e.g., checking, savings)
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    subtype?: string;
+    readonly subtype?: string;
     /**
      * Account type (e.g., depository, credit)
      * @type {string}
      * @memberof PatchedPlaidAccount
      */
-    type?: string;
+    readonly type?: string;
+    /**
+     * The account's currency (ISO code, or Plaid's unofficial code for e.g. crypto)
+     * @type {string}
+     * @memberof PatchedPlaidAccount
+     */
+    readonly isoCurrencyCode?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof PatchedPlaidAccount
+     */
+    readonly isForeignCurrency?: boolean;
     /**
      * 
      * @type {Date}
@@ -131,10 +149,13 @@ export function PatchedPlaidAccountFromJSONTyped(json: any, ignoreDiscriminator:
         'itemDetails': json['item_details'] == null ? undefined : PlaidItemFromJSON(json['item_details']),
         'account': json['account'] == null ? undefined : json['account'],
         'accountDetails': json['account_details'] == null ? undefined : AccountFromJSON(json['account_details']),
+        'isIgnored': json['is_ignored'] == null ? undefined : json['is_ignored'],
         'name': json['name'] == null ? undefined : json['name'],
         'mask': json['mask'] == null ? undefined : json['mask'],
         'subtype': json['subtype'] == null ? undefined : json['subtype'],
         'type': json['type'] == null ? undefined : json['type'],
+        'isoCurrencyCode': json['iso_currency_code'] == null ? undefined : json['iso_currency_code'],
+        'isForeignCurrency': json['is_foreign_currency'] == null ? undefined : json['is_foreign_currency'],
         'createdAt': json['created_at'] == null ? undefined : (new Date(json['created_at'])),
         'updatedAt': json['updated_at'] == null ? undefined : (new Date(json['updated_at'])),
     };
@@ -144,20 +165,15 @@ export function PatchedPlaidAccountFromJSONTyped(json: any, ignoreDiscriminator:
       return PatchedPlaidAccountToJSONTyped(json, false);
   }
 
-  export function PatchedPlaidAccountToJSONTyped(value?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PatchedPlaidAccountToJSONTyped(value?: Omit<PatchedPlaidAccount, 'id'|'plaid_account_id'|'item'|'item_details'|'account_details'|'name'|'mask'|'subtype'|'type'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
-        'plaid_account_id': value['plaidAccountId'],
-        'item': value['item'],
         'account': value['account'],
-        'name': value['name'],
-        'mask': value['mask'],
-        'subtype': value['subtype'],
-        'type': value['type'],
+        'is_ignored': value['isIgnored'],
     };
 }
 

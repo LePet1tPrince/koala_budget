@@ -45,13 +45,13 @@ export interface PlaidAccount {
      * @type {string}
      * @memberof PlaidAccount
      */
-    plaidAccountId: string;
+    readonly plaidAccountId: string;
     /**
      * The Plaid item this account belongs to
      * @type {number}
      * @memberof PlaidAccount
      */
-    item: number;
+    readonly item: number;
     /**
      * 
      * @type {PlaidItem}
@@ -71,29 +71,47 @@ export interface PlaidAccount {
      */
     readonly accountDetails: Account;
     /**
+     * The user chose not to import this account (e.g. a mortgage tracked elsewhere)
+     * @type {boolean}
+     * @memberof PlaidAccount
+     */
+    isIgnored?: boolean;
+    /**
      * Account name from Plaid
      * @type {string}
      * @memberof PlaidAccount
      */
-    name: string;
+    readonly name: string;
     /**
      * Last 4 digits of account number
      * @type {string}
      * @memberof PlaidAccount
      */
-    mask?: string;
+    readonly mask: string;
     /**
      * Account subtype (e.g., checking, savings)
      * @type {string}
      * @memberof PlaidAccount
      */
-    subtype: string;
+    readonly subtype: string;
     /**
      * Account type (e.g., depository, credit)
      * @type {string}
      * @memberof PlaidAccount
      */
-    type: string;
+    readonly type: string;
+    /**
+     * The account's currency (ISO code, or Plaid's unofficial code for e.g. crypto)
+     * @type {string}
+     * @memberof PlaidAccount
+     */
+    readonly isoCurrencyCode: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof PlaidAccount
+     */
+    readonly isForeignCurrency: boolean;
     /**
      * 
      * @type {Date}
@@ -118,8 +136,11 @@ export function instanceOfPlaidAccount(value: object): value is PlaidAccount {
     if (!('itemDetails' in value) || value['itemDetails'] === undefined) return false;
     if (!('accountDetails' in value) || value['accountDetails'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
+    if (!('mask' in value) || value['mask'] === undefined) return false;
     if (!('subtype' in value) || value['subtype'] === undefined) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
+    if (!('isoCurrencyCode' in value) || value['isoCurrencyCode'] === undefined) return false;
+    if (!('isForeignCurrency' in value) || value['isForeignCurrency'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -141,10 +162,13 @@ export function PlaidAccountFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'itemDetails': PlaidItemFromJSON(json['item_details']),
         'account': json['account'] == null ? undefined : json['account'],
         'accountDetails': AccountFromJSON(json['account_details']),
+        'isIgnored': json['is_ignored'] == null ? undefined : json['is_ignored'],
         'name': json['name'],
-        'mask': json['mask'] == null ? undefined : json['mask'],
+        'mask': json['mask'],
         'subtype': json['subtype'],
         'type': json['type'],
+        'isoCurrencyCode': json['iso_currency_code'],
+        'isForeignCurrency': json['is_foreign_currency'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
     };
@@ -154,20 +178,15 @@ export function PlaidAccountFromJSONTyped(json: any, ignoreDiscriminator: boolea
       return PlaidAccountToJSONTyped(json, false);
   }
 
-  export function PlaidAccountToJSONTyped(value?: Omit<PlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PlaidAccountToJSONTyped(value?: Omit<PlaidAccount, 'id'|'plaid_account_id'|'item'|'item_details'|'account_details'|'name'|'mask'|'subtype'|'type'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
-        'plaid_account_id': value['plaidAccountId'],
-        'item': value['item'],
         'account': value['account'],
-        'name': value['name'],
-        'mask': value['mask'],
-        'subtype': value['subtype'],
-        'type': value['type'],
+        'is_ignored': value['isIgnored'],
     };
 }
 

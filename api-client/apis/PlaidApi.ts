@@ -17,6 +17,8 @@ import * as runtime from '../runtime';
 import type {
   ExchangePublicTokenRequest,
   ExchangePublicTokenResponse,
+  ItemRefreshResponse,
+  LinkTokenResponse,
   PaginatedPlaidAccountList,
   PaginatedPlaidItemList,
   PaginatedPlaidTransactionList,
@@ -32,6 +34,10 @@ import {
     ExchangePublicTokenRequestToJSON,
     ExchangePublicTokenResponseFromJSON,
     ExchangePublicTokenResponseToJSON,
+    ItemRefreshResponseFromJSON,
+    ItemRefreshResponseToJSON,
+    LinkTokenResponseFromJSON,
+    LinkTokenResponseToJSON,
     PaginatedPlaidAccountListFromJSON,
     PaginatedPlaidAccountListToJSON,
     PaginatedPlaidItemListFromJSON,
@@ -74,7 +80,7 @@ export interface PlaidAccountsPartialUpdateRequest {
     bookSlug: string;
     id: number;
     teamSlug: string;
-    patchedPlaidAccount?: Omit<PatchedPlaidAccount, 'id'|'item_details'|'account_details'|'created_at'|'updated_at'>;
+    patchedPlaidAccount?: Omit<PatchedPlaidAccount, 'id'|'plaid_account_id'|'item'|'item_details'|'account_details'|'name'|'mask'|'subtype'|'type'|'iso_currency_code'|'is_foreign_currency'|'created_at'|'updated_at'>;
 }
 
 export interface PlaidAccountsRetrieveRequest {
@@ -94,10 +100,28 @@ export interface PlaidExchangePublicTokenRequest {
     exchangePublicTokenRequest: ExchangePublicTokenRequest;
 }
 
+export interface PlaidItemsLinkTokenRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+}
+
 export interface PlaidItemsListRequest {
     bookSlug: string;
     teamSlug: string;
     page?: number;
+}
+
+export interface PlaidItemsRefreshRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+}
+
+export interface PlaidItemsRemoveRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
 }
 
 export interface PlaidItemsRetrieveRequest {
@@ -385,7 +409,7 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
-     * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.
+     * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.  Admins only, like every other Plaid write: a member who linked a bank could not map its accounts, sync it or disconnect it.
      */
     async plaidCreateLinkTokenRaw(requestParameters: PlaidCreateLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidCreateLinkToken200Response>> {
         if (requestParameters['bookSlug'] == null) {
@@ -424,7 +448,7 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
-     * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.
+     * Create a Plaid Link token for initializing Plaid Link. Returns a link_token that can be used to initialize Plaid Link in the frontend.  Admins only, like every other Plaid write: a member who linked a bank could not map its accounts, sync it or disconnect it.
      */
     async plaidCreateLinkToken(requestParameters: PlaidCreateLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PlaidCreateLinkToken200Response> {
         const response = await this.plaidCreateLinkTokenRaw(requestParameters, initOverrides);
@@ -489,6 +513,60 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
+     * A Link token in update mode for this item: the user signs in to the bank again, renews consent, or shares accounts Plaid found since linking.
+     */
+    async plaidItemsLinkTokenRaw(requestParameters: PlaidItemsLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LinkTokenResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsLinkToken().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidItemsLinkToken().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling plaidItemsLinkToken().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/link-token/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => LinkTokenResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * A Link token in update mode for this item: the user signs in to the bank again, renews consent, or shares accounts Plaid found since linking.
+     */
+    async plaidItemsLinkToken(requestParameters: PlaidItemsLinkTokenRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LinkTokenResponse> {
+        const response = await this.plaidItemsLinkTokenRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * ViewSet for PlaidItem model (read-only).
      */
     async plaidItemsListRaw(requestParameters: PlaidItemsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedPlaidItemList>> {
@@ -537,6 +615,113 @@ export class PlaidApi extends runtime.BaseAPI {
     async plaidItemsList(requestParameters: PlaidItemsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedPlaidItemList> {
         const response = await this.plaidItemsListRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * After Link\'s update mode succeeds: mark the connection healthy, add any accounts the user just shared (returned for mapping), and queue a sync.
+     */
+    async plaidItemsRefreshRaw(requestParameters: PlaidItemsRefreshRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ItemRefreshResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsRefresh().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidItemsRefresh().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling plaidItemsRefresh().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/refresh/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ItemRefreshResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * After Link\'s update mode succeeds: mark the connection healthy, add any accounts the user just shared (returned for mapping), and queue a sync.
+     */
+    async plaidItemsRefresh(requestParameters: PlaidItemsRefreshRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ItemRefreshResponse> {
+        const response = await this.plaidItemsRefreshRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Disconnect this bank. It stops syncing; the transactions it imported stay in the feed (they may be categorized or reconciled).
+     */
+    async plaidItemsRemoveRaw(requestParameters: PlaidItemsRemoveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling plaidItemsRemove().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling plaidItemsRemove().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling plaidItemsRemove().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/plaid/api/items/{id}/remove/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Disconnect this bank. It stops syncing; the transactions it imported stay in the feed (they may be categorized or reconciled).
+     */
+    async plaidItemsRemove(requestParameters: PlaidItemsRemoveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.plaidItemsRemoveRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -594,7 +779,7 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
-     * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Validates that all accounts are mapped before syncing.
+     * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Accounts not mapped yet are skipped; mapping one later backfills its history (PlaidAccountViewSet.perform_update), so nothing is lost by syncing the others now.
      */
     async plaidItemsSyncRaw(requestParameters: PlaidItemsSyncRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlaidItemsSync200Response>> {
         if (requestParameters['bookSlug'] == null) {
@@ -640,7 +825,7 @@ export class PlaidApi extends runtime.BaseAPI {
     }
 
     /**
-     * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Validates that all accounts are mapped before syncing.
+     * Trigger transaction sync for this Plaid item. Starts a background Celery task to sync transactions from Plaid.  Accounts not mapped yet are skipped; mapping one later backfills its history (PlaidAccountViewSet.perform_update), so nothing is lost by syncing the others now.
      */
     async plaidItemsSync(requestParameters: PlaidItemsSyncRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PlaidItemsSync200Response> {
         const response = await this.plaidItemsSyncRaw(requestParameters, initOverrides);

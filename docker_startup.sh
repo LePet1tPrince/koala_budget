@@ -10,5 +10,7 @@ echo "Collect static files"
 python manage.py collectstatic --noinput
 echo "Django migrate"
 python manage.py migrate --noinput
+echo "Bootstrap scheduled tasks"
+python manage.py bootstrap_celery_tasks
 echo "Run Gunicorn"
 gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 0 --worker-tmp-dir /dev/shm koala_budget.asgi:application -k uvicorn.workers.UvicornWorker

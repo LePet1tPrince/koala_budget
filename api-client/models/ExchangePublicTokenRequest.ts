@@ -33,6 +33,12 @@ export interface ExchangePublicTokenRequest {
     institutionId: string;
     /**
      * 
+     * @type {string}
+     * @memberof ExchangePublicTokenRequest
+     */
+    institutionName?: string;
+    /**
+     * 
      * @type {Array<{ [key: string]: any; }>}
      * @memberof ExchangePublicTokenRequest
      */
@@ -60,6 +66,7 @@ export function ExchangePublicTokenRequestFromJSONTyped(json: any, ignoreDiscrim
         
         'publicToken': json['public_token'],
         'institutionId': json['institution_id'],
+        'institutionName': json['institution_name'] == null ? undefined : json['institution_name'],
         'accounts': json['accounts'] == null ? undefined : json['accounts'],
     };
 }
@@ -77,6 +84,7 @@ export function ExchangePublicTokenRequestFromJSONTyped(json: any, ignoreDiscrim
         
         'public_token': value['publicToken'],
         'institution_id': value['institutionId'],
+        'institution_name': value['institutionName'],
         'accounts': value['accounts'],
     };
 }

@@ -25,10 +25,12 @@ models/ExchangePublicTokenResponse.ts
 models/FeedAccount.ts
 models/InvalidDateSample.ts
 models/Invitation.ts
+models/ItemRefreshResponse.ts
 models/JournalEntry.ts
 models/JournalEntrySourceEnum.ts
 models/JournalEntryStatusEnum.ts
 models/JournalLine.ts
+models/LinkTokenResponse.ts
 models/ManualTransaction.ts
 models/MatchTypeEnum.ts
 models/Membership.ts
@@ -59,6 +61,7 @@ models/PatchedTransactionEditRequest.ts
 models/PlaidAccount.ts
 models/PlaidCreateLinkToken200Response.ts
 models/PlaidItem.ts
+models/PlaidItemStatusEnum.ts
 models/PlaidItemsSync200Response.ts
 models/PlaidTransaction.ts
 models/Price.ts
