@@ -23,6 +23,7 @@ from django.utils.translation import gettext as _
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EQUITY, ACCOUNT_TYPE_LIABILITY, Account
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
+from apps.journal.services import period_lock
 
 OPENING_DESCRIPTION = _("Opening balance")
 
@@ -127,6 +128,10 @@ def create_opening_balances(book, rows: list[OpeningRow], as_of: date) -> list[J
     """
     if not rows:
         return []
+    try:
+        period_lock.assert_date_open(book, as_of)
+    except period_lock.PeriodLockedError as exc:
+        raise OpeningBalanceError(str(exc)) from None
 
     offset = _offset_account(book)
     entries = []

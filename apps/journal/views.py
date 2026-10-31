@@ -44,7 +44,7 @@ from .serializers import (
     TransactionRowSerializer,
     TransactionStatusRequestSerializer,
 )
-from .services import voiding
+from .services import period_lock, voiding
 from .services.sides import UnsupportedEntry
 from .services.simple_edit import (
     EditRefused,
@@ -98,6 +98,13 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         """Create journal entry in the current book."""
         serializer.save(book=self.request.book)
 
+    def destroy(self, request, *args, **kwargs):
+        try:
+            period_lock.assert_entry_mutable(self.get_object(), book=request.book)
+        except period_lock.PeriodLockedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=["post"])
     def post_entry(self, request, pk=None, team_slug=None, book_slug=None):
         """
@@ -117,6 +124,10 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
                 {"error": "Cannot post an unbalanced journal entry."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        try:
+            period_lock.assert_entry_mutable(journal_entry, book=request.book)
+        except period_lock.PeriodLockedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         journal_entry.status = JournalEntry.STATUS_POSTED
         journal_entry.save()
@@ -263,6 +274,13 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         journal_entry = instance.journal_entry
         journal_entry.delete()
 
+    def destroy(self, request, *args, **kwargs):
+        try:
+            period_lock.assert_entry_mutable(self.get_object().journal_entry, book=request.book)
+        except period_lock.PeriodLockedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
     @extend_schema(
         operation_id="simple_lines_recategorize",
         tags=["journal"],
@@ -310,7 +328,8 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
 
         try:
             assert_line_mutable(line, new_account=new_category)
-        except ReconciledLineError as e:
+            period_lock.assert_entry_mutable(line.journal_entry, book=request.book)
+        except (ReconciledLineError, period_lock.PeriodLockedError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         line.account = new_category

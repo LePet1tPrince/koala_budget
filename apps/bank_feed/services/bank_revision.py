@@ -35,6 +35,7 @@ from django.db import transaction
 from django.utils.translation import gettext as _
 
 from apps.journal.models import JournalEntry
+from apps.journal.services import period_lock
 from apps.reconciliation.services.guards import (
     ReconciledLineError,
     assert_date_change_allowed,
@@ -93,7 +94,10 @@ def revise(bank_tx, revision: Revision) -> RevisionResult:
     if revision.posted_date != bank_tx.posted_date:
         try:
             assert_date_change_allowed(entry, revision.posted_date)
-        except ReconciledLineError as exc:
+            # A closed transaction keeps its date, like a reconciled one; so does
+            # one the bank would move into the closed period.
+            period_lock.assert_redate_allowed(entry, revision.posted_date, book=bank_tx.book)
+        except (ReconciledLineError, period_lock.PeriodLockedError) as exc:
             result.date_kept_reason = str(exc)
         else:
             bank_tx.posted_date = revision.posted_date
@@ -135,7 +139,7 @@ def _rewrite_amount(bank_tx, entry, total) -> bool:
         # The home line holds the opposite side of the total (dr - cr = -total).
         assert_line_mutable(home[0], new_amount=-total)
         write_lines(entry, bank_tx.account_id, [(others[0].account, total)], total=total, book=bank_tx.book)
-    except (ReconciledLineError, SplitError):
+    except (ReconciledLineError, SplitError, period_lock.PeriodLockedError):
         return False
     return True
 
@@ -159,7 +163,8 @@ def _carry_difference(bank_tx, delta, revision):
         book=bank_tx.book,
         account_id=bank_tx.account_id,
         amount=delta,
-        posted_date=bank_tx.posted_date,
+        # In a closed period the difference lands on the first open day, where it can be categorized.
+        posted_date=period_lock.first_open_date(bank_tx.book, bank_tx.posted_date),
         description=f"{revision.description} ({note})"[:255],
         merchant_name=bank_tx.merchant_name,
         source=bank_tx.source,

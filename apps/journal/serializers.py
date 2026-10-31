@@ -22,6 +22,7 @@ from apps.reconciliation.services.guards import (
 )
 
 from .models import JournalEntry, JournalLine
+from .services import period_lock
 
 
 class JournalLineSerializer(serializers.ModelSerializer):
@@ -138,6 +139,16 @@ class JournalEntrySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"payee": "Unknown payee."})
             if any(line["account"].book_id != book.id for line in lines if line.get("account")):
                 raise serializers.ValidationError({"lines": "Unknown account."})
+
+        if book is not None:
+            try:
+                if self.instance is None:
+                    period_lock.assert_date_open(book, data.get("entry_date"))
+                else:
+                    period_lock.assert_redate_allowed(self.instance, data.get("entry_date"), book=book)
+                    period_lock.assert_entry_mutable(self.instance, book=book)
+            except period_lock.PeriodLockedError as exc:
+                raise serializers.ValidationError(str(exc)) from None
 
         source = data.get("source") or (self.instance.source if self.instance else JournalEntry.SOURCE_MANUAL)
         try:
@@ -321,6 +332,11 @@ class SimpleLineSerializer(serializers.Serializer):
         inflow = validated_data.get("inflow", Decimal("0"))
         outflow = validated_data.get("outflow", Decimal("0"))
 
+        try:
+            period_lock.assert_date_open(book, validated_data["date"])
+        except period_lock.PeriodLockedError as exc:
+            raise serializers.ValidationError(str(exc)) from None
+
         # Create journal entry
         journal_entry = JournalEntry.objects.create(
             book=book,
@@ -390,6 +406,13 @@ class SimpleLineSerializer(serializers.Serializer):
                 )
         except ReconciledLineError as e:
             raise serializers.ValidationError(str(e)) from None
+
+        try:
+            if set(validated_data) - {"is_cleared", "is_reconciled"}:
+                period_lock.assert_entry_mutable(journal_entry)
+                period_lock.assert_redate_allowed(journal_entry, validated_data.get("date"))
+        except period_lock.PeriodLockedError as exc:
+            raise serializers.ValidationError(str(exc)) from None
 
         # Update journal entry fields
         journal_entry.entry_date = validated_data.get("date", journal_entry.entry_date)
@@ -597,6 +620,7 @@ class TransactionDetailSerializer(serializers.Serializer):
     is_mirror = serializers.SerializerMethodField()
     is_reconciled = serializers.SerializerMethodField()
     has_normal_account_side = serializers.SerializerMethodField()
+    locked_reason = serializers.SerializerMethodField()
     capabilities = serializers.SerializerMethodField()
 
     def _sides(self, entry):
@@ -661,13 +685,35 @@ class TransactionDetailSerializer(serializers.Serializer):
     def get_has_normal_account_side(self, entry) -> bool:
         return self._sides(entry).normal
 
+    def get_locked_reason(self, entry) -> str | None:
+        """Why the transaction is read-only (a closed period), or null. Shown in place of the form."""
+        return period_lock.lock_reason(entry)
+
     def get_capabilities(self, entry):
         sides = self._sides(entry)
         voided = entry.status == JournalEntry.STATUS_VOID
         from_plaid = sides.bank_tx is not None and sides.bank_tx.source == "plaid"
         reconciled = sides.home_line.is_reconciled
 
+        if period_lock.entry_is_locked(entry):
+            # The guard `simple_edit` asks first: nothing about a closed transaction changes.
+            return {
+                key: False
+                for key in (
+                    "can_edit",
+                    "can_edit_date",
+                    "can_edit_amount",
+                    "can_edit_account",
+                    "can_edit_category",
+                    "can_split",
+                    "can_delete",
+                    "can_void",
+                    "can_unvoid",
+                )
+            }
+
         return {
+            "can_edit": not voided,
             "can_edit_date": not voided and not from_plaid,
             "can_edit_amount": not voided and not from_plaid and not reconciled,
             "can_edit_account": not voided and not reconciled,

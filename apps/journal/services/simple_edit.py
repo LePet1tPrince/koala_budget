@@ -43,6 +43,7 @@ from apps.reconciliation.services.guards import (
 )
 
 from ..models import JournalEntry
+from . import period_lock
 from .sides import UnsupportedEntry, resolve_sides
 
 
@@ -117,7 +118,7 @@ def apply_edits_bulk(entries, edits, *, book):
     """
     _resolve_accounts(edits, book=book)
 
-    plans = [_plan(entry, edits) for entry in entries]
+    plans = [_plan(entry, edits, book=book) for entry in entries]
 
     with transaction.atomic():
         return [_write(plan, edits, book=book) for plan in plans]
@@ -139,7 +140,8 @@ def delete_transaction(entry, *, book):
 
     try:
         assert_entry_removable(entry, own_account_id=sides.account.id, verb=_("deleting it"))
-    except ReconciledLineError as exc:
+        period_lock.assert_entry_mutable(entry, book=book)
+    except (ReconciledLineError, period_lock.PeriodLockedError) as exc:
         raise EditRefused(str(exc)) from exc
 
     with transaction.atomic():
@@ -215,11 +217,18 @@ class _Plan:
     total: Decimal
 
 
-def _plan(entry, edits):
+def _plan(entry, edits, *, book):
     """Check `edits` against `entry` and work out the lines to write."""
     try:
         sides = resolve_sides(entry)
     except UnsupportedEntry as exc:
+        raise EditRefused(str(exc)) from exc
+
+    try:
+        period_lock.assert_entry_mutable(entry, book=book)
+        if edits.date is not UNSET:
+            period_lock.assert_redate_allowed(entry, edits.date, book=book)
+    except period_lock.PeriodLockedError as exc:
         raise EditRefused(str(exc)) from exc
 
     if entry.status == JournalEntry.STATUS_VOID:

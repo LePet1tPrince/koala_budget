@@ -31,6 +31,7 @@ from django.utils.translation import gettext_lazy as _
 from apps.accounts.guards import SystemCategoryError, assert_category_allowed
 from apps.accounts.models import Account
 from apps.journal.models import JournalLine
+from apps.journal.services import period_lock
 from apps.reconciliation.services.guards import assert_line_mutable, assert_line_removable
 
 #: A split with one leg is a plain transaction; offer "remove split" instead.
@@ -162,6 +163,8 @@ def write_lines(entry, home_account, legs, *, total, book):
 
     if entry is None:
         raise SplitError(_("This transaction has no journal entry to split."))
+    # A closed period's lines don't change (`period_lock`); a PeriodLockedError is a ValueError.
+    period_lock.assert_entry_mutable(entry, book=book)
 
     home_account_id = getattr(home_account, "id", home_account)
     existing = list(entry.lines.all())

@@ -924,6 +924,11 @@ def _auto_categorize_transaction(bank_tx, category_id: int, book):
     except Account.DoesNotExist:
         return  # Skip if the category doesn't exist (or is a budget bucket)
 
+    from apps.journal.services.period_lock import is_locked
+
+    if is_locked(book, bank_tx.posted_date):
+        return  # A closed period takes no new entries: the row stays uncategorized
+
     # Create journal entry
     journal_entry = JournalEntry.objects.create(
         book=book,
