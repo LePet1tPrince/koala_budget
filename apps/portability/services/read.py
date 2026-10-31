@@ -55,6 +55,10 @@ from .schema import (
     MANIFEST_FILE,
     RECONCILIATION_STATUSES,
     RECONCILIATIONS_FILE,
+    RULE_DIRECTIONS,
+    RULE_MATCHES,
+    RULE_MODES,
+    RULES_FILE,
     UNCATEGORIZED_STATUS,
     Column,
     DocumentError,
@@ -116,6 +120,7 @@ class Tables:
     budget_rows: list = field(default_factory=list)
     reconciliations: list = field(default_factory=list)
     goal_links: list = field(default_factory=list)
+    rules: list = field(default_factory=list)
     # Non-fatal: a per-file sha256 in the manifest did not match the file's
     # actual contents (§3.1) -- shown to the user, does not block the import.
     hash_warnings: list = field(default_factory=list)
@@ -158,6 +163,7 @@ def read_archive(data: bytes) -> Tables:
             "budget_rows": read_file(BUDGET_FILE),
             "reconciliations": read_file(RECONCILIATIONS_FILE),
             "goal_links": read_file(GOAL_LINKS_FILE),
+            "rules": read_file(RULES_FILE),
         },
         from_version=version,
     )
@@ -166,6 +172,7 @@ def read_archive(data: bytes) -> Tables:
     budget_rows = parsed["budget_rows"]
     reconciliations = parsed["reconciliations"]
     goal_links = parsed["goal_links"]
+    rules = parsed["rules"]
 
     _validate_enums(accounts, journal_rows, budget_rows)
     _validate_journal_row_shape(journal_rows)
@@ -177,6 +184,7 @@ def read_archive(data: bytes) -> Tables:
     _validate_months(budget_rows)
     _validate_reconciliations(reconciliations, journal_rows, account_ids)
     _validate_goal_links(goal_links, accounts)
+    _validate_rules(rules, accounts)
 
     return Tables(
         manifest=manifest,
@@ -185,6 +193,7 @@ def read_archive(data: bytes) -> Tables:
         budget_rows=budget_rows,
         reconciliations=reconciliations,
         goal_links=goal_links,
+        rules=rules,
         hash_warnings=hash_warnings,
         void_upgrade=parsed.get("void_upgrade"),
     )
@@ -454,6 +463,37 @@ def _validate_reconciliations(reconciliations: list[dict], journal_rows: list[di
                 f"{JOURNAL_FILE}, row {row_number}: reconciliation_id {row['reconciliation_id']} does not appear "
                 f"in {RECONCILIATIONS_FILE}."
             )
+
+
+def _validate_rules(rules: list[dict], accounts: list[dict]) -> None:
+    """
+    Each rule's account and category name accounts in this file, its choices are
+    ones the app knows, and its name is unique -- what `CategorizationRule`'s own
+    constraint and the rule editor enforce.
+    """
+    types = {row["account_id"]: row["account_type"] for row in accounts}
+    names = set()
+    for row_number, row in enumerate(rules, start=2):
+        where = f"{RULES_FILE}, row {row_number}"
+        if not row["name"]:
+            raise DocumentError(f"{where}: name is required.")
+        if row["name"].lower() in names:
+            raise DocumentError(f"{where}: there are two rules named '{row['name']}'.")
+        names.add(row["name"].lower())
+        if row["category_id"] is not None and row["category_id"] not in types:
+            raise DocumentError(f"{where}: category_id {row['category_id']} is not an account in {ACCOUNTS_FILE}.")
+        if row["account_id"] is not None and types.get(row["account_id"]) not in ("asset", "liability"):
+            raise DocumentError(
+                f"{where}: account_id {row['account_id']} is not an asset or liability account in {ACCOUNTS_FILE}."
+            )
+        for column, allowed in (
+            ("payee_match", RULE_MATCHES),
+            ("description_match", RULE_MATCHES),
+            ("direction", RULE_DIRECTIONS),
+            ("mode", RULE_MODES),
+        ):
+            if row[column] not in allowed:
+                raise DocumentError(f"{where}, column '{column}': '{row[column]}' is not a value Koala Budget knows.")
 
 
 def _validate_goal_links(goal_links: list[dict], accounts: list[dict]) -> None:

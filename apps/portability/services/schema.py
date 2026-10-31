@@ -31,6 +31,13 @@ from apps.accounts.models import (
 )
 from apps.bank_feed.models import BankTransaction
 from apps.budget.models import Goal, GoalAccountLink
+from apps.categorization.models import (
+    DIRECTION_CHOICES,
+    MATCH_CHOICES,
+    MODE_CHOICES,
+    CategorizationDecision,
+    CategorizationRule,
+)
 from apps.journal.models import JournalEntry, JournalLine
 from apps.reconciliation.models import Reconciliation
 
@@ -47,7 +54,9 @@ FORMAT = "koala-budget-export"
 # `feed_is_void`/`feed_voided_at`, and the unused archive flags on entries and
 # lines (`entry_is_archived`, `entry_archived_at`, `is_archived`, `archived_at`)
 # are gone. `upgrade_6_to_7` voids the entry behind any archived row.
-FORMAT_VERSION = 7
+# 8: categorization rules -- `rules.csv` (apps.categorization). Older archives
+# had none.
+FORMAT_VERSION = 8
 
 MANIFEST_FILE = "manifest.json"
 ACCOUNTS_FILE = "accounts.csv"
@@ -55,12 +64,13 @@ JOURNAL_FILE = "journal.csv"
 BUDGET_FILE = "budget.csv"
 RECONCILIATIONS_FILE = "reconciliations.csv"
 GOAL_LINKS_FILE = "goal_links.csv"
-DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE, RECONCILIATIONS_FILE, GOAL_LINKS_FILE)
+RULES_FILE = "rules.csv"
+DATA_FILES = (ACCOUNTS_FILE, JOURNAL_FILE, BUDGET_FILE, RECONCILIATIONS_FILE, GOAL_LINKS_FILE, RULES_FILE)
 
 #: The format version each file / column first appeared in. An older archive
 #: is read without them and `upgrade.py` fills them in, so adding a file or a
 #: column is not a reason to refuse every export made before it.
-FILES_ADDED_IN = {RECONCILIATIONS_FILE: 2, GOAL_LINKS_FILE: 5}
+FILES_ADDED_IN = {RECONCILIATIONS_FILE: 2, GOAL_LINKS_FILE: 5, RULES_FILE: 8}
 COLUMNS_ADDED_IN = {
     (JOURNAL_FILE, "reconciliation_id"): 2,
     (ACCOUNTS_FILE, "goal_closed_at"): 3,
@@ -95,6 +105,9 @@ RECONCILIATION_STATUSES = frozenset(dict(Reconciliation.STATUS_CHOICES))
 FEED_SOURCES = frozenset(dict(BankTransaction.SOURCE_CHOICES))
 ACCOUNT_TYPES = frozenset(dict(ACCOUNT_TYPE_CHOICES))
 GOAL_OUTFLOWS = frozenset(dict(Goal.OUTFLOW_CHOICES))
+RULE_MATCHES = frozenset(dict(MATCH_CHOICES))
+RULE_DIRECTIONS = frozenset(dict(DIRECTION_CHOICES))
+RULE_MODES = frozenset(dict(MODE_CHOICES))
 
 # budget.csv's `kind` column: whether a row is a category's budget or a goal's allocation.
 KIND_BUDGET = "budget"
@@ -731,6 +744,66 @@ GOAL_LINKS_COLUMNS = (
     Column("archived_at", KIND_DATETIME),
 )
 
+# --- rules.csv --------------------------------------------------------------
+#
+# One row per categorization rule. Its account and category are named by the
+# archive's account ids, as everywhere else; nothing in the file points at a
+# rule, so it needs no id of its own.
+
+RULE = FieldMap(
+    model=CategorizationRule,
+    columns={
+        "name": ColumnSpec("name", KIND_STR),
+        "priority": ColumnSpec("priority", KIND_INT),
+        "is_enabled": ColumnSpec("is_enabled", KIND_BOOL),
+        "mode": ColumnSpec("mode", KIND_STR),
+        "payee_match": ColumnSpec("payee_match", KIND_STR),
+        "payee_value": ColumnSpec("payee_value", KIND_STR),
+        "description_match": ColumnSpec("description_match", KIND_STR),
+        "description_value": ColumnSpec("description_value", KIND_STR),
+        "amount_min": ColumnSpec("amount_min", KIND_DECIMAL),
+        "amount_max": ColumnSpec("amount_max", KIND_DECIMAL),
+        "direction": ColumnSpec("direction", KIND_STR),
+        "account": ColumnSpec("account_id", KIND_INT, read=lambda rule: rule.account_id),
+        "category": ColumnSpec("category_id", KIND_INT, read=lambda rule: rule.category_id),
+        "set_payee": ColumnSpec("set_payee", KIND_STR),
+        "set_description": ColumnSpec("set_description", KIND_STR),
+    },
+    omitted={
+        "id": "nothing points at a rule; it is identified by its book and name",
+        "book": _TENANT,
+        "created_at": _TIMESTAMP,
+        "updated_at": _TIMESTAMP,
+    },
+)
+
+RULES_COLUMNS = (
+    Column("name", KIND_STR),
+    Column("priority", KIND_INT),
+    Column("is_enabled", KIND_BOOL),
+    Column("mode", KIND_STR),
+    Column("payee_match", KIND_STR),
+    Column("payee_value", KIND_STR),
+    Column("description_match", KIND_STR),
+    Column("description_value", KIND_STR),
+    Column("amount_min", KIND_DECIMAL),
+    Column("amount_max", KIND_DECIMAL),
+    Column("direction", KIND_STR),
+    Column("account_id", KIND_INT),
+    Column("category_id", KIND_INT),
+    Column("set_payee", KIND_STR),
+    Column("set_description", KIND_STR),
+)
+
+#: Book-scoped models that deliberately do not travel, each with its reason --
+#: checked by `test_schema.py` for every model of an app that ships a file here.
+UNEXPORTED_MODELS = {
+    CategorizationDecision: (
+        "provenance of how a row was filed in *this* book, like an AuditEvent; the category itself "
+        "travels on the row, which reads as filed by hand after an import"
+    ),
+}
+
 # Every model this format exports, and the field maps that describe it. Used
 # by the completeness test; iteration order does not matter.
 FIELD_MAPS = (
@@ -744,6 +817,7 @@ FIELD_MAPS = (
     BANK_TRANSACTION,
     RECONCILIATION,
     GOAL_LINK,
+    RULE,
 )
 
 #: Which field maps compose one row, per file. `export.py` builds rows against
@@ -758,6 +832,7 @@ ROW_COMPOSITIONS = {
     JOURNAL_FILE: ((JOURNAL_ENTRY, JOURNAL_LINE, PAYEE, BANK_TRANSACTION),),
     RECONCILIATIONS_FILE: ((RECONCILIATION,),),
     GOAL_LINKS_FILE: ((GOAL_LINK,),),
+    RULES_FILE: ((RULE,),),
 }
 
 FILE_COLUMNS = {
@@ -766,6 +841,7 @@ FILE_COLUMNS = {
     BUDGET_FILE: BUDGET_COLUMNS,
     RECONCILIATIONS_FILE: RECONCILIATIONS_COLUMNS,
     GOAL_LINKS_FILE: GOAL_LINKS_COLUMNS,
+    RULES_FILE: RULES_COLUMNS,
 }
 
 

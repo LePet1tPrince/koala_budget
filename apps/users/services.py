@@ -206,6 +206,51 @@ def export_user_data(user):
                 ),
             )
 
+            # Categorization rules
+            from apps.categorization.models import CategorizationRule
+
+            rules = CategorizationRule.objects.filter(book=book).select_related("account", "category").in_order()
+            zf.writestr(
+                f"{prefix}/categorization_rules.csv",
+                _build_csv(
+                    [
+                        "name",
+                        "enabled",
+                        "mode",
+                        "payee_match",
+                        "payee",
+                        "description_match",
+                        "description",
+                        "amount_min",
+                        "amount_max",
+                        "direction",
+                        "account",
+                        "category",
+                        "set_payee",
+                        "set_description",
+                    ],
+                    [
+                        [
+                            rule.name,
+                            rule.is_enabled,
+                            rule.mode,
+                            rule.payee_match,
+                            rule.payee_value,
+                            rule.description_match,
+                            rule.description_value,
+                            rule.amount_min if rule.amount_min is not None else "",
+                            rule.amount_max if rule.amount_max is not None else "",
+                            rule.direction,
+                            rule.account.name if rule.account_id else "",
+                            rule.category.name if rule.category_id else "",
+                            rule.set_payee,
+                            rule.set_description,
+                        ]
+                        for rule in rules
+                    ],
+                ),
+            )
+
             # Plaid items
             plaid_items = PlaidItem.objects.filter(book=book)
             zf.writestr(

@@ -35,7 +35,7 @@ def _rezip_with_manifest(data: bytes, manifest: dict) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
         zf_out.writestr("manifest.json", json.dumps(manifest))
-        for name in ("accounts.csv", "journal.csv", "budget.csv", "reconciliations.csv", "goal_links.csv"):
+        for name in ("accounts.csv", "journal.csv", "budget.csv", "reconciliations.csv", "goal_links.csv", "rules.csv"):
             zf_out.writestr(name, zf_in.read(name))
     return buf.getvalue()
 
@@ -79,6 +79,7 @@ class StructuralErrorTests(SimpleTestCase):
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
             zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
             zf_out.writestr("goal_links.csv", zf_in.read("goal_links.csv"))
+            zf_out.writestr("rules.csv", zf_in.read("rules.csv"))
             # journal.csv omitted
         with self.assertRaises(DocumentError) as ctx:
             read.read_archive(buf.getvalue())
@@ -102,6 +103,7 @@ class StructuralErrorTests(SimpleTestCase):
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
             zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
             zf_out.writestr("goal_links.csv", zf_in.read("goal_links.csv"))
+            zf_out.writestr("rules.csv", zf_in.read("rules.csv"))
 
         with self.assertRaises(DocumentError) as ctx:
             read.read_archive(buf.getvalue())
@@ -279,6 +281,7 @@ class HashWarningTests(SimpleTestCase):
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
             zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
             zf_out.writestr("goal_links.csv", zf_in.read("goal_links.csv"))
+            zf_out.writestr("rules.csv", zf_in.read("rules.csv"))
 
         tables = read.read_archive(buf.getvalue())  # must not raise
         self.assertEqual(len(tables.hash_warnings), 1)
@@ -299,6 +302,7 @@ class HashWarningTests(SimpleTestCase):
             zf_out.writestr("budget.csv", zf_in.read("budget.csv"))
             zf_out.writestr("reconciliations.csv", zf_in.read("reconciliations.csv"))
             zf_out.writestr("goal_links.csv", zf_in.read("goal_links.csv"))
+            zf_out.writestr("rules.csv", zf_in.read("rules.csv"))
 
         tables = read.read_archive(buf.getvalue())
         self.assertEqual(len(tables.hash_warnings), 1)  # only accounts.csv, not journal/budget
