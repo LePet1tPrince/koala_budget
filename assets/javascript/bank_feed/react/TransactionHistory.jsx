@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Spinner from '../../common/Spinner';
 
-/* globals gettext */
+/* globals gettext, interpolate */
 
 const FIELD_LABELS = {
   entry_date: () => gettext('Date'),
@@ -40,6 +40,8 @@ const groupLogs = (logs) => {
     } else {
       groups.push({ key: groupKey, user_display: log.user_display, timestamp: log.timestamp, logs: [log] });
     }
+    const group = groups[groups.length - 1];
+    if (!group.via && log.via) group.via = log.via;
   }
   return groups;
 };
@@ -124,6 +126,9 @@ const TransactionHistory = ({ book, journalEntryId }) => {
           <div key={group.key} className="border-l-2 border-base-300 pb-2 pl-4">
             <div className="text-xs text-base-content/70">
               {new Date(group.timestamp).toLocaleString()} · {group.user_display}
+              {group.via && (
+                <span data-testid="history-via"> · {interpolate(gettext('via %s'), [group.via])}</span>
+              )}
             </div>
             {Array.isArray(summary) ? (
               <ul className="m-0 list-disc pl-4 text-sm">

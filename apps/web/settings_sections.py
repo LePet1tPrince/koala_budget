@@ -102,6 +102,14 @@ def sections_for(request) -> list[SettingsSection]:
             )
         sections += [
             SettingsSection(
+                key="categorization_rules",
+                label=_("Categorization rules"),
+                blurb=_("File transactions that look alike the same way, the moment they arrive."),
+                icon="list-filter",
+                url=reverse("categorization:rules_home", args=book.url_args),
+                group=GROUP_BOOK,
+            ),
+            SettingsSection(
                 key="data_transfer",
                 label=_("Export & Import"),
                 blurb=_("Download this book, or replace it with a Koala Budget export."),

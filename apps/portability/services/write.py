@@ -32,6 +32,7 @@ from .schema import (
     JOURNAL_FILE,
     MANIFEST_FILE,
     RECONCILIATIONS_FILE,
+    RULES_FILE,
     Column,
     encode_cell,
 )
@@ -74,6 +75,7 @@ def build_archive_bytes(
     budget: list[dict],
     reconciliations: list[dict] = (),
     goal_links: list[dict] = (),
+    rules: list[dict] = (),
     source: dict,
     checks: dict,
     omitted: dict,
@@ -95,6 +97,7 @@ def build_archive_bytes(
         BUDGET_FILE: budget,
         RECONCILIATIONS_FILE: list(reconciliations),
         GOAL_LINKS_FILE: list(goal_links),
+        RULES_FILE: list(rules),
     }
     file_bytes = {filename: write_csv(FILE_COLUMN_LISTS[filename], rows_by_file[filename]) for filename in DATA_FILES}
 

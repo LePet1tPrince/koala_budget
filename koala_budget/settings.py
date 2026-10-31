@@ -107,6 +107,7 @@ PROJECT_APPS = [
     "apps.ynab_import.apps.YnabImportConfig",
     "apps.portability.apps.PortabilityConfig",
     "apps.reconciliation.apps.ReconciliationConfig",
+    "apps.categorization.apps.CategorizationConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -452,6 +453,16 @@ SPECTACULAR_SETTINGS = {
     "PREPROCESSING_HOOKS": [
         "apps.api.schema.filter_schema_apis",
     ],
+    # apps.categorization: one name per choice set, so the generated client
+    # doesn't invent "Source9e2Enum" for a provider's source.
+    "ENUM_NAME_OVERRIDES": {
+        "CategorizationSourceEnum": "apps.categorization.models.SOURCE_CHOICES",
+        "RuleMatchEnum": "apps.categorization.models.MATCH_CHOICES",
+    },
+    # A rule's "any" match is the blank choice. Split out as a separate BlankEnum
+    # (the default) it becomes a oneOf the typescript-fetch generator can't
+    # serialize; kept inside the enum it is just one more value.
+    "ENUM_ADD_EXPLICIT_BLANK_NULL_CHOICE": False,
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
     },
@@ -570,6 +581,18 @@ if "test" in sys.argv:
 # The currency the books are kept in. Nothing converts between currencies: a
 # bank account in another currency is imported at face value and flagged.
 BASE_CURRENCY = env("BASE_CURRENCY", default="CAD")
+
+# Categorization providers, strongest first (docs/categorization-rules-plan.md §8).
+# Each suggests categories for uncategorized bank rows; their results are merged
+# in this order. An AI provider goes after these two:
+# "apps.categorization.providers.ai.AIProvider".
+CATEGORIZATION_PROVIDERS = [
+    "apps.categorization.providers.rules.RuleProvider",
+    "apps.categorization.providers.history.HistoryProvider",
+]
+# The confidence a non-rule provider's suggestion needs to file a row by itself,
+# once a book has allowed that provider to (apps.categorization.policy).
+CATEGORIZATION_AUTO_MIN_CONFIDENCE = 0.9
 
 # Plaid config
 # Note: don't edit these values here - edit them in your .env file or environment variables!

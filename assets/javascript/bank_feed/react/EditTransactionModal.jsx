@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Combobox from '../../common/Combobox';
+import Icon from '../../common/Icon';
 import DateField from '../../common/DateField';
 import Modal from '../../common/Modal';
 import { buildCategoryOptions } from '../../common/categoryOptions';
@@ -67,6 +68,8 @@ const NO_ACCOUNTS = [];
  * - feedAccounts: the accounts a new transaction can be added to. When given, create
  *   mode asks which one (the Inbox shows every account, so it can't be assumed)
  * - defaultAccountId: the account to preselect, e.g. the one the Inbox is filtered to
+ * - onCreateRule: (transaction, categoryId) => void -- when given, offers "Create rule…"
+ *   (a categorization rule matching this transaction, filing to the chosen category)
  */
 const EditTransactionModal = ({
   open,
@@ -81,6 +84,7 @@ const EditTransactionModal = ({
   startSplit: startSplitOnOpen = false,
   feedAccounts = NO_ACCOUNTS,
   defaultAccountId = null,
+  onCreateRule,
 }) => {
   // Determine mode - create if no transaction, edit otherwise
   const mode = modeProp || (transaction ? 'edit' : 'create');
@@ -441,6 +445,18 @@ const EditTransactionModal = ({
       title={title}
       actions={
         <>
+          {onCreateRule && !isCreateMode && !onHistoryTab && !splits && transaction && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm mr-auto gap-1"
+              onClick={() => onCreateRule(transaction, category?.id ?? null)}
+              disabled={saving}
+              data-testid="modal-create-rule-btn"
+            >
+              <Icon name="wand-sparkles" className="h-4 w-4" />
+              {gettext('Create rule…')}
+            </button>
+          )}
           <button type="button" className="btn btn-sm" onClick={onClose} disabled={saving} data-testid="modal-cancel-btn">
             {onHistoryTab ? gettext('Close') : gettext('Cancel')}
           </button>

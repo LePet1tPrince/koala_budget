@@ -107,6 +107,7 @@ class SettingsSectionsTest(TestCase):
                 "profile",
                 "password",
                 "book",
+                "categorization_rules",
                 "data_transfer",
                 "import",
                 "audit",

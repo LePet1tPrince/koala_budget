@@ -34,6 +34,13 @@ import {
     BankFeedRowSourceEnumToJSON,
     BankFeedRowSourceEnumToJSONTyped,
 } from './BankFeedRowSourceEnum';
+import type { CategorizedBy } from './CategorizedBy';
+import {
+    CategorizedByFromJSON,
+    CategorizedByFromJSONTyped,
+    CategorizedByToJSON,
+    CategorizedByToJSONTyped,
+} from './CategorizedBy';
 
 /**
  * Unified bank feed row serializer.
@@ -204,6 +211,12 @@ export interface BankFeedRow {
      * @memberof BankFeedRow
      */
     splits: Array<SplitLeg>;
+    /**
+     * Set while a rule (or another automatic provider) is what filed this row; null otherwise
+     * @type {CategorizedBy}
+     * @memberof BankFeedRow
+     */
+    categorizedBy?: CategorizedBy | null;
 }
 
 
@@ -274,6 +287,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'isSplit': json['is_split'],
         'splitCount': json['split_count'],
         'splits': ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
+        'categorizedBy': json['categorized_by'] == null ? undefined : CategorizedByFromJSON(json['categorized_by']),
     };
 }
 
@@ -314,6 +328,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'is_split': value['isSplit'],
         'split_count': value['splitCount'],
         'splits': ((value['splits'] as Array<any>).map(SplitLegToJSON)),
+        'categorized_by': CategorizedByToJSON(value['categorizedBy']),
     };
 }
 

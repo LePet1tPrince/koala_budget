@@ -212,6 +212,7 @@ def _sync_item(plaid_item_id: int):
         # posted transaction and the removal of its pending one are always seen
         # side by side, whichever page Plaid put them on.
         outcomes = Counter()
+        sync_started = timezone.now()
         with transaction.atomic():
             # Added first: a posted transaction must claim its pending row before
             # the pending one's removal is processed.
@@ -236,6 +237,10 @@ def _sync_item(plaid_item_id: int):
         total_modified = len(updates.modified)
         total_removed = len(updates.removed)
 
+        # After the rows and the cursor have committed, so a rule that can't file a
+        # row (or anything else going wrong there) can never undo or retry the sync.
+        auto_categorized = _categorize_new_rows(plaid_item, sync_started) if updates.added else 0
+
         log_event(
             AuditEvent.PLAID_SYNC_COMPLETED,
             book=plaid_item.book,
@@ -245,6 +250,7 @@ def _sync_item(plaid_item_id: int):
                 "modified": total_modified,
                 "removed": total_removed,
                 "outcomes": dict(outcomes),
+                "auto_categorized": auto_categorized,
             },
         )
 
@@ -268,6 +274,20 @@ def _sync_item(plaid_item_id: int):
     finally:
         if context_token is not None:
             unset_current_book(context_token)
+
+
+def _categorize_new_rows(plaid_item, since) -> int:
+    """Run the book's auto rules (apps.categorization) over the rows this sync added. Never raises."""
+    from apps.categorization.pipeline import TRIGGER_PLAID, categorize_on_arrival
+
+    rows = BankTransaction.objects.filter(
+        book=plaid_item.book,
+        plaid_transaction__plaid_account__item=plaid_item,
+        created_at__gte=since,
+        journal_entry__isnull=True,
+    )
+    result = categorize_on_arrival(plaid_item.book, list(rows), trigger=TRIGGER_PLAID)
+    return result.categorized_count if result else 0
 
 
 def _revision(tx_data) -> Revision:

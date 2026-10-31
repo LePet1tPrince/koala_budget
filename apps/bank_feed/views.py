@@ -38,6 +38,7 @@ from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.books.permissions import BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
+from apps.categorization import pipeline as categorization_pipeline
 from apps.journal.models import JournalEntry
 from apps.journal.services import period_lock, voiding
 from apps.journal.services.lines import repoint_line
@@ -74,7 +75,6 @@ from .services import feed_query
 from .services.categorize import MIRROR_EDIT_ERROR, create_entry, repoint_category
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.sample_csv import build_sample_csv
-from .services.similar_transactions import suggest_categories
 from .services.splits import SplitError, apply_splits, check_legs_total, is_split, parse_legs
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_match import MatchError, ProposalChanged, match_transfer, propose_pairs
@@ -337,6 +337,8 @@ class BankFeedViewSet(
             "plaid_transaction",
             "plaid_transaction__plaid_account",
             "plaid_transaction__plaid_account__account",
+            # The "Rule" badge (apps.categorization): one join, not a query per row.
+            "categorization_decision__rule",
         ).prefetch_related(
             "journal_entry__lines__account__account_group",
             "journal_entry__lines__account__institution",
@@ -1315,14 +1317,16 @@ class BankFeedViewSet(
             )
 
         transactions = BankTransaction.objects.filter(book=request.book, id__in=ids)
-        suggestions_by_transaction = suggest_categories(request.book, transactions)
+        # Every registered categorization provider, merged: rules, then history,
+        # then anything appended (apps.categorization.pipeline).
+        suggestions_by_transaction = categorization_pipeline.suggest(request.book, transactions)
 
         # Preserve the order the client asked in, so it can pair responses up
         # without re-sorting.
         rows = []
         for transaction_id in ids:
             for suggestion in suggestions_by_transaction.get(transaction_id, ()):
-                rows.append({"transaction_id": transaction_id, **suggestion})
+                rows.append(suggestion.as_payload(transaction_id))
 
         serializer = SimilarCategorySuggestionSerializer(rows, many=True)
         return Response(serializer.data)

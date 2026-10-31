@@ -181,7 +181,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
       batches.push(transactionsToImport.slice(i, i + IMPORT_BATCH_SIZE));
     }
 
-    const aggregateResult = { created_count: 0, skipped_count: 0, error_count: 0 };
+    const aggregateResult = { created_count: 0, skipped_count: 0, error_count: 0, rule_categorized_count: 0 };
 
     try {
       for (const batch of batches) {
@@ -191,6 +191,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
         aggregateResult.created_count += result.created_count || 0;
         aggregateResult.skipped_count += result.skipped_count || 0;
         aggregateResult.error_count += result.error_count || 0;
+        aggregateResult.rule_categorized_count += result.rule_categorized_count ?? result.ruleCategorizedCount ?? 0;
 
         setImportProgress((prev) => ({ ...prev, completed: prev.completed + batch.length }));
       }

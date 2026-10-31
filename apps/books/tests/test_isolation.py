@@ -81,6 +81,11 @@ READS = {
     "bank_feed:bank-feed-selection": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
     "bank_feed:bank-feed-locate": lambda a, b: {"row": b.uncategorized_tx.id},
     "bank_feed:api-root": {},
+    "categorization:rules_home": {},
+    "categorization:rule-list": {},
+    "categorization:api-root": {},
+    # A draft from book B's transaction is a 404, never B's payee in a form.
+    "categorization:rule-draft": lambda a, b: {"transaction": b.uncategorized_tx.id},
     "onboarding:home": {},
     "onboarding:api_tasks": {},
     "onboarding:api_opening_balances": {},
@@ -150,6 +155,9 @@ OBJECTS = {
     "plaid:plaid-account-detail": ("plaid_account", "pk", "get"),
     "plaid:imported-transaction-detail": ("plaid_transaction", "pk", "get"),
     "bank_feed:bank-feed-detail": ("bank_transaction", "pk", "put"),
+    "categorization:rule-detail": ("rule", "pk", "get"),
+    "categorization:rule-test": ("rule", "pk", "get"),
+    "categorization:rule-apply": ("rule", "pk", "post"),
     "reconciliation:account": ("asset_account", "account_id", "get"),
     "reconciliation:statement": ("reconciliation", "pk", "get"),
     "reconciliation:statement_undo": ("reconciliation", "pk", "post"),
@@ -215,6 +223,16 @@ WRITES = {
     },
     "bank_feed:bank-feed-upload-preview": lambda a, b: {"account_id": b.chequing.id},
     "bank_feed:bank-feed-upload-confirm": lambda a, b: {"account_id": b.chequing.id, "transactions": "[]"},
+    # Book B's rules can't be reordered from book A, and a preview naming B's
+    # category tests nothing of B's.
+    "categorization:rule-reorder": lambda a, b: {"ids": [b.rule.id]},
+    "categorization:rule-preview": lambda a, b: {
+        "payee_match": "contains",
+        "payee_value": "Mystery",
+        "category": b.groceries.id,
+        "account": b.chequing.id,
+    },
+    "categorization:rule-list": None,  # placeholder, see WRITE_OVERRIDES
     "onboarding:api_answers": lambda a, b: {"answers": {"housing": "rent"}},
     "onboarding:api_preview_coa": lambda a, b: {"answers": {}},
     "onboarding:api_complete": lambda a, b: {"answers": {}},
@@ -225,7 +243,7 @@ WRITES = {
 
 # Endpoints whose body names B's accounts in nested structures; also their
 # names are already in READS, so these run from dedicated tests below.
-WRITE_OVERRIDES = {"journal:journal-entry-list", "reconciliation:reconciliation-list"}
+WRITE_OVERRIDES = {"journal:journal-entry-list", "reconciliation:reconciliation-list", "categorization:rule-list"}
 
 EXEMPT = {
     "budget:budget_autofill": "form post over this book's own categories; BudgetFallbackTest covers B's ids",
@@ -401,6 +419,23 @@ class WriteIsolationTest(TwoBooksTestCase):
             content_type="application/json",
         )
         self.assertIn(response.status_code, (400, 404))
+        self.assertEqual(snapshot(self.b.book), before)
+
+    def test_a_rule_cannot_file_into_book_b_accounts(self):
+        before = snapshot(self.b.book)
+        response = self.client.post(
+            self.url("categorization:rule-list"),
+            data=json.dumps(
+                {
+                    "payee_match": "equals",
+                    "payee_value": "Anything",
+                    "category": self.b.groceries.id,
+                    "account": self.b.chequing.id,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(snapshot(self.b.book), before)
 
     def test_recategorizing_a_book_a_line_into_book_b_is_refused(self):

@@ -11,8 +11,10 @@ import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc } from '../utils';
 import { PAGE_SIZE_OPTIONS } from '../feedQuery';
 import Icon from '../../common/Icon';
+import RuleEditorModal from '../../categorization/RuleEditorModal';
+import { readCanManageRules, rulesApi } from '../../categorization/rulesApi';
 
-/* globals gettext, interpolate */
+/* globals gettext, interpolate, ngettext */
 
 const NO_MATCHES = new Map();
 // Stable default, so the rows don't re-render for a fresh `new Set()` each time
@@ -190,6 +192,7 @@ const LineTable = ({
   onDismissMatch,
   onOpenMatchCounterpart,
   pendingIds = NO_PENDING,
+  onRulesApplied,
 }) => {
   const [quickFiltersOpen, setQuickFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -213,6 +216,38 @@ const LineTable = ({
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
+  // "Create rule…" from the edit modal: the shared editor on a server-built draft.
+  const canManageRules = useMemo(() => readCanManageRules(), []);
+  const [ruleDraft, setRuleDraft] = useState(null);
+  const ruleFeedAccounts = useMemo(
+    () => (accounts || []).map((a) => ({ id: a.id, name: a.name })),
+    [accounts]
+  );
+  const handleCreateRule = async (transaction, categoryId) => {
+    try {
+      const draft = await rulesApi(book).draft(transaction.id, categoryId);
+      setEditModalOpen(false);
+      setEditingTransaction(null);
+      setRuleDraft(draft);
+    } catch (error) {
+      setSnackbar({ open: true, message: error.message, severity: 'error' });
+    }
+  };
+  const handleRuleSaved = (saved, applied) => {
+    setRuleDraft(null);
+    const filed = applied?.categorized ?? 0;
+    setSnackbar({
+      open: true,
+      severity: 'success',
+      message: filed
+        ? interpolate(
+            ngettext('Rule “%s” saved; %s transaction categorized.', 'Rule “%s” saved; %s transactions categorized.', filed),
+            [saved.name, filed]
+          )
+        : interpolate(gettext('Rule “%s” saved.'), [saved.name]),
+    });
+    if (filed && onRulesApplied) onRulesApplied();
+  };
   const [modalMode, setModalMode] = useState('edit'); // 'create' | 'edit'
 
   // Id of the row whose checkbox was last clicked, used as the anchor for
@@ -626,6 +661,20 @@ const LineTable = ({
                                 {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
                               </span>
                             )}
+                            {row.categorizedBy && (
+                              <span
+                                className="badge badge-ghost badge-sm shrink-0 gap-1"
+                                title={
+                                  row.categorizedBy.ruleName
+                                    ? interpolate(gettext('Categorized by your rule “%s”'), [row.categorizedBy.ruleName])
+                                    : row.categorizedBy.reason || row.categorizedBy.label
+                                }
+                                data-testid={`rule-badge-${row.id}`}
+                              >
+                                <Icon name="wand-sparkles" className="h-3 w-3" />
+                                {row.categorizedBy.label}
+                              </span>
+                            )}
                             {isTransfer && (
                               <button
                                 type="button"
@@ -770,7 +819,20 @@ const LineTable = ({
         mode={modalMode}
         feedAccounts={accounts}
         defaultAccountId={defaultAccountId}
+        onCreateRule={canManageRules ? handleCreateRule : undefined}
       />
+
+      {ruleDraft && (
+        <RuleEditorModal
+          open
+          onClose={() => setRuleDraft(null)}
+          book={book}
+          rule={ruleDraft}
+          accounts={allAccounts}
+          feedAccounts={ruleFeedAccounts}
+          onSaved={handleRuleSaved}
+        />
+      )}
 
       <Toast
         testId="feed-toast"

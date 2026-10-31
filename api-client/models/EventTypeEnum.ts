@@ -73,6 +73,8 @@
  * * `book_archived` - Set of Books Archived
  * * `book_restored` - Set of Books Restored
  * * `book_deleted` - Set of Books Deleted
+ * * `auto_categorized` - Transactions Categorized Automatically
+ * * `categorization_rule_changed` - Categorization Rule Changed
  * @export
  */
 export const EventTypeEnum = {
@@ -134,7 +136,9 @@ export const EventTypeEnum = {
     BookSettingsChanged: 'book_settings_changed',
     BookArchived: 'book_archived',
     BookRestored: 'book_restored',
-    BookDeleted: 'book_deleted'
+    BookDeleted: 'book_deleted',
+    AutoCategorized: 'auto_categorized',
+    CategorizationRuleChanged: 'categorization_rule_changed'
 } as const;
 export type EventTypeEnum = typeof EventTypeEnum[keyof typeof EventTypeEnum];
 

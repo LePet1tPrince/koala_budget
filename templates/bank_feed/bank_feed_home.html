@@ -2,6 +2,7 @@
 {% load static %}
 {% load django_vite %}
 {% load i18n %}
+{% load categorization_tags %}
 
 {% block app %}
 
@@ -31,6 +32,7 @@
   {{ all_account_groups|json_script:'all-account-groups' }}
   {{ api_urls|json_script:'api-urls' }}
   {{ request.book.base_url|json_script:'book-base' }}
+  {% can_manage_rules_script %}
 {% endblock %}
 
 {% block page_js %}

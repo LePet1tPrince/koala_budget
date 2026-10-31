@@ -17,12 +17,16 @@
  * * `payee` - payee
  * * `description` - description
  * * `similar` - similar
+ * * `rule` - rule
+ * * `ai` - ai
  * @export
  */
 export const MatchTypeEnum = {
     Payee: 'payee',
     Description: 'description',
-    Similar: 'similar'
+    Similar: 'similar',
+    Rule: 'rule',
+    Ai: 'ai'
 } as const;
 export type MatchTypeEnum = typeof MatchTypeEnum[keyof typeof MatchTypeEnum];
 

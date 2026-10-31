@@ -850,6 +850,7 @@ def create_transactions(
     created_count = 0
     skipped_count = 0
     error_count = 0
+    uncategorized_rows = []
 
     try:
         for tx_data in transactions:
@@ -894,6 +895,8 @@ def create_transactions(
             # Auto-categorize if category_id is provided
             if tx_data.get("category_id"):
                 _auto_categorize_transaction(bank_tx, tx_data["category_id"], book)
+            else:
+                uncategorized_rows.append(bank_tx)
     except Exception as e:
         log_event(AuditEvent.CSV_UPLOAD_FAILED, book=book, metadata={"account_id": account_id, "error": str(e)})
         raise
@@ -904,10 +907,18 @@ def create_transactions(
         metadata={"account_id": account_id, "transactions_created": created_count},
     )
 
+    # Rows the wizard left uncategorized go past the book's auto rules
+    # (apps.categorization). Never raises: a rule that can't file a row leaves it
+    # in the Inbox.
+    from apps.categorization.pipeline import TRIGGER_CSV, categorize_on_arrival
+
+    ruled = categorize_on_arrival(book, uncategorized_rows, trigger=TRIGGER_CSV)
+
     return {
         "created_count": created_count,
         "skipped_count": skipped_count,
         "error_count": error_count,
+        "rule_categorized_count": ruled.categorized_count if ruled else 0,
     }
 
 
