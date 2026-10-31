@@ -8,6 +8,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
+from apps.categorization.summary import decision_summary
 from apps.plaid.models import is_foreign_currency
 
 from .models import BankTransaction
@@ -115,14 +116,29 @@ class SimilarCategorySuggestionSerializer(serializers.Serializer):
     transaction_id = serializers.IntegerField(help_text="Bank transaction the suggestion is for")
     category_id = serializers.IntegerField(help_text="Account ID of the suggested category")
     category_name = serializers.CharField(help_text="Name of the suggested category")
-    count = serializers.IntegerField(help_text="How many similar transactions were categorized this way")
+    count = serializers.IntegerField(
+        allow_null=True,
+        help_text="How many similar transactions were categorized this way (null: no history behind it)",
+    )
     match_type = serializers.ChoiceField(
-        choices=["payee", "description", "similar"],
-        help_text="What made the transactions similar: same payee, same description, or similar wording",
+        choices=["payee", "description", "similar", "rule", "ai"],
+        help_text="What made the suggestion: same payee, same description, similar wording, a rule, or an AI",
     )
     payee = serializers.CharField(
         allow_blank=True,
         help_text="Payee the matched transactions share (blank when matched on description alone)",
+    )
+    source = serializers.ChoiceField(
+        choices=["rule", "history", "ai"], required=False, help_text="The kind of provider that suggested it"
+    )
+    provider = serializers.CharField(required=False, help_text="The provider's key")
+    confidence = serializers.FloatField(required=False, help_text="0..1")
+    reason = serializers.CharField(required=False, allow_blank=True, help_text="Why, in one sentence")
+    auto = serializers.BooleanField(required=False, help_text="Whether it would file the row on arrival")
+    rule_id = serializers.IntegerField(required=False, allow_null=True, help_text="The rule behind it, if any")
+    rule_name = serializers.CharField(required=False, allow_blank=True, help_text="The rule's name")
+    decisions = serializers.DictField(
+        required=False, help_text="Decisions beyond the category, e.g. a payee rename: {'payee': 'Blue Bottle'}"
     )
 
 
@@ -206,6 +222,17 @@ class SplitLegSerializer(serializers.Serializer):
         decimal_places=2,
         help_text="Signed share of the transaction total; positive is an outflow",
     )
+
+
+class CategorizedBySerializer(serializers.Serializer):
+    """What filed a row automatically (apps.categorization), while that still stands."""
+
+    source = serializers.ChoiceField(choices=["rule", "history", "ai"], help_text="What kind of provider filed it")
+    label = serializers.CharField(help_text="Badge text: Rule / AI / History")
+    rule_id = serializers.IntegerField(allow_null=True, help_text="The rule, when a rule filed it")
+    rule_name = serializers.CharField(allow_blank=True, help_text="The rule's name")
+    reason = serializers.CharField(allow_blank=True, help_text="Why, in one sentence")
+    confidence = serializers.FloatField(allow_null=True, help_text="The provider's confidence, 0..1")
 
 
 class BankFeedRowSerializer(serializers.Serializer):
@@ -299,6 +326,11 @@ class BankFeedRowSerializer(serializers.Serializer):
     is_split = serializers.BooleanField(help_text="Whether this transaction is split across several categories")
     split_count = serializers.IntegerField(help_text="Number of split legs (0 when not split)")
     splits = SplitLegSerializer(many=True, help_text="The split legs (empty when not split)")
+    categorized_by = CategorizedBySerializer(
+        allow_null=True,
+        required=False,
+        help_text="Set while a rule (or another automatic provider) is what filed this row; null otherwise",
+    )
 
 
 # Adapter Functions
@@ -554,4 +586,5 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "is_split": bool(split_legs),
         "split_count": len(split_legs),
         "splits": split_legs,
+        "categorized_by": decision_summary(tx, category.id if category is not None else None),
     }

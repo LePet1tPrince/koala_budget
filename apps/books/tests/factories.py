@@ -18,6 +18,7 @@ from apps.books.helpers import create_book
 from apps.books.migration_utils import BOOK_MODELS
 from apps.budget.ledger import budget_entry, set_budget, set_goal_allocation
 from apps.budget.models import Goal, GoalAccountLink
+from apps.categorization.models import CategorizationDecision, CategorizationRule
 from apps.journal.models import JournalEntry, JournalLine
 from apps.monthly_review.models import MonthlyReviewState
 from apps.onboarding.models import OnboardingState
@@ -58,6 +59,7 @@ class BookData:
     event: AuditEvent
     ynab_import: YnabImport
     data_import: DataImport
+    rule: CategorizationRule
 
     def object_for(self, kind: str) -> Model:
         return {
@@ -77,6 +79,7 @@ class BookData:
             "plaid_account": self.plaid_account,
             "plaid_transaction": self.plaid_transaction,
             "event": self.event,
+            "rule": self.rule,
         }[kind]
 
 
@@ -173,6 +176,25 @@ def build_book_data(book, marker: str, user=None) -> BookData:
     )
     ynab_import = YnabImport.objects.create(book=book, register_csv=f"reg {marker}", plan_csv=f"plan {marker}")
     data_import = DataImport.objects.create(book=book, created_by=user, archive=b"not a real archive")
+    rule = CategorizationRule.objects.create(
+        book=book,
+        name=f"Groceries rule {marker}",
+        payee_match="contains",
+        payee_value=f"Mystery {marker}",
+        description_match="contains",
+        description_value="Mystery charge",
+        category=groceries,
+    )
+    CategorizationDecision.objects.create(
+        book=book,
+        bank_transaction=categorized_tx,
+        journal_entry=entry,
+        category=groceries,
+        source="rule",
+        provider="rules",
+        rule=rule,
+        reason=f"Matches your rule {marker}",
+    )
 
     return BookData(
         book=book,
@@ -201,6 +223,7 @@ def build_book_data(book, marker: str, user=None) -> BookData:
         event=event,
         ynab_import=ynab_import,
         data_import=data_import,
+        rule=rule,
     )
 
 
