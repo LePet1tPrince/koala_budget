@@ -120,8 +120,11 @@ class JournalEntry(BaseBookModel):
 
     @classmethod
     def from_db(cls, db, field_names, values):
+        from .services.period_lock import ENTRY_FIELDS, snapshot
+
         instance = super().from_db(db, field_names, values)
         instance._loaded_status = instance.__dict__.get("status")
+        instance._loaded_lock_state = snapshot(instance, ENTRY_FIELDS)
         return instance
 
     def save(self, *args, **kwargs):
@@ -132,6 +135,11 @@ class JournalEntry(BaseBookModel):
         `QuerySet.update()`, which skips `BankTransaction.save()` -- the rows are
         being brought in line with this entry, which is what that save would do.
         """
+        from .services.period_lock import ENTRY_FIELDS, check_entry_save, snapshot
+
+        # The closed-period backstop (`period_lock`): the write paths ask first,
+        # with a better message; this catches one that didn't.
+        check_entry_save(self)
         # A new entry has no rows yet. An instance not read from the database
         # (no `_loaded_status`) may have changed status unseen, so it syncs too.
         adding = self._state.adding
@@ -139,12 +147,19 @@ class JournalEntry(BaseBookModel):
         changed = not known or (self._loaded_status == self.STATUS_VOID) != (self.status == self.STATUS_VOID)
         super().save(*args, **kwargs)
         self._loaded_status = self.status
+        self._loaded_lock_state = snapshot(self, ENTRY_FIELDS)
         if not adding and changed:
             voided = self.status == self.STATUS_VOID
             bank_transaction = apps.get_model("bank_feed", "BankTransaction")
             bank_transaction.objects.filter(journal_entry=self).exclude(is_void=voided).update(
                 is_void=voided, voided_at=timezone.now() if voided else None
             )
+
+    def delete(self, *args, **kwargs):
+        from .services.period_lock import check_entry_delete
+
+        check_entry_delete(self)
+        return super().delete(*args, **kwargs)
 
     def get_absolute_url(self):
         return reverse("journal:journalentry_detail", args=[*self.book.url_args, self.pk])
@@ -258,6 +273,14 @@ class JournalLine(BaseBookModel):
 
     objects = JournalLineQuerySet.as_manager()
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        from .services.period_lock import LINE_FIELDS, snapshot
+
+        instance = super().from_db(db, field_names, values)
+        instance._loaded_lock_state = snapshot(instance, LINE_FIELDS)
+        return instance
+
     class Meta:
         ## No date_posted field in journal_line. That's in journal_entry. Can we incorporate that?
         # indexes = [
@@ -298,8 +321,20 @@ class JournalLine(BaseBookModel):
         """
         from apps.accounts.guards import assert_budget_entry_rules
 
+        from .services.period_lock import LINE_FIELDS, check_line_save, snapshot
+
         assert_budget_entry_rules(self.journal_entry.source == JournalEntry.SOURCE_BUDGET, [self.account])
+        # The closed-period backstop: a line's account and amount don't change
+        # there; its reconciliation flags may.
+        check_line_save(self)
         super().save(*args, **kwargs)
+        self._loaded_lock_state = snapshot(self, LINE_FIELDS)
+
+    def delete(self, *args, **kwargs):
+        from .services.period_lock import check_line_delete
+
+        check_line_delete(self)
+        return super().delete(*args, **kwargs)
 
     @property
     def amount(self):
