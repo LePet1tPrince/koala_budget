@@ -334,9 +334,50 @@ files a row records `source="ai"`, its `reason` and `confidence` on the
 decision, a feed-table **AI** badge, and an `AUTO_CATEGORIZED` audit event
 with `source: "ai"`.
 
-**Do not** touch `apps/ai` or `apps/chat` for this (their future is decided
-separately); the provider may *call into* a client you build, but the seam is
-this one class.
+**There is no other LLM code.** `apps/ai` and `apps/chat` (the Pegasus demo
+chat) were removed, with `litellm`, `openai` and `pydantic-ai`; the provider
+brings its own client, and the seam is this one class.
+
+**Decided: provider, model, output, consent.**
+
+- **Provider: Anthropic, through the official `anthropic` Python SDK**
+  (`uv add anthropic`; key in `ANTHROPIC_API_KEY`, never in code). No
+  OpenAI-compatible shim and no wrapper library: the SDK already retries 429s
+  and 5xx, and raises typed errors (`anthropic.RateLimitError`,
+  `anthropic.APIStatusError`, `anthropic.APIConnectionError`), which `suggest()`
+  catches and turns into "no suggestions" — the pipeline already survives a
+  provider raising, but a failed call should not log a traceback per card.
+- **Model: `claude-opus-5-5`** ($4 / $20 per million input / output tokens),
+  with `output_config={"effort": "low"}`. This is a classification call, so
+  low effort is the right starting level (Opus 5.5 defaults to `medium` — set
+  it explicitly). Opus 5.5 always thinks: do not send
+  `thinking={"type": "disabled"}`, which it rejects with a 400. Cheaper options exist
+  (`claude-sonnet-5-5` $2 / $10, `claude-haiku-5-5` $0.10 / $0.50); switching is
+  a one-line model change, but measure it against a labelled sample of the
+  book's own history first (the categorized rows are free ground truth) rather
+  than switching on price alone.
+- **Structured output, not free text.** Use `client.messages.parse()` with a
+  Pydantic schema (one item per row: `row_id`, `category_id` or null,
+  `confidence`, `reason`), or `output_config={"format": …}` on
+  `messages.create()` — never parse JSON out of prose, and do not use forced
+  `tool_choice` (it is a 400 on this model). Re-check every `category_id`
+  against `context.allowed_category_ids` regardless; the pipeline drops
+  anything else.
+- **Prompt shape.** One request per batch (≤ 50 rows). Put the book's category
+  list (id, name, group, type) in the system prompt and mark it
+  `cache_control={"type": "ephemeral"}` — it is the stable, large part and is
+  identical across a book's calls (it only caches once the prefix passes the model's minimum cacheable length, so a small chart may not cache); put the rows in the user message. Keep the
+  cached prefix byte-stable (sorted categories, no timestamps). Check
+  `response.stop_reason` before reading content (`refusal`, `max_tokens`).
+- **Consent: a per-book opt-in, off by default.** Sending a transaction's
+  description, payee and amount to a third party is a data-sharing decision the
+  book's admin makes, not a default. Add a `Book` setting (e.g.
+  `ai_categorization`, book General settings page, admin-only, logged in
+  `BOOK_SETTINGS_CHANGED`) that gates whether `AIProvider.suggest()` sends
+  anything at all — off means it returns `{}` without a network call. Auto-filing
+  stays a *second*, separate opt-in behind `book_allows_auto`. Add a sentence to
+  the privacy policy (`templates/web/privacy.html`) naming Anthropic as the
+  processor before the setting ships.
 
 **How to test it.** `apps/categorization/tests/doubles.py::FakeAIProvider`
 returns canned suggestions and records what it was asked. Override the setting:

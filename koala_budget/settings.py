@@ -93,8 +93,6 @@ PROJECT_APPS = [
     "apps.web",
     "apps.teams.apps.TeamConfig",
     "apps.books.apps.BooksConfig",
-    "apps.chat",
-    "apps.ai.apps.AiConfig",
     "apps.budget.apps.BudgetConfig",
     "apps.accounts.apps.AccountsConfig",
     "apps.journal.apps.JournalConfig",
@@ -638,25 +636,6 @@ import hashlib  # noqa: E402
 
 _default_key = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest())
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default=_default_key.decode())
-
-
-# AI Chat Setup
-OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
-# LiteLLM models
-# See:
-# * https://docs.litellm.ai/docs/providers
-# * https://docs.litellm.ai/docs/set_keys#litellm-variables
-LLM_MODELS = {
-    "gpt-5-nano": {"api_key": env("OPENAI_API_KEY", default="")},
-    "gpt-4o": {"api_key": env("OPENAI_API_KEY", default="")},
-    "claude-sonnet-4-5-20250929": {"api_key": env("ANTHROPIC_API_KEY", default="")},
-    "ollama_chat/llama3": {"api_base": env("OLLAMA_API_BASE", default="http://localhost:11434")},
-}
-DEFAULT_LLM_MODEL = env("DEFAULT_LLM_MODEL", default="gpt-4o")
-# see: https://ai.pydantic.dev/models/overview/ for model options
-DEFAULT_AGENT_MODEL = env("DEFAULT_AGENT_MODEL", default="openai:gpt-4o")
-if DEFAULT_LLM_MODEL not in LLM_MODELS:
-    raise ValueError(f"DEFAULT_LLM_MODEL {DEFAULT_LLM_MODEL} not found in LLM_MODELS")
 
 
 # Sentry setup

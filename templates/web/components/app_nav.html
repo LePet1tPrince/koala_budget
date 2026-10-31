@@ -16,13 +16,6 @@
     <div class="flex flex-col gap-0.5">
       {% include 'web/components/app_nav_menu_items.html' %}
     </div>
-    <div class="mt-4">
-      <a href="{% url 'chat:chat_home' %}"
-         class="side-link border border-base-300 bg-base-200/60 {% if active_tab == 'ai-chat' %}side-link-active{% endif %}">
-        {% icon "wand-magic-sparkles" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Ask Koala" %}
-      </a>
-    </div>
   </nav>
 
   {# User menu: account actions + theme, out of the nav list #}

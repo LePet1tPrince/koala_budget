@@ -23,8 +23,7 @@ the user will read. Leave `auto` False -- whether an AI suggestion may ever
 file a row is `policy.may_auto_apply`'s call (off until a per-book setting
 says otherwise), not the provider's.
 
-Do not import from `apps.ai` / `apps.chat` here without checking where those
-apps are headed; build the model client this needs alongside it.
+The model client this needs is built alongside it; the app has no other LLM code.
 """
 
 from ..models import SOURCE_AI
