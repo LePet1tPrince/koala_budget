@@ -23,7 +23,7 @@ from apps.journal.models import JournalEntry, JournalLine
 
 from ..models import BankTransaction, TransferMatchDismissal
 from .categorize import categorize_single
-from .transfer_detection import get_window_days
+from .transfer_detection import find_transfer_candidates, get_window_days
 
 # Higher wins a tie between two otherwise equal legs: a live bank connection is
 # the most authoritative copy, a file import next, a hand-entered row last.
@@ -189,6 +189,20 @@ def propose_pairs(pairs):
     for pair in pairs:
         pair["proposal"] = propose(pair["outflow"], pair["inflow"], lines_by_entry).as_dict()
     return pairs
+
+
+def suggestions(book, account_id=None):
+    """
+    The book's likely-duplicate transfer pairs, each with its `proposal`.
+
+    With `account_id`, only pairs with a leg in that account -- filtered after the
+    book-wide pass: pairing is greedy, so filtering first could pair a leg with a
+    different counterpart than the other feed shows.
+    """
+    candidates = find_transfer_candidates(book)
+    if account_id is not None:
+        candidates = [p for p in candidates if account_id in (p["outflow"].account_id, p["inflow"].account_id)]
+    return propose_pairs(candidates)
 
 
 def validate_pair(a, b, book):

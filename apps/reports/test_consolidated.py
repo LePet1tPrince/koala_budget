@@ -293,7 +293,7 @@ class BudgetPageProgressBarTest(PlanFixture):
         self.assertEqual((salary["width"], salary["income"], salary["over"]), (83, True, False))
 
     def test_unbudgeted_category_shows_no_percentage(self):
-        from apps.budget.views import _meter
+        from apps.budget.figures import meter as _meter
 
         meter = _meter("expense", Decimal("0"), Decimal("40"), Decimal("-40"))
         self.assertEqual((meter["label"], meter["width"], meter["over"]), ("—", 100, True))

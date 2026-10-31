@@ -7,7 +7,7 @@ from the ledger, so correcting an old transaction corrects every review that
 touches it.
 
 Returns rich Python objects (Decimal amounts, Account/Goal instances), same as
-`apps.budget.views._budget_figures`. Serializing to JSON-safe types for the
+`apps.budget.figures.budget_figures`. Serializing to JSON-safe types for the
 page's `json_script` payload is the view's job, not this one's.
 """
 

@@ -304,3 +304,53 @@ def suggest_categories(book, transactions, limit=DEFAULT_LIMIT):
         if suggestions:
             results[transaction.id] = suggestions
     return results
+
+
+def suggestion_rows(book, ids, limit=DEFAULT_LIMIT):
+    """
+    `suggest_categories` for the rows `ids` as one flat list, each item carrying
+    its `transaction_id`, in the order the ids were asked for -- so a client can
+    pair responses up without re-sorting.
+    """
+    by_transaction = suggest_categories(book, BankTransaction.objects.filter(book=book, id__in=ids), limit=limit)
+    return [
+        {"transaction_id": transaction_id, **suggestion}
+        for transaction_id in ids
+        for suggestion in by_transaction.get(transaction_id, ())
+    ]
+
+
+#: How far back `latest_category_by_merchant` looks.
+MERCHANT_HISTORY_LIMIT = 1000
+
+
+def latest_category_by_merchant(book):
+    """
+    The category each merchant was last given, newest first: `[{merchant_name,
+    category_id, category_name}]`. The edit modals' pre-fill -- simpler than
+    `suggest_categories`, which explains itself and is what categorize mode uses.
+    """
+    transactions = (
+        BankTransaction.objects.filter(book=book, journal_entry__isnull=False)
+        .exclude(merchant_name__isnull=True)
+        .exclude(merchant_name="")
+        .select_related("account")
+        .prefetch_related("journal_entry__lines__account")
+        .order_by("-posted_date", "-created_at")[:MERCHANT_HISTORY_LIMIT]
+    )
+
+    suggestions = {}
+    for tx in transactions:
+        if tx.merchant_name in suggestions:
+            continue  # already have a more recent categorization
+        category_line = next(
+            (line for line in tx.journal_entry.lines.all() if line.account_id != tx.account_id),
+            None,
+        )
+        if category_line:
+            suggestions[tx.merchant_name] = {
+                "merchant_name": tx.merchant_name,
+                "category_id": category_line.account_id,
+                "category_name": category_line.account.name,
+            }
+    return list(suggestions.values())

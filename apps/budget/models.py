@@ -117,6 +117,14 @@ class GoalQuerySet(models.QuerySet):
     def closed(self):
         return self.filter(closed_at__isnull=False)
 
+    def finished(self):
+        """
+        Closed or archived: what the goals page's Closed filter lists. An archived
+        goal is finished with even when it was archived before archiving closed
+        goals, and so has no `closed_at`.
+        """
+        return self.filter(models.Q(closed_at__isnull=False) | models.Q(is_archived=True))
+
     def with_progress(self, month=None):
         """
         Annotate each goal with its three numbers as of the end of `month`

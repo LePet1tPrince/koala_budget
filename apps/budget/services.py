@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, ngettext
@@ -353,11 +353,7 @@ class GoalService:
         """
         qs = Goal.objects.filter(book=self.book)
         if closed is True:
-            return (
-                qs.filter(Q(closed_at__isnull=False) | Q(is_archived=True))
-                .with_progress(month)
-                .select_related("account")
-            )
+            return qs.finished().with_progress(month).select_related("account")
         if not include_archived:
             qs = qs.filter(is_archived=False)
         if closed is not None:
@@ -550,6 +546,21 @@ class GoalService:
         if account is not None:
             account.delete()
         return summary
+
+    @transaction.atomic
+    def archive(self, goal, month):
+        """
+        Archive (hide) a goal. An open goal is closed first, which releases anything
+        left in it -- a hidden goal must not keep holding money. Returns the close's
+        result, or None when the goal was already closed. Raises `GoalCloseError`.
+        """
+        result = None
+        if not goal.is_closed:
+            result = self.close(goal, month)
+            goal.refresh_from_db()
+        goal.is_archived = True
+        goal.save()
+        return result
 
     @transaction.atomic
     def close(self, goal, month, cover=False):

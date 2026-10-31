@@ -23,9 +23,9 @@ from apps.users.models import CustomUser
 from . import goal_links
 from . import ledger as budget_ledger
 from .forms import GoalForm
+from .goal_cards import goal_card_progress as _goal_card_progress
 from .models import Goal, GoalAccountLink
 from .services import PLAN_BEHIND, PLAN_ON_TRACK, GoalAllocationError, GoalService, goal_plan
-from .views import _goal_card_progress
 
 AUG = date(2026, 8, 1)
 SEPT = date(2026, 9, 1)

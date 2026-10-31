@@ -119,3 +119,22 @@ def evaluate_amount(value):
     except InvalidOperation:  # more digits than the context can hold
         return None
     return result + 0  # normalizes -0.00 to 0.00
+
+
+def json_amount(value, *, limit):
+    """
+    An amount sent as JSON data -- a number or a numeric string -- as a ``Decimal``
+    rounded half-up to cents, or None when it isn't a finite number within
+    ``±limit``.
+
+    Stricter than ``evaluate_amount``: no formulas, symbols or accounting
+    negatives. The page's JavaScript has already turned whatever was typed into
+    a plain number, so anything else in a JSON body is a malformed request.
+    """
+    try:
+        amount = Decimal(str(value)).quantize(CENT, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not amount.is_finite() or abs(amount) > limit:
+        return None
+    return amount
