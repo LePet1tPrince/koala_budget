@@ -8,6 +8,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
+from apps.categorization.models import SOURCE_CHOICES as CATEGORIZATION_SOURCES
 from apps.categorization.summary import decision_summary
 from apps.plaid.models import is_foreign_currency
 
@@ -129,7 +130,7 @@ class SimilarCategorySuggestionSerializer(serializers.Serializer):
         help_text="Payee the matched transactions share (blank when matched on description alone)",
     )
     source = serializers.ChoiceField(
-        choices=["rule", "history", "ai"], required=False, help_text="The kind of provider that suggested it"
+        choices=CATEGORIZATION_SOURCES, required=False, help_text="The kind of provider that suggested it"
     )
     provider = serializers.CharField(required=False, help_text="The provider's key")
     confidence = serializers.FloatField(required=False, help_text="0..1")
@@ -227,7 +228,7 @@ class SplitLegSerializer(serializers.Serializer):
 class CategorizedBySerializer(serializers.Serializer):
     """What filed a row automatically (apps.categorization), while that still stands."""
 
-    source = serializers.ChoiceField(choices=["rule", "history", "ai"], help_text="What kind of provider filed it")
+    source = serializers.ChoiceField(choices=CATEGORIZATION_SOURCES, help_text="What kind of provider filed it")
     label = serializers.CharField(help_text="Badge text: Rule / AI / History")
     rule_id = serializers.IntegerField(allow_null=True, help_text="The rule, when a rule filed it")
     rule_name = serializers.CharField(allow_blank=True, help_text="The rule's name")
@@ -496,6 +497,9 @@ class UploadConfirmResponseSerializer(serializers.Serializer):
     created_count = serializers.IntegerField(help_text="Number of transactions created")
     skipped_count = serializers.IntegerField(help_text="Number of transactions skipped")
     error_count = serializers.IntegerField(help_text="Number of transactions with errors")
+    rule_categorized_count = serializers.IntegerField(
+        required=False, default=0, help_text="Of those created, how many your auto rules categorized"
+    )
 
 
 def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:

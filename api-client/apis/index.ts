@@ -3,6 +3,7 @@
 export * from './AApi';
 export * from './AuditApi';
 export * from './BankFeedApi';
+export * from './CategorizationApi';
 export * from './JournalApi';
 export * from './PlaidApi';
 export * from './ReconciliationApi';

@@ -453,6 +453,16 @@ SPECTACULAR_SETTINGS = {
     "PREPROCESSING_HOOKS": [
         "apps.api.schema.filter_schema_apis",
     ],
+    # apps.categorization: one name per choice set, so the generated client
+    # doesn't invent "Source9e2Enum" for a provider's source.
+    "ENUM_NAME_OVERRIDES": {
+        "CategorizationSourceEnum": "apps.categorization.models.SOURCE_CHOICES",
+        "RuleMatchEnum": "apps.categorization.models.MATCH_CHOICES",
+    },
+    # A rule's "any" match is the blank choice. Split out as a separate BlankEnum
+    # (the default) it becomes a oneOf the typescript-fetch generator can't
+    # serialize; kept inside the enum it is just one more value.
+    "ENUM_ADD_EXPLICIT_BLANK_NULL_CHOICE": False,
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
     },

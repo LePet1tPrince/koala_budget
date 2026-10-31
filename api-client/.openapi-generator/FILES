@@ -2,6 +2,7 @@
 apis/AApi.ts
 apis/AuditApi.ts
 apis/BankFeedApi.ts
+apis/CategorizationApi.ts
 apis/JournalApi.ts
 apis/PlaidApi.ts
 apis/ReconciliationApi.ts
@@ -17,8 +18,12 @@ models/AuditLog.ts
 models/BankFeedRow.ts
 models/BankFeedRowSourceEnum.ts
 models/BatchIds.ts
+models/CategorizationRule.ts
+models/CategorizationSourceEnum.ts
 models/CategorizeTransactionsRequest.ts
+models/CategorizedBy.ts
 models/CategorySuggestion.ts
+models/DirectionEnum.ts
 models/EventTypeEnum.ts
 models/ExchangePublicTokenRequest.ts
 models/ExchangePublicTokenResponse.ts
@@ -34,6 +39,7 @@ models/LinkTokenResponse.ts
 models/ManualTransaction.ts
 models/MatchTypeEnum.ts
 models/Membership.ts
+models/ModeEnum.ts
 models/OpenInvitation.ts
 models/PaginatedAccountGroupList.ts
 models/PaginatedAuditEventList.ts
@@ -51,6 +57,7 @@ models/PaginatedTransactionRowList.ts
 models/ParsedTransaction.ts
 models/PatchedBankFeedRow.ts
 models/PatchedBatchEditRequest.ts
+models/PatchedCategorizationRule.ts
 models/PatchedInvitation.ts
 models/PatchedJournalEntry.ts
 models/PatchedPlaidAccount.ts
@@ -70,6 +77,11 @@ models/ReconciliationStart.ts
 models/ReconciliationTick.ts
 models/ReconciliationTickThrough.ts
 models/RoleEnum.ts
+models/RuleApplyResult.ts
+models/RuleMatchEnum.ts
+models/RulePreview.ts
+models/RulePreviewRow.ts
+models/RuleReorder.ts
 models/SimilarCategorySuggestion.ts
 models/SimpleAccount.ts
 models/SimpleLine.ts
