@@ -115,7 +115,11 @@ class BankTransaction(BaseBookModel):
         verbose_name_plural = "Bank Transactions"
         indexes = [
             models.Index(fields=["journal_entry"]),
-            models.Index(fields=["posted_date"]),
+            # The Inbox's default order within one book (`feed_query.DEFAULT_ORDER`),
+            # so a page is an index range scan with no sort. It replaces a bare
+            # `posted_date` index, which no query needs across books: with it, a
+            # page could walk every book's rows by date and filter to this one.
+            models.Index(fields=["book", "-posted_date", "-created_at", "-id"], name="bank_tx_book_feed_order"),
             models.Index(fields=["source"]),
         ]
 
