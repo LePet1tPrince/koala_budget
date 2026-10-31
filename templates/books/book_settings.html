@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load form_tags %}
 {% load currency_tags %}
+{% load django_vite %}
 {% block settings_content %}
   <form method="post" class="app-card space-y-6" data-testid="book-settings-form">
     {% csrf_token %}
@@ -71,8 +72,19 @@
       {% render_select_input form.report_timeframe %}
     </section>
 
+    <section class="space-y-2 border-t border-base-300 pt-6" aria-labelledby="book-lock-heading">
+      <h3 id="book-lock-heading" class="font-semibold">{% translate "Closed period" %}</h3>
+      {% render_text_input form.locked_through %}
+    </section>
+
     <div class="border-t border-base-300 pt-4">
       <button type="submit" class="btn btn-primary" data-testid="book-settings-save">{% translate "Save" %}</button>
     </div>
   </form>
+{% endblock %}
+
+{% block page_js %}
+  {{ block.super }}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/common/date-field-mount.jsx' %}
 {% endblock %}
