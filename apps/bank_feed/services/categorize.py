@@ -4,15 +4,14 @@ Give a feed transaction a single category.
 The one write path for "this bank transaction is <category>": create its journal
 entry the first time, re-point its category line after that, and keep a transfer's
 mirror leg in step either way. Used by the feed's categorize and batch-edit
-endpoints and by transfer matching.
+endpoints, CSV import and transfer matching. The lines themselves are written by
+`apps.journal.services.lines.write_lines`, like every other transaction's.
 """
-
-from decimal import Decimal
 
 from django.db import transaction
 
-from apps.journal.models import JournalEntry, JournalLine
-from apps.reconciliation.services.guards import assert_line_mutable
+from apps.journal.models import JournalEntry
+from apps.journal.services.lines import signed_amount, write_lines
 
 from ..models import VOID_ROW_MESSAGE, VoidRowError
 from .splits import SplitError, is_split
@@ -51,16 +50,16 @@ def create_entry(bank_tx, category_account):
         status=JournalEntry.STATUS_POSTED,
     )
 
-    # Plaid convention: positive = outflow, negative = inflow. Money in debits the
+    # One leg carrying the whole amount. The writer puts the bank line on the
+    # opposite side (Plaid convention: positive = outflow), so money in debits the
     # bank account and credits the category; money out is the reverse.
-    amount = abs(bank_tx.amount)
-    zero = Decimal("0")
-    bank_dr, bank_cr = (amount, zero) if bank_tx.amount < 0 else (zero, amount)
-    JournalLine.objects.create(
-        journal_entry=journal_entry, book=book, account_id=bank_tx.account_id, dr_amount=bank_dr, cr_amount=bank_cr
-    )
-    JournalLine.objects.create(
-        journal_entry=journal_entry, book=book, account=category_account, dr_amount=bank_cr, cr_amount=bank_dr
+    write_lines(
+        journal_entry,
+        bank_tx.account_id,
+        [(category_account, bank_tx.amount)],
+        total=bank_tx.amount,
+        book=book,
+        lines=[],
     )
 
     bank_tx.journal_entry = journal_entry
@@ -89,13 +88,23 @@ def repoint_category(bank_tx, category_account):
     if is_split(bank_tx.journal_entry):
         raise SplitError("This is a split transaction. Open it to edit its categories, or remove the split first.")
 
-    for line in bank_tx.journal_entry.lines.all():
-        if line.account_id != bank_tx.account_id:
-            # On a transfer this line is the other feed's bank line.
-            assert_line_mutable(line, new_account=category_account, own=False)
-            line.account = category_account
-            line.save()
-            break
+    # On a transfer the category line is the other feed's bank line, so it is
+    # re-pointed in place (`repoint=True`) rather than replaced: it keeps that
+    # feed's flags, and the writer refuses to move it if it is reconciled.
+    entry = bank_tx.journal_entry
+    lines = list(entry.lines.all())
+    category_line = next((line for line in lines if line.account_id != bank_tx.account_id), None)
+    if category_line is not None:
+        amount = signed_amount(category_line)
+        write_lines(
+            entry,
+            bank_tx.account_id,
+            [(category_account, amount)],
+            total=amount,
+            book=bank_tx.book_id,
+            repoint=True,
+            lines=lines,
+        )
 
     # The category drives whether this is a transfer: add/move/remove the
     # counterpart leg (and move the primary if the mirror was re-pointed).

@@ -23,6 +23,7 @@ from django.utils.translation import gettext as _
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EQUITY, ACCOUNT_TYPE_LIABILITY, Account
 from apps.journal.models import JournalEntry, JournalLine, counted_entries
+from apps.journal.services.lines import write_lines
 
 OPENING_DESCRIPTION = _("Opening balance")
 
@@ -150,20 +151,12 @@ def create_opening_balances(book, rows: list[OpeningRow], as_of: date) -> list[J
             status=JournalEntry.STATUS_POSTED,
         )
 
-        JournalLine.objects.create(
-            book=book,
-            journal_entry=entry,
-            account=row.account,
-            dr_amount=amount if is_asset else Decimal("0"),
-            cr_amount=Decimal("0") if is_asset else amount,
-        )
-        JournalLine.objects.create(
-            book=book,
-            journal_entry=entry,
-            account=offset,
-            dr_amount=Decimal("0") if is_asset else amount,
-            cr_amount=amount if is_asset else Decimal("0"),
-        )
+        # One leg on the equity offset. In the writer's signed convention (positive
+        # is money out of the home account) an asset's opening balance is money
+        # in, so its total is negative and the asset is debited; a liability's
+        # is credited.
+        total = -amount if is_asset else amount
+        write_lines(entry, row.account, [(offset, total)], total=total, book=book)
 
         entries.append(entry)
 

@@ -45,6 +45,7 @@ from .serializers import (
     TransactionStatusRequestSerializer,
 )
 from .services import voiding
+from .services.lines import repoint_line
 from .services.sides import UnsupportedEntry
 from .services.simple_edit import (
     EditRefused,
@@ -313,8 +314,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         except ReconciledLineError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        line.account = new_category
-        line.save()
+        repoint_line(line, new_category)
 
         # Moving the category side onto another feed account turns the entry into a
         # transfer, which the bank feed shows in both accounts via a mirror leg.

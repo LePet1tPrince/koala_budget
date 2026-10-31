@@ -914,69 +914,17 @@ def create_transactions(
 def _auto_categorize_transaction(bank_tx, category_id: int, book):
     """
     Auto-categorize a bank transaction by creating a journal entry.
-    Reuses the logic from BankFeedViewSet._create_journal_from_bank_transaction.
+
+    The same write as categorizing it in the feed (`categorize.create_entry`), so
+    the entry, its lines and any transfer mirror come out identical.
     """
     from apps.accounts.models import Account
-    from apps.journal.models import JournalEntry, JournalLine
+
+    from .categorize import create_entry
 
     try:
         category_account = Account.objects.exclude_budget_buckets().get(id=category_id, book=book)
     except Account.DoesNotExist:
         return  # Skip if the category doesn't exist (or is a budget bucket)
 
-    # Create journal entry
-    journal_entry = JournalEntry.objects.create(
-        book=book,
-        entry_date=bank_tx.posted_date,
-        description=bank_tx.description,
-        source=bank_tx.journal_source,
-        status=JournalEntry.STATUS_POSTED,
-    )
-
-    # Calculate amounts (Plaid convention: positive = outflow, negative = inflow)
-    amount = abs(bank_tx.amount)
-    is_inflow = bank_tx.amount < 0
-
-    # Create journal lines
-    if is_inflow:
-        # Money coming in: debit bank account, credit category
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            book=book,
-            account=bank_tx.account,
-            dr_amount=amount,
-            cr_amount=Decimal("0"),
-        )
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            book=book,
-            account=category_account,
-            dr_amount=Decimal("0"),
-            cr_amount=amount,
-        )
-    else:
-        # Money going out: credit bank account, debit category
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            book=book,
-            account=bank_tx.account,
-            dr_amount=Decimal("0"),
-            cr_amount=amount,
-        )
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            book=book,
-            account=category_account,
-            dr_amount=amount,
-            cr_amount=Decimal("0"),
-        )
-
-    # Link the bank transaction to the journal entry
-    bank_tx.journal_entry = journal_entry
-    bank_tx.save()
-
-    # If this is a transfer to another feed account, surface the counterpart leg
-    # in that account's feed (same path the in-feed categorize endpoints use).
-    from .transfer_mirror import sync_transfer
-
-    sync_transfer(bank_tx)
+    create_entry(bank_tx, category_account)

@@ -16,22 +16,35 @@ which balances for any mix of signs, including a refund leg inside an outflow
 (+100, -20 against a total of +80) and a gross paycheque with deductions
 (-4000, +800, +200 against a total of -3000).
 
-Everything that writes a transaction's journal lines goes through `write_lines`,
-so the balance invariant is enforced in one place instead of at each call site --
-which is what the previous per-call-site arithmetic got wrong. `apply_splits` is
-that function with a feed row's account filled in; the Transactions page calls
-`write_lines` directly, since a manually-entered transaction has no feed row.
+Everything that writes a transaction's journal lines goes through
+`apps.journal.services.lines.write_lines`, so the balance invariant is enforced in
+one place instead of at each call site -- which is what the previous per-call-site
+arithmetic got wrong. `apply_splits` is that function with a feed row's account
+filled in. `write_lines`, `check_legs_total`, `signed_amount` and `SplitError` are
+re-exported here, where they used to live, so existing imports keep working.
 """
 
 from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.guards import SystemCategoryError, assert_category_allowed
 from apps.accounts.models import Account
-from apps.journal.models import JournalLine
-from apps.reconciliation.services.guards import assert_line_mutable, assert_line_removable
+from apps.journal.services.lines import CENT, SplitError, check_legs_total, signed_amount, write_lines
+
+__all__ = [
+    "CENT",
+    "MAX_LEGS",
+    "MIN_LEGS",
+    "SplitError",
+    "apply_splits",
+    "check_legs_total",
+    "is_split",
+    "parse_legs",
+    "signed_amount",
+    "split_legs",
+    "write_lines",
+]
 
 #: A split with one leg is a plain transaction; offer "remove split" instead.
 MIN_LEGS = 2
@@ -39,28 +52,12 @@ MIN_LEGS = 2
 #: Not a product limit -- an abuse ceiling, comfortably above any real receipt.
 MAX_LEGS = 20
 
-CENT = Decimal("0.01")
-
-
-class SplitError(ValueError):
-    """
-    A split the caller asked for that cannot be written.
-
-    The message is shown to the user, so it says what to do about it. Subclasses
-    ValueError because `categorize` already turns a ValueError into a 400.
-    """
-
 
 def is_split(entry) -> bool:
     """True when this entry apportions one transaction across several categories."""
     if entry is None:
         return False
     return entry.lines.count() > 2
-
-
-def signed_amount(line) -> Decimal:
-    """A line's amount in the feed's signed convention: debit positive, credit negative."""
-    return line.dr_amount - line.cr_amount
 
 
 def split_legs(entry, bank_account):
@@ -123,108 +120,13 @@ def parse_legs(raw, keep_ids=()) -> list[tuple[Account, Decimal]]:
     return legs
 
 
-def check_legs_total(legs, *, total):
-    """
-    Raise unless the legs add up to the transaction total, to the cent.
-
-    Separate from `apply_splits` so a view can reject a mismatch *before* it
-    opens a transaction, and still report it in the same words.
-    """
-    leg_total = sum((amount for _, amount in legs), Decimal("0"))
-    if leg_total != total:
-        raise SplitError(
-            _("Splits must add up to the transaction total. They add up to %(legs)s, but the transaction is %(total)s.")
-            % {"legs": leg_total, "total": total}
-        )
-
-
-@transaction.atomic
-def write_lines(entry, home_account, legs, *, total, book):
-    """
-    Write `legs` as the category lines of `entry`, against `home_account`.
-
-    The home line -- the one on the account the money sat in -- is updated in
-    place, never recreated: it carries is_reconciled / is_cleared,
-    and recreating it would silently unreconcile a transaction the user has
-    already confirmed against a statement.
-
-    `total` is signed, positive for an outflow. Raises SplitError when the legs
-    do not sum to it -- the total is a fact about the transaction, so a mismatch
-    is a caller bug and must not reach the ledger.
-
-    Split out of `apply_splits` so the Transactions page can write the same lines
-    for an entry that has no `BankTransaction` at all. Everything that writes a
-    transaction's journal lines still goes through one function, which is what
-    keeps the balance invariant and the sign convention in one place rather than
-    at each call site.
-    """
-    check_legs_total(legs, total=total)
-
-    if entry is None:
-        raise SplitError(_("This transaction has no journal entry to split."))
-
-    home_account_id = getattr(home_account, "id", home_account)
-    existing = list(entry.lines.all())
-    home_lines = [line for line in existing if line.account_id == home_account_id]
-    if len(home_lines) != 1:
-        # Not a shape this function can safely rewrite: bail rather than guess
-        # which line is the home account's and risk rewriting the wrong one.
-        raise SplitError(_("This transaction's ledger entry cannot be split automatically."))
-    home_line = home_lines[0]
-
-    # Match each leg to an existing category line on the same account (same
-    # amount first), so an unchanged leg is left exactly as it is. That matters
-    # for a transfer: its "category" line is the *other* feed's bank line, which
-    # carries that feed's reconciliation -- deleting and recreating it silently
-    # unreconciled the other side of every transfer edited from this one.
-    remaining = [line for line in existing if line.id != home_line.id]
-    plan = []
-    for account, amount in legs:
-        match = next(
-            (line for line in remaining if line.account_id == account.id and signed_amount(line) == amount), None
-        ) or next((line for line in remaining if line.account_id == account.id), None)
-        if match is not None:
-            remaining.remove(match)
-        plan.append((match, account, amount))
-
-    # Refuse before writing anything: a reconciled line may be neither dropped
-    # nor re-amounted.
-    for line in remaining:
-        assert_line_removable(line, own=False, verb=_("changing its category"))
-    for match, _account, amount in plan:
-        if match is not None:
-            assert_line_mutable(match, new_amount=amount, own=False)
-
-    # The home line takes the opposite side of the total.
-    home_line.dr_amount = -total if total < 0 else Decimal("0")
-    home_line.cr_amount = total if total > 0 else Decimal("0")
-    # Re-point at the caller's entry object, rather than the stale one the line's
-    # own FK cache is holding.
-    home_line.journal_entry = entry
-    home_line.save()
-
-    for line in remaining:
-        line.delete()
-
-    for match, account, amount in plan:
-        dr = amount if amount > 0 else Decimal("0")
-        cr = -amount if amount < 0 else Decimal("0")
-        if match is None:
-            JournalLine.objects.create(journal_entry=entry, book=book, account=account, dr_amount=dr, cr_amount=cr)
-        elif (match.dr_amount, match.cr_amount) != (dr, cr):
-            match.dr_amount, match.cr_amount = dr, cr
-            match.journal_entry = entry
-            match.save()
-
-    return entry
-
-
-def apply_splits(bank_tx, legs, *, total):
+def apply_splits(bank_tx, legs, *, total, move_lines=()):
     """
     Write `legs` as the category lines of `bank_tx`'s journal entry.
 
     A feed row names its own home account, so this is `write_lines` with the bank
-    account filled in.
+    account filled in. `move_lines` are the entry's lines on the row's previous
+    account, when the edit moved it (see `write_lines`).
     """
     return write_lines(
         bank_tx.journal_entry,
@@ -232,4 +134,5 @@ def apply_splits(bank_tx, legs, *, total):
         legs,
         total=total,
         book=bank_tx.book,
+        move_lines=move_lines,
     )

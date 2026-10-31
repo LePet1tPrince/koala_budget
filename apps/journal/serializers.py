@@ -22,6 +22,12 @@ from apps.reconciliation.services.guards import (
 )
 
 from .models import JournalEntry, JournalLine
+from .services import lines as line_writer
+
+FEED_ENTRY_LINES_ERROR = _(
+    "This transaction came from a bank feed. Edit it on the Transactions page or in the Inbox, "
+    "so its bank feed row stays in step."
+)
 
 
 class JournalLineSerializer(serializers.ModelSerializer):
@@ -153,14 +159,22 @@ class JournalEntrySerializer(serializers.ModelSerializer):
         """Create journal entry with nested lines."""
         lines_data = validated_data.pop("lines")
         journal_entry = JournalEntry.objects.create(**validated_data)
-
-        for line_data in lines_data:
-            JournalLine.objects.create(journal_entry=journal_entry, book=journal_entry.book, **line_data)
-
+        line_writer.add_lines(journal_entry, lines_data, book=journal_entry.book)
         return journal_entry
 
     def update(self, instance, validated_data):
-        """Update journal entry and replace all lines."""
+        """
+        Update journal entry and replace all lines.
+
+        This API takes an entry as a free list of debit/credit lines -- no home
+        line, no legs -- so replacing them is delete-and-recreate
+        (`line_writer.replace_lines`): there is nothing to match a new line to an old one
+        by. That is only safe for an entry no bank feed row points at. A feed-backed
+        entry's home line carries the feed's reconciliation, and its feed row (and
+        a transfer's mirror) must follow any change; the feed and the Transactions
+        page edit it through `line_writer.write_lines`, which keeps both. So a feed-backed
+        entry's lines are refused here, as a reconciled entry's already were.
+        """
         lines_data = validated_data.pop("lines", None)
 
         # Replacing the lines deletes and recreates them, which would drop
@@ -173,6 +187,8 @@ class JournalEntrySerializer(serializers.ModelSerializer):
                 assert_date_change_allowed(instance, validated_data["entry_date"])
         except ReconciledLineError as e:
             raise serializers.ValidationError(str(e)) from None
+        if lines_data is not None and instance.bank_feed_transactions.exists():
+            raise serializers.ValidationError(FEED_ENTRY_LINES_ERROR)
 
         # Update journal entry fields
         for attr, value in validated_data.items():
@@ -181,16 +197,11 @@ class JournalEntrySerializer(serializers.ModelSerializer):
 
         # If lines data is provided, replace all existing lines
         if lines_data is not None:
-            # Delete existing lines
-            instance.lines.all().delete()
-
-            # Create new lines
-            for line_data in lines_data:
-                JournalLine.objects.create(journal_entry=instance, book=instance.book, **line_data)
+            line_writer.replace_lines(instance, lines_data, book=instance.book)
         elif "entry_date" in validated_data:
-            # Re-save lines so their auto-linked budget follows the new month
+            # Re-save the lines along with the re-dated entry
             for line in instance.lines.all():
-                line.save()
+                line_writer.save_line(line)
 
         return instance
 
@@ -331,9 +342,11 @@ class SimpleLineSerializer(serializers.Serializer):
             status=JournalEntry.STATUS_DRAFT,
         )
 
-        # Create the main line (this account)
-        main_line = JournalLine.objects.create(
-            journal_entry=journal_entry,
+        # The lines are given explicitly -- this line, then its sibling with the
+        # opposite amounts -- with the flags the caller set on this one, so they are
+        # written as given rather than derived (see `line_writer`).
+        main_line = line_writer.create_line(
+            entry=journal_entry,
             book=book,
             account=account,
             dr_amount=inflow,
@@ -341,10 +354,8 @@ class SimpleLineSerializer(serializers.Serializer):
             is_cleared=validated_data.get("is_cleared", False),
             is_reconciled=validated_data.get("is_reconciled", False),
         )
-
-        # Create the sibling line (category account) with opposite amounts
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
+        line_writer.create_line(
+            entry=journal_entry,
             book=book,
             account=category,
             dr_amount=outflow,  # Opposite of main line
@@ -404,7 +415,7 @@ class SimpleLineSerializer(serializers.Serializer):
         instance.cr_amount = outflow
         instance.is_cleared = validated_data.get("is_cleared", instance.is_cleared)
         instance.is_reconciled = validated_data.get("is_reconciled", instance.is_reconciled)
-        instance.save()
+        line_writer.save_line(instance)
 
         # Update or create the sibling line
         if sibling:
@@ -412,11 +423,11 @@ class SimpleLineSerializer(serializers.Serializer):
                 sibling.account = category
             sibling.dr_amount = outflow  # Opposite of main line
             sibling.cr_amount = inflow  # Opposite of main line
-            sibling.save()
+            line_writer.save_line(sibling)
         elif category is not None:
             # If no sibling exists, create one
-            JournalLine.objects.create(
-                journal_entry=journal_entry,
+            line_writer.create_line(
+                entry=journal_entry,
                 book=instance.book,
                 account=category,
                 dr_amount=outflow,
