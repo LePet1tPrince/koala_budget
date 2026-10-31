@@ -17,7 +17,8 @@ from django.db import transaction
 
 from apps.accounts.models import ACCOUNT_TYPE_EQUITY, Account, AccountGroup
 from apps.bank_feed.models import BankTransaction
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry
+from apps.journal.services.lines import write_lines
 
 OFFSET_ACCOUNT_NAME = "Reconciliation Adjustments"
 OFFSET_GROUP_NAME = "Equity Adjustments"
@@ -57,8 +58,6 @@ def create_adjustment(reconciliation, ledger_amount: Decimal) -> JournalEntry:
     book = reconciliation.book
     account = reconciliation.account
     date = reconciliation.statement_date
-    amount = abs(ledger_amount)
-    debit_account = ledger_amount > 0
 
     entry = JournalEntry.objects.create(
         book=book,
@@ -67,21 +66,17 @@ def create_adjustment(reconciliation, ledger_amount: Decimal) -> JournalEntry:
         source=JournalEntry.SOURCE_RECONCILIATION,
         status=JournalEntry.STATUS_POSTED,
     )
-    JournalLine.objects.create(
-        journal_entry=entry,
+    # One leg on the equity offset; the account's own line is the home line, created
+    # already reconciled. `total` is in the writer's signed convention (positive is
+    # a credit to the account), so the account is debited when `ledger_amount` > 0.
+    total = -ledger_amount
+    write_lines(
+        entry,
+        account,
+        [(offset_account(book), total)],
+        total=total,
         book=book,
-        account=account,
-        dr_amount=amount if debit_account else Decimal("0"),
-        cr_amount=Decimal("0") if debit_account else amount,
-        is_reconciled=True,
-        reconciliation=reconciliation,
-    )
-    JournalLine.objects.create(
-        journal_entry=entry,
-        book=book,
-        account=offset_account(book),
-        dr_amount=Decimal("0") if debit_account else amount,
-        cr_amount=amount if debit_account else Decimal("0"),
+        home_fields={"is_reconciled": True, "reconciliation": reconciliation},
     )
     if account.has_feed:
         BankTransaction.objects.create(

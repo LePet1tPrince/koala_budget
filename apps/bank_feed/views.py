@@ -38,8 +38,9 @@ from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.books.permissions import BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry
 from apps.journal.services import voiding
+from apps.journal.services.lines import repoint_line
 from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services.guards import (
     ReconciledLineError,
@@ -619,15 +620,8 @@ class BankFeedViewSet(
                     source=JournalEntry.SOURCE_MANUAL,
                     status=JournalEntry.STATUS_POSTED,
                 )
-                # Placeholder bank line; `apply_splits` below gives it the right
-                # side and amount, so only one place decides that.
-                JournalLine.objects.create(
-                    journal_entry=journal_entry,
-                    book=request.book,
-                    account=bank_account,
-                    dr_amount=Decimal("0"),
-                    cr_amount=Decimal("0"),
-                )
+                # No lines yet: `apply_splits` below writes the bank line and the
+                # legs, so only one place decides which side an amount lands on.
 
             # Create bank transaction
             bank_tx = BankTransaction.objects.create(
@@ -853,19 +847,14 @@ class BankFeedViewSet(
                     journal_entry.payee = payee
                     journal_entry.save()
 
-                    # Follow an account move before the lines are rewritten: everything
-                    # below finds the bank line by the transaction's *current* account.
-                    # Saved one at a time rather than through `QuerySet.update()` so the
-                    # audit signals fire.
-                    if old_account != bank_account:
-                        for line in journal_entry.lines.filter(account=old_account):
-                            line.account = bank_account
-                            line.save()
-
-                    apply_splits(bank_tx, entry_legs, total=amount)
+                    # Follow an account move before the lines are rewritten: the writer
+                    # finds the bank line by the transaction's *current* account, so the
+                    # old account's lines are re-pointed first (one save at a time, so
+                    # the audit signals fire).
+                    moved = journal_entry.lines.filter(account=old_account) if old_account != bank_account else ()
+                    apply_splits(bank_tx, entry_legs, total=amount, move_lines=moved)
                 else:
-                    # Create the entry with a placeholder bank line; `apply_splits`
-                    # immediately gives it the right side and amount.
+                    # Create the entry; `apply_splits` writes its bank line and legs.
                     journal_entry = JournalEntry.objects.create(
                         book=request.book,
                         entry_date=data["date"],
@@ -873,13 +862,6 @@ class BankFeedViewSet(
                         payee=payee,
                         source=JournalEntry.SOURCE_MANUAL,
                         status=JournalEntry.STATUS_POSTED,
-                    )
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        book=request.book,
-                        account=bank_account,
-                        dr_amount=Decimal("0"),
-                        cr_amount=Decimal("0"),
                     )
 
                     bank_tx.journal_entry = journal_entry
@@ -1499,11 +1481,10 @@ class BankFeedViewSet(
                     old_account = tx.account
                     tx.account = target_account
                     if tx.journal_entry:
-                        for line in tx.journal_entry.lines.all():
-                            if line.account == old_account:
-                                line.account = target_account
-                                line.save()
-                                break
+                        lines = tx.journal_entry.lines.all()
+                        home = next((line for line in lines if line.account == old_account), None)
+                        if home is not None:
+                            repoint_line(home, target_account)
 
             # --- Payee ---
             if payee_name is not None:
