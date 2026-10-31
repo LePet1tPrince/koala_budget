@@ -12,7 +12,7 @@ reused here.
 Two rules shape everything below.
 
 **Lines are written in one place.** The arithmetic that decides which side of a
-line an amount lands on lives in `apps.bank_feed.services.splits.write_lines`,
+line an amount lands on lives in `apps.journal.services.lines.write_lines`,
 along with the check that the entry balances. This module decides *what* to write
 and never *how*, so a plain transaction and a split cannot drift apart -- a plain
 transaction is a split with one leg.
@@ -43,6 +43,7 @@ from apps.reconciliation.services.guards import (
 )
 
 from ..models import JournalEntry
+from .lines import SplitError, write_lines
 from .sides import UnsupportedEntry, resolve_sides
 
 
@@ -376,11 +377,6 @@ def _check_transfer(sides, legs):
 
 
 def _write(plan, edits, *, book):
-    # Imported here, not at module scope: `apps.bank_feed` imports from this app,
-    # and `transfer_mirror` already avoids the reverse import at module level for
-    # the same reason. One local import keeps the direction explicit.
-    from apps.bank_feed.services.splits import SplitError, write_lines
-
     entry, sides = plan.entry, plan.sides
 
     # The entry is saved before its lines, so the lines are written against it as it now is.
@@ -392,18 +388,14 @@ def _write(plan, edits, *, book):
         entry.payee = _payee(edits.payee_name, book=book)
     entry.save()
 
-    # Follow an account move before the lines are written: `write_lines` finds
-    # the home line by account, so it has to be looking at the new one. Saved
-    # individually rather than through `QuerySet.update()` so the audit signals
-    # fire and the change shows up in the transaction's history.
-    if plan.account.id != sides.account.id:
-        home_line = sides.home_line
-        home_line.account = plan.account
-        home_line.journal_entry = entry
-        home_line.save()
+    # Follow an account move: `write_lines` finds the home line by account, so it
+    # re-points the old one first. Saved individually rather than through
+    # `QuerySet.update()` so the audit signals fire and the change shows up in the
+    # transaction's history.
+    moved = [sides.home_line] if plan.account.id != sides.account.id else ()
 
     try:
-        write_lines(entry, plan.account, plan.legs, total=plan.total, book=book)
+        write_lines(entry, plan.account, plan.legs, total=plan.total, book=book, move_lines=moved)
     except SplitError as exc:
         raise EditRefused(str(exc)) from exc
 
