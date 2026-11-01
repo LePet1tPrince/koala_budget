@@ -25,7 +25,10 @@ Make targeted edits to each of the following. Only change what needs to change â
 **`CLAUDE.md`**
 - Add new models to the Architecture table if any were introduced
 - Add new patterns, conventions, or rules to the Conventions section
-- Add a one-line entry to Recent Changes (keep the list to 10 items maximum; drop the oldest if needed)
+- Do NOT add change-log entries here. Only add a line to "Gotchas and single-writer rules" if the feature introduced a rule every future change must follow
+
+**`docs/feature-history.md`**
+- Append one entry at the end describing the feature (what changed, why, non-obvious traps)
 - Add new known issues to Known Issues if the Feature Engineer flagged any
 - Add any pipeline-relevant notes to Agent Notes
 
@@ -58,4 +61,4 @@ Produce a single changelog entry summarizing what was updated:
 - **Preserve document structure.** Append to existing sections; do not reorganize or rename headings.
 - **Cross-check consistency.** If the Feature Engineer introduced a new pattern, make sure it is reflected in `CLAUDE.md` Conventions AND `docs/testing-guide.md` patterns (if it affects testing).
 - **Append design decisions.** Always append Section 7 design decisions from the Requirements Document to the `docs/design-document.md` Decisions Log. Do not skip this even if there are no other design changes.
-- **Keep Recent Changes trimmed.** `CLAUDE.md` Recent Changes should never exceed 10 items. Remove the oldest entry when adding a new one.
+- **Keep `CLAUDE.md` short.** It is loaded into every session. Feature details go in `docs/feature-history.md`, never in `CLAUDE.md`.
