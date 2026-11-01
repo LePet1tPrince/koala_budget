@@ -27,7 +27,7 @@ Feature Request (plain English)
     ↓
 05-security-reviewer → Security Report + Approved / Blocked verdict
     ↓ (Approved only — Blocked stops here, see Stop Conditions)
-06-pr-creator      → PR title + PR description + Merge checklist
+06-pr-creator      → PR title + PR description (`.github/pull_request_template.md`)
 ```
 
 ---
@@ -131,9 +131,8 @@ Feature Request (plain English)
 **Receives:** Requirements Document (Step 1) + files changed (Step 2) + Test Report (Step 3) + Security Report (Step 5) + branch name
 
 **Must output:**
-- PR title (format: `[Type] Brief description`)
-- PR description (using the standard template)
-- Merge checklist with confirmed/cannot-confirm status for each item
+- PR title (plain words, optional `Area: ` prefix)
+- PR description filling `.github/pull_request_template.md`; open Medium/Low security findings and unverified pre-review reminders go under **Needs the owner**
 
 **Pipeline complete** when PR is created (or PR output is ready for human to submit).
 
