@@ -26,8 +26,8 @@ class RuleEditor:
         self.field("rule-payee-value").fill(value)
 
     def choose_category(self, name: str):
-        combo = self.field("rule-category")
-        combo.locator("input").fill(name)
+        # The test id is on the combobox's own <input>.
+        self.field("rule-category").fill(name)
         self.page.locator("[role='option']", has_text=name).first.click()
 
     def suggest_only(self):
@@ -62,6 +62,10 @@ class RulesPage(BasePage):
         return [
             n.strip() for n in self.page.locator("[data-testid='rule-row'] [data-testid='rule-name']").all_inner_texts()
         ]
+
+    def wait_for_rule(self, name: str):
+        """The list reloads after a save; wait for the saved rule's row before reading it."""
+        self.row(name).wait_for(timeout=10_000)
 
     def row(self, name: str):
         return self.page.locator(

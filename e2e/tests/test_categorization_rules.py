@@ -27,10 +27,17 @@ def rules_fixture(team):
     account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
     expense_group = AccountGroupFactory(team=team)
     coffee = AccountFactory(team=team, account_group=expense_group, name="Zed Coffee")
+    # Fixed dates: the queue shows the newest first, so a Blue Bottle card is on top.
     rows = [
-        feed_transaction(team, account, description="SQ *BLUE BOTTLE 4417", merchant_name="Blue Bottle"),
-        feed_transaction(team, account, description="SQ *BLUE BOTTLE 9920", merchant_name="Blue Bottle"),
-        feed_transaction(team, account, description="TIM HORTONS 12", merchant_name="Tim Hortons"),
+        feed_transaction(
+            team, account, description="SQ *BLUE BOTTLE 4417", merchant_name="Blue Bottle", posted_date="2026-03-02"
+        ),
+        feed_transaction(
+            team, account, description="SQ *BLUE BOTTLE 9920", merchant_name="Blue Bottle", posted_date="2026-03-01"
+        ),
+        feed_transaction(
+            team, account, description="TIM HORTONS 12", merchant_name="Tim Hortons", posted_date="2026-02-01"
+        ),
     ]
     return {"account": account, "coffee": coffee, "rows": rows}
 
@@ -53,6 +60,7 @@ def test_a_rule_previews_and_categorizes_the_inbox(requires_vite, authenticated_
     editor.choose_category("Zed Coffee")
     editor.wait_for_preview("Matches 2")
     editor.save()
+    page.wait_for_rule("blue bottle → Zed Coffee")
 
     assert page.rule_names() == ["blue bottle → Zed Coffee"]
     blue = rules_fixture["rows"][:2]
