@@ -26,6 +26,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 | `bank_feed` | Transaction import staging — BankTransaction |
 | `plaid` | Plaid live-sync integration — PlaidItem, PlaidAccount |
 | `chat` / `ai` | "Ask Koala" AI chat — still the Pegasus demo agents (weather, admin DB/email); no access to budget data |
+| `categorization` | Auto-categorization rules and the suggestion-provider pipeline (rules → history → an AI provider slot) |
 | `teams` | People and billing — Team, Membership, Invitation |
 | `books` | The money tenant — Book (a set of books), request plumbing, legacy redirect, book settings |
 | `users` | Custom user model, avatars, preferences |
