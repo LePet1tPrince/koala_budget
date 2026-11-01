@@ -23,7 +23,7 @@ Feature Request (plain English)
     ↓
 03-qa-tester       → Test Report + Go / No-Go verdict
     ↓ (Go only — No-Go stops here, see Stop Conditions)
-04-doc-updater     → Updated CLAUDE.md + design-document.md + testing-guide.md + changelog
+04-doc-updater     → Updated CLAUDE.md + feature-history.md + design-document.md + testing-guide.md + changelog
     ↓
 05-security-reviewer → Security Report + Approved / Blocked verdict
     ↓ (Approved only — Blocked stops here, see Stop Conditions)
