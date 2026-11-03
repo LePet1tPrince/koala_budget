@@ -71,7 +71,8 @@ const TransactionsApp = () => {
   // Every book URL the modal builds starts from this, so the URL shape lives in
   // one place (`common/book.js`) rather than in each fetch.
   const book = useMemo(() => readBook(), []);
-  const allAccounts = useMemo(() => readJson('all-accounts', []), []);
+  // Grows when an account is created from the edit modal's category picker
+  const [allAccounts, setAllAccounts] = useState(() => readJson('all-accounts', []));
   const allPayees = useMemo(() => readJson('all-payees', []), []);
   const api = useMemo(() => getTransactionsApi(book.base), [book.base]);
 
@@ -327,6 +328,9 @@ const TransactionsApp = () => {
         onDelete={handleDelete}
         onSetStatus={handleSetStatus}
         onClose={() => setEditing([])}
+        onAccountCreated={(account) =>
+          setAllAccounts((prev) => (prev.some((a) => a.id === account.id) ? prev : [...prev, account]))
+        }
       />
 
       <Toast
