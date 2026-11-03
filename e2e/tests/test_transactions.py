@@ -19,6 +19,7 @@ from types import SimpleNamespace
 import pytest
 from playwright.sync_api import Page
 
+from apps.accounts.models import Account
 from apps.journal.models import JournalEntry
 from e2e.factories import (
     AccountFactory,
@@ -372,6 +373,22 @@ def test_changing_the_category_updates_the_row_in_place(
 
     editable.plain.refresh_from_db()
     assert editable.plain.lines.filter(account=editable.dining).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_category_picker_creates_an_account(requires_vite, authenticated_page: Page, live_server, team, editable):
+    """The Category picker's "Create account" row makes the account and selects it."""
+    transactions = TransactionsPage(authenticated_page, live_server.url)
+    transactions.goto(team.default_book)
+    transactions.open_editor("Weekly shop")
+    transactions.create_category_account("Pet Food", "expense", "Everyday")
+
+    assert transactions.field_value("transaction-category") == "Everyday - Pet Food"
+    transactions.save_editor()
+
+    assert "Pet Food" in transactions.row_text("Weekly shop")
+    created = Account.objects.get(book=team.default_book, name="Pet Food")
+    assert editable.plain.lines.filter(account=created).exists()
 
 
 @pytest.mark.django_db(transaction=True)
