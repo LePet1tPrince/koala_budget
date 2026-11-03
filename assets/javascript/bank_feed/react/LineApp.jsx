@@ -819,8 +819,8 @@ const LineApp = ({
     return selectedRows.map((row) => fetched.get(row.id) ?? row);
   };
 
-  // The one account every selected row is in, if there is one: reconciling and
-  // the reconciled-balance preview are about one account's statement.
+  // The one account every selected row is in, if there is one: the
+  // reconciled-balance preview is about one account's statement.
   const selectionAccount = useMemo(() => {
     const ids = new Set(selectedRows.map((r) => r.account?.id));
     return ids.size === 1 ? feedAccountsById.get([...ids][0]) ?? null : null;
@@ -920,18 +920,6 @@ const LineApp = ({
       errorMessage: ngettext('Failed to duplicate the transaction', 'Failed to duplicate the transactions', ids.length),
       clearsSelection: true,
     });
-  };
-
-  /**
-   * Reconcile the selection against a statement: hand it to the reconcile page,
-   * which opens (or resumes) the account's draft with these rows already ticked.
-   * Only offered when every selected row is in one account.
-   */
-  const handleBatchReconcile = (rows) => {
-    if (!selectionAccount) return;
-    const entries = (rows || []).map((r) => r.journal_entry_id ?? r.journalEntryId).filter(Boolean);
-    const qs = entries.length ? `?entries=${entries.join(',')}` : '';
-    window.location.href = `${book.base}reconcile/${selectionAccount.id}/${qs}`;
   };
 
   const handleBatchUnreconcile = () => {
@@ -1252,7 +1240,6 @@ const LineApp = ({
         onRestore={handleBatchRestore}
         onDelete={handleBatchDelete}
         onDuplicate={handleBatchDuplicate}
-        onReconcile={handleBatchReconcile}
         onUnreconcile={handleBatchUnreconcile}
         onClearSelection={() => setSelection(new Map())}
         showVoid={showVoidButton}
