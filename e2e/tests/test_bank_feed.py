@@ -15,7 +15,7 @@ from decimal import Decimal
 import pytest
 from playwright.sync_api import Page, expect
 
-from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY, Account
 from apps.bank_feed.models import BankTransaction
 from apps.reconciliation.services.adjustment import offset_account
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
@@ -1012,3 +1012,30 @@ def test_a_bank_needing_attention_is_flagged_in_the_inbox(requires_vite, authent
     expect(alert).to_contain_text("Desjardins needs you to sign in again")
     expect(authenticated_page.get_by_test_id(f"plaid-reconnect-{item.id}")).to_be_visible()
     expect(authenticated_page.get_by_test_id(f"plaid-unmapped-alert-{item.id}")).to_contain_text("1 account")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_category_picker_creates_an_account(requires_vite, authenticated_page, live_server, feed_fixture):
+    """The edit modal's Category picker offers "Create account"; the new account is selected and saved."""
+    expense_group = feed_fixture["category"].account_group
+    expense_group.account_type = ACCOUNT_TYPE_EXPENSE
+    expense_group.save()
+    row = feed_fixture["rows"]["uncategorized"]
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(feed_fixture["account"].book)
+    feed.click_account_card(feed_fixture["account"].id)
+    feed.wait_for_table()
+    feed.open_row(row.id)
+    expect(authenticated_page.locator("[data-testid='transaction-category']")).to_be_visible()
+
+    feed.create_category_account("Zed Pet Food", ACCOUNT_TYPE_EXPENSE, expense_group.name)
+    expect(authenticated_page.locator("[data-testid='transaction-category']")).to_have_value(
+        f"{expense_group.name} - Zed Pet Food"
+    )
+    feed.save_modal()
+
+    row.refresh_from_db()
+    created = Account.objects.get(book=feed_fixture["account"].book, name="Zed Pet Food")
+    assert created.account_group_id == expense_group.id
+    assert row.journal_entry.lines.filter(account=created).exists()
