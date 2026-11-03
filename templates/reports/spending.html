@@ -137,7 +137,7 @@
             <tr x-show="open.goals ?? true" class="row-account">
               {% url 'accounts:account_detail' request.team.slug request.book.slug item.account.pk as account_url %}
               <td class="pl-10 whitespace-nowrap"><a href="{% return_here account_url|add:'?'|add:drill_qs %}" class="link link-hover link-primary">{{ item.account.goal.name }}</a></td>
-              {% if by_period %}{% for amount in item.per_period %}<td class="text-right money whitespace-nowrap {% if not amount %}opacity-40{% endif %}">{{ amount|currency }}</td>{% endfor %}{% endif %}
+              {% if by_period %}{% for amount, period_qs in item.period_cells %}<td class="text-right money whitespace-nowrap {% if not amount %}opacity-40{% endif %}"><a href="{% return_here account_url|add:'?'|add:period_qs %}" class="link link-hover" data-testid="period-cell">{{ amount|currency }}</a></td>{% endfor %}{% endif %}
               <td class="text-right money whitespace-nowrap">{{ item.amount|currency }}</td>
             </tr>
             {% endfor %}

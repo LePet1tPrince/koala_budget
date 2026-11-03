@@ -5,7 +5,7 @@ CSV exports they link.
 """
 
 import contextlib
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
 from django.shortcuts import get_object_or_404, render
@@ -67,6 +67,27 @@ def _drill_qs(start_date, end_date):
     return urlencode({"start_date": start_date.isoformat(), "end_date": end_date.isoformat()})
 
 
+PERIOD_MONTHS = {"month": 1, "quarter": 3, "year": 12}
+
+
+def _attach_period_drill(report, start_date, end_date):
+    """
+    Give every account row of the statement `period_cells`: (amount, drill_qs) per
+    column, the query string opening the account on that column's dates (clamped to
+    the report's range, so a partial first or last month stays partial).
+    """
+    data = report["data"]
+    step = PERIOD_MONTHS[report["period"]]
+    drill = [
+        _drill_qs(max(first, start_date), min(add_months(first, step) - timedelta(days=1), end_date))
+        for first in data["periods"]
+    ]
+    items = [item for group in data["income_groups"] + data["expense_groups"] for item in group["accounts"]]
+    items += data["goal_spending"]["items"]
+    for item in items:
+        item["period_cells"] = list(zip(item["per_period"], drill, strict=True))
+
+
 @login_and_book_required
 def spending(request, team_slug, book_slug):
     """Income & Spending: money in and out over a range, with the statement and the flow."""
@@ -83,6 +104,8 @@ def spending(request, team_slug, book_slug):
     period_qs = columns_params.urlencode()
 
     report = spending_report(request.book, start_date, end_date)
+    if by_period:
+        _attach_period_drill(report, start_date, end_date)
     return render(
         request,
         "reports/spending.html",

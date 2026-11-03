@@ -111,6 +111,48 @@ class SpendingReportTest(ConsolidatedReportsBase):
         self.assertContains(response, f"{detail}?start_date=2026-01-01&amp;end_date=2026-02-28&amp;return_to=")
         self.assertContains(response, "Jan 2026")
 
+    def test_by_month_cells_link_to_the_account_for_that_month(self):
+        response = self.client.get(
+            self.url("spending"), {"start_date": "2026-01-01", "end_date": "2026-02-28", "columns": "period"}
+        )
+        detail = reverse("accounts:account_detail", args=[*self.book.url_args, self.food.pk])
+        self.assertContains(response, f"{detail}?start_date=2026-02-01&amp;end_date=2026-02-28&amp;return_to=")
+        self.assertContains(response, f"{detail}?start_date=2026-01-01&amp;end_date=2026-01-31&amp;return_to=")
+        food = next(
+            item
+            for group in response.context["data"]["expense_groups"]
+            for item in group["accounts"]
+            if item["account"] == self.food
+        )
+        self.assertEqual(
+            food["period_cells"],
+            [
+                (Decimal("0"), "start_date=2026-01-01&end_date=2026-01-31"),
+                (Decimal("300.00"), "start_date=2026-02-01&end_date=2026-02-28"),
+            ],
+        )
+
+    def test_period_cells_are_clamped_to_the_range(self):
+        """A range starting mid-month opens the first month from the range's own start."""
+        response = self.client.get(
+            self.url("spending"), {"start_date": "2026-01-06", "end_date": "2026-02-10", "columns": "period"}
+        )
+        detail = reverse("accounts:account_detail", args=[*self.book.url_args, self.rent.pk])
+        self.assertContains(response, f"{detail}?start_date=2026-01-06&amp;end_date=2026-01-31&amp;return_to=")
+        self.assertContains(response, f"{detail}?start_date=2026-02-01&amp;end_date=2026-02-10&amp;return_to=")
+
+    def test_quarter_cells_span_the_quarter(self):
+        response = self.client.get(
+            self.url("spending"), {"start_date": "2024-01-01", "end_date": "2026-06-30", "columns": "period"}
+        )
+        self.assertEqual(response.context["period"], "quarter")
+        detail = reverse("accounts:account_detail", args=[*self.book.url_args, self.rent.pk])
+        self.assertContains(response, f"{detail}?start_date=2026-01-01&amp;end_date=2026-03-31&amp;return_to=")
+
+    def test_total_columns_have_no_period_cells(self):
+        response = self.client.get(self.url("spending"), {"start_date": "2026-01-01", "end_date": "2026-02-28"})
+        self.assertNotContains(response, 'data-testid="period-cell"')
+
     def test_view_defaults_to_year_to_date(self):
         response = self.client.get(self.url("spending"))
         self.assertEqual(response.context["start_date"], date(date.today().year, 1, 1))
