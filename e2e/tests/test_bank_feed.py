@@ -1012,3 +1012,41 @@ def test_a_bank_needing_attention_is_flagged_in_the_inbox(requires_vite, authent
     expect(alert).to_contain_text("Desjardins needs you to sign in again")
     expect(authenticated_page.get_by_test_id(f"plaid-reconnect-{item.id}")).to_be_visible()
     expect(authenticated_page.get_by_test_id(f"plaid-unmapped-alert-{item.id}")).to_contain_text("1 account")
+
+
+@pytest.fixture
+def suggestion_fixture(team):
+    """An uncategorized row whose payee was categorized before, and one with no history."""
+    group = AccountGroupFactory(team=team)
+    account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
+    expense_group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
+    coffee = AccountFactory(team=team, account_group=expense_group, name="Zed Coffee")
+    feed_transaction(team, account, category=coffee, merchant_name="Blue Bottle", description="HISTORY")
+    known = feed_transaction(team, account, merchant_name="Blue Bottle", description="KNOWN PAYEE")
+    unknown = feed_transaction(team, account, merchant_name="Qqzx Unheard", description="NO HISTORY")
+    return {"account": account, "coffee": coffee, "known": known, "unknown": unknown}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_uncategorized_row_shows_a_suggestion_to_confirm(
+    requires_vite, authenticated_page, live_server, suggestion_fixture
+):
+    """A row like one categorized before shows that category with a confirm button, which files it."""
+    known, unknown = suggestion_fixture["known"], suggestion_fixture["unknown"]
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(suggestion_fixture["account"].book)
+    feed.click_account_card(suggestion_fixture["account"].id)
+    feed.wait_for_table()
+
+    expect(authenticated_page.get_by_test_id(f"suggested-category-{known.id}")).to_have_text("Zed Coffee")
+    expect(authenticated_page.get_by_test_id(f"feed-row-{unknown.id}")).to_contain_text("Uncategorized")
+    expect(authenticated_page.get_by_test_id(f"confirm-category-{unknown.id}")).to_have_count(0)
+
+    authenticated_page.get_by_test_id(f"confirm-category-{known.id}").click()
+    expect(authenticated_page.get_by_test_id(f"confirm-category-{known.id}")).to_have_count(0)
+    expect(authenticated_page.get_by_test_id(f"feed-row-{known.id}")).to_contain_text("Zed Coffee")
+    expect(authenticated_page.get_by_test_id("edit-transaction-modal")).not_to_be_visible()
+    feed.wait_for_saves()
+
+    known.refresh_from_db()
+    assert known.journal_entry.lines.filter(account=suggestion_fixture["coffee"]).exists()

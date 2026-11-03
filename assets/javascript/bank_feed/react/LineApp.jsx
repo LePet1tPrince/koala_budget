@@ -94,6 +94,9 @@ const optimisticBulkEditedRow = (row, updates, accountsById) => {
 };
 
 const isVoidRow = (r) => r.isVoid ?? r.is_void ?? false;
+
+// `similar_categories` takes at most this many ids per request (MAX_SIMILAR_CATEGORY_IDS)
+const SIMILAR_CATEGORY_CHUNK = 50;
 const isReconciledRow = (r) => r.isReconciled ?? r.is_reconciled ?? false;
 
 /**
@@ -150,6 +153,11 @@ const LineApp = ({
 
   // Category suggestions: merchant/payee name -> {id, name} of last-used category
   const [categorySuggestions, setCategorySuggestions] = useState({});
+  // The suggested category for each uncategorized row on screen, from how
+  // similar transactions were categorized: row id -> {id, name}, or null when
+  // there is none. A row is asked about once per page load.
+  const [rowSuggestions, setRowSuggestions] = useState({});
+  const suggestionsAskedRef = useRef(new Set());
 
   // A row the page was asked to show -- the other side of a transfer -- flashes
   const [highlightId, setHighlightId] = useState(null);
@@ -294,6 +302,36 @@ const LineApp = ({
       })
       .catch((err) => console.error('Failed to load category suggestions:', err));
   }, [bankFeedClient, book]);
+
+  // Ask about every uncategorized row on screen that hasn't been asked about,
+  // in chunks the endpoint accepts. The row's own account is never a suggestion.
+  useEffect(() => {
+    const asked = suggestionsAskedRef.current;
+    const wanted = lines.filter((r) => !r.category && !r.isSplit && !isVoidRow(r) && !asked.has(r.id));
+    if (wanted.length === 0) return;
+    wanted.forEach((r) => asked.add(r.id));
+    for (let i = 0; i < wanted.length; i += SIMILAR_CATEGORY_CHUNK) {
+      const chunk = wanted.slice(i, i + SIMILAR_CATEGORY_CHUNK);
+      bankFeedClient
+        .bankFeedSimilarCategories({ ...book.params, ids: chunk.map((r) => r.id).join(',') })
+        .then((rows) => {
+          const found = Object.fromEntries(chunk.map((r) => [String(r.id), null]));
+          const ownAccount = new Map(chunk.map((r) => [String(r.id), r.account?.id]));
+          // Ranked strongest first per transaction, so the first usable one wins.
+          (rows || []).forEach((s) => {
+            const id = String(s.transactionId);
+            if (found[id] === null && s.categoryId !== ownAccount.get(id)) {
+              found[id] = { id: s.categoryId, name: s.categoryName };
+            }
+          });
+          setRowSuggestions((prev) => ({ ...prev, ...found }));
+        })
+        .catch((err) => {
+          chunk.forEach((r) => asked.delete(r.id));
+          console.error('Failed to load suggested categories:', err);
+        });
+    }
+  }, [lines, bankFeedClient, book]);
 
   // --- the page ------------------------------------------------------------
 
@@ -934,6 +972,15 @@ const LineApp = ({
     window.location.href = `${book.base}reconcile/${selectionAccount.id}/${qs}`;
   };
 
+  /** Accept an uncategorized row's suggested category, as Bulk Edit would set it. */
+  const handleConfirmSuggestion = (row, suggestion) =>
+    runWrite({
+      rowIds: [row.id],
+      apply: (r) => optimisticBulkEditedRow(r, { category_id: suggestion.id }, accountsById),
+      request: () => batchApi.batchEdit([row.id], { category_id: suggestion.id }),
+      errorMessage: gettext('Failed to categorize the transaction'),
+    });
+
   const handleBatchUnreconcile = () => {
     const ids = [...selectedIds];
     runWrite({
@@ -1152,6 +1199,8 @@ const LineApp = ({
               allAccounts={allAccounts}
               allPayees={allPayees}
               categorySuggestions={categorySuggestions}
+              rowSuggestions={rowSuggestions}
+              onConfirmSuggestion={handleConfirmSuggestion}
               book={book}
               defaultAccountId={selectedAccount?.id ?? null}
               onAdd={handleAddLine}
