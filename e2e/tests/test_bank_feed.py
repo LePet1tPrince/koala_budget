@@ -221,28 +221,19 @@ def test_no_batch_bar_until_a_row_is_selected(requires_vite, authenticated_page,
 
 
 @pytest.mark.django_db(transaction=True)
-def test_uncategorized_selection_cannot_reconcile(requires_vite, authenticated_page, live_server, feed_fixture):
-    """Reconcile is offered but disabled — reconciling an uncategorized row is meaningless."""
+def test_batch_bar_does_not_offer_reconcile(requires_vite, authenticated_page, live_server, feed_fixture):
+    """Reconciling is against a statement, from the account header's "Reconcile statement" link;
+    the batch bar offers no Reconcile button for categorized or uncategorized rows."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["uncategorized"].id)
+    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Duplicate", "Export"]
 
-    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Reconcile", "Duplicate", "Export"]
-    assert feed.batch_button("Reconcile").is_disabled()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_categorized_unreconciled_selection_can_reconcile(requires_vite, authenticated_page, live_server, feed_fixture):
-    feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].book)
-    feed.click_account_card(feed_fixture["account"].id)
-    feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["unreconciled"].id)
-
-    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Reconcile", "Duplicate", "Export"]
-    assert feed.batch_button("Reconcile").is_enabled()
+    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Duplicate", "Export"]
+    expect(authenticated_page.locator("[data-testid='reconcile-statement-btn']")).to_be_visible()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -269,8 +260,8 @@ def test_reconciled_selection_offers_unreconcile_not_reconcile(
 def test_mixed_selection_withholds_both_reconcile_and_unreconcile(
     requires_vite, authenticated_page, live_server, feed_fixture
 ):
-    """One reconciled row in the selection is enough to withhold Reconcile and Duplicate;
-    Unreconcile needs *all* of them reconciled, so a mixed selection gets neither."""
+    """One reconciled row in the selection is enough to withhold Duplicate;
+    Unreconcile needs *all* of them reconciled, so a mixed selection doesn't get it."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
@@ -283,7 +274,7 @@ def test_mixed_selection_withholds_both_reconcile_and_unreconcile(
 
 @pytest.mark.django_db(transaction=True)
 def test_voided_view_offers_restore_and_delete_only(requires_vite, authenticated_page, live_server, feed_fixture):
-    """The voided view is a different set of verbs: nothing to edit, reconcile or duplicate."""
+    """The voided view is a different set of verbs: nothing to edit, unreconcile or duplicate."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
@@ -736,21 +727,6 @@ def test_opening_balance_can_be_categorized_to_the_system_equity_account(
 
     row.refresh_from_db()
     assert set(row.journal_entry.lines.values_list("account_id", flat=True)) == {two_accounts["chequing"].id, equity.id}
-
-
-@pytest.mark.django_db(transaction=True)
-def test_reconcile_needs_rows_from_one_account(requires_vite, authenticated_page, live_server, team, two_accounts):
-    (chq,) = _rows(team, two_accounts["chequing"], "CHQ", 1, category=two_accounts["groceries"])
-    (sav,) = _rows(team, two_accounts["savings"], "SAV", 1, category=two_accounts["groceries"])
-
-    feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.default_book)
-    feed.wait_for_table()
-    feed.select_row(chq.id)
-    assert feed.batch_button("Reconcile").is_enabled()
-
-    feed.select_row(sav.id)
-    assert feed.batch_button("Reconcile").is_disabled()
 
 
 @pytest.mark.django_db(transaction=True)

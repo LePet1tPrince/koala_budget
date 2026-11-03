@@ -22,7 +22,6 @@ const BatchActionBar = ({
   onDuplicate,
   onExport,
   onClearSelection,
-  onReconcile,
   onUnreconcile,
   showVoid = true,
   showRestore = false,
@@ -39,8 +38,8 @@ const BatchActionBar = ({
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Reconciling happens against a statement on its own page; only the
-  // unreconcile confirmation lives here.
+  // Reconciling happens against a statement on its own page (the account
+  // header's "Reconcile statement"); only the unreconcile confirmation lives here.
   const [unreconcileDialogOpen, setUnreconcileDialogOpen] = useState(false);
 
   // Calculate inflow, outflow, and net from selected rows
@@ -56,20 +55,8 @@ const BatchActionBar = ({
     }, { totalInflow: 0, totalOutflow: 0, reconcilingAmount: 0 });
   }, [selectedRows]);
 
-  // Check if all selected rows are categorized (have a category)
-  const allCategorized = useMemo(() => {
-    return selectedRows.every(row => row.category);
-  }, [selectedRows]);
-
-  // Reconciling happens on one account's statement, so the selection must be in one account.
-  const reconcileBlocked = !selectedAccount
-    ? gettext('Select rows from one account to reconcile')
-    : !allCategorized
-      ? gettext('Categorize all transactions to reconcile')
-      : null;
-
   // Check if any/all selected rows are reconciled. The quick filters no longer guarantee
-  // a homogeneous selection, so reconcile/unreconcile availability is derived from the
+  // a homogeneous selection, so unreconcile/duplicate availability is derived from the
   // actual selected rows rather than the active filter.
   const anyReconciled = useMemo(() => {
     return selectedRows.some(r => r.isReconciled ?? r.is_reconciled ?? false);
@@ -228,25 +215,6 @@ const BatchActionBar = ({
             <Icon name="trash" className="w-4 h-4 shrink-0" />
             {gettext('Delete')}
           </button>
-        )}
-
-        {!isVoidedView && !anyReconciled && (
-          // The tooltip has to sit on a wrapper: a disabled button fires no
-          // pointer events, so a tip on the button itself never shows.
-          <span
-            className={reconcileBlocked ? 'tooltip' : undefined}
-            data-tip={reconcileBlocked || undefined}
-          >
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              disabled={Boolean(reconcileBlocked)}
-              onClick={() => onReconcile?.(selectedRows)}
-            >
-              <Icon name="check-circle" className="w-4 h-4 shrink-0" />
-              {gettext('Reconcile')}
-            </button>
-          </span>
         )}
 
         {allReconciled && (
