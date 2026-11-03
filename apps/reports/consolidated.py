@@ -32,6 +32,19 @@ def bucket_for(start_date, end_date):
     return "year"
 
 
+# Statement column periods, coarsest first: the order the "By …" buttons appear in.
+COLUMN_PERIODS = ("year", "quarter", "month")
+
+
+def column_periods(start_date, end_date):
+    """
+    The periods worth a "By …" column view for a range: those it spans more than one
+    of. "This year" gets quarter and month (not year); a range inside one quarter gets
+    month only; a range inside one month gets none (Total is all there is).
+    """
+    return [p for p in COLUMN_PERIODS if len(ReportService._period_range(start_date, end_date, p)) > 1]
+
+
 def _pct(part, whole):
     return part / whole * 100 if whole else None
 
@@ -39,8 +52,9 @@ def _pct(part, whole):
 # --- A. Income & Spending ---------------------------------------------------------
 
 
-def spending_report(book, start_date, end_date):
-    period = bucket_for(start_date, end_date)
+def spending_report(book, start_date, end_date, period=None):
+    """`period` buckets the statement columns and the chart; default `bucket_for` the range."""
+    period = period or bucket_for(start_date, end_date)
     data = ReportService(book).get_income_statement_data(start_date, end_date, period=period)
     goal_spending = data["goal_spending"]
     num_months = months_between(start_date, end_date) + 1
