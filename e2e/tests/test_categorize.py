@@ -12,7 +12,7 @@ sits above the list.
 """
 
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
 from e2e.pages.categorize import CategorizePage
@@ -156,7 +156,11 @@ def test_at_most_three_suggestions_are_shown(
 
     categorize = CategorizePage(authenticated_page, live_server.url)
     categorize.goto(team.default_book)
-    categorize.wait_for_suggestions()
+    # The memo match renders at once; the history matches arrive with the request.
+    rows = authenticated_page.locator("[data-testid='category-suggestion']")
+    expect(rows.nth(1)).to_be_visible(timeout=10_000)
+    authenticated_page.wait_for_load_state("load")
+    authenticated_page.wait_for_timeout(500)
 
     notes = categorize.suggestion_notes()
     assert len(notes) == 3
