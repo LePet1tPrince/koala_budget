@@ -94,12 +94,13 @@
           {% icon "diagram-project" class="inline-block shrink-0 w-4 h-4 mr-2" %}{% translate "Flow" %}
         </a>
       </div>
+      {% if column_options|length > 1 %}
       <div class="join" x-show="tab === 'statement'" data-testid="spending-columns">
-        <a href="?{{ total_qs }}" class="btn btn-sm join-item {% if not by_period %}btn-active{% endif %}">{% translate "Total" %}</a>
-        <a href="?{{ period_qs }}" class="btn btn-sm join-item {% if by_period %}btn-active{% endif %}">
-          {% if period == "quarter" %}{% translate "By quarter" %}{% elif period == "year" %}{% translate "By year" %}{% else %}{% translate "By month" %}{% endif %}
-        </a>
+        {% for option in column_options %}
+        <a href="?{{ option.qs }}" class="btn btn-sm join-item {% if option.active %}btn-active{% endif %}" data-testid="spending-columns-{{ option.key }}">{{ option.label }}</a>
+        {% endfor %}
       </div>
+      {% endif %}
     </div>
 
     <!-- Statement -->

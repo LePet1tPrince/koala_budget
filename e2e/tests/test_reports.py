@@ -100,7 +100,7 @@ def test_a_monthly_value_opens_the_account_for_that_month(authenticated_page: Pa
         JournalLineFactory(team=team, journal_entry=entry, account=bank, cr_amount=amount)
 
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_spending(team.default_book, "start_date=2026-04-01&end_date=2026-05-31&columns=period")
+    reports.goto_spending(team.default_book, "start_date=2026-04-01&end_date=2026-05-31&columns=month")
     row = authenticated_page.locator("[data-testid='spending-expenses'] tr", has_text="Zed Groceries")
     cells = row.locator("[data-testid='period-cell']")
     expect(cells).to_have_count(2)
