@@ -166,6 +166,7 @@ const LineTable = ({
   showAccountColumn = true,
   refetching = false,
   allAccounts,
+  onAccountCreated,
   allPayees = [],
   categorySuggestions = {},
   book,
@@ -770,6 +771,7 @@ const LineTable = ({
         mode={modalMode}
         feedAccounts={accounts}
         defaultAccountId={defaultAccountId}
+        onAccountCreated={onAccountCreated}
       />
 
       <Toast

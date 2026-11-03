@@ -108,7 +108,7 @@ const isReconciledRow = (r) => r.isReconciled ?? r.is_reconciled ?? false;
  */
 const LineApp = ({
   accounts: initialAccounts,
-  allAccounts,
+  allAccounts: initialAllAccounts,
   allPayees,
   allAccountGroups,
   book,
@@ -118,6 +118,12 @@ const LineApp = ({
 }) => {
   // Store accounts in state so balances can be refreshed after writes
   const [accounts, setAccounts] = useState(initialAccounts);
+  // Grows when an account is created from a category picker
+  const [allAccounts, setAllAccounts] = useState(initialAllAccounts);
+  const handleAccountCreated = useCallback(
+    (account) => setAllAccounts((prev) => (prev.some((a) => a.id === account.id) ? prev : [...prev, account])),
+    []
+  );
   const [query, setQuery] = useState(() => queryFromUrl());
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -1146,6 +1152,7 @@ const LineApp = ({
               allPayees={allPayees}
               categorySuggestions={categorySuggestions}
               book={book}
+              onAccountCreated={handleAccountCreated}
               defaultAccountId={selectedAccount?.id ?? null}
               onAdd={handleAddLine}
               onEditTransaction={handleEditTransaction}

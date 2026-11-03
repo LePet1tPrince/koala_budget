@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import Combobox from '../common/Combobox';
 import DateField from '../common/DateField';
@@ -10,6 +10,7 @@ import AmountInput from '../common/AmountInput';
 import { buildCategoryOptions } from '../common/categoryOptions';
 import SplitEditor, { MIN_LEGS } from '../bank_feed/react/SplitEditor';
 import TransactionHistory from '../bank_feed/react/TransactionHistory';
+import useCreateAccount from '../bank_feed/react/useCreateAccount';
 
 /* globals gettext, interpolate */
 
@@ -66,6 +67,7 @@ const TransactionEditModal = ({
   onDelete,
   onSetStatus,
   onClose,
+  onAccountCreated,
 }) => {
   const isBatch = transactions.length > 1;
   const one = transactions.length === 1 ? transactions[0] : null;
@@ -128,9 +130,27 @@ const TransactionEditModal = ({
     [allAccounts, transactions]
   );
   const payeeOptions = useMemo(() => allPayees.map((p) => p.name), [allPayees]);
+  // Read by the opening effect below without being one of its triggers: a caller
+  // adding a just-created account to `allAccounts` must not reset the form.
+  const optionsRef = useRef({ categoryOptions, accountOptions });
+  optionsRef.current = { categoryOptions, accountOptions };
+
+  // "Create account" in the Category picker: the new account is selected at once.
+  const accountCreator = useCreateAccount(book, (account) => {
+    const [option] = buildCategoryOptions([account]);
+    if (option) setCategory(option);
+    onAccountCreated?.(account);
+  });
+  // Accounts created here, until the caller's `allAccounts` carries them.
+  const pickerOptions = useMemo(() => {
+    const known = new Set(categoryOptions.map((o) => o.id));
+    const extra = buildCategoryOptions(accountCreator.created).filter((o) => !known.has(o.id));
+    return extra.length ? [...categoryOptions, ...extra] : categoryOptions;
+  }, [categoryOptions, accountCreator.created]);
 
   useEffect(() => {
     if (!open || transactions.length === 0) return;
+    const { categoryOptions, accountOptions } = optionsRef.current;
 
     setActiveTab(0);
     setErrors({});
@@ -165,7 +185,7 @@ const TransactionEditModal = ({
       setOutflow('');
       setSplits(null);
     }
-  }, [open, transactions, categoryOptions, accountOptions, one]);
+  }, [open, transactions, one]);
 
   // --- splits ----------------------------------------------------------
 
@@ -506,7 +526,7 @@ const TransactionEditModal = ({
           {isSplit ? (
             <SplitEditor
               legs={splits}
-              categoryOptions={categoryOptions}
+              categoryOptions={pickerOptions}
               total={total}
               legSum={legSum}
               remaining={remaining}
@@ -524,9 +544,10 @@ const TransactionEditModal = ({
                 label={gettext('Category')}
                 value={category}
                 onChange={setCategory}
-                options={categoryOptions}
+                options={pickerOptions}
                 getGroup={(option) => option.groupLabel}
                 disabled={!can.can_edit_category}
+                onCreate={accountCreator.available ? accountCreator.open : null}
                 placeholder={isBatch ? gettext('Leave blank to keep each one') : gettext('Choose a category')}
                 testId="transaction-category"
               />
@@ -601,6 +622,8 @@ const TransactionEditModal = ({
           )}
         </div>
       )}
+      {/* Its own <dialog>: the top layer stacks it above this one */}
+      {accountCreator.modal}
     </Modal>
   );
 };

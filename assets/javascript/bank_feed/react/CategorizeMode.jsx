@@ -1385,7 +1385,7 @@ export default function CategorizeMode({
       // A modal over the stack handles its own Escape (via the dialog's
       // `cancel` event) — don't also navigate away or skip under it, which
       // would throw the user out of the queue while they were editing.
-      if (pendingBatch || splitModalOpen) return;
+      if (pendingBatch || splitModalOpen || showCreateAccountModal) return;
       if (e.key === 'Escape') window.location.href = backHref;
       if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
@@ -1395,7 +1395,7 @@ export default function CategorizeMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backHref, undoStack, pendingBatch, splitModalOpen]);
+  }, [backHref, undoStack, pendingBatch, splitModalOpen, showCreateAccountModal]);
 
   const currentId = transactionId(transactions[0]);
   const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
@@ -1564,6 +1564,13 @@ export default function CategorizeMode({
         allPayees={allPayees}
         book={book}
         onSave={handleSplitSave}
+        onAccountCreated={(account) =>
+          setLocalAccounts(prev =>
+            prev.some(a => a.id === account.id)
+              ? prev
+              : [...prev, account].sort((a, b) => a.name.localeCompare(b.name))
+          )
+        }
         mode="edit"
         startSplit
       />
