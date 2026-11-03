@@ -18,6 +18,7 @@ import {
   filterParams,
   queryFromUrl,
   rowSetKey,
+  scopeSearch,
   summaryAsRow,
   writeQueryToUrl,
 } from '../feedQuery';
@@ -180,6 +181,10 @@ const LineApp = ({
   // The one account the Inbox is filtered to, if it is filtered to exactly one:
   // its header, balances, Reconcile link and Plaid refresh apply then.
   const selectedAccount = query.accounts.length === 1 ? feedAccountsById.get(query.accounts[0]) ?? null : null;
+
+  // Categorize Mode opens on the Inbox's account and date filters, in the
+  // Inbox's own URL parameter names.
+  const categorizeSearch = scopeSearch(query);
 
   // Snackbar state for batch operations
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info', action: null });
@@ -1026,7 +1031,7 @@ const LineApp = ({
           </button>
           <div className="flex gap-2 items-center">
             <a
-              href={`${book.base}bankfeed/categorize/`}
+              href={`${book.base}bankfeed/categorize/${categorizeSearch}`}
               className="btn btn-primary btn-sm gap-1"
               data-testid="categorize-mode-btn"
             >

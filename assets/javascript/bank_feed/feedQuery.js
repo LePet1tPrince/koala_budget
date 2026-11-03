@@ -121,6 +121,20 @@ export function writeQueryToUrl(query) {
 }
 
 /**
+ * The account and date filters of `query` as a query string (`?account=…&start=…&end=…`,
+ * or ''), in the Inbox's URL names: how the Inbox and Categorize Mode hand their
+ * scope to each other.
+ */
+export function scopeSearch({ accounts, startDate, endDate }) {
+  const params = new URLSearchParams();
+  if (accounts.length) params.set('account', accounts.join(','));
+  if (startDate) params.set('start', startDate);
+  if (endDate) params.set('end', endDate);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+/**
  * A selection summary (from `selection/`, snake_case) in the shape the table's
  * own rows have, so the batch bar reads one shape whichever way a row was selected.
  */

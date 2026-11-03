@@ -5,9 +5,11 @@ import { getBatchOperationsApi, getTransactionApi, getUploadApiHelpers } from '.
 import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
 import EditTransactionModal from './EditTransactionModal';
 import Combobox from '../../common/Combobox';
+import DateRangePicker from '../../common/DateRangePicker';
 import Icon from '../../common/Icon';
 import Modal from '../../common/Modal';
 import { accountKind, ACCOUNT_KIND_LABELS, goalLeftLabel, pickableAccounts } from '../../common/accountKind';
+import { queryFromUrl, scopeSearch } from '../feedQuery';
 
 // How many cards ahead of the current one to look up similar-transaction
 // suggestions for.
@@ -45,6 +47,70 @@ function lookalikeKey(tx) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+// Which uncategorized transactions the queue holds: feed accounts (empty = all)
+// and a posted-date range. Read from and written to the page URL with the
+// Inbox's own parameter names (`account`, `start`, `end`), so the Inbox can
+// hand over its filters and Back returns to the same view.
+function scopeFromUrl() {
+  const { accounts, startDate, endDate } = queryFromUrl();
+  return { accounts, startDate, endDate };
+}
+
+function isScoped(scope) {
+  return scope.accounts.length > 0 || Boolean(scope.startDate || scope.endDate);
+}
+
+/**
+ * Narrow the queue to one feed account and/or a date range. Changing either
+ * reloads the queue.
+ */
+function ScopeBar({ scope, feedAccounts, onChange }) {
+  const multi = scope.accounts.length > 1;
+  const accountValue = multi ? 'multi' : (scope.accounts[0] ?? '');
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="categorize-scope">
+      <select
+        className="select select-bordered select-sm w-auto max-w-xs"
+        value={accountValue}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === 'multi') return;
+          onChange({ ...scope, accounts: v ? [Number(v)] : [] });
+        }}
+        aria-label="Account"
+        data-testid="categorize-scope-account"
+      >
+        <option value="">All accounts</option>
+        {multi && (
+          <option value="multi" disabled>
+            {`${scope.accounts.length} accounts`}
+          </option>
+        )}
+        {feedAccounts.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name}
+          </option>
+        ))}
+      </select>
+      <DateRangePicker
+        startDate={scope.startDate}
+        endDate={scope.endDate}
+        onApply={(start, end) => onChange({ ...scope, startDate: start || '', endDate: end || '' })}
+      />
+      {isScoped(scope) && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs"
+          onClick={() => onChange({ accounts: [], startDate: '', endDate: '' })}
+          data-testid="categorize-scope-clear"
+        >
+          ✕ Clear
+        </button>
+      )}
+    </div>
+  );
 }
 
 const TOP_LEVEL_FILTERS = [
@@ -959,6 +1025,7 @@ export default function CategorizeMode({
 }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [scope, setScope] = useState(scopeFromUrl);
   const [categorized, setCategorized] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -982,14 +1049,24 @@ export default function CategorizeMode({
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
   const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
   const payeeOptions = useMemo(() => allPayees.map(p => p.name).filter(Boolean), [allPayees]);
+  const feedAccounts = useMemo(
+    () => allAccounts.filter(a => a.has_feed && !a.is_archived).sort((a, b) => a.name.localeCompare(b.name)),
+    [allAccounts]
+  );
+  // Back to the Inbox, showing the same account and dates.
+  const backHref = `${backUrl}${scopeSearch(scope)}`;
 
-  const fetchUncategorized = useCallback(async () => {
+  const fetchUncategorized = useCallback(async (forScope) => {
     setLoading(true);
     try {
       let allRows = [];
-      // The server narrows to uncategorized rows; walking the whole feed to
-      // filter it here cost one request per 200 rows of history.
-      let url = `${book.base}bankfeed/api/feed/?uncategorized=1`;
+      // The server narrows to uncategorized rows (and to the scope); walking
+      // the whole feed to filter it here cost one request per 200 rows of history.
+      const params = new URLSearchParams({ uncategorized: '1' });
+      if (forScope.accounts.length) params.set('account', forScope.accounts.join(','));
+      if (forScope.startDate) params.set('start_date', forScope.startDate);
+      if (forScope.endDate) params.set('end_date', forScope.endDate);
+      let url = `${book.base}bankfeed/api/feed/?${params}`;
       while (url) {
         const resp = await fetch(url, { credentials: 'include', headers });
         if (!resp.ok) throw new Error(`Feed request failed: ${resp.status}`);
@@ -998,7 +1075,7 @@ export default function CategorizeMode({
         url = data.next || null;
       }
       setTransactions(allRows);
-      if (totalCount === 0) setTotalCount(allRows.length);
+      setTotalCount(allRows.length);
     } catch (err) {
       console.error('Failed to fetch transactions:', err);
     } finally {
@@ -1047,8 +1124,23 @@ export default function CategorizeMode({
   }, [transactions, suggestionsByTransaction, fetchSuggestions]);
 
   useEffect(() => {
-    fetchUncategorized();
+    fetchUncategorized(scope);
   }, []);
+
+  // A new scope is a new queue: progress, streak and skips start over, and the
+  // URL follows so a reload keeps it.
+  const changeScope = useCallback((next) => {
+    setScope(next);
+    setCategorized(0);
+    setStreak(0);
+    setSkippedCount(0);
+    setUndoStack([]);
+    setPendingBatch(null);
+    setError(null);
+    const url = `${window.location.pathname}${scopeSearch(next)}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', url);
+    fetchUncategorized(next);
+  }, [fetchUncategorized]);
 
   // Everything that happens once transactions are filed, whichever way they
   // were filed: the card leaves, the counters and streak move, the confetti
@@ -1288,7 +1380,7 @@ export default function CategorizeMode({
       // `cancel` event) — don't also navigate away or skip under it, which
       // would throw the user out of the queue while they were editing.
       if (pendingBatch || splitModalOpen) return;
-      if (e.key === 'Escape') window.location.href = backUrl;
+      if (e.key === 'Escape') window.location.href = backHref;
       if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
         e.preventDefault();
@@ -1297,7 +1389,7 @@ export default function CategorizeMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backUrl, undoStack, pendingBatch, splitModalOpen]);
+  }, [backHref, undoStack, pendingBatch, splitModalOpen]);
 
   const currentId = transactionId(transactions[0]);
   const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
@@ -1323,11 +1415,16 @@ export default function CategorizeMode({
           <h2 className="text-2xl font-black mb-2">
             {categorized > 0 ? 'All Done!' : 'Nothing to categorize'}
           </h2>
-          <p className="text-base-content/70 mb-2">
+          <p className="text-base-content/70 mb-2" data-testid="categorize-empty-message">
             {categorized > 0
               ? `You categorized ${categorized} transactions!`
-              : 'All your transactions are already categorized.'}
+              : isScoped(scope)
+                ? 'No uncategorized transactions in this account and date range.'
+                : 'All your transactions are already categorized.'}
           </p>
+          <div className="flex justify-center mb-4">
+            <ScopeBar scope={scope} feedAccounts={feedAccounts} onChange={changeScope} />
+          </div>
           {categorized > 0 && (
             <div className="stats stats-horizontal shadow mb-4">
               <div className="stat py-3 px-4">
@@ -1340,7 +1437,7 @@ export default function CategorizeMode({
               </div>
             </div>
           )}
-          <a href={backUrl} className="btn btn-primary">
+          <a href={backHref} className="btn btn-primary">
             ← Back to Bank Feed
           </a>
         </div>
@@ -1353,12 +1450,13 @@ export default function CategorizeMode({
       <Confetti active={showConfetti} />
 
       {/* Header */}
-      <div className="bg-base-100 border-b border-base-300 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <a href={backUrl} className="btn btn-ghost btn-sm gap-1">
+      <div className="bg-base-100 border-b border-base-300 px-6 py-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-4">
+          <a href={backHref} className="btn btn-ghost btn-sm gap-1">
             ← Back
           </a>
           <h1 className="text-xl font-black tracking-tight">⚡ Categorize Mode</h1>
+          <ScopeBar scope={scope} feedAccounts={feedAccounts} onChange={changeScope} />
         </div>
         <div className="flex items-center gap-4">
           <StreakCounter streak={streak} />
@@ -1419,7 +1517,7 @@ export default function CategorizeMode({
               ⏭ Skip for now
               <kbd className="kbd kbd-xs ml-1">S</kbd>
             </button>
-            <p className="text-sm text-base-content/40">
+            <p className="text-sm text-base-content/40" data-testid="categorize-remaining">
               {transactions.length} remaining{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}
             </p>
           </div>

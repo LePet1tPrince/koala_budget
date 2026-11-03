@@ -15,6 +15,7 @@ import pytest
 from playwright.sync_api import Page
 
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
+from e2e.pages.bank_feed import BankFeedPage
 from e2e.pages.categorize import CategorizePage
 
 # The team fixture bootstraps a full chart of accounts, so a search has to be
@@ -246,3 +247,75 @@ def test_a_draft_survives_a_skip(requires_vite, authenticated_page: Page, live_s
     authenticated_page.wait_for_timeout(600)
     assert categorize.current_card_title() == "Renamed while passing through"
     assert categorize.details_are_dirty()
+
+
+@pytest.fixture
+def two_feed_accounts(team, categorize_fixture):
+    """A second feed account with two uncategorized rows, one in January and one in March."""
+    group = categorize_fixture["account"].account_group
+    other = AssetAccountFactory(team=team, account_group=group, has_feed=True, name="Zed Savings")
+    jan = feed_transaction(team, other, description="JANUARY ROW", posted_date="2026-01-10")
+    mar = feed_transaction(team, other, description="MARCH ROW", posted_date="2026-03-10")
+    return {"first": categorize_fixture["account"], "other": other, "jan": jan, "mar": mar}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_scope_to_one_account(requires_vite, authenticated_page: Page, live_server, team, two_feed_accounts):
+    """`?account=` limits the queue to that account; choosing All accounts widens it and updates the URL."""
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book, f"?account={two_feed_accounts['other'].id}")
+
+    assert categorize.remaining() == 2
+    assert categorize.scope_account.input_value() == str(two_feed_accounts["other"].id)
+
+    categorize.scope_account.select_option("")
+    authenticated_page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+    assert categorize.remaining() == 3
+    assert "account=" not in authenticated_page.url
+
+    categorize.scope_account.select_option(str(two_feed_accounts["first"].id))
+    authenticated_page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+    assert categorize.remaining() == 1
+    assert f"account={two_feed_accounts['first'].id}" in authenticated_page.url
+
+
+@pytest.mark.django_db(transaction=True)
+def test_scope_to_a_date_range(requires_vite, authenticated_page: Page, live_server, team, two_feed_accounts):
+    """`?start=&end=` limits the queue to rows posted in that range."""
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book, f"?account={two_feed_accounts['other'].id}&start=2026-03-01&end=2026-03-31")
+
+    assert categorize.remaining() == 1
+    assert categorize.current_card_description() == "MARCH ROW"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_empty_scope_offers_to_widen(requires_vite, authenticated_page: Page, live_server, team, two_feed_accounts):
+    """A scope with nothing uncategorized says so and keeps the scope bar, so Clear brings the queue back."""
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    authenticated_page.goto(categorize.url(categorize.path(team.default_book)) + "?start=2020-01-01&end=2020-01-31")
+    message = authenticated_page.locator("[data-testid='categorize-empty-message']")
+    message.wait_for(timeout=15_000)
+    assert "this account and date range" in message.inner_text()
+
+    authenticated_page.locator("[data-testid='categorize-scope-clear']").click()
+    authenticated_page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+    assert categorize.remaining() == 3
+
+
+@pytest.mark.django_db(transaction=True)
+def test_inbox_hands_its_account_filter_to_categorize_mode(
+    requires_vite, authenticated_page: Page, live_server, team, two_feed_accounts
+):
+    """Categorize Mode opened from an Inbox filtered to one account starts on that account, and Back returns there."""
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    feed.click_account_card(two_feed_accounts["other"].id)
+    authenticated_page.locator("[data-testid='categorize-mode-btn']").click()
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    authenticated_page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+    assert categorize.remaining() == 2
+
+    authenticated_page.get_by_role("link", name="← Back").click()
+    authenticated_page.wait_for_url(f"**/bankfeed/?account={two_feed_accounts['other'].id}*")
