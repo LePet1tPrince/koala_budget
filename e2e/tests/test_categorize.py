@@ -143,6 +143,48 @@ def test_suggestions_name_the_transactions_behind_them(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_at_most_three_suggestions_are_shown(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """Three categories from history plus an account named in the memo: only three are offered,
+    the memo match first."""
+    account = categorize_fixture["account"]
+    group = categorize_fixture["categories"]["Zed Coffee"].account_group
+    AccountFactory(team=team, account_group=group, name="Blue Bottle")  # named by the row's merchant
+    for category in categorize_fixture["categories"].values():
+        feed_transaction(team, account, category=category, merchant_name="Blue Bottle", description="HISTORY")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+    categorize.wait_for_suggestions()
+
+    notes = categorize.suggestion_notes()
+    assert len(notes) == 3
+    assert notes[0] == "Named in the transaction memo"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_searching_hides_the_suggestions(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """Typing a search drops the suggestion block; the suggested account is still found by the search."""
+    account = categorize_fixture["account"]
+    groceries = categorize_fixture["categories"]["Zed Groceries"]
+    feed_transaction(team, account, category=groceries, merchant_name="Blue Bottle", description="HISTORY")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+    categorize.wait_for_suggestions()
+
+    categorize.search("zed groc")
+    assert categorize.page.locator("[data-testid='category-suggestions']").count() == 0
+    assert categorize.active_row_name() == "Zed Groceries"
+
+    categorize.press("Escape")
+    categorize.wait_for_suggestions()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_payee_and_description_are_editable_on_the_card(
     requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
 ):
