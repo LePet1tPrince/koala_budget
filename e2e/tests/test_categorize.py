@@ -12,7 +12,7 @@ sits above the list.
 """
 
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
 from e2e.pages.bank_feed import BankFeedPage
@@ -141,6 +141,52 @@ def test_suggestions_name_the_transactions_behind_them(
     categorize.wait_for_suggestions()
 
     assert categorize.suggestion_notes() == ["2 transactions with this payee were categorized as this"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_at_most_three_suggestions_are_shown(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """Three categories from history plus an account named in the memo: only three are offered,
+    the memo match first."""
+    account = categorize_fixture["account"]
+    group = categorize_fixture["categories"]["Zed Coffee"].account_group
+    AccountFactory(team=team, account_group=group, name="Blue Bottle")  # named by the row's merchant
+    for category in categorize_fixture["categories"].values():
+        feed_transaction(team, account, category=category, merchant_name="Blue Bottle", description="HISTORY")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+    # The memo match renders at once; the history matches arrive with the request.
+    rows = authenticated_page.locator("[data-testid='category-suggestion']")
+    expect(rows.nth(1)).to_be_visible(timeout=10_000)
+    authenticated_page.wait_for_load_state("load")
+    authenticated_page.wait_for_timeout(500)
+
+    notes = categorize.suggestion_notes()
+    assert len(notes) == 3
+    assert notes[0] == "Named in the transaction memo"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_searching_hides_the_suggestions(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """Typing a search drops the suggestion block; the suggested account is still found by the search."""
+    account = categorize_fixture["account"]
+    groceries = categorize_fixture["categories"]["Zed Groceries"]
+    feed_transaction(team, account, category=groceries, merchant_name="Blue Bottle", description="HISTORY")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+    categorize.wait_for_suggestions()
+
+    categorize.search("zed groc")
+    assert categorize.page.locator("[data-testid='category-suggestions']").count() == 0
+    assert categorize.active_row_name() == "Zed Groceries"
+
+    categorize.press("Escape")
+    categorize.wait_for_suggestions()
 
 
 @pytest.mark.django_db(transaction=True)

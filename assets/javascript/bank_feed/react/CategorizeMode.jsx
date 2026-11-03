@@ -15,6 +15,9 @@ import { queryFromUrl, scopeSearch } from '../feedQuery';
 // suggestions for.
 const SUGGESTION_PREFETCH = 8;
 
+// At most this many suggested categories are shown above the account list.
+const MAX_SUGGESTIONS = 3;
+
 // A feed row's id is its BankTransaction id, which is what the suggestion
 // endpoint keys on.
 function transactionId(tx) {
@@ -523,6 +526,8 @@ function AccountHierarchy({
     return byId;
   }, [allAccounts]);
 
+  const trimmedSearch = searchQuery.trim();
+
   // Two independent signals can each suggest a category: the server's
   // history-based matches (payee/description/similar-wording), and an
   // account named verbatim in this transaction's own memo/payee — often the
@@ -530,18 +535,21 @@ function AccountHierarchy({
   // other side. Merged into one ranked, deduped list (the same account is
   // never shown twice), and the transaction's own feed account is never
   // suggested, or categorizing it would make it a transfer to itself.
+  // Capped at MAX_SUGGESTIONS, and empty while searching: a search means none
+  // of them was it, and the search results then include those accounts.
   const usableSuggestions = useMemo(() => {
+    if (trimmedSearch) return [];
     const feedAccountId = currentTransaction?.account?.id ?? null;
     const fromHistory = (suggestions || []).filter(
       s => accountsById[s.category_id] && s.category_id !== feedAccountId
     );
 
-    if (!currentTransaction) return fromHistory;
+    if (!currentTransaction) return fromHistory.slice(0, MAX_SUGGESTIONS);
 
     const memoText = [currentTransaction.description, currentTransaction.merchant_name]
       .filter(Boolean).join(' ');
     const namedAccount = findAccountNamedInText(memoText, allAccounts, feedAccountId);
-    if (!namedAccount) return fromHistory;
+    if (!namedAccount) return fromHistory.slice(0, MAX_SUGGESTIONS);
 
     const already = fromHistory.find(s => s.category_id === namedAccount.id);
     const named = {
@@ -551,8 +559,8 @@ function AccountHierarchy({
       match_type: 'named',
       payee: already ? already.payee : '',
     };
-    return [named, ...fromHistory.filter(s => s.category_id !== namedAccount.id)];
-  }, [suggestions, accountsById, currentTransaction, allAccounts]);
+    return [named, ...fromHistory.filter(s => s.category_id !== namedAccount.id)].slice(0, MAX_SUGGESTIONS);
+  }, [suggestions, accountsById, currentTransaction, allAccounts, trimmedSearch]);
 
   const suggestedAccountIds = useMemo(
     () => new Set(usableSuggestions.map(s => s.category_id)),
@@ -576,8 +584,6 @@ function AccountHierarchy({
     );
     return [...names].sort();
   }, [allAccounts, activeTypes]);
-
-  const trimmedSearch = searchQuery.trim();
 
   const filteredAccounts = useMemo(() => {
     const results = [];
@@ -814,7 +820,7 @@ function AccountHierarchy({
       <SuggestedCategories
         suggestions={usableSuggestions}
         accountsById={accountsById}
-        loading={suggestionsLoading && usableSuggestions.length === 0}
+        loading={suggestionsLoading && usableSuggestions.length === 0 && !trimmedSearch}
         activeKey={activeKey}
         onSelect={onSelect}
       />
