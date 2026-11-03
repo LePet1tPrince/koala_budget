@@ -8,6 +8,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/stable/ref/settings/
 """
 
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -151,6 +152,12 @@ if ENABLE_DEBUG_TOOLBAR:
 if DEBUG:
     INSTALLED_APPS.append("django_browser_reload")
     MIDDLEWARE.append("django_browser_reload.middleware.BrowserReloadMiddleware")
+    # runserver reloads on file-system events instead of polling every file once a
+    # second. A dev-group dependency, so only added when installed. Where events
+    # don't arrive (code on a Windows drive under WSL or Docker), set
+    # WATCHFILES_FORCE_POLLING=true.
+    if importlib.util.find_spec("django_watchfiles"):
+        INSTALLED_APPS.append("django_watchfiles")
 
 ROOT_URLCONF = "koala_budget.urls"
 

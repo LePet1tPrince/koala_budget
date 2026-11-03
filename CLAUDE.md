@@ -96,6 +96,7 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Backend tests: `DJANGO_SETTINGS_MODULE=koala_budget.settings_test` (as `make test` does).
 - E2E in a sandbox: don't run `playwright install`; point at the installed browser. Never run E2E and the Django test runner at once (shared test DB).
 - Regenerate `api-client`: `manage.py spectacular --file schema.yml`, then `java -jar openapi-generator-cli.jar generate -i schema.yml -g typescript-fetch -o …` (7.9.0); keep `api-client/package.json`.
+- Don't import heavy SDKs (`litellm`, `pydantic_ai`, `plaid`) at module level in anything the URLconf or models import — import inside the function. Each adds 1–2s to every dev-server reload.
 - Plaid tests: mock at `apps.plaid.services.*`; a `MagicMock` task id in a DRF response hangs the test — set `delay.return_value.id`.
 
 ---
