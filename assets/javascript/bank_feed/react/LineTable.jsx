@@ -169,6 +169,8 @@ const LineTable = ({
   onAccountCreated,
   allPayees = [],
   categorySuggestions = {},
+  rowSuggestions = {},
+  onConfirmSuggestion,
   book,
   defaultAccountId = null,
   onAdd,
@@ -582,6 +584,8 @@ const LineTable = ({
                   const panelId = `transfer-match-panel-${row.id}`;
                   const saving = pendingIds.has(row.id);
                   const account = accountsById.get(row.account?.id) ?? row.account;
+                  // An uncategorized row shows its suggested category, one click from accepted
+                  const suggestion = !voided && !isCategorized(row) ? rowSuggestions[row.id] : null;
                   return (
                     <Fragment key={row.id}>
                       <tr
@@ -616,12 +620,42 @@ const LineTable = ({
                         <td className="truncate" title={row.payee || ''}>
                           {row.payee || ''}
                         </td>
-                        <td className="truncate" title={categoryTitle(row)}>
+                        <td
+                          className="truncate"
+                          title={
+                            suggestion
+                              ? interpolate(gettext('Suggested: %s'), [suggestion.name])
+                              : categoryTitle(row)
+                          }
+                        >
                           <span className="inline-flex w-full items-center gap-1">
                             {row.isSplit ? (
                               <span className="badge badge-ghost badge-sm shrink-0" data-testid={`split-badge-${row.id}`}>
                                 {interpolate(gettext('Split (%s)'), [row.splitCount])}
                               </span>
+                            ) : suggestion ? (
+                              <>
+                                <span
+                                  className="truncate italic text-base-content/70"
+                                  data-testid={`suggested-category-${row.id}`}
+                                >
+                                  {suggestion.name}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn btn-success btn-soft btn-xs shrink-0 px-1.5"
+                                  disabled={saving}
+                                  aria-label={interpolate(gettext('Confirm %s'), [suggestion.name])}
+                                  title={interpolate(gettext('Confirm %s'), [suggestion.name])}
+                                  data-testid={`confirm-category-${row.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onConfirmSuggestion?.(row, suggestion);
+                                  }}
+                                >
+                                  <Icon name="check" className="h-3.5 w-3.5" />
+                                </button>
+                              </>
                             ) : (
                               <span className="truncate">
                                 {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
