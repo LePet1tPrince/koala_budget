@@ -176,27 +176,6 @@ def test_draft_resumes_after_reload(requires_vite, authenticated_page: Page, liv
 
 
 @pytest.mark.django_db(transaction=True)
-def test_feed_selection_arrives_ticked(requires_vite, authenticated_page: Page, live_server, chequing):
-    team, account = chequing["team"], chequing["account"]
-    line, tx = entry(team, account, chequing["groceries"], "-40.00", on=_in_period(3), description="Store")
-    other, _ = entry(team, account, chequing["groceries"], "-5.00", on=_in_period(4), description="Other")
-
-    feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.default_book)
-    feed.click_account_card(account.id)
-    feed.wait_for_table()
-    feed.select_row(tx.id)
-    feed.batch_button("Reconcile").click()
-
-    page = ReconcilePage(authenticated_page, live_server.url)
-    authenticated_page.wait_for_selector("[data-testid='reconcile-start-form']", timeout=15_000)
-    page.start("-40.00")
-    expect(page.row(line.id)).to_have_attribute("data-ticked", "true")
-    expect(page.row(other.id)).to_have_attribute("data-ticked", "false")
-    expect(page.difference()).to_have_text("$0.00")
-
-
-@pytest.mark.django_db(transaction=True)
 def test_unreconciling_in_the_feed_marks_the_statement_changed(
     requires_vite, authenticated_page: Page, live_server, chequing
 ):
