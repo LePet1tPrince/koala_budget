@@ -83,7 +83,7 @@ def start_ticked(account, statement_date: date, statement_balance: Decimal, user
     than ticking the many that are. A joined draft keeps its own ticks, and a
     preselection (`?lines=`) is the user's own choice, so
     neither is auto-ticked. Nor is a line that left an earlier statement
-    (unreconciled after it was finished, or its statement undone): someone took
+    (its statement undone, or unreconciled after it was finished): someone took
     it out on purpose, and the drift banner names it for a deliberate re-tick.
     Returns `(draft, auto_ticked_ids)`.
     """

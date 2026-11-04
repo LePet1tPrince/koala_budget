@@ -250,7 +250,7 @@ make test-e2e-accounts  # Run specific test file
 - `test_diagnose.py` — one test per hint rule (pure, `SimpleTestCase`).
 - `test_views.py` — API happy path as a plain member, statement-sign payloads, 400/409 on finish, cross-team 404s, a foreign line id refused, pages render.
 - `apps/portability/tests/test_apply.py::StatementRoundTripTests` — statements survive export → import intact; `test_read_errors.py` covers a v1 archive and a dangling `reconciliation_id`.
-- E2E (7): balance → finish → hub Intact; duplicate hint fixed in one click; card balance typed as printed; finish with adjustment; draft resumes after reload; feed selection arrives ticked; unreconcile in the feed marks the statement Changed and the next session shows the drift banner.
+- E2E (7): balance → finish → hub Intact; duplicate hint fixed in one click; card balance typed as printed; finish with adjustment; draft resumes after reload; feed selection arrives ticked; a line that left a finished statement marks it Changed and the next session shows the drift banner.
 
 ## Known Coverage Gaps
 

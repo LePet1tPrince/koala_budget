@@ -180,7 +180,7 @@ class BankFeedPage(BasePage):
         return [name for name in candidates if self.batch_button(name).count() and self.batch_button(name).is_visible()]
 
     def batch_bar_text(self) -> str:
-        """The bar's summary strip — selection count and the In/Out/Net and reconciled figures."""
+        """The bar's summary strip — selection count and the In/Out/Net figures."""
         return self.page.get_by_text("selected", exact=False).last.locator("xpath=ancestor::*[3]").inner_text()
 
     # ------------------------------------------------------------------

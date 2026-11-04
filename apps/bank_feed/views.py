@@ -339,7 +339,6 @@ class BankFeedViewSet(
         ).prefetch_related(
             "journal_entry__lines__account__account_group",
             "journal_entry__lines__account__institution",
-            "journal_entry__lines__reconciliation",
             "journal_entry__bank_feed_transactions__account__account_group",
             "journal_entry__bank_feed_transactions__account__institution",
         )
@@ -1709,42 +1708,6 @@ class BankFeedViewSet(
         rows = [bank_transaction_to_feed_row(tx) for tx in created_transactions]
         response_serializer = BankFeedRowSerializer(rows, many=True)
         return Response(response_serializer.data)
-
-    @extend_schema(
-        operation_id="bank_feed_batch_unreconcile",
-        tags=["bank-feed"],
-        request=BatchIdsSerializer,
-        responses={204: None},
-    )
-    @action(detail=False, methods=["post"], url_path="batch_unreconcile")
-    def batch_unreconcile(self, request, team_slug=None, book_slug=None):
-        """
-        Batch unreconcile multiple bank transactions.
-        Sets is_reconciled=False on the JournalLine for the bank account side.
-        """
-        serializer = BatchIdsSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        ids = serializer.validated_data["ids"]
-
-        # Get transactions that belong to this book
-        transactions = BankTransaction.objects.filter(
-            id__in=ids,
-            book=request.book,
-        ).select_related("account", "journal_entry")
-
-        # Mark each transaction's bank account journal line as unreconciled
-        for tx in transactions:
-            if tx.journal_entry:
-                for line in tx.journal_entry.lines.all():
-                    if line.account == tx.account:
-                        line.is_reconciled = False
-                        line.save()
-                        break
-
-        log_event(AuditEvent.BULK_UNRECONCILE, request=request, metadata={"count": len(ids)})
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
         operation_id="bank_feed_transfer_suggestions",

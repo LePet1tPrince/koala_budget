@@ -197,7 +197,6 @@ WRITES = {
     "bank_feed:bank-feed-batch-restore": lambda a, b: {"ids": [b.categorized_tx.id]},
     "bank_feed:bank-feed-batch-delete": lambda a, b: {"ids": [b.categorized_tx.id]},
     "bank_feed:bank-feed-batch-duplicate": lambda a, b: {"ids": [b.categorized_tx.id]},
-    "bank_feed:bank-feed-batch-unreconcile": lambda a, b: {"ids": [b.categorized_tx.id]},
     "bank_feed:bank-feed-batch-edit": lambda a, b: {"ids": [b.categorized_tx.id], "category_id": a.groceries.id},
     "bank_feed:bank-feed-categorize": lambda a, b: {
         "rows": [{"id": b.uncategorized_tx.id}],
