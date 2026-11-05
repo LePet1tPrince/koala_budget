@@ -1,7 +1,5 @@
 from __future__ import annotations as _annotations
 
-from enum import StrEnum
-
 from django.conf import settings
 from django.utils import timezone
 from pydantic_ai import Agent, RunContext
@@ -16,7 +14,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.toolsets import AbstractToolset
 
 from apps.ai.tools import admin_db, email_toolset, weather_toolset
-from apps.ai.types import UserDependencies
+from apps.ai.types import AgentTypes, UserDependencies
 from apps.chat.prompts import get_default_system_prompt
 from apps.users.models import CustomUser
 
@@ -34,11 +32,6 @@ async def current_datetime(ctx: RunContext[UserDependencies]) -> str:
 
 
 DEFAULT_INSTRUCTIONS = [get_default_system_prompt(), add_user_name, add_user_email, current_datetime]
-
-
-class AgentTypes(StrEnum):
-    WEATHER = "weather"
-    ADMIN = "admin"
 
 
 def get_agent(agent_type: AgentTypes):

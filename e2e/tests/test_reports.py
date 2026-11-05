@@ -84,6 +84,33 @@ def test_spending_shows_summary_with_data(authenticated_page: Page, live_server,
     assert reports.has_export_btn()
 
 
+@pytest.mark.django_db(transaction=True)
+def test_a_monthly_value_opens_the_account_for_that_month(authenticated_page: Page, live_server, team):
+    """By month, clicking May's Groceries amount opens Groceries filtered to May."""
+    expense_group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
+    bank_group = AccountGroupFactory(team=team)
+    groceries = AccountFactory(team=team, account_group=expense_group, name="Zed Groceries")
+    bank = AccountFactory(team=team, account_group=bank_group, name="Zed Bank")
+    for day, amount, description in [
+        (date(2026, 4, 9), "40.00", "April shop"),
+        (date(2026, 5, 9), "55.00", "May shop"),
+    ]:
+        entry = JournalEntryFactory(team=team, description=description, status="posted", entry_date=day)
+        JournalLineFactory(team=team, journal_entry=entry, account=groceries, dr_amount=amount)
+        JournalLineFactory(team=team, journal_entry=entry, account=bank, cr_amount=amount)
+
+    reports = ReportsPage(authenticated_page, live_server.url)
+    reports.goto_spending(team.default_book, "start_date=2026-04-01&end_date=2026-05-31&columns=month")
+    row = authenticated_page.locator("[data-testid='spending-expenses'] tr", has_text="Zed Groceries")
+    cells = row.locator("[data-testid='period-cell']")
+    expect(cells).to_have_count(2)
+    cells.nth(1).click()
+
+    authenticated_page.wait_for_url(f"**/accounts/{groceries.id}/?start_date=2026-05-01&end_date=2026-05-31*")
+    expect(authenticated_page.get_by_text("May shop").first).to_be_visible()
+    expect(authenticated_page.get_by_text("April shop")).to_have_count(0)
+
+
 # ----------------------------------------------------------------------
 # Default timeframe and typed dates
 # ----------------------------------------------------------------------

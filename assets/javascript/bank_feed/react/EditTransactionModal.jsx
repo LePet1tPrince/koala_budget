@@ -10,6 +10,7 @@ import AmountInput from '../../common/AmountInput';
 import { formatDateForInput } from '../utils';
 import SplitEditor, { MIN_LEGS } from './SplitEditor';
 import TransactionHistory from './TransactionHistory';
+import useCreateAccount from './useCreateAccount';
 
 /* globals gettext */
 
@@ -70,6 +71,9 @@ const NO_ACCOUNTS = [];
  * - defaultAccountId: the account to preselect, e.g. the one the Inbox is filtered to
  * - onCreateRule: (transaction, categoryId) => void -- when given, offers "Create rule…"
  *   (a categorization rule matching this transaction, filing to the chosen category)
+ * - onAccountCreated: called with an account created from the Category picker's
+ *   "Create account" row (offered whenever `book` is given), so the caller can add
+ *   it to `allAccounts`
  */
 const EditTransactionModal = ({
   open,
@@ -85,6 +89,7 @@ const EditTransactionModal = ({
   feedAccounts = NO_ACCOUNTS,
   defaultAccountId = null,
   onCreateRule,
+  onAccountCreated,
 }) => {
   // Determine mode - create if no transaction, edit otherwise
   const mode = modeProp || (transaction ? 'edit' : 'create');
@@ -124,6 +129,26 @@ const EditTransactionModal = ({
     ];
     return buildCategoryOptions(allAccounts, { keep });
   }, [allAccounts, transaction]);
+  // Read by the opening effect below without being one of its triggers: a caller
+  // adding a just-created account to `allAccounts` must not reset the form.
+  const categoryOptionsRef = useRef(categoryOptions);
+  categoryOptionsRef.current = categoryOptions;
+
+  // "Create account" in the Category picker: the new account is selected at once.
+  const accountCreator = useCreateAccount(book, (account) => {
+    const [option] = buildCategoryOptions([account]);
+    if (option) {
+      setCategory(option);
+      setCategorySuggested(false);
+    }
+    onAccountCreated?.(account);
+  });
+  // Accounts created here, until the caller's `allAccounts` carries them.
+  const pickerOptions = useMemo(() => {
+    const known = new Set(categoryOptions.map((o) => o.id));
+    const extra = buildCategoryOptions(accountCreator.created).filter((o) => !known.has(o.id));
+    return extra.length ? [...categoryOptions, ...extra] : categoryOptions;
+  }, [categoryOptions, accountCreator.created]);
 
   // The account a new transaction lands in
   const accountOptions = useMemo(
@@ -140,6 +165,7 @@ const EditTransactionModal = ({
   // Initialize form when transaction changes or modal opens
   useEffect(() => {
     if (!open) return;
+    const categoryOptions = categoryOptionsRef.current;
 
     setActiveTab(0);
 
@@ -209,7 +235,7 @@ const EditTransactionModal = ({
         ]);
       }
     }
-  }, [open, transaction, categoryOptions, categorySuggestions, isCreateMode, startSplitOnOpen]);
+  }, [open, transaction, categorySuggestions, isCreateMode, startSplitOnOpen]);
 
   // Check if transaction is read-only (Plaid transactions without journal entry).
   // Rows come from the generated API client (camelCase), but tolerate snake_case
@@ -535,7 +561,7 @@ const EditTransactionModal = ({
           {isSplit ? (
             <SplitEditor
               legs={splits}
-              categoryOptions={categoryOptions}
+              categoryOptions={pickerOptions}
               total={total}
               legSum={legSum}
               remaining={remaining}
@@ -556,9 +582,10 @@ const EditTransactionModal = ({
                   setCategory(newValue);
                   setCategorySuggested(false);
                 }}
-                options={categoryOptions}
+                options={pickerOptions}
                 getGroup={(option) => option.groupLabel}
                 disabled={!canEditCategory}
+                onCreate={accountCreator.available ? accountCreator.open : null}
                 error={errors.category}
                 helperText={
                   (categorySuggested && gettext('Suggested from how this payee was last categorized'))
@@ -649,6 +676,8 @@ const EditTransactionModal = ({
           {errors.submit && <p className="text-sm text-error">{errors.submit}</p>}
         </div>
       )}
+      {/* Its own <dialog>: the top layer stacks it above this one */}
+      {accountCreator.modal}
     </Modal>
   );
 };

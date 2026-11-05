@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from apps.ai.agents import AgentTypes
+from apps.ai.types import AgentTypes
 from apps.utils.models import BaseModel
 
 

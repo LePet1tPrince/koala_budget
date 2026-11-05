@@ -14,7 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.ai.agents import AgentTypes
+from apps.ai.types import AgentTypes
 from apps.chat.api_url_helpers import get_chat_api_url_templates
 from apps.chat.models import Chat, ChatMessage, ChatTypes, MessageTypes
 from apps.chat.serializers import ChatMessageSerializer, ChatSerializer

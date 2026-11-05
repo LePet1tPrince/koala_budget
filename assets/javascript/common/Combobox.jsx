@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 
 import { portalTarget, useAnchoredPosition } from './popoverPosition';
 
-/* globals gettext */
+/* globals gettext, interpolate */
 
 /**
  * Filterable combobox, replacing MUI's `Autocomplete` (restyle plan Phase 7).
@@ -20,6 +20,10 @@ import { portalTarget, useAnchoredPosition } from './popoverPosition';
  * bottom of a form. It portals into the nearest ancestor `<dialog>` when there is
  * one: a `<dialog>` is painted in the browser's top layer, so a list portaled to
  * `document.body` would disappear *behind* the modal it belongs to.
+ *
+ * `onCreate(typedText)` (object mode only) adds a last row, "Create account…", that
+ * hands the typed text to the caller — e.g. to open a create form prefilled with it.
+ * `createLabel(typedText)` words that row.
  */
 const Combobox = ({
   label,
@@ -38,6 +42,9 @@ const Combobox = ({
   listMinWidth = 0,
   ariaLabel,
   testId,
+  onCreate = null,
+  createLabel = (typed) =>
+    typed ? interpolate(gettext('Create account "%s"'), [typed]) : gettext('Create new account'),
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -62,6 +69,10 @@ const Combobox = ({
   // list has nothing to say — and a "No matches" panel left open would sit over
   // the next field, swallowing the click a user makes to move on to it.
   const showList = open && (!freeText || filtered.length > 0);
+  // The create row sits after the options, so it is reached by the same index walk.
+  const canCreate = Boolean(onCreate) && !freeText;
+  const createIndex = filtered.length;
+  const lastIndex = canCreate ? createIndex : filtered.length - 1;
 
   const close = useCallback(() => {
     setOpen(false);
@@ -95,6 +106,13 @@ const Combobox = ({
     inputRef.current?.blur();
   };
 
+  const startCreate = () => {
+    const typed = query.trim();
+    close();
+    inputRef.current?.blur();
+    onCreate(typed);
+  };
+
   const onKeyDown = (e) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -103,9 +121,12 @@ const Combobox = ({
         return;
       }
       const step = e.key === 'ArrowDown' ? 1 : -1;
-      setActive((i) => Math.min(Math.max(i + step, 0), filtered.length - 1));
+      setActive((i) => Math.min(Math.max(i + step, 0), lastIndex));
     } else if (e.key === 'Enter') {
-      if (open && filtered[active]) {
+      if (open && canCreate && active === createIndex) {
+        e.preventDefault();
+        startCreate();
+      } else if (open && filtered[active]) {
         e.preventDefault();
         commit(filtered[active]);
       }
@@ -183,6 +204,23 @@ const Combobox = ({
                 </button>
               </li>
             ),
+          )}
+          {canCreate && (
+            <li className="mt-1 border-t border-base-300 pt-1">
+              <button
+                type="button"
+                role="option"
+                aria-selected={active === createIndex}
+                className={`block w-full truncate rounded-lg px-3 py-2 text-left text-sm font-medium text-primary ${
+                  active === createIndex ? 'bg-base-200' : 'hover:bg-base-200'
+                }`}
+                onMouseEnter={() => setActive(createIndex)}
+                onClick={startCreate}
+                data-testid={testId ? `${testId}-create` : undefined}
+              >
+                + {createLabel(query.trim())}
+              </button>
+            </li>
           )}
         </ul>,
         portalTarget(rootRef.current),
