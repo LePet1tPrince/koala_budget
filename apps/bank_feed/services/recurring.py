@@ -32,7 +32,7 @@ from apps.books.context import current_book
 
 from ..models import RecurringTransaction
 from .manual import create_manual_transaction
-from .splits import SplitError, check_legs_total, parse_legs
+from .splits import SplitError, check_legs_total, parse_legs, signed_amount
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +164,69 @@ def create_rule(
     )
     rule.next_date = following(rule, start_date)
     rule.save()
+    return rule
+
+
+class ScheduleFromTransactionError(ValueError):
+    """A feed row a schedule cannot be started from. The message is shown to the user."""
+
+
+def create_rule_from_transaction(
+    bank_tx,
+    *,
+    frequency: str,
+    interval: int = 1,
+    weekday: int | None = None,
+    day_of_month: int | None = None,
+    end_date: date | None = None,
+    today: date | None = None,
+) -> RecurringTransaction:
+    """
+    Start a schedule from a transaction already in the feed (an accepted suggestion).
+
+    The row is the schedule's first occurrence and is linked to it; its amount,
+    payee, description and category -- or split legs, or transfer -- are the
+    template. Anything already due after it is written at once, as `create_rule`'s
+    callers do.
+    """
+    if bank_tx.is_void:
+        raise ScheduleFromTransactionError(_("This transaction is void. Restore it before making it recurring."))
+    if bank_tx.is_transfer_mirror:
+        raise ScheduleFromTransactionError(
+            _("This is the other side of a transfer. Make the transaction in the account it was entered in recurring.")
+        )
+    if bank_tx.recurring_id and bank_tx.recurring.next_date is not None:
+        raise ScheduleFromTransactionError(_("This transaction already belongs to a recurring transaction."))
+    if end_date is not None and end_date < bank_tx.posted_date:
+        raise ScheduleFromTransactionError(_("The end date must be on or after the transaction's date."))
+
+    category, legs = None, None
+    if bank_tx.journal_entry_id:
+        others = [line for line in bank_tx.journal_entry.lines.all() if line.account_id != bank_tx.account_id]
+        if len(others) > 1:
+            legs = [(line.account, signed_amount(line)) for line in others]
+        elif others:
+            category = others[0].account
+
+    with transaction.atomic():
+        rule = create_rule(
+            book=bank_tx.book,
+            account=bank_tx.account,
+            amount=bank_tx.amount,
+            payee_name=bank_tx.merchant_name or "",
+            description=bank_tx.description or "",
+            category=category,
+            legs=legs,
+            start_date=bank_tx.posted_date,
+            frequency=frequency,
+            interval=interval,
+            weekday=weekday,
+            day_of_month=day_of_month,
+            end_date=end_date,
+        )
+        bank_tx.recurring = rule
+        bank_tx.save(update_fields=["recurring", "updated_at"])
+    materialize(rule, today=today)
     return rule
 
 

@@ -260,6 +260,12 @@ make test-e2e-accounts  # Run specific test file
 - `ScheduledListApiTest`: the feed strip's endpoint — soonest first, finished schedules excluded, `?account=` filter, bad ids 400, members read, outsiders refused
 - Page tests: a member sees the list and stops a schedule (rows kept, `recurring` nulled); a user outside the team gets 404; GET on stop is 405
 
+### Recurring detection (`apps/bank_feed/tests/test_recurring_detection.py`)
+
+- Fixture rows are written through `create_manual_transaction`, so their journal entries are real; `localdate` is patched to 2026-11-05
+- `DetectionTest`: monthly, every-2-weeks inflow, month-end → last day, and four negative cases in one test (two only, irregular, amount varies, stopped); scheduled and dismissed runs; account filter and the Plaid `bank_synced` flag
+- `SuggestionApiTest`: accept links the latest occurrence and writes nothing new (or writes the overdue one), split template, refusals (void, mirror, end before start, bad frequency, already scheduled), dismiss and bad keys, outsiders
+
 ## Known Coverage Gaps
 
 - `reports/` app has minimal test coverage — complex aggregation logic is untested

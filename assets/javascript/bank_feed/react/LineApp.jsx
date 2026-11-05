@@ -1190,6 +1190,7 @@ const LineApp = ({
               uploadDisabled={initialLoading}
               plaidClient={plaidClient}
               bankFeedClient={bankFeedClient}
+              onFeedChanged={scheduleQuietRefresh}
               onLinkSuccess={handlePlaidSuccess}
               onOpenTransferLeg={handleOpenTransferLeg}
               feedAccountIds={feedAccountIds}

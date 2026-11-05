@@ -317,6 +317,30 @@ class RecurringTransactionSerializer(serializers.Serializer):
     schedule = serializers.CharField(help_text='The schedule in words, e.g. "Every 2 weeks on Wednesday"')
 
 
+class RecurringSuggestionSerializer(serializers.Serializer):
+    """A run of transactions that looks recurring (`services/recurring_detection.py`)."""
+
+    key = serializers.CharField(help_text="Identifies the suggestion for dismissing it")
+    transaction_id = serializers.IntegerField(help_text="The latest occurrence: the schedule would start from it")
+    account = SimpleAccountSerializer()
+    bank_synced = serializers.BooleanField(
+        help_text="The account is fed by a bank connection, which will also import each payment"
+    )
+    payee = serializers.CharField()
+    category = SimpleAccountSerializer(allow_null=True)
+    is_split = serializers.BooleanField()
+    inflow = serializers.DecimalField(max_digits=15, decimal_places=2)
+    outflow = serializers.DecimalField(max_digits=15, decimal_places=2)
+    frequency = serializers.ChoiceField(choices=["daily", "weekly", "monthly", "yearly"])
+    interval = serializers.IntegerField()
+    weekday = serializers.IntegerField(allow_null=True)
+    day_of_month = serializers.IntegerField(allow_null=True)
+    schedule = serializers.CharField(help_text='The detected schedule in words, e.g. "Every month on day 17"')
+    occurrences = serializers.IntegerField(help_text="How many times it was seen")
+    last_date = serializers.DateField()
+    next_date = serializers.DateField(help_text="When the next one is expected")
+
+
 # Adapter Functions
 
 

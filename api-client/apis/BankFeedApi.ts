@@ -19,12 +19,15 @@ import type {
   BatchIds,
   CategorizeTransactionsRequest,
   CategorySuggestion,
+  DismissSuggestion,
   ManualTransaction,
   PaginatedAccountGroupList,
   PaginatedBankFeedRowList,
   PaginatedFeedAccountList,
   PatchedBatchEditRequest,
+  RecurringSuggestion,
   RecurringTransaction,
+  ScheduleFromTransaction,
   SimilarCategorySuggestion,
   SimpleAccount,
   TransferDismissRequest,
@@ -46,6 +49,8 @@ import {
     CategorizeTransactionsRequestToJSON,
     CategorySuggestionFromJSON,
     CategorySuggestionToJSON,
+    DismissSuggestionFromJSON,
+    DismissSuggestionToJSON,
     ManualTransactionFromJSON,
     ManualTransactionToJSON,
     PaginatedAccountGroupListFromJSON,
@@ -56,8 +61,12 @@ import {
     PaginatedFeedAccountListToJSON,
     PatchedBatchEditRequestFromJSON,
     PatchedBatchEditRequestToJSON,
+    RecurringSuggestionFromJSON,
+    RecurringSuggestionToJSON,
     RecurringTransactionFromJSON,
     RecurringTransactionToJSON,
+    ScheduleFromTransactionFromJSON,
+    ScheduleFromTransactionToJSON,
     SimilarCategorySuggestionFromJSON,
     SimilarCategorySuggestionToJSON,
     SimpleAccountFromJSON,
@@ -192,7 +201,25 @@ export interface BankFeedLocateRequest {
     view?: BankFeedLocateViewEnum;
 }
 
+export interface BankFeedRecurringDismissSuggestionRequest {
+    bookSlug: string;
+    teamSlug: string;
+    dismissSuggestion: DismissSuggestion;
+}
+
+export interface BankFeedRecurringFromTransactionRequest {
+    bookSlug: string;
+    teamSlug: string;
+    scheduleFromTransaction: ScheduleFromTransaction;
+}
+
 export interface BankFeedRecurringListRequest {
+    bookSlug: string;
+    teamSlug: string;
+    account?: string;
+}
+
+export interface BankFeedRecurringSuggestionsRequest {
     bookSlug: string;
     teamSlug: string;
     account?: string;
@@ -1118,6 +1145,119 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
+     * Mark a suggestion \"not recurring\": stop suggesting its run (account, direction, payee) for good.
+     */
+    async bankFeedRecurringDismissSuggestionRaw(requestParameters: BankFeedRecurringDismissSuggestionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedRecurringDismissSuggestion().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedRecurringDismissSuggestion().'
+            );
+        }
+
+        if (requestParameters['dismissSuggestion'] == null) {
+            throw new runtime.RequiredError(
+                'dismissSuggestion',
+                'Required parameter "dismissSuggestion" was null or undefined when calling bankFeedRecurringDismissSuggestion().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/recurring/dismiss_suggestion/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DismissSuggestionToJSON(requestParameters['dismissSuggestion']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Mark a suggestion \"not recurring\": stop suggesting its run (account, direction, payee) for good.
+     */
+    async bankFeedRecurringDismissSuggestion(requestParameters: BankFeedRecurringDismissSuggestionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedRecurringDismissSuggestionRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Make an existing feed transaction recurring: it becomes the schedule\'s first occurrence, and anything already due after it is written at once.
+     */
+    async bankFeedRecurringFromTransactionRaw(requestParameters: BankFeedRecurringFromTransactionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RecurringTransaction>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedRecurringFromTransaction().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedRecurringFromTransaction().'
+            );
+        }
+
+        if (requestParameters['scheduleFromTransaction'] == null) {
+            throw new runtime.RequiredError(
+                'scheduleFromTransaction',
+                'Required parameter "scheduleFromTransaction" was null or undefined when calling bankFeedRecurringFromTransaction().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/recurring/from_transaction/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: ScheduleFromTransactionToJSON(requestParameters['scheduleFromTransaction']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => RecurringTransactionFromJSON(jsonValue));
+    }
+
+    /**
+     * Make an existing feed transaction recurring: it becomes the schedule\'s first occurrence, and anything already due after it is written at once.
+     */
+    async bankFeedRecurringFromTransaction(requestParameters: BankFeedRecurringFromTransactionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RecurringTransaction> {
+        const response = await this.bankFeedRecurringFromTransactionRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * The book\'s active recurring schedules, soonest first -- the bank feed\'s \"scheduled transactions\" panel. Finished schedules (no next date) are left out.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2
      */
     async bankFeedRecurringListRaw(requestParameters: BankFeedRecurringListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<RecurringTransaction>>> {
@@ -1165,6 +1305,57 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedRecurringList(requestParameters: BankFeedRecurringListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RecurringTransaction>> {
         const response = await this.bankFeedRecurringListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Runs of transactions that look recurring and have no schedule (`services/recurring_detection.py`).
+     */
+    async bankFeedRecurringSuggestionsRaw(requestParameters: BankFeedRecurringSuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<RecurringSuggestion>>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedRecurringSuggestions().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedRecurringSuggestions().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/recurring/suggestions/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(RecurringSuggestionFromJSON));
+    }
+
+    /**
+     * Runs of transactions that look recurring and have no schedule (`services/recurring_detection.py`).
+     */
+    async bankFeedRecurringSuggestions(requestParameters: BankFeedRecurringSuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RecurringSuggestion>> {
+        const response = await this.bankFeedRecurringSuggestionsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

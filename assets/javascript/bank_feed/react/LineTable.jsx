@@ -185,6 +185,7 @@ const LineTable = ({
   uploadDisabled = false,
   plaidClient,
   bankFeedClient,
+  onFeedChanged,
   onLinkSuccess,
   onOpenTransferLeg,
   feedAccountIds = new Set(),
@@ -512,6 +513,11 @@ const LineTable = ({
             accountIds={query.accounts}
             showAccount={showAccountColumn}
             refreshKey={scheduledVersion}
+            onScheduleCreated={() => {
+              showSnackbar(gettext('Recurring transaction created'), 'success');
+              // A schedule made from an overdue pattern writes its due occurrence at once.
+              onFeedChanged?.();
+            }}
           />
         )}
 

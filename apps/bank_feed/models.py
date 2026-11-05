@@ -315,3 +315,33 @@ class RecurringTransaction(BaseBookModel):
 
     def __str__(self):
         return f"{self.payee_name or self.description or 'Recurring'} ({self.frequency})"
+
+
+class RecurringSuggestionDismissal(BaseBookModel):
+    """
+    The user said a run of transactions is not recurring: stop suggesting it.
+
+    Keyed the way `services.recurring_detection` groups a run -- account,
+    direction and normalized payee -- so new occurrences of the same payee stay
+    dismissed.
+    """
+
+    DIRECTION_OUT = "out"
+    DIRECTION_IN = "in"
+    DIRECTION_CHOICES = [(DIRECTION_OUT, "Outflow"), (DIRECTION_IN, "Inflow")]
+
+    account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.CASCADE,
+        related_name="recurring_suggestion_dismissals",
+    )
+    direction = models.CharField(max_length=3, choices=DIRECTION_CHOICES)
+    payee_key = models.CharField(max_length=255, help_text="The normalized payee (recurring_detection.payee_key)")
+
+    class Meta:
+        verbose_name = "Recurring Suggestion Dismissal"
+        verbose_name_plural = "Recurring Suggestion Dismissals"
+        unique_together = ["book", "account", "direction", "payee_key"]
+
+    def __str__(self):
+        return f"Not recurring: {self.payee_key} ({self.direction})"

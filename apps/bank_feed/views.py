@@ -53,7 +53,7 @@ from apps.reconciliation.services.guards import (
 )
 from apps.reconciliation.services.integrity import intact_map
 
-from .models import BankTransaction, RecurringTransaction, TransferMatchDismissal
+from .models import BankTransaction, RecurringSuggestionDismissal, RecurringTransaction, TransferMatchDismissal
 from .serializers import (
     BankFeedRowSerializer,
     BatchEditRequestSerializer,
@@ -61,6 +61,7 @@ from .serializers import (
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
     FeedAccountSerializer,
+    RecurringSuggestionSerializer,
     RecurringTransactionSerializer,
     SimilarCategorySuggestionSerializer,
     TransferDismissRequestSerializer,
@@ -74,7 +75,7 @@ from .serializers import (
     UploadValidateDatesResponseSerializer,
     bank_transaction_to_feed_row,
 )
-from .services import feed_query, recurring
+from .services import feed_query, recurring, recurring_detection
 from .services.categorize import MIRROR_EDIT_ERROR, create_entry, repoint_category
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.manual import create_manual_transaction
@@ -185,6 +186,16 @@ class RecurrenceSerializer(serializers.Serializer):
         if value == 0:
             raise serializers.ValidationError("Choose a day from 1 to 31, or the last day.")
         return value
+
+
+class ScheduleFromTransactionSerializer(RecurrenceSerializer):
+    """Make an existing feed transaction recurring (an accepted suggestion)."""
+
+    transaction = serializers.IntegerField(help_text="The feed transaction that starts the schedule")
+
+
+class DismissSuggestionSerializer(serializers.Serializer):
+    key = serializers.CharField(max_length=300, help_text="The suggestion's `key`")
 
 
 class ManualTransactionSerializer(serializers.Serializer):
@@ -1972,36 +1983,116 @@ class RecurringTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet
     pagination_class = None
     queryset = RecurringTransaction.objects.none()  # for drf-spectacular schema generation
 
+    def account_ids(self):
+        """The `account` query param as ids, or [] for every account."""
+        parts = [part for part in self.request.query_params.get("account", "").split(",") if part.strip()]
+        try:
+            return [int(part) for part in parts]
+        except ValueError:
+            raise serializers.ValidationError({"account": "Pass comma-separated account ids."}) from None
+
     def get_queryset(self):
         rules = RecurringTransaction.objects.filter(book=self.request.book, next_date__isnull=False).select_related(
             "account__account_group", "account__institution", "category__account_group", "category__institution"
         )
-        account_ids = [part for part in self.request.query_params.get("account", "").split(",") if part.strip()]
+        account_ids = self.account_ids()
         if account_ids:
-            try:
-                rules = rules.filter(account_id__in=[int(part) for part in account_ids])
-            except ValueError:
-                raise serializers.ValidationError({"account": "Pass comma-separated account ids."}) from None
+            rules = rules.filter(account_id__in=account_ids)
         return rules.order_by("next_date", "id")
 
+    @staticmethod
+    def schedule_row(rule):
+        return {
+            "id": rule.id,
+            "account": rule.account,
+            "category": None if rule.splits else rule.category,
+            "is_split": bool(rule.splits),
+            "payee_name": rule.payee_name,
+            "description": rule.description,
+            "inflow": -rule.amount if rule.amount < 0 else Decimal("0"),
+            "outflow": rule.amount if rule.amount > 0 else Decimal("0"),
+            "next_date": rule.next_date,
+            "end_date": rule.end_date,
+            "schedule": recurring.describe(rule),
+        }
+
     def list(self, request, team_slug=None, book_slug=None):
-        rows = [
-            {
-                "id": rule.id,
-                "account": rule.account,
-                "category": None if rule.splits else rule.category,
-                "is_split": bool(rule.splits),
-                "payee_name": rule.payee_name,
-                "description": rule.description,
-                "inflow": -rule.amount if rule.amount < 0 else Decimal("0"),
-                "outflow": rule.amount if rule.amount > 0 else Decimal("0"),
-                "next_date": rule.next_date,
-                "end_date": rule.end_date,
-                "schedule": recurring.describe(rule),
-            }
-            for rule in self.get_queryset()
-        ]
+        rows = [self.schedule_row(rule) for rule in self.get_queryset()]
         return Response(RecurringTransactionSerializer(rows, many=True).data)
+
+    @extend_schema(
+        operation_id="bank_feed_recurring_suggestions",
+        tags=["bank-feed"],
+        parameters=[
+            OpenApiParameter(
+                name="account",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated ledger account ids; absent = every account",
+                required=False,
+            )
+        ],
+        responses={200: RecurringSuggestionSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"])
+    def suggestions(self, request, team_slug=None, book_slug=None):
+        """Runs of transactions that look recurring and have no schedule (`services/recurring_detection.py`)."""
+        found = recurring_detection.find_suggestions(request.book, account_ids=self.account_ids())
+        return Response(RecurringSuggestionSerializer(found, many=True).data)
+
+    @extend_schema(
+        operation_id="bank_feed_recurring_from_transaction",
+        tags=["bank-feed"],
+        request=ScheduleFromTransactionSerializer,
+        responses={201: RecurringTransactionSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="from_transaction")
+    def from_transaction(self, request, team_slug=None, book_slug=None):
+        """
+        Make an existing feed transaction recurring: it becomes the schedule's first
+        occurrence, and anything already due after it is written at once.
+        """
+        serializer = ScheduleFromTransactionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        bank_tx = (
+            BankTransaction.objects.select_related("book", "account", "journal_entry", "recurring")
+            .filter(book=request.book, pk=data.pop("transaction"))
+            .first()
+        )
+        if bank_tx is None:
+            return Response({"error": "Transaction not found"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            rule = recurring.create_rule_from_transaction(bank_tx, **data)
+        except recurring.ScheduleFromTransactionError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        rule = RecurringTransaction.objects.select_related(
+            "account__account_group", "account__institution", "category__account_group", "category__institution"
+        ).get(pk=rule.pk)
+        return Response(RecurringTransactionSerializer(self.schedule_row(rule)).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        operation_id="bank_feed_recurring_dismiss_suggestion",
+        tags=["bank-feed"],
+        request=DismissSuggestionSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="dismiss_suggestion")
+    def dismiss_suggestion(self, request, team_slug=None, book_slug=None):
+        """Mark a suggestion "not recurring": stop suggesting its run (account, direction, payee) for good."""
+        serializer = DismissSuggestionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            account_id, direction, key = serializer.validated_data["key"].split(":", 2)
+            account = Account.objects.get(book=request.book, pk=int(account_id))
+        except (ValueError, Account.DoesNotExist):
+            return Response({"error": "Suggestion not found"}, status=status.HTTP_404_NOT_FOUND)
+        if direction not in dict(RecurringSuggestionDismissal.DIRECTION_CHOICES) or not key:
+            return Response({"error": "Suggestion not found"}, status=status.HTTP_404_NOT_FOUND)
+        RecurringSuggestionDismissal.objects.get_or_create(
+            book=request.book, account=account, direction=direction, payee_key=key[:255]
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @login_and_book_required

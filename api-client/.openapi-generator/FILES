@@ -19,6 +19,7 @@ models/BankFeedRowSourceEnum.ts
 models/BatchIds.ts
 models/CategorizeTransactionsRequest.ts
 models/CategorySuggestion.ts
+models/DismissSuggestion.ts
 models/EventTypeEnum.ts
 models/ExchangePublicTokenRequest.ts
 models/ExchangePublicTokenResponse.ts
@@ -71,8 +72,10 @@ models/ReconciliationStart.ts
 models/ReconciliationTick.ts
 models/ReconciliationTickThrough.ts
 models/Recurrence.ts
+models/RecurringSuggestion.ts
 models/RecurringTransaction.ts
 models/RoleEnum.ts
+models/ScheduleFromTransaction.ts
 models/SimilarCategorySuggestion.ts
 models/SimpleAccount.ts
 models/SimpleLine.ts
