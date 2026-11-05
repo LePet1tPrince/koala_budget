@@ -25,6 +25,7 @@ from apps.budget import ledger as budget_ledger
 from apps.budget.buckets import sync_book
 from apps.budget.models import Goal
 from apps.journal.models import JournalEntry, JournalLine, transaction_entries
+from apps.journal.services import period_lock
 from apps.onboarding.services.opening import OpeningRow, create_opening_balances
 
 from .build import ImportPlan
@@ -89,6 +90,8 @@ def can_import(book) -> bool:
 
 
 @transaction.atomic
+# Builds (or replaces) a whole book, so a closed period doesn't apply.
+@period_lock.exempt()
 def apply_plan(book, plan: ImportPlan, user=None, on_progress=None) -> ApplyResult:
     """Write the plan. Nothing here is conditional on anything the plan did not decide."""
     if not can_import(book):

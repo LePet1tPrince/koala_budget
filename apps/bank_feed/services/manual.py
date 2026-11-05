@@ -6,12 +6,11 @@ schedule -- so a generated occurrence is exactly the transaction the user would
 have typed in: same journal entry shape, same split writer, same transfer mirror.
 """
 
-from decimal import Decimal
-
 from django.db import transaction
 
 from apps.accounts.models import Payee
-from apps.journal.models import JournalEntry, JournalLine
+from apps.journal.models import JournalEntry
+from apps.journal.services import period_lock
 
 from ..models import BankTransaction
 from .splits import apply_splits
@@ -28,8 +27,14 @@ def create_manual_transaction(
     `amount` is signed, positive for an outflow. `legs` is a list of
     (category account, signed amount) pairs summing to `amount` -- one pair for a
     plain categorized transaction -- or None to leave the row uncategorized.
-    Callers validate the legs (`parse_legs` / `check_legs_total`) first.
+    Callers validate the legs (`parse_legs` / `check_legs_total`) first. Raises
+    `period_lock.PeriodLockedError` when `legs` is given and `date` is in the
+    book's closed period.
     """
+    if legs is not None:
+        # A closed period takes no new categorized transaction (`period_lock`).
+        period_lock.assert_date_open(book, date)
+
     payee = None
     if payee_name:
         payee, _ = Payee.objects.get_or_create(book=book, name=payee_name)
@@ -44,15 +49,8 @@ def create_manual_transaction(
             source=JournalEntry.SOURCE_MANUAL,
             status=JournalEntry.STATUS_POSTED,
         )
-        # Placeholder bank line; `apply_splits` below gives it the right side and
-        # amount, so only one place decides that.
-        JournalLine.objects.create(
-            journal_entry=journal_entry,
-            book=book,
-            account=account,
-            dr_amount=Decimal("0"),
-            cr_amount=Decimal("0"),
-        )
+        # No lines yet: `apply_splits` below writes the bank line and the legs
+        # (`lines.write_lines`), so only one place decides which side an amount lands on.
 
     bank_tx = BankTransaction.objects.create(
         book=book,

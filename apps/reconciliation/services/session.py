@@ -18,7 +18,7 @@ from django.utils.translation import gettext as _
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.journal.models import JournalEntry
-from apps.journal.services import voiding
+from apps.journal.services import period_lock, voiding
 
 from ..models import Reconciliation
 from . import candidates
@@ -200,6 +200,12 @@ def finish(draft, user, *, adjust: bool = False, expected_difference=None, reque
             )
         if expected_difference is None or to_ledger(account, Decimal(expected_difference)) != difference:
             raise StaleDifference(_("The numbers changed while you were looking. Review the difference again."))
+        # The adjustment is a transaction on the statement date. Ticking lines in a
+        # closed period is fine (no amount moves); posting one there is not.
+        try:
+            period_lock.assert_date_open(draft.book, draft.statement_date)
+        except period_lock.PeriodLockedError as exc:
+            raise ReconciliationError(str(exc)) from None
 
     lines = list(candidates.ticked_lines(draft))
     for line in lines:
@@ -254,9 +260,16 @@ def undo(reconciliation, user, *, request=None) -> Reconciliation:
         raise ReconciliationError(_("Only a finished statement can be undone."))
 
     adjustment_entries = set()
-    for line in reconciliation.lines.select_related("journal_entry").filter(is_reconciled=True):
+    lines = list(reconciliation.lines.select_related("journal_entry").filter(is_reconciled=True))
+    for line in lines:
         if line.journal_entry.source == JournalEntry.SOURCE_RECONCILIATION:
+            # Undoing voids the adjustment, which a closed period refuses.
+            try:
+                period_lock.assert_entry_mutable(line.journal_entry, book=reconciliation.book)
+            except period_lock.PeriodLockedError as exc:
+                raise ReconciliationError(str(exc)) from None
             adjustment_entries.add(line.journal_entry)
+    for line in lines:
         line.is_reconciled = False
         line.save()
 

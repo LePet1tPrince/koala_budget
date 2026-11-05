@@ -29,6 +29,7 @@ from django.utils.translation import ngettext
 
 from apps.accounts.guards import SystemCategoryError, assert_category_allowed
 from apps.books.context import current_book
+from apps.journal.services import period_lock
 
 from ..models import RecurringTransaction
 from .manual import create_manual_transaction
@@ -209,6 +210,9 @@ def materialize(rule, today: date | None = None, limit: int = MAX_PER_PASS) -> i
             return 0
         legs = _template_legs(locked)
         while locked.next_date is not None and locked.next_date <= today and written < limit:
+            # An occurrence dated in the book's closed period arrives uncategorized,
+            # as an imported row would: the period takes no new categorized entry.
+            closed = period_lock.is_locked(locked.book, locked.next_date)
             create_manual_transaction(
                 book=locked.book,
                 account=locked.account,
@@ -216,7 +220,7 @@ def materialize(rule, today: date | None = None, limit: int = MAX_PER_PASS) -> i
                 amount=locked.amount,
                 payee_name=locked.payee_name,
                 description=locked.description,
-                legs=legs,
+                legs=None if closed else legs,
                 recurring=locked,
             )
             written += 1

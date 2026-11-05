@@ -4,7 +4,7 @@ Goal: the Inbox (`/a/{team}/{book}/bankfeed/`) shows **one table of every bank-f
 
 Supersedes the earlier "bulk edit on the Transactions page" plan: editing the ledger directly is dropped. The Transactions page is unchanged.
 
-Status: Phases 0–2 built. Rebased on `develop` at `9b98927` (#247); §0.1 lists what landed there since the plan was written and what it changed here. §6 lists where the build departed from this plan. Open: the `EXPLAIN`/index check (§2.1) and D3.
+Status: Phases 0–2 built. Rebased on `develop` at `9b98927` (#247); §0.1 lists what landed there since the plan was written and what it changed here. §6 lists where the build departed from this plan. Open: D3. The `EXPLAIN`/index check (§2.1) is done; §6 has the numbers.
 
 ---
 
@@ -287,6 +287,7 @@ With server paging the client only holds the page on screen, so selection can no
 
 ## 6. What the build changed
 
+- **Index (§2.1), measured.** 40 copies of the YNAB sample (274,404 bank rows, 6,860 per book) plus a 4-row book, `EXPLAIN ANALYZE` on Postgres 17. With only the bare `posted_date` index, the `to_review` page walked that index **across every book** and filtered to this one (`Index Scan Backward using …posted…`, 981 other books' rows discarded for 26 kept) — cost grows with the number of tenants, not with the book. The default page used the `book_id` index plus a top-N sort over the whole book (6.0 ms). `Index(book, -posted_date, -created_at, -id)` (`bank_tx_book_feed_order`, migration `bank_feed.0010`, built concurrently) makes the default page an in-book range scan with no sort: **6.0 → 0.2 ms**; `to_review` 0.8 → 0.2 ms on the new index; date-range pages ~1.7 → ~0.9 ms. The bare `posted_date` index was dropped — every date filter in the code is scoped to a book or an account. Not changed: `sort=category` (52–92 ms at 6,860 rows — it computes the category subquery for every row in the book before sorting, so it grows linearly with the book; denormalize the sort key if a book reaches ~50k rows), `counts=1` (~37 ms), `locate/` (~7 ms), `count()` (~5 ms). The 4-row book is sub-millisecond either way.
 - **`locate/` numbered the wrong set.** Filtering the window-annotated queryset by `pk` puts the `pk` condition in the same `WHERE` the `ROW_NUMBER()` runs over, so every row was "row 1" and every jump landed on page 1. Phase 1's test missed it because its fixture fit on one page of 10. `feed_query.position_of()` now numbers the whole list in an inner query and picks the row in an outer one (raw SQL over `QuerySet.query.sql_with_params()`; Django's QUALIFY emulation moves only window conditions out). The test now spreads the fixture over several pages and checks four sorts.
 - **Add Transaction always shows the Account picker**, preset to the filtered account when there is exactly one — rather than hiding it then. One form for both cases, and the account a new row lands in is always visible.
 - **CSV upload** with several accounts shown opens an "Upload to which account?" dialog (`upload-account-dialog`) before the wizard, instead of a wizard step; with one account filtered it goes straight to the wizard.
