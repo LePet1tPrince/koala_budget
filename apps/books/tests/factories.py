@@ -13,7 +13,7 @@ from django.db.models import Model
 
 from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.audit.models import AuditEvent
-from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
+from apps.bank_feed.models import BankTransaction, RecurringTransaction, TransferMatchDismissal
 from apps.books.helpers import create_book
 from apps.books.migration_utils import BOOK_MODELS
 from apps.budget.ledger import budget_entry, set_budget, set_goal_allocation
@@ -58,6 +58,7 @@ class BookData:
     event: AuditEvent
     ynab_import: YnabImport
     data_import: DataImport
+    recurring: RecurringTransaction
 
     def object_for(self, kind: str) -> Model:
         return {
@@ -77,6 +78,7 @@ class BookData:
             "plaid_account": self.plaid_account,
             "plaid_transaction": self.plaid_transaction,
             "event": self.event,
+            "recurring": self.recurring,
         }[kind]
 
 
@@ -133,6 +135,18 @@ def build_book_data(book, marker: str, user=None) -> BookData:
         source=BankTransaction.SOURCE_CSV,
     )
     TransferMatchDismissal.record(book, uncategorized_tx.id, other_tx.id)
+    # Next due far in the future, so opening the bank feed never writes an occurrence.
+    recurring = RecurringTransaction.objects.create(
+        book=book,
+        account=chequing,
+        amount=Decimal("15.00"),
+        payee_name=f"Streaming {marker}",
+        category=groceries,
+        frequency=RecurringTransaction.FREQUENCY_MONTHLY,
+        day_of_month=1,
+        start_date=MONTH,
+        next_date=date(2100, 1, 1),
+    )
 
     set_budget(book, groceries, MONTH, Decimal("300.00"))
     goal = Goal.objects.create(book=book, name=f"Trip {marker}", target_amount=Decimal("1000"))
@@ -201,6 +215,7 @@ def build_book_data(book, marker: str, user=None) -> BookData:
         event=event,
         ynab_import=ynab_import,
         data_import=data_import,
+        recurring=recurring,
     )
 
 

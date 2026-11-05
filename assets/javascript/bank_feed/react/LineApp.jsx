@@ -770,6 +770,7 @@ const LineApp = ({
       payee: lineData.payee || '',
       description: lineData.description || '',
       account: accountId,
+      recurrence: lineData.recurrence ?? null,
     });
     const q = queryRef.current;
     const inView = q.view === 'active' && (q.accounts.length === 0 || q.accounts.includes(accountId));

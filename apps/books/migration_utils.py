@@ -47,6 +47,7 @@ RETIRED_BOOK_MODELS = [
 BOOK_MODELS = [
     *(model for model in BACKFILLED_BOOK_MODELS if model not in RETIRED_BOOK_MODELS),
     ("budget", "goalaccountlink"),
+    ("bank_feed", "recurringtransaction"),
 ]
 
 # Audit events that belong to the team rather than to its books.

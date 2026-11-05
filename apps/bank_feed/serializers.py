@@ -294,6 +294,11 @@ class BankFeedRowSerializer(serializers.Serializer):
     is_split = serializers.BooleanField(help_text="Whether this transaction is split across several categories")
     split_count = serializers.IntegerField(help_text="Number of split legs (0 when not split)")
     splits = SplitLegSerializer(many=True, help_text="The split legs (empty when not split)")
+    recurring_id = serializers.IntegerField(
+        allow_null=True,
+        required=False,
+        help_text="The recurring schedule this transaction belongs to (null when it is a one-off)",
+    )
 
 
 # Adapter Functions
@@ -543,4 +548,5 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "is_split": bool(split_legs),
         "split_count": len(split_legs),
         "splits": split_legs,
+        "recurring_id": tx.recurring_id,
     }

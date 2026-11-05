@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { Recurrence } from './Recurrence';
+import {
+    RecurrenceFromJSON,
+    RecurrenceFromJSONTyped,
+    RecurrenceToJSON,
+    RecurrenceToJSONTyped,
+} from './Recurrence';
+
 /**
  * Serializer for creating/updating manual transactions.
  * @export
@@ -73,6 +81,12 @@ export interface ManualTransaction {
      * @memberof ManualTransaction
      */
     removeSplit?: boolean;
+    /**
+     * Create only: repeat this transaction on a schedule. Each occurrence after this one is written as a new manual transaction on its date.
+     * @type {Recurrence}
+     * @memberof ManualTransaction
+     */
+    recurrence?: Recurrence | null;
 }
 
 /**
@@ -103,6 +117,7 @@ export function ManualTransactionFromJSONTyped(json: any, ignoreDiscriminator: b
         'account': json['account'],
         'splits': json['splits'] == null ? undefined : json['splits'],
         'removeSplit': json['remove_split'] == null ? undefined : json['remove_split'],
+        'recurrence': json['recurrence'] == null ? undefined : RecurrenceFromJSON(json['recurrence']),
     };
 }
 
@@ -126,6 +141,7 @@ export function ManualTransactionFromJSONTyped(json: any, ignoreDiscriminator: b
         'account': value['account'],
         'splits': value['splits'],
         'remove_split': value['removeSplit'],
+        'recurrence': RecurrenceToJSON(value['recurrence']),
     };
 }
 

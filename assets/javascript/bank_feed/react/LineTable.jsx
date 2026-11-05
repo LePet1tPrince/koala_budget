@@ -292,7 +292,10 @@ const LineTable = ({
     if (mode === 'create') {
       if (onAdd) {
         await onAdd(data);
-        showSnackbar(gettext('Transaction added successfully'), 'success');
+        showSnackbar(
+          data.recurrence ? gettext('Recurring transaction added') : gettext('Transaction added successfully'),
+          'success'
+        );
       }
     } else if (onEditTransaction) {
       // Not awaited: the row already shows the edit and is marked as saving,
@@ -464,6 +467,13 @@ const LineTable = ({
                     onClick={() => {
                       close();
                       onUploadClick();
+                    }}
+                  />
+                  <MenuRow
+                    label={gettext('Recurring transactions')}
+                    onClick={() => {
+                      close();
+                      window.location.assign(`${book.base}bankfeed/recurring/`);
                     }}
                   />
                   <div className="my-1 border-t border-base-300" />
@@ -806,6 +816,7 @@ const LineTable = ({
         feedAccounts={accounts}
         defaultAccountId={defaultAccountId}
         onAccountCreated={onAccountCreated}
+        allowRecurring
       />
 
       <Toast

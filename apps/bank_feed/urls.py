@@ -18,5 +18,7 @@ router.register(r"feed", views.BankFeedViewSet, basename="bank-feed")
 urlpatterns = [
     path("", views.bank_feed_home, name="bank_feed_home"),
     path("categorize/", views.categorize_mode, name="categorize_mode"),
+    path("recurring/", views.recurring_list, name="recurring_list"),
+    path("recurring/<int:pk>/stop/", views.recurring_delete, name="recurring_delete"),
     path("api/", include(router.urls)),
 ]
