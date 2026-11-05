@@ -870,13 +870,6 @@ const LineApp = ({
     return selectedRows.map((row) => fetched.get(row.id) ?? row);
   };
 
-  // The one account every selected row is in, if there is one: the
-  // reconciled-balance preview is about one account's statement.
-  const selectionAccount = useMemo(() => {
-    const ids = new Set(selectedRows.map((r) => r.account?.id));
-    return ids.size === 1 ? feedAccountsById.get([...ids][0]) ?? null : null;
-  }, [selectedRows, feedAccountsById]);
-
   const handleBulkEdit = (updates) => {
     const ids = [...selectedIds];
     const q = queryRef.current;
@@ -981,24 +974,6 @@ const LineApp = ({
       request: () => batchApi.batchEdit([row.id], { category_id: suggestion.id }),
       errorMessage: gettext('Failed to categorize the transaction'),
     });
-
-  const handleBatchUnreconcile = () => {
-    const ids = [...selectedIds];
-    runWrite({
-      rowIds: ids,
-      apply: (row) => ({ ...row, isReconciled: false, reconciledStatementDate: undefined }),
-      request: () => batchApi.batchUnreconcile(ids),
-      successMessage: interpolate(ngettext('Transaction unreconciled', '%s transactions unreconciled', ids.length), [
-        ids.length,
-      ]),
-      errorMessage: ngettext(
-        'Failed to unreconcile the transaction',
-        'Failed to unreconcile the transactions',
-        ids.length
-      ),
-      clearsSelection: true,
-    });
-  };
 
   const showVoidButton = useMemo(
     () => selectedRows.some((r) => !isVoidRow(r) && !isReconciledRow(r)),
@@ -1316,12 +1291,10 @@ const LineApp = ({
         onRestore={handleBatchRestore}
         onDelete={handleBatchDelete}
         onDuplicate={handleBatchDuplicate}
-        onUnreconcile={handleBatchUnreconcile}
         onClearSelection={() => setSelection(new Map())}
         showVoid={showVoidButton}
         showRestore={showRestoreButton}
         viewMode={query.view}
-        selectedAccount={selectionAccount}
         getExportRows={getExportRows}
       />
 

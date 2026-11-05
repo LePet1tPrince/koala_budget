@@ -112,12 +112,6 @@ export interface BankFeedBatchRestoreRequest {
     batchIds: BatchIds;
 }
 
-export interface BankFeedBatchUnreconcileRequest {
-    bookSlug: string;
-    teamSlug: string;
-    batchIds: BatchIds;
-}
-
 export interface BankFeedBatchVoidRequest {
     bookSlug: string;
     teamSlug: string;
@@ -562,62 +556,6 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedBatchRestore(requestParameters: BankFeedBatchRestoreRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.bankFeedBatchRestoreRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     * Batch unreconcile multiple bank transactions. Sets is_reconciled=False on the JournalLine for the bank account side.
-     */
-    async bankFeedBatchUnreconcileRaw(requestParameters: BankFeedBatchUnreconcileRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling bankFeedBatchUnreconcile().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling bankFeedBatchUnreconcile().'
-            );
-        }
-
-        if (requestParameters['batchIds'] == null) {
-            throw new runtime.RequiredError(
-                'batchIds',
-                'Required parameter "batchIds" was null or undefined when calling bankFeedBatchUnreconcile().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/batch_unreconcile/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: BatchIdsToJSON(requestParameters['batchIds']),
-        }, initOverrides);
-
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * Batch unreconcile multiple bank transactions. Sets is_reconciled=False on the JournalLine for the bank account side.
-     */
-    async bankFeedBatchUnreconcile(requestParameters: BankFeedBatchUnreconcileRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.bankFeedBatchUnreconcileRaw(requestParameters, initOverrides);
     }
 
     /**

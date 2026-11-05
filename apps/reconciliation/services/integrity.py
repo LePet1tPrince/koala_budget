@@ -2,10 +2,10 @@
 Whether a finished statement still holds.
 
 A statement is intact while the lines it locked still sum to what they summed
-when it was finished. After the guards in `guards.py`, the only ways that can
-change are visible ones: a line unreconciled in the feed (with a warning naming
-the statement), or a statement undone. Both keep the line's link, so a changed
-statement can always name the lines responsible.
+when it was finished. The guards in `guards.py` refuse every edit that would
+change that, and undoing a statement keeps each line's link, so a statement
+whose lines did change (undone, or altered outside the app) can always name the
+lines responsible.
 """
 
 from dataclasses import dataclass, field

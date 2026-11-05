@@ -3,7 +3,7 @@ import Modal from '../../common/Modal';
 import Icon from '../../common/Icon';
 import BulkEditModal from './BulkEditModal';
 
-/* globals gettext, interpolate */
+/* globals gettext */
 
 /**
  * BatchActionBar - Floating action bar for batch operations on selected transactions.
@@ -22,11 +22,9 @@ const BatchActionBar = ({
   onDuplicate,
   onExport,
   onClearSelection,
-  onUnreconcile,
   showVoid = true,
   showRestore = false,
   viewMode = 'active',
-  selectedAccount = null,
   getExportRows = null,
 }) => {
   // In the voided view, only allow restore, export, and delete
@@ -38,64 +36,25 @@ const BatchActionBar = ({
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Reconciling happens against a statement on its own page (the account
-  // header's "Reconcile statement"); only the unreconcile confirmation lives here.
-  const [unreconcileDialogOpen, setUnreconcileDialogOpen] = useState(false);
-
   // Calculate inflow, outflow, and net from selected rows
-  const { totalInflow, totalOutflow, reconcilingAmount } = useMemo(() => {
+  const { totalInflow, totalOutflow, net } = useMemo(() => {
     return selectedRows.reduce((acc, row) => {
       const inflow = parseFloat(row.inflow) || 0;
       const outflow = parseFloat(row.outflow) || 0;
       return {
         totalInflow: acc.totalInflow + inflow,
         totalOutflow: acc.totalOutflow + outflow,
-        reconcilingAmount: acc.reconcilingAmount + inflow - outflow,
+        net: acc.net + inflow - outflow,
       };
-    }, { totalInflow: 0, totalOutflow: 0, reconcilingAmount: 0 });
+    }, { totalInflow: 0, totalOutflow: 0, net: 0 });
   }, [selectedRows]);
 
-  // Check if any/all selected rows are reconciled. The quick filters no longer guarantee
-  // a homogeneous selection, so unreconcile/duplicate availability is derived from the
-  // actual selected rows rather than the active filter.
+  // Duplicate is withheld when any selected row is reconciled. The quick filters
+  // don't guarantee a homogeneous selection, so this reads the selected rows
+  // rather than the active filter.
   const anyReconciled = useMemo(() => {
     return selectedRows.some(r => r.isReconciled ?? r.is_reconciled ?? false);
   }, [selectedRows]);
-
-  const allReconciled = useMemo(() => {
-    return selectedRows.length > 0 && selectedRows.every(r => r.isReconciled ?? r.is_reconciled ?? false);
-  }, [selectedRows]);
-
-  // Get reconciled balance from selected account
-  const reconciledBalance = useMemo(() => {
-    if (selectedAccount?.reconciled_balance !== undefined && selectedAccount?.reconciled_balance !== null) {
-      return parseFloat(selectedAccount.reconciled_balance);
-    }
-    return 0;
-  }, [selectedAccount]);
-
-  // Preview of the reconciled balance after reconciling (or unreconciling) the selection
-  const newReconciledBalance = useMemo(
-    () => (allReconciled ? reconciledBalance - reconcilingAmount : reconciledBalance + reconcilingAmount),
-    [reconciledBalance, reconcilingAmount, allReconciled],
-  );
-
-  // Finished statements the selection belongs to: unreconciling breaks them, so
-  // the confirmation names them (they will show as "Changed").
-  const affectedStatements = useMemo(() => {
-    const dates = selectedRows
-      .map((r) => r.reconciled_statement_date ?? r.reconciledStatementDate)
-      .filter(Boolean);
-    return [...new Set(dates)].sort();
-  }, [selectedRows]);
-
-  // Handle unreconcile submit
-  const handleUnreconcileSubmit = () => {
-    if (onUnreconcile) {
-      onUnreconcile();
-    }
-    setUnreconcileDialogOpen(false);
-  };
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -169,22 +128,8 @@ const BatchActionBar = ({
           </span>
           <span className="flex items-center gap-1">
             <span className="text-base-content/70">{gettext('Net:')}</span>
-            <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>
+            <span className={`money font-bold ${money(net)}`}>{formatCurrency(net)}</span>
           </span>
-
-          {!isVoidedView && selectedAccount && (
-            <>
-              <span className="h-4 w-px bg-base-300" aria-hidden="true" />
-              <span className="flex items-center gap-1">
-                <span className="text-base-content/70">{gettext('Reconciled:')}</span>
-                <span className="money font-bold">{formatCurrency(reconciledBalance)}</span>
-              </span>
-              <span className="text-base-content/70" aria-hidden="true">
-                →
-              </span>
-              <span className="money font-bold">{formatCurrency(newReconciledBalance)}</span>
-            </>
-          )}
         </div>
 
         <div className="mb-1 h-px w-full bg-base-300" aria-hidden="true" />
@@ -214,13 +159,6 @@ const BatchActionBar = ({
           <button type="button" className="btn btn-ghost btn-sm text-error" onClick={() => setDeleteDialogOpen(true)}>
             <Icon name="trash" className="w-4 h-4 shrink-0" />
             {gettext('Delete')}
-          </button>
-        )}
-
-        {allReconciled && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setUnreconcileDialogOpen(true)}>
-            <Icon name="minus-circle" className="w-4 h-4 shrink-0" />
-            {gettext('Unreconcile')}
           </button>
         )}
 
@@ -257,47 +195,6 @@ const BatchActionBar = ({
         onSave={onBulkEdit}
         hasReconciledRows={anyReconciled}
       />
-
-      {/* Unreconcile Dialog */}
-      <Modal
-        open={unreconcileDialogOpen}
-        onClose={() => setUnreconcileDialogOpen(false)}
-        size="sm"
-        title={gettext('Unreconcile Transactions')}
-        testId="unreconcile-dialog"
-        actions={
-          <>
-            <button type="button" className="btn btn-sm" onClick={() => setUnreconcileDialogOpen(false)}>
-              {gettext('Cancel')}
-            </button>
-            <button type="button" className="btn btn-sm btn-warning" onClick={handleUnreconcileSubmit}>
-              {gettext('Unreconcile')}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-2 text-sm">
-          <p>
-            {gettext('Are you sure you want to unreconcile')} {selectedCount} {gettext('transaction(s)?')}
-          </p>
-          {affectedStatements.length > 0 && (
-            <div role="alert" className="alert alert-warning text-sm" data-testid="unreconcile-statement-warning">
-              {interpolate(
-                gettext('This is part of your %s statement. Unreconciling will mark that statement as changed.'),
-                [affectedStatements.map((d) => new Date(`${d}T00:00:00`).toLocaleDateString()).join(', ')],
-              )}
-            </div>
-          )}
-          <div className="flex justify-between pt-2">
-            <span>{gettext('Amount being unreconciled:')}</span>
-            <span className={`money font-bold ${money(reconcilingAmount)}`}>{formatCurrency(reconcilingAmount)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>{gettext('New reconciled balance:')}</span>
-            <span className="money font-bold">{formatCurrency(reconciledBalance - reconcilingAmount)}</span>
-          </div>
-        </div>
-      </Modal>
 
       {/* Permanent Delete Confirmation Dialog */}
       <Modal

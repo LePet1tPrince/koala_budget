@@ -42,7 +42,6 @@ from django.utils.dateparse import parse_date
 from rest_framework.exceptions import ValidationError
 
 from apps.journal.models import JournalLine
-from apps.reconciliation.models import Reconciliation
 
 from ..models import BankTransaction
 
@@ -380,12 +379,7 @@ def selection_rows(rows):
         .order_by("pk")
         .values("account_id")[:1]
     )
-    statement_date = Subquery(
-        _own_line(is_reconciled=True, reconciliation__status=Reconciliation.STATUS_COMPLETED)
-        .order_by("pk")
-        .values("reconciliation__statement_date")[:1]
-    )
-    annotated = rows.annotate(_lines=_line_count(), _category_id=category, _statement_date=statement_date).values(
+    annotated = rows.annotate(_lines=_line_count(), _category_id=category).values(
         "pk",
         "account_id",
         "amount",
@@ -395,7 +389,6 @@ def selection_rows(rows):
         "row_reconciled",
         "_lines",
         "_category_id",
-        "_statement_date",
     )
     out = []
     for row in annotated:
@@ -415,7 +408,6 @@ def selection_rows(rows):
                 # A split has no single category; the bar reads null as "not categorized"
                 # exactly as it did when it read the full row.
                 "category": {"id": row["_category_id"]} if row["journal_entry_id"] and not split else None,
-                "reconciled_statement_date": row["_statement_date"],
             }
         )
     return out
