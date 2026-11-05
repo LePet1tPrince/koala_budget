@@ -18,6 +18,7 @@ import {
   filterParams,
   queryFromUrl,
   rowSetKey,
+  scopeSearch,
   summaryAsRow,
   writeQueryToUrl,
 } from '../feedQuery';
@@ -94,6 +95,9 @@ const optimisticBulkEditedRow = (row, updates, accountsById) => {
 };
 
 const isVoidRow = (r) => r.isVoid ?? r.is_void ?? false;
+
+// `similar_categories` takes at most this many ids per request (MAX_SIMILAR_CATEGORY_IDS)
+const SIMILAR_CATEGORY_CHUNK = 50;
 const isReconciledRow = (r) => r.isReconciled ?? r.is_reconciled ?? false;
 
 /**
@@ -107,7 +111,7 @@ const isReconciledRow = (r) => r.isReconciled ?? r.is_reconciled ?? false;
  */
 const LineApp = ({
   accounts: initialAccounts,
-  allAccounts,
+  allAccounts: initialAllAccounts,
   allPayees,
   allAccountGroups,
   book,
@@ -117,6 +121,12 @@ const LineApp = ({
 }) => {
   // Store accounts in state so balances can be refreshed after writes
   const [accounts, setAccounts] = useState(initialAccounts);
+  // Grows when an account is created from a category picker
+  const [allAccounts, setAllAccounts] = useState(initialAllAccounts);
+  const handleAccountCreated = useCallback(
+    (account) => setAllAccounts((prev) => (prev.some((a) => a.id === account.id) ? prev : [...prev, account])),
+    []
+  );
   const [query, setQuery] = useState(() => queryFromUrl());
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -150,6 +160,11 @@ const LineApp = ({
 
   // Category suggestions: merchant/payee name -> {id, name} of last-used category
   const [categorySuggestions, setCategorySuggestions] = useState({});
+  // The suggested category for each uncategorized row on screen, from how
+  // similar transactions were categorized: row id -> {id, name}, or null when
+  // there is none. A row is asked about once per page load.
+  const [rowSuggestions, setRowSuggestions] = useState({});
+  const suggestionsAskedRef = useRef(new Set());
 
   // A row the page was asked to show -- the other side of a transfer -- flashes
   const [highlightId, setHighlightId] = useState(null);
@@ -180,6 +195,10 @@ const LineApp = ({
   // The one account the Inbox is filtered to, if it is filtered to exactly one:
   // its header, balances, Reconcile link and Plaid refresh apply then.
   const selectedAccount = query.accounts.length === 1 ? feedAccountsById.get(query.accounts[0]) ?? null : null;
+
+  // Categorize Mode opens on the Inbox's account and date filters, in the
+  // Inbox's own URL parameter names.
+  const categorizeSearch = scopeSearch(query);
 
   // Snackbar state for batch operations
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info', action: null });
@@ -294,6 +313,36 @@ const LineApp = ({
       })
       .catch((err) => console.error('Failed to load category suggestions:', err));
   }, [bankFeedClient, book]);
+
+  // Ask about every uncategorized row on screen that hasn't been asked about,
+  // in chunks the endpoint accepts. The row's own account is never a suggestion.
+  useEffect(() => {
+    const asked = suggestionsAskedRef.current;
+    const wanted = lines.filter((r) => !r.category && !r.isSplit && !isVoidRow(r) && !asked.has(r.id));
+    if (wanted.length === 0) return;
+    wanted.forEach((r) => asked.add(r.id));
+    for (let i = 0; i < wanted.length; i += SIMILAR_CATEGORY_CHUNK) {
+      const chunk = wanted.slice(i, i + SIMILAR_CATEGORY_CHUNK);
+      bankFeedClient
+        .bankFeedSimilarCategories({ ...book.params, ids: chunk.map((r) => r.id).join(',') })
+        .then((rows) => {
+          const found = Object.fromEntries(chunk.map((r) => [String(r.id), null]));
+          const ownAccount = new Map(chunk.map((r) => [String(r.id), r.account?.id]));
+          // Ranked strongest first per transaction, so the first usable one wins.
+          (rows || []).forEach((s) => {
+            const id = String(s.transactionId);
+            if (found[id] === null && s.categoryId !== ownAccount.get(id)) {
+              found[id] = { id: s.categoryId, name: s.categoryName };
+            }
+          });
+          setRowSuggestions((prev) => ({ ...prev, ...found }));
+        })
+        .catch((err) => {
+          chunk.forEach((r) => asked.delete(r.id));
+          console.error('Failed to load suggested categories:', err);
+        });
+    }
+  }, [lines, bankFeedClient, book]);
 
   // --- the page ------------------------------------------------------------
 
@@ -819,8 +868,8 @@ const LineApp = ({
     return selectedRows.map((row) => fetched.get(row.id) ?? row);
   };
 
-  // The one account every selected row is in, if there is one: reconciling and
-  // the reconciled-balance preview are about one account's statement.
+  // The one account every selected row is in, if there is one: the
+  // reconciled-balance preview is about one account's statement.
   const selectionAccount = useMemo(() => {
     const ids = new Set(selectedRows.map((r) => r.account?.id));
     return ids.size === 1 ? feedAccountsById.get([...ids][0]) ?? null : null;
@@ -922,17 +971,14 @@ const LineApp = ({
     });
   };
 
-  /**
-   * Reconcile the selection against a statement: hand it to the reconcile page,
-   * which opens (or resumes) the account's draft with these rows already ticked.
-   * Only offered when every selected row is in one account.
-   */
-  const handleBatchReconcile = (rows) => {
-    if (!selectionAccount) return;
-    const entries = (rows || []).map((r) => r.journal_entry_id ?? r.journalEntryId).filter(Boolean);
-    const qs = entries.length ? `?entries=${entries.join(',')}` : '';
-    window.location.href = `${book.base}reconcile/${selectionAccount.id}/${qs}`;
-  };
+  /** Accept an uncategorized row's suggested category, as Bulk Edit would set it. */
+  const handleConfirmSuggestion = (row, suggestion) =>
+    runWrite({
+      rowIds: [row.id],
+      apply: (r) => optimisticBulkEditedRow(r, { category_id: suggestion.id }, accountsById),
+      request: () => batchApi.batchEdit([row.id], { category_id: suggestion.id }),
+      errorMessage: gettext('Failed to categorize the transaction'),
+    });
 
   const handleBatchUnreconcile = () => {
     const ids = [...selectedIds];
@@ -1026,7 +1072,7 @@ const LineApp = ({
           </button>
           <div className="flex gap-2 items-center">
             <a
-              href={`${book.base}bankfeed/categorize/`}
+              href={`${book.base}bankfeed/categorize/${categorizeSearch}`}
               className="btn btn-primary btn-sm gap-1"
               data-testid="categorize-mode-btn"
             >
@@ -1152,7 +1198,10 @@ const LineApp = ({
               allAccounts={allAccounts}
               allPayees={allPayees}
               categorySuggestions={categorySuggestions}
+              rowSuggestions={rowSuggestions}
+              onConfirmSuggestion={handleConfirmSuggestion}
               book={book}
+              onAccountCreated={handleAccountCreated}
               defaultAccountId={selectedAccount?.id ?? null}
               onAdd={handleAddLine}
               onEditTransaction={handleEditTransaction}
@@ -1252,7 +1301,6 @@ const LineApp = ({
         onRestore={handleBatchRestore}
         onDelete={handleBatchDelete}
         onDuplicate={handleBatchDuplicate}
-        onReconcile={handleBatchReconcile}
         onUnreconcile={handleBatchUnreconcile}
         onClearSelection={() => setSelection(new Map())}
         showVoid={showVoidButton}

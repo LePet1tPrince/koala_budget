@@ -112,6 +112,18 @@ export function getUploadApiHelpers(bookBase) {
     },
 
     /**
+     * The book's account groups (not budget buckets), for the create-account form
+     */
+    getAccountGroups: async () => {
+      const response = await fetch(`${bookBase}bankfeed/api/feed/account_groups/`, {
+        credentials: 'include',
+        headers: { 'X-CSRFToken': headers['X-CSRFToken'] },
+      });
+      if (!response.ok) throw new Error('Failed to load account groups');
+      return response.json();
+    },
+
+    /**
      * Create a new account (for use during category mapping)
      */
     createAccount: async (name, accountGroupId) => {

@@ -3,22 +3,21 @@ Plaid API service layer.
 Handles all interactions with the Plaid API.
 """
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 from django.utils import translation
-from plaid.api import plaid_api
-from plaid.configuration import Configuration
-from plaid.model.country_code import CountryCode
-from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
-from plaid.model.link_token_create_request import LinkTokenCreateRequest
-from plaid.model.link_token_create_request_update import LinkTokenCreateRequestUpdate
-from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
-from plaid.model.link_token_transactions import LinkTokenTransactions
-from plaid.model.products import Products
-from plaid.model.transactions_sync_request import TransactionsSyncRequest
+
+# The plaid SDK is imported inside each function: it takes ~1.5s to load, and
+# this module is on the URLconf import path, so a top-level import would slow
+# every Django start (and every dev-server autoreload).
+if TYPE_CHECKING:
+    from plaid.model.link_token_create_request import LinkTokenCreateRequest
 
 
 def plaid_error_code(exc) -> str | None:
@@ -57,6 +56,9 @@ def plaid_host() -> str:
 
 def get_plaid_client():
     """Get configured Plaid API client."""
+    from plaid.api import plaid_api
+    from plaid.configuration import Configuration
+
     configuration = Configuration(
         host=plaid_host(),
         api_key={
@@ -70,6 +72,8 @@ def get_plaid_client():
 
 def country_codes():
     """The countries Link offers banks from (`PLAID_COUNTRY_CODES`), as SDK values."""
+    from plaid.model.country_code import CountryCode
+
     return [CountryCode(code.strip().upper()) for code in settings.PLAID_COUNTRY_CODES if code.strip()]
 
 
@@ -97,6 +101,8 @@ def webhook_url():
 
 def _link_kwargs(user_id, client_name):
     """What every link token carries, new link or update mode."""
+    from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+
     kwargs = {
         "user": LinkTokenCreateRequestUser(client_user_id=str(user_id)),
         "client_name": client_name,
@@ -116,6 +122,10 @@ def link_token_request(user_id, client_name: str = "Koala Budget") -> LinkTokenC
     Without `webhook` Plaid never notifies this app of new transactions, so the
     item would only ever sync when the user pressed Refresh.
     """
+    from plaid.model.link_token_create_request import LinkTokenCreateRequest
+    from plaid.model.link_token_transactions import LinkTokenTransactions
+    from plaid.model.products import Products
+
     kwargs = _link_kwargs(user_id, client_name)
     kwargs["products"] = [Products(product) for product in settings.PLAID_PRODUCTS]
     if "transactions" in settings.PLAID_PRODUCTS:
@@ -130,6 +140,9 @@ def update_link_token_request(item, user_id, client_name: str = "Koala Budget") 
     they haven't shared -- picks which to add. No `products` (Plaid refuses them
     in update mode); the item keeps the ones it has.
     """
+    from plaid.model.link_token_create_request import LinkTokenCreateRequest
+    from plaid.model.link_token_create_request_update import LinkTokenCreateRequestUpdate
+
     kwargs = _link_kwargs(user_id, client_name)
     kwargs["access_token"] = item.access_token
     if item.new_accounts_available:
@@ -168,6 +181,8 @@ def exchange_public_token(public_token: str):
     Returns:
         dict with 'access_token' and 'item_id'
     """
+    from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+
     client = get_plaid_client()
 
     request = ItemPublicTokenExchangeRequest(public_token=public_token)
@@ -260,6 +275,8 @@ def sync_transactions(access_token: str, cursor: str = None):
     Returns:
         dict with 'added', 'modified', 'removed', 'next_cursor', 'has_more'
     """
+    from plaid.model.transactions_sync_request import TransactionsSyncRequest
+
     client = get_plaid_client()
 
     request_kwargs = {"access_token": access_token}

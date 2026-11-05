@@ -26,7 +26,6 @@ from apps.accounts.serializers import PayeeSerializer
 from apps.books.decorators import login_and_book_required
 from apps.books.permissions import BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
-from apps.journal.models import JournalLine
 
 from . import presenters
 from .models import Reconciliation
@@ -255,15 +254,6 @@ def account_page(request, team_slug, book_slug, account_id):
     draft = session.draft_for(account)
     previous = session.last_completed(account)
     preselect = [int(i) for i in request.GET.get("lines", "").split(",") if i.strip().isdigit()]
-    # The bank feed hands over its selection as journal entry ids (a feed row knows
-    # its entry, not its line); this account's line on each is what gets ticked.
-    entries = [int(i) for i in request.GET.get("entries", "").split(",") if i.strip().isdigit()]
-    if entries:
-        preselect += list(
-            JournalLine.objects.filter(
-                book=request.book, account=account, journal_entry_id__in=entries, is_reconciled=False
-            ).values_list("id", flat=True)
-        )
     api = reverse("reconciliation:reconciliation-list", args=[team_slug, book_slug])
     props = {
         "account": presenters.account_payload(account),

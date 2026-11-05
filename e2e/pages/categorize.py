@@ -11,9 +11,10 @@ class CategorizePage(BasePage):
     def path(self, book) -> str:
         return f"{book.base_url}bankfeed/categorize/"
 
-    def goto(self, book):
-        """Navigate to categorize mode and wait for the first card to render."""
-        self.page.goto(self.url(self.path(book)))
+    def goto(self, book, query: str = ""):
+        """Navigate to categorize mode (optionally with a `?account=…&start=…&end=…` scope)
+        and wait for the first card to render."""
+        self.page.goto(self.url(self.path(book)) + query)
         self.page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
 
     # ------------------------------------------------------------------
@@ -53,6 +54,14 @@ class CategorizePage(BasePage):
         """The 'N transactions with this payee...' line under each suggestion."""
         rows = self.page.locator("[data-testid='category-suggestion']")
         return [rows.nth(i).inner_text().strip().splitlines()[1] for i in range(rows.count())]
+
+    def remaining(self) -> int:
+        """The queue length, from the "N remaining" line under the stack."""
+        return int(self.page.locator("[data-testid='categorize-remaining']").inner_text().split()[0])
+
+    @property
+    def scope_account(self):
+        return self.page.locator("[data-testid='categorize-scope-account']")
 
     def has_keyboard_hint(self) -> bool:
         return self.page.locator("kbd.kbd-xs", has_text="esc").is_visible()

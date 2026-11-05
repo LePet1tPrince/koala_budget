@@ -15,7 +15,7 @@ from decimal import Decimal
 import pytest
 from playwright.sync_api import Page, expect
 
-from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY
+from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_LIABILITY, Account
 from apps.bank_feed.models import BankTransaction
 from apps.reconciliation.services.adjustment import offset_account
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
@@ -221,28 +221,19 @@ def test_no_batch_bar_until_a_row_is_selected(requires_vite, authenticated_page,
 
 
 @pytest.mark.django_db(transaction=True)
-def test_uncategorized_selection_cannot_reconcile(requires_vite, authenticated_page, live_server, feed_fixture):
-    """Reconcile is offered but disabled — reconciling an uncategorized row is meaningless."""
+def test_batch_bar_does_not_offer_reconcile(requires_vite, authenticated_page, live_server, feed_fixture):
+    """Reconciling is against a statement, from the account header's "Reconcile statement" link;
+    the batch bar offers no Reconcile button for categorized or uncategorized rows."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["uncategorized"].id)
+    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Duplicate", "Export"]
 
-    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Reconcile", "Duplicate", "Export"]
-    assert feed.batch_button("Reconcile").is_disabled()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_categorized_unreconciled_selection_can_reconcile(requires_vite, authenticated_page, live_server, feed_fixture):
-    feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(feed_fixture["account"].book)
-    feed.click_account_card(feed_fixture["account"].id)
-    feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["unreconciled"].id)
-
-    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Reconcile", "Duplicate", "Export"]
-    assert feed.batch_button("Reconcile").is_enabled()
+    assert feed.batch_buttons() == ["Bulk Edit", "Void", "Duplicate", "Export"]
+    expect(authenticated_page.locator("[data-testid='reconcile-statement-btn']")).to_be_visible()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -269,8 +260,8 @@ def test_reconciled_selection_offers_unreconcile_not_reconcile(
 def test_mixed_selection_withholds_both_reconcile_and_unreconcile(
     requires_vite, authenticated_page, live_server, feed_fixture
 ):
-    """One reconciled row in the selection is enough to withhold Reconcile and Duplicate;
-    Unreconcile needs *all* of them reconciled, so a mixed selection gets neither."""
+    """One reconciled row in the selection is enough to withhold Duplicate;
+    Unreconcile needs *all* of them reconciled, so a mixed selection doesn't get it."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
@@ -283,7 +274,7 @@ def test_mixed_selection_withholds_both_reconcile_and_unreconcile(
 
 @pytest.mark.django_db(transaction=True)
 def test_voided_view_offers_restore_and_delete_only(requires_vite, authenticated_page, live_server, feed_fixture):
-    """The voided view is a different set of verbs: nothing to edit, reconcile or duplicate."""
+    """The voided view is a different set of verbs: nothing to edit, unreconcile or duplicate."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)
@@ -739,21 +730,6 @@ def test_opening_balance_can_be_categorized_to_the_system_equity_account(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_reconcile_needs_rows_from_one_account(requires_vite, authenticated_page, live_server, team, two_accounts):
-    (chq,) = _rows(team, two_accounts["chequing"], "CHQ", 1, category=two_accounts["groceries"])
-    (sav,) = _rows(team, two_accounts["savings"], "SAV", 1, category=two_accounts["groceries"])
-
-    feed = BankFeedPage(authenticated_page, live_server.url)
-    feed.goto(team.default_book)
-    feed.wait_for_table()
-    feed.select_row(chq.id)
-    assert feed.batch_button("Reconcile").is_enabled()
-
-    feed.select_row(sav.id)
-    assert feed.batch_button("Reconcile").is_disabled()
-
-
-@pytest.mark.django_db(transaction=True)
 def test_adding_a_transaction_asks_for_its_account(requires_vite, authenticated_page, live_server, team, two_accounts):
     """Blank across several accounts (Save refuses until one is chosen); preset to the filtered one."""
     feed = BankFeedPage(authenticated_page, live_server.url)
@@ -1012,3 +988,68 @@ def test_a_bank_needing_attention_is_flagged_in_the_inbox(requires_vite, authent
     expect(alert).to_contain_text("Desjardins needs you to sign in again")
     expect(authenticated_page.get_by_test_id(f"plaid-reconnect-{item.id}")).to_be_visible()
     expect(authenticated_page.get_by_test_id(f"plaid-unmapped-alert-{item.id}")).to_contain_text("1 account")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_category_picker_creates_an_account(requires_vite, authenticated_page, live_server, feed_fixture):
+    """The edit modal's Category picker offers "Create account"; the new account is selected and saved."""
+    expense_group = feed_fixture["category"].account_group
+    expense_group.account_type = ACCOUNT_TYPE_EXPENSE
+    expense_group.save()
+    row = feed_fixture["rows"]["uncategorized"]
+
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(feed_fixture["account"].book)
+    feed.click_account_card(feed_fixture["account"].id)
+    feed.wait_for_table()
+    feed.open_row(row.id)
+    expect(authenticated_page.locator("[data-testid='transaction-category']")).to_be_visible()
+
+    feed.create_category_account("Zed Pet Food", ACCOUNT_TYPE_EXPENSE, expense_group.name)
+    expect(authenticated_page.locator("[data-testid='transaction-category']")).to_have_value(
+        f"{expense_group.name} - Zed Pet Food"
+    )
+    feed.save_modal()
+
+    row.refresh_from_db()
+    created = Account.objects.get(book=feed_fixture["account"].book, name="Zed Pet Food")
+    assert created.account_group_id == expense_group.id
+    assert row.journal_entry.lines.filter(account=created).exists()
+
+
+@pytest.fixture
+def suggestion_fixture(team):
+    """An uncategorized row whose payee was categorized before, and one with no history."""
+    group = AccountGroupFactory(team=team)
+    account = AssetAccountFactory(team=team, account_group=group, has_feed=True)
+    expense_group = AccountGroupFactory(team=team, account_type=ACCOUNT_TYPE_EXPENSE)
+    coffee = AccountFactory(team=team, account_group=expense_group, name="Zed Coffee")
+    feed_transaction(team, account, category=coffee, merchant_name="Blue Bottle", description="HISTORY")
+    known = feed_transaction(team, account, merchant_name="Blue Bottle", description="KNOWN PAYEE")
+    unknown = feed_transaction(team, account, merchant_name="Qqzx Unheard", description="NO HISTORY")
+    return {"account": account, "coffee": coffee, "known": known, "unknown": unknown}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_uncategorized_row_shows_a_suggestion_to_confirm(
+    requires_vite, authenticated_page, live_server, suggestion_fixture
+):
+    """A row like one categorized before shows that category with a confirm button, which files it."""
+    known, unknown = suggestion_fixture["known"], suggestion_fixture["unknown"]
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(suggestion_fixture["account"].book)
+    feed.click_account_card(suggestion_fixture["account"].id)
+    feed.wait_for_table()
+
+    expect(authenticated_page.get_by_test_id(f"suggested-category-{known.id}")).to_have_text("Zed Coffee")
+    expect(authenticated_page.get_by_test_id(f"feed-row-{unknown.id}")).to_contain_text("Uncategorized")
+    expect(authenticated_page.get_by_test_id(f"confirm-category-{unknown.id}")).to_have_count(0)
+
+    authenticated_page.get_by_test_id(f"confirm-category-{known.id}").click()
+    expect(authenticated_page.get_by_test_id(f"confirm-category-{known.id}")).to_have_count(0)
+    expect(authenticated_page.get_by_test_id(f"feed-row-{known.id}")).to_contain_text("Zed Coffee")
+    expect(authenticated_page.get_by_test_id("edit-transaction-modal")).not_to_be_visible()
+    feed.wait_for_saves()
+
+    known.refresh_from_db()
+    assert known.journal_entry.lines.filter(account=suggestion_fixture["coffee"]).exists()

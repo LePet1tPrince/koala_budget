@@ -110,6 +110,7 @@ dependencies = [
 dev = [
     "coverage[toml]",
     "django-debug-toolbar",
+    "django-watchfiles>=1.4.0",
     "flower",
     "pre-commit",
     "ruff>=0.13.1",

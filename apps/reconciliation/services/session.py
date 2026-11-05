@@ -81,7 +81,7 @@ def start_ticked(account, statement_date: date, statement_balance: Decimal, user
     dated on or before the statement date ticked (`tick_through`): most of
     them are on the statement, and unticking the few that aren't is less work
     than ticking the many that are. A joined draft keeps its own ticks, and a
-    preselection (the feed's Reconcile button) is the user's own choice, so
+    preselection (`?lines=`) is the user's own choice, so
     neither is auto-ticked. Nor is a line that left an earlier statement
     (unreconciled after it was finished, or its statement undone): someone took
     it out on purpose, and the drift banner names it for a deliberate re-tick.
