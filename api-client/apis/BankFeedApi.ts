@@ -24,6 +24,7 @@ import type {
   PaginatedBankFeedRowList,
   PaginatedFeedAccountList,
   PatchedBatchEditRequest,
+  RecurringTransaction,
   SimilarCategorySuggestion,
   SimpleAccount,
   TransferDismissRequest,
@@ -55,6 +56,8 @@ import {
     PaginatedFeedAccountListToJSON,
     PatchedBatchEditRequestFromJSON,
     PatchedBatchEditRequestToJSON,
+    RecurringTransactionFromJSON,
+    RecurringTransactionToJSON,
     SimilarCategorySuggestionFromJSON,
     SimilarCategorySuggestionToJSON,
     SimpleAccountFromJSON,
@@ -187,6 +190,12 @@ export interface BankFeedLocateRequest {
     transfers?: boolean;
     uncategorized?: boolean;
     view?: BankFeedLocateViewEnum;
+}
+
+export interface BankFeedRecurringListRequest {
+    bookSlug: string;
+    teamSlug: string;
+    account?: string;
 }
 
 export interface BankFeedSampleCsvRequest {
@@ -1105,6 +1114,57 @@ export class BankFeedApi extends runtime.BaseAPI {
      */
     async bankFeedLocate(requestParameters: BankFeedLocateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.bankFeedLocateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The book\'s active recurring schedules, soonest first -- the bank feed\'s \"scheduled transactions\" panel. Finished schedules (no next date) are left out.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2
+     */
+    async bankFeedRecurringListRaw(requestParameters: BankFeedRecurringListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<RecurringTransaction>>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedRecurringList().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedRecurringList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/recurring/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(RecurringTransactionFromJSON));
+    }
+
+    /**
+     * The book\'s active recurring schedules, soonest first -- the bank feed\'s \"scheduled transactions\" panel. Finished schedules (no next date) are left out.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2
+     */
+    async bankFeedRecurringList(requestParameters: BankFeedRecurringListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RecurringTransaction>> {
+        const response = await this.bankFeedRecurringListRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

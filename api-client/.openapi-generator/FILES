@@ -23,6 +23,7 @@ models/EventTypeEnum.ts
 models/ExchangePublicTokenRequest.ts
 models/ExchangePublicTokenResponse.ts
 models/FeedAccount.ts
+models/FrequencyEnum.ts
 models/InvalidDateSample.ts
 models/Invitation.ts
 models/ItemRefreshResponse.ts
@@ -69,6 +70,8 @@ models/ReconciliationFinish.ts
 models/ReconciliationStart.ts
 models/ReconciliationTick.ts
 models/ReconciliationTickThrough.ts
+models/Recurrence.ts
+models/RecurringTransaction.ts
 models/RoleEnum.ts
 models/SimilarCategorySuggestion.ts
 models/SimpleAccount.ts

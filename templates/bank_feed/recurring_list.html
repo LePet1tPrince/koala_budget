@@ -1,0 +1,77 @@
+{% extends "accounts/manage_base.html" %}
+{% load i18n %}
+{% load icons %}
+{% load currency_tags %}
+
+{% block manage_title %}{% translate "Recurring transactions" %}{% endblock %}
+{% block manage_subtitle %}{% blocktranslate trimmed %}
+  Each one is added to its account's bank feed on its date. To start one, add a transaction in the bank feed and
+  tick “Make recurring”. Stopping one keeps the transactions it already added.
+{% endblocktranslate %}{% endblock %}
+
+{% block manage_content %}
+<div data-testid="recurring-list">
+  {% if rules %}
+    <div class="overflow-x-auto">
+      <table class="table table-sm table-quiet" data-testid="recurring-table">
+        <thead>
+          <tr>
+            <th>{% translate "Payee" %}</th>
+            <th>{% translate "Account" %}</th>
+            <th>{% translate "Category" %}</th>
+            <th class="text-right">{% translate "Amount" %}</th>
+            <th>{% translate "Repeats" %}</th>
+            <th>{% translate "Next" %}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rule in rules %}
+            <tr data-testid="recurring-row" data-rule-id="{{ rule.id }}">
+              <td>
+                <div class="font-medium">{{ rule.payee_name|default:"—" }}</div>
+                {% if rule.description %}<div class="text-xs text-base-content/70">{{ rule.description }}</div>{% endif %}
+              </td>
+              <td>{{ rule.account.name }}</td>
+              <td>
+                {% if rule.is_split %}{% translate "Split" %}
+                {% elif rule.category %}{{ rule.category.name }}
+                {% else %}<span class="text-base-content/70">{% translate "Uncategorized" %}</span>{% endif %}
+              </td>
+              <td class="text-right money">{{ rule.signed_inflow|currency }}</td>
+              <td data-testid="recurring-schedule">
+                {{ rule.schedule_text }}
+                <div class="text-xs text-base-content/70">
+                  {% blocktranslate trimmed with start=rule.start_date count count=rule.occurrence_count %}
+                    Since {{ start }} · {{ count }} added
+                  {% plural %}
+                    Since {{ start }} · {{ count }} added
+                  {% endblocktranslate %}
+                  {% if rule.end_date %} · {% blocktranslate trimmed with end=rule.end_date %}until {{ end }}{% endblocktranslate %}{% endif %}
+                </div>
+              </td>
+              <td data-testid="recurring-next">
+                {% if rule.next_date %}{{ rule.next_date }}{% else %}<span class="badge badge-ghost badge-sm">{% translate "Finished" %}</span>{% endif %}
+              </td>
+              <td class="text-right">
+                {% translate "Stop this recurring transaction? Transactions it already added are kept." as stop_confirm %}
+                <form method="post" action="{% url 'bank_feed:recurring_delete' request.team.slug request.book.slug rule.id %}"
+                      onsubmit="return confirm('{{ stop_confirm|escapejs }}')">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-ghost btn-sm" data-testid="recurring-stop">
+                    {% icon "trash" class="w-4 h-4" %}{% translate "Stop" %}
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-base-content/70" data-testid="recurring-empty">{% blocktranslate trimmed %}
+      No recurring transactions yet. Add a transaction in the bank feed and tick “Make recurring”.
+    {% endblocktranslate %}</p>
+  {% endif %}
+</div>
+{% endblock %}

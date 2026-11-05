@@ -3,6 +3,7 @@ import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import DateRangePicker from '../../common/DateRangePicker';
 import EditTransactionModal from './EditTransactionModal';
 import TransferMatchPanel from './TransferMatchPanel';
+import ScheduledTransactions from './ScheduledTransactions';
 import { Toast } from '../../common/Toast';
 import { SortArrow, TablePager } from '../../common/TablePager';
 import { Dropdown, MenuRow, ReconciledLock } from './LineTableParts';
@@ -183,6 +184,7 @@ const LineTable = ({
   refreshing = false,
   uploadDisabled = false,
   plaidClient,
+  bankFeedClient,
   onLinkSuccess,
   onOpenTransferLeg,
   feedAccountIds = new Set(),
@@ -206,6 +208,8 @@ const LineTable = ({
   });
 
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  // Bumped when a recurring transaction is added, so the scheduled strip re-reads.
+  const [scheduledVersion, setScheduledVersion] = useState(0);
 
   const voided = query.view === 'voided';
   const quickFilters = query.quickFilters;
@@ -292,7 +296,11 @@ const LineTable = ({
     if (mode === 'create') {
       if (onAdd) {
         await onAdd(data);
-        showSnackbar(gettext('Transaction added successfully'), 'success');
+        if (data.recurrence) setScheduledVersion((n) => n + 1);
+        showSnackbar(
+          data.recurrence ? gettext('Recurring transaction added') : gettext('Transaction added successfully'),
+          'success'
+        );
       }
     } else if (onEditTransaction) {
       // Not awaited: the row already shows the edit and is marked as saving,
@@ -466,6 +474,13 @@ const LineTable = ({
                       onUploadClick();
                     }}
                   />
+                  <MenuRow
+                    label={gettext('Recurring transactions')}
+                    onClick={() => {
+                      close();
+                      window.location.assign(`${book.base}bankfeed/recurring/`);
+                    }}
+                  />
                   <div className="my-1 border-t border-base-300" />
                   <MenuRow
                     label={linkBankLoading ? gettext('Loading...') : gettext('Link Bank Account')}
@@ -489,6 +504,16 @@ const LineTable = ({
           </div>
           {linkBankModal}
         </div>
+
+        {bankFeedClient && !voided && (
+          <ScheduledTransactions
+            client={bankFeedClient}
+            book={book}
+            accountIds={query.accounts}
+            showAccount={showAccountColumn}
+            refreshKey={scheduledVersion}
+          />
+        )}
 
         <div className="app-surface overflow-hidden">
           {/* Select-all strip: the checkbox takes this page; selecting everything
@@ -806,6 +831,7 @@ const LineTable = ({
         feedAccounts={accounts}
         defaultAccountId={defaultAccountId}
         onAccountCreated={onAccountCreated}
+        allowRecurring
       />
 
       <Toast
