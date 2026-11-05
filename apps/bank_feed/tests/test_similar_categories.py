@@ -285,8 +285,12 @@ class SimilarCategoriesEndpointTest(SimilarCategoriesTestMixin, TestCase):
         response = self._get(str(target.id))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # The original contract, field for field; the categorization pipeline only
+        # adds fields (source, provider, confidence, reason, ...) beside it.
+        contract = ("transaction_id", "category_id", "category_name", "count", "match_type", "payee")
+        self.assertEqual(response.data[0]["source"], "history")
         self.assertEqual(
-            response.data,
+            [{key: row[key] for key in contract} for row in response.data],
             [
                 {
                     "transaction_id": target.id,

@@ -37,6 +37,12 @@ export interface UploadConfirmResponse {
      * @memberof UploadConfirmResponse
      */
     errorCount: number;
+    /**
+     * Of those created, how many your auto rules categorized
+     * @type {number}
+     * @memberof UploadConfirmResponse
+     */
+    ruleCategorizedCount?: number;
 }
 
 /**
@@ -62,6 +68,7 @@ export function UploadConfirmResponseFromJSONTyped(json: any, ignoreDiscriminato
         'createdCount': json['created_count'],
         'skippedCount': json['skipped_count'],
         'errorCount': json['error_count'],
+        'ruleCategorizedCount': json['rule_categorized_count'] == null ? undefined : json['rule_categorized_count'],
     };
 }
 
@@ -79,6 +86,7 @@ export function UploadConfirmResponseFromJSONTyped(json: any, ignoreDiscriminato
         'created_count': value['createdCount'],
         'skipped_count': value['skippedCount'],
         'error_count': value['errorCount'],
+        'rule_categorized_count': value['ruleCategorizedCount'],
     };
 }
 

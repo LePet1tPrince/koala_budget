@@ -8,6 +8,8 @@ import Combobox from '../../common/Combobox';
 import DateRangePicker from '../../common/DateRangePicker';
 import Icon from '../../common/Icon';
 import Modal from '../../common/Modal';
+import RuleEditorModal from '../../categorization/RuleEditorModal';
+import { readCanManageRules, rulesApi } from '../../categorization/rulesApi';
 import { accountKind, ACCOUNT_KIND_LABELS, goalLeftLabel, pickableAccounts } from '../../common/accountKind';
 import { queryFromUrl, scopeSearch } from '../feedQuery';
 
@@ -436,7 +438,14 @@ function findAccountNamedInText(text, accounts, excludeAccountId) {
 // The note under a suggestion, explaining why it's suggested. A "named" match
 // (an account named verbatim in the memo/payee) needs no history to justify
 // itself, but still says so when history backs it up too.
-function suggestionNote({ count, match_type }) {
+function suggestionNote({ count, match_type, rule_name, reason }) {
+  if (match_type === 'rule') {
+    return count != null
+      ? `Your rule “${rule_name}” — also used ${count}× before`
+      : `Your rule “${rule_name}”`;
+  }
+  // Any other provider (an AI, say) explains itself.
+  if (match_type === 'ai') return reason || 'Suggested';
   if (match_type === 'named') {
     return count != null
       ? `Named in the memo — also used ${count}× for this payee`
@@ -551,7 +560,12 @@ function AccountHierarchy({
     const namedAccount = findAccountNamedInText(memoText, allAccounts, feedAccountId);
     if (!namedAccount) return fromHistory.slice(0, MAX_SUGGESTIONS);
 
-    const already = fromHistory.find(s => s.category_id === namedAccount.id);
+    // A rule is the user's own explicit decision, so it stays on top; the named
+    // match slots in after it and ahead of history.
+    const rules = fromHistory.filter(s => s.match_type === 'rule');
+    if (rules.some(s => s.category_id === namedAccount.id)) return fromHistory.slice(0, MAX_SUGGESTIONS);
+    const rest = fromHistory.filter(s => s.match_type !== 'rule');
+    const already = rest.find(s => s.category_id === namedAccount.id);
     const named = {
       category_id: namedAccount.id,
       category_name: namedAccount.name,
@@ -559,7 +573,7 @@ function AccountHierarchy({
       match_type: 'named',
       payee: already ? already.payee : '',
     };
-    return [named, ...fromHistory.filter(s => s.category_id !== namedAccount.id)].slice(0, MAX_SUGGESTIONS);
+    return [...rules, named, ...rest.filter(s => s.category_id !== namedAccount.id)].slice(0, MAX_SUGGESTIONS);
   }, [suggestions, accountsById, currentTransaction, allAccounts, trimmedSearch]);
 
   const suggestedAccountIds = useMemo(
@@ -1048,6 +1062,17 @@ export default function CategorizeMode({
   const [splitModalOpen, setSplitModalOpen] = useState(false);
   const [drafts, setDrafts] = useState({}); // transaction id -> { payee, description } edited but not yet filed
   const [error, setError] = useState(null);
+  // "Always categorize transactions like this": offered after a card is filed by
+  // hand, opened as the shared rule editor on a server-built draft.
+  const canManageRules = useMemo(() => readCanManageRules(), []);
+  const rules = useMemo(() => rulesApi(book), [book]);
+  const [ruleOffer, setRuleOffer] = useState(null); // { tx, account }
+  const [ruleDraft, setRuleDraft] = useState(null);
+  const [ruleNotice, setRuleNotice] = useState(null);
+  const ruleFeedAccounts = useMemo(
+    () => allAccounts.filter(a => a.has_feed && !a.is_hidden && ['asset', 'liability'].includes(a.account_type)),
+    [allAccounts]
+  );
   const [cardHeight, setCardHeight] = useState(220);
   const topCardRef = useRef(null);
   const headers = getApiHeaders();
@@ -1212,7 +1237,21 @@ export default function CategorizeMode({
     // takes the plain categorize path in a single batched call. Drafts belong
     // to individual cards, so a transaction swept into a batch still carries
     // its own edits rather than the edited card's.
-    const edited = txList.map(t => ({ tx: t, changes: changedDetails(t, drafts[t.id]) })).filter(e => e.changes);
+    // Picking a rule's suggestion also applies its renames (unless the user typed
+    // their own), the same as the rule would have on arrival.
+    const ruleChanges = (t) => {
+      const rule = (suggestionsByTransaction[t.id] || []).find(
+        s => s.match_type === 'rule' && s.category_id === account.id
+      );
+      const decisions = rule?.decisions || {};
+      const changes = {};
+      if (decisions.payee) changes.payee = decisions.payee;
+      if (decisions.description) changes.description = decisions.description;
+      return Object.keys(changes).length ? changes : null;
+    };
+    const edited = txList
+      .map(t => ({ tx: t, changes: changedDetails(t, drafts[t.id]) || ruleChanges(t) }))
+      .filter(e => e.changes);
     const editedIds = new Set(edited.map(e => e.tx.id));
     const plain = txList.filter(t => !editedIds.has(t.id));
 
@@ -1242,12 +1281,45 @@ export default function CategorizeMode({
 
       setUndoStack(prev => [...prev, { transactions: txList, account }]);
       advanceQueue(txList, { editedIds, includesTop });
+      // Offer a rule unless one already decided this card.
+      const top = txList.find(t => t.id === transactions[0]?.id);
+      const ruled = top && (suggestionsByTransaction[top.id] || []).some(
+        s => s.match_type === 'rule' && s.category_id === account.id
+      );
+      setRuleNotice(null);
+      setRuleOffer(canManageRules && top && !ruled ? { tx: top, account } : null);
     } catch (err) {
       console.error('Failed to categorize:', err);
       setError(err.message || 'Could not categorize that transaction.');
       setIsExiting(false);
     }
-  }, [transactions, book, headers, drafts, batchApi, advanceQueue]);
+  }, [transactions, book, headers, drafts, batchApi, advanceQueue, suggestionsByTransaction, canManageRules]);
+
+  const openRuleEditor = useCallback(async () => {
+    if (!ruleOffer) return;
+    try {
+      setRuleDraft(await rules.draft(transactionId(ruleOffer.tx), ruleOffer.account.id));
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [ruleOffer, rules]);
+
+  // A saved rule may have filed queued cards too: take them off the stack.
+  const handleRuleSaved = useCallback((saved, applied) => {
+    setRuleDraft(null);
+    setRuleOffer(null);
+    const filed = new Set(applied?.categorized_ids || []);
+    if (filed.size) {
+      setTransactions(prev => prev.filter(t => !filed.has(t.id)));
+      setCategorized(c => c + filed.size);
+    }
+    setRuleNotice(
+      filed.size
+        ? `Rule “${saved.name}” saved and ${filed.size} more transaction${filed.size === 1 ? '' : 's'} categorized.`
+        : `Rule “${saved.name}” saved.`
+    );
+    setSuggestionsByTransaction({});
+  }, []);
 
   // Categorizing the top transaction: if other uncategorized transactions
   // share its home account and description, offer to categorize them the
@@ -1385,7 +1457,7 @@ export default function CategorizeMode({
       // A modal over the stack handles its own Escape (via the dialog's
       // `cancel` event) — don't also navigate away or skip under it, which
       // would throw the user out of the queue while they were editing.
-      if (pendingBatch || splitModalOpen || showCreateAccountModal) return;
+      if (pendingBatch || splitModalOpen || showCreateAccountModal || ruleDraft) return;
       if (e.key === 'Escape') window.location.href = backHref;
       if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
@@ -1395,7 +1467,7 @@ export default function CategorizeMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backHref, undoStack, pendingBatch, splitModalOpen, showCreateAccountModal]);
+  }, [backHref, undoStack, pendingBatch, splitModalOpen, showCreateAccountModal, ruleDraft]);
 
   const currentId = transactionId(transactions[0]);
   const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
@@ -1488,6 +1560,25 @@ export default function CategorizeMode({
               <button className="btn btn-ghost btn-xs" onClick={() => setError(null)}>✕</button>
             </div>
           )}
+          {ruleOffer && (
+            <div className="alert mb-3 w-full max-w-md py-2" data-testid="rule-offer">
+              <Icon name="wand-sparkles" className="h-4 w-4 shrink-0 text-primary" />
+              <span className="text-sm">
+                Always categorize transactions like “{ruleOffer.tx.payee || ruleOffer.tx.description}” as{' '}
+                <strong>{ruleOffer.account.name}</strong>?
+              </span>
+              <button className="btn btn-primary btn-xs" onClick={openRuleEditor} data-testid="rule-offer-create">
+                Create rule
+              </button>
+              <button className="btn btn-ghost btn-xs" onClick={() => setRuleOffer(null)} aria-label="Dismiss">✕</button>
+            </div>
+          )}
+          {ruleNotice && (
+            <div className="alert alert-success mb-3 w-full max-w-md py-2" data-testid="rule-notice">
+              <span className="text-sm">{ruleNotice}</span>
+              <button className="btn btn-ghost btn-xs" onClick={() => setRuleNotice(null)} aria-label="Dismiss">✕</button>
+            </div>
+          )}
           {/* Cards behind the top one are pushed down by `offset * 8px` (see
               TransactionCard), so the stack's real bottom edge sits below the
               measured card — pad the container for the deepest card's offset
@@ -1574,6 +1665,18 @@ export default function CategorizeMode({
         mode="edit"
         startSplit
       />
+
+      {ruleDraft && (
+        <RuleEditorModal
+          open
+          onClose={() => setRuleDraft(null)}
+          book={book}
+          rule={ruleDraft}
+          accounts={localAccounts}
+          feedAccounts={ruleFeedAccounts}
+          onSaved={handleRuleSaved}
+        />
+      )}
 
       <SimilarTransactionsModal
         pendingBatch={pendingBatch}

@@ -59,6 +59,12 @@ export interface AuditLog {
     readonly userDisplay: string;
     /**
      * 
+     * @type {string}
+     * @memberof AuditLog
+     */
+    readonly via: string;
+    /**
+     * 
      * @type {any}
      * @memberof AuditLog
      */
@@ -81,6 +87,7 @@ export function instanceOfAuditLog(value: object): value is AuditLog {
     if (!('action' in value) || value['action'] === undefined) return false;
     if (!('timestamp' in value) || value['timestamp'] === undefined) return false;
     if (!('userDisplay' in value) || value['userDisplay'] === undefined) return false;
+    if (!('via' in value) || value['via'] === undefined) return false;
     if (!('eventId' in value) || value['eventId'] === undefined) return false;
     return true;
 }
@@ -100,6 +107,7 @@ export function AuditLogFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
         'sourceModel': json['source_model'] == null ? undefined : json['source_model'],
         'timestamp': (new Date(json['timestamp'])),
         'userDisplay': json['user_display'],
+        'via': json['via'],
         'changes': json['changes'] == null ? undefined : json['changes'],
         'eventId': json['event_id'],
     };
@@ -109,7 +117,7 @@ export function AuditLogFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
       return AuditLogToJSONTyped(json, false);
   }
 
-  export function AuditLogToJSONTyped(value?: Omit<AuditLog, 'id'|'timestamp'|'user_display'|'event_id'> | null, ignoreDiscriminator: boolean = false): any {
+  export function AuditLogToJSONTyped(value?: Omit<AuditLog, 'id'|'timestamp'|'user_display'|'via'|'event_id'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

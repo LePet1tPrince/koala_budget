@@ -37,6 +37,7 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction
 from apps.budget import ledger as budget_ledger
 from apps.budget.models import GoalAccountLink
+from apps.categorization.models import CategorizationDecision, CategorizationRule
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
 
@@ -59,6 +60,8 @@ class WipeCounts:
     payees: int = 0
     institutions: int = 0
     reconciliations: int = 0
+    categorization_rules: int = 0
+    categorization_decisions: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -78,12 +81,23 @@ class WipeCounts:
             "payees": self.payees,
             "institutions": self.institutions,
             "reconciliations": self.reconciliations,
+            "categorization_rules": self.categorization_rules,
+            "categorization_decisions": self.categorization_decisions,
         }
 
 
 def wipe_book(book) -> WipeCounts:
     """Delete every row this feature exports for `book`. See module docstring for the order."""
     counts = WipeCounts()
+
+    # A decision points at an entry, and the raw delete below would not cascade
+    # to it; rules point at accounts. Both go first.
+    decisions = CategorizationDecision.objects.filter(book=book)
+    counts.categorization_decisions = decisions.count()
+    decisions.delete()
+    rules = CategorizationRule.objects.filter(book=book)
+    counts.categorization_rules = rules.count()
+    rules.delete()
 
     # Break the FK from feed rows to entries before the entries are
     # raw-deleted -- see point 2 above. A plain `.update()` fires no

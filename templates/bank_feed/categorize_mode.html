@@ -1,6 +1,7 @@
 {% extends "web/base.html" %}
 {% load django_vite %}
 {% load i18n %}
+{% load categorization_tags %}
 
 {% block body_wrapper %}
   <div id="categorize-app">
@@ -14,6 +15,7 @@
   {{ all_payees|json_script:'all-payees' }}
   {{ request.book.base_url|json_script:'book-base' }}
   {{ back_url|json_script:'back-url' }}
+  {% can_manage_rules_script %}
 {% endblock %}
 
 {% block page_js %}

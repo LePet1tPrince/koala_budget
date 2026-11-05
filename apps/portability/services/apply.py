@@ -25,6 +25,7 @@ from apps.bank_feed.models import BankTransaction
 from apps.budget import ledger as budget_ledger
 from apps.budget.buckets import sync_book
 from apps.budget.models import Goal, GoalAccountLink
+from apps.categorization.models import CategorizationRule
 from apps.journal.models import JournalEntry, JournalLine
 from apps.journal.services import voiding
 from apps.reconciliation.models import Reconciliation
@@ -55,6 +56,7 @@ class ApplyResult:
     bank_transactions: int
     reconciliations: int = 0
     goal_links: int = 0
+    rules: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -71,6 +73,7 @@ class ApplyResult:
             "bank_transactions": self.bank_transactions,
             "reconciliations": self.reconciliations,
             "goal_links": self.goal_links,
+            "rules": self.rules,
         }
 
 
@@ -100,6 +103,7 @@ def build_safety_archive(book) -> bytes:
         budget=budget_rows,
         reconciliations=export.build_reconciliation_rows(book),
         goal_links=export.build_goal_link_rows(book),
+        rules=export.build_rule_rows(book),
         source={"team_name": book.team.name, "book_name": book.name},
         checks=checks,
         omitted=omitted,
@@ -143,6 +147,7 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
     _write_budget(book, tables.budget_rows, account_id_map, goal_id_by_account_id)
 
     goal_links_created = _insert_goal_links(book, tables.goal_links, account_id_map, goal_id_by_account_id)
+    rules_created = _insert_rules(book, tables.rules, account_id_map)
 
     report(55, "Writing statements")
     reconciliation_id_map = _insert_reconciliations(book, tables.reconciliations, account_id_map)
@@ -174,6 +179,7 @@ def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) ->
         bank_transactions=bank_transactions_created,
         reconciliations=len(reconciliation_id_map),
         goal_links=goal_links_created,
+        rules=rules_created,
     )
     log_event(AuditEvent.DATA_IMPORTED, user=user, book=book, metadata={"result": result.as_dict()})
     report(100, "Done")
@@ -280,6 +286,20 @@ def _write_budget(book, budget_rows, account_id_map, goal_id_by_account_id) -> N
             allocations[(goal_id_by_account_id[new_account_id], row["month"])] = row["amount"]
     budget_ledger.set_budgets(book, budgets)
     budget_ledger.set_goal_allocations(book, allocations)
+
+
+def _insert_rules(book, rows, account_id_map) -> int:
+    objs = [
+        CategorizationRule(
+            book=book,
+            account_id=account_id_map[row["account_id"]] if row["account_id"] is not None else None,
+            category_id=account_id_map[row["category_id"]] if row["category_id"] is not None else None,
+            **schema.model_kwargs(schema.RULE, row, skip={"account", "category"}),
+        )
+        for row in rows
+    ]
+    CategorizationRule.objects.bulk_create(objs)
+    return len(objs)
 
 
 def _insert_goal_links(book, rows, account_id_map, goal_id_by_account_id) -> int:

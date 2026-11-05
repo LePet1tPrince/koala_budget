@@ -34,6 +34,13 @@ import {
     BankFeedRowSourceEnumToJSON,
     BankFeedRowSourceEnumToJSONTyped,
 } from './BankFeedRowSourceEnum';
+import type { CategorizedBy } from './CategorizedBy';
+import {
+    CategorizedByFromJSON,
+    CategorizedByFromJSONTyped,
+    CategorizedByToJSON,
+    CategorizedByToJSONTyped,
+} from './CategorizedBy';
 
 /**
  * Unified bank feed row serializer.
@@ -199,6 +206,12 @@ export interface BankFeedRow {
      */
     splits: Array<SplitLeg>;
     /**
+     * Set while a rule (or another automatic provider) is what filed this row; null otherwise
+     * @type {CategorizedBy}
+     * @memberof BankFeedRow
+     */
+    categorizedBy?: CategorizedBy | null;
+    /**
      * The recurring schedule this transaction belongs to (null when it is a one-off)
      * @type {number}
      * @memberof BankFeedRow
@@ -273,6 +286,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'isSplit': json['is_split'],
         'splitCount': json['split_count'],
         'splits': ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
+        'categorizedBy': json['categorized_by'] == null ? undefined : CategorizedByFromJSON(json['categorized_by']),
         'recurringId': json['recurring_id'] == null ? undefined : json['recurring_id'],
     };
 }
@@ -313,6 +327,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'is_split': value['isSplit'],
         'split_count': value['splitCount'],
         'splits': ((value['splits'] as Array<any>).map(SplitLegToJSON)),
+        'categorized_by': CategorizedByToJSON(value['categorizedBy']),
         'recurring_id': value['recurringId'],
     };
 }

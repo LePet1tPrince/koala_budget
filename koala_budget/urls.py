@@ -60,6 +60,7 @@ book_urlpatterns = [
     path("reports/", include("apps.reports.urls")),
     path("reports/monthly-review/", include("apps.monthly_review.urls")),
     path("plaid/", include("apps.plaid.urls")),
+    path("bankfeed/rules/", include("apps.categorization.urls")),
     path("bankfeed/", include("apps.bank_feed.urls")),
     path("onboarding/", include("apps.onboarding.urls")),
     path("ynab-import/", include("apps.ynab_import.urls")),
