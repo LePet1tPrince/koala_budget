@@ -49,6 +49,7 @@ BOOK_MODELS = [
     ("budget", "goalaccountlink"),
     ("categorization", "categorizationrule"),
     ("categorization", "categorizationdecision"),
+    ("bank_feed", "recurringtransaction"),
 ]
 
 # Audit events that belong to the team rather than to its books.

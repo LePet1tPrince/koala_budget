@@ -252,6 +252,14 @@ make test-e2e-accounts  # Run specific test file
 - `apps/portability/tests/test_apply.py::StatementRoundTripTests` — statements survive export → import intact; `test_read_errors.py` covers a v1 archive and a dangling `reconciliation_id`.
 - E2E (7): balance → finish → hub Intact; duplicate hint fixed in one click; card balance typed as printed; finish with adjustment; draft resumes after reload; feed selection arrives ticked; a line that left a finished statement marks it Changed and the next session shows the drift banner.
 
+### Recurring transactions (`apps/bank_feed/tests/test_recurring.py`)
+
+- `ScheduleTest` (`SimpleTestCase`) pins the date arithmetic on unsaved rules: every 2 weeks on Wednesday from a Wednesday / Monday / Thursday start, the 17th monthly, day 31 and Last day across February, leap-day yearly, end date
+- `RecurringFixture` patches `django.utils.timezone.localdate` to a fixed Thursday (2026-11-05); every "due by today" assertion depends on it
+- `MaterializeTest.test_running_twice_writes_each_occurrence_once` is the double-write guard; `test_the_nightly_task_covers_every_book` calls the Celery task function directly
+- `ScheduledListApiTest`: the feed strip's endpoint — soonest first, finished schedules excluded, `?account=` filter, bad ids 400, members read, outsiders refused
+- Page tests: a member sees the list and stops a schedule (rows kept, `recurring` nulled); a user outside the team gets 404; GET on stop is 405
+
 ## Known Coverage Gaps
 
 - `reports/` app has minimal test coverage — complex aggregation logic is untested

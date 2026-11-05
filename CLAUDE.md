@@ -85,6 +85,7 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Reconciled-line rules: call `apps.reconciliation.services.guards`; category rules: `apps.accounts.guards.assert_category_allowed`. Don't restate them.
 - Unassigned: `apps/budget/unassigned.py::compute_unassigned` is the single source.
 - Category suggestions and auto-categorization: a provider in `CATEGORIZATION_PROVIDERS` (`apps/categorization/`); applying one goes through `categorize_single`, and only `policy.book_allows_auto` lets a non-rule provider categorize without the user.
+- Manual feed rows: `apps/bank_feed/services/manual.py::create_manual_transaction` (the feed API's create and recurring schedules). Recurring occurrences: `services/recurring.py::materialize` only.
 
 **Shared helpers (don't re-add copies):** `apps/utils/months.py`, `apps/utils/json_views.py`, `apps/utils/progress.py`, `apps/utils/amounts.py`; frontend `common/http.js`, `common/amount.js`, `common/book.js`, `common/Modal.jsx`, `common/Combobox.jsx`, `common/DateField.jsx`, `common/popoverPosition.js`. Icons: `{% icon %}` / `<Icon>`; add new ones via `assets/icons/build_icons.py`.
 

@@ -3,14 +3,18 @@ Views for bank_feed app.
 Provides API endpoints for imported transactions and unified bank feed.
 """
 
+from datetime import timedelta
 from decimal import Decimal
 
+from django.contrib import messages
 from django.db import transaction
 from django.db.models import Count, F, Max
 from django.http import HttpResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.http import require_POST
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, serializers, status, viewsets
@@ -50,7 +54,7 @@ from apps.reconciliation.services.guards import (
 )
 from apps.reconciliation.services.integrity import intact_map
 
-from .models import BankTransaction, TransferMatchDismissal
+from .models import BankTransaction, RecurringTransaction, TransferMatchDismissal
 from .serializers import (
     BankFeedRowSerializer,
     BatchEditRequestSerializer,
@@ -58,6 +62,7 @@ from .serializers import (
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
     FeedAccountSerializer,
+    RecurringTransactionSerializer,
     SimilarCategorySuggestionSerializer,
     TransferDismissRequestSerializer,
     TransferMatchRequestSerializer,
@@ -70,14 +75,18 @@ from .serializers import (
     UploadValidateDatesResponseSerializer,
     bank_transaction_to_feed_row,
 )
-from .services import feed_query
+from .services import feed_query, recurring
 from .services.categorize import MIRROR_EDIT_ERROR, create_entry, repoint_category
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
+from .services.manual import create_manual_transaction
 from .services.sample_csv import build_sample_csv
 from .services.splits import SplitError, apply_splits, check_legs_total, is_split, parse_legs
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_match import MatchError, ProposalChanged, match_transfer, propose_pairs
 from .services.transfer_mirror import is_split_mirror, sync_transfer, would_orphan_primary
+
+# How far back a new recurring transaction may start (its catch-up is written at once).
+RECURRING_MAX_DAYS_BACK = 366
 
 # Upper bound on how many transactions one similar-category request may ask about.
 # The categorize view only ever needs the handful of cards it is about to show.
@@ -154,6 +163,30 @@ def _annotate_feed_account_activity(accounts, book):
         account.last_statement_intact = intact.get(statement.id) if statement else None
 
 
+class RecurrenceSerializer(serializers.Serializer):
+    """How a new manual transaction repeats. Its own date is the first occurrence."""
+
+    frequency = serializers.ChoiceField(choices=[c for c, _label in RecurringTransaction.FREQUENCY_CHOICES])
+    interval = serializers.IntegerField(min_value=1, max_value=RecurringTransaction.MAX_INTERVAL, default=1)
+    weekday = serializers.IntegerField(
+        min_value=0, max_value=6, required=False, allow_null=True, default=None, help_text="Weekly: 0 = Monday"
+    )
+    day_of_month = serializers.IntegerField(
+        min_value=-1,
+        max_value=31,
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="Monthly: 1-31, or -1 for the last day",
+    )
+    end_date = serializers.DateField(required=False, allow_null=True, default=None)
+
+    def validate_day_of_month(self, value):
+        if value == 0:
+            raise serializers.ValidationError("Choose a day from 1 to 31, or the last day.")
+        return value
+
+
 class ManualTransactionSerializer(serializers.Serializer):
     """Serializer for creating/updating manual transactions."""
 
@@ -214,6 +247,15 @@ class ManualTransactionSerializer(serializers.Serializer):
             "for rather than implied by a request that simply omits `splits`."
         ),
     )
+    recurrence = RecurrenceSerializer(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text=(
+            "Create only: repeat this transaction on a schedule. Each occurrence after "
+            "this one is written as a new manual transaction on its date."
+        ),
+    )
 
     def validate(self, data):
         inflow = data.get("inflow") or Decimal("0")
@@ -228,6 +270,15 @@ class ManualTransactionSerializer(serializers.Serializer):
         # wording live in one place; only the either/or belongs here.
         if data.get("splits") is not None and data.get("category") is not None:
             raise serializers.ValidationError("Send either a single category or splits, not both.")
+        recurrence = data.get("recurrence")
+        if recurrence:
+            if recurrence.get("end_date") and recurrence["end_date"] < data["date"]:
+                raise serializers.ValidationError({"recurrence": "The end date must be on or after the first date."})
+            # Bounds the catch-up a new schedule writes at once (a daily one: 366 rows).
+            if data["date"] < timezone.localdate() - timedelta(days=RECURRING_MAX_DAYS_BACK):
+                raise serializers.ValidationError(
+                    {"recurrence": "A recurring transaction can start at most a year ago."}
+                )
         return data
 
 
@@ -597,57 +648,41 @@ class BankFeedViewSet(
             except SplitError as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Get or create payee if provided
-        payee = None
+        # Only categorized transactions get a journal entry; a blank category and
+        # no splits leave the transaction uncategorized (journal_entry=None).
+        entry_legs = legs if legs is not None else ([(category_account, amount)] if category_account else None)
         payee_name = data.get("payee", "")
-        if payee_name:
-            payee, _ = Payee.objects.get_or_create(
-                book=request.book,
-                name=payee_name,
-            )
+        recurrence = data.get("recurrence")
 
         with transaction.atomic():
-            # Only categorized transactions get a journal entry; a blank category
-            # and no splits leave the transaction uncategorized (journal_entry=None).
-            journal_entry = None
-            entry_legs = legs if legs is not None else ([(category_account, amount)] if category_account else None)
-            if entry_legs is not None:
-                journal_entry = JournalEntry.objects.create(
-                    book=request.book,
-                    entry_date=data["date"],
-                    description=data.get("description", ""),
-                    payee=payee,
-                    source=JournalEntry.SOURCE_MANUAL,
-                    status=JournalEntry.STATUS_POSTED,
-                )
-                # Placeholder bank line; `apply_splits` below gives it the right
-                # side and amount, so only one place decides that.
-                JournalLine.objects.create(
-                    journal_entry=journal_entry,
+            rule = None
+            if recurrence is not None:
+                rule = recurring.create_rule(
                     book=request.book,
                     account=bank_account,
-                    dr_amount=Decimal("0"),
-                    cr_amount=Decimal("0"),
+                    amount=amount,
+                    payee_name=payee_name,
+                    description=data.get("description", ""),
+                    category=category_account if legs is None else None,
+                    legs=legs,
+                    start_date=data["date"],
+                    **recurrence,
                 )
-
-            # Create bank transaction
-            bank_tx = BankTransaction.objects.create(
+            bank_tx = create_manual_transaction(
                 book=request.book,
                 account=bank_account,
+                date=data["date"],
                 amount=amount,
-                posted_date=data["date"],
+                payee_name=payee_name,
                 description=data.get("description", ""),
-                merchant_name=payee_name,
-                source=BankTransaction.SOURCE_MANUAL,
-                journal_entry=journal_entry,
+                legs=entry_legs,
+                recurring=rule,
             )
 
-            if entry_legs is not None:
-                apply_splits(bank_tx, entry_legs, total=amount)
-
-            # Mirror the leg into the counterpart account's feed if it's a transfer.
-            # (No-op for an uncategorized transaction with no journal entry.)
-            sync_transfer(bank_tx)
+        # A schedule started in the past catches up at once, rather than at the
+        # next nightly run.
+        if rule is not None:
+            recurring.materialize(rule)
 
         # Return the created transaction as a feed row
         row = bank_transaction_to_feed_row(bank_tx)
@@ -1834,6 +1869,9 @@ def bank_feed_home(request, team_slug, book_slug):
     Main bank feed page view.
     Displays accounts with bank feeds and bank transactions table.
     """
+    # Recurring transactions due by today appear even if the nightly run hasn't.
+    recurring.materialize_due(book=request.book)
+
     # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
     accounts_with_feeds = list(
         Account.for_book.filter(has_feed=True, is_hidden=False)
@@ -1907,3 +1945,103 @@ def categorize_mode(request, team_slug, book_slug):
             "back_url": back_url,
         },
     )
+
+
+@extend_schema_view(
+    list=extend_schema(
+        operation_id="bank_feed_recurring_list",
+        tags=["bank-feed"],
+        parameters=[
+            OpenApiParameter(
+                name="account",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated ledger account ids; absent = every account",
+                required=False,
+            )
+        ],
+        responses={200: RecurringTransactionSerializer(many=True)},
+    ),
+)
+class RecurringTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """
+    The book's active recurring schedules, soonest first -- the bank feed's
+    "scheduled transactions" panel. Finished schedules (no next date) are left out.
+
+    - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2
+    """
+
+    permission_classes = [BookModelAccessPermissions]
+    serializer_class = RecurringTransactionSerializer
+    pagination_class = None
+    queryset = RecurringTransaction.objects.none()  # for drf-spectacular schema generation
+
+    def get_queryset(self):
+        rules = RecurringTransaction.objects.filter(book=self.request.book, next_date__isnull=False).select_related(
+            "account__account_group", "account__institution", "category__account_group", "category__institution"
+        )
+        account_ids = [part for part in self.request.query_params.get("account", "").split(",") if part.strip()]
+        if account_ids:
+            try:
+                rules = rules.filter(account_id__in=[int(part) for part in account_ids])
+            except ValueError:
+                raise serializers.ValidationError({"account": "Pass comma-separated account ids."}) from None
+        return rules.order_by("next_date", "id")
+
+    def list(self, request, team_slug=None, book_slug=None):
+        rows = [
+            {
+                "id": rule.id,
+                "account": rule.account,
+                "category": None if rule.splits else rule.category,
+                "is_split": bool(rule.splits),
+                "payee_name": rule.payee_name,
+                "description": rule.description,
+                "inflow": -rule.amount if rule.amount < 0 else Decimal("0"),
+                "outflow": rule.amount if rule.amount > 0 else Decimal("0"),
+                "next_date": rule.next_date,
+                "end_date": rule.end_date,
+                "schedule": recurring.describe(rule),
+            }
+            for rule in self.get_queryset()
+        ]
+        return Response(RecurringTransactionSerializer(rows, many=True).data)
+
+
+@login_and_book_required
+def recurring_list(request, team_slug, book_slug):
+    """The book's recurring transactions: what repeats, how often, and when next."""
+    rules = (
+        RecurringTransaction.objects.filter(book=request.book)
+        .select_related("account", "category")
+        .annotate(occurrence_count=Count("transactions"))
+        .order_by(F("next_date").asc(nulls_last=True), "id")
+    )
+    for rule in rules:
+        rule.schedule_text = recurring.describe(rule)
+        rule.signed_inflow = -rule.amount
+        rule.is_split = bool(rule.splits)
+    return render(
+        request,
+        "bank_feed/recurring_list.html",
+        {
+            "rules": rules,
+            # A tab of the Manage section (templates/accounts/components/manage_tabs.html).
+            "active_tab": "accounts",
+            "accounts_section": "recurring",
+        },
+    )
+
+
+@require_POST
+@login_and_book_required
+def recurring_delete(request, team_slug, book_slug, pk):
+    """
+    Stop a schedule. The transactions it already wrote stay, as ordinary manual transactions.
+
+    Open to any member, as starting one is (creating a feed transaction is).
+    """
+    rule = get_object_or_404(RecurringTransaction, pk=pk, book=request.book)
+    rule.delete()
+    messages.success(request, gettext("Recurring transaction stopped. Transactions already added are kept."))
+    return redirect("bank_feed:recurring_list", team_slug, book_slug)

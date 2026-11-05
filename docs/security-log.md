@@ -6,6 +6,18 @@
 
 ## Resolved Issues
 
+### 2026-11-05 — Recurring transactions (`apps.bank_feed` `RecurringTransaction`)
+**Feature:** "Make recurring" on Add Transaction; occurrences written to the feed on their dates (nightly task, bank feed page open, and at creation); list + Stop page.
+**Verdict:** No Critical or High findings.
+
+- **Book scoping.** The schedule's account and category are resolved through `Account.for_book` at creation. Occurrences are written under `current_book(rule.book)`, so split legs re-resolve through the book-scoped manager, and a single category is used only when `category.book_id == rule.book_id`. List and Stop filter by `request.book`; another book's id is a 404 (isolation tables: `bank_feed:recurring_list` in READS, `bank_feed:recurring_delete` in OBJECTS).
+- **Who may act.** Any team member may start a schedule (as with creating a feed transaction) and stop one (`@login_and_book_required`). Stop is POST-only with `{% csrf_token %}`; it deletes only the schedule, never the rows it wrote.
+- **Write amplification.** A schedule may start at most 366 days back, and one pass writes at most 400 occurrences per schedule, so creation or a page load is bounded. Overlapping passes cannot double-write: `materialize` holds `select_for_update` on the schedule row and re-reads `next_date` under it.
+- **Invalid templates.** A category deleted, turned into a budget bucket, or a split no longer valid writes the occurrence uncategorized (logged) — never a refused category, never a crash that halts other schedules (`materialize_due` isolates each).
+- **Output.** Payee/description render autoescaped; the Stop confirm text goes through `escapejs`.
+
+**Accepted, low:** `bank_feed_home` (a GET) writes due occurrences for its own book. The write takes no request input and is idempotent per date.
+
 ### 2026-09-23 — Statement reconciliation (`apps.reconciliation`)
 **Feature:** Reconcile an asset/liability account against a bank or card statement; statements are recorded, can be undone, and report whether they still hold.
 **Verdict:** No Critical or High findings.

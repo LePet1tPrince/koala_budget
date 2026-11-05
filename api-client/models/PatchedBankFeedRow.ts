@@ -211,6 +211,12 @@ export interface PatchedBankFeedRow {
      * @memberof PatchedBankFeedRow
      */
     categorizedBy?: CategorizedBy | null;
+    /**
+     * The recurring schedule this transaction belongs to (null when it is a one-off)
+     * @type {number}
+     * @memberof PatchedBankFeedRow
+     */
+    recurringId?: number | null;
 }
 
 
@@ -258,6 +264,7 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'splitCount': json['split_count'] == null ? undefined : json['split_count'],
         'splits': json['splits'] == null ? undefined : ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
         'categorizedBy': json['categorized_by'] == null ? undefined : CategorizedByFromJSON(json['categorized_by']),
+        'recurringId': json['recurring_id'] == null ? undefined : json['recurring_id'],
     };
 }
 
@@ -298,6 +305,7 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'split_count': value['splitCount'],
         'splits': value['splits'] == null ? undefined : ((value['splits'] as Array<any>).map(SplitLegToJSON)),
         'categorized_by': CategorizedByToJSON(value['categorizedBy']),
+        'recurring_id': value['recurringId'],
     };
 }
 

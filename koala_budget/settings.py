@@ -523,6 +523,12 @@ SCHEDULED_TASKS = {
         "task": "apps.plaid.tasks.sync_all_plaid_items",
         "schedule": schedules.crontab(minute=23),
     },
+    # Write the recurring transactions due today (the bank feed page also catches
+    # up its own book when it opens). Just after midnight UTC.
+    "recurring-transactions": {
+        "task": "apps.bank_feed.tasks.generate_recurring_transactions",
+        "schedule": schedules.crontab(minute=7, hour=0),
+    },
 }
 
 # Health Checks

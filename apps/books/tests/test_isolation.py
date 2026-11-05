@@ -86,6 +86,8 @@ READS = {
     "categorization:api-root": {},
     # A draft from book B's transaction is a 404, never B's payee in a form.
     "categorization:rule-draft": lambda a, b: {"transaction": b.uncategorized_tx.id},
+    "bank_feed:recurring_list": {},
+    "bank_feed:recurring-schedule-list": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
     "onboarding:home": {},
     "onboarding:api_tasks": {},
     "onboarding:api_opening_balances": {},
@@ -158,6 +160,7 @@ OBJECTS = {
     "categorization:rule-detail": ("rule", "pk", "get"),
     "categorization:rule-test": ("rule", "pk", "get"),
     "categorization:rule-apply": ("rule", "pk", "post"),
+    "bank_feed:recurring_delete": ("recurring", "pk", "post"),
     "reconciliation:account": ("asset_account", "account_id", "get"),
     "reconciliation:statement": ("reconciliation", "pk", "get"),
     "reconciliation:statement_undo": ("reconciliation", "pk", "post"),

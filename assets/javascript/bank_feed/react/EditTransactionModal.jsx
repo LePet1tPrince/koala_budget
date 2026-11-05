@@ -8,6 +8,7 @@ import { goalOverspendHint } from '../../common/accountKind';
 import { amountForPayload, parseAmount, round2 } from '../../common/amount';
 import AmountInput from '../../common/AmountInput';
 import { formatDateForInput } from '../utils';
+import RecurrenceFields, { emptyRecurrence, recurrencePayload, recurrenceProblem } from './RecurrenceFields';
 import SplitEditor, { MIN_LEGS } from './SplitEditor';
 import TransactionHistory from './TransactionHistory';
 import useCreateAccount from './useCreateAccount';
@@ -74,6 +75,8 @@ const NO_ACCOUNTS = [];
  * - onAccountCreated: called with an account created from the Category picker's
  *   "Create account" row (offered whenever `book` is given), so the caller can add
  *   it to `allAccounts`
+ * - allowRecurring: create mode offers "Make recurring", and the saved data carries
+ *   `recurrence` (the feed API's shape). Only for a caller whose save sends it on.
  */
 const EditTransactionModal = ({
   open,
@@ -90,6 +93,7 @@ const EditTransactionModal = ({
   defaultAccountId = null,
   onCreateRule,
   onAccountCreated,
+  allowRecurring = false,
 }) => {
   // Determine mode - create if no transaction, edit otherwise
   const mode = modeProp || (transaction ? 'edit' : 'create');
@@ -115,6 +119,9 @@ const EditTransactionModal = ({
   // True once the user has removed a split, so the save asks the server to
   // collapse it rather than being refused for omitting the legs.
   const [removedSplit, setRemovedSplit] = useState(false);
+  // "Make recurring" (create mode only) and its schedule.
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrence, setRecurrence] = useState(emptyRecurrence);
 
   // Create options array for category Autocomplete (grouped by account type)
   // Categories the transaction already uses (its category, or a split's legs)
@@ -171,6 +178,8 @@ const EditTransactionModal = ({
 
     setSplits(null);
     setRemovedSplit(false);
+    setIsRecurring(false);
+    setRecurrence(emptyRecurrence());
 
     if (isCreateMode) {
       // Create mode - set defaults
@@ -245,6 +254,10 @@ const EditTransactionModal = ({
     if (isCreateMode || !transaction) return false;
     return transaction.source === 'plaid' && !journalEntryId;
   }, [transaction, isCreateMode, journalEntryId]);
+
+  const offersRecurring = isCreateMode && allowRecurring;
+  // An existing row a schedule wrote (or started): say so, and where to stop it.
+  const recurringId = field(transaction, 'recurringId', 'recurring_id');
 
   // Determine which fields can be edited
   const canEditDate = isCreateMode || (!isReadOnly && transaction?.source !== 'plaid');
@@ -367,6 +380,11 @@ const EditTransactionModal = ({
       newErrors.splits = problem;
     }
 
+    const scheduleProblem = offersRecurring && isRecurring ? recurrenceProblem(recurrence, date) : null;
+    if (scheduleProblem) {
+      newErrors.recurrence = scheduleProblem;
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -399,6 +417,7 @@ const EditTransactionModal = ({
           outflow: amountForPayload(outflow),
           payee: payee,
           description: description,
+          recurrence: offersRecurring && isRecurring ? recurrencePayload(recurrence, date) : null,
         };
         await onSave(newData, 'create');
       } else {
@@ -546,7 +565,8 @@ const EditTransactionModal = ({
             </div>
           )}
           <DateField
-            label={gettext('Date')}
+            // With "Make recurring" ticked this date is the schedule's first occurrence.
+            label={offersRecurring && isRecurring ? gettext('Start date') : gettext('Date')}
             value={date}
             onChange={setDate}
             testId="transaction-date"
@@ -556,6 +576,29 @@ const EditTransactionModal = ({
             <p className={`-mt-3 text-xs ${errors.date ? 'text-error' : 'text-base-content/70'}`}>
               {errors.date || gettext('Date cannot be edited for this transaction type')}
             </p>
+          )}
+
+          {offersRecurring && (
+            <div className="-mt-1 flex flex-col gap-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-sm"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  data-testid="make-recurring"
+                />
+                {gettext('Make recurring')}
+              </label>
+              {isRecurring && (
+                <RecurrenceFields
+                  recurrence={recurrence}
+                  date={date}
+                  onChange={setRecurrence}
+                  error={errors.recurrence}
+                />
+              )}
+            </div>
           )}
 
           {isSplit ? (
@@ -672,6 +715,15 @@ const EditTransactionModal = ({
               data-testid="transaction-description"
             />
           </label>
+
+          {!isCreateMode && recurringId && book?.base && (
+            <p className="text-xs text-base-content/70" data-testid="recurring-note">
+              {gettext('Part of a recurring transaction. Editing this one leaves the others as they are.')}{' '}
+              <a className="link link-primary" href={`${book.base}bankfeed/recurring/`}>
+                {gettext('Manage recurring transactions')}
+              </a>
+            </p>
+          )}
 
           {errors.submit && <p className="text-sm text-error">{errors.submit}</p>}
         </div>

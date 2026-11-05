@@ -772,6 +772,7 @@ const LineApp = ({
       payee: lineData.payee || '',
       description: lineData.description || '',
       account: accountId,
+      recurrence: lineData.recurrence ?? null,
     });
     const q = queryRef.current;
     const inView = q.view === 'active' && (q.accounts.length === 0 || q.accounts.includes(accountId));
@@ -1198,6 +1199,7 @@ const LineApp = ({
               refreshing={refreshing}
               uploadDisabled={initialLoading}
               plaidClient={plaidClient}
+              bankFeedClient={bankFeedClient}
               onLinkSuccess={handlePlaidSuccess}
               onOpenTransferLeg={handleOpenTransferLeg}
               feedAccountIds={feedAccountIds}

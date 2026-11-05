@@ -612,6 +612,7 @@ BANK_TRANSACTION = FieldMap(
         "created_at": _TIMESTAMP,
         "updated_at": _TIMESTAMP,
         "raw": "the original bank payload is diagnostic only, not part of the books (§2.4)",
+        "recurring": "recurring schedules are not exported; an imported row is a one-off transaction",
     },
 )
 
