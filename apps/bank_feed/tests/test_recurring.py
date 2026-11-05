@@ -282,6 +282,14 @@ class RecurringPageTest(RecurringFixture):
         self.assertContains(response, "Every month on day 5")
         self.assertContains(response, 'data-testid="recurring-stop"')
 
+    def test_list_is_a_tab_of_the_manage_section(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("bank_feed:recurring_list", args=self.book.url_args))
+        self.assertEqual(response.context["accounts_section"], "recurring")
+        self.assertContains(response, 'data-testid="manage-tab-recurring"')
+        self.assertContains(response, 'data-testid="nav-accounts-recurring"')
+        self.assertContains(response, 'aria-selected="true" data-testid="manage-tab-recurring"')
+
     def test_a_member_stops_a_schedule_and_keeps_its_transactions(self):
         self.client.force_login(self.member)
         url = reverse("bank_feed:recurring_delete", args=[*self.book.url_args, self.r.pk])

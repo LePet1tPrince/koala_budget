@@ -134,29 +134,27 @@
   {% comment %}
     Audit log, Team and Subscription used to sit here. They are sections of
     Settings now, reached from the user menu at the foot of the sidebar — they
-    are account and workspace administration, not product navigation. Accounts
-    stays: the chart of accounts is the ledger's own structure, and it is used
-    while working rather than while configuring.
+    are account and workspace administration, not product navigation. Manage
+    (the chart of accounts and its section pages) stays: it is the ledger's own
+    structure, and it is used while working rather than while configuring.
   {% endcomment %}
   {% if not user.is_anonymous %}
-    <div class="side-section">{% translate "Manage" %}</div>
-
-    {# Accounts: expands to the chart-of-accounts management pages. #}
+    {# Manage: expands to the chart-of-accounts pages, reconciliations and recurring transactions. #}
     <div x-data="sideGroup({% if active_tab == 'accounts' %}true{% else %}false{% endif %})" x-bind="group" class="side-group flex flex-col">
       <div class="side-row" x-ref="row">
         <a x-ref="link" href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
            class="side-link flex-1 {% if active_tab == 'accounts' and not accounts_section %}side-link-active{% endif %}">
           {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Accounts" %}
+          {% translate "Manage" %}
         </a>
-        <button type="button" x-bind="toggle" class="side-link-toggle" data-testid="nav-accounts-toggle" aria-label="{% translate 'Toggle Accounts submenu' %}">
+        <button type="button" x-bind="toggle" class="side-link-toggle" data-testid="nav-accounts-toggle" aria-label="{% translate 'Toggle Manage submenu' %}">
           <span :class="open && !flyout ? 'rotate-90' : ''" class="inline-block transition-transform">
             {% icon "chevron-right" class="inline-block shrink-0 w-3.5 h-3.5" %}
           </span>
         </button>
       </div>
       <div x-ref="panel" x-show="open" x-cloak class="side-sub" :class="flyout ? 'side-flyout' : 'flex flex-col gap-0.5'" :style="flyout ? panelStyle : ''">
-        <div class="side-flyout-title">{% translate "Accounts" %}</div>
+        <div class="side-flyout-title">{% translate "Manage" %}</div>
         <a href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
            class="side-link side-link-sub {% if accounts_section == 'accounts' %}side-link-active{% endif %}" data-testid="nav-accounts-list">
           {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
@@ -181,6 +179,11 @@
            class="side-link side-link-sub {% if accounts_section == 'reconciliations' %}side-link-active{% endif %}" data-testid="nav-accounts-reconciliations">
           {% icon "check-circle" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Reconciliations" %}
+        </a>
+        <a href="{% url 'bank_feed:recurring_list' nav_team.slug nav_book.slug %}"
+           class="side-link side-link-sub {% if accounts_section == 'recurring' %}side-link-active{% endif %}" data-testid="nav-accounts-recurring">
+          {% icon "repeat" class="inline-block shrink-0 w-4 h-4" %}
+          {% translate "Recurring transactions" %}
         </a>
       </div>
     </div>

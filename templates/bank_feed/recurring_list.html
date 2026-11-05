@@ -1,23 +1,16 @@
-{% extends "bank_feed/bank_feed_base.html" %}
+{% extends "accounts/manage_base.html" %}
 {% load i18n %}
 {% load icons %}
 {% load currency_tags %}
 
-{% block app %}
-<section class="app-card" data-testid="recurring-list">
-  <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-    <div class="min-w-0">
-      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug request.book.slug %}" class="link link-hover inline-flex items-center gap-1 text-sm text-base-content/70">
-        {% icon "arrow-left" class="w-4 h-4" %}{% translate "Bank Feed" %}
-      </a>
-      <h1 class="mt-1 text-2xl font-semibold tracking-tight">{% translate "Recurring transactions" %}</h1>
-      <p class="mt-1 text-sm text-base-content/70">{% blocktranslate trimmed %}
-        Each one is added to its account's bank feed on its date. To start one, add a transaction and tick
-        “Make recurring”. Stopping one keeps the transactions it already added.
-      {% endblocktranslate %}</p>
-    </div>
-  </div>
+{% block manage_title %}{% translate "Recurring transactions" %}{% endblock %}
+{% block manage_subtitle %}{% blocktranslate trimmed %}
+  Each one is added to its account's bank feed on its date. To start one, add a transaction in the bank feed and
+  tick “Make recurring”. Stopping one keeps the transactions it already added.
+{% endblocktranslate %}{% endblock %}
 
+{% block manage_content %}
+<div data-testid="recurring-list">
   {% if rules %}
     <div class="overflow-x-auto">
       <table class="table table-sm table-quiet" data-testid="recurring-table">
@@ -80,5 +73,5 @@
       No recurring transactions yet. Add a transaction in the bank feed and tick “Make recurring”.
     {% endblocktranslate %}</p>
   {% endif %}
-</section>
+</div>
 {% endblock %}
