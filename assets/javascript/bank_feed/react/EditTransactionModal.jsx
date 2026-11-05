@@ -549,7 +549,8 @@ const EditTransactionModal = ({
             </div>
           )}
           <DateField
-            label={gettext('Date')}
+            // With "Make recurring" ticked this date is the schedule's first occurrence.
+            label={offersRecurring && isRecurring ? gettext('Start date') : gettext('Date')}
             value={date}
             onChange={setDate}
             testId="transaction-date"

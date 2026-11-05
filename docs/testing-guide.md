@@ -257,6 +257,7 @@ make test-e2e-accounts  # Run specific test file
 - `ScheduleTest` (`SimpleTestCase`) pins the date arithmetic on unsaved rules: every 2 weeks on Wednesday from a Wednesday / Monday / Thursday start, the 17th monthly, day 31 and Last day across February, leap-day yearly, end date
 - `RecurringFixture` patches `django.utils.timezone.localdate` to a fixed Thursday (2026-11-05); every "due by today" assertion depends on it
 - `MaterializeTest.test_running_twice_writes_each_occurrence_once` is the double-write guard; `test_the_nightly_task_covers_every_book` calls the Celery task function directly
+- `ScheduledListApiTest`: the feed strip's endpoint — soonest first, finished schedules excluded, `?account=` filter, bad ids 400, members read, outsiders refused
 - Page tests: a member sees the list and stops a schedule (rows kept, `recurring` nulled); a user outside the team gets 404; GET on stop is 405
 
 ## Known Coverage Gaps

@@ -61,6 +61,7 @@ from .serializers import (
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
     FeedAccountSerializer,
+    RecurringTransactionSerializer,
     SimilarCategorySuggestionSerializer,
     TransferDismissRequestSerializer,
     TransferMatchRequestSerializer,
@@ -1940,6 +1941,67 @@ def categorize_mode(request, team_slug, book_slug):
             "back_url": back_url,
         },
     )
+
+
+@extend_schema_view(
+    list=extend_schema(
+        operation_id="bank_feed_recurring_list",
+        tags=["bank-feed"],
+        parameters=[
+            OpenApiParameter(
+                name="account",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated ledger account ids; absent = every account",
+                required=False,
+            )
+        ],
+        responses={200: RecurringTransactionSerializer(many=True)},
+    ),
+)
+class RecurringTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """
+    The book's active recurring schedules, soonest first -- the bank feed's
+    "scheduled transactions" panel. Finished schedules (no next date) are left out.
+
+    - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2
+    """
+
+    permission_classes = [BookModelAccessPermissions]
+    serializer_class = RecurringTransactionSerializer
+    pagination_class = None
+    queryset = RecurringTransaction.objects.none()  # for drf-spectacular schema generation
+
+    def get_queryset(self):
+        rules = RecurringTransaction.objects.filter(book=self.request.book, next_date__isnull=False).select_related(
+            "account__account_group", "account__institution", "category__account_group", "category__institution"
+        )
+        account_ids = [part for part in self.request.query_params.get("account", "").split(",") if part.strip()]
+        if account_ids:
+            try:
+                rules = rules.filter(account_id__in=[int(part) for part in account_ids])
+            except ValueError:
+                raise serializers.ValidationError({"account": "Pass comma-separated account ids."}) from None
+        return rules.order_by("next_date", "id")
+
+    def list(self, request, team_slug=None, book_slug=None):
+        rows = [
+            {
+                "id": rule.id,
+                "account": rule.account,
+                "category": None if rule.splits else rule.category,
+                "is_split": bool(rule.splits),
+                "payee_name": rule.payee_name,
+                "description": rule.description,
+                "inflow": -rule.amount if rule.amount < 0 else Decimal("0"),
+                "outflow": rule.amount if rule.amount > 0 else Decimal("0"),
+                "next_date": rule.next_date,
+                "end_date": rule.end_date,
+                "schedule": recurring.describe(rule),
+            }
+            for rule in self.get_queryset()
+        ]
+        return Response(RecurringTransactionSerializer(rows, many=True).data)
 
 
 @login_and_book_required

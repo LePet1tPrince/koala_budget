@@ -311,3 +311,57 @@ class RecurringPageTest(RecurringFixture):
         url = reverse("bank_feed:recurring_delete", args=[*self.book.url_args, self.r.pk])
         self.assertEqual(self.client.get(url).status_code, 405)
         self.assertTrue(RecurringTransaction.objects.exists())
+
+
+class ScheduledListApiTest(RecurringFixture):
+    def setUp(self):
+        super().setUp()
+        group = AccountGroup.objects.get(book=self.book, name="Banks")
+        self.savings = Account.objects.create(book=self.book, name="Savings", account_group=group, has_feed=True)
+        self.rent_rule = self.make_rule(start_date=date(2026, 11, 1), payee_name="Landlord")
+        self.save_rule = self.make_rule(account=self.savings, frequency="weekly", start_date=date(2026, 11, 2))
+        self.finished = self.make_rule(start_date=date(2026, 10, 1), end_date=date(2026, 10, 2))
+
+    def make_rule(self, **fields):
+        with current_book(self.book):
+            return recurring.create_rule(
+                **{
+                    "book": self.book,
+                    "account": self.bank,
+                    "amount": Decimal("9.99"),
+                    "payee_name": "Streaming",
+                    "description": "",
+                    "category": self.fun,
+                    "legs": None,
+                    "frequency": "monthly",
+                    **fields,
+                }
+            )
+
+    def get(self, **params):
+        return self.api.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/recurring/", params)
+
+    def test_lists_active_schedules_soonest_first(self):
+        response = self.get()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([r["id"] for r in response.data], [self.save_rule.id, self.rent_rule.id])
+        first = response.data[1]
+        self.assertEqual(first["next_date"], "2026-12-01")
+        self.assertEqual(first["payee"], "Landlord")
+        self.assertEqual(first["outflow"], "9.99")
+        self.assertEqual(first["inflow"], "0.00")
+        self.assertEqual(first["category"]["id"], self.fun.id)
+        self.assertEqual(first["schedule"], "Every month on day 1")
+
+    def test_filters_by_account(self):
+        response = self.get(account=str(self.savings.id))
+        self.assertEqual([r["id"] for r in response.data], [self.save_rule.id])
+
+    def test_bad_account_param_is_a_400(self):
+        self.assertEqual(self.get(account="x").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_members_can_read_and_outsiders_cannot(self):
+        self.api.force_authenticate(user=self.member)
+        self.assertEqual(self.get().status_code, status.HTTP_200_OK)
+        self.api.force_authenticate(user=CustomUser.objects.create_user(username="outsider2", password="pass"))
+        self.assertIn(self.get().status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))

@@ -71,6 +71,7 @@ models/ReconciliationStart.ts
 models/ReconciliationTick.ts
 models/ReconciliationTickThrough.ts
 models/Recurrence.ts
+models/RecurringTransaction.ts
 models/RoleEnum.ts
 models/SimilarCategorySuggestion.ts
 models/SimpleAccount.ts

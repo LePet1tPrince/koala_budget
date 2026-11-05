@@ -63,6 +63,7 @@ export * from './ReconciliationStart';
 export * from './ReconciliationTick';
 export * from './ReconciliationTickThrough';
 export * from './Recurrence';
+export * from './RecurringTransaction';
 export * from './RoleEnum';
 export * from './SimilarCategorySuggestion';
 export * from './SimpleAccount';

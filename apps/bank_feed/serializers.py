@@ -301,6 +301,22 @@ class BankFeedRowSerializer(serializers.Serializer):
     )
 
 
+class RecurringTransactionSerializer(serializers.Serializer):
+    """A recurring schedule as the bank feed's "scheduled transactions" panel shows it: its next occurrence."""
+
+    id = serializers.IntegerField()
+    account = SimpleAccountSerializer()
+    category = SimpleAccountSerializer(allow_null=True)
+    is_split = serializers.BooleanField()
+    payee = serializers.CharField(source="payee_name")
+    description = serializers.CharField()
+    inflow = serializers.DecimalField(max_digits=15, decimal_places=2)
+    outflow = serializers.DecimalField(max_digits=15, decimal_places=2)
+    next_date = serializers.DateField(help_text="The next occurrence's date")
+    end_date = serializers.DateField(allow_null=True)
+    schedule = serializers.CharField(help_text='The schedule in words, e.g. "Every 2 weeks on Wednesday"')
+
+
 # Adapter Functions
 
 

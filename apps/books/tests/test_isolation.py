@@ -82,6 +82,7 @@ READS = {
     "bank_feed:bank-feed-locate": lambda a, b: {"row": b.uncategorized_tx.id},
     "bank_feed:api-root": {},
     "bank_feed:recurring_list": {},
+    "bank_feed:recurring-schedule-list": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
     "onboarding:home": {},
     "onboarding:api_tasks": {},
     "onboarding:api_opening_balances": {},
