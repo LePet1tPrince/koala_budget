@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BankTransaction
+from .models import BankTransaction, RecurringTransaction
 
 
 @admin.register(BankTransaction)
@@ -59,3 +59,12 @@ class BankTransactionAdmin(admin.ModelAdmin):
 
     is_categorized.boolean = True
     is_categorized.short_description = "Categorized"
+
+
+@admin.register(RecurringTransaction)
+class RecurringTransactionAdmin(admin.ModelAdmin):
+    list_display = ["id", "payee_name", "account", "amount", "frequency", "interval", "next_date", "book"]
+    list_filter = ["frequency", "book"]
+    search_fields = ["payee_name", "description"]
+    raw_id_fields = ["account", "category"]
+    autocomplete_fields = ["book"]

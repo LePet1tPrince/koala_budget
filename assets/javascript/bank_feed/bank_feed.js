@@ -177,6 +177,14 @@ export function getUploadApiHelpers(bookBase) {
  * Transaction API helpers for creating and updating transactions.
  * Uses fetch with JSON body.
  */
+/** The first message in a DRF validation error body (`{field: [msg]}` / `{non_field_errors: [msg]}`), or null. */
+function firstFieldError(body) {
+  const first = Object.values(body || {})[0];
+  if (Array.isArray(first)) return typeof first[0] === 'string' ? first[0] : firstFieldError(first[0]);
+  if (first && typeof first === 'object') return firstFieldError(first);
+  return typeof first === 'string' ? first : null;
+}
+
 export function getTransactionApi(bookBase) {
   const headers = getApiHeaders();
   const baseUrl = `${bookBase}bankfeed/api/feed`;
@@ -209,12 +217,14 @@ export function getTransactionApi(bookBase) {
           // Null (the common case) leaves the single-category path untouched.
           splits: data.splits ?? null,
           remove_split: data.remove_split ?? false,
+          // How the transaction repeats ("Make recurring"), or null for a one-off.
+          recurrence: data.recurrence ?? null,
         }),
       });
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to create transaction');
+        throw new Error(error.error || firstFieldError(error) || 'Failed to create transaction');
       }
 
       return response.json();

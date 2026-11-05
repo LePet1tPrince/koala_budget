@@ -109,6 +109,17 @@ class BankTransaction(BaseBookModel):
         help_text="True if this row is the auto-created counterpart leg of a transfer",
     )
 
+    # The recurring schedule this row was created from (or started), if any.
+    # Stopping the schedule leaves its rows as ordinary transactions.
+    recurring = models.ForeignKey(
+        "bank_feed.RecurringTransaction",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="transactions",
+        help_text="The recurring schedule this transaction belongs to",
+    )
+
     class Meta:
         ordering = ["-posted_date", "-created_at"]
         verbose_name = "Bank Transaction"
@@ -225,3 +236,82 @@ class TransferMatchDismissal(BaseBookModel):
             transaction_high_id=high,
         )
         return obj
+
+
+class RecurringTransaction(BaseBookModel):
+    """
+    A manual transaction that repeats on a schedule.
+
+    Holds the template (account, signed amount, payee, description, category or
+    split legs) and the schedule. `next_date` is the next occurrence still to be
+    written; `apps.bank_feed.services.recurring.materialize` writes every
+    occurrence due by today as an ordinary manual `BankTransaction` and moves it
+    on. Null once the schedule has passed its `end_date`.
+
+    Schedule fields, by frequency:
+    - daily:   every `interval` days after `start_date`
+    - weekly:  every `interval` weeks on `weekday` (0 = Monday), counted from the
+               week of `start_date`
+    - monthly: every `interval` months on `day_of_month` (-1 = the last day; a day
+               the month lacks falls on its last day), counted from the month of
+               `start_date`
+    - yearly:  every `interval` years on `start_date`'s month and day
+    """
+
+    FREQUENCY_DAILY = "daily"
+    FREQUENCY_WEEKLY = "weekly"
+    FREQUENCY_MONTHLY = "monthly"
+    FREQUENCY_YEARLY = "yearly"
+    FREQUENCY_CHOICES = [
+        (FREQUENCY_DAILY, "Daily"),
+        (FREQUENCY_WEEKLY, "Weekly"),
+        (FREQUENCY_MONTHLY, "Monthly"),
+        (FREQUENCY_YEARLY, "Yearly"),
+    ]
+
+    LAST_DAY_OF_MONTH = -1
+    MAX_INTERVAL = 99
+
+    account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.CASCADE,
+        related_name="recurring_transactions",
+        help_text="The bank account each occurrence is written to",
+    )
+    amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Signed amount (positive = outflow, negative = inflow)",
+    )
+    payee_name = models.CharField(max_length=255, blank=True, default="")
+    description = models.CharField(max_length=255, blank=True, default="")
+    category = models.ForeignKey(
+        "accounts.Account",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Category of each occurrence (null with no splits = uncategorized)",
+    )
+    splits = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='Split legs, as the feed API takes them: [{"category": <id>, "amount": "<signed>"}]',
+    )
+
+    frequency = models.CharField(max_length=10, choices=FREQUENCY_CHOICES)
+    interval = models.PositiveSmallIntegerField(default=1)
+    weekday = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Weekly: 0 = Monday … 6 = Sunday")
+    day_of_month = models.SmallIntegerField(null=True, blank=True, help_text="Monthly: 1-31, or -1 for the last day")
+    start_date = models.DateField(help_text="Date of the first transaction; the schedule counts from it")
+    end_date = models.DateField(null=True, blank=True, help_text="No occurrence after this date")
+    next_date = models.DateField(null=True, blank=True, help_text="Next occurrence to write (null = finished)")
+
+    class Meta:
+        ordering = ["next_date", "id"]
+        verbose_name = "Recurring Transaction"
+        verbose_name_plural = "Recurring Transactions"
+        indexes = [models.Index(fields=["next_date"])]
+
+    def __str__(self):
+        return f"{self.payee_name or self.description or 'Recurring'} ({self.frequency})"

@@ -198,6 +198,12 @@ export interface BankFeedRow {
      * @memberof BankFeedRow
      */
     splits: Array<SplitLeg>;
+    /**
+     * The recurring schedule this transaction belongs to (null when it is a one-off)
+     * @type {number}
+     * @memberof BankFeedRow
+     */
+    recurringId?: number | null;
 }
 
 
@@ -267,6 +273,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'isSplit': json['is_split'],
         'splitCount': json['split_count'],
         'splits': ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
+        'recurringId': json['recurring_id'] == null ? undefined : json['recurring_id'],
     };
 }
 
@@ -306,6 +313,7 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'is_split': value['isSplit'],
         'split_count': value['splitCount'],
         'splits': ((value['splits'] as Array<any>).map(SplitLegToJSON)),
+        'recurring_id': value['recurringId'],
     };
 }
 

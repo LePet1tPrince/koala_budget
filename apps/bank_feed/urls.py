@@ -13,10 +13,13 @@ app_name = "bank_feed"
 router = DefaultRouter()
 # router.register(r"transactions", views.BankTransactionViewSet, basename="bank-feed-transaction")
 router.register(r"feed", views.BankFeedViewSet, basename="bank-feed")
+router.register(r"recurring", views.RecurringTransactionViewSet, basename="recurring-schedule")
 
 # URL patterns (all bank_feed URLs are team-based)
 urlpatterns = [
     path("", views.bank_feed_home, name="bank_feed_home"),
     path("categorize/", views.categorize_mode, name="categorize_mode"),
+    path("recurring/", views.recurring_list, name="recurring_list"),
+    path("recurring/<int:pk>/stop/", views.recurring_delete, name="recurring_delete"),
     path("api/", include(router.urls)),
 ]
