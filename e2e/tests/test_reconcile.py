@@ -176,9 +176,11 @@ def test_draft_resumes_after_reload(requires_vite, authenticated_page: Page, liv
 
 
 @pytest.mark.django_db(transaction=True)
-def test_unreconciling_in_the_feed_marks_the_statement_changed(
+def test_a_line_that_left_a_finished_statement_marks_it_changed(
     requires_vite, authenticated_page: Page, live_server, chequing
 ):
+    """A finished statement whose locked line is no longer reconciled reads as Changed
+    in the feed and the hub, and the next statement names the line and offers it again."""
     team, account = chequing["team"], chequing["account"]
     line, tx = entry(team, account, chequing["groceries"], "-40.00", on=_in_period(3), description="Store")
     rec = Reconciliation.objects.create(
@@ -190,7 +192,8 @@ def test_unreconciling_in_the_feed_marks_the_statement_changed(
         cleared_total=Decimal("-40.00"),
         opening_balance=Decimal("0"),
     )
-    line.is_reconciled = True
+    # Locked by the statement, then taken out of it: the link stays, the flag goes.
+    line.is_reconciled = False
     line.reconciliation = rec
     line.save()
 
@@ -198,11 +201,6 @@ def test_unreconciling_in_the_feed_marks_the_statement_changed(
     feed.goto(team.default_book)
     feed.click_account_card(account.id)
     feed.wait_for_table()
-    expect(authenticated_page.locator("[data-testid='reconciled-through']")).to_contain_text("Intact")
-    feed.select_row(tx.id)
-    feed.batch_button("Unreconcile").click()
-    expect(authenticated_page.locator("[data-testid='unreconcile-statement-warning']")).to_be_visible()
-    authenticated_page.locator("[data-testid='unreconcile-dialog']").get_by_role("button", name="Unreconcile").click()
     expect(authenticated_page.locator("[data-testid='reconciled-through']")).to_contain_text("Changed")
 
     hub = ReconcileHubPage(authenticated_page, live_server.url)

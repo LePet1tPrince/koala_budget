@@ -261,11 +261,6 @@ class BankFeedRowSerializer(serializers.Serializer):
     is_cleared = serializers.BooleanField(help_text="Whether transaction is cleared")
     is_void = serializers.BooleanField(help_text="Whether transaction is void (counts toward nothing)")
     is_reconciled = serializers.BooleanField(help_text="Whether transaction is reconciled")
-    reconciled_statement_date = serializers.DateField(
-        allow_null=True,
-        required=False,
-        help_text="Closing date of the finished statement that reconciled this row, if any",
-    )
 
     payee = serializers.CharField(
         allow_null=True,
@@ -488,7 +483,6 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
     # Get category and reconciliation status from JournalEntry if categorized
     category = None
     is_reconciled = False
-    statement_date = None
     split_legs = []
     if tx.journal_entry:
         # Find the category account (the one that's not the bank account)
@@ -498,10 +492,6 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
             if line.account_id == tx.account_id:
                 # Bank account line - get reconciliation status from here
                 is_reconciled = line.is_reconciled
-                # The statement it was locked on, so unreconciling can say which
-                # statement it breaks. Checked on the id first: no query per row.
-                if is_reconciled and line.reconciliation_id and line.reconciliation.is_completed:
-                    statement_date = line.reconciliation.statement_date
 
         legs = [line for line in lines if line.account_id != tx.account_id]
         if len(lines) > 2 and tx.is_transfer_mirror:
@@ -543,7 +533,6 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "is_cleared": bool(tx.journal_entry),  # If categorized, consider it cleared
         "is_void": tx.is_void,
         "is_reconciled": is_reconciled,  # From the bank account's journal line
-        "reconciled_statement_date": statement_date,
         "payee": tx.merchant_name,  # Map merchant_name to payee
         "payment_channel": payment_channel,
         "confidence": "manual" if tx.journal_entry else category_confidence,

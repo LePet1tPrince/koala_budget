@@ -237,10 +237,9 @@ def test_batch_bar_does_not_offer_reconcile(requires_vite, authenticated_page, l
 
 
 @pytest.mark.django_db(transaction=True)
-def test_reconciled_selection_offers_unreconcile_not_reconcile(
-    requires_vite, authenticated_page, live_server, feed_fixture
-):
-    """A reconciled row can be undone, but not re-reconciled or duplicated.
+def test_reconciled_selection_offers_only_edit_and_export(requires_vite, authenticated_page, live_server, feed_fixture):
+    """A reconciled row can't be voided or duplicated from the feed, and the feed
+    has no Unreconcile: a statement is undone from its reconcile page.
 
     Void is withheld too: `showVoidButton` in `LineApp` requires *some*
     selected row to be neither void nor reconciled, which mirrors the server
@@ -253,15 +252,12 @@ def test_reconciled_selection_offers_unreconcile_not_reconcile(
     feed.wait_for_table()
     feed.select_row(feed_fixture["rows"]["reconciled"].id)
 
-    assert feed.batch_buttons() == ["Bulk Edit", "Unreconcile", "Export"]
+    assert feed.batch_buttons() == ["Bulk Edit", "Export"]
 
 
 @pytest.mark.django_db(transaction=True)
-def test_mixed_selection_withholds_both_reconcile_and_unreconcile(
-    requires_vite, authenticated_page, live_server, feed_fixture
-):
-    """One reconciled row in the selection is enough to withhold Duplicate;
-    Unreconcile needs *all* of them reconciled, so a mixed selection doesn't get it."""
+def test_mixed_selection_withholds_duplicate(requires_vite, authenticated_page, live_server, feed_fixture):
+    """One reconciled row in the selection is enough to withhold Duplicate."""
     feed = BankFeedPage(authenticated_page, live_server.url)
     feed.goto(feed_fixture["account"].book)
     feed.click_account_card(feed_fixture["account"].id)

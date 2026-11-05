@@ -301,7 +301,6 @@ export function getBatchOperationsApi(bookBase) {
     batchRestore: (ids) => fetchJson('batch_restore', { ids }),
     batchDelete: (ids) => fetchJson('batch_delete', { ids }),
     batchDuplicate: (ids) => fetchJson('batch_duplicate', { ids }),
-    batchUnreconcile: (ids) => fetchJson('batch_unreconcile', { ids }),
 
     // Transfer matching: list suggested pairs (each with the server's proposal),
     // match one (the server picks the leg to archive; `expectedArchiveId` is the
