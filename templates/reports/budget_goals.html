@@ -64,7 +64,7 @@
     <div class="stat py-3">
       <div class="stat-title">{% translate "In budget envelopes" %}</div>
       <div class="stat-value text-2xl money text-info" data-testid="plan-envelopes">{{ envelopes.total|currency }}</div>
-      <div class="stat-desc">{% blocktranslate trimmed with amount=envelopes.rollover|currency %}{{ amount }} rolled over{% endblocktranslate %}</div>
+      <div class="stat-desc">{% blocktranslate trimmed with amount=envelopes.leftover|currency %}{{ amount }} left over from last month{% endblocktranslate %}</div>
     </div>
     <div class="stat py-3">
       <div class="stat-title">{% translate "In goals" %}</div>
@@ -93,19 +93,32 @@
         <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-info inline-block"></span>{% translate "Budget envelopes" %}</h3>
         <span class="money font-semibold">{{ envelopes.total|currency }}</span>
       </div>
-      <ul class="space-y-1 text-sm">
+      {% comment %}The Expenses tab's own sidebar figures, then the step from its Available to the envelope total.{% endcomment %}
+      <ul class="space-y-1 text-sm" data-testid="plan-envelopes-breakdown">
         <li class="flex justify-between gap-2">
-          <span>{% translate "Rolled over from last month" %}</span>
-          <span class="money">{{ envelopes.rollover|currency }}</span>
+          <span>{% translate "Left over from last month" %}</span>
+          <span class="money" data-testid="plan-envelopes-leftover">{{ envelopes.leftover|currency }}</span>
         </li>
         <li class="flex justify-between gap-2">
-          <span>{% translate "This month's budget, not yet spent" %}</span>
-          <span class="money">{{ envelopes.this_month|currency }}</span>
+          <span>{% blocktranslate trimmed with month=month|date:"F" %}+ Assigned in {{ month }}{% endblocktranslate %}</span>
+          <span class="money">{{ envelopes.assigned|currency }}</span>
+        </li>
+        <li class="flex justify-between gap-2">
+          <span>{% translate "− Spent" %}</span>
+          <span class="money">{{ envelopes.spent|currency }}</span>
+        </li>
+        <li class="flex justify-between gap-2 border-t border-base-300 pt-1 font-medium">
+          <span>{% translate "= Available (Expenses tab)" %}</span>
+          <span class="money" data-testid="plan-envelopes-available">{{ envelopes.available|currency }}</span>
         </li>
         {% if envelopes.overspent %}
-        <li class="flex justify-between gap-2 text-error" data-testid="plan-overspent">
-          <span>{% translate "Overspent, carried (already out of Unassigned)" %}</span>
-          <span class="money">−{{ envelopes.overspent|currency }}</span>
+        <li class="flex justify-between gap-2" data-testid="plan-overspent">
+          <span>{% translate "+ Overspent categories, counted as $0 (already out of Unassigned)" %}</span>
+          <span class="money">{{ envelopes.overspent|currency }}</span>
+        </li>
+        <li class="flex justify-between gap-2 border-t border-base-300 pt-1 font-medium">
+          <span>{% translate "= In budget envelopes" %}</span>
+          <span class="money">{{ envelopes.total|currency }}</span>
         </li>
         {% endif %}
       </ul>
@@ -143,7 +156,7 @@
       <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-accent inline-block"></span>{% translate "Goals" %}</h3>
       {% if goal_rows %}
       <span class="text-sm text-base-content/70">
-        {% blocktranslate trimmed with saved=goal_totals.toward_target|currency target=goal_totals.target|currency %}{{ saved }} of {{ target }} saved{% endblocktranslate %}{% if goal_totals.pct is not None %} · {{ goal_totals.pct|floatformat:0 }}%{% endif %}
+        {% blocktranslate trimmed with saved=goal_totals.allocated|currency %}{{ saved }} saved{% endblocktranslate %}{% if goal_totals.spent %} · {% blocktranslate trimmed with left=goal_totals.left|currency %}{{ left }} left{% endblocktranslate %}{% endif %}
       </span>
       {% endif %}
     </div>
@@ -154,7 +167,7 @@
           <tr>
             <th>{% translate "Goal" %}</th>
             <th class="w-1/4">{% translate "Saved toward target" %}</th>
-            <th>{% translate "By" %}</th>
+            <th>{% translate "Target date" %}</th>
             <th class="text-right">{% translate "This month" %}</th>
             <th class="text-right">{% translate "Left" %}</th>
           </tr>

@@ -409,6 +409,21 @@ class BudgetSaveAmountViewTest(TestCase):
         self.assertEqual(cells["tab:expense:budgeted"]["value"], "$250.00")
         self.assertIn("networth:available", cells)
 
+    def test_income_not_yet_received_is_still_expected_not_red(self):
+        response = self.post(category_id=self.salary.pk, month="2025-06-01", amount="3000")
+        cell = response.json()["cells"][f"row:{self.salary.pk}:available"]
+        self.assertEqual(cell["value"], "$3,000.00 still expected")
+        self.assertEqual(cell["tone"], "expected")
+        page = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01&tab=income")
+        self.assertContains(page, "$3,000.00 still expected")
+        self.assertNotContains(page, "-$3,000.00")
+
+    def test_auto_assign_is_closed_and_hides_the_checkboxes(self):
+        page = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01")
+        self.assertContains(page, 'data-testid="autoassign-expense"')
+        self.assertNotContains(page, '<details class="bg-base-100 rounded-lg shadow p-5 group" data-autoassign open')
+        self.assertContains(page, "#budget-table-card .budget-select-col { display: none; }")
+
     def test_amount_is_normalized_in_the_response(self):
         response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="7")
         self.assertEqual(response.json()["amount"], "7.00")
@@ -1094,13 +1109,26 @@ class GoalsListViewTest(TestCase):
         self.assertContains(response, 'data-testid="goal-card"')
         self.assertNotContains(response, 'data-testid="goals-style-picker"')
 
-    def test_goal_items_carry_progress_and_streak(self):
+    def test_goal_items_carry_progress(self):
         response = self.client.get(f"{self.url}?month=2026-02-01")
         item = response.context["goal_items"][0]
         self.assertEqual(item["saved"], Decimal("250"))
         self.assertEqual(item["remaining"], Decimal("750"))
-        self.assertEqual(item["streak"], 2)
+        self.assertNotIn("streak", item)
         self.assertIsNotNone(item["needed_per_month"])
+        self.assertNotContains(response, "streak")
+
+    def test_card_shows_target_date_and_one_projection(self):
+        response = self.client.get(f"{self.url}?month=2026-02-01")
+        self.assertContains(response, 'data-testid="goal-target-date"')
+        self.assertContains(response, "Dec 2026")
+        self.assertNotContains(response, "On pace for")
+
+    def test_page_has_no_unassigned_summary(self):
+        """Unassigned lives in the sidebar pill; the page doesn't repeat it."""
+        response = self.client.get(self.url)
+        self.assertNotContains(response, 'data-testid="net-worth-card"')
+        self.assertNotContains(response, "data-available-display")
 
     def test_month_is_remembered_across_budget_and_goals(self):
         self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2026-03-01")

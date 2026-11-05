@@ -34,7 +34,7 @@ actually happened.
   reconciliation adjustments, any equity entry.
 
 `compute_unassigned()` is the one place this is calculated. The sidebar pill, the
-dashboard, the budget/goals card (via `NetWorthService.get_net_worth_card_data`), the
+budget page and goals page (via `NetWorthService.get_net_worth_card_data`), the
 goal quick-assign clamp and the Dollar Map report all read it, so no two screens can
 disagree about the number.
 """

@@ -18,7 +18,6 @@ from apps.books.helpers import book_display_name, last_book_for_team, team_has_s
 from apps.budget import ledger as budget_ledger
 from apps.budget.models import Goal
 from apps.budget.services import NetWorthService
-from apps.budget.unassigned import allocation_bar, compute_unassigned
 from apps.journal.models import JournalEntry, counted_entries, transaction_entries
 from apps.monthly_review.models import MonthlyReviewState
 from apps.onboarding.views import get_or_create_state
@@ -134,8 +133,6 @@ def book_home(request, team_slug, book_slug):
         .exists()
     )
 
-    unassigned = compute_unassigned(book, month, detail=True)
-
     chart_start = first_entry_date.replace(day=1) if first_entry_date else month
     trend_data = report_service.get_net_worth_trend_data_by_date_range(chart_start, today)
     net_worth_chart_data = None
@@ -155,9 +152,8 @@ def book_home(request, team_slug, book_slug):
             "greeting": _greeting_for(request.user, today),
             "book_label": book.name if team_has_several_books(request.team) else "",
             "month": month,
-            "net_worth_card": NetWorthService.card_data(unassigned),
-            "unassigned": unassigned,
-            "unassigned_bar": allocation_bar(unassigned),
+            # Unassigned is the sidebar pill; its breakdown is the Budget & Goals report.
+            "net_worth": NetWorthService(book).get_net_worth(month),
             "income_ytd": income_ytd,
             "amount_to_reach_goals": amount_to_reach_goals,
             "goals": goals_qs[:4],

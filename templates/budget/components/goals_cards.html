@@ -74,13 +74,8 @@ context-aware quick-assign.
   }
 </style>
 
-<!-- Summary strip -->
+<!-- Summary strip. Unassigned is in the sidebar pill; the full breakdown is the Budget & Goals report. -->
 <div class="stats stats-vertical sm:stats-horizontal shadow mb-6 w-full" data-testid="goals-summary">
-  <div class="stat">
-    <div class="stat-title" data-unassigned-label>{{ net_worth_card.label }}</div>
-    <div class="stat-value {% if available > 0 %}text-success{% elif available < 0 %}text-error{% endif %}" data-available-display>{{ available|currency }}</div>
-    <div class="stat-desc">{% translate "Money with no job yet, ready for your goals" %}</div>
-  </div>
   <div class="stat">
     <div class="stat-title">{% translate "Total Saved" %}</div>
     <div class="stat-value text-primary" data-saved-display>{{ summary.total_saved|currency }}</div>
@@ -168,22 +163,20 @@ context-aware quick-assign.
           <div class="text-sm text-base-content/70">
             {% translate "This month:" %} <span class="font-mono" data-num="this-month">{{ item.this_month|currency }}</span>
           </div>
-          {% if item.streak >= 2 %}
-            <div class="badge badge-warning badge-sm gap-1 mt-2">🔥 {% blocktranslate trimmed with n=item.streak %}{{ n }}-month streak{% endblocktranslate %}</div>
-          {% endif %}
           <div class="text-xs text-base-content/70 mt-2 space-y-0.5">
             {% if item.funded %}
               <div class="text-success font-medium">{% translate "Target reached — nice work!" %}</div>
             {% else %}
+              {% if item.has_target and item.goal.target_date %}
+                <div data-testid="goal-target-date">{% blocktranslate trimmed with month=item.goal.target_date|date:"M Y" %}Target date: {{ month }}{% endblocktranslate %}</div>
+              {% endif %}
               {% if item.needed_per_month and not item.has_target %}
                 <div>{% blocktranslate trimmed with rate=item.needed_per_month|currency %}Plan: {{ rate }}/mo, no finish line{% endblocktranslate %}</div>
-              {% elif item.needed_per_month %}
-                <div>{{ item.needed_per_month|currency }}{% translate "/mo to hit" %} {{ item.plan_finish|date:"M Y" }}</div>
+              {% elif item.needed_per_month and item.plan_finish %}
+                <div data-testid="goal-plan-finish" {% if item.plan_late %}class="text-warning"{% endif %}>{% blocktranslate trimmed with rate=item.needed_per_month|currency month=item.plan_finish|date:"M Y" %}At {{ rate }}/mo: done {{ month }}{% endblocktranslate %}</div>
               {% endif %}
-              {% if item.behind_pace %}
-                <div class="badge badge-outline badge-warning badge-sm">⚠ {% translate "Behind pace" %}</div>
-              {% elif item.projected_date %}
-                <div>{% translate "On pace for" %} {{ item.projected_date|date:"M Y" }}</div>
+              {% if item.plan_late and item.rate_for_date %}
+                <div data-testid="goal-rate-for-date">{% blocktranslate trimmed with rate=item.rate_for_date|currency month=item.goal.target_date|date:"M Y" %}{{ rate }}/mo reaches it by {{ month }}{% endblocktranslate %}</div>
               {% endif %}
             {% endif %}
           </div>

@@ -2,6 +2,7 @@
 {% load currency_tags %}
 {% load icons %}
 {% load account_nav %}
+{% load budget_tags %}
 
 <!-- Budget Table -->
 <style>
@@ -48,6 +49,13 @@
       bottom: 0;
       z-index: 20;
     }
+  }
+
+  /* The checkbox column only scopes Auto-Assign, so it shows only while the
+     Auto-Assign panel of the tab on screen is open (budget_sidebar.html). */
+  #budget-table-card .budget-select-col { display: none; }
+  #budget-swap:has([data-budget-tab-for]:not([hidden]) details[data-autoassign][open]) #budget-table-card .budget-select-col {
+    display: table-cell;
   }
 
   /* The Hide button stays out of the way until its row is pointed at or
@@ -152,7 +160,7 @@
     <table class="table table-sm budget-table w-full" data-testid="budget-table-{{ section.key }}">
       <thead>
         <tr>
-          <th class="text-center w-8">
+          <th class="text-center w-8 budget-select-col">
             <input type="checkbox" class="checkbox checkbox-sm budget-select-all" checked
                    title="{% translate 'Select all categories' %}"
                    aria-label="{% blocktranslate trimmed with section=section.label %}Select all {{ section }} categories{% endblocktranslate %}">
@@ -181,7 +189,7 @@
           <!-- Hidden categories: collapsed, but their money still counts, so the
                subtotals ride on the header row where they stay visible. -->
           <tr class="bg-base-200 border-t border-dashed border-base-300" data-testid="budget-hidden-group">
-            <td></td>
+            <td class="budget-select-col"></td>
             <td>
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <button type="button" class="flex items-center gap-1.5 font-semibold whitespace-nowrap text-base-content/70 hover:text-base-content"
@@ -213,9 +221,9 @@
               <span class="font-mono text-base-content/70">{{ group.subtotals.actual|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono {% if group.subtotals.available < 0 %}text-error{% elif group.subtotals.available > 0 %}text-success{% endif %}"
+              <span class="font-mono {{ group.subtotals.available|available_class:section.income }}"
                     data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:available">
-                {{ group.subtotals.available|currency }}
+                {{ group.subtotals.available|available_text:section.income }}
               </span>
             </td>
             <td></td>
@@ -223,7 +231,7 @@
           {% else %}
           <!-- Group header: the group's name and its subtotals, one row. -->
           <tr class="bg-base-200 font-semibold" data-testid="budget-group-header">
-            <td></td>
+            <td class="budget-select-col"></td>
             <td>{{ group.name }}</td>
             <td></td>
             <td class="text-right">
@@ -233,9 +241,9 @@
               <span class="font-mono">{{ group.subtotals.actual|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono {% if group.subtotals.available < 0 %}text-error{% elif group.subtotals.available > 0 %}text-success{% endif %}"
+              <span class="font-mono {{ group.subtotals.available|available_class:section.income }}"
                     data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:available">
-                {{ group.subtotals.available|currency }}
+                {{ group.subtotals.available|available_text:section.income }}
               </span>
             </td>
             <td></td>
@@ -247,10 +255,10 @@
           {% if group.hidden %}
           <tr data-testid="budget-hidden-row" data-hidden-row="{{ section.key }}" hidden>
             {# Auto-Assign never touches a hidden category, so it has no checkbox to scope it by. #}
-            <td></td>
+            <td class="budget-select-col"></td>
           {% else %}
           <tr data-testid="budget-row">
-            <td class="text-center">
+            <td class="text-center budget-select-col">
               <input type="checkbox" class="checkbox checkbox-sm budget-row-checkbox" checked
                      data-testid="budget-row-checkbox"
                      data-category-id="{{ row.category.pk }}"
@@ -307,9 +315,9 @@
             </td>
 
             <td class="text-right">
-              <span class="font-mono {% if row.available < 0 %}text-error{% elif row.available > 0 %}text-success{% endif %}"
+              <span class="font-mono {{ row.available|available_class:section.income }}"
                     data-budget-cell="row:{{ row.category.pk }}:available">
-                {{ row.available|currency }}
+                {{ row.available|available_text:section.income }}
               </span>
             </td>
 
@@ -358,7 +366,7 @@
       <tfoot>
         <!-- Section total: sticks to the bottom of the screen while the rows scroll. -->
         <tr data-testid="{% if section.key == 'expense' %}budget-grand-total{% else %}budget-total-income{% endif %}">
-          <td></td>
+          <td class="budget-select-col"></td>
           <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
           <td></td>
           <td class="text-right">
@@ -368,7 +376,7 @@
             <span class="font-mono">{{ section.totals.actual|currency }}</span>
           </td>
           <td class="text-right">
-            <span class="font-mono" data-budget-cell="section:{{ section.key }}:available">{{ section.totals.available|currency }}</span>
+            <span class="font-mono" data-budget-cell="section:{{ section.key }}:available">{{ section.totals.available|available_text:section.income }}</span>
           </td>
           <td></td>
         </tr>
@@ -390,6 +398,9 @@
   <div class="mt-2 flex flex-col gap-1">
     <p>
       {% translate "Available = Budget (this month) - Actual (this month) + Available (previous month). Unspent budget rolls forward to future months." %}
+    </p>
+    <p>
+      {% translate "On the Income tab, income budgeted but not received yet shows as “still expected”." %}
     </p>
     <p>
       {% blocktranslate trimmed %}

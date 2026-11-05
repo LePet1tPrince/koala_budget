@@ -3,22 +3,10 @@
 import { formatCurrency } from '../utilities/currency';
 
 /**
- * Source and status codes, with the label and badge colour the table shows.
- *
- * The API sends a label for these columns too (the model's own choice text),
- * but it is wordier than the badge column has room for -- "Manual Entry"
- * rather than "Manual". These labels win, so the badge in a row, the value in
- * that column's filter menu and the chip summarising the applied filter all
- * read the same.
+ * Status codes, with the label and badge colour the table shows. Status isn't a
+ * column (nearly every row is Posted): a draft or void row carries its badge
+ * beside the description.
  */
-export const SOURCE_STYLES = {
-  manual: { label: gettext('Manual'), className: 'badge-ghost' },
-  import: { label: gettext('Import'), className: 'badge-soft badge-info' },
-  bank_match: { label: gettext('Bank'), className: 'badge-soft badge-accent' },
-  recurring: { label: gettext('Recurring'), className: 'badge-soft badge-secondary' },
-  reconciliation: { label: gettext('Adjustment'), className: 'badge-soft badge-warning' },
-};
-
 export const STATUS_STYLES = {
   draft: { label: gettext('Draft'), className: 'badge-soft badge-warning' },
   posted: { label: gettext('Posted'), className: 'badge-soft badge-success' },
@@ -27,9 +15,6 @@ export const STATUS_STYLES = {
 
 export const FALLBACK_BADGE = 'badge-ghost';
 
-/** Prefer our own label for a coded value, falling back to the API's. */
-const codeFormatter = (styles) => (value, label) => styles[value]?.label || label || value;
-
 /**
  * The transactions table's columns, in display order.
  *
@@ -37,8 +22,7 @@ const codeFormatter = (styles) => (value, label) => styles[value]?.label || labe
  * `?f_amount=5.00`), so this list and `COLUMNS` in `apps/journal/filters.py`
  * name the same columns. `formatValue` turns a raw facet value into what the
  * filter menu shows; the server already supplies a display label for columns
- * whose stored value is a code, which is why `source` and `status` take it
- * rather than formatting anything themselves.
+ * whose stored value is a code.
  *
  * The sort labels are per column because "ascending" is a poor description of
  * what it does to a date or an amount.
@@ -76,21 +60,6 @@ export const TRANSACTION_COLUMNS = [
     formatValue: (value) => formatCurrency(value),
     ascLabel: gettext('Smallest first'),
     descLabel: gettext('Largest first'),
-  },
-  {
-    key: 'source',
-    label: gettext('Source'),
-    formatValue: codeFormatter(SOURCE_STYLES),
-    // The API matches `q` against the stored code, not the label we show, so
-    // searching a handful of codes for "Bank" would come back empty. These
-    // columns have a handful of values; the list is the search.
-    searchable: false,
-  },
-  {
-    key: 'status',
-    label: gettext('Status'),
-    formatValue: codeFormatter(STATUS_STYLES),
-    searchable: false,
   },
 ].map((column) => ({
   ascLabel: gettext('A → Z'),

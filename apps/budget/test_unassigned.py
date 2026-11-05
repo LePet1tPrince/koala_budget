@@ -396,12 +396,13 @@ class UnassignedViewsTest(UnassignedFixture):
         self.assertContains(response, 'data-testid="unassigned-pill-compact"')
         self.assertContains(response, reverse("budget:api_unassigned", args=[self.team.slug, self.book.slug]))
 
-    def test_dashboard_leads_with_unassigned(self):
+    def test_dashboard_leaves_unassigned_to_the_pill(self):
+        """One summary (the Budget & Goals report) plus the pill: Home doesn't repeat it."""
         response = self.client.get(reverse("web_book:home", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-testid="metric-unassigned"')
-        self.assertNotContains(response, 'data-testid="metric-budget-available"')
-        self.assertEqual(response.context["unassigned"].amount, compute_unassigned(self.book, date.today()).amount)
+        self.assertContains(response, 'data-testid="unassigned-pill"')
+        self.assertNotContains(response, 'data-testid="metric-unassigned"')
+        self.assertContains(response, 'data-testid="dashboard-dollar-map-link"')
 
     def test_budget_goals_report(self):
         url = reverse("reports:budget_goals", args=[self.team.slug, self.book.slug])

@@ -68,29 +68,17 @@
     {% translate "Transactions" %}
   </a>
 
-  {# Budget: expands to Goals. #}
-  <div x-data="sideGroup({% if active_tab == 'budget' or active_tab == 'goals' %}true{% else %}false{% endif %})" x-bind="group" class="side-group flex flex-col">
-    <div class="side-row" x-ref="row">
-      <a x-ref="link" href="{% url 'budget:budget_home' nav_team.slug nav_book.slug %}"
-         class="side-link flex-1 {% if active_tab == 'budget' %}side-link-active{% endif %}" data-testid="nav-budget">
-        {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Budget" %}
-      </a>
-      <button type="button" x-bind="toggle" class="side-link-toggle" data-testid="nav-budget-toggle" aria-label="{% translate 'Toggle Budget submenu' %}">
-        <span :class="open && !flyout ? 'rotate-90' : ''" class="inline-block transition-transform">
-          {% icon "chevron-right" class="inline-block shrink-0 w-3.5 h-3.5" %}
-        </span>
-      </button>
-    </div>
-    <div x-ref="panel" x-show="open" x-cloak class="side-sub" :class="flyout ? 'side-flyout' : 'flex flex-col gap-0.5'" :style="flyout ? panelStyle : ''">
-      <div class="side-flyout-title">{% translate "Budget" %}</div>
-      <a href="{% url 'budget:goals_list' nav_team.slug nav_book.slug %}"
-         class="side-link side-link-sub {% if active_tab == 'goals' %}side-link-active{% endif %}" data-testid="nav-goals">
-        {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Goals" %}
-      </a>
-    </div>
-  </div>
+  <a href="{% url 'budget:budget_home' nav_team.slug nav_book.slug %}"
+     class="side-link {% if active_tab == 'budget' %}side-link-active{% endif %}" data-testid="nav-budget">
+    {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
+    {% translate "Budget" %}
+  </a>
+
+  <a href="{% url 'budget:goals_list' nav_team.slug nav_book.slug %}"
+     class="side-link {% if active_tab == 'goals' %}side-link-active{% endif %}" data-testid="nav-goals">
+    {% icon "bullseye" class="inline-block shrink-0 w-4 h-4" %}
+    {% translate "Goals" %}
+  </a>
 
   {# Reports: expands to every report page, including Monthly Review. #}
   <div x-data="sideGroup({% if active_tab == 'reports' or active_tab == 'monthly-review' %}true{% else %}false{% endif %})" x-bind="group" class="side-group flex flex-col">
