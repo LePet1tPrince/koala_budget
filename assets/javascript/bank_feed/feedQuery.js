@@ -151,7 +151,6 @@ export function summaryAsRow(summary) {
     isSplit: summary.is_split,
     journalEntryId: summary.journal_entry_id,
     category: summary.category,
-    reconciledStatementDate: summary.reconciled_statement_date,
     summaryOnly: true,
   };
 }
