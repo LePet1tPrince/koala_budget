@@ -562,6 +562,29 @@ const EditTransactionModal = ({
             </p>
           )}
 
+          {offersRecurring && (
+            <div className="-mt-1 flex flex-col gap-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-sm"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  data-testid="make-recurring"
+                />
+                {gettext('Make recurring')}
+              </label>
+              {isRecurring && (
+                <RecurrenceFields
+                  recurrence={recurrence}
+                  date={date}
+                  onChange={setRecurrence}
+                  error={errors.recurrence}
+                />
+              )}
+            </div>
+          )}
+
           {isSplit ? (
             <SplitEditor
               legs={splits}
@@ -676,29 +699,6 @@ const EditTransactionModal = ({
               data-testid="transaction-description"
             />
           </label>
-
-          {offersRecurring && (
-            <div className="flex flex-col gap-2">
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="checkbox checkbox-sm"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
-                  data-testid="make-recurring"
-                />
-                {gettext('Make recurring')}
-              </label>
-              {isRecurring && (
-                <RecurrenceFields
-                  recurrence={recurrence}
-                  date={date}
-                  onChange={setRecurrence}
-                  error={errors.recurrence}
-                />
-              )}
-            </div>
-          )}
 
           {!isCreateMode && recurringId && book?.base && (
             <p className="text-xs text-base-content/70" data-testid="recurring-note">
