@@ -10,13 +10,20 @@ user accepts a suggestion (`recurring.create_rule_from_transaction`).
 What counts, in order of the checks below:
 
 * the same account, direction (in/out) and payee -- the payee name, or the
-  description when there is none, lowercased with digits and punctuation removed,
-  so "NETFLIX.COM 8812" and "Netflix.com 9921" are one payee;
-* at least `MIN_OCCURRENCES` on different days within `LOOKBACK_DAYS`;
-* every gap between them within a period's tolerance (`PERIODS`);
-* every amount within `AMOUNT_TOLERANCE` of the latest one;
-* the latest no older than one period plus its tolerance (a cancelled
-  subscription stops being suggested);
+  description when there is none, without any word that holds a digit
+  (reference codes, dates, store numbers), as its first `KEY_WORDS` words of
+  lowercase letters: "NETFLIX.COM 8812" and "Netflix.com 9921" are one payee,
+  and so are "AMAZON PRIME*AB12CD" and "Amazon Prime*XY34ZZ";
+* within `LOOKBACK_DAYS`, the *latest run*: walking back from the most recent
+  occurrence, at least `MIN_OCCURRENCES` (on different days) one period apart
+  (within the period's tolerance, `PERIODS`) and within `AMOUNT_TOLERANCE` of
+  the latest amount. Anything in between that does not fit -- a one-off
+  purchase from the same payee, a refund-sized amount -- is stepped over; the
+  run ends at the first gap longer than a period, so older history (a price
+  change, a skipped month last spring) never disqualifies it;
+* still going: the latest no older than one period plus its tolerance, counted
+  from the account's own newest transaction rather than today, so an account
+  whose import is a few weeks behind still gets suggestions;
 * no live schedule for that account and payee, and not dismissed by the user.
 """
 
@@ -25,7 +32,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from statistics import median
 
 from django.utils import timezone
 
@@ -37,6 +43,7 @@ from .recurring import describe, following
 LOOKBACK_DAYS = 400
 MIN_OCCURRENCES = 3
 AMOUNT_TOLERANCE = Decimal("0.20")
+KEY_WORDS = 4
 
 
 @dataclass(frozen=True)
@@ -60,11 +67,13 @@ DIRECTION_OUT = RecurringSuggestionDismissal.DIRECTION_OUT
 DIRECTION_IN = RecurringSuggestionDismissal.DIRECTION_IN
 
 _NON_LETTERS = re.compile(r"[^a-z]+")
+_TOKEN_SPLIT = re.compile(r"[\s*#/]+")
 
 
 def payee_key(name: str | None) -> str:
-    """The name a run is grouped by: lowercase letters only, single-spaced."""
-    return " ".join(_NON_LETTERS.sub(" ", (name or "").lower()).split())
+    """The name a run is grouped by: no word with a digit in it, then its first `KEY_WORDS` words of letters."""
+    words = [token for token in _TOKEN_SPLIT.split((name or "").lower()) if not any(c.isdigit() for c in token)]
+    return " ".join(_NON_LETTERS.sub(" ", " ".join(words)).split()[:KEY_WORDS])
 
 
 def _direction(amount: Decimal) -> str:
@@ -76,15 +85,32 @@ def suggestion_key(account_id: int, direction: str, key: str) -> str:
     return f"{account_id}:{direction}:{key}"
 
 
-def _match_period(dates: list[date]) -> Period | None:
-    gaps = [(b - a).days for a, b in zip(dates, dates[1:], strict=False)]
-    typical = median(gaps)
+def _run_for(period: Period, dates: list[date], amounts: dict) -> list[date]:
+    """
+    The occurrences that fit `period`, walking back from the latest: each one a
+    period before the last one kept, with a similar amount. Closer ones that do
+    not fit are stepped over; the run ends at the first longer gap.
+    """
+    latest = amounts[dates[-1]]
+    tolerance = abs(latest) * AMOUNT_TOLERANCE
+    run = [dates[-1]]
+    for day in reversed(dates[:-1]):
+        gap = (run[0] - day).days
+        if gap > period.days + period.tolerance:
+            break
+        if gap >= period.days - period.tolerance and abs(amounts[day] - latest) <= tolerance:
+            run.insert(0, day)
+    return run
+
+
+def _latest_run(dates: list[date], amounts: dict) -> tuple[Period, list[date]] | None:
+    """The period with the longest latest run (the shorter period on a tie), if that run is long enough."""
+    best = None
     for period in PERIODS:
-        if abs(typical - period.days) <= period.tolerance and all(
-            abs(gap - period.days) <= period.tolerance for gap in gaps
-        ):
-            return period
-    return None
+        run = _run_for(period, dates, amounts)
+        if len(run) >= MIN_OCCURRENCES and (best is None or len(run) > len(best[1])):
+            best = (period, run)
+    return best
 
 
 def _day_of_month(dates: list[date]) -> int:
@@ -139,7 +165,9 @@ def find_suggestions(book, account_ids=None, today: date | None = None) -> list[
         rows = rows.filter(account_id__in=account_ids)
 
     runs = defaultdict(list)
+    account_latest = {}
     for tx in rows:
+        account_latest[tx.account_id] = max(account_latest.get(tx.account_id, tx.posted_date), tx.posted_date)
         key = payee_key(tx.merchant_name or tx.description)
         if key:
             runs[(tx.account_id, _direction(tx.amount), key)].append(tx)
@@ -164,16 +192,14 @@ def find_suggestions(book, account_ids=None, today: date | None = None) -> list[
         dates = sorted(by_day)
         if len(dates) < MIN_OCCURRENCES:
             continue
-        period = _match_period(dates)
-        if period is None:
+        found = _latest_run(dates, {day: tx.amount for day, tx in by_day.items()})
+        if found is None:
             continue
-        latest = by_day[dates[-1]]
-        tolerance = abs(latest.amount) * AMOUNT_TOLERANCE
-        if any(abs(by_day[d].amount - latest.amount) > tolerance for d in dates):
+        period, run = found
+        # Stopped: the account has moved on by more than a period since the last one.
+        if (account_latest[account_id] - run[-1]).days > period.days + period.tolerance:
             continue
-        if (today - dates[-1]).days > period.days + period.tolerance:
-            continue
-        candidates.append((account_id, direction, key, period, dates, latest))
+        candidates.append((account_id, direction, key, period, run, by_day[run[-1]]))
 
     # Categories are read only for the survivors: one entry's lines each.
     latest_ids = [c[5].id for c in candidates]

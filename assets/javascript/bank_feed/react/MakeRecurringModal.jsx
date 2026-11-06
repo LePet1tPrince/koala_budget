@@ -42,6 +42,8 @@ const MakeRecurringModal = ({ suggestion, client, book, onClose, onCreated }) =>
   if (!suggestion || !recurrence) return null;
 
   const startDate = formatDateForInput(suggestion.lastDate);
+  // Expected before today: saving writes it (and any after it) at once.
+  const overdue = formatDateForInput(suggestion.nextDate) < formatDateForInput(new Date());
   const problem = recurrenceProblem(recurrence, startDate);
   const amount = parseFloat(suggestion.outflow) > 0 ? suggestion.outflow : suggestion.inflow;
   const direction = parseFloat(suggestion.outflow) > 0 ? gettext('out') : gettext('in');
@@ -134,6 +136,15 @@ const MakeRecurringModal = ({ suggestion, client, book, onClose, onCreated }) =>
               )}
             </span>
           </div>
+        )}
+
+        {overdue && (
+          <p className="text-xs text-base-content/70" data-testid="make-recurring-overdue">
+            {interpolate(
+              gettext('The next one was expected on %s, so it (and any due since) is added as soon as you save.'),
+              [formatDateUtc(suggestion.nextDate)],
+            )}
+          </p>
         )}
 
         <RecurrenceFields recurrence={recurrence} date={startDate} onChange={setRecurrence} error={error} />

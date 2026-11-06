@@ -76,6 +76,39 @@ class DetectionTest(DetectionFixture):
         self.assertEqual(payee_key("NETFLIX.COM 8812"), "netflix com")
         self.assertEqual(payee_key("Netflix.com #9921"), "netflix com")
         self.assertEqual(payee_key("1234"), "")
+        self.assertEqual(payee_key("AMAZON PRIME*AB12CD"), payee_key("Amazon Prime*XY34ZZ"))
+        self.assertEqual(payee_key("AMAZON PRIME*AB12CD"), "amazon prime")
+        self.assertEqual(payee_key("POS PURCHASE NETFLIX 11/03 LOS GATOS CA"), "pos purchase netflix los")
+
+    def test_older_irregular_history_does_not_hide_the_current_run(self):
+        # A skipped month in the spring, a price change and a one-off purchase from
+        # the same payee: the latest three months still read as monthly.
+        for when, amount in [
+            (date(2026, 3, 3), "11.99"),
+            (date(2026, 5, 3), "11.99"),  # April skipped
+            (date(2026, 8, 3), "15.99"),
+            (date(2026, 9, 3), "15.99"),
+            (date(2026, 9, 18), "64.00"),  # a one-off
+            (date(2026, 10, 3), "15.99"),
+        ]:
+            self.add(when, amount, "NETFLIX.COM")
+        [s] = self.suggestions()
+        self.assertEqual((s["frequency"], s["day_of_month"], s["occurrences"]), ("monthly", 3, 3))
+        self.assertEqual(s["outflow"], Decimal("15.99"))
+
+    def test_freshness_is_measured_against_the_accounts_latest_transaction(self):
+        # This account's import stops in August; its pattern is still current there.
+        for when in (date(2026, 5, 10), date(2026, 6, 10), date(2026, 7, 10)):
+            self.add(when, "50", "Gym", account=self.card)
+        self.add(date(2026, 8, 1), "5", "Coffee", account=self.card)
+        [s] = self.suggestions()
+        self.assertEqual((s["payee"], s["next_date"]), ("Gym", date(2026, 8, 10)))
+
+    def test_weekly_wins_over_every_two_weeks(self):
+        for days in range(0, 35, 7):
+            self.add(date(2026, 10, 1) + timedelta(days=days), "20", "Cleaner")
+        [s] = self.suggestions()
+        self.assertEqual((s["frequency"], s["interval"], s["occurrences"]), ("weekly", 1, 5))
 
     def test_a_monthly_subscription_is_suggested(self):
         last = self.netflix()
