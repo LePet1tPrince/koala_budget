@@ -73,7 +73,7 @@ const AccountCard = ({ account, isSelected, onClick, matchCount = 0 }) => {
         {account.latest_transaction_date && (
           <p
             className="text-[10px] text-base-content/70 tabular-nums truncate"
-            data-testid="account-card-last-activity"
+            data-testid="card-last-activity"
           >
             {gettext('Last activity')} {formatDate(account.latest_transaction_date)}
           </p>
