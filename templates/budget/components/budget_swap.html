@@ -1,3 +1,4 @@
+{% load currency_tags %}
 {% comment %}
   Everything that changes when the month changes lives inside #budget-swap, so
   switching months can replace just this and leave the header, the scroll
@@ -9,7 +10,15 @@
 <div class="flex flex-col lg:flex-row gap-6 lg:items-start" id="budget-swap">
   <!-- Budget Table (left, takes remaining space) -->
   <div class="flex-1 min-w-0">
-    {% include "budget/components/net_worth_card.html" %}
+    {% comment %}
+      No summary card here: Unassigned is in the sidebar pill and the breakdown is the
+      Budget & Goals report. The cover dialog still reads the figure and its name, so
+      autosave keeps these two cells current.
+    {% endcomment %}
+    <div hidden>
+      <span data-budget-cell="networth:label">{{ net_worth_card.label }}</span>
+      <span data-budget-cell="networth:available">{{ net_worth_card.available|currency }}</span>
+    </div>
     {% include "budget/components/budget_table.html" %}
   </div>
 

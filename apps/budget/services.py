@@ -627,9 +627,13 @@ def goal_plan(goal, month):
     - needed: what the plan asks for this month (never more than is still to fund,
       measured from the start of the month)
     - finish: the month the plan reaches the target (`rate` from this month on)
+    - late: `finish` falls after the target date
+    - rate_for_date: with a target date, the monthly amount that reaches the target
+      by it (from the start of this month); None without one
     - status: ahead / on_track / behind against the plan's straight line from the
       goal's first month -- *ahead* is a full month past it, *on track* is on it
-      or this month's plan met; None once funded
+      or this month's plan met; always *behind* when the plan finishes late, since
+      a goal that misses its date isn't ahead of anything. None once funded
     """
     from math import ceil
 
@@ -641,12 +645,16 @@ def goal_plan(goal, month):
     # A goal viewed in a month before it was created is measured from that month.
     started = min(started, month)
 
+    rate_for_date = None
+    if goal.target_date and target > 0:
+        target_month = goal.target_date.replace(day=1)
+        rate_for_date = (to_fund_before / max(months_between(month, target_month) + 1, 1)).quantize(Decimal("0.01"))
+
     if goal.monthly_contribution:
         rate = goal.monthly_contribution
         line_rate = rate
-    elif goal.target_date and target > 0:
-        target_month = goal.target_date.replace(day=1)
-        rate = (to_fund_before / max(months_between(month, target_month) + 1, 1)).quantize(Decimal("0.01"))
+    elif rate_for_date is not None:
+        rate = rate_for_date
         line_rate = target / max(months_between(started, target_month) + 1, 1)
     else:
         return None
@@ -668,15 +676,21 @@ def goal_plan(goal, month):
             "status": status,
             "status_label": PLAN_LABELS.get(status),
             "late": False,
+            "rate_for_date": None,
         }
 
     needed = min(rate, to_fund_before)
     finish = None
     if rate > 0 and to_fund_before > 0:
         finish = month + relativedelta(months=ceil(to_fund_before / rate) - 1)
+    late = bool(
+        goal.target_date and to_fund_before > 0 and (finish is None or finish > goal.target_date.replace(day=1))
+    )
 
     status = None
-    if not goal.is_funded and target > 0:
+    if late and not goal.is_funded:
+        status = PLAN_BEHIND
+    elif not goal.is_funded and target > 0:
         elapsed = max(months_between(started, month) + 1, 0)
         expected = min(target, line_rate * elapsed)
         allocated = goal.allocated or Decimal("0")
@@ -692,7 +706,8 @@ def goal_plan(goal, month):
         "finish": finish,
         "status": status,
         "status_label": PLAN_LABELS.get(status),
-        "late": bool(finish and goal.target_date and finish > goal.target_date.replace(day=1)),
+        "late": late,
+        "rate_for_date": rate_for_date,
     }
 
 

@@ -1,5 +1,4 @@
 import json
-import math
 from collections import defaultdict
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -29,6 +28,7 @@ from apps.web.templatetags.currency_tags import currency
 
 from . import goal_links
 from . import ledger as budget_ledger
+from .display import available_display
 from .forms import MAX_BUDGET_AMOUNT, BudgetAmountForm, GoalForm, parse_budget_amount
 from .models import Goal, GoalAccountLink
 from .services import (
@@ -39,7 +39,6 @@ from .services import (
     GoalService,
     NetWorthService,
     budgeted_account_types,
-    goal_monthly,
     goal_plan,
     picker_accounts_data,
 )
@@ -94,8 +93,8 @@ def _budget_figures(book, month):
     # Income section first, then expenses; groups within a section keep the
     # category ordering (board sort order, then group/account name).
     sections = {
-        "income": {"key": "income", "label": _("Income"), "groups": [], "totals": _zero_totals()},
-        "expense": {"key": "expense", "label": _("Expenses"), "groups": [], "totals": _zero_totals()},
+        "income": {"key": "income", "label": _("Income"), "income": True, "groups": [], "totals": _zero_totals()},
+        "expense": {"key": "expense", "label": _("Expenses"), "income": False, "groups": [], "totals": _zero_totals()},
     }
 
     # A hidden category is a display choice, not an accounting one: it leaves its
@@ -243,15 +242,6 @@ def _meter(account_type, budgeted, actual, available):
     }
 
 
-def _tone(amount):
-    """Sign class hint for a money cell; mirrors the templates' text-error/text-success."""
-    if amount < 0:
-        return "neg"
-    if amount > 0:
-        return "pos"
-    return ""
-
-
 def _budget_cells(figures):
     """Flatten `_budget_figures` into `{cell key: {value, tone}}` for the auto-save
     response. Keys match the `data-budget-cell` attributes in the templates.
@@ -261,14 +251,16 @@ def _budget_cells(figures):
     """
     cells = {}
 
-    def put(key, amount, toned=False):
-        cells[key] = {"value": currency(amount), "tone": _tone(amount) if toned else ""}
+    def put(key, amount, toned=False, income=False):
+        text, tone = available_display(amount, income)
+        cells[key] = {"value": text, "tone": tone if toned else ""}
 
     for section in figures["sections"]:
+        income = section["income"]
         for index, group in enumerate(section["groups"]):
             for row in group["rows"]:
                 pk = row["category"].pk
-                put(f"row:{pk}:available", row["available"], toned=True)
+                put(f"row:{pk}:available", row["available"], toned=True, income=income)
                 meter = row["meter"]
                 cells[f"row:{pk}:meter"] = {
                     "value": meter["label"],
@@ -278,9 +270,9 @@ def _budget_cells(figures):
                 # Not rendered — the Auto-Assign confirm dialog reads it off the row checkbox.
                 cells[f"row:{pk}:budgeted"] = {"value": f"{row['budgeted']:.2f}", "tone": ""}
             put(f"group:{section['key']}:{index}:budgeted", group["subtotals"]["budgeted"])
-            put(f"group:{section['key']}:{index}:available", group["subtotals"]["available"], toned=True)
+            put(f"group:{section['key']}:{index}:available", group["subtotals"]["available"], toned=True, income=income)
         put(f"section:{section['key']}:budgeted", section["totals"]["budgeted"])
-        put(f"section:{section['key']}:available", section["totals"]["available"])
+        put(f"section:{section['key']}:available", section["totals"]["available"], income=income)
 
         put(f"tab:{section['key']}:budgeted", section["totals"]["budgeted"])
         if section["key"] == ACCOUNT_TYPE_EXPENSE:
@@ -293,7 +285,7 @@ def _budget_cells(figures):
 
     for key, summary in figures["sidebar_summary"].items():
         put(f"sidebar:{key}:assigned", summary["assigned_this_month"])
-        put(f"sidebar:{key}:available", summary["available"], toned=True)
+        put(f"sidebar:{key}:available", summary["available"], toned=True, income=key == ACCOUNT_TYPE_INCOME)
 
     card = figures["net_worth_card"]
     put("networth:net_worth", card["net_worth"])
@@ -774,19 +766,6 @@ def budget_grid_save(request, team_slug, book_slug):
 # =============================================================================
 
 
-def _goal_streak(saved_months, month):
-    """Consecutive months with a positive allocation, counting backwards from the
-    selected month (a not-yet-funded selected month doesn't break the streak)."""
-    cursor = month
-    if cursor not in saved_months:
-        cursor -= relativedelta(months=1)
-    streak = 0
-    while cursor in saved_months:
-        streak += 1
-        cursor -= relativedelta(months=1)
-    return streak
-
-
 def _goal_card_progress(goal, saved, this_month):
     """
     (pct, remaining) for a goal card: what its bar shows and what it still asks for.
@@ -817,20 +796,12 @@ def goals_list_view(request, team_slug, book_slug):
         Goal.objects.filter(book=request.book).filter(Q(closed_at__isnull=False) | Q(is_archived=True)).count()
     )
 
-    # What each goal was given per month (assigned + from linked accounts);
-    # used for streaks and pace.
-    amounts_by_goal = {
-        goal_id: {m: values["saved"] for m, values in months.items()}
-        for goal_id, months in goal_monthly(request.book, goals).items()
-    }
-
     links_by_goal = defaultdict(list)
     for link in GoalAccountLink.objects.open().filter(goal__in=goals).select_related("account"):
         links_by_goal[link.goal_id].append(link.account.name)
 
     goal_items = []
     for goal in goals:
-        amounts = amounts_by_goal.get(goal.pk, {})
         saved = goal.allocated
         this_month = goal.saved_this_month or Decimal("0")
         if goal.has_target:
@@ -840,25 +811,13 @@ def goals_list_view(request, team_slug, book_slug):
         # The spent part of the fill, drawn hatched: spending doesn't slide the bar back.
         spent_pct = min(max(float(goal.spent / goal.target_amount * 100), 0), pct) if goal.has_target else 0
 
-        saved_months = {m for m, amt in amounts.items() if amt > 0}
-        streak = _goal_streak(saved_months, month)
-
-        # The plan: a monthly contribution, or the pace to hit the target date.
+        # The plan: a monthly contribution, or the pace to hit the target date. One
+        # projection (`goal_plan`) gives the finish month and the status, so the card
+        # can't show two dates that disagree.
         plan = goal_plan(goal, month)
-        months_left = None
         needed_per_month = None
         if plan and plan["rate"] > 0 and (remaining > 0 or not goal.has_target):
             needed_per_month = plan["rate"]
-            if plan["finish"]:
-                finish = plan["finish"]
-                months_left = max(months_between(month, finish), 1)
-
-        # Projection from the recent saving rate (average of the last 3 months)
-        recent = [amounts.get(month - relativedelta(months=i), Decimal("0")) for i in range(3)]
-        recent_avg = sum(recent) / 3
-        projected_date = None
-        if goal.has_target and remaining > 0 and recent_avg > 0:
-            projected_date = month + relativedelta(months=math.ceil(remaining / recent_avg))
         behind_pace = bool(plan and plan["status"] == "behind")
 
         goal_items.append(
@@ -869,14 +828,13 @@ def goals_list_view(request, team_slug, book_slug):
                 "pct": pct,
                 "this_month": this_month,
                 "has_target": goal.has_target,
-                "streak": streak,
-                "months_left": months_left,
                 "needed_per_month": needed_per_month,
                 "plan_finish": plan["finish"] if plan else None,
+                "plan_late": bool(plan and plan["late"]),
+                "rate_for_date": plan["rate_for_date"] if plan else None,
                 "plan_status": plan["status"] if plan else None,
                 "plan_status_label": plan["status_label"] if plan else None,
                 "links": links_by_goal.get(goal.pk, []),
-                "projected_date": projected_date,
                 "behind_pace": behind_pace,
                 "funded": goal.is_funded,
                 "spent": goal.spent,

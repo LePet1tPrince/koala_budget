@@ -234,36 +234,39 @@ def budget_goals_report(book, month):
     budget envelopes (one total -- the per-category detail lives on the budget
     page) and what is still unassigned.
     """
-    from apps.budget.services import GoalService
-    from apps.budget.unassigned import allocation_bar, compute_unassigned, waterfall
+    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
+    from apps.budget import ledger as budget_ledger
+    from apps.budget.services import BudgetService, GoalService
+    from apps.budget.unassigned import allocation_bar, budget_categories, compute_unassigned, waterfall
 
     month = month.replace(day=1)
-    unassigned = compute_unassigned(book, month, detail=True)
+    categories = budget_categories(book)
+    unassigned = compute_unassigned(book, month, categories)
     goal_rows, goal_totals = GoalService(book).month_rows(month)
     goal_totals.update(
         {
+            # Every open goal, open-ended ones included: the Goals page's "Total Saved".
             "allocated": sum((r["goal"].allocated for r in goal_rows), ZERO),
-            "target": sum((r["goal"].target_amount for r in goal_rows), ZERO),
-            # Open-ended goals (no target) are left out of "X of Y saved".
-            "toward_target": sum((r["goal"].allocated for r in goal_rows if r["goal"].has_target), ZERO),
             "left": sum((r["goal"].left for r in goal_rows), ZERO),
         }
     )
-    goal_totals["pct"] = _pct(goal_totals["toward_target"], goal_totals["target"])
 
-    # Envelopes as one figure: Σ max(0, available) over expense categories, split into
-    # what rolled in from earlier months and this month's unspent budget (spending draws
-    # on this month's budget first, so an envelope's rolled part is the smaller of
-    # what rolled in and its balance). Overspent envelopes claim nothing -- that money already came out of
-    # Unassigned -- and `overspent` is the negative balance they still carry.
-    rollover = sum(
-        (min(e["amount"], max(e["rollover"], ZERO)) for e in unassigned.detail["envelopes"] if e["amount"] > 0),
-        ZERO,
-    )
+    # The envelopes in the budget page's own terms, so the two pages show the same
+    # numbers: the Expenses tab's Left Over from Last Month + Assigned − Spent is its
+    # Available, and Available plus the overspent envelopes (which claim nothing --
+    # that money already came out of Unassigned) is what sits in the envelopes.
+    expense = [c for c in categories if c.account_group.account_type == ACCOUNT_TYPE_EXPENSE]
+    expense_ids = {c.pk for c in expense}
+    service = BudgetService(book)
+    available, previous = service.get_available_with_previous(month, expense)
+    budgeted = budget_ledger.budgeted_in_month(book, month)
+    actuals = service.get_actuals_by_category(month)
     envelopes = {
         "total": unassigned.envelopes,
-        "rollover": rollover,
-        "this_month": unassigned.envelopes - rollover,
+        "leftover": sum(previous.values(), ZERO),
+        "assigned": sum((budgeted.get(pk, ZERO) for pk in expense_ids), ZERO),
+        "spent": sum((actuals.get(pk, ZERO) for pk in expense_ids), ZERO),
+        "available": sum(available.values(), ZERO),
         "overspent": unassigned.overspent,
     }
     return {

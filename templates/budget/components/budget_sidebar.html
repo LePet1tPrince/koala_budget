@@ -1,5 +1,7 @@
 {% load i18n %}
 {% load currency_tags %}
+{% load icons %}
+{% load budget_tags %}
 
 <style>
   /* The summary and Auto-Assign cards follow the page down.
@@ -38,8 +40,8 @@
       <div class="flex flex-col gap-2">
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Left Over from Last Month" %}</span>
-          <span class="font-mono text-sm font-semibold {% if section.summary.leftover_last_month < 0 %}text-error{% elif section.summary.leftover_last_month > 0 %}text-success{% endif %}">
-            {{ section.summary.leftover_last_month|currency }}
+          <span class="font-mono text-sm font-semibold {{ section.summary.leftover_last_month|available_class:section.income }}">
+            {{ section.summary.leftover_last_month|available_text:section.income }}
           </span>
         </div>
         <div class="flex justify-between items-center">
@@ -57,18 +59,22 @@
         <div class="divider my-0"></div>
         <div class="flex justify-between items-center">
           <span class="text-sm font-bold">{% translate "Available" %}</span>
-          <span class="font-mono text-sm font-bold {% if section.summary.available < 0 %}text-error{% elif section.summary.available > 0 %}text-success{% endif %}"
+          <span class="font-mono text-sm font-bold {{ section.summary.available|available_class:section.income }}"
                 data-budget-cell="sidebar:{{ section.key }}:available">
-            {{ section.summary.available|currency }}
+            {{ section.summary.available|available_text:section.income }}
           </span>
         </div>
       </div>
     </div>
 
-    <!-- Auto-Assign Options -->
-    <div class="bg-base-100 rounded-lg shadow p-5">
-      <h3 class="font-bold text-lg mb-4">{% translate "Auto-Assign" %}</h3>
-      <p class="text-xs text-base-content/70 -mt-2 mb-2">
+    <!-- Auto-Assign Options: closed by default; opening it shows the table's checkboxes (budget_table.html). -->
+    <details class="bg-base-100 rounded-lg shadow p-5 group" data-autoassign data-testid="autoassign-{{ section.key }}">
+      <summary class="font-bold text-lg cursor-pointer select-none flex items-center justify-between list-none [&::-webkit-details-marker]:hidden"
+               data-testid="autoassign-toggle-{{ section.key }}">
+        {% translate "Auto-Assign" %}
+        <span class="transition-transform group-open:rotate-90">{% icon "chevron-right" class="w-4 h-4" %}</span>
+      </summary>
+      <p class="text-xs text-base-content/70 mt-3 mb-2">
         {% blocktranslate trimmed with section=section.label %}
           Applies to the categories checked on the {{ section }} tab. Uncheck any you want to leave alone.
         {% endblocktranslate %}
@@ -88,7 +94,7 @@
         </form>
         {% endfor %}
       </div>
-    </div>
+    </details>
   </div>
   {% endfor %}
 </div>

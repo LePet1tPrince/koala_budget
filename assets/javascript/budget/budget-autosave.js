@@ -279,6 +279,8 @@ function init() {
       el.textContent = cell.value;
       el.classList.toggle('text-error', cell.tone === 'neg');
       el.classList.toggle('text-success', cell.tone === 'pos');
+      // Income budgeted but not received yet: neutral, not a shortfall (apps/budget/display.py).
+      el.classList.toggle('text-base-content/70', cell.tone === 'expected');
       flash(el);
     });
     refreshCoverButtons();

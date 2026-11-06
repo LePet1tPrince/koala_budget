@@ -168,6 +168,22 @@ class OpenEndedGoalTest(Fixture):
     def test_a_past_month_without_the_contribution_is_behind(self, _today):
         self.assertEqual(goal_plan(self.open_goal("50"), SEPT)["status"], PLAN_BEHIND)
 
+    def test_a_plan_that_finishes_after_the_target_date_is_behind(self):
+        """Well past the contribution line, but the contribution can't reach the target by its date."""
+        goal = Goal.objects.create(
+            book=self.book,
+            name="Late RESP",
+            target_amount=D("10000"),
+            target_date=date(2027, 3, 1),
+            monthly_contribution=D("100"),
+        )
+        set_goal_allocation(self.book, goal, AUG, D("2000"))
+        plan = goal_plan(Goal.objects.filter(pk=goal.pk).with_progress(SEPT).get(), SEPT)
+        self.assertTrue(plan["late"])
+        self.assertEqual(plan["status"], PLAN_BEHIND)
+        self.assertEqual(plan["finish"], date(2033, 4, 1))
+        self.assertEqual(plan["rate_for_date"], D("1142.86"))
+
     def test_card_progress_is_this_months_contribution(self):
         goal = self.open_goal("50")
         self.assertEqual(_goal_card_progress(goal, goal.allocated, D("50")), (25.0, D("150")))

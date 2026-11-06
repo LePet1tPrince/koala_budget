@@ -311,14 +311,34 @@ class BudgetGoalsReportTest(PlanFixture):
         unassigned = compute_unassigned(self.book, date(2026, 6, 1))
         envelopes = report["envelopes"]
         self.assertEqual(envelopes["total"], unassigned.envelopes)
-        self.assertEqual(envelopes["total"], envelopes["rollover"] + envelopes["this_month"])
-        # Food: 300 rolled in + 400 budgeted − 600 spent = 100 left, all of it rollover.
+        # The Expenses tab's own sidebar: 300 left over (Food) + 1400 assigned − 1700 spent.
+        self.assertEqual(envelopes["leftover"], Decimal("300.00"))
+        self.assertEqual(envelopes["assigned"], Decimal("1400.00"))
+        self.assertEqual(envelopes["spent"], Decimal("1700.00"))
+        self.assertEqual(envelopes["available"], envelopes["leftover"] + envelopes["assigned"] - envelopes["spent"])
+        self.assertEqual(envelopes["available"], Decimal("0.00"))  # Food +100, Rent −100
         # Rent's −100 claims nothing: it already came out of Unassigned.
         self.assertEqual(envelopes["total"], Decimal("100.00"))
-        self.assertEqual((envelopes["rollover"], envelopes["this_month"]), (Decimal("100.00"), Decimal("0.00")))
+        self.assertEqual(envelopes["total"], envelopes["available"] + envelopes["overspent"])
         self.assertEqual(envelopes["overspent"], Decimal("100.00"))  # Rent, carried negative
         self.assertEqual(envelopes["overspent"], unassigned.overspent)
         self.assertNotIn("spending", report)
+
+    def test_leftover_matches_the_budget_sidebar(self):
+        response = self.client.get(
+            reverse("budget:budget_home", args=self.book.url_args), {"month": "2026-06-01", "tab": "expense"}
+        )
+        sidebar = response.context["sidebar_summary"]["expense"]
+        envelopes = budget_goals_report(self.book, date(2026, 6, 1))["envelopes"]
+        self.assertEqual(envelopes["leftover"], sidebar["leftover_last_month"])
+        self.assertEqual(envelopes["available"], sidebar["available"])
+
+    def test_goals_saved_includes_open_ended_goals(self):
+        Goal.objects.create(book=self.book, name="Zq RESP", target_amount=Decimal("0"), monthly_contribution=10)
+        resp = Goal.objects.get(book=self.book, name="Zq RESP")
+        set_goal_allocation(self.book, resp, date(2026, 6, 1), Decimal("50"))
+        response = self.client.get(self.url("budget_goals"), {"month": "2026-06"})
+        self.assertContains(response, "$350.00 saved")
 
     def test_goals_and_unassigned(self):
         from apps.budget.unassigned import compute_unassigned
