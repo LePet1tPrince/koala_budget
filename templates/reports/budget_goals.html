@@ -57,9 +57,6 @@
     <div class="stat py-3">
       <div class="stat-title">{% translate "Net worth" %}</div>
       <div class="stat-value text-2xl money">{{ unassigned.net_worth|currency }}</div>
-      {% if income_due %}
-      <div class="stat-desc">{% blocktranslate trimmed with amount=income_due|currency %}+ {{ amount }} income still due{% endblocktranslate %}</div>
-      {% endif %}
     </div>
     <div class="stat py-3">
       <div class="stat-title">{% translate "In budget envelopes" %}</div>
@@ -80,6 +77,11 @@
       <div class="stat-desc {% if unassigned.state == 'negative' %}text-error{% endif %}">
         {% if unassigned.state == 'negative' %}{% translate "promised more than you have" %}{% elif unassigned.state == 'zero' %}{% translate "every dollar has a job" %}{% else %}{% translate "waiting for a job" %}{% endif %}
       </div>
+      {% if unassigned.expects_income %}
+      <div class="stat-desc" data-testid="plan-expected-income">
+        {{ expected_income_label }} <span class="money font-semibold">{{ unassigned.income_due|currency }}</span>
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -141,11 +143,16 @@
           {% translate "Money with no job yet. Give it one: raise a budget or put it toward a goal." %}
         {% endif %}
       </p>
-      {% if income_due %}
-      <p class="text-sm mt-2 flex justify-between gap-2 border-t border-base-300 pt-2">
-        <span>{% translate "Includes income still due" %}</span>
-        <span class="money">{{ income_due|currency }}</span>
-      </p>
+      {% if unassigned.expects_income %}
+      <div class="text-sm mt-2 border-t border-base-300 pt-2" data-testid="plan-free-expected">
+        <p class="flex justify-between gap-2 font-medium">
+          <span>{{ expected_income_label }}</span>
+          <span class="money">{{ unassigned.income_due|currency }}</span>
+        </p>
+        <p class="text-base-content/70">
+          {% translate "Budgeted income that hasn't arrived yet. Not counted above: it becomes unassigned money when it lands." %}
+        </p>
+      </div>
       {% endif %}
     </div>
   </div>

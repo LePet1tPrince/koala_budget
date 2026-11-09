@@ -19,8 +19,6 @@ function colorFor(bar) {
   switch (bar.key) {
     case 'net_worth':
       return p.net_worth;
-    case 'income_due':
-      return 'rgba(22, 163, 74, 0.45)';
     case 'envelopes':
       return p.envelopes;
     case 'goals':
@@ -61,9 +59,6 @@ document.addEventListener('DOMContentLoaded', () => {
           label: 'Amount',
           data: bars.map((b) => [b.start, b.end]),
           backgroundColor: bars.map(colorFor),
-          borderColor: bars.map((b) => (b.key === 'income_due' ? MONEY.in : 'transparent')),
-          borderWidth: bars.map((b) => (b.key === 'income_due' ? 1.5 : 0)),
-          borderDash: [4, 3],
           borderRadius: 3,
           borderSkipped: false,
           maxBarThickness: 72,
