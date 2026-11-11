@@ -10,8 +10,6 @@
     {% translate "Goals" as goals_title %}
     {% include "budget/components/budget_page_header.html" with header_title=goals_title goals_header=True %}
 
-    {% include "budget/components/net_worth_card.html" %}
-
     {% if show_closed %}
       {% include "budget/components/goals_closed.html" %}
     {% else %}

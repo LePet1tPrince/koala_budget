@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from django.db.models import Count
 
-from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
+from apps.accounts.models import ACCOUNT_TYPE_EXPENSE, ACCOUNT_TYPE_INCOME
 from apps.budget import ledger as budget_ledger
 from apps.budget.services import BudgetService
 from apps.budget.views import _budget_categories
@@ -88,9 +88,9 @@ def budget_breakdown(book, month) -> dict:
 
     Returns:
         {
-          "groups": [{"name", "assigned", "spent", "prev", "available", "count",
+          "groups": [{"name", "income", "assigned", "spent", "prev", "available", "count",
                       "categories": [{"id", "name", "assigned", "spent", "prev",
-                                      "available", "count", "unbudgeted"}, ...]}, ...],
+                                      "available", "count", "unbudgeted", "income"}, ...]}, ...],
           "totals": {"assigned", "spent", "available"},
           "overspent": [{"category", "group", "assigned", "spent", "available", "over"}, ...],
           "over_assigned": [ same shape, ...],
@@ -133,10 +133,12 @@ def budget_breakdown(book, month) -> dict:
         available = available_map.get(category.pk, Decimal("0"))
         count = counts.get(category.pk, 0)
 
+        income = category.account_group.account_type == ACCOUNT_TYPE_INCOME
         if current_group is None or current_group["_key"] != category.account_group.pk:
             current_group = {
                 "_key": category.account_group.pk,
                 "name": category.account_group.name,
+                "income": income,
                 "assigned": Decimal("0"),
                 "spent": Decimal("0"),
                 "prev": Decimal("0"),
@@ -156,6 +158,8 @@ def budget_breakdown(book, month) -> dict:
                 "available": available,
                 "count": count,
                 "unbudgeted": not assigned and bool(spent),
+                # `spent` is what was received for an income category: above average is good.
+                "income": income,
             }
         )
         current_group["assigned"] += assigned

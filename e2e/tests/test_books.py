@@ -124,3 +124,19 @@ def test_a_book_is_archived_and_deleted_from_my_books(authenticated_page: Page, 
     # The one open book left offers neither action.
     assert authenticated_page.locator(f"[data-testid='book-archive-{book.slug}']").is_disabled()
     assert authenticated_page.locator(f"[data-testid='book-delete-{book.slug}']").is_disabled()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_closing_a_period_shows_on_the_transactions_page(
+    authenticated_page: Page, live_server, team, book, requires_vite
+):
+    settings = BookSettingsPage(authenticated_page, live_server.url)
+    settings.goto(book)
+    settings.set_locked_through("30062026")
+    settings.save()
+
+    book.refresh_from_db()
+    assert book.locked_through.isoformat() == "2026-06-30"
+
+    authenticated_page.goto(f"{live_server.url}{book.base_url}journal/transactions/")
+    assert authenticated_page.locator("[data-testid='period-lock-note']").is_visible()

@@ -71,6 +71,9 @@ const TransactionEditModal = ({
 }) => {
   const isBatch = transactions.length > 1;
   const one = transactions.length === 1 ? transactions[0] : null;
+  // A transaction in the book's closed period is read-only; the server says why
+  // (`period_lock.lock_reason`) and its capabilities are all false.
+  const lockedReason = transactions.find((tx) => tx.locked_reason)?.locked_reason || null;
 
   const [date, setDate] = useState('');
   const [payee, setPayee] = useState('');
@@ -90,6 +93,7 @@ const TransactionEditModal = ({
   // applies to every row and one locked row would refuse the batch.
   const can = useMemo(() => {
     const keys = [
+      'can_edit',
       'can_edit_date',
       'can_edit_amount',
       'can_edit_account',
@@ -431,7 +435,7 @@ const TransactionEditModal = ({
               type="button"
               className="btn btn-primary btn-sm"
               onClick={handleSave}
-              disabled={busy}
+              disabled={busy || Boolean(lockedReason)}
               data-testid="modal-save-btn"
             >
               {busy ? <Spinner size="xs" /> : null}
@@ -476,6 +480,13 @@ const TransactionEditModal = ({
             </p>
           )}
 
+          {lockedReason && (
+            <div className="alert alert-info text-sm" role="status" data-testid="period-locked-notice">
+              <Icon name="lock" className="h-4 w-4 shrink-0" />
+              <span>{lockedReason}</span>
+            </div>
+          )}
+
           {one && !one.has_normal_account_side && (
             <div className="alert alert-warning text-sm" data-testid="unusual-shape-warning">
               {gettext(
@@ -493,7 +504,7 @@ const TransactionEditModal = ({
                 testId="transaction-date"
                 disabled={!can.can_edit_date}
               />
-              {(errors.date || !can.can_edit_date) && (
+              {(errors.date || (!can.can_edit_date && !lockedReason)) && (
                 <p className={`-mt-3 text-xs ${errors.date ? 'text-error' : 'text-base-content/70'}`}>
                   {errors.date || gettext('Your bank sets the date on this transaction')}
                 </p>
@@ -507,6 +518,7 @@ const TransactionEditModal = ({
             onChange={setPayee}
             options={payeeOptions}
             freeText
+            disabled={Boolean(lockedReason)}
             placeholder={isBatch ? gettext('Leave blank to keep each one') : ''}
             testId="transaction-payee"
           />
@@ -519,7 +531,9 @@ const TransactionEditModal = ({
             getGroup={(option) => option.groupLabel}
             disabled={!can.can_edit_account}
             placeholder={isBatch ? gettext('Leave blank to keep each one') : gettext('Choose an account')}
-            helperText={can.can_edit_account ? '' : gettext('Unreconcile this transaction to move it')}
+            helperText={
+              can.can_edit_account || lockedReason ? '' : gettext('Unreconcile this transaction to move it')
+            }
             testId="transaction-account"
           />
 
@@ -579,6 +593,7 @@ const TransactionEditModal = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={isBatch ? gettext('Leave blank to keep each one') : ''}
+              disabled={Boolean(lockedReason)}
               data-testid="transaction-description"
             />
           </label>
@@ -607,7 +622,7 @@ const TransactionEditModal = ({
                   />
                 </label>
               </div>
-              {(errors.amount || !can.can_edit_amount) && (
+              {(errors.amount || (!can.can_edit_amount && !lockedReason)) && (
                 <p className={`-mt-3 text-xs ${errors.amount ? 'text-error' : 'text-base-content/70'}`}>
                   {errors.amount || gettext('Unreconcile this transaction, or edit it in your bank feed, to change the amount')}
                 </p>

@@ -55,6 +55,13 @@ class BookSettingsPage(BasePage):
     def set_report_timeframe(self, value: str):
         self.page.locator("[data-testid='report-timeframe']").select_option(value)
 
+    def set_locked_through(self, ddmmyyyy: str):
+        """Type the closed-period date into its DateField (`locked-through-input`) and take it."""
+        self.page.locator("[data-testid='locked-through-input']").click()
+        box = self.page.locator("[data-testid='locked-through-input-text']")
+        box.fill(ddmmyyyy)
+        box.press("Enter")
+
     def save(self):
         self.page.locator("[data-testid='book-settings-save']").click()
         self.page.wait_for_load_state("domcontentloaded")

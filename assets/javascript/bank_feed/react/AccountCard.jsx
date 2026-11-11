@@ -7,7 +7,8 @@ import Icon from '../../common/Icon';
 
 /**
  * AccountCard component - a compact, scannable row for the account picker.
- * Shows account name, institution, balance, and a badge when transactions need review.
+ * Shows account name, institution, labelled last-activity and reconciled-through dates,
+ * balance, and a badge when transactions need review.
  */
 const AccountCard = ({ account, isSelected, onClick, matchCount = 0 }) => {
   const isLiability = account.account_type === 'liability';
@@ -68,17 +69,15 @@ const AccountCard = ({ account, isSelected, onClick, matchCount = 0 }) => {
             </span>
           )}
         </p>
-      </div>
-
-      <div className="flex flex-col items-end shrink-0 w-24">
+        {/* Each date says what it is: the newest transaction, and the last statement reconciled. */}
         {account.latest_transaction_date && (
-          <p className="text-[10px] text-base-content/70 tabular-nums truncate">
-            {formatDate(account.latest_transaction_date)}
+          <p
+            className="text-[10px] text-base-content/70 tabular-nums truncate"
+            data-testid="card-last-activity"
+          >
+            {gettext('Last activity')} {formatDate(account.latest_transaction_date)}
           </p>
         )}
-        <p className="text-sm font-semibold tabular-nums text-right">
-          {formatCurrency(account.categorized_balance ?? account.balance)}
-        </p>
         {account.last_statement_date && (
           <p
             className={`text-[10px] tabular-nums truncate ${
@@ -91,10 +90,15 @@ const AccountCard = ({ account, isSelected, onClick, matchCount = 0 }) => {
             }
             data-testid="account-card-reconciled-through"
           >
-            {account.last_statement_intact ? '✓' : '⚠'} {formatDate(account.last_statement_date)}
+            {account.last_statement_intact ? '' : '⚠ '}
+            {gettext('Reconciled through')} {formatDate(account.last_statement_date)}
           </p>
         )}
       </div>
+
+      <p className="shrink-0 text-sm font-semibold tabular-nums text-right">
+        {formatCurrency(account.categorized_balance ?? account.balance)}
+      </p>
     </div>
   );
 };

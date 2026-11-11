@@ -27,7 +27,7 @@ from apps.budget.buckets import sync_book
 from apps.budget.models import Goal, GoalAccountLink
 from apps.categorization.models import CategorizationRule
 from apps.journal.models import JournalEntry, JournalLine
-from apps.journal.services import voiding
+from apps.journal.services import period_lock, voiding
 from apps.reconciliation.models import Reconciliation
 
 from . import export, read, schema, write
@@ -111,6 +111,8 @@ def build_safety_archive(book) -> bytes:
 
 
 @transaction.atomic
+# Builds (or replaces) a whole book, so a closed period doesn't apply.
+@period_lock.exempt()
 def apply_archive(book, archive_bytes: bytes, *, user=None, on_progress=None) -> ApplyResult:
     """
     Wipe `book` and write `archive_bytes` into it. One transaction: any

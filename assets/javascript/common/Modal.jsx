@@ -49,7 +49,9 @@ const Modal = ({ open, onClose, title, children, actions, size = 'md', testId, b
   }, [onClose]);
 
   return (
-    <dialog ref={ref} className="modal" data-testid={testId}>
+    // A dark, blurred scrim: daisyUI's default dimming leaves the page behind legible
+    // enough to read through the dialog (the Monthly Review's Data check over its tables).
+    <dialog ref={ref} className="modal bg-black/60 backdrop-blur-sm" data-testid={testId}>
       <div className={`modal-box ${SIZES[size]} bg-base-100 border border-base-300`}>
         {title && <h3 className="mb-4 text-lg font-semibold">{title}</h3>}
         <div className={bodyClassName}>{children}</div>

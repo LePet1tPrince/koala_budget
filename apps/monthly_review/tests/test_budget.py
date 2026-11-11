@@ -95,6 +95,9 @@ class BudgetBreakdownTests(TestCase):
         breakdown = budget_breakdown(self.book, date(2026, 8, 1))
         group_names = [g["name"] for g in breakdown["groups"]]
         self.assertEqual(group_names, ["Pay", "Everyday"])
+        # The table needs to know which rows are income: there "spent" is received, and more is better.
+        self.assertEqual([g["income"] for g in breakdown["groups"]], [True, False])
+        self.assertEqual([c["income"] for g in breakdown["groups"] for c in g["categories"]], [True, False])
 
     def test_totals_sum_across_groups(self):
         self._budget(self.groceries, date(2026, 8, 1), "200")

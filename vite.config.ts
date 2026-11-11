@@ -27,7 +27,6 @@ export default defineConfig({
         'app': path.resolve(__dirname, './assets/javascript/app.js'),
         'teams': path.resolve(__dirname, './assets/javascript/teams/teams.jsx'),
         'edit-team': path.resolve(__dirname, './assets/javascript/teams/edit-team.jsx'),
-        'chat': path.resolve(__dirname, './assets/javascript/chat/chat.jsx'),
         'reports': path.resolve(__dirname, './assets/javascript/reports/ReportsDateRangePicker.jsx'),
         'bank-feed': path.resolve(__dirname, './assets/javascript/bank_feed/react/line-app.jsx'),
         'categorize-mode': path.resolve(__dirname, './assets/javascript/bank_feed/react/categorize-app.jsx'),

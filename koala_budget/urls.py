@@ -104,7 +104,6 @@ urlpatterns = [
     path("plaid/webhook/", plaid_webhook_view, name="plaid_webhook"),
     # hijack urls for impersonation
     path("hijack/", include("hijack.urls", namespace="hijack")),
-    path("chat/", include("apps.chat.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 if settings.ENABLE_DEBUG_TOOLBAR:

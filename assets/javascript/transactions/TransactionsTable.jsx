@@ -7,13 +7,13 @@ import { formatDate } from '../bank_feed/utils';
 import DateRangePicker from '../common/DateRangePicker';
 import Icon from '../common/Icon';
 import ColumnMenu from './ColumnMenu';
-import { FALLBACK_BADGE, SOURCE_STYLES, STATUS_STYLES, TRANSACTION_COLUMNS } from './columns';
+import { FALLBACK_BADGE, STATUS_STYLES, TRANSACTION_COLUMNS } from './columns';
 
 /**
  * Badge component for displaying status/source labels.
  */
-const Badge = ({ children, className }) => (
-  <span className={`badge badge-sm ${className}`}>
+const Badge = ({ children, className, ...rest }) => (
+  <span className={`badge badge-sm ${className}`} {...rest}>
     {children}
   </span>
 );
@@ -255,8 +255,11 @@ const TransactionsTable = ({
           </thead>
           <tbody>
             {transactions.map((tx) => {
-              const source = SOURCE_STYLES[tx.source] || { label: tx.source, className: FALLBACK_BADGE };
-              const statusStyle = STATUS_STYLES[tx.status] || { label: tx.status, className: FALLBACK_BADGE };
+              // No Status column (nearly every row is Posted): only a draft or void row says so.
+              const statusStyle =
+                tx.status && tx.status !== 'posted'
+                  ? STATUS_STYLES[tx.status] || { label: tx.status, className: FALLBACK_BADGE }
+                  : null;
               const expanded = expandedIds.has(tx.id);
 
               return (
@@ -299,6 +302,11 @@ const TransactionsTable = ({
                           {gettext('Split')}
                         </button>
                       )}
+                      {statusStyle && (
+                        <Badge className={`${statusStyle.className} mr-1`} data-testid={`status-badge-${tx.id}`}>
+                          {statusStyle.label}
+                        </Badge>
+                      )}
                       {tx.description}
                     </td>
                     <td className="whitespace-nowrap">
@@ -309,12 +317,6 @@ const TransactionsTable = ({
                     </td>
                     <td className="money whitespace-nowrap text-right">
                       {formatCurrency(tx.amount)}
-                    </td>
-                    <td className="whitespace-nowrap">
-                      <Badge className={source.className}>{source.label}</Badge>
-                    </td>
-                    <td className="whitespace-nowrap">
-                      <Badge className={statusStyle.className}>{statusStyle.label}</Badge>
                     </td>
                     <td className="w-10">
                       <button
@@ -343,8 +345,6 @@ const TransactionsTable = ({
                         <td className="money whitespace-nowrap text-base-content/70">
                           {Number(leg.credit) > 0 ? formatCurrency(leg.credit) : ''}
                         </td>
-                        <td />
-                        <td />
                         <td />
                         <td />
                       </tr>
