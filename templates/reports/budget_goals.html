@@ -83,6 +83,14 @@
     </div>
   </div>
 
+  <div class="mb-6" data-testid="plan-dollar-flow">
+    <h2 class="text-lg font-semibold mb-1">{% translate "Where every dollar of your net worth is assigned" %}</h2>
+    <p class="text-sm text-base-content/70 mb-3">
+      {% blocktranslate trimmed with month=month|date:"F Y" %}Your accounts on the left, each goal and budget category on the right, as of the end of {{ month }}.{% endblocktranslate %}
+    </p>
+    {% include "reports/components/dollar_flow.html" %}
+  </div>
+
   <h2 class="text-lg font-semibold mb-3">{% translate "Every claim on your money" %}</h2>
   {% include "budget/components/dollar_bar.html" with show_markers=True %}
 

@@ -351,7 +351,7 @@ class BudgetGoalsReportTest(PlanFixture):
         self.assertEqual(report["unassigned"].amount, compute_unassigned(self.book, date(2026, 6, 1)).amount)
         self.assertEqual(report["waterfall"][-1]["value"], float(report["unassigned"].amount))
 
-    def test_view_renders_month_without_listing_categories(self):
+    def test_view_renders_month_and_its_dollar_flow(self):
         response = self.client.get(self.url("budget_goals"), {"month": "2026-06"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["prev_month"], date(2026, 5, 1))
@@ -359,7 +359,9 @@ class BudgetGoalsReportTest(PlanFixture):
         self.assertContains(response, 'data-testid="plan-envelopes-card"')
         self.assertContains(response, 'data-testid="plan-overspent"')
         self.assertContains(response, "$100.00 this month")  # goals assigned in June
-        self.assertNotContains(response, "Zq Food")
+        self.assertContains(response, 'data-testid="dollar-flow"')
+        # Food holds $100; Rent is overspent, so it claims nothing and isn't drawn.
+        self.assertContains(response, "Zq Food")
         self.assertNotContains(response, "Zq Rent")
 
     def test_bad_month_falls_back_to_this_month(self):

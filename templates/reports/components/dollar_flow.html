@@ -1,0 +1,112 @@
+{% load i18n %}
+{% load currency_tags %}
+{% comment %}
+  The Dollar Flow: net worth account by account, then every dollar of it followed
+  to its job. Geometry comes from apps.reports.dollar_flow.dollar_flow(); `flow` is
+  its result. Numbers in SVG attributes go through stringformat so a locale's
+  decimal comma can't break them. The breakdown below the drawing is the same
+  figures as a list, unfolded: the drawing's table view.
+{% endcomment %}
+{% if flow.empty %}
+  <p class="text-sm text-base-content/70">{% translate "Nothing to show yet: add accounts and a budget to see where your money is going." %}</p>
+{% else %}
+  <div class="dollar-flow-scroll" data-testid="dollar-flow">
+    <svg class="dollar-flow" viewBox="0 0 {{ flow.width|stringformat:'d' }} {{ flow.height|stringformat:'.1f' }}"
+         style="min-width: {{ flow.min_width_px|stringformat:'d' }}px" role="img"
+         aria-label="{% blocktranslate trimmed with worth=flow.breakdown.net_worth|currency %}Net worth {{ worth }} and where each dollar of it is assigned. The same figures are listed below.{% endblocktranslate %}">
+      <g class="df-links">
+        {% for link in flow.links %}
+          <path class="df-link" data-kind="{{ link.kind }}" d="{{ link.path }}"><title>{{ link.source_label }} → {{ link.target_label }}: {{ link.amount|currency }}</title></path>
+        {% endfor %}
+      </g>
+      <g class="df-nodes">
+        {% for node in flow.nodes %}
+          <g class="df-node" data-kind="{{ node.kind }}" data-testid="dollar-flow-node" data-key="{{ node.key }}">
+            <title>{{ node.label }}: {{ node.amount|currency }}</title>
+            {% if node.url %}<a href="{{ node.url }}">{% endif %}
+            <rect x="{{ node.x|stringformat:'.1f' }}" y="{{ node.y|stringformat:'.1f' }}" width="{{ flow.node_width|stringformat:'d' }}" height="{{ node.h|stringformat:'.1f' }}" rx="2"></rect>
+            <text class="df-label" x="{{ node.label_x|stringformat:'.1f' }}" y="{{ node.label_y|stringformat:'.1f' }}">
+              <tspan dy="-0.25em">{{ node.short }}</tspan>
+              <tspan class="df-amount" x="{{ node.label_x|stringformat:'.1f' }}" dy="1.25em">{{ node.amount|currency }}</tspan>
+            </text>
+            {% if node.url %}</a>{% endif %}
+          </g>
+        {% endfor %}
+      </g>
+    </svg>
+  </div>
+  <p class="text-xs text-base-content/70 mt-2 sm:hidden">{% translate "Scroll sideways to follow the money to each goal and category." %}</p>
+  <p class="text-xs text-base-content/70 mt-2">
+    {% translate "Money is interchangeable, so the flow shows how much sits in each job, not which account holds it. Hover any band for its amount." %}
+  </p>
+
+  {% with b=flow.breakdown %}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4" data-testid="dollar-flow-breakdown">
+    <div class="rounded-box border border-base-300 p-4">
+      <h3 class="font-semibold mb-2">{% translate "What you have" %}</h3>
+      <ul class="space-y-1 text-sm">
+        {% for item in b.holds %}
+          <li class="flex justify-between gap-2"><span class="flex items-center gap-2 min-w-0"><span class="df-swatch" data-kind="asset"></span><span class="truncate">{{ item.label }}</span></span><span class="money">{{ item.amount|currency }}</span></li>
+        {% endfor %}
+        {% if b.owes %}
+          <li class="flex justify-between gap-2 border-t border-base-300 pt-1 font-medium"><span>{% translate "Assets" %}</span><span class="money">{{ b.total_held|currency }}</span></li>
+          {% for item in b.owes %}
+            <li class="flex justify-between gap-2"><span class="flex items-center gap-2 min-w-0"><span class="df-swatch" data-kind="debt"></span><span class="truncate">{% blocktranslate trimmed with name=item.label %}− {{ name }}{% endblocktranslate %}</span></span><span class="money">{{ item.amount|currency }}</span></li>
+          {% endfor %}
+        {% endif %}
+        <li class="flex justify-between gap-2 border-t border-base-300 pt-1 font-semibold" data-testid="dollar-flow-net-worth"><span>{% translate "= Net worth" %}</span><span class="money">{{ b.net_worth|currency }}</span></li>
+        {% if b.income_due %}
+          <li class="flex justify-between gap-2"><span>{% translate "+ Income still due" %}</span><span class="money">{{ b.income_due|currency }}</span></li>
+        {% endif %}
+        {% if b.gap %}
+          <li class="flex justify-between gap-2 text-error"><span>{% blocktranslate trimmed with label=b.gap_label %}+ {{ label }} (promised beyond what you have){% endblocktranslate %}</span><span class="money">{{ b.gap|currency }}</span></li>
+        {% endif %}
+      </ul>
+    </div>
+
+    <div class="rounded-box border border-base-300 p-4">
+      <div class="flex justify-between items-baseline gap-2 mb-2">
+        <h3 class="font-semibold">{% translate "What each dollar is for" %}</h3>
+        <span class="money font-semibold">{{ b.total|currency }}</span>
+      </div>
+      <ul class="space-y-2 text-sm">
+        {% for job in b.jobs %}
+          <li data-testid="dollar-flow-job" data-key="{{ job.key }}">
+            <div class="flex justify-between gap-2 font-medium">
+              <span class="flex items-center gap-2"><span class="df-swatch" data-kind="{{ job.key }}"></span>{{ job.label }}</span>
+              <span class="money">{{ job.amount|currency }} <span class="text-xs text-base-content/70 font-normal">· {{ job.pct|floatformat:0 }}%</span></span>
+            </div>
+            {% if job.entries %}
+              <ul class="mt-1 ml-5 space-y-0.5">
+                {% for item in job.entries %}
+                  <li class="flex justify-between gap-2">
+                    {% if item.url %}<a href="{{ item.url }}" class="link link-hover truncate">{{ item.label }}</a>{% else %}<span class="truncate">{{ item.label }}</span>{% endif %}
+                    <span class="money">{{ item.amount|currency }}</span>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+            {% if job.groups %}
+              <ul class="mt-1 ml-5 space-y-0.5">
+                {% for group in job.groups %}
+                  <li>
+                    <div class="flex justify-between gap-2">
+                      <span class="truncate">{{ group.label }}</span>
+                      <span class="money">{{ group.amount|currency }}</span>
+                    </div>
+                    <ul class="ml-4 mt-0.5 space-y-0.5 text-base-content/70">
+                      {% for item in group.entries %}
+                        <li class="flex justify-between gap-2" data-testid="dollar-flow-category"><span class="truncate">{{ item.label }}</span><span class="money">{{ item.amount|currency }}</span></li>
+                      {% endfor %}
+                    </ul>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endwith %}
+{% endif %}

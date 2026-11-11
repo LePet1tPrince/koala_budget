@@ -3,8 +3,8 @@ Data for the three reports beside Monthly Review (docs/reports-consolidation.md)
 
 - spending_report: Income & Spending -- money in/out over a range (Income Statement + Cash Flow)
 - net_worth_report: Net Worth -- balances and their change over a range (Balance Sheet + Net Worth Trend)
-- budget_goals_report: Budget & Goals -- where every dollar is going (Dollar Map + Goal Progress);
-  per-category budget progress lives on the budget page itself
+- budget_goals_report: Budget & Goals -- where every dollar is going (Dollar Flow + Dollar Map + Goal
+  Progress); per-category budget progress lives on the budget page itself
 
 Each builder returns a plain dict for its template; the views only parse params.
 """
@@ -231,17 +231,19 @@ def _balance_section(key, opening_items, closing_items):
 def budget_goals_report(book, month):
     """
     Where every dollar of net worth is going for one month: goals (each listed),
-    budget envelopes (one total -- the per-category detail lives on the budget
-    page) and what is still unassigned.
+    budget envelopes (one total, and per category in the Dollar Flow) and what is
+    still unassigned.
     """
     from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
     from apps.budget import ledger as budget_ledger
     from apps.budget.services import BudgetService, GoalService
     from apps.budget.unassigned import allocation_bar, budget_categories, compute_unassigned, waterfall
 
+    from .dollar_flow import account_balances, dollar_flow
+
     month = month.replace(day=1)
     categories = budget_categories(book)
-    unassigned = compute_unassigned(book, month, categories)
+    unassigned = compute_unassigned(book, month, categories, detail=True)
     goal_rows, goal_totals = GoalService(book).month_rows(month)
     goal_totals.update(
         {
@@ -277,4 +279,5 @@ def budget_goals_report(book, month):
         "goal_totals": goal_totals,
         "envelopes": envelopes,
         "income_due": unassigned.income_due,
+        "flow": dollar_flow(unassigned, account_balances(book, month), goal_url=lambda goal: goal.get_absolute_url()),
     }

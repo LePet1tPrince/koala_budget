@@ -972,6 +972,93 @@
   @apply translate-x-0;
 }
 
+/* Dollar Flow (templates/reports/components/dollar_flow.html): one colour per job,
+   the same tokens as the allocation bar above, so an entity keeps its colour across
+   both. Ribbons take the colour of where the money goes. */
+.dollar-flow-scroll {
+  @apply w-full overflow-x-auto;
+}
+
+.dollar-flow {
+  display: block;
+  width: 100%;
+  height: auto;
+  --df-asset: color-mix(in oklab, var(--color-base-content) 55%, var(--color-base-100));
+  --df-neutral: color-mix(in oklab, var(--color-base-content) 40%, var(--color-base-100));
+  font-size: 12px;
+}
+
+.dollar-flow,
+.df-swatch {
+  --df-goals: var(--color-accent);
+  --df-envelopes: var(--color-info);
+  --df-unassigned: var(--color-success);
+  --df-debts: var(--color-error);
+}
+
+.df-link {
+  fill: var(--df-neutral);
+  fill-opacity: 0.22;
+  transition: fill-opacity 120ms ease;
+}
+
+.df-link:hover {
+  fill-opacity: 0.5;
+}
+
+.df-link[data-kind='goals'] { fill: var(--df-goals); }
+.df-link[data-kind='envelopes'] { fill: var(--df-envelopes); }
+.df-link[data-kind='unassigned'],
+.df-link[data-kind='income_due'] { fill: var(--df-unassigned); }
+.df-link[data-kind='debts'],
+.df-link[data-kind='gap'] { fill: var(--df-debts); }
+
+.df-node rect { fill: var(--df-neutral); }
+.df-node[data-kind='asset'] rect,
+.df-node[data-kind='assets'] rect { fill: var(--df-asset); }
+.df-node[data-kind='goals'] rect,
+.df-node[data-kind='goal'] rect { fill: var(--df-goals); }
+.df-node[data-kind='envelopes'] rect,
+.df-node[data-kind='group'] rect,
+.df-node[data-kind='category'] rect { fill: var(--df-envelopes); }
+.df-node[data-kind='unassigned'] rect,
+.df-node[data-kind='income_due'] rect { fill: var(--df-unassigned); }
+.df-node[data-kind='debts'] rect,
+.df-node[data-kind='debt'] rect,
+.df-node[data-kind='gap'] rect { fill: var(--df-debts); }
+
+.df-label {
+  fill: var(--color-base-content);
+  font-weight: 600;
+}
+
+.df-label .df-amount {
+  fill: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.df-node a:hover .df-label > tspan:first-child {
+  text-decoration: underline;
+}
+
+.df-swatch {
+  @apply inline-block h-2.5 w-2.5 shrink-0 rounded-full;
+  background: color-mix(in oklab, var(--color-base-content) 55%, var(--color-base-100));
+}
+
+.df-swatch[data-kind='goals'] { background: var(--df-goals); }
+.df-swatch[data-kind='envelopes'] { background: var(--df-envelopes); }
+.df-swatch[data-kind='unassigned'] { background: var(--df-unassigned); }
+.df-swatch[data-kind='debt'],
+.df-swatch[data-kind='toward_debt'] { background: var(--df-debts); }
+
+@media (prefers-reduced-motion: reduce) {
+  .df-link {
+    transition: none;
+  }
+}
+
 /* "with income due" sits on its own row so it never collides with the net-worth
    label on a narrow bar. */
 .dollar-bar-marker.is-due {

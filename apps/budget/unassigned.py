@@ -182,6 +182,7 @@ def compute_unassigned(
                 {
                     "name": by_id[pk].name,
                     "group": by_id[pk].account_group.name,
+                    "account": by_id[pk],
                     "amount": amount,
                     "rollover": previous.get(pk, ZERO),
                 }
