@@ -42,8 +42,9 @@ from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.books.permissions import BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
-from apps.journal.models import JournalEntry, JournalLine
-from apps.journal.services import voiding
+from apps.journal.models import JournalEntry
+from apps.journal.services import period_lock, voiding
+from apps.journal.services.lines import repoint_line
 from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services.guards import (
     ReconciledLineError,
@@ -468,6 +469,9 @@ class BankFeedViewSet(
                 {"error": "One or more transactions not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        refused = period_lock.refused_rows(transactions, book=request.book, categorizes=True)
+        if refused:
+            return refused_response(refused)
 
         try:
             with transaction.atomic():
@@ -644,6 +648,12 @@ class BankFeedViewSet(
                 legs = parse_legs(data["splits"])
                 check_legs_total(legs, total=amount)
             except SplitError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if legs is not None or category_account is not None:
+            try:
+                period_lock.assert_date_open(request.book, data["date"])
+            except period_lock.PeriodLockedError as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Only categorized transactions get a journal entry; a blank category and
@@ -843,6 +853,16 @@ class BankFeedViewSet(
         except ReconciledLineError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            period_lock.assert_row_edit_allowed(
+                bank_tx,
+                book=request.book,
+                new_date=data["date"],
+                categorizes=category_account is not None or legs is not None,
+            )
+        except period_lock.PeriodLockedError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         # Get or create payee if provided
         payee = None
         payee_name = data.get("payee", "")
@@ -887,19 +907,14 @@ class BankFeedViewSet(
                     journal_entry.payee = payee
                     journal_entry.save()
 
-                    # Follow an account move before the lines are rewritten: everything
-                    # below finds the bank line by the transaction's *current* account.
-                    # Saved one at a time rather than through `QuerySet.update()` so the
-                    # audit signals fire.
-                    if old_account != bank_account:
-                        for line in journal_entry.lines.filter(account=old_account):
-                            line.account = bank_account
-                            line.save()
-
-                    apply_splits(bank_tx, entry_legs, total=amount)
+                    # Follow an account move before the lines are rewritten: the writer
+                    # finds the bank line by the transaction's *current* account, so the
+                    # old account's lines are re-pointed first (one save at a time, so
+                    # the audit signals fire).
+                    moved = journal_entry.lines.filter(account=old_account) if old_account != bank_account else ()
+                    apply_splits(bank_tx, entry_legs, total=amount, move_lines=moved)
                 else:
-                    # Create the entry with a placeholder bank line; `apply_splits`
-                    # immediately gives it the right side and amount.
+                    # Create the entry; `apply_splits` writes its bank line and legs.
                     journal_entry = JournalEntry.objects.create(
                         book=request.book,
                         entry_date=data["date"],
@@ -907,13 +922,6 @@ class BankFeedViewSet(
                         payee=payee,
                         source=JournalEntry.SOURCE_MANUAL,
                         status=JournalEntry.STATUS_POSTED,
-                    )
-                    JournalLine.objects.create(
-                        journal_entry=journal_entry,
-                        book=request.book,
-                        account=bank_account,
-                        dr_amount=Decimal("0"),
-                        cr_amount=Decimal("0"),
                     )
 
                     bank_tx.journal_entry = journal_entry
@@ -1447,7 +1455,9 @@ class BankFeedViewSet(
         # so a selection spanning several accounts says which rows to deselect.
         refused = []
         for tx in transactions:
-            error = self._batch_edit_refusal(tx, category_account, target_account, new_date)
+            error = self._batch_edit_refusal(tx, category_account, target_account, new_date) or period_lock.row_refusal(
+                tx, book=request.book, new_date=new_date, categorizes=category_account is not None
+            )
             if error:
                 refused.append({"kind": "row", "id": tx.id, "error": str(error)})
         if refused:
@@ -1533,11 +1543,10 @@ class BankFeedViewSet(
                     old_account = tx.account
                     tx.account = target_account
                     if tx.journal_entry:
-                        for line in tx.journal_entry.lines.all():
-                            if line.account == old_account:
-                                line.account = target_account
-                                line.save()
-                                break
+                        lines = tx.journal_entry.lines.all()
+                        home = next((line for line in lines if line.account == old_account), None)
+                        if home is not None:
+                            repoint_line(home, target_account)
 
             # --- Payee ---
             if payee_name is not None:
@@ -1581,6 +1590,7 @@ class BankFeedViewSet(
         if entry is None:
             return
         assert_entry_removable(entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category"))
+        period_lock.assert_entry_mutable(entry, book=bank_tx.book)
 
         # A transfer's counterpart mirror leg only exists to surface the shared
         # entry in the other feed; drop it so it doesn't linger as an orphan.
@@ -1663,6 +1673,9 @@ class BankFeedViewSet(
         ).select_related("journal_entry")
 
         selected = list(transactions)
+        refused = period_lock.refused_rows([tx for tx in selected if tx.journal_entry_id], book=request.book)
+        if refused:
+            return refused_response(refused)
         journal_entry_ids = [tx.journal_entry_id for tx in selected if tx.journal_entry_id]
 
         # Delete both legs of any transfer being removed (the mirror leg may not be

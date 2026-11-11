@@ -122,6 +122,12 @@ export interface TransactionDetail {
      */
     readonly hasNormalAccountSide: boolean;
     /**
+     * Why the transaction is read-only (a closed period), or null. Shown in place of the form.
+     * @type {string}
+     * @memberof TransactionDetail
+     */
+    readonly lockedReason: string | null;
+    /**
      * 
      * @type {string}
      * @memberof TransactionDetail
@@ -149,6 +155,7 @@ export function instanceOfTransactionDetail(value: object): value is Transaction
     if (!('isMirror' in value) || value['isMirror'] === undefined) return false;
     if (!('isReconciled' in value) || value['isReconciled'] === undefined) return false;
     if (!('hasNormalAccountSide' in value) || value['hasNormalAccountSide'] === undefined) return false;
+    if (!('lockedReason' in value) || value['lockedReason'] === undefined) return false;
     if (!('capabilities' in value) || value['capabilities'] === undefined) return false;
     return true;
 }
@@ -179,6 +186,7 @@ export function TransactionDetailFromJSONTyped(json: any, ignoreDiscriminator: b
         'isMirror': json['is_mirror'],
         'isReconciled': json['is_reconciled'],
         'hasNormalAccountSide': json['has_normal_account_side'],
+        'lockedReason': json['locked_reason'],
         'capabilities': json['capabilities'],
     };
 }
@@ -187,7 +195,7 @@ export function TransactionDetailFromJSONTyped(json: any, ignoreDiscriminator: b
       return TransactionDetailToJSONTyped(json, false);
   }
 
-  export function TransactionDetailToJSONTyped(value?: Omit<TransactionDetail, 'payee_name'|'account'|'category'|'is_split'|'splits'|'inflow'|'outflow'|'bank_source'|'is_mirror'|'is_reconciled'|'has_normal_account_side'|'capabilities'> | null, ignoreDiscriminator: boolean = false): any {
+  export function TransactionDetailToJSONTyped(value?: Omit<TransactionDetail, 'payee_name'|'account'|'category'|'is_split'|'splits'|'inflow'|'outflow'|'bank_source'|'is_mirror'|'is_reconciled'|'has_normal_account_side'|'locked_reason'|'capabilities'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
