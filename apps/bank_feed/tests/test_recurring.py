@@ -210,6 +210,16 @@ class CreateRecurringTest(RecurringFixture):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(BankTransaction.objects.exists())
 
+    def test_a_categorized_start_in_a_closed_period_is_refused(self):
+        self.book.locked_through = date(2026, 10, 31)
+        self.book.save(update_fields=["locked_through"])
+
+        response = self.create(date="2026-10-17", category=self.rent.id, recurrence={"frequency": "monthly"})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(RecurringTransaction.objects.exists())
+        self.assertFalse(BankTransaction.objects.exists())
+
     def test_without_recurrence_nothing_repeats(self):
         response = self.create(date="2026-11-05", category=self.rent.id)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -252,6 +262,18 @@ class MaterializeTest(RecurringFixture):
         r.refresh_from_db()
         recurring.materialize(r)
         self.assertEqual(BankTransaction.objects.filter(recurring=r, journal_entry__isnull=True).count(), 2)
+
+    def test_an_occurrence_in_a_closed_period_arrives_uncategorized(self):
+        r = self.make_rule()
+        self.book.locked_through = date(2026, 10, 31)
+        self.book.save(update_fields=["locked_through"])
+
+        self.assertEqual(recurring.materialize(r), 2)
+
+        closed = BankTransaction.objects.get(recurring=r, posted_date=date(2026, 10, 5))
+        open_ = BankTransaction.objects.get(recurring=r, posted_date=date(2026, 11, 5))
+        self.assertIsNone(closed.journal_entry)
+        self.assertEqual({line.account for line in open_.journal_entry.lines.all()}, {self.bank, self.fun})
 
     def test_end_date_stops_it(self):
         r = self.make_rule(end_date=date(2026, 10, 31))

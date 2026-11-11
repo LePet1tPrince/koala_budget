@@ -582,8 +582,14 @@ class AccountCreateView(AccountViewMixin, CreateView):
         return response
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class AccountDetailView(AccountViewMixin, DetailView):
-    """An account: what it is, its statements, and its activity over a date range."""
+    """
+    An account: what it is, its statements, and its activity over a date range.
+
+    ensure_csrf_cookie: the activity edit modal PATCHes the transactions API
+    with the token read from the cookie.
+    """
 
     def get_queryset(self):
         return super().get_queryset().select_related("account_group", "institution")
@@ -619,6 +625,11 @@ class AccountDetailView(AccountViewMixin, DetailView):
         from apps.budget.models import GoalAccountLink
 
         context["feeds_goal"] = GoalAccountLink.objects.open().filter(account=account).select_related("goal").first()
+
+        # Activity rows open the Transactions page's edit modal.
+        from apps.journal.views import transaction_editor_pickers
+
+        context.update(transaction_editor_pickers())
 
         return_to = get_return_to(self.request)
         context["back"] = back_link(

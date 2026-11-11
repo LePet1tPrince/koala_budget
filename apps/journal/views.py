@@ -44,7 +44,8 @@ from .serializers import (
     TransactionRowSerializer,
     TransactionStatusRequestSerializer,
 )
-from .services import voiding
+from .services import period_lock, voiding
+from .services.lines import repoint_line
 from .services.sides import UnsupportedEntry
 from .services.simple_edit import (
     EditRefused,
@@ -98,6 +99,13 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         """Create journal entry in the current book."""
         serializer.save(book=self.request.book)
 
+    def destroy(self, request, *args, **kwargs):
+        try:
+            period_lock.assert_entry_mutable(self.get_object(), book=request.book)
+        except period_lock.PeriodLockedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=["post"])
     def post_entry(self, request, pk=None, team_slug=None, book_slug=None):
         """
@@ -117,6 +125,10 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
                 {"error": "Cannot post an unbalanced journal entry."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        try:
+            period_lock.assert_entry_mutable(journal_entry, book=request.book)
+        except period_lock.PeriodLockedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         journal_entry.status = JournalEntry.STATUS_POSTED
         journal_entry.save()
@@ -263,6 +275,13 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         journal_entry = instance.journal_entry
         journal_entry.delete()
 
+    def destroy(self, request, *args, **kwargs):
+        try:
+            period_lock.assert_entry_mutable(self.get_object().journal_entry, book=request.book)
+        except period_lock.PeriodLockedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
     @extend_schema(
         operation_id="simple_lines_recategorize",
         tags=["journal"],
@@ -310,11 +329,11 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
 
         try:
             assert_line_mutable(line, new_account=new_category)
-        except ReconciledLineError as e:
+            period_lock.assert_entry_mutable(line.journal_entry, book=request.book)
+        except (ReconciledLineError, period_lock.PeriodLockedError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        line.account = new_category
-        line.save()
+        repoint_line(line, new_category)
 
         # Moving the category side onto another feed account turns the entry into a
         # transfer, which the bank feed shows in both accounts via a mirror leg.
@@ -717,16 +736,6 @@ def transactions_home(request, team_slug, book_slug):
         "transactions_facets": f"/a/{team_slug}/{book_slug}/journal/api/transactions/facets/",
     }
 
-    # The edit modal's account and payee pickers, served with the page the same
-    # way `bank_feed_home` serves them. A fetch on open would make the first row
-    # click wait on a round trip for a list that rarely changes.
-    # System accounts stay (an opening-balance entry keeps its own category);
-    # budget buckets never appear in a transaction.
-    all_accounts = (
-        Account.for_book.exclude_budget_buckets().select_related("account_group", "institution").order_by("name")
-    )
-    all_payees = Payee.for_book.all().order_by("name")
-
     return render(
         request,
         "journal/transactions_home.html",
@@ -735,10 +744,29 @@ def transactions_home(request, team_slug, book_slug):
             "page_title": _("Transactions | {name}").format(name=book_display_name(request.book)),
             "api_urls": api_urls,
             "initial_filters": _initial_account_filters(request),
-            "all_accounts": SimpleAccountSerializer(all_accounts, many=True).data,
-            "all_payees": PayeeSerializer(all_payees, many=True).data,
+            **transaction_editor_pickers(),
         },
     )
+
+
+def transaction_editor_pickers():
+    """
+    The transaction edit modal's account and payee pickers, for any page that
+    hosts it (Transactions, an account's activity). Served with the page the same
+    way `bank_feed_home` serves them: a fetch on open would make the first row
+    click wait on a round trip for a list that rarely changes.
+
+    System accounts stay (an opening-balance entry keeps its own category);
+    budget buckets never appear in a transaction.
+    """
+    all_accounts = (
+        Account.for_book.exclude_budget_buckets().select_related("account_group", "institution").order_by("name")
+    )
+    all_payees = Payee.for_book.all().order_by("name")
+    return {
+        "all_accounts": SimpleAccountSerializer(all_accounts, many=True).data,
+        "all_payees": PayeeSerializer(all_payees, many=True).data,
+    }
 
 
 def _initial_account_filters(request):

@@ -29,6 +29,7 @@ from apps.bank_feed.models import BankTransaction
 from apps.reconciliation.services.guards import ReconciledLineError, assert_entry_removable
 
 from ..models import JournalEntry
+from .period_lock import PeriodLockedError, assert_entry_mutable
 
 
 class VoidRefused(ValueError):
@@ -68,7 +69,9 @@ def _collect(entries, rows):
             targets.loose_rows[row.pk] = row
     targets.entries = {
         entry.pk: entry
-        for entry in JournalEntry.objects.filter(pk__in=list(targets.asked_by)).prefetch_related("lines")
+        for entry in JournalEntry.objects.filter(pk__in=list(targets.asked_by))
+        .select_related("book")
+        .prefetch_related("lines")
     }
     return targets
 
@@ -94,7 +97,8 @@ def void(*, entries=(), rows=()):
         _kind, _ident, own_account_id = targets.asked_by[entry_id]
         try:
             assert_entry_removable(entry, own_account_id=own_account_id, verb=_("voiding it"))
-        except ReconciledLineError as exc:
+            assert_entry_mutable(entry)
+        except (ReconciledLineError, PeriodLockedError) as exc:
             refused.append(_refusal(targets, entry_id, exc))
     if refused:
         raise VoidRefused(refused)
@@ -126,15 +130,21 @@ def restore(*, entries=(), rows=()):
     """
     targets = _collect(entries, rows)
 
-    refused = [
-        _refusal(
-            targets,
-            entry_id,
-            _("This is a reconciliation adjustment from an undone statement. Finish the statement again instead."),
-        )
-        for entry_id, entry in targets.entries.items()
-        if entry.status == JournalEntry.STATUS_VOID and entry.source == JournalEntry.SOURCE_RECONCILIATION
-    ]
+    refused = []
+    for entry_id, entry in targets.entries.items():
+        if entry.status != JournalEntry.STATUS_VOID:
+            continue
+        if entry.source == JournalEntry.SOURCE_RECONCILIATION:
+            message = _(
+                "This is a reconciliation adjustment from an undone statement. Finish the statement again instead."
+            )
+            refused.append(_refusal(targets, entry_id, message))
+            continue
+        # Restoring brings an entry back into the closed period's balances.
+        try:
+            assert_entry_mutable(entry)
+        except PeriodLockedError as exc:
+            refused.append(_refusal(targets, entry_id, exc))
     if refused:
         raise VoidRefused(refused)
 

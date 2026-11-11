@@ -81,6 +81,15 @@ class Book(BaseModel):
         validators=[MinValueValidator(1), MaxValueValidator(MAX_HOUSEHOLD_ADULTS)],
         help_text=_("Adults who share this book's net worth, for comparing it with other people's."),
     )
+    # The last day of the closed period: no transaction dated on or before it may be
+    # created, edited, re-dated, deleted, voided or restored (budget entries aside).
+    # Null = nothing is closed. Set by an admin on the book's settings page; the rule
+    # itself is `apps.journal.services.period_lock`.
+    locked_through = models.DateField(
+        null=True,
+        blank=True,
+        help_text=_("Transactions dated on or before this day can't be changed."),
+    )
     sort_order = models.IntegerField(default=0)
 
     class Meta:

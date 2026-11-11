@@ -6,7 +6,7 @@
 
 **Folder layout:**
 ```
-apps/              # 19 Django apps (accounts, journal, budget, bank_feed, plaid, chat, ai, teams, users, …)
+apps/              # Django apps (accounts, journal, budget, bank_feed, plaid, teams, users, …)
 assets/javascript/ # React/Alpine.js components embedded in Django templates
 frontend/          # Standalone React SPA (auth flows only)
 templates/         # Django server-rendered templates
@@ -25,7 +25,6 @@ deploy/            # Docker Compose and DigitalOcean configs
 | `budget` | Monthly budgets and savings goals — Budget, Goal, GoalAllocation |
 | `bank_feed` | Transaction import staging — BankTransaction |
 | `plaid` | Plaid live-sync integration — PlaidItem, PlaidAccount |
-| `chat` / `ai` | "Ask Koala" AI chat — still the Pegasus demo agents (weather, admin DB/email); no access to budget data |
 | `teams` | People and billing — Team, Membership, Invitation |
 | `books` | The money tenant — Book (a set of books), request plumbing, legacy redirect, book settings |
 | `users` | Custom user model, avatars, preferences |
@@ -80,7 +79,8 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Balances count only `counted_entries()` (`apps/journal/models.py`); `transaction_entries()` excludes budget entries from anything presented as transactions.
 - Void/restore only via `apps/journal/services/voiding.py` (`NoBypassingWritesTest` enforces it).
 - Budget amounts and goal allocations live only in `SOURCE_BUDGET` journal entries; write via `apps/budget/ledger.py` only.
-- Feed transaction journal lines: `apps/bank_feed/services/splits.py::write_lines` (never delete/recreate lines — it drops `is_reconciled`). Transfer mirrors: `transfer_mirror.sync_transfer`.
+- Transaction journal lines: `apps/journal/services/lines.py::write_lines` for every categorization (never delete/recreate lines — it drops `is_reconciled`; `LinesAreWrittenInOnePlaceTest` enforces it). Transfer mirrors: `transfer_mirror.sync_transfer`.
+- Closed periods (`Book.locked_through`): call `apps/journal/services/period_lock.py` from any new transaction write path; whole-book importers run under `period_lock.exempt()`.
 - Reconciled-line rules: call `apps.reconciliation.services.guards`; category rules: `apps.accounts.guards.assert_category_allowed`. Don't restate them.
 - Unassigned: `apps/budget/unassigned.py::compute_unassigned` is the single source.
 - Manual feed rows: `apps/bank_feed/services/manual.py::create_manual_transaction` (the feed API's create and recurring schedules). Recurring occurrences: `services/recurring.py::materialize` only.
@@ -97,7 +97,7 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Backend tests: `DJANGO_SETTINGS_MODULE=koala_budget.settings_test` (as `make test` does).
 - E2E in a sandbox: don't run `playwright install`; point at the installed browser. Never run E2E and the Django test runner at once (shared test DB).
 - Regenerate `api-client`: `manage.py spectacular --file schema.yml`, then `java -jar openapi-generator-cli.jar generate -i schema.yml -g typescript-fetch -o …` (7.9.0); keep `api-client/package.json`.
-- Don't import heavy SDKs (`litellm`, `pydantic_ai`, `plaid`) at module level in anything the URLconf or models import — import inside the function. Each adds 1–2s to every dev-server reload.
+- Don't import heavy SDKs (`plaid`) at module level in anything the URLconf or models import — import inside the function. Each adds 1–2s to every dev-server reload.
 - Plaid tests: mock at `apps.plaid.services.*`; a `MagicMock` task id in a DRF response hangs the test — set `delay.return_value.id`.
 
 ---
