@@ -59,6 +59,7 @@ export default defineConfig({
         'account-balance-chart': path.resolve(__dirname, './assets/javascript/reports/account-balance-chart.js'),
         'account-budget-chart': path.resolve(__dirname, './assets/javascript/reports/account-budget-chart.js'),
         'dollar-map-chart': path.resolve(__dirname, './assets/javascript/reports/dollar-map-chart.js'),
+        'dollar-flow-filters': path.resolve(__dirname, './assets/javascript/reports/dollar-flow-filters.js'),
         'unassigned-pill': path.resolve(__dirname, './assets/javascript/unassigned/unassigned-pill.js'),
       },
       output: {

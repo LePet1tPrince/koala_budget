@@ -228,11 +228,11 @@ def _balance_section(key, opening_items, closing_items):
 # --- C. Budget & Goals ------------------------------------------------------------
 
 
-def budget_goals_report(book, month):
+def budget_goals_report(book, month, hidden=()):
     """
     Where every dollar of net worth is going for one month: goals (each listed),
     budget envelopes (one total, and per category in the Dollar Flow) and what is
-    still unassigned.
+    still unassigned. `hidden` switches parts of the Dollar Flow off (see `dollar_flow`).
     """
     from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
     from apps.budget import ledger as budget_ledger
@@ -285,5 +285,10 @@ def budget_goals_report(book, month):
         "goal_totals": goal_totals,
         "envelopes": envelopes,
         "expected_income_label": EXPECTED_INCOME_LABEL,
-        "flow": dollar_flow(unassigned, account_balances(book, month), goal_url=lambda goal: goal.get_absolute_url()),
+        "flow": dollar_flow(
+            unassigned,
+            account_balances(book, month),
+            goal_url=lambda goal: goal.get_absolute_url(),
+            hidden=hidden,
+        ),
     }

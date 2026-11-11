@@ -6,9 +6,48 @@
   its result. Numbers in SVG attributes go through stringformat so a locale's
   decimal comma can't break them. The breakdown below the drawing is the same
   figures as a list, unfolded: the drawing's table view.
+
+  The filter bar sits outside #dollar-flow-body: dollar-flow-filters.js turns the
+  unchecked boxes into `hide` params, fetches the page and swaps only the body, so
+  an open dropdown stays open.
 {% endcomment %}
+{% if flow.filters %}
+  <form class="df-filters" method="get" data-dollar-flow-filters data-testid="dollar-flow-filters">
+    <input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
+    {% for level in flow.filters %}
+      <details class="dropdown" data-level="{{ level.key }}">
+        <summary class="btn btn-sm btn-outline gap-1" data-testid="dollar-flow-filter-{{ level.key }}">
+          {{ level.label }}
+          <span class="badge badge-sm badge-neutral{% if not level.hidden_count %} hidden{% endif %}" data-hidden-count title="{% translate 'Hidden' %}">{{ level.hidden_count }}</span><span class="sr-only">{% translate "hidden" %}</span>
+        </summary>
+        <div class="dropdown-content df-filter-menu">
+          <div class="flex justify-between gap-2 px-1 pb-1 mb-1 border-b border-base-300 text-xs">
+            <button type="button" class="link link-hover" data-set-all="true">{% translate "Show all" %}</button>
+            <button type="button" class="link link-hover" data-set-all="false">{% translate "Hide all" %}</button>
+          </div>
+          {% for option in level.options %}
+            <label class="df-filter-option">
+              <input type="checkbox" class="checkbox checkbox-xs" value="{{ option.value }}" {% if not option.hidden %}checked{% endif %} data-testid="dollar-flow-option">
+              <span class="min-w-0 flex-1">
+                <span class="block truncate">{{ option.label }}</span>
+                {% if option.note %}<span class="block truncate text-xs text-base-content/70">{{ option.note }}</span>{% endif %}
+              </span>
+              <span class="money text-xs text-base-content/70">{{ option.amount|currency }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </details>
+    {% endfor %}
+    <a href="?month={{ month|date:'Y-m' }}" class="btn btn-sm btn-ghost{% if not flow.hidden %} hidden{% endif %}" data-reset-filters>{% translate "Reset" %}</a>
+  </form>
+{% endif %}
+<div id="dollar-flow-body" aria-live="polite">
 {% if flow.empty %}
-  <p class="text-sm text-base-content/70">{% translate "Nothing to show yet: add accounts and a budget to see where your money is going." %}</p>
+  {% if flow.hidden %}
+    <p class="text-sm text-base-content/70" data-testid="dollar-flow-all-hidden">{% translate "Everything is hidden. Turn something back on above, or reset the filters." %}</p>
+  {% else %}
+    <p class="text-sm text-base-content/70">{% translate "Nothing to show yet: add accounts and a budget to see where your money is going." %}</p>
+  {% endif %}
 {% else %}
   <div class="dollar-flow-scroll" data-testid="dollar-flow">
     <svg class="dollar-flow" viewBox="0 0 {{ flow.width|stringformat:'d' }} {{ flow.height|stringformat:'.1f' }}"
@@ -54,7 +93,10 @@
             <li class="flex justify-between gap-2"><span class="flex items-center gap-2 min-w-0"><span class="df-swatch" data-kind="debt"></span><span class="truncate">{% blocktranslate trimmed with name=item.label %}− {{ name }}{% endblocktranslate %}</span></span><span class="money">{{ item.amount|currency }}</span></li>
           {% endfor %}
         {% endif %}
-        <li class="flex justify-between gap-2 border-t border-base-300 pt-1 font-semibold" data-testid="dollar-flow-net-worth"><span>{% translate "= Net worth" %}</span><span class="money">{{ b.net_worth|currency }}</span></li>
+        <li class="flex justify-between gap-2 border-t border-base-300 pt-1 font-semibold" data-testid="dollar-flow-net-worth"><span>{% if b.book_net_worth is not None %}{% translate "= Net worth of the accounts shown" %}{% else %}{% translate "= Net worth" %}{% endif %}</span><span class="money">{{ b.net_worth|currency }}</span></li>
+        {% if b.book_net_worth is not None %}
+          <li class="flex justify-between gap-2 text-base-content/70" data-testid="dollar-flow-book-net-worth"><span>{% translate "Whole book, every account" %}</span><span class="money">{{ b.book_net_worth|currency }}</span></li>
+        {% endif %}
         {% if b.gap %}
           <li class="flex justify-between gap-2 text-error"><span>{% blocktranslate trimmed with label=b.gap_label %}+ {{ label }} (promised beyond what you have){% endblocktranslate %}</span><span class="money">{{ b.gap|currency }}</span></li>
         {% endif %}
@@ -116,3 +158,4 @@
   </div>
   {% endwith %}
 {% endif %}
+</div>

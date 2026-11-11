@@ -21,13 +21,22 @@ JUNE = date(2026, 6, 1)
 
 
 def balances(**amounts):
-    """(account, signed balance) pairs from name=amount; the name stands in for the account."""
-    return [(SimpleNamespace(name=name, account_group_id=1), D(str(v))) for name, v in amounts.items()]
+    """(account, signed balance) pairs from name=amount; a namespace stands in for the account."""
+    return [(SimpleNamespace(pk=100 + i, name=name), D(str(v))) for i, (name, v) in enumerate(amounts.items())]
 
 
 def unassigned(net_worth, goals=(), envelopes=(), income_due="0", expects_income=False):
-    goals = [{"name": n, "amount": D(str(a)), "goal": None} for n, a in goals]
-    envelopes = [{"name": n, "group": g, "amount": D(str(a))} for n, g, a in envelopes]
+    goals = [{"name": n, "amount": D(str(a)), "goal": SimpleNamespace(pk=200 + i)} for i, (n, a) in enumerate(goals)]
+    group_ids = {}
+    envelopes = [
+        {
+            "name": n,
+            "group": g,
+            "amount": D(str(a)),
+            "account": SimpleNamespace(pk=300 + i, account_group_id=group_ids.setdefault(g, 400 + len(group_ids))),
+        }
+        for i, (n, g, a) in enumerate(envelopes)
+    ]
     result = Unassigned(
         month=JUNE,
         net_worth=D(str(net_worth)),
@@ -65,6 +74,12 @@ class FlowAssertions:
 
     def keys(self, flow):
         return {n["key"]: n for n in flow["nodes"]}
+
+    def option(self, flow, level, label):
+        """The filter value for `label` in `level` ('assets', 'goals', 'categories', ...)."""
+        (lvl,) = [lvl for lvl in flow["filters"] if lvl["key"] == level]
+        (opt,) = [o for o in lvl["options"] if o["label"] == label]
+        return opt["value"]
 
 
 class DollarFlowShapeTest(FlowAssertions, SimpleTestCase):
@@ -183,7 +198,99 @@ class DollarFlowShapeTest(FlowAssertions, SimpleTestCase):
         self.assertLess(len(node["short"]), len(name))
 
     def test_nothing_to_draw(self):
-        self.assertEqual(dollar_flow(unassigned(0), []), {"empty": True})
+        self.assertEqual(dollar_flow(unassigned(0), []), {"empty": True, "filters": [], "hidden": []})
+
+
+class DollarFlowFilterTest(FlowAssertions, SimpleTestCase):
+    """Each level can be switched off; the picture still adds up."""
+
+    def setUp(self):
+        self.u = unassigned(
+            1000,
+            goals=[("Car", 300), ("Trip", 100)],
+            envelopes=[("Food", "Home", 150), ("Rent", "Home", 250), ("Gas", "Auto", 50)],
+        )
+        self.balances = balances(Checking=700, House=500, Visa=-200)
+        self.full = dollar_flow(self.u, self.balances)
+
+    def flow(self, *labels):
+        """The flow with each (level, label) hidden."""
+        return dollar_flow(self.u, self.balances, hidden={self.option(self.full, lvl, lbl) for lvl, lbl in labels})
+
+    def test_every_level_is_offered(self):
+        self.assertEqual(
+            [lvl["key"] for lvl in self.full["filters"]], ["assets", "debts", "jobs", "goals", "groups", "categories"]
+        )
+        self.assertEqual(self.full["hidden"], [])
+        categories = self.full["filters"][-1]["options"]
+        self.assertEqual({o["note"] for o in categories}, {"Home", "Auto"})
+
+    def test_hiding_an_asset_recomputes_net_worth_and_shows_the_gap(self):
+        flow = self.flow(("assets", "House"))
+        self.assertConserved(flow)
+        self.assertNoOverlap(flow)
+        nodes = self.keys(flow)
+        self.assertEqual(nodes["net_worth"]["amount"], D("500"))  # 700 − 200
+        self.assertEqual(nodes["gap"]["amount"], D("350"))  # 850 of claims, 500 to cover them
+        self.assertEqual(nodes["gap"]["label"], "Not covered")
+        self.assertNotIn("unassigned", nodes)
+        self.assertNotIn("House", {n["label"] for n in flow["nodes"]})
+        self.assertEqual(flow["breakdown"]["book_net_worth"], D("1000"))
+        self.assertEqual(flow["hidden"], ["acct:101"])
+
+    def test_hiding_a_debt_raises_what_the_accounts_shown_leave_free(self):
+        flow = self.flow(("debts", "Visa"))
+        self.assertConserved(flow)
+        nodes = self.keys(flow)
+        self.assertNotIn("debts", nodes)
+        self.assertEqual(nodes["unassigned"]["amount"], D("350"))  # 1200 − 850
+        self.assertEqual(nodes["unassigned"]["label"], "Unassigned, these accounts")
+
+    def test_hiding_a_goal_moves_its_money_to_hidden_not_unassigned(self):
+        flow = self.flow(("goals", "Car"))
+        self.assertConserved(flow)
+        nodes = self.keys(flow)
+        self.assertEqual(nodes["goals"]["amount"], D("100"))
+        self.assertEqual(nodes["hidden"]["amount"], D("300"))
+        self.assertEqual(nodes["unassigned"]["amount"], self.u.amount)  # unchanged: 150
+        self.assertIsNone(flow["breakdown"]["book_net_worth"])
+        self.assertEqual([j["key"] for j in flow["breakdown"]["jobs"]], ["goals", "envelopes", "unassigned", "hidden"])
+
+    def test_hiding_a_group_and_a_category(self):
+        flow = self.flow(("groups", "Auto"), ("categories", "Rent"))
+        self.assertConserved(flow)
+        nodes = self.keys(flow)
+        self.assertEqual(nodes["envelopes"]["amount"], D("150"))  # Food only
+        self.assertEqual(nodes["hidden"]["amount"], D("300"))  # Rent 250 + Auto 50
+        self.assertEqual([n["label"] for n in flow["nodes"] if n["kind"] == "category"], ["Food"])
+        (groups,) = [lvl for lvl in flow["filters"] if lvl["key"] == "groups"]
+        self.assertEqual(groups["hidden_count"], 1)
+
+    def test_hiding_a_whole_job(self):
+        flow = self.flow(("jobs", "Budget envelopes"), ("jobs", "Unassigned"))
+        self.assertConserved(flow)
+        nodes = self.keys(flow)
+        self.assertNotIn("envelopes", nodes)
+        self.assertNotIn("unassigned", nodes)
+        self.assertEqual(nodes["hidden"]["amount"], D("600"))  # 450 envelopes + 150 unassigned
+        self.assertEqual(nodes["goals"]["amount"], D("400"))
+
+    def test_hiding_everything_on_the_left_still_draws_the_claims(self):
+        flow = self.flow(("assets", "Checking"), ("assets", "House"), ("debts", "Visa"))
+        self.assertConserved(flow)
+        self.assertEqual(self.keys(flow)["gap"]["amount"], D("850"))
+
+    def test_hiding_everything(self):
+        hidden = {o["value"] for lvl in self.full["filters"] for o in lvl["options"]}
+        flow = dollar_flow(self.u, self.balances, hidden=hidden)
+        self.assertTrue(flow["empty"])
+        self.assertEqual(len(flow["hidden"]), len(hidden))
+        self.assertTrue(flow["filters"])
+
+    def test_unknown_values_are_ignored(self):
+        flow = dollar_flow(self.u, self.balances, hidden={"acct:999", "nonsense", "job:nope"})
+        self.assertEqual(flow["hidden"], [])
+        self.assertEqual([n["key"] for n in flow["nodes"]], [n["key"] for n in self.full["nodes"]])
 
 
 class DollarFlowReportTest(FlowAssertions, PlanFixture):
@@ -215,6 +322,19 @@ class DollarFlowReportTest(FlowAssertions, PlanFixture):
         self.assertContains(response, 'data-testid="dollar-flow-category"', count=1)
         self.assertContains(response, 'data-testid="dollar-flow-node"')
         self.assertContains(response, 'data-testid="dollar-flow-expected"')
+        self.assertContains(response, 'data-testid="dollar-flow-filters"')
+
+    def test_hide_param_filters_and_survives_month_links(self):
+        hide = f"cat:{self.food.pk}"
+        response = self.client.get(self.url("budget_goals"), {"month": "2026-06", "hide": [hide, "bogus"]})
+        self.assertEqual(response.status_code, 200)
+        flow = response.context["flow"]
+        self.assertEqual(flow["hidden"], [hide])
+        self.assertNotIn("Zq Food", [n["label"] for n in flow["nodes"] if n["kind"] == "category"])
+        self.assertEqual(response.context["flow_query"], f"hide=cat%3A{self.food.pk}")
+        self.assertContains(response, f"?month=2026-05&hide=cat%3A{self.food.pk}")
+        # Hiding a category doesn't change Unassigned.
+        self.assertEqual(response.context["unassigned"].amount, compute_unassigned(self.book, JUNE).amount)
 
 
 class DollarFlowIsolationTest(ConsolidatedReportsBase):

@@ -61,6 +61,9 @@ MAX_CATEGORIES = 6
 
 COL_ACCOUNTS, COL_ASSETS, COL_WORTH, COL_JOBS, COL_ITEMS, COL_CATEGORIES = range(COLUMNS)
 
+# The jobs a viewer can hide whole, as `job:<key>` in the hidden set.
+JOB_KEYS = ("goals", "envelopes", "unassigned")
+
 
 def account_balances(book, month):
     """
@@ -145,21 +148,35 @@ def _fill(graph, sources, sinks):
             j += 1
 
 
-def dollar_flow(unassigned, balances, goal_url=None):
+def dollar_flow(unassigned, balances, goal_url=None, hidden=()):
     """
-    The graph, its layout and a plain breakdown for one month.
+    The graph, its layout, a plain breakdown and the filter options for one month.
 
     `unassigned` is `compute_unassigned(..., detail=True)`; `balances` is
-    `account_balances()` for the same month. Returns {'empty': True} when there is
-    nothing to draw.
+    `account_balances()` for the same month. `hidden` is a set of option values
+    (see `_filters`) the viewer has switched off:
+
+    - **Accounts** (assets, debts) leave the picture, and Net worth becomes the net
+      worth of the accounts shown: "what if I left the house out?" The jobs keep
+      their full claims, so what the shown accounts can't cover appears as the gap.
+    - **Jobs, goals, budget groups and categories** leave the picture too, but the
+      money they hold doesn't become free: it goes to one neutral "Hidden" node, so
+      Unassigned stays the real figure.
+
+    Returns {'empty': True, ...} when there is nothing to draw.
     """
+    hidden = set(hidden)
     graph = _Graph()
+    jobs_hidden = {job for job in JOB_KEYS if f"job:{job}" in hidden}
 
     # --- What you have: accounts → Assets → Net worth / Debts --------------------
     # A card in credit holds money for you and an overdrawn account is owed, so
     # each side is by sign, not by account type.
-    holds = [{"label": a.name, "amount": v, "account": a} for a, v in balances if v > 0]
-    owes = [{"label": a.name, "amount": -v, "account": a} for a, v in balances if v < 0]
+    all_holds = [{"key": f"acct:{a.pk}", "label": a.name, "amount": v} for a, v in balances if v > 0]
+    all_owes = [{"key": f"acct:{a.pk}", "label": a.name, "amount": -v} for a, v in balances if v < 0]
+    holds = [i for i in all_holds if i["key"] not in hidden]
+    owes = [i for i in all_owes if i["key"] not in hidden]
+    accounts_filtered = len(holds) < len(all_holds) or len(owes) < len(all_owes)
     total_held = sum((i["amount"] for i in holds), ZERO)
     total_owed = sum((i["amount"] for i in owes), ZERO)
     net_worth = total_held - total_owed
@@ -171,19 +188,47 @@ def dollar_flow(unassigned, balances, goal_url=None):
         key = graph.node(f"asset:{idx}", item["label"], item["amount"], COL_ACCOUNTS, "asset")
         graph.link(key, assets, item["amount"])
 
+    # --- The claims, all of them and the ones shown -------------------------------
+    all_goals = [
+        {
+            "key": f"goal:{g['goal'].pk}",
+            "label": g["name"],
+            "amount": g["amount"],
+            "url": goal_url(g["goal"]) if goal_url else None,
+        }
+        for g in unassigned.detail.get("goals", [])
+        if g["amount"] > 0
+    ]
+    all_groups = _envelope_groups([e for e in unassigned.detail.get("envelopes", []) if e["amount"] > 0])
+    goal_items = [] if "goals" in jobs_hidden else [g for g in all_goals if g["key"] not in hidden]
+    groups = []
+    if "envelopes" not in jobs_hidden:
+        for group in all_groups:
+            entries = [c for c in group["entries"] if c["key"] not in hidden]
+            if group["key"] not in hidden and entries:
+                groups.append({**group, "entries": entries, "amount": sum((c["amount"] for c in entries), ZERO)})
+    goals_shown = sum((g["amount"] for g in goal_items), ZERO)
+    envelopes_shown = sum((g["amount"] for g in groups), ZERO)
+
+    # Every claim counts against net worth, shown or not: hiding a goal doesn't free its money.
+    claims = unassigned.goals + unassigned.envelopes
+    free = max(net_worth - claims, ZERO)  # unfiltered, exactly max(Unassigned, 0)
+    hidden_amount = claims - goals_shown - envelopes_shown + (free if "unassigned" in jobs_hidden else ZERO)
+
     # --- Net worth, and any gap, are what the jobs share -------------------------
     worth = (
         graph.node("net_worth", _("Net worth"), net_worth, COL_WORTH, "net_worth") if assets and net_worth > 0 else None
     )
-    goals_left = [g for g in unassigned.detail.get("goals", []) if g["amount"] > 0]
-    envelopes = [e for e in unassigned.detail.get("envelopes", []) if e["amount"] > 0]
-    claims = unassigned.goals + unassigned.envelopes
-    free = max(unassigned.amount, ZERO)
-    # The jobs claim more than there is: the gap is its own source. With a positive
-    # net worth it is exactly the Over-assigned figure.
-    gap = max(claims + free - max(net_worth, ZERO), ZERO)
+    # The jobs claim more than there is: the gap is its own source. Unfiltered, with
+    # a positive net worth, it is exactly the Over-assigned figure.
+    gap = max(claims - max(net_worth, ZERO), ZERO)
     if gap:
-        label = unassigned.label if net_worth >= 0 else _("Promised, not backed")
+        if accounts_filtered:
+            label = _("Not covered")
+        elif net_worth < 0:
+            label = _("Promised, not backed")
+        else:
+            label = unassigned.label
         graph.node("gap", label, gap, COL_WORTH, "gap")
 
     debts = graph.node("debts", _("Owed on debts"), total_owed, COL_WORTH, "debts") if total_owed else None
@@ -195,14 +240,17 @@ def dollar_flow(unassigned, balances, goal_url=None):
         graph.link("debt_beyond", debts, total_owed - total_held)
 
     # --- The jobs ---------------------------------------------------------------
+    free_label = _("Unassigned, these accounts") if accounts_filtered else unassigned.label
     sinks = []
-    if unassigned.goals > 0:
-        sinks.append((graph.node("goals", _("Goals"), unassigned.goals, COL_JOBS, "goals"), unassigned.goals))
-    if unassigned.envelopes > 0:
-        key = graph.node("envelopes", _("Budget envelopes"), unassigned.envelopes, COL_JOBS, "envelopes")
-        sinks.append((key, unassigned.envelopes))
-    if free > 0:
-        sinks.append((graph.node("unassigned", unassigned.label, free, COL_JOBS, "unassigned"), free))
+    if goals_shown > 0:
+        sinks.append((graph.node("goals", _("Goals"), goals_shown, COL_JOBS, "goals"), goals_shown))
+    if envelopes_shown > 0:
+        key = graph.node("envelopes", _("Budget envelopes"), envelopes_shown, COL_JOBS, "envelopes")
+        sinks.append((key, envelopes_shown))
+    if free > 0 and "unassigned" not in jobs_hidden:
+        sinks.append((graph.node("unassigned", free_label, free, COL_JOBS, "unassigned"), free))
+    if hidden_amount > 0:
+        sinks.append((graph.node("hidden", _("Hidden"), hidden_amount, COL_JOBS, "hidden"), hidden_amount))
     _fill(graph, [(worth, max(net_worth, ZERO)), ("gap", gap)], sinks)
 
     for idx, item in enumerate(
@@ -212,17 +260,12 @@ def dollar_flow(unassigned, balances, goal_url=None):
         graph.link(debts, key, item["amount"])
 
     # --- Each goal, each envelope -------------------------------------------------
-    goal_items = [
-        {"label": g["name"], "amount": g["amount"], "url": goal_url(g["goal"]) if goal_url else None}
-        for g in goals_left
-    ]
     for idx, item in enumerate(
         _fold(goal_items, MAX_GOALS, lambda n: ngettext("%(n)d more goal", "%(n)d more goals", n) % {"n": n})
     ):
         key = graph.node(f"goal:{idx}", item["label"], item["amount"], COL_ITEMS, "goal", item.get("url"))
         graph.link("goals", key, item["amount"])
 
-    groups = _envelope_groups(envelopes)
     for g_idx, group in enumerate(groups):
         group_key = graph.node(f"group:{g_idx}", group["label"], group["amount"], COL_ITEMS, "group")
         graph.link("envelopes", group_key, group["amount"])
@@ -236,8 +279,14 @@ def dollar_flow(unassigned, balances, goal_url=None):
             key = graph.node(f"category:{g_idx}:{c_idx}", item["label"], item["amount"], COL_CATEGORIES, "category")
             graph.link(group_key, key, item["amount"])
 
-    if not graph.links:
-        return {"empty": True}
+    filters = _filters(all_holds, all_owes, all_goals, all_groups, unassigned, hidden)
+    filter_state = {
+        "filters": filters,
+        "hidden": [o["value"] for level in filters for o in level["options"] if o["hidden"]],
+    }
+    # Nothing but unbacked claims flowing into Hidden is nothing to look at.
+    if all(link["source"] == "gap" and link["target"] == "hidden" for link in graph.links):
+        return {"empty": True, **filter_state}
 
     layout = _layout(graph)
     total = sum((amount for _key, amount in sinks), ZERO)
@@ -247,6 +296,8 @@ def dollar_flow(unassigned, balances, goal_url=None):
         "total_held": total_held,
         "total_owed": total_owed,
         "net_worth": net_worth,
+        # Net worth above is of the accounts shown; this is the whole book's.
+        "book_net_worth": unassigned.net_worth if accounts_filtered else None,
         "gap": gap,
         "gap_label": graph.nodes["gap"]["label"] if gap else None,
         # Beside the flow, never in it; only for books that budget income ahead.
@@ -258,58 +309,101 @@ def dollar_flow(unassigned, balances, goal_url=None):
         if unassigned.expects_income
         else None,
         "total": total,
-        "jobs": _jobs(graph, goal_items, groups, free, total, unassigned),
+        "jobs": _jobs(goal_items, groups, free, free_label, hidden_amount, total, jobs_hidden),
     }
-    return {"empty": False, **layout, "breakdown": breakdown}
+    return {"empty": False, **layout, "breakdown": breakdown, **filter_state}
+
+
+def _filters(holds, owes, goals, groups, unassigned, hidden):
+    """
+    One level per column of the drawing, each a list of options whose `value` is
+    what `hidden` holds. A level with nothing in it is left out.
+    """
+
+    def option(value, label, amount, note=None):
+        return {"value": value, "label": str(label), "amount": amount, "note": note, "hidden": value in hidden}
+
+    claims = unassigned.goals + unassigned.envelopes
+    jobs = [
+        (f"job:{key}", label, amount)
+        for key, label, amount in (
+            ("goals", _("Goals"), unassigned.goals),
+            ("envelopes", _("Budget envelopes"), unassigned.envelopes),
+            ("unassigned", unassigned.label, max(unassigned.net_worth - claims, ZERO)),
+        )
+        if amount > 0
+    ]
+    levels = [
+        ("assets", _("Assets"), [option(i["key"], i["label"], i["amount"]) for i in holds]),
+        ("debts", _("Debts"), [option(i["key"], i["label"], i["amount"]) for i in owes]),
+        ("jobs", _("Jobs"), [option(*job) for job in jobs]),
+        ("goals", _("Goals"), [option(g["key"], g["label"], g["amount"]) for g in goals]),
+        ("groups", _("Budget groups"), [option(g["key"], g["label"], g["amount"]) for g in groups]),
+        (
+            "categories",
+            _("Categories"),
+            [option(c["key"], c["label"], c["amount"], g["label"]) for g in groups for c in g["entries"]],
+        ),
+    ]
+    return [
+        {
+            "key": key,
+            "label": str(label),
+            "options": options,
+            "hidden_count": sum(1 for o in options if o["hidden"]),
+        }
+        for key, label, options in levels
+        if options
+    ]
 
 
 def _envelope_groups(envelopes):
     """Envelopes by expense group, groups and categories largest first."""
     groups = {}
     for e in envelopes:
-        account = e.get("account")
-        key = account.account_group_id if account is not None else e["group"]
-        group = groups.setdefault(key, {"label": e["group"], "amount": ZERO, "entries": []})
+        account = e["account"]
+        group = groups.setdefault(
+            account.account_group_id,
+            {"key": f"group:{account.account_group_id}", "label": e["group"], "amount": ZERO, "entries": []},
+        )
         group["amount"] += e["amount"]
-        group["entries"].append({"label": e["name"], "amount": e["amount"]})
+        group["entries"].append({"key": f"cat:{account.pk}", "label": e["name"], "amount": e["amount"]})
     ordered = sorted(groups.values(), key=lambda g: g["amount"], reverse=True)
     for group in ordered:
         group["entries"].sort(key=lambda i: i["amount"], reverse=True)
     return ordered
 
 
-def _jobs(graph, goal_items, groups, free, total, unassigned):
-    """Every job and what's in it, unfolded, each with its share of the whole."""
+def _jobs(goal_items, groups, free, free_label, hidden_amount, total, jobs_hidden):
+    """Every job shown and what's in it, unfolded, each with its share of the whole."""
     jobs = []
-    if unassigned.goals > 0:
+    if goal_items:
         items = sorted(goal_items, key=lambda i: i["amount"], reverse=True)
-        for item in items:
-            item["pct"] = _pct(item["amount"], total)
+        amount = sum((i["amount"] for i in items), ZERO)
         jobs.append(
             {
                 "key": "goals",
-                "label": graph.nodes["goals"]["label"],
-                "amount": unassigned.goals,
-                "pct": _pct(unassigned.goals, total),
-                "entries": items,
+                "label": _("Goals"),
+                "amount": amount,
+                "pct": _pct(amount, total),
+                "entries": [{**i, "pct": _pct(i["amount"], total)} for i in items],
             }
         )
-    if unassigned.envelopes > 0:
-        for group in groups:
-            group["pct"] = _pct(group["amount"], total)
-            for item in group["entries"]:
-                item["pct"] = _pct(item["amount"], total)
+    if groups:
+        amount = sum((g["amount"] for g in groups), ZERO)
         jobs.append(
             {
                 "key": "envelopes",
-                "label": graph.nodes["envelopes"]["label"],
-                "amount": unassigned.envelopes,
-                "pct": _pct(unassigned.envelopes, total),
-                "groups": groups,
+                "label": _("Budget envelopes"),
+                "amount": amount,
+                "pct": _pct(amount, total),
+                "groups": [{**g, "pct": _pct(g["amount"], total)} for g in groups],
             }
         )
-    if free > 0:
-        jobs.append({"key": "unassigned", "label": str(unassigned.label), "amount": free, "pct": _pct(free, total)})
+    if free > 0 and "unassigned" not in jobs_hidden:
+        jobs.append({"key": "unassigned", "label": str(free_label), "amount": free, "pct": _pct(free, total)})
+    if hidden_amount > 0:
+        jobs.append({"key": "hidden", "label": _("Hidden"), "amount": hidden_amount, "pct": _pct(hidden_amount, total)})
     return jobs
 
 

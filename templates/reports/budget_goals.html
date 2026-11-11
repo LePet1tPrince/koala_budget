@@ -37,11 +37,11 @@
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <div class="join">
-        <a href="?month={{ prev_month|date:'Y-m' }}" class="btn btn-outline btn-sm join-item" data-testid="plan-prev-month" aria-label="{% translate 'Previous month' %}">
+        <a href="?month={{ prev_month|date:'Y-m' }}{% if flow_query %}&{{ flow_query }}{% endif %}" data-keep-flow-filters class="btn btn-outline btn-sm join-item" data-testid="plan-prev-month" aria-label="{% translate 'Previous month' %}">
           {% icon "chevron-left" class="inline-block shrink-0 w-4 h-4" %}
         </a>
-        <a href="?" class="btn btn-outline btn-sm join-item">{% translate "This month" %}</a>
-        <a href="?month={{ next_month|date:'Y-m' }}" class="btn btn-outline btn-sm join-item" data-testid="plan-next-month" aria-label="{% translate 'Next month' %}">
+        <a href="?{{ flow_query }}" data-keep-flow-filters class="btn btn-outline btn-sm join-item">{% translate "This month" %}</a>
+        <a href="?month={{ next_month|date:'Y-m' }}{% if flow_query %}&{{ flow_query }}{% endif %}" data-keep-flow-filters class="btn btn-outline btn-sm join-item" data-testid="plan-next-month" aria-label="{% translate 'Next month' %}">
           {% icon "chevron-right" class="inline-block shrink-0 w-4 h-4" %}
         </a>
       </div>
@@ -255,4 +255,5 @@
 {% block page_js %}
 {{ waterfall|json_script:'dollar-map-data' }}
 {% vite_asset 'assets/javascript/reports/dollar-map-chart.js' %}
+{% vite_asset 'assets/javascript/reports/dollar-flow-filters.js' %}
 {% endblock %}

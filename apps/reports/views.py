@@ -180,11 +180,13 @@ def budget_goals(request, team_slug, book_slug):
         year, month_num = map(int, request.GET.get("month", "").split("-")[:2])
         month = date(year, month_num, 1)
 
-    report = budget_goals_report(request.book, month)
+    report = budget_goals_report(request.book, month, hidden=request.GET.getlist("hide"))
     return render(
         request,
         "reports/budget_goals.html",
         {
+            # Kept across month changes; only values that matched something survive.
+            "flow_query": urlencode([("hide", value) for value in report["flow"]["hidden"]]),
             "active_tab": "reports",
             "active_report": "budget_goals",
             "page_title": _("Budget & Goals"),

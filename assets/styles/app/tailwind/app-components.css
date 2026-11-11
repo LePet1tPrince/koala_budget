@@ -1039,6 +1039,33 @@
 .df-node[data-kind='debt'] rect,
 .df-node[data-kind='gap'] rect { fill: var(--df-debts); }
 
+/* Hidden claims: an outline, not a colour, so it never reads as a job of its own. */
+.df-node[data-kind='hidden'] rect {
+  fill: var(--color-base-100);
+  stroke: var(--df-neutral);
+  stroke-dasharray: 3 2;
+}
+
+.df-link[data-kind='hidden'] {
+  fill-opacity: 0.1;
+}
+
+.df-filters {
+  @apply mb-3 flex flex-wrap items-center gap-2;
+}
+
+.df-filter-menu {
+  @apply z-30 mt-1 max-h-80 w-72 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 shadow-lg;
+}
+
+.df-filter-option {
+  @apply flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-base-200;
+}
+
+#dollar-flow-body[aria-busy='true'] {
+  @apply opacity-60 transition-opacity;
+}
+
 .df-label {
   fill: var(--color-base-content);
   font-weight: 600;
