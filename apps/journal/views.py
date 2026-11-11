@@ -736,16 +736,6 @@ def transactions_home(request, team_slug, book_slug):
         "transactions_facets": f"/a/{team_slug}/{book_slug}/journal/api/transactions/facets/",
     }
 
-    # The edit modal's account and payee pickers, served with the page the same
-    # way `bank_feed_home` serves them. A fetch on open would make the first row
-    # click wait on a round trip for a list that rarely changes.
-    # System accounts stay (an opening-balance entry keeps its own category);
-    # budget buckets never appear in a transaction.
-    all_accounts = (
-        Account.for_book.exclude_budget_buckets().select_related("account_group", "institution").order_by("name")
-    )
-    all_payees = Payee.for_book.all().order_by("name")
-
     return render(
         request,
         "journal/transactions_home.html",
@@ -754,10 +744,29 @@ def transactions_home(request, team_slug, book_slug):
             "page_title": _("Transactions | {name}").format(name=book_display_name(request.book)),
             "api_urls": api_urls,
             "initial_filters": _initial_account_filters(request),
-            "all_accounts": SimpleAccountSerializer(all_accounts, many=True).data,
-            "all_payees": PayeeSerializer(all_payees, many=True).data,
+            **transaction_editor_pickers(),
         },
     )
+
+
+def transaction_editor_pickers():
+    """
+    The transaction edit modal's account and payee pickers, for any page that
+    hosts it (Transactions, an account's activity). Served with the page the same
+    way `bank_feed_home` serves them: a fetch on open would make the first row
+    click wait on a round trip for a list that rarely changes.
+
+    System accounts stay (an opening-balance entry keeps its own category);
+    budget buckets never appear in a transaction.
+    """
+    all_accounts = (
+        Account.for_book.exclude_budget_buckets().select_related("account_group", "institution").order_by("name")
+    )
+    all_payees = Payee.for_book.all().order_by("name")
+    return {
+        "all_accounts": SimpleAccountSerializer(all_accounts, many=True).data,
+        "all_payees": PayeeSerializer(all_payees, many=True).data,
+    }
 
 
 def _initial_account_filters(request):

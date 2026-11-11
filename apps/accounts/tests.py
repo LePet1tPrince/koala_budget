@@ -524,6 +524,44 @@ class AccountViewTest(TestCase):
         self.assertContains(response, "account-balance-chart")
         self.assertContains(response, "date-range-picker")
 
+    def test_account_detail_activity_rows_open_the_edit_modal(self):
+        """Transaction rows carry their entry id for the edit modal; budget entries don't."""
+        expense_group = AccountGroup.objects.create(book=self.book, name="Bills", account_type=ACCOUNT_TYPE_EXPENSE)
+        account = Account.objects.create(book=self.book, name="Edit Cash", account_group=self.account_group)
+        expense = Account.objects.create(book=self.book, name="Edit Rent", account_group=expense_group)
+
+        entry = JournalEntry.objects.create(book=self.book, entry_date=date(2024, 6, 15), description="Rent")
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=expense, dr_amount=Decimal("1200.00"))
+        JournalLine.objects.create(book=self.book, journal_entry=entry, account=account, cr_amount=Decimal("1200.00"))
+        set_budget(self.book, expense, date(2024, 6, 1), Decimal("50.00"))
+        budget_line = JournalLine.objects.get(
+            journal_entry__source=JournalEntry.SOURCE_BUDGET, account__paired_account=expense
+        )
+
+        url = reverse(
+            "accounts:account_detail",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
+        response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
+        self.assertEqual(response.status_code, 200)
+        rows = [(row["entry_id"], row["editable"]) for row in response.context["report_data"]["transactions"]]
+        self.assertEqual(rows, [(entry.pk, True)])
+        self.assertContains(response, f'data-entry-id="{entry.pk}"')
+        self.assertContains(response, f'data-edit-entry="{entry.pk}"')
+
+        # A budget entry is never a transaction, so its activity row is not editable.
+        from apps.reports.services import ReportService
+
+        bucket_rows = ReportService(self.book).get_account_activity(
+            budget_line.account, date(2024, 6, 1), date(2024, 6, 30)
+        )["transactions"]
+        self.assertEqual(
+            [(row["entry_id"], row["editable"]) for row in bucket_rows], [(budget_line.journal_entry_id, False)]
+        )
+        self.assertContains(response, 'id="account-activity-editor"')
+        self.assertIn("Edit Rent", [a["name"] for a in response.context["all_accounts"]])
+        self.assertIn("csrftoken", response.cookies)
+
     def test_account_detail_view_expense_budget_chart(self):
         """Expense account detail embeds the budget-vs-actual chart instead of the balance chart."""
         from datetime import date
