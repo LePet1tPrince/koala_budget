@@ -866,9 +866,23 @@
   @apply font-semibold underline-offset-2 hover:underline;
 }
 
-/* Mobile top bar: the figure only, on one line. */
+/* Expected income: budgeted income not yet received. Beside Unassigned, not in it,
+   so it is set in the base ink rather than the state colour. */
+.unassigned-pill-expected {
+  @apply flex items-baseline justify-between gap-2 text-xs text-base-content/70;
+}
+
+.unassigned-pill-expected .money {
+  @apply font-mono font-semibold;
+}
+
+/* Mobile top bar: the figure on one line, Expected income (when shown) on a second. */
 .unassigned-pill-compact {
-  @apply flex-row items-center gap-2 px-2.5 py-1;
+  @apply flex-row flex-wrap items-center gap-x-2 gap-y-0 px-2.5 py-1;
+}
+
+.unassigned-pill-compact .unassigned-pill-expected {
+  @apply basis-full justify-start whitespace-nowrap text-[11px] leading-tight;
 }
 
 .unassigned-pill-compact .unassigned-pill-main {
@@ -1008,8 +1022,7 @@
 
 .df-link[data-kind='goals'] { fill: var(--df-goals); }
 .df-link[data-kind='envelopes'] { fill: var(--df-envelopes); }
-.df-link[data-kind='unassigned'],
-.df-link[data-kind='income_due'] { fill: var(--df-unassigned); }
+.df-link[data-kind='unassigned'] { fill: var(--df-unassigned); }
 .df-link[data-kind='debts'],
 .df-link[data-kind='gap'] { fill: var(--df-debts); }
 
@@ -1021,8 +1034,7 @@
 .df-node[data-kind='envelopes'] rect,
 .df-node[data-kind='group'] rect,
 .df-node[data-kind='category'] rect { fill: var(--df-envelopes); }
-.df-node[data-kind='unassigned'] rect,
-.df-node[data-kind='income_due'] rect { fill: var(--df-unassigned); }
+.df-node[data-kind='unassigned'] rect { fill: var(--df-unassigned); }
 .df-node[data-kind='debts'] rect,
 .df-node[data-kind='debt'] rect,
 .df-node[data-kind='gap'] rect { fill: var(--df-debts); }
@@ -1050,8 +1062,7 @@
 .df-swatch[data-kind='goals'] { background: var(--df-goals); }
 .df-swatch[data-kind='envelopes'] { background: var(--df-envelopes); }
 .df-swatch[data-kind='unassigned'] { background: var(--df-unassigned); }
-.df-swatch[data-kind='debt'],
-.df-swatch[data-kind='toward_debt'] { background: var(--df-debts); }
+.df-swatch[data-kind='debt'] { background: var(--df-debts); }
 
 @media (prefers-reduced-motion: reduce) {
   .df-link {

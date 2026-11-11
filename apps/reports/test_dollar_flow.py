@@ -25,7 +25,7 @@ def balances(**amounts):
     return [(SimpleNamespace(name=name, account_group_id=1), D(str(v))) for name, v in amounts.items()]
 
 
-def unassigned(net_worth, goals=(), envelopes=(), income_due="0"):
+def unassigned(net_worth, goals=(), envelopes=(), income_due="0", expects_income=False):
     goals = [{"name": n, "amount": D(str(a)), "goal": None} for n, a in goals]
     envelopes = [{"name": n, "group": g, "amount": D(str(a))} for n, g, a in envelopes]
     result = Unassigned(
@@ -34,6 +34,7 @@ def unassigned(net_worth, goals=(), envelopes=(), income_due="0"):
         income_due=D(income_due),
         envelopes=sum((e["amount"] for e in envelopes if e["amount"] > 0), D("0")),
         goals=sum((g["amount"] for g in goals if g["amount"] > 0), D("0")),
+        expects_income=expects_income,
     )
     result.detail.update({"goals": goals, "envelopes": envelopes})
     return result
@@ -106,13 +107,23 @@ class DollarFlowShapeTest(FlowAssertions, SimpleTestCase):
         self.assertEqual([(link["target"], link["amount"]) for link in gap_links], [("envelopes", D("200"))])
         self.assertEqual(flow["breakdown"]["total"], D("700"))
 
-    def test_income_due_joins_net_worth(self):
-        u = unassigned(100, envelopes=[("Food", "Home", 250)], income_due="300")
+    def test_expected_income_stays_out_of_the_flow(self):
+        """Unassigned v4: income counts once it is in net worth; Expected income sits beside."""
+        u = unassigned(100, envelopes=[("Food", "Home", 250)], income_due="300", expects_income=True)
         flow = dollar_flow(u, balances(Checking=100))
         self.assertConserved(flow)
         nodes = self.keys(flow)
-        self.assertEqual(nodes["income_due"]["amount"], D("300"))
-        self.assertEqual(nodes["unassigned"]["amount"], D("150"))
+        self.assertNotIn("income_due", nodes)
+        self.assertNotIn("unassigned", nodes)
+        self.assertEqual(nodes["gap"]["amount"], -u.amount)  # 150 over-assigned
+        self.assertEqual(flow["breakdown"]["total"], D("250"))
+        expected = flow["breakdown"]["expected"]
+        self.assertEqual(expected["amount"], D("300"))
+        self.assertEqual(expected["covers"], D("150"))
+
+    def test_no_expected_income_line_unless_the_book_budgets_income(self):
+        flow = dollar_flow(unassigned(100, envelopes=[("Food", "Home", 50)]), balances(Checking=100))
+        self.assertIsNone(flow["breakdown"]["expected"])
 
     def test_debt_beyond_assets(self):
         u = unassigned(-400, envelopes=[("Food", "Home", 100)])
@@ -125,13 +136,14 @@ class DollarFlowShapeTest(FlowAssertions, SimpleTestCase):
         self.assertEqual(nodes["gap"]["amount"], D("100"))
         self.assertEqual(flow["breakdown"]["net_worth"], D("-400"))
 
-    def test_income_due_past_the_jobs_goes_toward_debt(self):
-        u = unassigned(-100, envelopes=[("Food", "Home", 50)], income_due="300")
+    def test_expected_income_does_not_pay_debt_beyond_assets(self):
+        u = unassigned(-100, envelopes=[("Food", "Home", 50)], income_due="300", expects_income=True)
         flow = dollar_flow(u, balances(Loan=-100))
         self.assertConserved(flow)
         nodes = self.keys(flow)
-        self.assertEqual(nodes["unassigned"]["amount"], u.amount)  # 150
-        self.assertEqual(nodes["toward_debt"]["amount"], D("100"))
+        self.assertNotIn("unassigned", nodes)
+        self.assertEqual(nodes["gap"]["amount"], D("50"))
+        self.assertEqual(flow["breakdown"]["expected"]["covers"], D("50"))
 
     def test_sides_are_by_sign_not_type(self):
         """A card in credit is money you hold; an overdrawn account is money you owe."""
@@ -184,6 +196,10 @@ class DollarFlowReportTest(FlowAssertions, PlanFixture):
         nodes = self.keys(flow)
         self.assertEqual(nodes["goals"]["amount"], u.goals)
         self.assertEqual(nodes["envelopes"]["amount"], u.envelopes)
+        # The fixture budgets $3,000 of salary and receives $2,500: Expected, not in the flow.
+        self.assertEqual(flow["breakdown"]["expected"]["amount"], u.income_due)
+        self.assertEqual(u.income_due, D("500.00"))
+        self.assertNotIn("income_due", nodes)
         (goal,) = [n for n in flow["nodes"] if n["kind"] == "goal"]
         self.assertEqual(goal["label"], "Zq Car")
         self.assertEqual(goal["url"], self.goal.get_absolute_url())
@@ -198,6 +214,7 @@ class DollarFlowReportTest(FlowAssertions, PlanFixture):
         self.assertContains(response, 'data-testid="dollar-flow-breakdown"')
         self.assertContains(response, 'data-testid="dollar-flow-category"', count=1)
         self.assertContains(response, 'data-testid="dollar-flow-node"')
+        self.assertContains(response, 'data-testid="dollar-flow-expected"')
 
 
 class DollarFlowIsolationTest(ConsolidatedReportsBase):

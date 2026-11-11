@@ -6,7 +6,9 @@
   write and shows the change as a delta chip. The words for each state live in
   data attributes so the script never hardcodes copy.
 
-  `compact` is the mobile top-bar variant: the figure only.
+  `compact` is the mobile top-bar variant: the figure, and Expected income beside it.
+  Expected income (budgeted income not yet received) is not part of Unassigned; it
+  shows only for books that budget income before it arrives.
 {% endcomment %}
 {% if unassigned_pill and nav_book %}
   <div class="unassigned-pill{% if compact %} unassigned-pill-compact{% endif %}"
@@ -26,6 +28,14 @@
       <span class="unassigned-pill-label" data-unassigned-pill-label>{{ unassigned_pill.label }}</span>
       <span class="unassigned-pill-value money" data-unassigned-pill-value>{{ unassigned_pill.display }}</span>
     </a>
+    {% if unassigned_pill.expected %}
+      <span class="unassigned-pill-expected" data-unassigned-pill-expected
+            title="{% translate 'Budgeted income that has not arrived yet. It becomes unassigned money when it lands.' %}"
+            data-testid="unassigned-pill-expected{% if compact %}-compact{% endif %}">
+        <span>{{ unassigned_pill.expected.label }}</span>
+        <span class="money" data-unassigned-pill-expected-value>{{ unassigned_pill.expected.display }}</span>
+      </span>
+    {% endif %}
     <span class="unassigned-delta" data-unassigned-delta hidden></span>
     {% if not compact %}
       <span class="unassigned-pill-hint">

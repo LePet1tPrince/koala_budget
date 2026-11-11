@@ -55,11 +55,17 @@
           {% endfor %}
         {% endif %}
         <li class="flex justify-between gap-2 border-t border-base-300 pt-1 font-semibold" data-testid="dollar-flow-net-worth"><span>{% translate "= Net worth" %}</span><span class="money">{{ b.net_worth|currency }}</span></li>
-        {% if b.income_due %}
-          <li class="flex justify-between gap-2"><span>{% translate "+ Income still due" %}</span><span class="money">{{ b.income_due|currency }}</span></li>
-        {% endif %}
         {% if b.gap %}
           <li class="flex justify-between gap-2 text-error"><span>{% blocktranslate trimmed with label=b.gap_label %}+ {{ label }} (promised beyond what you have){% endblocktranslate %}</span><span class="money">{{ b.gap|currency }}</span></li>
+        {% endif %}
+        {% if b.expected %}
+          <li class="flex justify-between gap-2 border-t border-base-300 pt-1 text-base-content/70" data-testid="dollar-flow-expected">
+            <span>
+              {% blocktranslate trimmed with label=b.expected.label %}{{ label }}, not yet in net worth{% endblocktranslate %}
+              {% if b.expected.covers %}<span class="block text-xs">{% blocktranslate trimmed with amount=b.expected.covers|currency %}would cover {{ amount }} of what's promised{% endblocktranslate %}</span>{% endif %}
+            </span>
+            <span class="money">{{ b.expected.amount|currency }}</span>
+          </li>
         {% endif %}
       </ul>
     </div>

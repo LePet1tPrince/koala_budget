@@ -237,7 +237,13 @@ def budget_goals_report(book, month):
     from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
     from apps.budget import ledger as budget_ledger
     from apps.budget.services import BudgetService, GoalService
-    from apps.budget.unassigned import allocation_bar, budget_categories, compute_unassigned, waterfall
+    from apps.budget.unassigned import (
+        EXPECTED_INCOME_LABEL,
+        allocation_bar,
+        budget_categories,
+        compute_unassigned,
+        waterfall,
+    )
 
     from .dollar_flow import account_balances, dollar_flow
 
@@ -278,6 +284,6 @@ def budget_goals_report(book, month):
         "goal_rows": goal_rows,
         "goal_totals": goal_totals,
         "envelopes": envelopes,
-        "income_due": unassigned.income_due,
+        "expected_income_label": EXPECTED_INCOME_LABEL,
         "flow": dollar_flow(unassigned, account_balances(book, month), goal_url=lambda goal: goal.get_absolute_url()),
     }

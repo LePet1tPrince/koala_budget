@@ -33,9 +33,9 @@
           <span class="block font-medium">{{ form.budget_future_income.label }}</span>
           <span class="mt-1 block text-sm text-base-content/70">
             {% blocktranslate trimmed %}
-              On: you budget this month's paycheque before it lands, and money you expect this month counts
-              toward Unassigned. Off: money is unassigned only once it has arrived, and income categories
-              are left out of the budget.
+              On: you budget this month's paycheque before it lands, and what hasn't arrived yet shows as
+              Expected income beside Unassigned. Off: income categories are left out of the budget. Either
+              way, money is unassigned only once it has arrived.
             {% endblocktranslate %}
           </span>
         </span>
@@ -44,18 +44,19 @@
       {% comment %}
         What changing the setting would do, stated before saving. Computed server-side
         by the same `compute_unassigned` the pill uses, so it cannot disagree with the
-        number the user sees once they save.
+        figures the user sees once they save. Unassigned is the same either way; only
+        Expected income appears or goes.
       {% endcomment %}
       <div class="rounded-field border border-base-300 bg-base-200 p-3 text-sm" data-testid="budget-future-income-consequence">
         {% if future_income %}
-          {% blocktranslate trimmed with flipped=unassigned_flipped.amount|currency now=unassigned_now.amount|currency %}
-            Turned off, your Unassigned would be <strong class="money">{{ flipped }}</strong> instead of
-            <strong class="money">{{ now }}</strong> this month.
+          {% blocktranslate trimmed with expected=unassigned_now.income_due|currency now=unassigned_now.amount|currency %}
+            Turned off, the <strong class="money">{{ expected }}</strong> of Expected income this month would no
+            longer be shown. Unassigned stays <strong class="money">{{ now }}</strong>.
           {% endblocktranslate %}
         {% else %}
-          {% blocktranslate trimmed with flipped=unassigned_flipped.amount|currency now=unassigned_now.amount|currency %}
-            Turned on, your Unassigned would be <strong class="money">{{ flipped }}</strong> instead of
-            <strong class="money">{{ now }}</strong> this month.
+          {% blocktranslate trimmed with expected=unassigned_flipped.income_due|currency now=unassigned_now.amount|currency %}
+            Turned on, Expected income this month would be <strong class="money">{{ expected }}</strong>.
+            Unassigned stays <strong class="money">{{ now }}</strong>.
           {% endblocktranslate %}
         {% endif %}
       </div>

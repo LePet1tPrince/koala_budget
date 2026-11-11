@@ -9,15 +9,18 @@ followed to its job -- each goal, each budget category, Unassigned.
 
 Every figure comes from `compute_unassigned(detail=True)` and the month-end balances
 behind its net worth, so the picture adds up to the same Unassigned as every other
-screen. Two rules keep it honest:
+screen. Three rules keep it honest:
 
 - **Conservation.** Every node's inflow equals its outflow. Assets less Debts is Net
-  worth; Net worth plus Income still due is what the jobs share. When the jobs claim
-  more than that (Unassigned negative), the gap enters as its own source, drawn in the
-  error colour, rather than being scaled away.
+  worth, and Net worth is what the jobs share. When the jobs claim more than that
+  (Unassigned negative), the gap enters as its own source, drawn in the error
+  colour, rather than being scaled away.
 - **Pairing is by order, not by account.** Money is fungible: the picture says
-  how much of what you have sits in each job, not which account holds it. Sources
-  fill the jobs in order (net worth first, then income still due, then any gap).
+  how much of what you have sits in each job, not which account holds it. Net worth
+  fills the jobs in order, then the gap covers the rest.
+- **Expected income is not money yet.** Like Unassigned itself, the flow counts
+  income only once it is in net worth. Expected income is reported beside it in the
+  breakdown, with how much of any gap it would cover.
 
 Geometry is computed here, like `allocation_bar`, and drawn as plain SVG by
 `templates/reports/components/dollar_flow.html`: no chart library, the theme's own
@@ -31,6 +34,7 @@ from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
 from apps.accounts.models import ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, Account
+from apps.budget.unassigned import EXPECTED_INCOME_LABEL
 from apps.utils.months import add_months
 
 ZERO = Decimal("0")
@@ -167,28 +171,20 @@ def dollar_flow(unassigned, balances, goal_url=None):
         key = graph.node(f"asset:{idx}", item["label"], item["amount"], COL_ACCOUNTS, "asset")
         graph.link(key, assets, item["amount"])
 
-    # --- Sources of the money the jobs share ------------------------------------
+    # --- Net worth, and any gap, are what the jobs share -------------------------
     worth = (
         graph.node("net_worth", _("Net worth"), net_worth, COL_WORTH, "net_worth") if assets and net_worth > 0 else None
     )
-    due = unassigned.income_due
-    if due > 0:
-        graph.node("income_due", _("Income still due"), due, COL_WORTH, "income_due")
-
     goals_left = [g for g in unassigned.detail.get("goals", []) if g["amount"] > 0]
     envelopes = [e for e in unassigned.detail.get("envelopes", []) if e["amount"] > 0]
     claims = unassigned.goals + unassigned.envelopes
     free = max(unassigned.amount, ZERO)
-    have = max(net_worth, ZERO) + due
     # The jobs claim more than there is: the gap is its own source. With a positive
     # net worth it is exactly the Over-assigned figure.
-    gap = max(claims + free - have, ZERO)
+    gap = max(claims + free - max(net_worth, ZERO), ZERO)
     if gap:
         label = unassigned.label if net_worth >= 0 else _("Promised, not backed")
         graph.node("gap", label, gap, COL_WORTH, "gap")
-    # And with debt beyond your assets, income still due can more than cover the
-    # jobs: the rest is on its way to that debt.
-    toward_debt = max(have - claims - free, ZERO)
 
     debts = graph.node("debts", _("Owed on debts"), total_owed, COL_WORTH, "debts") if total_owed else None
     if assets:
@@ -207,10 +203,7 @@ def dollar_flow(unassigned, balances, goal_url=None):
         sinks.append((key, unassigned.envelopes))
     if free > 0:
         sinks.append((graph.node("unassigned", unassigned.label, free, COL_JOBS, "unassigned"), free))
-    if toward_debt > 0:
-        key = graph.node("toward_debt", _("Toward debt"), toward_debt, COL_JOBS, "debts")
-        sinks.append((key, toward_debt))
-    _fill(graph, [(worth, max(net_worth, ZERO)), ("income_due", due), ("gap", gap)], sinks)
+    _fill(graph, [(worth, max(net_worth, ZERO)), ("gap", gap)], sinks)
 
     for idx, item in enumerate(
         _fold(owes, MAX_DEBTS, lambda n: ngettext("%(n)d other debt", "%(n)d other debts", n) % {"n": n})
@@ -254,11 +247,18 @@ def dollar_flow(unassigned, balances, goal_url=None):
         "total_held": total_held,
         "total_owed": total_owed,
         "net_worth": net_worth,
-        "income_due": due,
         "gap": gap,
         "gap_label": graph.nodes["gap"]["label"] if gap else None,
+        # Beside the flow, never in it; only for books that budget income ahead.
+        "expected": {
+            "label": str(EXPECTED_INCOME_LABEL),
+            "amount": unassigned.income_due,
+            "covers": min(unassigned.income_due, gap),
+        }
+        if unassigned.expects_income
+        else None,
         "total": total,
-        "jobs": _jobs(graph, goal_items, groups, free, toward_debt, total, unassigned),
+        "jobs": _jobs(graph, goal_items, groups, free, total, unassigned),
     }
     return {"empty": False, **layout, "breakdown": breakdown}
 
@@ -278,7 +278,7 @@ def _envelope_groups(envelopes):
     return ordered
 
 
-def _jobs(graph, goal_items, groups, free, toward_debt, total, unassigned):
+def _jobs(graph, goal_items, groups, free, total, unassigned):
     """Every job and what's in it, unfolded, each with its share of the whole."""
     jobs = []
     if unassigned.goals > 0:
@@ -310,10 +310,6 @@ def _jobs(graph, goal_items, groups, free, toward_debt, total, unassigned):
         )
     if free > 0:
         jobs.append({"key": "unassigned", "label": str(unassigned.label), "amount": free, "pct": _pct(free, total)})
-    if toward_debt > 0:
-        jobs.append(
-            {"key": "toward_debt", "label": _("Toward debt"), "amount": toward_debt, "pct": _pct(toward_debt, total)}
-        )
     return jobs
 
 
