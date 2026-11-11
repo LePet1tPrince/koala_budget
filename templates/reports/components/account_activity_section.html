@@ -1,9 +1,11 @@
 {% load i18n %}
 {% load currency_tags %}
 {% load account_nav %}
+{% load icons %}
 {# Shared account activity section: balance or budget-vs-actual chart + transactions table. #}
 {# Context: report_data, balance_chart_data, budget_chart_data, start_date. Sits inside an .app-card. #}
 {# Account and payee links carry this page as return_to, so their back link comes straight back. #}
+{# A transaction row (data-entry-id) opens the edit modal: account-activity-editor.jsx. #}
 {% if budget_chart_data %}
 <!-- Budget vs Actual chart for income/expense accounts (collapsible, open by default) -->
 <div class="collapse collapse-arrow border border-base-300 rounded-box mb-4" data-testid="account-budget-chart-panel">
@@ -44,6 +46,7 @@
         <th class="text-right">{% translate "Balance" %}</th>
         {% endif %}
         <th>{% translate "Source" %}</th>
+        <th><span class="sr-only">{% translate "Edit" %}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -54,10 +57,15 @@
         <td></td>
         <td class="text-right money whitespace-nowrap {% if report_data.starting_balance < 0 %}text-error{% endif %}">{{ report_data.starting_balance|currency }}</td>
         <td></td>
+        <td></td>
       </tr>
       {% endif %}
       {% for transaction in report_data.transactions %}
-      <tr>
+      {% if transaction.editable %}
+      <tr class="cursor-pointer hover:bg-base-200" data-entry-id="{{ transaction.entry_id }}" data-testid="activity-row">
+      {% else %}
+      <tr data-testid="activity-row">
+      {% endif %}
         <td class="whitespace-nowrap">{{ transaction.date|date:"M j, Y" }}</td>
         <td>
           {% if transaction.contra_accounts %}
@@ -75,10 +83,18 @@
         <td class="text-right money whitespace-nowrap {% if transaction.balance < 0 %}text-error{% endif %}">{{ transaction.balance|currency }}</td>
         {% endif %}
         <td class="text-base-content/70 whitespace-nowrap">{{ transaction.source }}</td>
+        <td class="text-right">
+          {% if transaction.editable %}
+            {% comment %}The control a keyboard or screen reader reaches; the row click is a convenience on top of it.{% endcomment %}
+            <button type="button" class="btn btn-ghost btn-xs" data-edit-entry="{{ transaction.entry_id }}" aria-label="{% translate 'Edit transaction' %}" data-testid="activity-edit-{{ transaction.entry_id }}">
+              {% icon "pencil" class="inline-block shrink-0 w-4 h-4" %}
+            </button>
+          {% endif %}
+        </td>
       </tr>
       {% empty %}
       <tr>
-        <td colspan="{% if report_data.is_balance_account %}7{% else %}6{% endif %}" class="text-center text-base-content/70 py-4">{% translate "No transactions for this account in the selected period" %}</td>
+        <td colspan="{% if report_data.is_balance_account %}8{% else %}7{% endif %}" class="text-center text-base-content/70 py-4">{% translate "No transactions for this account in the selected period" %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -89,6 +105,7 @@
         {% if report_data.is_balance_account %}
         <td class="text-right money whitespace-nowrap {% if report_data.ending_balance < 0 %}text-error{% endif %}" data-testid="ending-balance">{{ report_data.ending_balance|currency }}</td>
         {% endif %}
+        <td></td>
         <td></td>
       </tr>
     </tfoot>
