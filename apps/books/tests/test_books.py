@@ -487,7 +487,7 @@ class FutureIncomeTest(TestCase):
         self.book.budget_future_income = value
         self.book.save()
 
-    def test_off_counts_income_only_once_it_lands(self):
+    def test_off_expects_no_income(self):
         self.set_future_income(False)
         self.assertEqual(compute_unassigned(self.book, self.MONTH).income_due, Decimal("0"))
         self.set_future_income(True)
@@ -530,9 +530,9 @@ class FutureIncomeTest(TestCase):
         response = self.client.get(reverse("books:settings", args=self.book.url_args))
         self.assertEqual(response.context["unassigned_now"].income_due, Decimal("5000"))
         self.assertEqual(response.context["unassigned_flipped"].income_due, Decimal("0"))
-        self.assertEqual(
-            response.context["unassigned_now"].amount - response.context["unassigned_flipped"].amount, Decimal("5000")
-        )
+        # Unassigned is the same either way; only Expected income comes or goes.
+        self.assertEqual(response.context["unassigned_now"].amount, response.context["unassigned_flipped"].amount)
+        self.assertContains(response, "Expected income this month would no")
 
     def test_the_settings_page_saves_and_records_the_change(self):
         self.set_future_income(True)
