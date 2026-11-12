@@ -34,6 +34,13 @@ import {
     BankFeedRowSourceEnumToJSON,
     BankFeedRowSourceEnumToJSONTyped,
 } from './BankFeedRowSourceEnum';
+import type { RuleMatchSummary } from './RuleMatchSummary';
+import {
+    RuleMatchSummaryFromJSON,
+    RuleMatchSummaryFromJSONTyped,
+    RuleMatchSummaryToJSON,
+    RuleMatchSummaryToJSONTyped,
+} from './RuleMatchSummary';
 
 /**
  * Unified bank feed row serializer.
@@ -204,6 +211,12 @@ export interface PatchedBankFeedRow {
      * @memberof PatchedBankFeedRow
      */
     recurringId?: number | null;
+    /**
+     * The rule that suggested or posted this row's category (null when none did)
+     * @type {RuleMatchSummary}
+     * @memberof PatchedBankFeedRow
+     */
+    ruleMatch?: RuleMatchSummary | null;
 }
 
 
@@ -251,6 +264,7 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'splitCount': json['split_count'] == null ? undefined : json['split_count'],
         'splits': json['splits'] == null ? undefined : ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
         'recurringId': json['recurring_id'] == null ? undefined : json['recurring_id'],
+        'ruleMatch': json['rule_match'] == null ? undefined : RuleMatchSummaryFromJSON(json['rule_match']),
     };
 }
 
@@ -291,6 +305,7 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'split_count': value['splitCount'],
         'splits': value['splits'] == null ? undefined : ((value['splits'] as Array<any>).map(SplitLegToJSON)),
         'recurring_id': value['recurringId'],
+        'rule_match': RuleMatchSummaryToJSON(value['ruleMatch']),
     };
 }
 

@@ -31,6 +31,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 | `api` | API key auth — UserAPIKey, hybrid permissions |
 | `subscriptions` | Stripe billing via dj-stripe |
 | `reports` | Income statements, balance sheets, Sankey diagrams |
+| `rules` | Transaction rules — Rule, RuleMatch, RuleProposal |
 
 **Account number convention:** 1000s = assets · 2000s = liabilities · 3000s = equity/goals · 4000s = income · 5000s = expenses
 
@@ -84,6 +85,7 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Reconciled-line rules: call `apps.reconciliation.services.guards`; category rules: `apps.accounts.guards.assert_category_allowed`. Don't restate them.
 - Unassigned: `apps/budget/unassigned.py::compute_unassigned` is the single source.
 - Manual feed rows: `apps/bank_feed/services/manual.py::create_manual_transaction` (the feed API's create and recurring schedules). Recurring occurrences: `services/recurring.py::materialize` only.
+- Feed field edits (category/account/payee/description/date, decategorize): `apps/bank_feed/services/edit.py`. Rule application: `apps/rules/services/apply.py::run` only; a new user categorization path must call `apps.rules.services.feedback.record`.
 
 **Shared helpers (don't re-add copies):** `apps/utils/months.py`, `apps/utils/json_views.py`, `apps/utils/progress.py`, `apps/utils/amounts.py`; frontend `common/http.js`, `common/amount.js`, `common/book.js`, `common/Modal.jsx`, `common/Combobox.jsx`, `common/DateField.jsx`, `common/popoverPosition.js`. Icons: `{% icon %}` / `<Icon>`; add new ones via `assets/icons/build_icons.py`.
 
@@ -112,6 +114,7 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Plaid: foreign-currency accounts are flagged, not converted; there is no per-book currency (`BASE_CURRENCY` is global)
 - Plaid: no dedupe against CSV/YNAB history — linking a bank after importing its CSV imports the overlap again
 - `PROJECT_METADATA["IMAGE"]` (social share image) is still the Pegasus logo
+- Rules are not in book export/import; `wipe_book` deletes them
 
 ---
 

@@ -57,6 +57,14 @@ MAX_IDS = 1000
 VIEW_ACTIVE = "active"
 VIEW_VOIDED = "voided"
 
+RULE_SUGGESTED = "suggested"
+RULE_AUTO_POSTED = "auto_posted"
+RULE_FILTERS = (RULE_SUGGESTED, RULE_AUTO_POSTED)
+
+# The rows `rule_match_summary` shows a chip on: an open suggestion, or an auto-post still standing.
+RULE_SUGGESTED_Q = Q(rule_match__status=RULE_SUGGESTED, journal_entry__isnull=True, is_void=False)
+RULE_AUTO_POSTED_Q = Q(rule_match__status=RULE_AUTO_POSTED, journal_entry__isnull=False)
+
 SORT_KEYS = ("date", "account", "payee", "category", "inflow", "outflow", "description")
 SPLIT_SORT_LABEL = "Split"
 
@@ -77,6 +85,7 @@ class FeedParams:
     descending: bool = False
     ids: tuple = ()
     page_size: int = DEFAULT_PAGE_SIZE
+    rule: str | None = None  # "suggested" / "auto_posted": rows a rule suggested for, or posted
 
     @classmethod
     def parse(cls, params):
@@ -129,6 +138,10 @@ class FeedParams:
             if page_size not in PAGE_SIZES:
                 errors["page_size"] = f"page_size must be one of: {', '.join(map(str, PAGE_SIZES))}."
 
+        rule = params.get("rule") or None
+        if rule not in (None, *RULE_FILTERS):
+            errors["rule"] = f"rule must be one of: {', '.join(RULE_FILTERS)}."
+
         accounts = int_list("account")
         ids = int_list("ids")
         if len(ids) > MAX_IDS:
@@ -147,6 +160,7 @@ class FeedParams:
             descending=direction == "desc",
             ids=ids,
             page_size=page_size or DEFAULT_PAGE_SIZE,
+            rule=rule,
         )
         if errors:
             raise ValidationError(errors)
@@ -277,6 +291,10 @@ def filtered(book, params, *, transfer_ids=None):
         rows = rows.filter(posted_date__lte=params.end_date)
     if params.ids:
         rows = rows.filter(pk__in=params.ids)
+    if params.rule == RULE_SUGGESTED:
+        rows = rows.filter(RULE_SUGGESTED_Q)
+    elif params.rule == RULE_AUTO_POSTED:
+        rows = rows.filter(RULE_AUTO_POSTED_Q)
     return rows
 
 
@@ -349,6 +367,8 @@ def counts(book, params):
         reconciled=Count("pk", filter=active & Q(row_reconciled=True)),
         uncategorized=Count("pk", filter=active & Q(journal_entry__isnull=True)),
         voided=Count("pk", filter=Q(is_void=True)),
+        rule_suggested=Count("pk", filter=RULE_SUGGESTED_Q),
+        rule_auto_posted=Count("pk", filter=RULE_AUTO_POSTED_Q),
     )
 
 

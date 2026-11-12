@@ -10,8 +10,9 @@ import { Dropdown, MenuRow, ReconciledLock } from './LineTableParts';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
 import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc } from '../utils';
-import { PAGE_SIZE_OPTIONS } from '../feedQuery';
+import { NO_QUICK_FILTERS, PAGE_SIZE_OPTIONS } from '../feedQuery';
 import Icon from '../../common/Icon';
+import RuleBadge from './RuleBadge';
 
 /* globals gettext, interpolate */
 
@@ -82,7 +83,7 @@ const AccountFilter = ({ accounts, selected, onChange }) => {
     selected.length === 0
       ? gettext('All accounts')
       : selected.length === 1
-        ? accounts.find((a) => a.id === selected[0])?.name ?? gettext('1 account')
+        ? (accounts.find((a) => a.id === selected[0])?.name ?? gettext('1 account'))
         : interpolate(gettext('%s accounts'), [selected.length]);
 
   const groups = [];
@@ -195,12 +196,19 @@ const LineTable = ({
   onDismissMatch,
   onOpenMatchCounterpart,
   pendingIds = NO_PENDING,
+  onDismissRuleMatch,
+  onUndoRuleMatch,
+  editRuleUrl,
 }) => {
   const [quickFiltersOpen, setQuickFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
 
   // Plaid "Link Bank Account" flow, triggered from the dropdown menu below
-  const { handleClick: handleLinkBankClick, loading: linkBankLoading, modal: linkBankModal } = usePlaidLinkFlow({
+  const {
+    handleClick: handleLinkBankClick,
+    loading: linkBankLoading,
+    modal: linkBankModal,
+  } = usePlaidLinkFlow({
     book,
     allAccounts,
     onSuccess: onLinkSuccess,
@@ -255,7 +263,7 @@ const LineTable = ({
 
   const columns = useMemo(
     () => COLUMNS.filter((col) => col.key !== 'account' || showAccountColumn),
-    [showAccountColumn]
+    [showAccountColumn],
   );
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
 
@@ -264,6 +272,8 @@ const LineTable = ({
     const next = { ...quickFilters, [key]: !quickFilters[key] };
     if (key === 'toReview' && next.toReview) next.reconciled = false;
     if (key === 'reconciled' && next.reconciled) next.toReview = false;
+    if (key === 'ruleSuggested' && next.ruleSuggested) next.ruleAutoPosted = false;
+    if (key === 'ruleAutoPosted' && next.ruleAutoPosted) next.ruleSuggested = false;
     setQuickFilters(next);
   };
   const activeQuickFilterCount = Object.values(quickFilters).filter(Boolean).length;
@@ -299,7 +309,7 @@ const LineTable = ({
         if (data.recurrence) setScheduledVersion((n) => n + 1);
         showSnackbar(
           data.recurrence ? gettext('Recurring transaction added') : gettext('Transaction added successfully'),
-          'success'
+          'success',
         );
       }
     } else if (onEditTransaction) {
@@ -403,13 +413,29 @@ const LineTable = ({
                   countClass="badge-warning badge-outline"
                   onClick={() => toggleQuickFilter('transfers')}
                 />
+                <MenuRow
+                  testId="filter-rule-suggested"
+                  checked={quickFilters.ruleSuggested}
+                  label={gettext('Suggested by rules')}
+                  count={counts?.rule_suggested ?? 0}
+                  countClass="badge-outline"
+                  onClick={() => toggleQuickFilter('ruleSuggested')}
+                />
+                <MenuRow
+                  testId="filter-rule-auto-posted"
+                  checked={quickFilters.ruleAutoPosted}
+                  label={gettext('Auto-posted by rules')}
+                  count={counts?.rule_auto_posted ?? 0}
+                  countClass="badge-primary badge-outline"
+                  onClick={() => toggleQuickFilter('ruleAutoPosted')}
+                />
                 {activeQuickFilterCount > 0 && (
                   <>
                     <div className="my-1 border-t border-base-300" />
                     <MenuRow
                       label={gettext('Clear filters')}
                       onClick={() => {
-                        setQuickFilters({ toReview: false, reconciled: false, uncategorized: false, transfers: false });
+                        setQuickFilters(NO_QUICK_FILTERS);
                         close();
                       }}
                     />
@@ -611,6 +637,18 @@ const LineTable = ({
                   const account = accountsById.get(row.account?.id) ?? row.account;
                   // An uncategorized row shows its suggested category, one click from accepted
                   const suggestion = !voided && !isCategorized(row) ? rowSuggestions[row.id] : null;
+                  // The rule behind a suggestion or an automatic categorization, if any
+                  const ruleMatch = voided ? null : (row.ruleMatch ?? null);
+                  const ruleBadge = ruleMatch ? (
+                    <RuleBadge
+                      row={row}
+                      ruleMatch={ruleMatch}
+                      editRuleUrl={editRuleUrl}
+                      onUndo={onUndoRuleMatch}
+                      onDismiss={onDismissRuleMatch}
+                      disabled={saving}
+                    />
+                  ) : null;
                   return (
                     <Fragment key={row.id}>
                       <tr
@@ -649,15 +687,26 @@ const LineTable = ({
                           className="truncate"
                           title={
                             suggestion
-                              ? interpolate(gettext('Suggested: %s'), [suggestion.name])
+                              ? suggestion.ruleName
+                                ? interpolate(gettext('Suggested by the rule “%s”: %s'), [
+                                    suggestion.ruleName,
+                                    suggestion.name,
+                                  ])
+                                : interpolate(gettext('Suggested: %s'), [suggestion.name])
                               : categoryTitle(row)
                           }
                         >
                           <span className="inline-flex w-full items-center gap-1">
                             {row.isSplit ? (
-                              <span className="badge badge-ghost badge-sm shrink-0" data-testid={`split-badge-${row.id}`}>
-                                {interpolate(gettext('Split (%s)'), [row.splitCount])}
-                              </span>
+                              <>
+                                <span
+                                  className="badge badge-ghost badge-sm shrink-0"
+                                  data-testid={`split-badge-${row.id}`}
+                                >
+                                  {interpolate(gettext('Split (%s)'), [row.splitCount])}
+                                </span>
+                                {ruleBadge}
+                              </>
                             ) : suggestion ? (
                               <>
                                 <span
@@ -680,11 +729,15 @@ const LineTable = ({
                                 >
                                   <Icon name="check" className="h-3.5 w-3.5" />
                                 </button>
+                                {ruleBadge}
                               </>
                             ) : (
-                              <span className="truncate">
-                                {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
-                              </span>
+                              <>
+                                <span className="truncate">
+                                  {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
+                                </span>
+                                {ruleBadge}
+                              </>
                             )}
                             {isTransfer && (
                               <button

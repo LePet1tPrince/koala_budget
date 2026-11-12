@@ -1,3 +1,4 @@
+/* globals gettext, interpolate */
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
 import { createConfetti } from '../../common/confetti';
@@ -436,7 +437,10 @@ function findAccountNamedInText(text, accounts, excludeAccountId) {
 // The note under a suggestion, explaining why it's suggested. A "named" match
 // (an account named verbatim in the memo/payee) needs no history to justify
 // itself, but still says so when history backs it up too.
-function suggestionNote({ count, match_type }) {
+function suggestionNote({ count, match_type, rule_name }) {
+  if (match_type === 'rule') {
+    return interpolate(gettext('Suggested by your rule “%s”'), [rule_name]);
+  }
   if (match_type === 'named') {
     return count != null
       ? `Named in the memo — also used ${count}× for this payee`
@@ -1119,9 +1123,32 @@ export default function CategorizeMode({
 
   // Only the cards about to be seen are looked up, so a queue of a thousand
   // transactions still costs one small request at a time.
+  // A row a rule already suggests for takes the rule's category as its one
+  // suggestion: it supersedes the history lookup, which is not made for it.
+  useEffect(() => {
+    const fromRules = {};
+    transactions.slice(0, SUGGESTION_PREFETCH).forEach(tx => {
+      const id = transactionId(tx);
+      const match = tx.rule_match;
+      if (id == null || id in suggestionsByTransaction || match?.status !== 'suggested' || match.category_id == null) return;
+      fromRules[id] = [
+        {
+          transaction_id: id,
+          category_id: match.category_id,
+          category_name: match.category_name,
+          count: null,
+          match_type: 'rule',
+          rule_name: match.rule_name,
+        },
+      ];
+    });
+    if (Object.keys(fromRules).length) setSuggestionsByTransaction(prev => ({ ...fromRules, ...prev }));
+  }, [transactions, suggestionsByTransaction]);
+
   useEffect(() => {
     const wanted = transactions
       .slice(0, SUGGESTION_PREFETCH)
+      .filter(tx => !(tx.rule_match?.status === 'suggested' && tx.rule_match.category_id != null))
       .map(transactionId)
       .filter(id => id != null && !(id in suggestionsByTransaction) && !suggestionsInFlight.current.has(id));
     if (wanted.length === 0) return;

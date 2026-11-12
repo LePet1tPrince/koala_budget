@@ -106,6 +106,7 @@ PROJECT_APPS = [
     "apps.ynab_import.apps.YnabImportConfig",
     "apps.portability.apps.PortabilityConfig",
     "apps.reconciliation.apps.ReconciliationConfig",
+    "apps.rules.apps.RulesConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -515,6 +516,11 @@ SCHEDULED_TASKS = {
     "recurring-transactions": {
         "task": "apps.bank_feed.tasks.generate_recurring_transactions",
         "schedule": schedules.crontab(minute=7, hour=0),
+    },
+    # Propose rules from each active book's categorization history (apps.rules.services.learning).
+    "learn-rules": {
+        "task": "apps.rules.tasks.learn_rules",
+        "schedule": schedules.crontab(minute=41, hour=3),
     },
 }
 

@@ -1,6 +1,6 @@
 # Transaction Rules — Requirements
 
-Status: approved design, not started. This document is the complete brief for the implementing agent.
+Status: implemented (all three phases). See the Rules entry in `docs/feature-history.md` for where each part lives.
 Read `CLAUDE.md` first; its single-writer rules apply to everything here.
 
 ## 1. Goal

@@ -37,6 +37,18 @@ export interface UploadConfirmResponse {
      * @memberof UploadConfirmResponse
      */
     errorCount: number;
+    /**
+     * Imported transactions a rule suggested a category for
+     * @type {number}
+     * @memberof UploadConfirmResponse
+     */
+    rulesSuggested?: number;
+    /**
+     * Imported transactions a rule categorized automatically
+     * @type {number}
+     * @memberof UploadConfirmResponse
+     */
+    rulesAutoPosted?: number;
 }
 
 /**
@@ -62,6 +74,8 @@ export function UploadConfirmResponseFromJSONTyped(json: any, ignoreDiscriminato
         'createdCount': json['created_count'],
         'skippedCount': json['skipped_count'],
         'errorCount': json['error_count'],
+        'rulesSuggested': json['rules_suggested'] == null ? undefined : json['rules_suggested'],
+        'rulesAutoPosted': json['rules_auto_posted'] == null ? undefined : json['rules_auto_posted'],
     };
 }
 
@@ -79,6 +93,8 @@ export function UploadConfirmResponseFromJSONTyped(json: any, ignoreDiscriminato
         'created_count': value['createdCount'],
         'skipped_count': value['skippedCount'],
         'error_count': value['errorCount'],
+        'rules_suggested': value['rulesSuggested'],
+        'rules_auto_posted': value['rulesAutoPosted'],
     };
 }
 
