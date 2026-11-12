@@ -1,0 +1,23 @@
+{% extends "web/settings/settings_base.html" %}
+{% load django_vite %}
+{% load i18n %}
+
+{% block settings_content %}
+  {# Server-rendered placeholder; React replaces it when the bundle mounts #}
+  <div id="rules-app" data-testid="rules-app">
+    <section class="app-card">
+      <p class="text-sm text-base-content/70">{% translate "Loading your rules…" %}</p>
+      <noscript>
+        <p class="text-sm text-base-content/70 mt-2">{% translate "The rules page needs JavaScript." %}</p>
+      </noscript>
+    </section>
+  </div>
+
+  {{ rules_props|json_script:'rules-props' }}
+  {{ request.book.base_url|json_script:'book-base' }}
+{% endblock %}
+
+{% block page_js %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/categorization/rules-app.jsx' %}
+{% endblock %}

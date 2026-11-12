@@ -72,6 +72,8 @@ class AuditEvent(models.Model):
     BOOK_ARCHIVED = "book_archived"
     BOOK_RESTORED = "book_restored"
     BOOK_DELETED = "book_deleted"
+    AUTO_CATEGORIZED = "auto_categorized"
+    CATEGORIZATION_RULE_CHANGED = "categorization_rule_changed"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -133,6 +135,8 @@ class AuditEvent(models.Model):
         (BOOK_ARCHIVED, "Set of Books Archived"),
         (BOOK_RESTORED, "Set of Books Restored"),
         (BOOK_DELETED, "Set of Books Deleted"),
+        (AUTO_CATEGORIZED, "Transactions Categorized Automatically"),
+        (CATEGORIZATION_RULE_CHANGED, "Categorization Rule Changed"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)

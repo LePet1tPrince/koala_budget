@@ -25,6 +25,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 | `budget` | Monthly budgets and savings goals — Budget, Goal, GoalAllocation |
 | `bank_feed` | Transaction import staging — BankTransaction |
 | `plaid` | Plaid live-sync integration — PlaidItem, PlaidAccount |
+| `categorization` | Auto-categorization rules and the suggestion-provider pipeline (rules → history → an AI provider slot) |
 | `teams` | People and billing — Team, Membership, Invitation |
 | `books` | The money tenant — Book (a set of books), request plumbing, legacy redirect, book settings |
 | `users` | Custom user model, avatars, preferences |
@@ -83,6 +84,7 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Closed periods (`Book.locked_through`): call `apps/journal/services/period_lock.py` from any new transaction write path; whole-book importers run under `period_lock.exempt()`.
 - Reconciled-line rules: call `apps.reconciliation.services.guards`; category rules: `apps.accounts.guards.assert_category_allowed`. Don't restate them.
 - Unassigned: `apps/budget/unassigned.py::compute_unassigned` is the single source.
+- Category suggestions and auto-categorization: a provider in `CATEGORIZATION_PROVIDERS` (`apps/categorization/`); applying one goes through `categorize_single`, and only `policy.book_allows_auto` lets a non-rule provider categorize without the user.
 - Manual feed rows: `apps/bank_feed/services/manual.py::create_manual_transaction` (the feed API's create and recurring schedules). Recurring occurrences: `services/recurring.py::materialize` only.
 
 **Shared helpers (don't re-add copies):** `apps/utils/months.py`, `apps/utils/json_views.py`, `apps/utils/progress.py`, `apps/utils/amounts.py`; frontend `common/http.js`, `common/amount.js`, `common/book.js`, `common/Modal.jsx`, `common/Combobox.jsx`, `common/DateField.jsx`, `common/popoverPosition.js`. Icons: `{% icon %}` / `<Icon>`; add new ones via `assets/icons/build_icons.py`.

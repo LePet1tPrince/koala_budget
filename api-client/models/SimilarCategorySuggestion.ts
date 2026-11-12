@@ -20,6 +20,13 @@ import {
     MatchTypeEnumToJSON,
     MatchTypeEnumToJSONTyped,
 } from './MatchTypeEnum';
+import type { CategorizationSourceEnum } from './CategorizationSourceEnum';
+import {
+    CategorizationSourceEnumFromJSON,
+    CategorizationSourceEnumFromJSONTyped,
+    CategorizationSourceEnumToJSON,
+    CategorizationSourceEnumToJSONTyped,
+} from './CategorizationSourceEnum';
 
 /**
  * A category suggested for one uncategorized transaction, with the evidence
@@ -48,17 +55,19 @@ export interface SimilarCategorySuggestion {
      */
     categoryName: string;
     /**
-     * How many similar transactions were categorized this way
+     * How many similar transactions were categorized this way (null: no history behind it)
      * @type {number}
      * @memberof SimilarCategorySuggestion
      */
-    count: number;
+    count: number | null;
     /**
-     * What made the transactions similar: same payee, same description, or similar wording
+     * What made the suggestion: same payee, same description, similar wording, a rule, or an AI
      * 
      * * `payee` - payee
      * * `description` - description
      * * `similar` - similar
+     * * `rule` - rule
+     * * `ai` - ai
      * @type {MatchTypeEnum}
      * @memberof SimilarCategorySuggestion
      */
@@ -69,6 +78,58 @@ export interface SimilarCategorySuggestion {
      * @memberof SimilarCategorySuggestion
      */
     payee: string;
+    /**
+     * The kind of provider that suggested it
+     * 
+     * * `rule` - Rule
+     * * `history` - History
+     * * `ai` - AI
+     * @type {CategorizationSourceEnum}
+     * @memberof SimilarCategorySuggestion
+     */
+    source?: CategorizationSourceEnum;
+    /**
+     * The provider's key
+     * @type {string}
+     * @memberof SimilarCategorySuggestion
+     */
+    provider?: string;
+    /**
+     * 0..1
+     * @type {number}
+     * @memberof SimilarCategorySuggestion
+     */
+    confidence?: number;
+    /**
+     * Why, in one sentence
+     * @type {string}
+     * @memberof SimilarCategorySuggestion
+     */
+    reason?: string;
+    /**
+     * Whether it would file the row on arrival
+     * @type {boolean}
+     * @memberof SimilarCategorySuggestion
+     */
+    auto?: boolean;
+    /**
+     * The rule behind it, if any
+     * @type {number}
+     * @memberof SimilarCategorySuggestion
+     */
+    ruleId?: number | null;
+    /**
+     * The rule's name
+     * @type {string}
+     * @memberof SimilarCategorySuggestion
+     */
+    ruleName?: string;
+    /**
+     * Decisions beyond the category, e.g. a payee rename: {'payee': 'Blue Bottle'}
+     * @type {{ [key: string]: any; }}
+     * @memberof SimilarCategorySuggestion
+     */
+    decisions?: { [key: string]: any; };
 }
 
 
@@ -102,6 +163,14 @@ export function SimilarCategorySuggestionFromJSONTyped(json: any, ignoreDiscrimi
         'count': json['count'],
         'matchType': MatchTypeEnumFromJSON(json['match_type']),
         'payee': json['payee'],
+        'source': json['source'] == null ? undefined : CategorizationSourceEnumFromJSON(json['source']),
+        'provider': json['provider'] == null ? undefined : json['provider'],
+        'confidence': json['confidence'] == null ? undefined : json['confidence'],
+        'reason': json['reason'] == null ? undefined : json['reason'],
+        'auto': json['auto'] == null ? undefined : json['auto'],
+        'ruleId': json['rule_id'] == null ? undefined : json['rule_id'],
+        'ruleName': json['rule_name'] == null ? undefined : json['rule_name'],
+        'decisions': json['decisions'] == null ? undefined : json['decisions'],
     };
 }
 
@@ -122,6 +191,14 @@ export function SimilarCategorySuggestionFromJSONTyped(json: any, ignoreDiscrimi
         'count': value['count'],
         'match_type': MatchTypeEnumToJSON(value['matchType']),
         'payee': value['payee'],
+        'source': CategorizationSourceEnumToJSON(value['source']),
+        'provider': value['provider'],
+        'confidence': value['confidence'],
+        'reason': value['reason'],
+        'auto': value['auto'],
+        'rule_id': value['ruleId'],
+        'rule_name': value['ruleName'],
+        'decisions': value['decisions'],
     };
 }
 

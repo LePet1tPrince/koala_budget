@@ -19,6 +19,7 @@ from apps.accounts.models import Account, AccountGroup, Institution, Payee
 from apps.bank_feed.models import BankTransaction, TransferMatchDismissal
 from apps.budget import ledger as budget_ledger
 from apps.budget.models import Goal, GoalAccountLink
+from apps.categorization.models import CategorizationDecision, CategorizationRule
 from apps.journal.models import JournalEntry, JournalLine, transaction_entries
 from apps.reconciliation.models import Reconciliation
 
@@ -262,6 +263,12 @@ def build_reconciliation_rows(book) -> list[dict]:
     ]
 
 
+def build_rule_rows(book) -> list[dict]:
+    """One row per categorization rule (`rules.csv`), in priority order."""
+    rules = CategorizationRule.objects.filter(book=book).in_order()
+    return [schema.build_row((schema.RULE, rule), columns=schema.RULES_COLUMNS) for rule in rules]
+
+
 def build_goal_link_rows(book) -> list[dict]:
     """One row per goal-linked account range (`goal_links.csv`), ended ones included."""
     links = GoalAccountLink.objects.filter(book=book).select_related("goal").order_by("account_id", "start_date", "id")
@@ -401,6 +408,8 @@ def build_omitted(book) -> dict:
     unused_payees = Payee.objects.filter(book=book).exclude(id__in=used_payee_ids).count()
 
     dismissed_transfer_pairs = TransferMatchDismissal.objects.filter(book=book).count()
+    # Which rule filed which row is provenance, not data (schema.UNEXPORTED_MODELS).
+    automatic_categorization_records = CategorizationDecision.objects.filter(book=book).count()
 
     # Not a row that was dropped -- the row travels -- but a *link* that could
     # not be carried, which is the same kind of stated loss. See
@@ -412,5 +421,6 @@ def build_omitted(book) -> dict:
         "unused_institutions": unused_institutions,
         "unused_payees": unused_payees,
         "dismissed_transfer_pairs": dismissed_transfer_pairs,
+        "automatic_categorization_records": automatic_categorization_records,
         "unlinked_feed_rows": len(unplaceable),
     }

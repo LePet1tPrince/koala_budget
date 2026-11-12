@@ -66,6 +66,8 @@ const optimisticEditedRow = (row, data, accountsById) => {
     inflow: data.inflow || '0.00',
     outflow: data.outflow || '0.00',
     category,
+    // Changing the category by hand overrides whatever rule filed the row.
+    categorizedBy: category && row.category?.id === category.id ? row.categorizedBy : null,
     isSplit: Boolean(legs),
     splitCount: legs ? legs.length : 0,
     splits: legs
@@ -1048,6 +1050,14 @@ const LineApp = ({
           </button>
           <div className="flex gap-2 items-center">
             <a
+              href={`${book.base}bankfeed/rules/`}
+              className="btn btn-ghost btn-sm gap-1"
+              data-testid="rules-link"
+            >
+              <Icon name="wand-sparkles" className="h-4 w-4" />
+              {gettext('Rules')}
+            </a>
+            <a
               href={`${book.base}bankfeed/categorize/${categorizeSearch}`}
               className="btn btn-primary btn-sm gap-1"
               data-testid="categorize-mode-btn"
@@ -1200,6 +1210,7 @@ const LineApp = ({
               onMatch={handleMatch}
               onDismissMatch={handleDismissMatch}
               onOpenMatchCounterpart={handleOpenMatchCounterpart}
+              onRulesApplied={scheduleQuietRefresh}
             />
           )}
         </section>
@@ -1259,6 +1270,10 @@ const LineApp = ({
               const parts = [`${created} ${gettext('transactions imported')}`];
               if (skipped > 0) {
                 parts.push(`${skipped} ${gettext('skipped')}`);
+              }
+              const ruled = result.rule_categorized_count ?? 0;
+              if (ruled > 0) {
+                parts.push(`${ruled} ${gettext('categorized by your rules')}`);
               }
               showSnackbar(parts.join(', '), 'success');
             }

@@ -47,6 +47,8 @@ RETIRED_BOOK_MODELS = [
 BOOK_MODELS = [
     *(model for model in BACKFILLED_BOOK_MODELS if model not in RETIRED_BOOK_MODELS),
     ("budget", "goalaccountlink"),
+    ("categorization", "categorizationrule"),
+    ("categorization", "categorizationdecision"),
     ("bank_feed", "recurringtransaction"),
 ]
 
