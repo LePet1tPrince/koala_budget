@@ -123,6 +123,10 @@
     </div>
   </div>
   {% include "reports/components/account_activity_section.html" %}
+  <div id="account-activity-editor"></div>
+  {{ request.book.base_url|json_script:'book-base' }}
+  {{ all_accounts|json_script:'all-accounts' }}
+  {{ all_payees|json_script:'all-payees' }}
 </section>
 {% endblock %}
 {% block dialogs %}
@@ -137,6 +141,7 @@
 {% block page_js %}
 {% vite_react_refresh %}
 {% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
+{% vite_asset 'assets/javascript/accounts/account-activity-editor.jsx' %}
 {% if balance_chart_data %}
 {{ balance_chart_data|json_script:'account-balance-data' }}
 {% vite_asset 'assets/javascript/reports/account-balance-chart.js' %}

@@ -11,7 +11,7 @@ from apps.accounts.models import (
     ACCOUNT_TYPE_INCOME,
     ACCOUNT_TYPE_LIABILITY,
 )
-from apps.journal.models import JournalLine, counted_entries
+from apps.journal.models import JournalEntry, JournalLine, counted_entries
 from apps.utils.months import add_months
 
 
@@ -586,6 +586,7 @@ class ReportService:
                 'transactions': [{
                     'date': date, 'payee': str, 'payee_url': str, 'memo': str, 'amount': Decimal, 'source': str,
                     'contra_accounts': [{'name': str, 'url': str}, ...],
+                    'entry_id': int, 'editable': bool,  # editable: a transaction, not a budget entry
                     'balance': Decimal,  # running balance, balance-type accounts only
                 }, ...],
                 'total': Decimal,
@@ -687,6 +688,10 @@ class ReportService:
                 "amount": line.signed_amount,
                 "source": line.journal_entry.get_source_display(),
                 "contra_accounts": contra_accounts,
+                # The account page opens the Transactions edit modal on this entry.
+                # Budget entries are not transactions (`transaction_entries`), so not editable.
+                "entry_id": line.journal_entry_id,
+                "editable": line.journal_entry.source != JournalEntry.SOURCE_BUDGET,
             }
             if is_balance_account:
                 running_balance += line.signed_amount

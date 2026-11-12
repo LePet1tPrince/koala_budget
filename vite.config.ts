@@ -42,6 +42,7 @@ export default defineConfig({
         'goal-form': path.resolve(__dirname, './assets/javascript/budget/goal-form.js'),
         'date-field': path.resolve(__dirname, './assets/javascript/common/date-field-mount.jsx'),
         'accounts-board-app': path.resolve(__dirname, './assets/javascript/accounts/accounts-board-app.jsx'),
+        'account-activity-editor': path.resolve(__dirname, './assets/javascript/accounts/account-activity-editor.jsx'),
         'onboarding-app': path.resolve(__dirname, './assets/javascript/onboarding/onboarding-app.jsx'),
         'task-rail-app': path.resolve(__dirname, './assets/javascript/onboarding/task-rail-app.jsx'),
         'onboarding-resume': path.resolve(__dirname, './assets/javascript/onboarding/resume.js'),
