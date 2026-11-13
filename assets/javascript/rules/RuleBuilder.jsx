@@ -259,15 +259,10 @@ function RowsTable({ rows, extra }) {
   );
 }
 
-function TestPanel({ result, loading, error, onRefresh }) {
+function TestPanel({ result, loading, error }) {
   return (
     <section data-testid="rule-test-panel" aria-live="polite">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold">{gettext('What it would catch')}</h4>
-        <button type="button" className="btn btn-ghost btn-xs" onClick={onRefresh} data-testid="rule-test-button">
-          <Icon name="refresh" className="h-3.5 w-3.5" /> {gettext('Test again')}
-        </button>
-      </div>
+      <h4 className="mb-2 text-sm font-semibold">{gettext('What it would catch')}</h4>
       {error && <p className="text-sm text-error">{error}</p>}
       {!error && !result && (
         <p className="text-sm text-base-content/70">
@@ -859,10 +854,25 @@ export default function RuleBuilder({
             {test.result?.conflicts?.dead && (
               <span className="badge badge-warning badge-sm font-normal">{gettext('Never wins')}</span>
             )}
+            {/* In the header so it is there whether the card is open or not; it must not toggle the card. */}
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs ml-auto font-normal"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                runTest();
+              }}
+              disabled={test.loading}
+              data-testid="rule-test-button"
+            >
+              <Icon name="refresh" className={`h-3.5 w-3.5 ${test.loading ? 'animate-spin' : ''}`} />
+              {gettext('Test again')}
+            </button>
           </summary>
           {testOpen && (
             <div className="space-y-4 px-3 pb-3">
-              <TestPanel result={test.result} loading={test.loading} error={test.error} onRefresh={runTest} />
+              <TestPanel result={test.result} loading={test.loading} error={test.error} />
               <ExplainPanel api={api} bookBase={bookBase} rule={rule} />
             </div>
           )}
