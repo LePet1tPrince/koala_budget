@@ -22,7 +22,8 @@ export default function RuleBuilderDialog({ request, onClose, onSaved, onDeleted
     () =>
       (categories || [])
         .filter((a) => (a.has_feed ?? a.hasFeed) && !(a.is_hidden ?? a.isHidden))
-        .map((a) => ({ id: a.id, name: a.name })),
+        .map((a) => ({ id: a.id, name: a.name, account_group_name: a.account_group_name ?? a.accountGroupName ?? '' }))
+        .sort((x, y) => x.account_group_name.localeCompare(y.account_group_name) || x.name.localeCompare(y.name)),
     [categories],
   );
 

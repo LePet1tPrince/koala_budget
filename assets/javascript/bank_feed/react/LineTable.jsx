@@ -6,7 +6,7 @@ import TransferMatchPanel from './TransferMatchPanel';
 import ScheduledTransactions from './ScheduledTransactions';
 import { Toast } from '../../common/Toast';
 import { SortArrow, TablePager } from '../../common/TablePager';
-import { Dropdown, MenuRow, ReconciledLock } from './LineTableParts';
+import { AccountFilter, Dropdown, MenuRow, ReconciledLock } from './LineTableParts';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
 import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc } from '../utils';
@@ -89,84 +89,6 @@ const categoryTitle = (row) => {
       .join(' · ');
   }
   return row.category ? row.category.name : gettext('Uncategorized');
-};
-
-/**
- * The account filter: every account on a feed, or any set of them. Grouped as
- * the account cards are (by account group), in the same order.
- */
-const AccountFilter = ({ accounts, selected, onChange }) => {
-  const [open, setOpen] = useState(false);
-  const chosen = new Set(selected);
-  const label =
-    selected.length === 0
-      ? gettext('All accounts')
-      : selected.length === 1
-        ? (accounts.find((a) => a.id === selected[0])?.name ?? gettext('1 account'))
-        : interpolate(gettext('%s accounts'), [selected.length]);
-
-  const groups = [];
-  accounts.forEach((account) => {
-    const name = account.account_group_name ?? account.accountGroupName ?? '';
-    const last = groups[groups.length - 1];
-    if (last && last.name === name) last.accounts.push(account);
-    else groups.push({ name, accounts: [account] });
-  });
-
-  const toggle = (id) => {
-    const next = chosen.has(id) ? selected.filter((a) => a !== id) : [...selected, id];
-    // Every account ticked is the same as none: say "All accounts" rather than a list.
-    onChange(next.length === accounts.length ? [] : next);
-  };
-
-  return (
-    <Dropdown
-      open={open}
-      onOpenChange={setOpen}
-      panelClassName="max-h-80 overflow-y-auto"
-      trigger={({ toggle: toggleOpen, open: isOpen }) => (
-        <button
-          type="button"
-          className={`btn btn-sm ${selected.length ? 'btn-primary' : 'btn-outline'} max-w-[14rem]`}
-          aria-haspopup="menu"
-          aria-expanded={isOpen}
-          onClick={toggleOpen}
-          data-testid="account-filter-btn"
-        >
-          <span className="truncate">{label}</span>
-          <span aria-hidden="true">▾</span>
-        </button>
-      )}
-    >
-      {({ close }) => (
-        <>
-          <MenuRow
-            testId="account-filter-all"
-            checked={selected.length === 0}
-            label={gettext('All accounts')}
-            onClick={() => {
-              onChange([]);
-              close();
-            }}
-          />
-          {groups.map((group) => (
-            <Fragment key={group.name}>
-              <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase text-base-content/70">{group.name}</div>
-              {group.accounts.map((account) => (
-                <MenuRow
-                  key={account.id}
-                  testId={`account-filter-${account.id}`}
-                  checked={chosen.has(account.id)}
-                  label={account.name}
-                  onClick={() => toggle(account.id)}
-                />
-              ))}
-            </Fragment>
-          ))}
-        </>
-      )}
-    </Dropdown>
-  );
 };
 
 /**

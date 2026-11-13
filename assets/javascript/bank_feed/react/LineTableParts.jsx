@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useId, useRef } from 'react';
+import React, { Fragment, useCallback, useEffect, useId, useRef, useState } from 'react';
 
-/* globals gettext */
+/* globals gettext, interpolate */
 
 /**
  * Small daisyUI primitives the bank feed table is built from (restyle plan
@@ -14,7 +14,15 @@ import React, { useCallback, useEffect, useId, useRef } from 'react';
  * filters menu has to stay open while several checkboxes are toggled, and a
  * blur-driven close would dismiss it on the first click.
  */
-export const Dropdown = ({ trigger, children, align = 'left', panelClassName = '', open, onOpenChange }) => {
+export const Dropdown = ({
+  trigger,
+  children,
+  align = 'left',
+  panelClassName = '',
+  open,
+  onOpenChange,
+  className = 'inline-flex',
+}) => {
   const rootRef = useRef(null);
   const panelId = useId();
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
@@ -25,7 +33,10 @@ export const Dropdown = ({ trigger, children, align = 'left', panelClassName = '
       if (rootRef.current && !rootRef.current.contains(e.target)) close();
     };
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') close();
+      if (e.key !== 'Escape') return;
+      // Inside a <dialog>, Escape would also close the dialog: this menu takes it.
+      e.preventDefault();
+      close();
     };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -36,7 +47,7 @@ export const Dropdown = ({ trigger, children, align = 'left', panelClassName = '
   }, [open, close]);
 
   return (
-    <div className="relative inline-flex" ref={rootRef}>
+    <div className={`relative ${className}`} ref={rootRef}>
       {trigger({ open, toggle: () => onOpenChange(!open), panelId })}
       {open && (
         <div
@@ -98,5 +109,100 @@ export const ReconciledLock = ({ reconciled }) => {
         )}
       </svg>
     </span>
+  );
+};
+
+/**
+ * Pick every feed account, or any set of them: the Inbox's account filter and the
+ * rule builder's "In accounts". Grouped by account group, in the order given.
+ * An empty selection means every account.
+ */
+export const AccountFilter = ({
+  accounts,
+  selected,
+  onChange,
+  testId = 'account-filter',
+  buttonSize = 'btn-sm',
+  className = 'max-w-[14rem]',
+  asSelect = false,
+}) => {
+  const [open, setOpen] = useState(false);
+  const chosen = new Set(selected);
+  const label =
+    selected.length === 0
+      ? gettext('All accounts')
+      : selected.length === 1
+        ? (accounts.find((a) => a.id === selected[0])?.name ?? gettext('1 account'))
+        : interpolate(gettext('%s accounts'), [selected.length]);
+
+  const groups = [];
+  accounts.forEach((account) => {
+    const name = account.account_group_name ?? account.accountGroupName ?? '';
+    const last = groups[groups.length - 1];
+    if (last && last.name === name) last.accounts.push(account);
+    else groups.push({ name, accounts: [account] });
+  });
+
+  const toggle = (id) => {
+    const next = chosen.has(id) ? selected.filter((a) => a !== id) : [...selected, id];
+    // Every account ticked is the same as none: say "All accounts" rather than a list.
+    onChange(next.length === accounts.length ? [] : next);
+  };
+
+  return (
+    <Dropdown
+      open={open}
+      onOpenChange={setOpen}
+      className={asSelect ? 'flex w-full' : 'inline-flex'}
+      panelClassName="max-h-80 overflow-y-auto"
+      trigger={({ toggle: toggleOpen, open: isOpen }) => (
+        <button
+          type="button"
+          className={
+            asSelect
+              ? `select select-sm w-full text-left ${className}`
+              : `btn ${buttonSize} ${selected.length ? 'btn-primary' : 'btn-outline'} ${className}`
+          }
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
+          onClick={toggleOpen}
+          data-testid={`${testId}-btn`}
+        >
+          <span className="truncate">{label}</span>
+          {/* A select draws its own arrow. */}
+          {!asSelect && <span aria-hidden="true">▾</span>}
+        </button>
+      )}
+    >
+      {({ close }) => (
+        <>
+          <MenuRow
+            testId={`${testId}-all`}
+            checked={selected.length === 0}
+            label={gettext('All accounts')}
+            onClick={() => {
+              onChange([]);
+              close();
+            }}
+          />
+          {groups.map((group) => (
+            <Fragment key={group.name}>
+              {group.name && (
+                <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase text-base-content/70">{group.name}</div>
+              )}
+              {group.accounts.map((account) => (
+                <MenuRow
+                  key={account.id}
+                  testId={`${testId}-${account.id}`}
+                  checked={chosen.has(account.id)}
+                  label={account.name}
+                  onClick={() => toggle(account.id)}
+                />
+              ))}
+            </Fragment>
+          ))}
+        </>
+      )}
+    </Dropdown>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import Combobox from '../common/Combobox';
+import { AccountFilter } from '../bank_feed/react/LineTableParts';
 import Icon from '../common/Icon';
 import Modal from '../common/Modal';
 import { buildCategoryOptions } from '../common/categoryOptions';
@@ -260,11 +261,11 @@ function RowsTable({ rows, extra }) {
 
 function TestPanel({ result, loading, error, onRefresh }) {
   return (
-    <section className="rounded-box border border-base-300 p-3" data-testid="rule-test-panel" aria-live="polite">
+    <section data-testid="rule-test-panel" aria-live="polite">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h4 className="font-semibold">{gettext('Test rule')}</h4>
+        <h4 className="text-sm font-semibold">{gettext('What it would catch')}</h4>
         <button type="button" className="btn btn-ghost btn-xs" onClick={onRefresh} data-testid="rule-test-button">
-          <Icon name="refresh" className="h-3.5 w-3.5" /> {gettext('Test rule')}
+          <Icon name="refresh" className="h-3.5 w-3.5" /> {gettext('Test again')}
         </button>
       </div>
       {error && <p className="text-sm text-error">{error}</p>}
@@ -361,12 +362,11 @@ function ExplainPanel({ api, bookBase, rule }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
-  const load = () => {
-    if (rows) return;
+  useEffect(() => {
     getJson(`${bookBase}bankfeed/api/feed/?view=active&page_size=200`)
       .then((data) => setRows(data.results || []))
       .catch((e) => setError(e.message));
-  };
+  }, [bookBase]);
 
   const options = useMemo(
     () =>
@@ -398,8 +398,11 @@ function ExplainPanel({ api, bookBase, rule }) {
   );
 
   return (
-    <details className="rounded-box border border-base-300 p-3" onToggle={(e) => e.currentTarget.open && load()}>
-      <summary className="cursor-pointer font-semibold">{gettext("Why didn't it match?")}</summary>
+    <section className="border-t border-base-300 pt-3" data-testid="rule-explain">
+      <h4 className="text-sm font-semibold">{gettext("Why didn't it match?")}</h4>
+      <p className="text-xs text-base-content/70">
+        {gettext('Pick a transaction to see which part of the rule it fails.')}
+      </p>
       <div className="mt-2 space-y-2">
         <Combobox
           ariaLabel={gettext('Pick a transaction')}
@@ -440,7 +443,7 @@ function ExplainPanel({ api, bookBase, rule }) {
           </ul>
         )}
       </div>
-    </details>
+    </section>
   );
 }
 
@@ -461,6 +464,7 @@ export default function RuleBuilder({
   const [saving, setSaving] = useState(false);
   const [test, setTest] = useState({ result: null, loading: false, error: '' });
   const [confirmApply, setConfirmApply] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
   const testSeq = useRef(0);
 
   useEffect(() => {
@@ -469,6 +473,7 @@ export default function RuleBuilder({
       setErrors({});
       setTest({ result: null, loading: false, error: '' });
       setConfirmApply(false);
+      setTestOpen(false);
     }
   }, [open, initial]);
 
@@ -665,26 +670,16 @@ export default function RuleBuilder({
             </div>
             <fieldset>
               <legend className="text-sm font-medium">{gettext('In accounts')}</legend>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {feedAccounts.map((a) => (
-                  <label key={a.id} className="flex cursor-pointer items-center gap-1.5 text-sm">
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-sm"
-                      checked={rule.accounts.includes(a.id)}
-                      onChange={(e) =>
-                        set({
-                          accounts: e.target.checked
-                            ? [...rule.accounts, a.id]
-                            : rule.accounts.filter((id) => id !== a.id),
-                        })
-                      }
-                    />
-                    {a.name}
-                  </label>
-                ))}
+              <div className="mt-1">
+                <AccountFilter
+                  accounts={feedAccounts}
+                  selected={rule.accounts}
+                  onChange={(accounts) => set({ accounts })}
+                  testId="rule-accounts"
+                  className=""
+                  asSelect
+                />
               </div>
-              <p className="text-xs text-base-content/70">{gettext('None ticked: every account.')}</p>
               {fieldError('accounts')}
             </fieldset>
             <div className="space-y-2">
@@ -843,8 +838,35 @@ export default function RuleBuilder({
           </section>
         </div>
 
-        <TestPanel result={test.result} loading={test.loading} error={test.error} onRefresh={runTest} />
-        <ExplainPanel api={api} bookBase={bookBase} rule={rule} />
+        {/* Closed by default: the test still runs behind it (the summary shows the
+            count, and "Save and apply to N" needs it); the explain picker loads
+            the feed only once opened. */}
+        <details
+          className="rounded-box border border-base-300"
+          open={testOpen}
+          onToggle={(e) => setTestOpen(e.currentTarget.open)}
+          data-testid="rule-test-expander"
+        >
+          <summary className="flex cursor-pointer items-center gap-2 p-3 font-semibold">
+            {gettext('Test this rule')}
+            {test.result && (
+              <span className="badge badge-ghost badge-sm font-normal" data-testid="rule-test-summary">
+                {interpolate(ngettext('%s match in the feed', '%s matches in the feed', test.result.pending.count), [
+                  test.result.pending.count,
+                ])}
+              </span>
+            )}
+            {test.result?.conflicts?.dead && (
+              <span className="badge badge-warning badge-sm font-normal">{gettext('Never wins')}</span>
+            )}
+          </summary>
+          {testOpen && (
+            <div className="space-y-4 px-3 pb-3">
+              <TestPanel result={test.result} loading={test.loading} error={test.error} onRefresh={runTest} />
+              <ExplainPanel api={api} bookBase={bookBase} rule={rule} />
+            </div>
+          )}
+        </details>
       </div>
     </Modal>
   );

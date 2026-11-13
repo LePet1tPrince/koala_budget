@@ -8,6 +8,7 @@ rule, as only an admin edits any other book-scoped row.
 """
 
 from django.db import transaction
+from django.db.models import F
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -416,7 +417,10 @@ def rules_home(request, team_slug, book_slug):
     from apps.accounts.models import Account
 
     feed_accounts = list(
-        Account.objects.filter(book=request.book, has_feed=True, is_hidden=False).order_by("name").values("id", "name")
+        Account.objects.filter(book=request.book, has_feed=True, is_hidden=False)
+        .annotate(account_group_name=F("account_group__name"))
+        .order_by("account_group__name", "name")
+        .values("id", "name", "account_group_name")
     )
     base = reverse("rules:rules_home", args=request.book.url_args)
     return render(
