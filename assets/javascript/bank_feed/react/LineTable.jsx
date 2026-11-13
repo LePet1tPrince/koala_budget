@@ -16,6 +16,25 @@ import RuleBadge from './RuleBadge';
 
 /* globals gettext, interpolate */
 
+/**
+ * A payee or description a rule renamed: the new text, and under it what the bank
+ * sent -- the text the rule actually matched on, which the new name would hide.
+ */
+const RenamedText = ({ value, original, testId }) =>
+  original ? (
+    <span className="flex min-w-0 flex-col leading-tight">
+      <span className="truncate">{value || ''}</span>
+      <span className="truncate text-xs text-base-content/70" data-testid={testId}>
+        {interpolate(gettext('Bank: %s'), [original])}
+      </span>
+    </span>
+  ) : (
+    <span className="truncate">{value || ''}</span>
+  );
+
+const withOriginal = (value, original) =>
+  original ? interpolate(gettext('%s (bank: %s)'), [value || '', original]) : value || '';
+
 const NO_MATCHES = new Map();
 // Stable default, so the rows don't re-render for a fresh `new Set()` each time
 const NO_PENDING = new Set();
@@ -198,7 +217,7 @@ const LineTable = ({
   pendingIds = NO_PENDING,
   onDismissRuleMatch,
   onUndoRuleMatch,
-  editRuleUrl,
+  onEditRule,
 }) => {
   const [quickFiltersOpen, setQuickFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -643,7 +662,7 @@ const LineTable = ({
                     <RuleBadge
                       row={row}
                       ruleMatch={ruleMatch}
-                      editRuleUrl={editRuleUrl}
+                      onEditRule={onEditRule}
                       onUndo={onUndoRuleMatch}
                       onDismiss={onDismissRuleMatch}
                       disabled={saving}
@@ -680,8 +699,12 @@ const LineTable = ({
                             {account?.name ?? ''}
                           </td>
                         )}
-                        <td className="truncate" title={row.payee || ''}>
-                          {row.payee || ''}
+                        <td className="truncate" title={withOriginal(row.payee, row.originalPayee)}>
+                          <RenamedText
+                            value={row.payee}
+                            original={row.originalPayee}
+                            testId={`original-payee-${row.id}`}
+                          />
                         </td>
                         <td
                           className="truncate"
@@ -764,7 +787,7 @@ const LineTable = ({
                           {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
                           {row.isForeignCurrency && parseFloat(row.outflow) > 0 && <CurrencyTag code={row.currency} />}
                         </td>
-                        <td title={row.description || ''}>
+                        <td title={withOriginal(row.description, row.originalDescription)}>
                           <span className="flex min-w-0 items-center gap-1">
                             {match && (
                               <button
@@ -806,7 +829,11 @@ const LineTable = ({
                                 {gettext('Pending')}
                               </span>
                             )}
-                            <span className="truncate">{row.description || ''}</span>
+                            <RenamedText
+                              value={row.description}
+                              original={row.originalDescription}
+                              testId={`original-description-${row.id}`}
+                            />
                           </span>
                         </td>
                         <td className="text-center">

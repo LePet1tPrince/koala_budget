@@ -330,3 +330,28 @@ class ProposalApiTest(RulesTestCase):
         )
         self.assertEqual(self.api.post(self.url(f"rules/api/proposals/{proposal.pk}/dismiss/")).status_code, 204)
         self.assertEqual(self.api.get(self.url("rules/api/proposals/")).data, [])
+
+
+class OriginalNamesTest(RulesTestCase):
+    def feed_row(self, row):
+        response = self.api.get(self.url("bankfeed/api/feed/"), {"account": self.chequing.pk})
+        return next(r for r in response.data["results"] if int(r["id"]) == row.pk)
+
+    def test_a_renamed_row_keeps_the_banks_names_beside_the_new_ones(self):
+        self.rule(payee_name="State Farm", description="Car insurance premium")
+        row = self.tx("STATE FARM INSURANCE PMT 4471", payee="SF*INS")
+        apply.run(self.book, [row])
+        data = self.feed_row(row)
+        self.assertEqual(
+            (data["description"], data["original_description"]),
+            ("Car insurance premium", "STATE FARM INSURANCE PMT 4471"),
+        )
+        self.assertEqual((data["payee"], data["original_payee"]), ("State Farm", "SF*INS"))
+
+    def test_rows_no_rule_renamed_have_no_originals(self):
+        self.rule()
+        row = self.tx("insurance")
+        apply.run(self.book, [row])
+        data = self.feed_row(row)
+        self.assertIsNone(data["original_description"])
+        self.assertIsNone(data["original_payee"])

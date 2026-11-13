@@ -13,7 +13,7 @@ import { portalTarget, useAnchoredPosition } from '../../common/popoverPosition'
  *
  * Portaled, because the category cell clips its overflow (`truncate`).
  */
-export default function RuleBadge({ row, ruleMatch, editRuleUrl, onUndo, onDismiss, disabled }) {
+export default function RuleBadge({ row, ruleMatch, onEditRule, onUndo, onDismiss, disabled }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
   const panelRef = useRef(null);
@@ -117,14 +117,15 @@ export default function RuleBadge({ row, ruleMatch, editRuleUrl, onUndo, onDismi
                   {gettext('Not this time')}
                 </button>
               )}
-              {ruleMatch.ruleId != null && editRuleUrl && (
-                <a
+              {ruleMatch.ruleId != null && onEditRule && (
+                <button
+                  type="button"
                   className="btn btn-ghost btn-xs"
-                  href={editRuleUrl(ruleMatch.ruleId)}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={act(() => onEditRule(ruleMatch.ruleId))}
+                  data-testid={`rule-edit-${row.id}`}
                 >
                   {gettext('Edit rule')}
-                </a>
+                </button>
               )}
             </div>
           </div>,

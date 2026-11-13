@@ -9,8 +9,11 @@ import Combobox from '../../common/Combobox';
 import DateRangePicker from '../../common/DateRangePicker';
 import Icon from '../../common/Icon';
 import Modal from '../../common/Modal';
+import { Toast } from '../../common/Toast';
 import { accountKind, ACCOUNT_KIND_LABELS, goalLeftLabel, pickableAccounts } from '../../common/accountKind';
 import { queryFromUrl, scopeSearch } from '../feedQuery';
+import { rulesApiForBook } from '../../rules/api';
+import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
 
 // How many cards ahead of the current one to look up similar-transaction
 // suggestions for.
@@ -1058,6 +1061,18 @@ export default function CategorizeMode({
   const uploadApi = useMemo(() => getUploadApiHelpers(book.base), [book]);
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
   const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
+
+  // The rule builder over the stack (admins only): null, or `{ draft }`.
+  const [ruleDialog, setRuleDialog] = useState(null);
+  const [canEditRules, setCanEditRules] = useState(false);
+  const [ruleNotice, setRuleNotice] = useState('');
+  const clearRuleNotice = useCallback(() => setRuleNotice(''), []);
+  useEffect(() => {
+    rulesApiForBook(book.base)
+      .prompts()
+      .then(p => setCanEditRules(!!p.can_edit))
+      .catch(() => setCanEditRules(false));
+  }, [book]);
   const payeeOptions = useMemo(() => allPayees.map(p => p.name).filter(Boolean), [allPayees]);
   const feedAccounts = useMemo(
     () => allAccounts.filter(a => a.has_feed && !a.is_archived).sort((a, b) => a.name.localeCompare(b.name)),
@@ -1412,7 +1427,7 @@ export default function CategorizeMode({
       // A modal over the stack handles its own Escape (via the dialog's
       // `cancel` event) — don't also navigate away or skip under it, which
       // would throw the user out of the queue while they were editing.
-      if (pendingBatch || splitModalOpen || showCreateAccountModal) return;
+      if (pendingBatch || splitModalOpen || showCreateAccountModal || ruleDialog) return;
       if (e.key === 'Escape') window.location.href = backHref;
       if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
@@ -1422,7 +1437,7 @@ export default function CategorizeMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backHref, undoStack, pendingBatch, splitModalOpen, showCreateAccountModal]);
+  }, [backHref, undoStack, pendingBatch, splitModalOpen, showCreateAccountModal, ruleDialog]);
 
   const currentId = transactionId(transactions[0]);
   const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
@@ -1491,6 +1506,18 @@ export default function CategorizeMode({
           <h1 className="text-xl font-black tracking-tight">⚡ Categorize Mode</h1>
           <ScopeBar scope={scope} feedAccounts={feedAccounts} onChange={changeScope} />
         </div>
+        {canEditRules && (
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1"
+            title={gettext('New rule, starting from this transaction')}
+            onClick={() => setRuleDialog({ draft: draftFromRow(transactions[0]) })}
+            data-testid="categorize-new-rule"
+          >
+            <Icon name="wand-magic-sparkles" className="h-4 w-4" />
+            {gettext('New rule')}
+          </button>
+        )}
         <div className="flex items-center gap-4">
           <StreakCounter streak={streak} />
           <div className="hidden sm:block w-48">
@@ -1499,6 +1526,32 @@ export default function CategorizeMode({
           <kbd className="kbd kbd-sm hidden lg:inline-flex">Esc to exit</kbd>
         </div>
       </div>
+
+      <RuleBuilderDialog
+        request={ruleDialog}
+        bookBase={book.base}
+        categories={allAccounts}
+        canEdit={canEditRules}
+        onClose={() => setRuleDialog(null)}
+        onSaved={(saved, info = {}) => {
+          setRuleDialog(null);
+          setRuleNotice(
+            info.deleted
+              ? gettext('Rule deleted')
+              : gettext('Rule saved. Transactions it matches now show its suggestion first.')
+          );
+          // Re-read the queue: the rule's suggestions (or postings) change what is left.
+          setSuggestionsByTransaction({});
+          fetchUncategorized(scope);
+        }}
+      />
+      <Toast
+        open={!!ruleNotice}
+        message={ruleNotice}
+        severity="success"
+        onClose={clearRuleNotice}
+        testId="categorize-rule-toast"
+      />
 
       {/* Mobile progress */}
       <div className="sm:hidden px-4 pt-3">

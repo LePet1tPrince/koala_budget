@@ -1,4 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 import Icon from '../common/Icon';
 import Toast from '../common/Toast';
@@ -104,6 +121,157 @@ function Prompts({ prompts, onGraduate, canEdit }) {
   );
 }
 
+/** Clicks on these never open the card: they are controls of their own. */
+const stop = (e) => e.stopPropagation();
+
+/** One rule as a card. The whole card opens the builder; `overlay` is the copy that follows the pointer. */
+function RuleCard({
+  rule,
+  index,
+  count,
+  canEdit,
+  summary,
+  onOpen,
+  onMoveBy,
+  onPatch,
+  overlay = false,
+  dragging = false,
+}) {
+  return (
+    <div
+      className={`rounded-box border bg-base-100 p-3 transition-[box-shadow,border-color,opacity] duration-150 ${
+        overlay
+          ? 'cursor-grabbing border-primary/50 shadow-xl ring-1 ring-primary/20'
+          : 'cursor-pointer border-base-300 hover:border-primary/40 hover:shadow-sm'
+      } ${dragging ? 'border-dashed !border-primary/50 !bg-primary/5 [&>*]:invisible' : ''} ${rule.is_active ? '' : 'bg-base-200/60'}`}
+      onClick={overlay ? undefined : () => onOpen(rule)}
+    >
+      <div className="flex flex-wrap items-start gap-3">
+        {canEdit && (
+          <div className="flex flex-col" onClick={stop} onPointerDown={stop} onKeyDown={stop}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs btn-square"
+              disabled={index === 0}
+              onClick={() => onMoveBy(index, -1)}
+              aria-label={interpolate(gettext('Move “%s” up'), [rule.name])}
+            >
+              <Icon name="chevron-up" className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs btn-square"
+              disabled={index === count - 1}
+              onClick={() => onMoveBy(index, 1)}
+              aria-label={interpolate(gettext('Move “%s” down'), [rule.name])}
+            >
+              <Icon name="chevron-down" className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+        <span className="badge badge-ghost badge-sm mt-1" title={gettext('Tried in this order')}>
+          {index + 1}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The keyboard way in; a pointer can click anywhere on the card. */}
+            <button
+              type="button"
+              className="link link-hover font-medium"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen(rule);
+              }}
+              onPointerDown={stop}
+              data-testid="rule-open"
+            >
+              {rule.name}
+            </button>
+            {rule.mode === 'auto_post' && (
+              <span className="badge badge-primary badge-soft badge-sm">{gettext('Auto-post')}</span>
+            )}
+            {!rule.is_active && <span className="badge badge-ghost badge-sm">{gettext('Off')}</span>}
+            {rule.problem && (
+              <span className="badge badge-warning badge-sm" title={rule.problem} data-testid="rule-problem">
+                {gettext('Needs attention')}
+              </span>
+            )}
+            {rule.demoted_at && rule.mode === 'suggest' && (
+              <span
+                className="badge badge-warning badge-soft badge-sm"
+                title={gettext('Its automatic categorizations were changed too often, so it only suggests now.')}
+                data-testid="rule-demoted"
+              >
+                {gettext('Back to suggesting')}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-sm text-base-content/70" data-testid="rule-summary">
+            {summary}
+          </p>
+          {rule.problem && <p className="mt-0.5 text-sm text-warning">{rule.problem}</p>}
+          <p className="mt-0.5 text-xs text-base-content/70">
+            {interpolate(gettext('Posted %s · confirmed %s · changed %s · %s'), [
+              rule.times_applied,
+              rule.times_confirmed,
+              rule.times_overridden,
+              lastMatched(rule.last_matched_at),
+            ])}
+          </p>
+        </div>
+        {canEdit && (
+          <div className="flex items-center gap-3" onClick={stop} onPointerDown={stop} onKeyDown={stop}>
+            <label className="flex cursor-pointer items-center gap-1 text-xs">
+              <input
+                type="checkbox"
+                className="toggle toggle-xs toggle-primary"
+                checked={rule.mode === 'auto_post'}
+                disabled={rule.action === 'rename'}
+                onChange={(e) => onPatch(rule, { mode: e.target.checked ? 'auto_post' : 'suggest' })}
+                aria-label={interpolate(gettext('Auto-post “%s”'), [rule.name])}
+              />
+              {gettext('Auto')}
+            </label>
+            <label className="flex cursor-pointer items-center gap-1 text-xs">
+              <input
+                type="checkbox"
+                className="toggle toggle-xs"
+                checked={rule.is_active}
+                onChange={(e) => onPatch(rule, { is_active: e.target.checked })}
+                aria-label={interpolate(gettext('“%s” is on'), [rule.name])}
+              />
+              {gettext('On')}
+            </label>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A card in the sortable list: the others slide aside as it is dragged over them. */
+function SortableRuleCard({ rule, canEdit, ...rest }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: rule.id,
+    disabled: !canEdit,
+    transition: { duration: 220, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' },
+  });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className="touch-manipulation"
+      data-testid="rule-row"
+      data-rule-id={rule.id}
+      {...attributes}
+      {...listeners}
+      aria-roledescription={gettext('sortable rule')}
+    >
+      <RuleCard rule={rule} canEdit={canEdit} dragging={isDragging} {...rest} />
+    </li>
+  );
+}
+
 export default function RulesApp({ props, api }) {
   const canEdit = props.can_edit;
   const [rules, setRules] = useState(null);
@@ -113,6 +281,11 @@ export default function RulesApp({ props, api }) {
   const [builder, setBuilder] = useState({ open: false, initial: null });
   const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
   const [dragId, setDragId] = useState(null);
+  // A press becomes a drag only after it moves 5px, so a click still opens the card.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const accountsById = useMemo(() => new Map(props.categories.map((a) => [a.id, a])), [props.categories]);
   const feedAccountsById = useMemo(() => new Map(props.feed_accounts.map((a) => [a.id, a])), [props.feed_accounts]);
@@ -156,6 +329,8 @@ export default function RulesApp({ props, api }) {
   };
 
   const move = async (ids) => {
+    // Optimistic: the list is already in its new order when the drop settles.
+    setRules((list) => ids.map((id) => list.find((r) => r.id === id)).filter(Boolean));
     try {
       setRules(await api.reorder(ids));
     } catch (e) {
@@ -172,13 +347,16 @@ export default function RulesApp({ props, api }) {
     move(ids);
   };
 
-  const dropOn = (targetId) => {
-    if (!dragId || dragId === targetId) return;
-    const ids = rules.map((r) => r.id).filter((id) => id !== dragId);
-    ids.splice(ids.indexOf(targetId), 0, dragId);
+  const onDragEnd = ({ active, over }) => {
     setDragId(null);
-    move(ids);
+    if (!over || active.id === over.id) return;
+    const ids = rules.map((r) => r.id);
+    move(arrayMove(ids, ids.indexOf(active.id), ids.indexOf(over.id)));
   };
+
+  const openRule = (rule) => setBuilder({ open: true, initial: rule });
+  const summaryOf = (rule) => ruleSummary(rule, { accountsById, feedAccountsById });
+  const dragged = dragId != null ? rules?.find((r) => r.id === dragId) : null;
 
   const onSaved = (saved, { applied, created }) => {
     setBuilder({ open: false, initial: null });
@@ -273,120 +451,46 @@ export default function RulesApp({ props, api }) {
           </p>
         </div>
       ) : (
-        <ol className="space-y-2" data-testid="rules-list">
-          {rules.map((rule, index) => (
-            <li
-              key={rule.id}
-              className={`rounded-box border border-base-300 p-3 ${dragId === rule.id ? 'opacity-50' : ''} ${
-                rule.is_active ? '' : 'bg-base-200/60'
-              }`}
-              draggable={canEdit}
-              onDragStart={() => setDragId(rule.id)}
-              onDragOver={(e) => canEdit && e.preventDefault()}
-              onDrop={() => dropOn(rule.id)}
-              onDragEnd={() => setDragId(null)}
-              data-testid="rule-row"
-              data-rule-id={rule.id}
-            >
-              <div className="flex flex-wrap items-start gap-3">
-                {canEdit && (
-                  <div className="flex flex-col">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-xs btn-square"
-                      disabled={index === 0}
-                      onClick={() => moveBy(index, -1)}
-                      aria-label={interpolate(gettext('Move “%s” up'), [rule.name])}
-                    >
-                      <Icon name="chevron-up" className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-xs btn-square"
-                      disabled={index === rules.length - 1}
-                      onClick={() => moveBy(index, 1)}
-                      aria-label={interpolate(gettext('Move “%s” down'), [rule.name])}
-                    >
-                      <Icon name="chevron-down" className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-                <span className="badge badge-ghost badge-sm mt-1" title={gettext('Tried in this order')}>
-                  {index + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className="link link-hover font-medium"
-                      onClick={() => setBuilder({ open: true, initial: rule })}
-                      data-testid="rule-open"
-                    >
-                      {rule.name}
-                    </button>
-                    {rule.mode === 'auto_post' && (
-                      <span className="badge badge-primary badge-soft badge-sm">{gettext('Auto-post')}</span>
-                    )}
-                    {!rule.is_active && <span className="badge badge-ghost badge-sm">{gettext('Off')}</span>}
-                    {rule.problem && (
-                      <span className="badge badge-warning badge-sm" title={rule.problem} data-testid="rule-problem">
-                        {gettext('Needs attention')}
-                      </span>
-                    )}
-                    {rule.demoted_at && rule.mode === 'suggest' && (
-                      <span
-                        className="badge badge-warning badge-soft badge-sm"
-                        title={gettext(
-                          'Its automatic categorizations were changed too often, so it only suggests now.',
-                        )}
-                        data-testid="rule-demoted"
-                      >
-                        {gettext('Back to suggesting')}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-sm text-base-content/70" data-testid="rule-summary">
-                    {ruleSummary(rule, { accountsById, feedAccountsById })}
-                  </p>
-                  {rule.problem && <p className="mt-0.5 text-sm text-warning">{rule.problem}</p>}
-                  <p className="mt-0.5 text-xs text-base-content/70">
-                    {interpolate(gettext('Posted %s · confirmed %s · changed %s · %s'), [
-                      rule.times_applied,
-                      rule.times_confirmed,
-                      rule.times_overridden,
-                      lastMatched(rule.last_matched_at),
-                    ])}
-                  </p>
-                </div>
-                {canEdit && (
-                  <div className="flex items-center gap-3">
-                    <label className="flex cursor-pointer items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        className="toggle toggle-xs toggle-primary"
-                        checked={rule.mode === 'auto_post'}
-                        disabled={rule.action === 'rename'}
-                        onChange={(e) => patch(rule, { mode: e.target.checked ? 'auto_post' : 'suggest' })}
-                        aria-label={interpolate(gettext('Auto-post “%s”'), [rule.name])}
-                      />
-                      {gettext('Auto')}
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        className="toggle toggle-xs"
-                        checked={rule.is_active}
-                        onChange={(e) => patch(rule, { is_active: e.target.checked })}
-                        aria-label={interpolate(gettext('“%s” is on'), [rule.name])}
-                      />
-                      {gettext('On')}
-                    </label>
-                  </div>
-                )}
-              </div>
-            </li>
-          ))}
-        </ol>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={({ active }) => setDragId(active.id)}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => setDragId(null)}
+        >
+          <SortableContext items={rules.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+            <ol className="space-y-2" data-testid="rules-list">
+              {rules.map((rule, index) => (
+                <SortableRuleCard
+                  key={rule.id}
+                  rule={rule}
+                  index={index}
+                  count={rules.length}
+                  canEdit={canEdit}
+                  summary={summaryOf(rule)}
+                  onOpen={openRule}
+                  onMoveBy={moveBy}
+                  onPatch={patch}
+                />
+              ))}
+            </ol>
+          </SortableContext>
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
+            {dragged ? (
+              <RuleCard
+                rule={dragged}
+                index={rules.indexOf(dragged)}
+                count={rules.length}
+                canEdit={canEdit}
+                summary={summaryOf(dragged)}
+                onOpen={() => {}}
+                onMoveBy={() => {}}
+                onPatch={() => {}}
+                overlay
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       <RuleBuilder

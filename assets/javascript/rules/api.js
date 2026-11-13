@@ -6,6 +6,7 @@ import { sendJson } from '../common/http';
  */
 export const getRulesApi = (base) => ({
   list: () => sendJson('GET', `${base}rules/`),
+  get: (id) => sendJson('GET', `${base}rules/${id}/`),
   create: (body) => sendJson('POST', `${base}rules/`, body),
   update: (id, body) => sendJson('PATCH', `${base}rules/${id}/`, body),
   remove: (id) => sendJson('DELETE', `${base}rules/${id}/`),

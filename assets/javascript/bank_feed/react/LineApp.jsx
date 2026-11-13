@@ -25,7 +25,8 @@ import {
 import { formatCurrency } from '../../utilities/currency';
 import Icon from '../../common/Icon';
 import { BankFeedRowFromJSON } from 'api-client';
-import { rulesApiForBook, rulesPageUrl } from '../../rules/api';
+import { rulesApiForBook } from '../../rules/api';
+import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
 
 /** How long the feed waits after its last write settles before re-reading it. */
 const QUIET_REFRESH_DELAY_MS = 500;
@@ -209,7 +210,9 @@ const LineApp = ({
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
   const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
   const rulesApi = useMemo(() => rulesApiForBook(book.base), [book]);
-  const editRuleUrl = useCallback((ruleId) => rulesPageUrl(book.base, { edit: ruleId }), [book]);
+  // The rule builder, opened over the feed: null, `{ ruleId }` or `{ draft }`.
+  const [ruleDialog, setRuleDialog] = useState(null);
+  const openRule = useCallback((ruleId) => setRuleDialog({ ruleId }), []);
 
   // Whether this user may create rules (admins), for the "make this a rule?" offer.
   const [canEditRules, setCanEditRules] = useState(false);
@@ -1148,9 +1151,17 @@ const LineApp = ({
             >
               {gettext('Create rule')}
             </button>
-            <a className="btn btn-ghost btn-xs" href={rulesPageUrl(book.base, { draft })}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              data-testid="rule-offer-customize"
+              onClick={() => {
+                handleCloseSnackbar();
+                setRuleDialog({ draft });
+              }}
+            >
               {gettext('Customize')}
-            </a>
+            </button>
             <button
               type="button"
               className="btn btn-ghost btn-xs"
@@ -1179,9 +1190,16 @@ const LineApp = ({
           'info',
           <span className="flex gap-1" data-testid="rule-override-offer">
             {canEditRules && (
-              <a className="btn btn-primary btn-xs" href={editRuleUrl(ruleMatch.ruleId)}>
+              <button
+                type="button"
+                className="btn btn-primary btn-xs"
+                onClick={() => {
+                  handleCloseSnackbar();
+                  openRule(ruleMatch.ruleId);
+                }}
+              >
                 {gettext('Update the rule')}
-              </a>
+              </button>
             )}
             <button type="button" className="btn btn-ghost btn-xs" onClick={handleCloseSnackbar}>
               {gettext('Just this once')}
@@ -1273,6 +1291,22 @@ const LineApp = ({
             )}
           </button>
           <div className="flex gap-2 items-center">
+            {canEditRules && (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm gap-1"
+                title={
+                  selectedRows.length === 1
+                    ? gettext('New rule, starting from the selected transaction')
+                    : gettext('New rule')
+                }
+                onClick={() => setRuleDialog({ draft: selectedRows.length === 1 ? draftFromRow(selectedRows[0]) : {} })}
+                data-testid="new-rule-btn"
+              >
+                <Icon name="wand-magic-sparkles" className="h-4 w-4" />
+                {gettext('New rule')}
+              </button>
+            )}
             <a
               href={`${book.base}bankfeed/categorize/${categorizeSearch}`}
               className="btn btn-primary btn-sm gap-1"
@@ -1425,7 +1459,7 @@ const LineApp = ({
               onConfirmSuggestion={handleConfirmSuggestion}
               onDismissRuleMatch={handleDismissRuleMatch}
               onUndoRuleMatch={handleUndoRuleMatch}
-              editRuleUrl={editRuleUrl}
+              onEditRule={openRule}
               book={book}
               onAccountCreated={handleAccountCreated}
               defaultAccountId={selectedAccount?.id ?? null}
@@ -1533,6 +1567,38 @@ const LineApp = ({
         showRestore={showRestoreButton}
         viewMode={query.view}
         getExportRows={getExportRows}
+      />
+
+      <RuleBuilderDialog
+        request={ruleDialog}
+        bookBase={book.base}
+        categories={allAccounts}
+        canEdit={canEditRules}
+        onClose={() => setRuleDialog(null)}
+        onSaved={(saved, info = {}) => {
+          setRuleDialog(null);
+          const posted = info.applied?.auto_posted ?? 0;
+          showSnackbar(
+            info.deleted
+              ? gettext('Rule deleted')
+              : posted
+                ? interpolate(
+                    ngettext(
+                      'Rule saved. %s transaction categorized.',
+                      'Rule saved. %s transactions categorized.',
+                      posted,
+                    ),
+                    [posted],
+                  )
+                : info.created
+                  ? gettext('Rule created. Matching transactions now show its suggestion.')
+                  : gettext('Rule saved'),
+            'success',
+          );
+          // The rule's suggestions (or postings) land on rows already on screen.
+          writeEpochRef.current += 1;
+          scheduleQuietRefresh();
+        }}
       />
 
       {/* Batch operation result. Held 6s -- long enough to read a failure message. */}

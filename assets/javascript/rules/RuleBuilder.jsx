@@ -43,7 +43,7 @@ function fromInitial(initial) {
   return {
     ...EMPTY,
     ...initial,
-    conditions: (initial.conditions || []).map((c) => ({ ...c })),
+    conditions: (initial.conditions ?? EMPTY.conditions).map((c) => ({ ...c })),
     accounts: (initial.accounts || []).map(Number),
     splits: initial.splits
       ? initial.splits.map((s) => ({ category: Number(s.category), percent: String(s.percent) }))

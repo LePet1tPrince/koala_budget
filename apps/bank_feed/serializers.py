@@ -314,6 +314,16 @@ class BankFeedRowSerializer(serializers.Serializer):
         required=False,
         help_text="The recurring schedule this transaction belongs to (null when it is a one-off)",
     )
+    original_description = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="The bank's own description, when a rule renamed it (null when unchanged)",
+    )
+    original_payee = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="The bank's own payee, when a rule renamed it (null when unchanged)",
+    )
     rule_match = RuleMatchSummarySerializer(
         allow_null=True,
         required=False,
@@ -592,6 +602,22 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "splits": split_legs,
         "recurring_id": tx.recurring_id,
         "rule_match": rule_match_summary(tx, category, split_legs),
+        **rule_originals(tx),
+    }
+
+
+def rule_originals(tx):
+    """
+    What the bank called the row before a rule renamed it, so the feed can show
+    both: a rule matched on the original, and the new name alone would hide why.
+    """
+    match = getattr(tx, "rule_match", None)
+    before = (match.before or {}) if match is not None and match.status != "dismissed" else {}
+    description = before.get("description")
+    payee = before.get("merchant_name")
+    return {
+        "original_description": description if "description" in before and description != tx.description else None,
+        "original_payee": (payee or None) if "merchant_name" in before and payee != tx.merchant_name else None,
     }
 
 
