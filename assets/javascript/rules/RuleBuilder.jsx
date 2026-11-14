@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import Combobox from '../common/Combobox';
-import { AccountFilter } from '../bank_feed/react/LineTableParts';
 import Icon from '../common/Icon';
 import Modal from '../common/Modal';
 import { buildCategoryOptions } from '../common/categoryOptions';
 import { formatMoney } from '../common/amount';
 import { getJson } from '../common/http';
-import { AMOUNT_OPS, TEXT_OPS, conditionText, opLabel } from './summary';
+import { conditionText } from './summary';
+import RuleSentence from './RuleSentence';
 
 /* globals gettext, interpolate, ngettext */
 
@@ -83,154 +83,6 @@ function draftBody(rule, { forTest = false } = {}) {
   };
   if (rule.proposal_id) body.proposal_id = rule.proposal_id;
   return body;
-}
-
-function ConditionRow({ condition, onChange, onRemove, index }) {
-  const ops = condition.field === 'amount' ? AMOUNT_OPS : TEXT_OPS;
-  const setField = (field) => {
-    const nextOps = field === 'amount' ? AMOUNT_OPS : TEXT_OPS;
-    const op = nextOps.includes(condition.op) ? condition.op : nextOps[0];
-    onChange({ field, op, value: op === 'between' ? ['', ''] : '' });
-  };
-  const setOp = (op) => {
-    const value = op === 'between' ? ['', ''] : Array.isArray(condition.value) ? '' : condition.value;
-    onChange({ ...condition, op, value });
-  };
-  return (
-    <div className="space-y-2 rounded-box bg-base-200/60 p-2" data-testid={`rule-condition-${index}`}>
-      <div className="flex items-center gap-2">
-        <select
-          className="select select-sm min-w-0 flex-1"
-          value={condition.field}
-          onChange={(e) => setField(e.target.value)}
-          aria-label={gettext('Field')}
-          data-testid={`rule-condition-field-${index}`}
-        >
-          <option value="payee">{gettext('Payee')}</option>
-          <option value="description">{gettext('Description')}</option>
-          <option value="amount">{gettext('Amount')}</option>
-        </select>
-        <select
-          className="select select-sm min-w-0 flex-1"
-          value={condition.op}
-          onChange={(e) => setOp(e.target.value)}
-          aria-label={gettext('Comparison')}
-          data-testid={`rule-condition-op-${index}`}
-        >
-          {ops.map((op) => (
-            <option key={op} value={op}>
-              {opLabel(op)}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs btn-square shrink-0"
-          onClick={onRemove}
-          aria-label={gettext('Remove condition')}
-          title={gettext('Remove condition')}
-        >
-          <Icon name="close" className="h-4 w-4" />
-        </button>
-      </div>
-      {condition.op === 'between' ? (
-        <div className="flex items-center gap-2">
-          {[0, 1].map((i) => (
-            <input
-              key={i}
-              type="text"
-              inputMode="decimal"
-              className="input input-sm min-w-0 flex-1"
-              value={condition.value?.[i] ?? ''}
-              placeholder={i === 0 ? gettext('From') : gettext('To')}
-              aria-label={i === 0 ? gettext('Lowest amount') : gettext('Highest amount')}
-              onChange={(e) => {
-                const value = [...(condition.value || ['', ''])];
-                value[i] = e.target.value;
-                onChange({ ...condition, value });
-              }}
-            />
-          ))}
-        </div>
-      ) : (
-        <input
-          type="text"
-          inputMode={condition.field === 'amount' ? 'decimal' : 'text'}
-          className="input input-sm w-full"
-          value={condition.value ?? ''}
-          placeholder={condition.field === 'amount' ? '0.00' : gettext('Text to match')}
-          aria-label={gettext('Value')}
-          onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          data-testid={`rule-condition-value-${index}`}
-        />
-      )}
-    </div>
-  );
-}
-
-function SplitRows({ splits, onChange, categoryOptions, optionsById }) {
-  const total = splits.reduce((n, s) => n + (Number(s.percent) || 0), 0);
-  return (
-    <div className="space-y-2" data-testid="rule-splits">
-      {splits.map((split, i) => (
-        <div key={i} className="flex items-end gap-2">
-          <div className="min-w-0 flex-1">
-            <Combobox
-              label={i === 0 ? gettext('Category') : undefined}
-              ariaLabel={gettext('Split category')}
-              value={optionsById.get(split.category) ?? null}
-              onChange={(option) => {
-                const next = [...splits];
-                next[i] = { ...split, category: option?.id ?? null };
-                onChange(next);
-              }}
-              options={categoryOptions}
-              getGroup={(o) => o.groupLabel}
-              size="sm"
-            />
-          </div>
-          <label className="input input-sm w-24">
-            <input
-              type="text"
-              inputMode="decimal"
-              value={split.percent}
-              aria-label={gettext('Percent')}
-              onChange={(e) => {
-                const next = [...splits];
-                next[i] = { ...split, percent: e.target.value };
-                onChange(next);
-              }}
-            />
-            <span className="text-base-content/70">%</span>
-          </label>
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs btn-square mb-1"
-            disabled={splits.length <= 2}
-            onClick={() => onChange(splits.filter((_s, j) => j !== i))}
-            aria-label={gettext('Remove split')}
-          >
-            <Icon name="close" className="h-4 w-4" />
-          </button>
-        </div>
-      ))}
-      <div className="flex items-center justify-between text-sm">
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs"
-          onClick={() => onChange([...splits, { category: null, percent: '' }])}
-        >
-          <Icon name="plus" className="h-3.5 w-3.5" /> {gettext('Add split')}
-        </button>
-        <span
-          className={Math.abs(total - 100) < 0.0005 ? 'text-success' : 'text-warning'}
-          data-testid="rule-split-total"
-        >
-          {interpolate(gettext('Total %s%'), [Number(total.toFixed(3))])}
-        </span>
-      </div>
-    </div>
-  );
 }
 
 function RowsTable({ rows, extra }) {
@@ -460,6 +312,8 @@ export default function RuleBuilder({
   const [test, setTest] = useState({ result: null, loading: false, error: '' });
   const [confirmApply, setConfirmApply] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
+  // Bumped on every open, so the sentence's own state (shown rename clauses) starts fresh.
+  const [session, setSession] = useState(0);
   const testSeq = useRef(0);
 
   useEffect(() => {
@@ -469,13 +323,13 @@ export default function RuleBuilder({
       setTest({ result: null, loading: false, error: '' });
       setConfirmApply(false);
       setTestOpen(false);
+      setSession((n) => n + 1);
     }
   }, [open, initial]);
 
   const categoryOptions = useMemo(() => buildCategoryOptions(categories), [categories]);
   const optionsById = useMemo(() => new Map(categoryOptions.map((o) => [o.id, o])), [categoryOptions]);
   const feedIds = useMemo(() => new Set(feedAccounts.map((a) => a.id)), [feedAccounts]);
-  const isTransfer = rule.action === 'category' && feedIds.has(rule.category);
 
   const set = (patch) => setRule((r) => ({ ...r, ...patch }));
 
@@ -640,198 +494,27 @@ export default function RuleBuilder({
           {fieldError('name')}
         </label>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <section className="space-y-3" aria-labelledby="rule-when">
-            <h4 id="rule-when" className="font-semibold">
-              {gettext('When a transaction…')}
-            </h4>
-            <div className="join" role="group" aria-label={gettext('Direction')}>
-              {[
-                ['out', gettext('Money out')],
-                ['in', gettext('Money in')],
-                ['any', gettext('Either')],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`btn btn-sm join-item ${rule.direction === value ? 'btn-active btn-primary' : ''}`}
-                  aria-pressed={rule.direction === value}
-                  onClick={() => set({ direction: value })}
-                  data-testid={`rule-direction-${value}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <fieldset>
-              <legend className="text-sm font-medium">{gettext('In accounts')}</legend>
-              <div className="mt-1">
-                <AccountFilter
-                  accounts={feedAccounts}
-                  selected={rule.accounts}
-                  onChange={(accounts) => set({ accounts })}
-                  testId="rule-accounts"
-                  className=""
-                  asSelect
-                />
-              </div>
-              {fieldError('accounts')}
-            </fieldset>
-            <div className="space-y-2">
-              {rule.conditions.length > 1 && (
-                <select
-                  className="select select-sm"
-                  value={rule.match}
-                  onChange={(e) => set({ match: e.target.value })}
-                  aria-label={gettext('How conditions combine')}
-                >
-                  <option value="all">{gettext('Matches all of these')}</option>
-                  <option value="any">{gettext('Matches any of these')}</option>
-                </select>
-              )}
-              {rule.conditions.map((condition, i) => (
-                <ConditionRow
-                  key={i}
-                  index={i}
-                  condition={condition}
-                  onChange={(next) => set({ conditions: rule.conditions.map((c, j) => (j === i ? next : c)) })}
-                  onRemove={() => set({ conditions: rule.conditions.filter((_c, j) => j !== i) })}
-                />
-              ))}
-              <button
-                type="button"
-                className="btn btn-ghost btn-xs"
-                onClick={() =>
-                  set({ conditions: [...rule.conditions, { field: 'description', op: 'contains', value: '' }] })
-                }
-                data-testid="rule-add-condition"
-              >
-                <Icon name="plus" className="h-3.5 w-3.5" /> {gettext('Add condition')}
-              </button>
-              {fieldError('conditions')}
-            </div>
-          </section>
-
-          <section className="space-y-3" aria-labelledby="rule-then">
-            <h4 id="rule-then" className="font-semibold">
-              {gettext('…then')}
-            </h4>
-            <select
-              className="select select-sm"
-              value={rule.action}
-              onChange={(e) => {
-                const action = e.target.value;
-                set({
-                  action,
-                  splits:
-                    action === 'split'
-                      ? rule.splits || [
-                          { category: rule.category, percent: '50' },
-                          { category: null, percent: '50' },
-                        ]
-                      : rule.splits,
-                });
-              }}
-              aria-label={gettext('Action')}
-              data-testid="rule-action"
-            >
-              <option value="category">{gettext('Categorize as')}</option>
-              <option value="split">{gettext('Split between')}</option>
-              <option value="rename">{gettext('Only rename it')}</option>
-            </select>
-            {rule.action === 'category' && (
-              <div>
-                <Combobox
-                  ariaLabel={gettext('Category')}
-                  value={optionsById.get(rule.category) ?? null}
-                  onChange={(option) => set({ category: option?.id ?? null })}
-                  options={categoryOptions}
-                  getGroup={(o) => o.groupLabel}
-                  placeholder={gettext('Pick a category')}
-                  testId="rule-category"
-                />
-                {fieldError('category')}
-              </div>
-            )}
-            {rule.action === 'split' && (
-              <>
-                <SplitRows
-                  splits={rule.splits || []}
-                  onChange={(splits) => set({ splits })}
-                  categoryOptions={categoryOptions.filter((o) => !feedIds.has(o.id))}
-                  optionsById={optionsById}
-                />
-                {fieldError('splits')}
-              </>
-            )}
-            <label className="block">
-              <span className="text-sm">{gettext('Set payee to')}</span>
-              <input
-                type="text"
-                className="input input-sm mt-1 w-full"
-                value={rule.payee_name}
-                maxLength={200}
-                placeholder={gettext('Leave blank to keep the bank’s')}
-                onChange={(e) => set({ payee_name: e.target.value })}
-                data-testid="rule-payee"
-              />
-              {fieldError('payee_name')}
-            </label>
-            <label className="block">
-              <span className="text-sm">{gettext('Set description to')}</span>
-              <input
-                type="text"
-                className="input input-sm mt-1 w-full"
-                value={rule.description}
-                maxLength={255}
-                placeholder={gettext('Leave blank to keep the bank’s')}
-                onChange={(e) => set({ description: e.target.value })}
-              />
-            </label>
-            <fieldset className="space-y-1">
-              <legend className="text-sm font-medium">{gettext('When it matches')}</legend>
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="radio"
-                  className="radio radio-sm"
-                  name="rule-mode"
-                  checked={rule.mode === 'suggest'}
-                  onChange={() => set({ mode: 'suggest' })}
-                />
-                <span className="text-sm">{gettext('Suggest it — I confirm each one')}</span>
-              </label>
-              <label
-                className={`flex items-center gap-2 ${isTransfer || rule.action === 'rename' ? 'opacity-60' : 'cursor-pointer'}`}
-              >
-                <input
-                  type="radio"
-                  className="radio radio-sm"
-                  name="rule-mode"
-                  checked={rule.mode === 'auto_post'}
-                  disabled={isTransfer || rule.action === 'rename'}
-                  onChange={() => set({ mode: 'auto_post' })}
-                  data-testid="rule-mode-auto"
-                />
-                <span className="text-sm">{gettext('Categorize automatically (auto-post)')}</span>
-              </label>
-              {isTransfer && (
-                <p className="text-xs text-base-content/70">
-                  {gettext('A transfer to another bank account is only suggested, so it can’t be posted twice.')}
-                </p>
-              )}
-              {fieldError('mode')}
-            </fieldset>
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="checkbox"
-                className="toggle toggle-sm"
-                checked={rule.is_active}
-                onChange={(e) => set({ is_active: e.target.checked })}
-              />
-              <span className="text-sm">{gettext('Active')}</span>
-            </label>
-          </section>
-        </div>
+        <RuleSentence
+          key={session}
+          rule={rule}
+          set={set}
+          categoryOptions={categoryOptions}
+          feedAccounts={feedAccounts}
+          feedIds={feedIds}
+        />
+        {['conditions', 'accounts', 'category', 'splits', 'payee_name', 'mode'].map((name) => (
+          <React.Fragment key={name}>{fieldError(name)}</React.Fragment>
+        ))}
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            className="toggle toggle-sm"
+            checked={rule.is_active}
+            onChange={(e) => set({ is_active: e.target.checked })}
+            data-testid="rule-active"
+          />
+          <span className="text-sm">{gettext('Active')}</span>
+        </label>
 
         {/* Closed by default: the test still runs behind it (the summary shows the
             count, and "Save and apply to N" needs it); the explain picker loads
